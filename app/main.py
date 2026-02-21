@@ -2,8 +2,9 @@ from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from app.services.gemini_service import GeminiService
 from app.schemas import AIRequest, AIResponse, ErrorResponse, HealthResponse, RootResponse
+from app.routers.line.webhook import router as line_router
 from typing import Union
-import uvicorn
+
 
 app = FastAPI(
     title="CARE API",
@@ -31,8 +32,11 @@ app = FastAPI(
         "name": "MIT",
     },
 )
+app.include_router(line_router, prefix="/api/v1")
 
 gemini_service = GeminiService()
+
+
 
 
 @app.get(

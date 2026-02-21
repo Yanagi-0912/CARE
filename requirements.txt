@@ -1,4 +1,15 @@
+#FastAPI 框架和 Uvicorn 伺服器
 fastapi
-google-genai
 uvicorn
+
+#Google Gemini API 客戶端
+google-genai
+
+#LINE Bot SDK
+line-bot-sdk
+
+#環境變數設定
 dotenv
+
+#測試相關
+pytest-cov

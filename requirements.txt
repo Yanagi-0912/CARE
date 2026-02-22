@@ -1,15 +1,26 @@
-#FastAPI 框架和 Uvicorn 伺服器
-fastapi
-uvicorn
+# FastAPI 框架和 Uvicorn 伺服器
+fastapi==0.129.0
+uvicorn==0.41.0
+starlette==0.52.1
 
-#Google Gemini API 客戶端
-google-genai
+# Google Gemini API 客戶端
+google-genai==1.64.0
+google-auth==2.48.0
 
-#LINE Bot SDK
-line-bot-sdk
+# LINE Bot SDK
+line-bot-sdk==3.22.0
 
-#環境變數設定
-dotenv
+# 環境變數設定
+python-dotenv==1.1.1
 
-#測試相關
-pytest-cov
+# HTTP 請求相關
+requests==2.32.5
+httpx==0.28.1
+
+# 測試相關
+pytest==9.0.2
+pytest-cov==7.0.0
+
+# 工具套件
+pydantic==2.12.5
+typing-extensions==4.15.0

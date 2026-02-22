@@ -1,7 +1,3 @@
-"""
-LINE Bot 事件處理層
-負責接收和分發來自 LINE 平台的事件到對應的服務層
-"""
 from linebot.v3.webhooks import MessageEvent
 from app.services.line.message_service import line_message_service
 import logging
@@ -10,17 +6,6 @@ logger = logging.getLogger(__name__)
 
 
 async def handle_text_message_async(event: MessageEvent):
-    """
-    處理文字訊息事件
-    
-    職責：
-    1. 接收 LINE 事件
-    2. 提取事件信息
-    3. 分發到 message_service 處理
-    
-    Args:
-        event: LINE MessageEvent 對象
-    """
     # 提取事件信息
     user_text = event.message.text
     reply_token = event.reply_token
@@ -34,16 +19,3 @@ async def handle_text_message_async(event: MessageEvent):
         reply_token=reply_token,
         user_id=user_id
     )
-
-
-# ============================================
-# 未來可擴展的事件處理器
-# ============================================
-
-# async def handle_follow_async(event):
-#     """處理用戶追蹤事件"""
-#     await line_message_service.send_welcome_message(...)
-
-# async def handle_postback_async(event):
-#     """處理按鈕點擊等互動事件"""
-#     pass

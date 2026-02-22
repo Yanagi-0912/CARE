@@ -32,12 +32,9 @@ app = FastAPI(
         "name": "MIT",
     },
 )
-app.include_router(line_router, prefix="/api/v1")
+app.include_router(line_router, prefix="/line", tags=["LINE Bot"])
 
 gemini_service = GeminiService()
-
-
-
 
 @app.get(
     "/",
@@ -70,7 +67,7 @@ async def health():
     return {"status": "Welcome to CARE Backend!"}
 
 @app.post(
-    "/api/v1/ai_response",
+    "/ai_response",
     responses={
         200: {
             "description": "成功獲得 AI 回應或返回錯誤訊息",

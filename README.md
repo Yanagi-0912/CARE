@@ -30,5 +30,18 @@ pip install -r requirements.txt
 啟動 Fast Api
 
 ```
-uvicorn main:app --reload
+uvicorn app.main:app --reload --port 8000
+ngrok 輸入 ngrok http 8000
+Line developer 管理頁面的webhoook 網址改為 "ngrok url"/api/v1/callback
 ```
+
+
+''' 
+跑測試 
+python -m pytest tests/ -v -s
+'''
+
+'''
+Swagger api 文件
+http://127.0.0.1:8000/docs
+'''

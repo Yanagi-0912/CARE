@@ -1,7 +1,7 @@
 """
 測試 LINE Token Manager 是否正常工作
 """
-from app.routers.line.token_manager import line_token_manager
+from app.services.line import line_token_manager
 import json
 
 print("\n" + "="*70)

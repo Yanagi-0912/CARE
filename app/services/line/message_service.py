@@ -1,5 +1,5 @@
 """
-LINE Bot 業務邏輯服務層
+LINE Bot 消息處理服務
 處理消息業務邏輯，整合 Gemini AI 服務
 """
 from typing import Optional

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request, Header, HTTPException
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from linebot.v3.webhook import WebhookParser
 from linebot.v3.exceptions import InvalidSignatureError
-from app.routers.line.handlers import handle_text_message_async
+from app.services.line import handle_text_message_async
 from app.core.config import settings
 import logging
 import json

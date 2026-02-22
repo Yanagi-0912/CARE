@@ -1,5 +1,5 @@
 """
-LINE Bot 事件處理層
+LINE Bot 事件處理服務
 處理來自 LINE 平台的各種事件（消息、追蹤、取消追蹤等）
 """
 from linebot.v3.messaging import (
@@ -7,8 +7,8 @@ from linebot.v3.messaging import (
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from app.core.config import settings
-from app.routers.line.services import line_message_service
-from app.routers.line.token_manager import line_token_manager
+from app.services.line.message_service import line_message_service
+from app.services.line.token_manager import line_token_manager
 import logging
 
 logger = logging.getLogger(__name__)
@@ -89,6 +89,5 @@ async def handle_text_message_async(event: MessageEvent):
 #     pass
 
 # async def handle_postback_async(event):
-# def handle_postback(event):
 #     """處理回傳事件（按鈕點擊等）"""
 #     pass

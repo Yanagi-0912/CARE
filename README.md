@@ -27,22 +27,6 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-設定環境變數
-
-建立 `.env` 檔案並設定必要的 API 金鑰：
-
-```bash
-# 複製範例檔案
-cp .env.example .env
-
-# 編輯 .env 檔案，填入你的 API 金鑰
-# GEMINI_API_KEY=你的_Gemini_API_金鑰
-# MODEL_NAME=gemini-2.0-flash-exp
-# LINE_CHANNEL_ID=你的_LINE_Channel_ID
-# LINE_CHANNEL_SECRET=你的_LINE_Channel_Secret
-# LINE_CHANNEL_ACCESS_TOKEN=你的_LINE_Access_Token
-```
-
 啟動 Fast Api
 
 ```

@@ -3,17 +3,13 @@ fastapi==0.129.0
 uvicorn==0.41.0
 starlette==0.52.1
 
-# Google Gemini API 客戶端
-google-genai==1.64.0
-google-auth==2.48.0
-
 # LINE Bot SDK
 line-bot-sdk==3.22.0
 
 # 環境變數設定
 python-dotenv==1.1.1
 
-# HTTP 請求相關
+# HTTP 請求相關（用於 Gemini API 和其他 HTTP 請求）
 requests==2.32.5
 httpx==0.28.1
 

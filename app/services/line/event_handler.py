@@ -1,14 +1,9 @@
 """
-LINE Bot 事件處理服務
-處理來自 LINE 平台的各種事件（消息、追蹤、取消追蹤等）
+LINE Bot 事件處理層
+負責接收和分發來自 LINE 平台的事件到對應的服務層
 """
-from linebot.v3.messaging import (
-    Configuration, ApiClient, MessagingApi, ReplyMessageRequest, TextMessage
-)
-from linebot.v3.webhooks import MessageEvent, TextMessageContent
-from app.core.config import settings
+from linebot.v3.webhooks import MessageEvent
 from app.services.line.message_service import line_message_service
-from app.services.line.token_manager import line_token_manager
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,78 +11,39 @@ logger = logging.getLogger(__name__)
 
 async def handle_text_message_async(event: MessageEvent):
     """
-    異步處理文字消息事件
+    處理文字訊息事件
     
-    當用戶發送文字消息時，此函數會被觸發
+    職責：
+    1. 接收 LINE 事件
+    2. 提取事件信息
+    3. 分發到 message_service 處理
     
     Args:
-        event: LINE MessageEvent 對象，包含用戶消息和回覆令牌
+        event: LINE MessageEvent 對象
     """
-    # 提取用戶消息內容
+    # 提取事件信息
     user_text = event.message.text
     reply_token = event.reply_token
-    
-    # 可選：提取用戶 ID 用於未來的個性化功能
     user_id = event.source.user_id if hasattr(event.source, 'user_id') else None
     
-    logger.info(f"Received message from user {user_id}: {user_text}")
+    logger.info(f"Received text message event from user {user_id}")
     
-    try:
-        # 調用業務邏輯層異步處理消息（使用 AI 生成回覆）
-        response_text = await line_message_service.process_text_message(user_text, user_id)
-        
-        # 動態獲取 access token
-        try:
-            access_token = line_token_manager.get_token()
-        except ValueError as e:
-            logger.error(f"無法獲取 access token: {e}")
-            # 如果無法獲取 token，記錄錯誤但不回覆用戶
-            return
-        
-        # 使用動態獲取的 token 初始化 LINE Messaging API
-        line_config = Configuration(access_token=access_token)
-        with ApiClient(line_config) as api_client:
-            line_bot_api = MessagingApi(api_client)
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=reply_token,
-                    messages=[TextMessage(text=response_text)]
-                )
-            )
-        
-        logger.info(f"Successfully replied to user {user_id}")
-        
-    except Exception as e:
-        logger.error(f"Error handling message: {e}", exc_info=True)
-        # 發生錯誤時，嘗試回覆錯誤消息
-        # 注意：由於 reply_token 只能使用一次，這裡可能會失敗
-        try:
-            access_token = line_token_manager.get_token()
-            line_config = Configuration(access_token=access_token)
-            with ApiClient(line_config) as api_client:
-                line_bot_api = MessagingApi(api_client)
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=reply_token,
-                        messages=[TextMessage(text="抱歉，處理您的消息時發生錯誤，請稍後再試")]
-                    )
-                )
-        except Exception as reply_error:
-            logger.error(f"Failed to send error message: {reply_error}")
+    # 委派給 message_service 處理完整流程
+    await line_message_service.process_and_reply(
+        user_text=user_text,
+        reply_token=reply_token,
+        user_id=user_id
+    )
 
 
 # ============================================
-# 未來可擴展的異步事件處理器
+# 未來可擴展的事件處理器
 # ============================================
 
 # async def handle_follow_async(event):
 #     """處理用戶追蹤事件"""
-#     pass
-
-# async def handle_unfollow_async(event):
-#     """處理用戶取消追蹤事件"""
-#     pass
+#     await line_message_service.send_welcome_message(...)
 
 # async def handle_postback_async(event):
-#     """處理回傳事件（按鈕點擊等）"""
+#     """處理按鈕點擊等互動事件"""
 #     pass

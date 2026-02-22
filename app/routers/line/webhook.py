@@ -3,14 +3,19 @@ LINE Bot Webhook 路由層
 負責接收來自 LINE 平台的 Webhook 請求、驗證簽名並分發事件
 """
 from fastapi import APIRouter, Request, Header, HTTPException
+from linebot.v3.webhooks import MessageEvent, TextMessageContent
+from linebot.v3.webhook import WebhookParser
 from linebot.v3.exceptions import InvalidSignatureError
-from app.routers.line.handlers import handler
+from app.routers.line.handlers import handle_text_message_async
+from app.core.config import settings
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
-# 初始化路由器
+# 初始化路由器和 webhook 解析器
 router = APIRouter()
+parser = WebhookParser(settings.LINE_CHANNEL_SECRET)
 
 
 @router.post("/callback")
@@ -40,10 +45,16 @@ async def callback(request: Request, x_line_signature: str = Header(None)):
     body_decoded = body.decode("utf-8")
     
     try:
-        # 驗證簽名並處理事件
-        # handler.handle() 會自動分發事件到對應的處理函數
-        handler.handle(body_decoded, x_line_signature)
-        logger.info("Webhook event processed successfully")
+        # 驗證簽名並解析事件
+        events = parser.parse(body_decoded, x_line_signature)
+        
+        # 異步處理每個事件
+        for event in events:
+            # 處理文字消息事件
+            if isinstance(event, MessageEvent) and isinstance(event.message, TextMessageContent):
+                await handle_text_message_async(event)
+        
+        logger.info("Webhook events processed successfully")
         
     except InvalidSignatureError:
         logger.error("Invalid signature - possible security breach attempt")

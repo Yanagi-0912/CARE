@@ -2,7 +2,6 @@
 LINE Bot 事件處理層
 處理來自 LINE 平台的各種事件（消息、追蹤、取消追蹤等）
 """
-from linebot.v3 import WebhookHandler
 from linebot.v3.messaging import (
     Configuration, ApiClient, MessagingApi, ReplyMessageRequest, TextMessage
 )
@@ -14,14 +13,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# 初始化 LINE SDK
-handler = WebhookHandler(settings.LINE_CHANNEL_SECRET)
 
-
-@handler.add(MessageEvent, message=TextMessageContent)
-def handle_text_message(event: MessageEvent):
+async def handle_text_message_async(event: MessageEvent):
     """
-    處理文字消息事件
+    異步處理文字消息事件
     
     當用戶發送文字消息時，此函數會被觸發
     
@@ -38,10 +33,8 @@ def handle_text_message(event: MessageEvent):
     logger.info(f"Received message from user {user_id}: {user_text}")
     
     try:
-        # 調用業務邏輯層處理消息
-        # 注意：由於 WebhookHandler 的 @handler.add 裝飾器不支持異步函數，
-        # 這裡直接同步調用。未來如需異步處理，可考慮使用 BackgroundTasks
-        response_text = line_message_service.process_text_message(user_text, user_id)
+        # 調用業務邏輯層異步處理消息（使用 AI 生成回覆）
+        response_text = await line_message_service.process_text_message(user_text, user_id)
         
         # 動態獲取 access token
         try:
@@ -84,20 +77,18 @@ def handle_text_message(event: MessageEvent):
 
 
 # ============================================
-# 未來可擴展的事件處理器
+# 未來可擴展的異步事件處理器
 # ============================================
 
-# @handler.add(FollowEvent)
-# def handle_follow(event):
+# async def handle_follow_async(event):
 #     """處理用戶追蹤事件"""
 #     pass
 
-# @handler.add(UnfollowEvent)
-# def handle_unfollow(event):
+# async def handle_unfollow_async(event):
 #     """處理用戶取消追蹤事件"""
 #     pass
 
-# @handler.add(PostbackEvent)
+# async def handle_postback_async(event):
 # def handle_postback(event):
 #     """處理回傳事件（按鈕點擊等）"""
 #     pass

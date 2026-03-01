@@ -32,7 +32,7 @@ pip install -r requirements.txt
 ```
 uvicorn app.main:app --reload --port 8000
 ngrok 輸入 ngrok http 8000
-Line developer 管理頁面的webhoook 網址改為 "ngrok url"/api/v1/callback
+Line developer 管理頁面的webhoook 網址改為 "ngrok url"/line/callback
 ```
 
 

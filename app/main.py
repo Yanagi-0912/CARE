@@ -1,6 +1,7 @@
 from fastapi import FastAPI
-from app.schemas import RootResponse
+from app.schemas import RootResponse, HealthResponse, AIRequest, AIResponse, ErrorResponse
 from app.routers.line.webhook import router as line_router
+from app.services.gemini_service import GeminiService
 
 
 app = FastAPI(
@@ -46,3 +47,32 @@ async def root():
     - **message**: 系統運行狀態
     """
     return {"message": "CARE Backend Running"}
+
+
+@app.get(
+    "/health",
+    response_model=HealthResponse,
+    tags=["系統"],
+    summary="健康檢查",
+    description="回傳服務狀態",
+)
+async def health():
+    return {"status": "Welcome to CARE Backend!"}
+
+
+@app.post(
+    "/api/v1/ai_response",
+    response_model=AIResponse | ErrorResponse,
+    tags=["AI"],
+    summary="AI 回應",
+    description="依 user_input 取得 Gemini AI 回覆",
+)
+async def ai_response(body: AIRequest):
+    if not (body.user_input or "").strip():
+        return ErrorResponse(error="user_input is required")
+    try:
+        service = GeminiService()
+        text = await service.generate_response(body.user_input)
+        return AIResponse(response=text)
+    except ValueError as e:
+        return ErrorResponse(error=str(e))

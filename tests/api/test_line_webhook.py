@@ -1,4 +1,3 @@
-"""LINE Webhook API 測試：簽名驗證與回傳狀態."""
 from unittest.mock import AsyncMock, patch
 
 import pytest

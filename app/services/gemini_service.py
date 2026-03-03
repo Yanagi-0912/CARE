@@ -46,8 +46,6 @@ class GeminiService:
                         f"Gemini API error: Status {response.status_code}, "
                         f"Response: {response.text}"
                     )
-                    
-                    # 錯誤訊息
                     if response.status_code == 400:
                         raise ValueError("請求格式錯誤，請稍後再試")
                     elif response.status_code == 401:
@@ -60,8 +58,7 @@ class GeminiService:
                         raise ValueError("AI 服務暫時無法使用，請稍後再試")
                     else:
                         raise ValueError(f"AI 服務發生錯誤（狀態碼: {response.status_code}）")
-                
-                # 解析回應
+
                 data = response.json()
                 ai_response = data["candidates"][0]["content"]["parts"][0]["text"]
                 

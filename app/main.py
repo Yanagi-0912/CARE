@@ -1,8 +1,10 @@
 from fastapi import FastAPI
-from app.schemas import RootResponse
+
 from app.routers.line.webhook import router as line_router
+from app.routers.system import router as system_router
+from app.routers.ai import router as gemini_router
 
-
+# main 只負責建立 app 並掛各模組 router
 app = FastAPI(
     title="CARE API",
     description="""
@@ -30,19 +32,11 @@ app = FastAPI(
         "name": "MIT",
     },
 )
-app.include_router(line_router, prefix="/line", tags=["LINE Bot"])
-
-@app.get(
-    "/",
-    response_model=RootResponse,
-    tags=["系統"],
-    summary="根路徑",
-    description="檢查 API 是否正常運行"
-)
-async def root():
-    """
-    返回系統運行狀態訊息。
-    
-    - **message**: 系統運行狀態
-    """
-    return {"message": "CARE Backend Running"}
+# main 來決定整個系統的 endpoint 要掛哪個前綴
+app.include_router(system_router)
+app.include_router(gemini_router)
+app.include_router(
+    line_router,
+    prefix="/line",
+    tags=["LINE Bot"],
+)  # 為啥要寫 prefix 在 line：因為 webhook 裡只管 /callback

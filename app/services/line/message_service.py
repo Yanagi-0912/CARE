@@ -21,7 +21,7 @@ class LineMessageService:
             response_text = await self._generate_ai_response(user_text, user_id)
             
             # 2. 發送回覆到 LINE
-            success = await self._send_line_reply(reply_token, response_text, user_id)
+            success = await self._send_line_reply(reply_token, response_text, user_id)#send_line_reply 是回傳布林直，所以success 是布林直
             
             if success:
                 logger.info(f"Successfully processed and replied to user {user_id}")

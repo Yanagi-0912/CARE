@@ -1,10 +1,12 @@
 from pydantic import BaseModel, Field
-
+#pydantic 是來做資料驗證的還有資料管理的，比一般的python class 好一點的是為自動檢查是否符合規則
+#EX json 傳回來的是字串，像是有一欄是age就要把json的字串轉成int
+#有了pydantic 會先建立一個basemodel 的基本model
 class AIRequest(BaseModel):
     """AI 回應請求模型"""
     user_input: str = Field(
-        ..., 
-        description="使用者輸入的問題或訊息",
+        ..., #這個代表必填欄位，如果沒有傳就會報422錯誤
+        description="使用者輸入的問題或訊息",#api文件
         json_schema_extra={"example": "請告詞我台北市有哪些醫院？"}
     )
 

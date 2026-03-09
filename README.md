@@ -85,9 +85,3 @@ pytest           # 或 pytest tests/ -v
 ```bash
 uvicorn app.main:app --port 8000 --reload --reload-exclude venv
 ```
-
-## Swagger API 文件
-
-在本機啟動伺服器後，可於瀏覽器開啟：
-
-`http://127.0.0.1:8000/docs`

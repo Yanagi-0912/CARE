@@ -1,7 +1,3 @@
-"""
-LINE Bot Webhook 路由層
-負責接收來自 LINE 平台的 Webhook 請求、驗證簽名並分發事件
-"""
 from fastapi import APIRouter, Request, Header, HTTPException
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 from linebot.v3.webhook import WebhookParser
@@ -9,7 +5,7 @@ from linebot.v3.exceptions import InvalidSignatureError
 from app.services.line import handle_text_message_async
 from app.core.config import settings
 import logging
-import json
+
 
 logger = logging.getLogger(__name__)
 
@@ -17,24 +13,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 parser = WebhookParser(settings.LINE_CHANNEL_SECRET)
 
-
 @router.post("/callback")
 async def callback(request: Request, x_line_signature: str = Header(None)):
-    """
-    LINE Bot Webhook 回調端點
-    
-    此端點接收來自 LINE 平台的所有事件通知（消息、追蹤、取消追蹤等）
-    
-    Args:
-        request: FastAPI Request 對象
-        x_line_signature: LINE 平台提供的簽名，用於驗證請求來源
-    
-    Returns:
-        str: 返回 "OK" 表示成功接收
-    
-    Raises:
-        HTTPException: 當簽名驗證失敗或缺少簽名時
-    """
     # 驗證是否包含 X-Line-Signature header
     if x_line_signature is None:
         logger.error("Missing X-Line-Signature header")

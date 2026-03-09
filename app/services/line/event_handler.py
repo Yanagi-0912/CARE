@@ -19,3 +19,5 @@ async def handle_text_message_async(event: MessageEvent):
         reply_token=reply_token,
         user_id=user_id
     )
+
+# 在未來如果需要處理其他類型的事件（如圖片、影片等），可以在這裡添加相應的處理函數。

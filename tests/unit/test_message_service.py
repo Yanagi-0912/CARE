@@ -1,28 +1,31 @@
 import pytest
 from unittest.mock import AsyncMock, patch
 from app.services.line.message_service import LineMessageService
+from app.services.gemini_service import GeminiResult
 
 
-# 把重複的 patch 抽成 fixture，每個測試直接當參數注入即可
 @pytest.fixture
 def mock_send_reply():
     with patch(
         "app.services.line.message_service.LineMessageService._send_line_reply",
-        new_callable=AsyncMock,  # 原本函式是非同步，所以也要用非同步 mock
+        new_callable=AsyncMock,
         return_value=True,
     ) as m:
-        yield m # yield: 把 mock 物件傳給測試函式，測試結束後會自動清理 patch
+        yield m
 
 
 @pytest.fixture
 def mock_gemini():
-    with patch("app.services.line.message_service.GeminiService") as m:  # 替換 GeminiService 類別
+    with patch("app.services.line.message_service.GeminiService") as m:
         yield m
 
 
 @pytest.mark.asyncio
 async def test_process_success(mock_gemini, mock_send_reply):
-    mock_gemini.return_value.generate_response = AsyncMock(return_value="AI 回覆")
+    # Gemini 回傳一般文字（非 function call）
+    mock_gemini.return_value.generate_response_with_tools = AsyncMock(
+        return_value=GeminiResult(text="AI 回覆")
+    )
     svc = LineMessageService()
     ok = await svc.process_and_reply("你好", "reply_token_xxx")
 
@@ -32,15 +35,36 @@ async def test_process_success(mock_gemini, mock_send_reply):
 
 
 @pytest.mark.asyncio
+async def test_process_function_call_request_location(mock_gemini, mock_send_reply):
+    # Gemini 決定呼叫 request_location 工具
+    mock_gemini.return_value.generate_response_with_tools = AsyncMock(
+        return_value=GeminiResult(function_name="request_location")
+    )
+    with patch(
+        "app.services.line.message_service.LineMessageService.send_location_quick_reply",
+        new_callable=AsyncMock,
+        return_value=True,
+    ) as mock_quick_reply:
+        svc = LineMessageService()
+        ok = await svc.process_and_reply(
+            "附近有醫院嗎", "reply_token_xxx", user_id="U123"
+        )
+
+    assert ok is True
+    mock_quick_reply.assert_called_once()
+    mock_send_reply.assert_not_called()  # 不應走一般文字回覆路徑
+
+
+@pytest.mark.asyncio
 async def test_process_fallback_on_value_error(mock_gemini, mock_send_reply):
-    # 當 AI 丟出 ValueError 時，應送出 fallback 訊息給 LINE
-    mock_gemini.return_value.generate_response = AsyncMock(
+    # Gemini API 發生錯誤時，應送出 fallback 訊息
+    mock_gemini.return_value.generate_response_with_tools = AsyncMock(
         side_effect=ValueError("API 錯誤")
     )
     svc = LineMessageService()
     ok = await svc.process_and_reply("hi", "reply_token_xxx")
 
-    assert ok is True
+    assert ok is False
     mock_send_reply.assert_called_once()
     message_sent = mock_send_reply.call_args[0][1]
     assert "抱歉" in message_sent and "API 錯誤" in message_sent

@@ -1,7 +1,8 @@
-import os 
+import os
 from dotenv import load_dotenv
 
 load_dotenv()
+
 
 class Settings:
     # Gemini API 配置
@@ -13,5 +14,6 @@ class Settings:
     LINE_CHANNEL_SECRET: str = os.getenv("LINE_CHANNEL_SECRET")
     # 可選：如果不想使用動態 token，可設定 long-lived token
     LINE_CHANNEL_ACCESS_TOKEN: str = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
+
 
 settings = Settings()

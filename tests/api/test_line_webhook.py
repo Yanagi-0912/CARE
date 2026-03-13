@@ -5,6 +5,7 @@ from app.main import app
 
 client = TestClient(app)
 
+
 def test_callback_missing_signature_returns_400():
     response = client.post(
         "/line/callback",
@@ -15,9 +16,12 @@ def test_callback_missing_signature_returns_400():
     detail = response.json().get("detail", "")
     assert "missing" in detail.lower()
 
-@patch("app.routers.line.webhook.parser") #用 patch 模擬 parser 物件
+
+@patch("app.routers.line.webhook.parser")  # 用 patch 模擬 parser 物件
 def test_callback_invalid_signature_returns_400(mock_parser):
-    mock_parser.parse.side_effect = InvalidSignatureError("invalid") #模擬 parser.parse() 方法引發 InvalidSignatureError 異常
+    mock_parser.parse.side_effect = InvalidSignatureError(
+        "invalid"
+    )  # 模擬 parser.parse() 方法引發 InvalidSignatureError 異常
     response = client.post(
         "/line/callback",
         content=b'{"events":[]}',
@@ -28,6 +32,7 @@ def test_callback_invalid_signature_returns_400(mock_parser):
     )
     assert response.status_code == 400
     assert "signature" in response.json().get("detail", "").lower()
+
 
 @patch("app.routers.line.webhook.parser")
 def test_callback_valid_request_returns_200(mock_parser):

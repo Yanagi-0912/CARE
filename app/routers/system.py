@@ -2,7 +2,6 @@ from fastapi import APIRouter
 
 from app.schemas import HealthResponse, RootResponse
 
-
 router = APIRouter(tags=["系統"])
 
 
@@ -24,4 +23,3 @@ async def root():
 )
 async def health():
     return {"status": "Welcome to CARE Backend!"}
-

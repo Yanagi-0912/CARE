@@ -25,8 +25,11 @@ def mock_http_client():
 
         yield configure
 
+
 @pytest.mark.asyncio
-async def test_generate_response_returns_text_on_success(mock_settings, mock_http_client):
+async def test_generate_response_returns_text_on_success(
+    mock_settings, mock_http_client
+):
     # 準備假 response：200 成功
     response = MagicMock()
     response.status_code = 200
@@ -42,7 +45,9 @@ async def test_generate_response_returns_text_on_success(mock_settings, mock_htt
 
 
 @pytest.mark.asyncio
-async def test_generate_response_raises_value_error_on_4xx(mock_settings, mock_http_client):
+async def test_generate_response_raises_value_error_on_4xx(
+    mock_settings, mock_http_client
+):
     # 準備假 response：429 配額超限
     response = MagicMock()
     response.status_code = 429

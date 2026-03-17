@@ -1,8 +1,23 @@
 from fastapi import APIRouter, Request, Header, HTTPException
-from linebot.v3.webhooks import MessageEvent, TextMessageContent, LocationMessageContent
+from linebot.v3.webhooks import (
+    MessageEvent,
+    TextMessageContent,
+    LocationMessageContent,
+    ImageMessageContent,
+    VideoMessageContent,
+    AudioMessageContent,
+    FileMessageContent,
+)
 from linebot.v3.webhook import WebhookParser
 from linebot.v3.exceptions import InvalidSignatureError
-from app.services.line import handle_text_message_async, handle_location_message_async
+from app.services.line import (
+    handle_text_message_async,
+    handle_location_message_async,
+    handle_image_message_async,
+    handle_video_message_async,
+    handle_audio_message_async,
+    handle_file_message_async,
+)
 from app.core.config import settings
 import logging
 
@@ -40,6 +55,26 @@ async def callback(request: Request, x_line_signature: str = Header(None)):
                 event.message, LocationMessageContent
             ):
                 await handle_location_message_async(event)
+            # 處理圖片訊息事件
+            elif isinstance(event, MessageEvent) and isinstance(
+                event.message, ImageMessageContent
+            ):
+                await handle_image_message_async(event)
+            # 處理影片訊息事件
+            elif isinstance(event, MessageEvent) and isinstance(
+                event.message, VideoMessageContent
+            ):
+                await handle_video_message_async(event)
+            # 處理音訊訊息事件
+            elif isinstance(event, MessageEvent) and isinstance(
+                event.message, AudioMessageContent
+            ):
+                await handle_audio_message_async(event)
+            # 處理檔案訊息事件
+            elif isinstance(event, MessageEvent) and isinstance(
+                event.message, FileMessageContent
+            ):
+                await handle_file_message_async(event)
 
         logger.info("Webhook events processed successfully")
 

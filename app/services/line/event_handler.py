@@ -21,6 +21,22 @@ async def handle_text_message_async(event: MessageEvent):
     )
 
 
+async def _reply_unsupported_message_type(
+    event: MessageEvent, message_type_label: str
+):
+    reply_token = event.reply_token
+    user_id = event.source.user_id if hasattr(event.source, "user_id") else None
+
+    logger.info(f"Received {message_type_label} message event from user {user_id}")
+
+    reply_text = (
+        f"已收到您的{message_type_label}訊息，目前此類型內容仍在建置中。\n"
+        "請先以文字描述需求，我會盡力協助您。"
+    )
+
+    await line_message_service._send_line_reply(reply_token, reply_text, user_id)
+
+
 async def handle_location_message_async(event: MessageEvent):
     reply_token = event.reply_token
     user_id = event.source.user_id if hasattr(event.source, "user_id") else None
@@ -57,3 +73,19 @@ async def handle_location_message_async(event: MessageEvent):
         )
 
     await line_message_service._send_line_reply(reply_token, reply_text, user_id)
+
+
+async def handle_image_message_async(event: MessageEvent):
+    await _reply_unsupported_message_type(event, "圖片")
+
+
+async def handle_video_message_async(event: MessageEvent):
+    await _reply_unsupported_message_type(event, "影片")
+
+
+async def handle_audio_message_async(event: MessageEvent):
+    await _reply_unsupported_message_type(event, "音訊")
+
+
+async def handle_file_message_async(event: MessageEvent):
+    await _reply_unsupported_message_type(event, "檔案")

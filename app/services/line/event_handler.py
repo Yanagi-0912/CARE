@@ -59,6 +59,7 @@ async def handle_location_message_async(event: MessageEvent):
 
 
 async def handle_image_message_async(event: MessageEvent):
+    
     await _reply_unsupported_message_type(event, "圖片")
 
 

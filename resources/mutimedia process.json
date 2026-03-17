@@ -1,0 +1,393 @@
+{
+  "name": "mutimedia process",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bff1fd27-efc4-45cf-b64a-adb0475aa35c",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -3568,
+        -736
+      ],
+      "id": "e328b8e7-3384-4dd2-81b7-b6e95ae5b8aa",
+      "name": "Webhook",
+      "webhookId": "bff1fd27-efc4-45cf-b64a-adb0475aa35c",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "= {{ $json.text }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -2160,
+        -752
+      ],
+      "id": "bbb517f5-11fa-4da8-a322-c7dd7768e882",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const binaryData = $input.item.binary;\nconst outputItems = [];\n\nfor (const key in binaryData) {\n    if (binaryData.hasOwnProperty(key)) {\n        const file = binaryData[key];\n        const fileName = file.fileName;\n        let fileExtension = '';\n        let fileBaseName = fileName;\n\n        // 取副檔名\n        const lastDotIndex = fileName.lastIndexOf('.');\n        if (lastDotIndex !== -1 && lastDotIndex < fileName.length - 1) {\n            fileExtension = fileName.substring(lastDotIndex + 1).toLowerCase();\n            fileBaseName = fileName.substring(0, lastDotIndex);\n        }\n\n        // 將結果添加到輸出\n        outputItems.push({\n            json: {\n                originalFileName: fileName,\n                fileBaseName: fileBaseName,\n                fileExtension: fileExtension,\n            },\n            binary: { [key]: file }\n        });\n    }\n}\n\nreturn outputItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3376,
+        -736
+      ],
+      "id": "ebb6b73a-2600-45d9-9f35-d844f19a049b",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "eb726446-d42b-4e7f-bd29-4a0a005d64d5",
+                    "leftValue": "=mp3,wav,m4a,flac,ogg,opus",
+                    "rightValue": "={{ $json.fileExtension }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "d98b1ed9-be17-4a81-b998-7e009e3f5941",
+                    "leftValue": "=mp4,mov,avi,mkv,webm",
+                    "rightValue": "={{ $json.fileExtension }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "=jpg,jpeg,png,gif,bmp,tiff,webp,svg",
+                    "rightValue": "={{ $json.fileExtension }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    },
+                    "id": "ddc6c61b-06f8-4705-b9a7-1b6a260270a6"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "9ebde3a0-0872-478e-bbd4-c6d068b91147",
+                    "leftValue": "=txt,md,csv,json,pdf,docx,xlsx,pptx,html,htm",
+                    "rightValue": "={{ $json.fileExtension }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        -3104,
+        -784
+      ],
+      "id": "e32f292d-fc19-4e87-aaec-fa74e450aa82",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://local-asr:8200/transcribe",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "file"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -2656,
+        -928
+      ],
+      "id": "04e851df-b874-4fee-bc09-43e2b4abb5ec",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"ok\": false,\n  \"code\": \"UNSUPPORTED_FILE_TYPE\",\n  \"message\": \"檔案類型暫不支援\"\n}",
+        "options": {
+          "responseCode": 415
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -2656,
+        -512
+      ],
+      "id": "75e5eec1-86a7-415b-ac44-dd1147c74248",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-robotics-er-1.5-preview",
+          "mode": "list",
+          "cachedResultName": "models/gemini-robotics-er-1.5-preview"
+        },
+        "text": "Please extract all text from this image (OCR), keep line breaks.\n\nThen detect ALL languages present in the extracted text (not only the primary one).\nReturn JSON only:\n{\n  \"text\": \"<extracted text>\",\n  \"languages\": [\n    {\"code\": \"<ISO 639-1>\", \"confidence\": 0.0}\n  ],\n  \"primary_language\": \"<ISO 639-1 or 'mixed'>\"\n}",
+        "inputType": "binary",
+        "binaryPropertyName": "file",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -2816,
+        -784
+      ],
+      "id": "753e1f14-32e4-4729-bbed-0bf4fe9f57df",
+      "name": "Analyze an image",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "ZfYJsSGpZli8bXZL",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rawText = $input.first().json.content.parts[0].text ?? '';\n\nlet parsed;\ntry {\n  parsed = JSON.parse(rawText);\n} catch (e) {\n  parsed = {\n    text: rawText,\n    languages: [],\n    primary_language: 'unknown',\n  };\n}\n\nreturn [\n  {\n    json: {\n      text: parsed.text ?? '',\n      languages: parsed.languages ?? [],\n      primary_language:\n        parsed.primary_language ?? parsed.language ?? 'unknown',\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2496,
+        -784
+      ],
+      "id": "b43609f6-ecc1-45d2-b7b3-72e2115ada6d",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://local-parser:8100/parse",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "file"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -2656,
+        -672
+      ],
+      "id": "3cb3067e-bb93-486e-a4ae-b2f6b840b65b",
+      "name": "HTTP Request1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Analyze an image",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze an image": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "a28f6be2-1a5e-4242-aec9-94ae27ec79b0",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "27c1d5b9d1e9b368f9e1596b8e73e4a8409d87ab545c8d94609588c357270ed2"
+  },
+  "id": "3npy3WDCUKyGYOEr",
+  "tags": []
+}

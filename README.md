@@ -88,6 +88,8 @@ uvicorn app.main:app --port 8000 --reload --reload-exclude venv
 
 ## n8n workflow 多媒體處理功能
 
-1.首先使用docker啟動n8n，docker預設運行在 ``http://localhost:5678/``上，local asr 與 file parser兩服務分別運行在 port 8000 和 8100 上。
+1.首先使用docker啟動n8n，docker預設運行在 ``http://localhost:5678/``上，local asr 與 file parser兩服務分別運行在 port 8200 和 8100 上。
 
-2.向webhook ``http://localhost:5678/webhook/bff1fd27-efc4-45cf-b64a-adb0475aa35c``傳送POST Request ，body中帶有file
+2.將resources\mutimedia process.json import至n8n中、填寫api key並publish
+
+3.向webhook ``http://localhost:5678/webhook/bff1fd27-efc4-45cf-b64a-adb0475aa35c``傳送POST Request ，body中帶有要解析的檔案

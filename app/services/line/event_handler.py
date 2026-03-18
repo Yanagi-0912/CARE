@@ -1,10 +1,26 @@
-from linebot.v3.webhooks import MessageEvent
+from typing import Optional, cast
+from linebot.v3.webhooks import (
+    MessageEvent,
+    TextMessageContent,
+    LocationMessageContent,
+)
 from app.services.line.message_service import line_message_service
 from app.services.medical.medical_service import medical_service, session_store
 from app.schemas import MedicalFacility
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _get_reply_token(event: MessageEvent) -> Optional[str]:
+    reply_token = event.reply_token
+    if not reply_token:
+        logger.warning("Missing reply_token in LINE event; skip replying")
+        return None
+    return reply_token
+
+def _get_user_id(event: MessageEvent) -> Optional[str]:
+    return getattr(event.source, "user_id", None)
 
 
 async def handle_text_message_async(event: MessageEvent):
@@ -59,28 +75,41 @@ async def handle_location_message_async(event: MessageEvent):
 
 
 async def handle_image_message_async(event: MessageEvent):
-    
-    await _reply_unsupported_message_type(event, "圖片")
+    reply_token = _get_reply_token(event)
+    if reply_token is None:
+        return
+
+    user_id = _get_user_id(event)
+
+    logger.info(f"Received image message event from user {user_id}")
+
+    await _reply_unsupported_message_type(reply_token, user_id, "圖片")
 
 
 async def handle_video_message_async(event: MessageEvent):
-    await _reply_unsupported_message_type(event, "影片")
+    reply_token = _get_reply_token(event)
+    if reply_token is None:
+        return
+    await _reply_unsupported_message_type(reply_token, _get_user_id(event), "影片")
 
 
 async def handle_audio_message_async(event: MessageEvent):
-    await _reply_unsupported_message_type(event, "音訊")
+    reply_token = _get_reply_token(event)
+    if reply_token is None:
+        return
+    await _reply_unsupported_message_type(reply_token, _get_user_id(event), "音訊")
 
 
 async def handle_file_message_async(event: MessageEvent):
-    await _reply_unsupported_message_type(event, "檔案")
+    reply_token = _get_reply_token(event)
+    if reply_token is None:
+        return
+    await _reply_unsupported_message_type(reply_token, _get_user_id(event), "檔案")
 
 
 async def _reply_unsupported_message_type(
-    event: MessageEvent, message_type_label: str
+    reply_token: str, user_id: Optional[str], message_type_label: str
 ):
-    reply_token = event.reply_token
-    user_id = event.source.user_id if hasattr(event.source, "user_id") else None
-
     logger.info(f"Received {message_type_label} message event from user {user_id}")
 
     reply_text = (

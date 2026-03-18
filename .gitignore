@@ -208,3 +208,7 @@ __marimo__/
 
 #vscode settings
 .vscode/
+
+# Runtime media temp files
+app_data/tmp/*
+!app_data/tmp/.gitkeep

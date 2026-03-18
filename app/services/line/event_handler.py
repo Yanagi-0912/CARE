@@ -3,9 +3,14 @@ from linebot.v3.webhooks import (
     MessageEvent,
     TextMessageContent,
     LocationMessageContent,
+    ImageMessageContent,
+    VideoMessageContent,
+    AudioMessageContent,
+    FileMessageContent,
 )
 from app.services.line.message_service import line_message_service
 from app.services.medical.medical_service import medical_service, session_store
+from app.services.media.mutimedia_processor import media_processor_service
 from app.schemas import MedicalFacility
 import logging
 
@@ -78,33 +83,66 @@ async def handle_image_message_async(event: MessageEvent):
     reply_token = _get_reply_token(event)
     if reply_token is None:
         return
-
     user_id = _get_user_id(event)
+    message = cast(ImageMessageContent, event.message)
 
     logger.info(f"Received image message event from user {user_id}")
 
-    await _reply_unsupported_message_type(reply_token, user_id, "圖片")
+    await media_processor_service.process_and_reply(
+        user_media=message.originalContentUrl,
+        user_media_type=message.type,
+        reply_token=reply_token,
+        user_id=user_id,
+    )
 
 
 async def handle_video_message_async(event: MessageEvent):
     reply_token = _get_reply_token(event)
     if reply_token is None:
         return
-    await _reply_unsupported_message_type(reply_token, _get_user_id(event), "影片")
+    user_id = _get_user_id(event)
+    message = cast(VideoMessageContent, event.message)
 
+    logger.info(f"Received video message event from user {user_id}")
+
+    await media_processor_service.process_and_reply(
+        user_media=message.originalContentUrl,
+        user_media_type=message.type,
+        reply_token=reply_token,
+        user_id=user_id,
+    )
 
 async def handle_audio_message_async(event: MessageEvent):
     reply_token = _get_reply_token(event)
     if reply_token is None:
         return
-    await _reply_unsupported_message_type(reply_token, _get_user_id(event), "音訊")
+    user_id = _get_user_id(event)
+    message = cast(AudioMessageContent, event.message)
 
+    logger.info(f"Received audio message event from user {user_id}")
+
+    await media_processor_service.process_and_reply(
+        user_media=message.originalContentUrl,
+        user_media_type=message.type,
+        reply_token=reply_token,
+        user_id=user_id,
+    )
 
 async def handle_file_message_async(event: MessageEvent):
     reply_token = _get_reply_token(event)
     if reply_token is None:
         return
-    await _reply_unsupported_message_type(reply_token, _get_user_id(event), "檔案")
+    user_id = _get_user_id(event)
+    message = cast(FileMessageContent, event.message)
+
+    logger.info(f"Received file message event from user {user_id}: {message.fileName}")
+
+    await media_processor_service.process_and_reply(
+        user_media=message.originalContentUrl,
+        user_media_type="file",
+        reply_token=reply_token,
+        user_id=user_id,
+    )
 
 
 async def _reply_unsupported_message_type(

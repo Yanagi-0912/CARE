@@ -85,3 +85,15 @@ pytest           # 或 pytest tests/ -v
 ```bash
 uvicorn app.main:app --port 8000 --reload --reload-exclude venv
 ```
+
+### direnv 虛擬環境提示字元（可選）
+
+專案有 `.envrc`，`direnv allow` 後進目錄會自動啟用 `venv`，但 shell 不會自動顯示 `(venv)`。若要在提示字元顯示虛擬環境名稱，在 `~/.zshrc` 最後加上：
+
+```bash
+# 有 VIRTUAL_ENV 時在右側顯示 (venv)
+setopt PROMPT_SUBST
+RPROMPT='${VIRTUAL_ENV:+($(basename $VIRTUAL_ENV))}'
+```
+
+存檔後開新 terminal 或執行 `source ~/.zshrc`，再 `cd` 進 CARE 就會在提示右側看到 `(venv)`。

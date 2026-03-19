@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional, cast
 from linebot.v3.webhooks import (
     MessageEvent,
@@ -16,6 +17,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+IMAGE_FILE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp", ".svg"}
+VIDEO_FILE_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
+AUDIO_FILE_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".opus", ".aac"}
+
 
 def _get_reply_token(event: MessageEvent) -> Optional[str]:
     reply_token = event.reply_token
@@ -27,21 +32,34 @@ def _get_reply_token(event: MessageEvent) -> Optional[str]:
 def _get_user_id(event: MessageEvent) -> Optional[str]:
     return getattr(event.source, "user_id", None)
 
+
+def _infer_media_type_from_file_name(file_name: str) -> str:
+    extension = Path(file_name).suffix.lower()
+    if extension in IMAGE_FILE_EXTENSIONS:
+        return "image"
+    if extension in VIDEO_FILE_EXTENSIONS:
+        return "video"
+    if extension in AUDIO_FILE_EXTENSIONS:
+        return "audio"
+    return "file"
+
 async def _process_media_and_reply(
     *,
     media_message_id: str,
     user_media_type: str,
     reply_token: str,
+    source_file_name: Optional[str] = None,
     user_id: Optional[str],
 ) -> None:
     media_content = await media_processor_service.process_media(
         media_message_id=media_message_id,
         user_media_type=user_media_type,
+        source_file_name=source_file_name,
         user_id=user_id,
     )
 
     await line_message_service.process_and_reply(
-        user_text=f"以下為用戶傳送的媒體內容：\n{media_content}",
+        user_text=f"以下為用戶傳送的{user_media_type}媒體內容：\n{media_content}",
         reply_token=reply_token,
         user_id=user_id,
     )
@@ -163,12 +181,14 @@ async def handle_file_message_async(event: MessageEvent):
         return
     user_id = _get_user_id(event)
     message = cast(FileMessageContent, event.message)
+    inferred_media_type = _infer_media_type_from_file_name(message.file_name)
 
     logger.info(f"Received file message event from user {user_id}: {message.file_name}")
 
     await _process_media_and_reply(
         media_message_id=message.id,
-        user_media_type="file",
+        user_media_type=inferred_media_type,
         reply_token=reply_token,
+        source_file_name=message.file_name,
         user_id=user_id,
     )

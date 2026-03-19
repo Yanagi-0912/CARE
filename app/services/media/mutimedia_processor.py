@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any, Optional
 from datetime import datetime
+import mimetypes
 from app.services.gemini_service import GeminiService
 from app.services.line.token_manager import line_token_manager
 import logging
@@ -50,12 +51,17 @@ class MediaProcessorService:
         self,
         media_message_id: str,
         user_media_type: str,
+        source_file_name: Optional[str] = None,
         user_id: Optional[str] = None,
     ) -> str:
         temp_file_path = None
         try:
             logger.info(f"Processing {user_media_type} message from user {user_id}...")
-            temp_file_path = self._download_media_to_tmp(media_message_id, user_media_type)
+            temp_file_path = self._download_media_to_tmp(
+                media_message_id,
+                user_media_type,
+                source_file_name=source_file_name,
+            )
             user_text = self._extract_user_text_via_webhook(temp_file_path)
             #TODO: 清洗user_text，移除不必要的空白或控制字元，確保回覆格式整潔。
             logger.info(f"Successfully processed and replied to user {user_id}")
@@ -69,7 +75,12 @@ class MediaProcessorService:
             if temp_file_path:
                 self._cleanup_temp_file(temp_file_path)
 
-    def _download_media_to_tmp(self, media_message_id: str, media_type: str) -> Path:
+    def _download_media_to_tmp(
+        self,
+        media_message_id: str,
+        media_type: str,
+        source_file_name: Optional[str] = None,
+    ) -> Path:
         # 媒體類型白名單過濾，阻擋未知類型。
         normalized_type = media_type.lower().strip()
         if normalized_type not in ALLOWED_MEDIA_TYPES:
@@ -78,7 +89,9 @@ class MediaProcessorService:
         if not media_message_id:
             raise ValueError("Missing media message id")
 
-        extension = MEDIA_EXTENSIONS.get(normalized_type, ".bin")
+        extension = Path(source_file_name).suffix.lower() if source_file_name else ""
+        if not extension:
+            extension = MEDIA_EXTENSIONS.get(normalized_type, ".bin")
 
         #產生可追蹤且低碰撞風險的檔名：類型_時間戳_隨機碼。
         safe_type = "".join(ch for ch in normalized_type if ch.isalnum()) or "media"
@@ -114,6 +127,12 @@ class MediaProcessorService:
                     f"Unexpected content type '{content_type}' for media type '{normalized_type}'"
                 )
 
+            if extension == ".bin":
+                guessed_extension = mimetypes.guess_extension(content_type)
+                if guessed_extension:
+                    extension = guessed_extension.lower()
+                    target = target.with_suffix(extension)
+
             downloaded_size = 0
             with target.open("wb") as temp_file:
                 for chunk in response.iter_content(chunk_size=8192):
@@ -136,13 +155,15 @@ class MediaProcessorService:
             logger.warning("MEDIA_PARSE_WEBHOOK_URL is empty; using placeholder extracted text")
             return "Test text extracted from media"
 
+        mime_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+
         try:
             with file_path.open("rb") as media_file:
                 files = {
                     "file": (
                         file_path.name,
                         media_file,
-                        "application/octet-stream",
+                        mime_type,
                     )
                 }
                 response = requests.post(

@@ -47,12 +47,15 @@ class MediaProcessorService:
         logger.info("MediaProcessorService initialized with Gemini AI")
 
     async def process_media(
-        self, user_media: str, user_media_type: str, reply_token: str, user_id: Optional[str] = None
+        self,
+        media_message_id: str,
+        user_media_type: str,
+        user_id: Optional[str] = None,
     ) -> str:
         temp_file_path = None
         try:
             logger.info(f"Processing {user_media_type} message from user {user_id}...")
-            temp_file_path = self._download_media_to_tmp(user_media, user_media_type)
+            temp_file_path = self._download_media_to_tmp(media_message_id, user_media_type)
             # 以 form-data 上傳檔案給 webhook，取回解析後文字。
             user_text = self._extract_user_text_via_webhook(temp_file_path)
 

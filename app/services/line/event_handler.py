@@ -28,6 +28,26 @@ def _get_user_id(event: MessageEvent) -> Optional[str]:
     return getattr(event.source, "user_id", None)
 
 
+async def _process_media_and_reply(
+    *,
+    media_message_id: str,
+    user_media_type: str,
+    reply_token: str,
+    user_id: Optional[str],
+) -> None:
+    media_content = await media_processor_service.process_media(
+        media_message_id=media_message_id,
+        user_media_type=user_media_type,
+        user_id=user_id,
+    )
+
+    await line_message_service.process_and_reply(
+        user_text=media_content,
+        reply_token=reply_token,
+        user_id=user_id,
+    )
+
+
 async def handle_text_message_async(event: MessageEvent):
     message = cast(TextMessageContent, event.message)
     user_text = message.text
@@ -98,8 +118,8 @@ async def handle_image_message_async(event: MessageEvent):
 
     logger.info(f"Received image message event from user {user_id}")
 
-    await media_processor_service.process_media(
-        user_media=message.id,
+    await _process_media_and_reply(
+        media_message_id=message.id,
         user_media_type=message.type,
         reply_token=reply_token,
         user_id=user_id,
@@ -115,8 +135,8 @@ async def handle_video_message_async(event: MessageEvent):
 
     logger.info(f"Received video message event from user {user_id}")
 
-    await media_processor_service.process_media(
-        user_media=message.id,
+    await _process_media_and_reply(
+        media_message_id=message.id,
         user_media_type=message.type,
         reply_token=reply_token,
         user_id=user_id,
@@ -131,8 +151,8 @@ async def handle_audio_message_async(event: MessageEvent):
 
     logger.info(f"Received audio message event from user {user_id}")
 
-    await media_processor_service.process_media(
-        user_media=message.id,
+    await _process_media_and_reply(
+        media_message_id=message.id,
         user_media_type=message.type,
         reply_token=reply_token,
         user_id=user_id,
@@ -147,22 +167,9 @@ async def handle_file_message_async(event: MessageEvent):
 
     logger.info(f"Received file message event from user {user_id}: {message.file_name}")
 
-    await media_processor_service.process_media(
-        user_media=message.id,
+    await _process_media_and_reply(
+        media_message_id=message.id,
         user_media_type="file",
         reply_token=reply_token,
         user_id=user_id,
     )
-
-
-async def _reply_unsupported_message_type(
-    reply_token: str, user_id: Optional[str], message_type_label: str
-):
-    logger.info(f"Received {message_type_label} message event from user {user_id}")
-
-    reply_text = (
-        f"已收到您的{message_type_label}訊息，目前此類型內容仍在建置中。\n"
-        "請先以文字描述需求，我會盡力協助您。"
-    )
-
-    await line_message_service._send_line_reply(reply_token, reply_text, user_id)

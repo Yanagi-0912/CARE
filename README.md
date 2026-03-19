@@ -1,6 +1,6 @@
 # CARE: Clinical Assistance &amp; Resource Engine
 
-一個以高齡友善設計、資料準確性保障與 AI 科技整合為核心目標的適地性健康醫療資訊 AI 助手。#
+一個以高齡友善設計、資料準確性保障與 AI 科技整合為核心目標的適地性健康醫療資訊 AI 助手。
 
 ## 聲明
 
@@ -30,9 +30,15 @@ pip install -r requirements.txt
 
 ```
 uvicorn app.main:app --reload --port 8000
-ngrok 輸入 ngrok http 8000
-Line developer 管理頁面的webhoook 網址改為 "ngrok url"/line/callback
 ```
+
+啟動ngrok
+
+```
+ngrok http 8000
+```
+
+[LINE Developers 管理頁面](https://developers.line.biz/console/channel/2008834990/messaging-api)的 webhoook 網址改為 "ngrok url"/line/callback
 
 ## 在 Windows 上執行測試
 
@@ -84,7 +90,6 @@ pytest           # 或 pytest tests/ -v
 ```bash
 uvicorn app.main:app --port 8000 --reload --reload-exclude venv
 ```
-
 
 ## n8n workflow 多媒體處理功能
 

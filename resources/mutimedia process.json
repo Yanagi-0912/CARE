@@ -11,10 +11,10 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
       "position": [
-        -3568,
-        -736
+        -912,
+        192
       ],
-      "id": "e328b8e7-3384-4dd2-81b7-b6e95ae5b8aa",
+      "id": "8b45e6ba-6669-473c-913f-4972a6157694",
       "name": "Webhook",
       "webhookId": "bff1fd27-efc4-45cf-b64a-adb0475aa35c",
       "alwaysOutputData": false
@@ -30,10 +30,10 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        -2160,
-        -752
+        496,
+        176
       ],
-      "id": "bbb517f5-11fa-4da8-a322-c7dd7768e882",
+      "id": "970d9f74-363a-47bd-b611-3ee2dee762a2",
       "name": "Respond to Webhook"
     },
     {
@@ -43,10 +43,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -3376,
-        -736
+        -720,
+        192
       ],
-      "id": "ebb6b73a-2600-45d9-9f35-d844f19a049b",
+      "id": "cdb261f3-0408-41ab-87d2-9d0ff09f6714",
       "name": "Code in JavaScript"
     },
     {
@@ -150,10 +150,10 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.4,
       "position": [
-        -3104,
-        -784
+        -448,
+        144
       ],
-      "id": "e32f292d-fc19-4e87-aaec-fa74e450aa82",
+      "id": "e24b021e-e027-4e2f-9512-409a465eaada",
       "name": "Switch"
     },
     {
@@ -176,10 +176,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -2656,
-        -928
+        0,
+        0
       ],
-      "id": "04e851df-b874-4fee-bc09-43e2b4abb5ec",
+      "id": "04ae5dfd-616b-4d70-9696-663465cd4881",
       "name": "HTTP Request"
     },
     {
@@ -193,10 +193,10 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        -2656,
-        -512
+        0,
+        416
       ],
-      "id": "75e5eec1-86a7-415b-ac44-dd1147c74248",
+      "id": "4f7f8a0e-d7de-4348-8deb-c47c3b33e833",
       "name": "Respond to Webhook1"
     },
     {
@@ -209,7 +209,7 @@
           "mode": "list",
           "cachedResultName": "models/gemini-robotics-er-1.5-preview"
         },
-        "text": "Please extract all text from this image (OCR), keep line breaks.\n\nThen detect ALL languages present in the extracted text (not only the primary one).\nReturn JSON only:\n{\n  \"text\": \"<extracted text>\",\n  \"languages\": [\n    {\"code\": \"<ISO 639-1>\", \"confidence\": 0.0}\n  ],\n  \"primary_language\": \"<ISO 639-1 or 'mixed'>\"\n}",
+        "text": "You are an OCR extraction engine.\n\nExtract all visible text from the provided image.\n\nIMPORTANT:\n- Output MUST be valid JSON.\n- Do NOT include any explanation, markdown, or extra text.\n- Do NOT wrap the JSON in code blocks.\n- The response must start with \"{\" and end with \"}\".\n\nReturn exactly this structure:\n\n{\n  \"text\": \"<extracted text>\",\n  \"languages\": [\n    {\"code\": \"<ISO 639-1>\", \"confidence\": 0.0}\n  ],\n  \"primary_language\": \"<ISO 639-1 or 'mixed'>\"\n}\n\nRules:\n- Preserve original formatting (line breaks, spacing, punctuation) as much as possible.\n- If no text is found, set \"text\" to an empty string \"\" and \"languages\" to [].\n- Detect all languages present using ISO 639-1 codes (e.g., \"en\", \"zh\", \"ja\").\n- Confidence must be a float between 0.0 and 1.0.\n- If one language is dominant, set it as \"primary_language\".\n- If multiple languages with no clear dominance, set \"primary_language\" to \"mixed\".\n- Do not hallucinate text that is not visible in the image.",
         "inputType": "binary",
         "binaryPropertyName": "file",
         "options": {}
@@ -217,14 +217,14 @@
       "type": "@n8n/n8n-nodes-langchain.googleGemini",
       "typeVersion": 1.1,
       "position": [
-        -2816,
-        -784
+        -160,
+        144
       ],
-      "id": "753e1f14-32e4-4729-bbed-0bf4fe9f57df",
+      "id": "30088580-f401-459c-9f24-a3090789bcaf",
       "name": "Analyze an image",
       "credentials": {
         "googlePalmApi": {
-          "id": "ZfYJsSGpZli8bXZL",
+          "id": "ZX3WWvD2O6rBruGC",
           "name": "Google Gemini(PaLM) Api account"
         }
       }
@@ -236,10 +236,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2496,
-        -784
+        160,
+        144
       ],
-      "id": "b43609f6-ecc1-45d2-b7b3-72e2115ada6d",
+      "id": "aec66653-3310-4c84-bf2e-eefabb849190",
       "name": "Code in JavaScript1"
     },
     {
@@ -262,10 +262,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
       "position": [
-        -2656,
-        -672
+        0,
+        256
       ],
-      "id": "3cb3067e-bb93-486e-a4ae-b2f6b840b65b",
+      "id": "8653ac16-d58d-488a-9667-29a73dd87859",
       "name": "HTTP Request1"
     }
   ],
@@ -383,11 +383,11 @@
     "binaryMode": "separate",
     "availableInMCP": false
   },
-  "versionId": "a28f6be2-1a5e-4242-aec9-94ae27ec79b0",
+  "versionId": "6e1989b6-a131-498e-90aa-b0a0b8978a55",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "27c1d5b9d1e9b368f9e1596b8e73e4a8409d87ab545c8d94609588c357270ed2"
   },
-  "id": "3npy3WDCUKyGYOEr",
+  "id": "yKC658rkbLy0I3KC",
   "tags": []
 }

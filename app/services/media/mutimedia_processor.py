@@ -136,38 +136,62 @@ class MediaProcessorService:
             logger.warning("MEDIA_PARSE_WEBHOOK_URL is empty; using placeholder extracted text")
             return "Test text extracted from media"
 
-        with file_path.open("rb") as media_file:
-            files = {
-                "file": (
-                    file_path.name,
-                    media_file,
-                    "application/octet-stream",
+        try:
+            with file_path.open("rb") as media_file:
+                files = {
+                    "file": (
+                        file_path.name,
+                        media_file,
+                        "application/octet-stream",
+                    )
+                }
+                response = requests.post(
+                    MEDIA_PARSE_WEBHOOK_URL,
+                    files=files,
+                    timeout=WEBHOOK_TIMEOUT_SECONDS,
                 )
-            }
-            response = requests.post(
-                MEDIA_PARSE_WEBHOOK_URL,
-                files=files,
-                timeout=WEBHOOK_TIMEOUT_SECONDS,
-            )
 
-        response.raise_for_status()
+            response.raise_for_status()
+        except requests.RequestException as e:
+            logger.error(f"Webhook request failed: {e}")
+            raise ValueError(f"Failed to reach webhook: {e}") from e
 
         content_type = response.headers.get("Content-Type", "").lower()
+        response_text = response.text.strip()
+
+        logger.debug(
+            f"Webhook response: status={response.status_code}, "
+            f"content_type={content_type}, text_length={len(response_text)}"
+        )
+
         parsed_text = ""
+        if not response_text:
+            logger.warning("Webhook returned empty response body")
+            return "Unable to extract text from media file (empty webhook response)"
+
         if "application/json" in content_type:
-            payload: Any = response.json()
-            if isinstance(payload, dict):
-                parsed_text = str(
-                    payload.get("user_text")
-                    or payload.get("text")
-                    or payload.get("result")
-                    or ""
-                ).strip()
+            try:
+                payload: Any = response.json()
+                if isinstance(payload, dict):
+                    parsed_text = str(
+                        payload.get("user_text")
+                        or payload.get("text")
+                        or payload.get("result")
+                        or ""
+                    ).strip()
+                elif isinstance(payload, str):
+                    parsed_text = payload.strip()
+                else:
+                    logger.warning(f"Unexpected JSON payload type: {type(payload)}")
+            except requests.exceptions.JSONDecodeError as e:
+                logger.error(f"Failed to parse webhook JSON response: {e}, text={response_text[:200]}")
+                return f"Unable to extract text from media (invalid JSON from webhook)"
         else:
-            parsed_text = response.text.strip()
+            parsed_text = response_text
 
         if not parsed_text:
-            raise ValueError("Webhook returned empty parsed text")
+            logger.warning("Webhook returned no extractable text content")
+            return "Unable to extract text from media file (no content extracted)"
 
         return parsed_text
 

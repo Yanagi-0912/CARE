@@ -27,7 +27,6 @@ def _get_reply_token(event: MessageEvent) -> Optional[str]:
 def _get_user_id(event: MessageEvent) -> Optional[str]:
     return getattr(event.source, "user_id", None)
 
-
 async def _process_media_and_reply(
     *,
     media_message_id: str,
@@ -42,7 +41,7 @@ async def _process_media_and_reply(
     )
 
     await line_message_service.process_and_reply(
-        user_text=media_content,
+        user_text=f"以下為用戶傳送的媒體內容：\n{media_content}",
         reply_token=reply_token,
         user_id=user_id,
     )

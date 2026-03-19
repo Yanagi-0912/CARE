@@ -56,9 +56,8 @@ class MediaProcessorService:
         try:
             logger.info(f"Processing {user_media_type} message from user {user_id}...")
             temp_file_path = self._download_media_to_tmp(media_message_id, user_media_type)
-            # 以 form-data 上傳檔案給 webhook，取回解析後文字。
             user_text = self._extract_user_text_via_webhook(temp_file_path)
-
+            #TODO: 清洗user_text，移除不必要的空白或控制字元，確保回覆格式整潔。
             logger.info(f"Successfully processed and replied to user {user_id}")
             return user_text
 

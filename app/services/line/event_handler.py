@@ -29,9 +29,12 @@ def _get_user_id(event: MessageEvent) -> Optional[str]:
 
 
 async def handle_text_message_async(event: MessageEvent):
-    user_text = event.message.text
-    reply_token = event.reply_token
-    user_id = event.source.user_id if hasattr(event.source, "user_id") else None
+    message = cast(TextMessageContent, event.message)
+    user_text = message.text
+    reply_token = _get_reply_token(event)
+    if reply_token is None:
+        return
+    user_id = _get_user_id(event)
 
     logger.info(f"Received text message event from user {user_id}")
 
@@ -42,10 +45,17 @@ async def handle_text_message_async(event: MessageEvent):
     )
 
 async def handle_location_message_async(event: MessageEvent):
-    reply_token = event.reply_token
-    user_id = event.source.user_id if hasattr(event.source, "user_id") else None
-    lat: float = event.message.latitude
-    lng: float = event.message.longitude
+    reply_token = _get_reply_token(event)
+    if reply_token is None:
+        return
+    user_id = _get_user_id(event)
+    if user_id is None:
+        logger.warning("Missing user_id in location event; skip handling")
+        return
+
+    message = cast(LocationMessageContent, event.message)
+    lat: float = message.latitude
+    lng: float = message.longitude
 
     logger.info(f"Received location from user {user_id}: ({lat}, {lng})")
 
@@ -88,8 +98,8 @@ async def handle_image_message_async(event: MessageEvent):
 
     logger.info(f"Received image message event from user {user_id}")
 
-    await media_processor_service.process_and_reply(
-        user_media=message.originalContentUrl,
+    await media_processor_service.process_media(
+        user_media=message.id,
         user_media_type=message.type,
         reply_token=reply_token,
         user_id=user_id,
@@ -105,8 +115,8 @@ async def handle_video_message_async(event: MessageEvent):
 
     logger.info(f"Received video message event from user {user_id}")
 
-    await media_processor_service.process_and_reply(
-        user_media=message.originalContentUrl,
+    await media_processor_service.process_media(
+        user_media=message.id,
         user_media_type=message.type,
         reply_token=reply_token,
         user_id=user_id,
@@ -121,8 +131,8 @@ async def handle_audio_message_async(event: MessageEvent):
 
     logger.info(f"Received audio message event from user {user_id}")
 
-    await media_processor_service.process_and_reply(
-        user_media=message.originalContentUrl,
+    await media_processor_service.process_media(
+        user_media=message.id,
         user_media_type=message.type,
         reply_token=reply_token,
         user_id=user_id,
@@ -135,10 +145,10 @@ async def handle_file_message_async(event: MessageEvent):
     user_id = _get_user_id(event)
     message = cast(FileMessageContent, event.message)
 
-    logger.info(f"Received file message event from user {user_id}: {message.fileName}")
+    logger.info(f"Received file message event from user {user_id}: {message.file_name}")
 
-    await media_processor_service.process_and_reply(
-        user_media=message.originalContentUrl,
+    await media_processor_service.process_media(
+        user_media=message.id,
         user_media_type="file",
         reply_token=reply_token,
         user_id=user_id,

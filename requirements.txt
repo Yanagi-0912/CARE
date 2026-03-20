@@ -21,3 +21,6 @@ pytest-cov==7.0.0
 # 工具套件
 pydantic==2.12.5
 typing-extensions==4.15.0
+
+# MongoDB 連線套件
+pymongo==4.11.1

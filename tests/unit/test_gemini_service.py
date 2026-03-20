@@ -40,7 +40,7 @@ async def test_generate_response_returns_text_on_success(
 
     result = await GeminiService().generate_response("你好")
 
-    assert result == "AI 回覆內容"
+    assert result.text == "AI 回覆內容"
     assert post.called  # 確定 generate_response 有去呼叫 post
 
 

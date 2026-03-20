@@ -12,6 +12,7 @@ from linebot.v3.messaging import (
 from app.services.gemini_service import GeminiService
 from app.services.line.token_manager import line_token_manager
 from app.services.medical.medical_service import medical_service
+from app.tools.registry import get_all_gemini_tools
 import logging
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,9 @@ class LineMessageService:
     ) -> bool:
         try:
             logger.info(f"Processing message from user {user_id}: {user_text[:50]}...")
-            result = await self.gemini_service.generate_response_with_tools(user_text)
+            result = await self.gemini_service.generate_response(
+                user_text, tools=get_all_gemini_tools()
+            )
 
             if result.is_function_call and result.function_name == "request_location":
                 return await self.send_location_quick_reply(reply_token, user_id)

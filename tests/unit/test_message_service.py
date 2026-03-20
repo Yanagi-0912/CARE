@@ -23,7 +23,7 @@ def mock_gemini():
 @pytest.mark.asyncio
 async def test_process_success(mock_gemini, mock_send_reply):
     # Gemini 回傳一般文字（非 function call）
-    mock_gemini.return_value.generate_response_with_tools = AsyncMock(
+    mock_gemini.return_value.generate_response = AsyncMock(
         return_value=GeminiResult(text="AI 回覆")
     )
     svc = LineMessageService()
@@ -37,7 +37,7 @@ async def test_process_success(mock_gemini, mock_send_reply):
 @pytest.mark.asyncio
 async def test_process_function_call_request_location(mock_gemini, mock_send_reply):
     # Gemini 決定呼叫 request_location 工具
-    mock_gemini.return_value.generate_response_with_tools = AsyncMock(
+    mock_gemini.return_value.generate_response = AsyncMock(
         return_value=GeminiResult(function_name="request_location")
     )
     with patch(
@@ -58,7 +58,7 @@ async def test_process_function_call_request_location(mock_gemini, mock_send_rep
 @pytest.mark.asyncio
 async def test_process_fallback_on_value_error(mock_gemini, mock_send_reply):
     # Gemini API 發生錯誤時，應送出 fallback 訊息
-    mock_gemini.return_value.generate_response_with_tools = AsyncMock(
+    mock_gemini.return_value.generate_response = AsyncMock(
         side_effect=ValueError("API 錯誤")
     )
     svc = LineMessageService()

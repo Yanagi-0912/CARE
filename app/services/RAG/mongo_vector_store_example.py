@@ -1,5 +1,6 @@
-import os
 from typing import Any, Dict, List, Optional
+
+from app.core.config import settings
 
 
 class MongoVectorStoreExample:
@@ -13,16 +14,16 @@ class MongoVectorStoreExample:
         vector_field: Optional[str] = None,
         text_field: Optional[str] = None,
     ) -> None:
-        self.mongo_uri = mongo_uri or os.getenv("MONGODB_URI", "")
-        self.db_name = db_name or os.getenv("MONGODB_DB", "")
-        self.collection_name = collection_name or os.getenv("MONGODB_COLLECTION", "")
+        self.mongo_uri = mongo_uri or settings.MONGODB_URI
+        self.db_name = db_name or settings.MONGODB_DB
+        self.collection_name = collection_name or settings.MONGODB_COLLECTION
 
-        self.vector_index = vector_index or os.getenv("MONGODB_VECTOR_INDEX", "")
-        self.vector_field = vector_field or os.getenv("MONGODB_VECTOR_FIELD", "embedding")
-        self.text_field = text_field or os.getenv("MONGODB_TEXT_FIELD", "text")
-        # MONGODB_VECTOR_DIM 與 Atlas 索引維度一致
-        _dim = os.getenv("MONGODB_VECTOR_DIM", "").strip()
-        self.vector_dim: Optional[int] = int(_dim) if _dim else None
+        self.vector_index = vector_index or settings.MONGODB_VECTOR_INDEX
+        self.vector_field = vector_field or settings.MONGODB_VECTOR_FIELD
+        self.text_field = text_field or settings.MONGODB_TEXT_FIELD
+        self.vector_dim: Optional[int] = (
+            settings.MONGODB_VECTOR_DIM if settings.MONGODB_VECTOR_DIM > 0 else None
+        )
 
     def vector_search(
         self,

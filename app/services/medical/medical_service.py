@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 from app.schemas import MedicalFacility
+from app.db.mongodb import MongoDBManager
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,41 @@ class MedicalService:
             f"Searching hospitals near ({lat}, {lng}) "
             f"within {radius_meters}m, limit={limit}"
         )
-        return []
+        
+        collection = MongoDBManager.get_medical_collection()
+        
+        pipeline = [
+            {
+                "$geoNear": {
+                    "near": {"type": "Point", "coordinates": [lng, lat]},
+                    "distanceField": "distance_calculated",
+                    "maxDistance": radius_meters,
+                    "spherical": True
+                }
+            },
+            {"$limit": limit}
+        ]
+        
+        results = []
+        try:
+            # 透過 async for 尋訪游標
+            async for doc in collection.aggregate(pipeline):
+                facility = MedicalFacility(
+                    id=str(doc["_id"]),
+                    name=doc.get("name", "未知名稱"),
+                    latitude=doc.get("latitude", 0.0),
+                    longitude=doc.get("longitude", 0.0),
+                    address=doc.get("address", "暫無地址資訊"),
+                    phone=doc.get("phone") or "暫無聯絡電話",
+                    type=doc.get("type", "醫療院所"),
+                    distance_meters=doc.get("distance_calculated", 0.0)
+                )
+                results.append(facility)
+                
+        except Exception as e:
+            logger.error(f"MongoDB geospatial query failed: {e}", exc_info=True)
+            
+        return results
 
 
 medical_service = MedicalService()

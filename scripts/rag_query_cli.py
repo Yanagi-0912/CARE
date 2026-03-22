@@ -12,17 +12,17 @@ from dotenv import load_dotenv
 
 load_dotenv(_PROJECT_ROOT / ".env")
 
-from app.services.RAG.embedding_gemini import embed_text
-from app.services.RAG.retriever import retrieve_top_k_by_vector
+from app.services.RAG.embedding_gemini import embed_query
+from app.services.RAG.retriever import search_similar_chunks
 
 
-async def _run(question: str, k: int, task_type: str) -> None:
+async def _run(question: str, k: int) -> None:
     if not question.strip():
         print("問題不能為空。", file=sys.stderr)
         sys.exit(1)
 
-    vec = await embed_text(question.strip(), task_type=task_type)
-    results = retrieve_top_k_by_vector(vec, k=k)
+    vec = await embed_query(question.strip())
+    results = search_similar_chunks(vec, k=k)
     print(json.dumps(results, ensure_ascii=False, indent=2))
 
 
@@ -30,7 +30,6 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("question", nargs="*")
     parser.add_argument("-k", "--top-k", type=int, default=10)
-    parser.add_argument("--task-type", default="RETRIEVAL_QUERY")
     args = parser.parse_args()
 
     if args.question:
@@ -38,7 +37,7 @@ def main() -> None:
     else:
         q = input("請輸入問題: ").strip()
 
-    asyncio.run(_run(q, k=args.top_k, task_type=args.task_type))
+    asyncio.run(_run(q, k=args.top_k))
 
 
 if __name__ == "__main__":

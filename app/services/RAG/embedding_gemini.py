@@ -1,5 +1,4 @@
 from typing import List
-
 import httpx
 from app.core.config import settings
 

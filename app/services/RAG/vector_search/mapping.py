@@ -1,7 +1,7 @@
 from typing import Any, Mapping
 
 from .types import ChunkHit
-
+#mapping 就是拿來轉換格式
 #mongodb 查完 vectorsearch的結果會是dict 轉換成ChunkHit 的型別
 def mongo_document_to_chunk_hit(
     doc: Mapping[str, Any],

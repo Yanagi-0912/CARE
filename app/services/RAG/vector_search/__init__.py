@@ -4,7 +4,7 @@
 #
 # 主要入口：MongoVectorSearchReader（reader.py）
 #   → 負責協調：驗證 → 組管線 → 執行查詢 → 映射結果
-#   → 從外部只需傳入 VectorSearchConfig，即可呼叫 search_by_embedding()
+#   → 從外部只需傳入 VectorSearchConfig，即可 await search_by_embedding()（Motor 非同步）
 #
 # 各模組分工：
 #   config.py      VectorSearchConfig：Mongo 連線與欄位設定（DI 用）

@@ -24,3 +24,4 @@ typing-extensions==4.15.0
 
 # MongoDB 連線套件
 pymongo==4.11.1
+motor==3.3.2

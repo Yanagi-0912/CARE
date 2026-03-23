@@ -1,6 +1,10 @@
+import os
+
 from app.services.gemini import GeminiService, HealthClassifier
 from app.services.line.message_service import LineMessageService
 from app.services.RAG.vector_search import MongoVectorSearchReader, VectorSearchConfig
+
+mongodb_url = os.getenv("MONGODB_URL")
 
 _gemini_service = GeminiService()
 _health_classifier = HealthClassifier()
@@ -10,6 +14,13 @@ _line_message_service = LineMessageService(
 )
 _vector_search_config = VectorSearchConfig.from_settings()
 _vector_search_reader = MongoVectorSearchReader(_vector_search_config)
+
+
+def get_mongodb_url() -> str:
+    """提供 MongoDB 連線字串做為依賴注入"""
+    if not mongodb_url:
+        raise ValueError("未設定 MONGODB_URL 參數")
+    return mongodb_url
 
 
 def get_gemini_service() -> GeminiService:

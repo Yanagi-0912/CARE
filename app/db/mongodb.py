@@ -11,9 +11,8 @@ class MongoDBManager:
     @classmethod
     def get_client(cls) -> AsyncIOMotorClient:
         if cls._client is None:
-            mongodb_url = os.getenv("MONGODB_URL")
-            if not mongodb_url:
-                raise ValueError("未設定 MONGODB_URL")
+            from app.dependencies import get_mongodb_url
+            mongodb_url = get_mongodb_url()
             logger.info("Initializing async MongoDB connection (Motor)...")
             cls._client = AsyncIOMotorClient(mongodb_url)
         return cls._client

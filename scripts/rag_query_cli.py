@@ -24,7 +24,7 @@ async def main() -> None:
         sys.exit(1)
 
     vec = await embed_query(question)
-    out = search_similar_chunks(vec)
+    out = await search_similar_chunks(vec)
     print(json.dumps(out, ensure_ascii=False, indent=2))
 
 

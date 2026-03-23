@@ -11,10 +11,13 @@ _reader: Optional[MongoVectorSearchReader] = None
 def _get_vector_reader() -> MongoVectorSearchReader:
     global _reader
     if _reader is None:
-        _reader = MongoVectorSearchReader(_cfg) # mongoVectorSearchReader 是 reader.py 裡最主要的funcion 可以給你要的topk
+        # mongoVectorSearchReader 是 reader.py 裡最主要的funcion 可以給你要的topk
+        _reader = MongoVectorSearchReader(_cfg)
     return _reader
 
 
-def search_similar_chunks(query_embedding: List[float]) -> ChunkHits: #這個 function 現在是被script的那便呼叫
+async def search_similar_chunks(query_embedding: List[float]) -> ChunkHits:
+    # 這個 function 現在是被 script 的那邊呼叫
     # query_embedding：已算好的問題向量。取幾筆由 reader 內讀注入的 cfg.default_top_k。
-    return _get_vector_reader().search_by_embedding(query_embedding=query_embedding)
+    # Mongo 使用 Motor 非同步查詢，不阻塞 FastAPI / asyncio 事件迴圈。
+    return await _get_vector_reader().search_by_embedding(query_embedding=query_embedding)

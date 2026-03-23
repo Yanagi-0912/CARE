@@ -13,8 +13,10 @@ python-dotenv==1.1.1
 requests==2.32.5
 httpx==0.28.1
 
-# MongoDB（RAG 向量搜尋）
+# MongoDB（RAG 向量搜尋：Motor 非同步；其他腳本仍可用 pymongo）
+# Motor 3.6 鎖 pymongo<4.10，與 4.16 衝突；3.7+ 為 pymongo>=4.9,<5
 pymongo==4.16.0
+motor==3.7.1
 
 # 測試相關（pytest-asyncio 0.25 僅支援 pytest<9）
 pytest>=8.2,<9
@@ -24,7 +26,3 @@ pytest-cov==7.0.0
 # 工具套件
 pydantic==2.12.5
 typing-extensions==4.15.0
-
-# MongoDB 連線套件
-pymongo==4.11.1
-motor==3.3.2

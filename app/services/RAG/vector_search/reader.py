@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import Any, List
 
-from pymongo import MongoClient
-from pymongo.collection import Collection
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 
 from .config import VectorSearchConfig
 from .mapping import mongo_document_to_chunk_hit
@@ -17,19 +16,19 @@ from .validation import (
 
 
 #驗證 → pipeline → aggregate → 映射
-# 連線延遲建立：__init__ 只保存 DI 注入的 cfg，第一次查詢時才建立 MongoClient。
+# 連線延遲建立：__init__ 只保存 DI 注入的 cfg，第一次查詢時才建立 AsyncIOMotorClient。
 class MongoVectorSearchReader: #串流程用的
     # DI：VectorSearchConfig 由呼叫端注入，Reader 內不呼叫 from_settings()。
     def __init__(self, cfg: VectorSearchConfig) -> None:
         self._cfg = cfg
-        self._client: MongoClient | None = None
-        self._collection: Collection[Any] | None = None
+        self._client: AsyncIOMotorClient | None = None
+        self._collection: AsyncIOMotorCollection | None = None
 
-    def _ensure_collection(self) -> Collection[Any]:
-        # 延遲連線：避免 import / 測試時就連 Atlas；也讓 __init__ 保持輕量
+    def _ensure_collection(self) -> AsyncIOMotorCollection:
+        # 延遲建立 client：避免 import / 測試時就連 Atlas；也讓 __init__ 保持輕量
         validate_config_ready(self._cfg)
         if self._collection is None:
-            self._client = MongoClient(self._cfg.mongo_uri)
+            self._client = AsyncIOMotorClient(self._cfg.mongo_uri)
             self._collection = self._client[self._cfg.db_name][
                 self._cfg.collection_name
             ]
@@ -37,7 +36,7 @@ class MongoVectorSearchReader: #串流程用的
 
     # 前面的 * 表示：後面參數一定要用「關鍵字」呼叫。
     # 未傳 k 時：top_k 從注入的 cfg.default_top_k 讀取，非硬編碼。
-    def search_by_embedding(
+    async def search_by_embedding(
         self,
         *,
         query_embedding: List[float],
@@ -62,11 +61,12 @@ class MongoVectorSearchReader: #串流程用的
             num_candidates=num_for_search,
         )
 
-        # 步驟 4：取得 Mongo collection（第一次會連線）
+        # 步驟 4：取得 Mongo collection（第一次會建立 Motor client）
         collection = self._ensure_collection()
 
-        # 步驟 5：向 Mongo 執行 aggregate，拿到一筆筆文件（dict），我先前已經在pipline 組好的聚合管線
-        raw_docs = list(collection.aggregate(pipeline)) # aggregation 是pymongo 的語法 
+        # 步驟 5：Motor 非同步 aggregate（不阻塞 asyncio event loop）
+        cursor = collection.aggregate(pipeline)
+        raw_docs: list[dict[str, Any]] = await cursor.to_list(length=None)
 
         # 步驟 6：每筆文件轉成對外契約 ChunkHit，收集成列表
         hits: list[ChunkHit] = []

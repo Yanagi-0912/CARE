@@ -12,7 +12,7 @@ _SYMBOL_ONLY_PATTERN = re.compile(r"^[\s\W]+$", re.UNICODE)
 
 
 def validate_user_input(text: str) -> ValidationResult:
-    # 空白或 None
+  #使用者輸入不能為空
     if not text or not text.strip():
         logger.warning("Validation failed: empty input")
         return ValidationResult(is_valid=False, error_message="請輸入訊息內容，不能為空白。")

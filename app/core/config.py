@@ -18,6 +18,9 @@ class Settings:
     # RAG / Embedding 配置
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
 
+    # 多媒體解析 webhook
+    MEDIA_PARSE_WEBHOOK_URL: str = os.getenv("MEDIA_PARSE_WEBHOOK_URL", "")
+
     # MongoDB Vector Search 配置
     MONGODB_URI: str = os.getenv("MONGODB_URI", "")
     MONGODB_DB: str = os.getenv("MONGODB_DB", "")

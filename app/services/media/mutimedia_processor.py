@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any, Optional
 from datetime import datetime
 import mimetypes
+from app.core.config import settings
 from app.services.gemini import GeminiService
 from app.services.line.token_manager import line_token_manager
 import logging
@@ -11,9 +12,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 # 媒體解析 webhook URL
-MEDIA_PARSE_WEBHOOK_URL = (
-    "http://localhost:5678/webhook/bff1fd27-efc4-45cf-b64a-adb0475aa35c"
-)
+MEDIA_PARSE_WEBHOOK_URL = settings.MEDIA_PARSE_WEBHOOK_URL
 WEBHOOK_TIMEOUT_SECONDS = 30
 LINE_MESSAGE_CONTENT_API = (
     "https://api-data.line.me/v2/bot/message/{message_id}/content"

@@ -10,9 +10,12 @@ from linebot.v3.webhooks import (
     FileMessageContent,
 )
 from app.services.line.message_service import line_message_service
-from app.services.medical.medical_service import medical_service
+from app.services.medical.medical_service import (
+    medical_service,
+    format_facility_list,
+    NO_FACILITY_MESSAGE,
+)
 from app.services.media.mutimedia_processor import media_processor_service
-from app.schemas import MedicalFacility
 import logging
 
 logger = logging.getLogger(__name__)
@@ -20,21 +23,6 @@ logger = logging.getLogger(__name__)
 IMAGE_FILE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp", ".svg"}
 VIDEO_FILE_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 AUDIO_FILE_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".opus", ".aac"}
-
-NO_FACILITY_MESSAGE = "抱歉，您附近 1 公里內暫時找不到醫療院所資料。\n功能仍在建置中，敬請期待！"
-
-
-def format_facility_list(facilities: list[MedicalFacility]) -> str:
-    """將醫療院所列表格式化為使用者可讀的純文字。"""
-    lines = [f"為您找到附近 {len(facilities)} 間醫療院所：\n"]
-    for i, f in enumerate(facilities, 1):
-        dist = (
-            f"（{f.distance_meters:.0f} 公尺）"
-            if f.distance_meters is not None
-            else ""
-        )
-        lines.append(f"{i}. {f.name}{dist}\n   {f.address}")
-    return "\n".join(lines)
 
 
 class LineEventContext:

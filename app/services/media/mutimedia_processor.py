@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any, Optional
 from datetime import datetime
 import mimetypes
-from app.services.gemini_service import GeminiService
+from app.services.gemini import GeminiService
 from app.services.line.token_manager import line_token_manager
 import logging
 import secrets

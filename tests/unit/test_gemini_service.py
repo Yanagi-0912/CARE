@@ -1,11 +1,11 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from app.services.gemini_service import GeminiService
+from app.services.gemini import GeminiService
 
 
 @pytest.fixture
 def mock_settings():
-    with patch("app.services.gemini_service.settings") as m:
+    with patch("app.services.gemini.gemini_service.settings") as m:
         m.GEMINI_API_KEY = "test_key"
         m.MODEL_NAME = "gemini-2.0-flash"
         yield m
@@ -13,7 +13,7 @@ def mock_settings():
 
 @pytest.fixture
 def mock_http_client():
-    with patch("app.services.gemini_service.httpx.AsyncClient") as mock_ac:
+    with patch("app.services.gemini.gemini_service.httpx.AsyncClient") as mock_ac:
         mock_ac.return_value.__aexit__ = AsyncMock(return_value=None)
 
         def configure(response):

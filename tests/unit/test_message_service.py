@@ -1,7 +1,7 @@
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from app.services.line.message_service import LineMessageService
-from app.services.gemini_service import GeminiResult
+from app.services.gemini import GeminiResult
 
 
 @pytest.fixture
@@ -26,7 +26,10 @@ async def test_process_success(mock_gemini, mock_send_reply):
     mock_gemini.return_value.generate_response = AsyncMock(
         return_value=GeminiResult(text="AI 回覆")
     )
-    svc = LineMessageService()
+    svc = LineMessageService(
+        gemini_service=mock_gemini.return_value,
+        health_classifier=MagicMock(),
+    )
     ok = await svc.process_and_reply("你好", "reply_token_xxx")
 
     assert ok is True
@@ -45,7 +48,10 @@ async def test_process_function_call_request_location(mock_gemini, mock_send_rep
         new_callable=AsyncMock,
         return_value=True,
     ) as mock_quick_reply:
-        svc = LineMessageService()
+        svc = LineMessageService(
+            gemini_service=mock_gemini.return_value,
+            health_classifier=MagicMock(),
+        )
         ok = await svc.process_and_reply(
             "附近有醫院嗎", "reply_token_xxx", user_id="U123"
         )
@@ -61,7 +67,10 @@ async def test_process_fallback_on_value_error(mock_gemini, mock_send_reply):
     mock_gemini.return_value.generate_response = AsyncMock(
         side_effect=ValueError("API 錯誤")
     )
-    svc = LineMessageService()
+    svc = LineMessageService(
+        gemini_service=mock_gemini.return_value,
+        health_classifier=MagicMock(),
+    )
     ok = await svc.process_and_reply("hi", "reply_token_xxx")
 
     assert ok is False

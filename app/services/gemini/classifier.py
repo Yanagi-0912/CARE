@@ -70,5 +70,7 @@ class HealthClassifier:
                 category=result.get("category"),
             )
         except (json.JSONDecodeError, KeyError, TypeError) as e:
-            logger.warning(f"Failed to parse classification JSON: {e}, raw: {raw_text[:200]}")
+            logger.warning(
+                f"Failed to parse classification JSON: {e}, raw: {raw_text[:200]}"
+            )
             return ClassificationResult(is_health_related=True, confidence=0.0)

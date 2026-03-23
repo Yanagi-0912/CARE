@@ -25,7 +25,9 @@ class GeminiService:
         )
         logger.info(f"GeminiService initialized with model: {self.model_name}")
 
-    async def generate_response(self, user_input: str, tools: list = None) -> GeminiResult:
+    async def generate_response(
+        self, user_input: str, tools: list = None
+    ) -> GeminiResult:
         validation = validate_user_input(user_input)
         if not validation.is_valid:
             return GeminiResult(text=validation.error_message)

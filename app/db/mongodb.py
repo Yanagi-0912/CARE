@@ -10,10 +10,6 @@ class MongoDBManager:
     
     @classmethod
     def get_client(cls) -> AsyncIOMotorClient:
-        """
-        取得唯一的 AsyncIOMotorClient (Singleton)。
-        如果尚未連線則自動嘗試連線。
-        """
         if cls._client is None:
             mongodb_url = os.getenv("MONGODB_URL")
             if not mongodb_url:
@@ -24,8 +20,5 @@ class MongoDBManager:
 
     @classmethod
     def get_medical_collection(cls):
-        """
-        取得醫療機構資料集合 (Collection)
-        """
         client = cls.get_client()
         return client["CARE_database"]["medicalFacilities"]

@@ -11,3 +11,16 @@ class GeminiResult:
     @property
     def is_function_call(self) -> bool:
         return self.function_name is not None
+
+
+@dataclass
+class ValidationResult:
+    is_valid: bool
+    error_message: Optional[str] = None
+
+
+@dataclass
+class ClassificationResult:
+    is_health_related: bool
+    confidence: float = 0.0
+    category: Optional[str] = None

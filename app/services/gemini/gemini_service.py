@@ -1,6 +1,7 @@
 import httpx
 from app.core.config import settings
 from app.services.gemini.types import GeminiResult
+from app.services.gemini.validation import validate_user_input
 import logging
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,10 @@ class GeminiService:
         logger.info(f"GeminiService initialized with model: {self.model_name}")
 
     async def generate_response(self, user_input: str, tools: list = None) -> GeminiResult:
+        validation = validate_user_input(user_input)
+        if not validation.is_valid:
+            return GeminiResult(text=validation.error_message)
+
         payload = {
             "contents": [{"parts": [{"text": user_input}]}],
             "systemInstruction": {"parts": [{"text": self.system_instruction}]},

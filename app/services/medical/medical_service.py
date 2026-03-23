@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import Any, Optional
 from app.schemas import MedicalFacility
 from app.db.mongodb import MongoDBManager
 
@@ -49,6 +49,22 @@ class MedicalService:
             },
         }
         return payload
+
+    async def handle_location(
+        self, user_id: str, lat: float, lng: float
+    ) -> Optional[list[MedicalFacility]]:
+        """
+        檢查使用者是否處於 WAITING_LOCATION 狀態，
+        若是則查詢附近醫療院所；若否則回傳 None 表示忽略。
+        """
+        if session_store.get(user_id) != "WAITING_LOCATION":
+            logger.warning(
+                f"User {user_id} sent location but was not in WAITING_LOCATION state, ignoring."
+            )
+            return None
+
+        session_store.clear(user_id)
+        return await self.find_nearby_hospitals(lat, lng)
 
     async def find_nearby_hospitals(
         self,

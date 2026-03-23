@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import Any, Optional
 from app.schemas import MedicalFacility
 from app.db.mongodb import MongoDBManager
 
@@ -28,6 +28,21 @@ class UserSessionStore:
 
 session_store = UserSessionStore()
 
+NO_FACILITY_MESSAGE = "抱歉，您附近 1 公里內暫時找不到醫療院所資料。\n功能仍在建置中，敬請期待！"
+
+
+def format_facility_list(facilities: list[MedicalFacility]) -> str:
+    # 將醫療院所列表格式化為使用者可讀的純文字
+    lines = [f"為您找到附近 {len(facilities)} 間醫療院所：\n"]
+    for i, f in enumerate(facilities, 1):
+        dist = (
+            f"（{f.distance_meters:.0f} 公尺）"
+            if f.distance_meters is not None
+            else ""
+        )
+        lines.append(f"{i}. {f.name}{dist}\n   {f.address}")
+    return "\n".join(lines)
+
 
 class MedicalService:
     def request_location(self, user_id: str) -> dict[str, Any]:
@@ -49,6 +64,20 @@ class MedicalService:
             },
         }
         return payload
+
+    async def handle_location(
+        self, user_id: str, lat: float, lng: float
+    ) -> Optional[list[MedicalFacility]]:
+        # 檢查使用者是否處於 WAITING_LOCATION 狀態
+        # 是：查詢附近醫療院所；否：回傳 None 表示忽略
+        if session_store.get(user_id) != "WAITING_LOCATION":
+            logger.warning(
+                f"User {user_id} sent location but was not in WAITING_LOCATION state, ignoring."
+            )
+            return None
+
+        session_store.clear(user_id)
+        return await self.find_nearby_hospitals(lat, lng)
 
     async def find_nearby_hospitals(
         self,

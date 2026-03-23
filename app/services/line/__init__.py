@@ -5,24 +5,12 @@ LINE Bot 服務層
 
 from app.services.line.message_service import LineMessageService, line_message_service
 from app.services.line.token_manager import LineTokenManager, line_token_manager
-from app.services.line.event_handler import (
-    handle_text_message_async,
-    handle_location_message_async,
-    handle_image_message_async,
-    handle_video_message_async,
-    handle_audio_message_async,
-    handle_file_message_async,
-)
+from app.services.line.event_handler import LineEventContext
 
 __all__ = [
     "LineMessageService",
     "line_message_service",
     "LineTokenManager",
     "line_token_manager",
-    "handle_text_message_async",
-    "handle_location_message_async",
-    "handle_image_message_async",
-    "handle_video_message_async",
-    "handle_audio_message_async",
-    "handle_file_message_async",
+    "LineEventContext",
 ]

@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, patch
 from app.services.line.message_service import LineMessageService
-from app.services.gemini_service import GeminiResult
+from app.services.gemini import GeminiResult
 
 
 @pytest.fixture

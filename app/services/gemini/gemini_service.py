@@ -1,22 +1,9 @@
 import httpx
 from app.core.config import settings
-from dataclasses import dataclass, field
-from typing import Optional
+from app.services.gemini.types import GeminiResult
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class GeminiResult:
-    text: Optional[str] = None
-    function_name: Optional[str] = None
-    function_args: dict = field(default_factory=dict)
-
-    @property
-    def is_function_call(self) -> bool:
-        """回傳 True 表示 Gemini 決定呼叫工具，而非直接回答。"""
-        return self.function_name is not None
 
 
 class GeminiService:
@@ -37,17 +24,14 @@ class GeminiService:
         )
         logger.info(f"GeminiService initialized with model: {self.model_name}")
 
-
-
     async def generate_response(self, user_input: str, tools: list = None) -> GeminiResult:
         payload = {
             "contents": [{"parts": [{"text": user_input}]}],
             "systemInstruction": {"parts": [{"text": self.system_instruction}]},
         }
-        
+
         if tools:
             payload["tools"] = tools
-
 
         try:
             async with httpx.AsyncClient(timeout=300.0) as client:
@@ -79,7 +63,6 @@ class GeminiService:
                         function_args=func.get("args", {}),
                     )
 
-                # 一般文字回覆
                 return GeminiResult(text=part["text"])
 
         except httpx.TimeoutException:

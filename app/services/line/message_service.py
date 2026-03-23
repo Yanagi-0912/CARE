@@ -9,7 +9,7 @@ from linebot.v3.messaging import (
     QuickReplyItem,
     LocationAction,
 )
-from app.services.gemini_service import GeminiService
+from app.services.gemini import GeminiService
 from app.services.line.token_manager import line_token_manager
 from app.services.medical.medical_service import medical_service
 from app.tools.registry import get_all_gemini_tools

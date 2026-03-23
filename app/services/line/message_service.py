@@ -36,7 +36,7 @@ class LineMessageService:
                 return await self.send_location_quick_reply(reply_token, user_id)
 
             response_text = result.text or "抱歉，我無法理解您的問題，請重新輸入。"
-            success = await self._send_line_reply(reply_token, response_text, user_id)
+            success = await self.send_line_reply(reply_token, response_text, user_id)
 
             if success:
                 logger.info(f"Successfully processed and replied to user {user_id}")
@@ -45,7 +45,7 @@ class LineMessageService:
         except ValueError as e:
             logger.error(f"API error in process_and_reply: {e}")
             fallback = f"抱歉，AI 服務暫時無法使用：{e}"
-            await self._send_line_reply(reply_token, fallback, user_id)
+            await self.send_line_reply(reply_token, fallback, user_id)
             return False
 
         except Exception as e:
@@ -53,7 +53,7 @@ class LineMessageService:
             await self._send_error_reply(reply_token, user_id)
             return False
 
-    async def _send_line_reply(
+    async def send_line_reply(
         self, reply_token: str, message_text: str, user_id: Optional[str] = None
     ) -> bool:
         try:
@@ -117,7 +117,7 @@ class LineMessageService:
     ) -> bool:
         try:
             error_message = "抱歉，處理您的訊息時發生錯誤，請稍後再試"
-            return await self._send_line_reply(reply_token, error_message, user_id)
+            return await self.send_line_reply(reply_token, error_message, user_id)
         except Exception as e:
             logger.error(f"Failed to send error reply: {e}")
             return False

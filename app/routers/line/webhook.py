@@ -10,20 +10,12 @@ from linebot.v3.webhooks import (
 )
 from linebot.v3.webhook import WebhookParser
 from linebot.v3.exceptions import InvalidSignatureError
-from app.services.line import (
-    handle_text_message_async,
-    handle_location_message_async,
-    handle_image_message_async,
-    handle_video_message_async,
-    handle_audio_message_async,
-    handle_file_message_async,
-)
+from app.services.line import LineEventContext
 from app.core.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
 
-# 初始化路由器和 webhook 解析器
 router = APIRouter()
 parser = WebhookParser(settings.LINE_CHANNEL_SECRET)
 
@@ -45,36 +37,34 @@ async def callback(request: Request, x_line_signature: str = Header(None)):
 
         # 異步處理每個事件
         for event in events:
+            # 為每個事件建立獨立的 Handler 實例，確保異步安全；如果缺少必要欄位會拋出 ValueError
+            try:
+                event_context = LineEventContext(event)
+            except ValueError as e:
+                logger.warning(f"跳過無效的 LINE 事件: {e}")
+                continue
+
             # 處理文字訊息事件
             if isinstance(event, MessageEvent) and isinstance(
                 event.message, TextMessageContent
             ):
-                await handle_text_message_async(event)
+                await event_context.handle_text_message()
             # 處理位置訊息事件（用戶透過 Quick Reply 傳回 GPS 座標）
             elif isinstance(event, MessageEvent) and isinstance(
                 event.message, LocationMessageContent
             ):
-                await handle_location_message_async(event)
-            # 處理圖片訊息事件
-            elif isinstance(event, MessageEvent) and isinstance(
-                event.message, ImageMessageContent
+                await event_context.handle_location_message()
+            # 處理多媒體與檔案訊息事件 (圖片、影片、音訊、檔案)
+            elif isinstance(
+                event.message,
+                (
+                    ImageMessageContent,
+                    VideoMessageContent,
+                    AudioMessageContent,
+                    FileMessageContent,
+                ),
             ):
-                await handle_image_message_async(event)
-            # 處理影片訊息事件
-            elif isinstance(event, MessageEvent) and isinstance(
-                event.message, VideoMessageContent
-            ):
-                await handle_video_message_async(event)
-            # 處理音訊訊息事件
-            elif isinstance(event, MessageEvent) and isinstance(
-                event.message, AudioMessageContent
-            ):
-                await handle_audio_message_async(event)
-            # 處理檔案訊息事件
-            elif isinstance(event, MessageEvent) and isinstance(
-                event.message, FileMessageContent
-            ):
-                await handle_file_message_async(event)
+                await event_context.handle_media_message()
 
         logger.info("Webhook events processed successfully")
 

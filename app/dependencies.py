@@ -1,3 +1,4 @@
+#  小註解：不從原有程式new物件，依賴dependency injection注入物件 那dependencies 就叫做 container
 import os
 
 from app.services.gemini import GeminiService, HealthClassifier

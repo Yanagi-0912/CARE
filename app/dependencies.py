@@ -1,7 +1,7 @@
 #  小註解：不從原有程式new物件，依賴dependency injection注入物件 那dependencies 就叫做 container
 import os
 
-from app.services.gemini import GeminiService, HealthClassifier
+from app.services.gemini import GeminiService
 from app.orchestration import ResponseOrchestrator
 from app.services.guardrail import GuardrailService
 from app.services.RAG.retrieval import RagAnswerService
@@ -14,7 +14,6 @@ from app.services.RAG.shared.vector_search import (
 mongodb_url = os.getenv("MONGODB_URL")
 
 _gemini_service = GeminiService()
-_health_classifier = HealthClassifier(gemini_service=_gemini_service)
 _guardrail_service = GuardrailService(gemini_service=_gemini_service)
 _vector_search_config = VectorSearchConfig.from_settings()
 _vector_search_reader = MongoVectorSearchReader(_vector_search_config)
@@ -41,10 +40,6 @@ def get_mongodb_url() -> str:
 
 def get_gemini_service() -> GeminiService:
     return _gemini_service
-
-
-def get_health_classifier() -> HealthClassifier:
-    return _health_classifier
 
 
 def get_guardrail_service() -> GuardrailService:

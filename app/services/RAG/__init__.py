@@ -1,8 +1,8 @@
-# RAG：embedding（頂層）與向量檢索（vector_search 子套件）。
+# RAG：client（embedding）、retrieval（檢索流程）、shared（共用型別與 reader）。
 
-from .embedding_gemini import embed_document, embed_query
-from .retriever import search_similar_chunks
-from .vector_search import ChunkHit, ChunkHits
+from .client import embed_document, embed_query
+from .retrieval import search_similar_chunks
+from .shared.vector_search import ChunkHit, ChunkHits
 
 __all__ = [
     "ChunkHit",

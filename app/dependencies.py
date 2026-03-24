@@ -2,19 +2,32 @@
 import os
 
 from app.services.gemini import GeminiService, HealthClassifier
+from app.orchestration import ResponseRouter
+from app.services.RAG.retrieval import RagAnswerService
 from app.services.line.message_service import LineMessageService
-from app.services.RAG.vector_search import MongoVectorSearchReader, VectorSearchConfig
+from app.services.RAG.shared.vector_search import (
+    MongoVectorSearchReader,
+    VectorSearchConfig,
+)
 
 mongodb_url = os.getenv("MONGODB_URL")
 
 _gemini_service = GeminiService()
 _health_classifier = HealthClassifier(gemini_service=_gemini_service)
-_line_message_service = LineMessageService(
-    gemini_service=_gemini_service,
-    health_classifier=_health_classifier,             
-)
 _vector_search_config = VectorSearchConfig.from_settings()
 _vector_search_reader = MongoVectorSearchReader(_vector_search_config)
+_rag_answer_service = RagAnswerService(
+    gemini_service=_gemini_service,
+    vector_search_reader=_vector_search_reader,
+)
+_response_router = ResponseRouter(
+    gemini_service=_gemini_service,
+    health_classifier=_health_classifier,
+    rag_answer_service=_rag_answer_service,
+)
+_line_message_service = LineMessageService(
+    response_router=_response_router,
+)
 
 
 def get_mongodb_url() -> str:

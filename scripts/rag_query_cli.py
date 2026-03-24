@@ -13,8 +13,8 @@ from dotenv import load_dotenv
 load_dotenv(_PROJECT_ROOT / ".env")
 
 from app.dependencies import get_vector_search_reader
-from app.services.RAG.embedding_gemini import embed_query
-from app.services.RAG.retriever import search_similar_chunks
+from app.services.RAG.client import embed_query
+from app.services.RAG.retrieval import search_similar_chunks
 
 
 async def main() -> None:

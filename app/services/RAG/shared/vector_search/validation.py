@@ -3,7 +3,6 @@ from typing import List, Optional
 from .config import VectorSearchConfig
 
 
-# 連線與查詢前必填欄位檢查。
 def validate_config_ready(config: VectorSearchConfig) -> None:
     if not config.mongo_uri:
         raise ValueError("Missing MONGODB_URI")
@@ -15,13 +14,11 @@ def validate_config_ready(config: VectorSearchConfig) -> None:
         raise ValueError("Missing MONGODB_VECTOR_INDEX")
 
 
-# query 向量不得為空。
 def validate_query_embedding_non_empty(query_embedding: List[float]) -> None:
     if not query_embedding:
         raise ValueError("query_embedding cannot be empty")
 
 
-# query 向量維度需與索引一致（若有設定 vector_dim）。
 def validate_query_embedding_dimension(
     query_embedding: List[float],
     vector_dim: Optional[int],

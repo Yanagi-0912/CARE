@@ -1,11 +1,11 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from app.services.gemini import GeminiService
+from app.services.gemini import GeminiService, GeminiHttpError
 
 
 @pytest.fixture
 def mock_settings():
-    with patch("app.services.gemini.gemini_service.settings") as m:
+    with patch("app.services.gemini.client.service.settings") as m:
         m.GEMINI_API_KEY = "test_key"
         m.MODEL_NAME = "gemini-2.0-flash"
         yield m
@@ -13,7 +13,7 @@ def mock_settings():
 
 @pytest.fixture
 def mock_http_client():
-    with patch("app.services.gemini.gemini_service.httpx.AsyncClient") as mock_ac:
+    with patch("app.services.gemini.client.service.httpx.AsyncClient") as mock_ac:
         mock_ac.return_value.__aexit__ = AsyncMock(return_value=None)
 
         def configure(response):
@@ -54,7 +54,7 @@ async def test_generate_response_raises_value_error_on_4xx(
     response.text = "quota exceeded"
     mock_http_client(response)
 
-    with pytest.raises(ValueError) as exc_info:
+    with pytest.raises(GeminiHttpError) as exc_info:
         await GeminiService().generate_response("hi")
 
     assert "配額" in str(exc_info.value) or "429" in str(exc_info.value)

@@ -1,6 +1,6 @@
 import re
 import logging
-from app.services.gemini.types import ValidationResult
+from app.services.gemini.shared.types import ValidationResult
 
 logger = logging.getLogger(__name__)
 

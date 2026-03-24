@@ -212,3 +212,6 @@ __marimo__/
 # Runtime media temp files
 app_data/tmp/*
 !app_data/tmp/.gitkeep
+
+# Firecrawl outputs
+.firecrawl/

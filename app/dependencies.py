@@ -2,7 +2,7 @@
 import os
 
 from app.services.gemini import GeminiService, HealthClassifier
-from app.orchestration import ResponseRouter
+from app.orchestration import ResponseOrchestrator
 from app.services.RAG.retrieval import RagAnswerService
 from app.services.line.message_service import LineMessageService
 from app.services.RAG.shared.vector_search import (
@@ -20,13 +20,13 @@ _rag_answer_service = RagAnswerService(
     gemini_service=_gemini_service,
     vector_search_reader=_vector_search_reader,
 )
-_response_router = ResponseRouter(
+_response_orchestrator = ResponseOrchestrator(
     gemini_service=_gemini_service,
     health_classifier=_health_classifier,
     rag_answer_service=_rag_answer_service,
 )
 _line_message_service = LineMessageService(
-    response_router=_response_router,
+    response_orchestrator=_response_orchestrator,
 )
 
 

@@ -32,13 +32,31 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-啟動ngrok
+## LINE Webhook（蘇奕勳 callback 網址）
 
+- Callback URL：`https://care.jamessu2016.com/line/callback`
+
+在 [LINE Developers 管理頁面](https://developers.line.biz/console/channel/2008834990/messaging-api) 的 webhook URL 請填入上面網址。
+
+## Cloudflare Tunnel（已登入帳號可直接使用）
+
+若你已登入 Cloudflare Tunnel 帳號，可直接執行：
+
+```bash
+cloudflared tunnel run care-api
 ```
+
+這會直接開始監聽你本機啟動中的 Python 後端（預設是 `uvicorn` 跑在 `8000`）。
+
+## ngrok（其他組使用方式，保留）
+
+啟動 ngrok：
+
+```bash
 ngrok http 8000
 ```
 
-[LINE Developers 管理頁面](https://developers.line.biz/console/channel/2008834990/messaging-api)的 webhoook 網址改為 "ngrok url"/line/callback
+在 [LINE Developers 管理頁面](https://developers.line.biz/console/channel/2008834990/messaging-api) 的 webhook URL 改為 `"ngrok url"/line/callback`。
 
 ## 在 Windows 上執行測試
 

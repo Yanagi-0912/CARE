@@ -18,7 +18,7 @@ from linebot.v3.webhooks import (
     AudioMessageContent,
     FileMessageContent,
 )
-from app.services.line.message_service import line_message_service
+from app.dependencies import get_line_message_service
 from app.services.medical.medical_service import (
     medical_service,
     format_facility_list,
@@ -83,6 +83,7 @@ class LineEventContext:
         logger.info(f"Received text message event from user {self.user_id}")
         message = cast(TextMessageContent, self.message)
 
+        line_message_service = get_line_message_service()
         await line_message_service.process_and_reply(
             user_text=message.text,
             reply_token=self.reply_token,
@@ -103,6 +104,7 @@ class LineEventContext:
         reply_text = (
             format_facility_list(facilities) if facilities else NO_FACILITY_MESSAGE
         )
+        line_message_service = get_line_message_service()
         await line_message_service.send_line_reply(
             self.reply_token, reply_text, self.user_id
         )
@@ -127,6 +129,7 @@ class LineEventContext:
             user_id=self.user_id,
         )
 
+        line_message_service = get_line_message_service()
         await line_message_service.process_and_reply(
             user_text=f"以下為用戶傳送的{media_type}媒體內容：\n{media_content}",
             reply_token=self.reply_token,

@@ -2,7 +2,7 @@ import logging
 
 from app.services.gemini import GeminiResult, GeminiService
 from app.services.guardrail import GuardrailService
-from app.services.RAG.retrieval import RagAnswerService
+from app.services.RAG.retrieval import RagAnswerService, RagNoHitsError
 from app.tools.registry import get_all_gemini_tools
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,11 @@ class ResponseOrchestrator:
         try:
             rag_text = await self.rag_answer_service.answer(query)
             return GeminiResult(text=rag_text)
+        except RagNoHitsError:
+            return await self.gemini_service.generate_response(
+                query,
+                tools=get_all_gemini_tools(include_rag_tool=allow_rag_tool),
+            )
         except Exception as e:
             logger.error(f"RAG tool 執行失敗，改走一般 Gemini 回覆: {e}", exc_info=True)
             return await self.gemini_service.generate_response(user_text)

@@ -8,10 +8,10 @@ from app.services.RAG.vector_search import MongoVectorSearchReader, VectorSearch
 mongodb_url = os.getenv("MONGODB_URL")
 
 _gemini_service = GeminiService()
-_health_classifier = HealthClassifier()
+_health_classifier = HealthClassifier(gemini_service=_gemini_service)
 _line_message_service = LineMessageService(
     gemini_service=_gemini_service,
-    health_classifier=_health_classifier,
+    health_classifier=_health_classifier,             
 )
 _vector_search_config = VectorSearchConfig.from_settings()
 _vector_search_reader = MongoVectorSearchReader(_vector_search_config)

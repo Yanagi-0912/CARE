@@ -22,5 +22,3 @@ class ValidationResult:
 @dataclass
 class ClassificationResult:
     is_health_related: bool
-    confidence: float = 0.0
-    category: Optional[str] = None

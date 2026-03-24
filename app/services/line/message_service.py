@@ -128,7 +128,8 @@ class LineMessageService:
             return False
 
 
+_line_gemini_service = GeminiService()
 line_message_service = LineMessageService(
-    gemini_service=GeminiService(),
-    health_classifier=HealthClassifier(),
+    gemini_service=_line_gemini_service,
+    health_classifier=HealthClassifier(gemini_service=_line_gemini_service),
 )

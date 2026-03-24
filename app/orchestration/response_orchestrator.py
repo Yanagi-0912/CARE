@@ -1,6 +1,7 @@
 import logging
 
-from app.services.gemini import GeminiResult, GeminiService, HealthClassifier
+from app.services.gemini import GeminiResult, GeminiService
+from app.services.guardrail import GuardrailService
 from app.services.RAG.retrieval import RagAnswerService
 from app.tools.registry import get_all_gemini_tools
 
@@ -11,19 +12,19 @@ class ResponseOrchestrator:
     def __init__(
         self,
         gemini_service: GeminiService,
-        health_classifier: HealthClassifier,
+        guardrail_service: GuardrailService,
         rag_answer_service: RagAnswerService,
     ) -> None:
         self.gemini_service = gemini_service
-        self.health_classifier = health_classifier
+        self.guardrail_service = guardrail_service
         self.rag_answer_service = rag_answer_service
 
-    async def route_response(self, user_text: str) -> GeminiResult:
-        classification = await self.health_classifier.classify(user_text)
+    async def orchestrate_response(self, user_text: str) -> GeminiResult:
+        allow_rag_tool = await self.guardrail_service.allow_rag_tool(user_text)
         result = await self.gemini_service.generate_response(
             user_text,
             tools=get_all_gemini_tools(
-                include_rag_tool=classification.is_health_related
+                include_rag_tool=allow_rag_tool
             ),
         )
 
@@ -32,10 +33,6 @@ class ResponseOrchestrator:
 
         if result.function_name != "get_rag_answer":
             return result
-
-        if not classification.is_health_related:
-            logger.warning("偵測到非健康問題嘗試呼叫 RAG tool，改走一般 Gemini 回覆")
-            return await self.gemini_service.generate_response(user_text)
 
         query = str(result.function_args.get("query") or user_text).strip()
         try:

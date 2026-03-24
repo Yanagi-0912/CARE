@@ -3,6 +3,7 @@ import os
 
 from app.services.gemini import GeminiService, HealthClassifier
 from app.orchestration import ResponseOrchestrator
+from app.services.guardrail import GuardrailService
 from app.services.RAG.retrieval import RagAnswerService
 from app.services.line.message_service import LineMessageService
 from app.services.RAG.shared.vector_search import (
@@ -14,6 +15,7 @@ mongodb_url = os.getenv("MONGODB_URL")
 
 _gemini_service = GeminiService()
 _health_classifier = HealthClassifier(gemini_service=_gemini_service)
+_guardrail_service = GuardrailService(gemini_service=_gemini_service)
 _vector_search_config = VectorSearchConfig.from_settings()
 _vector_search_reader = MongoVectorSearchReader(_vector_search_config)
 _rag_answer_service = RagAnswerService(
@@ -22,7 +24,7 @@ _rag_answer_service = RagAnswerService(
 )
 _response_orchestrator = ResponseOrchestrator(
     gemini_service=_gemini_service,
-    health_classifier=_health_classifier,
+    guardrail_service=_guardrail_service,
     rag_answer_service=_rag_answer_service,
 )
 _line_message_service = LineMessageService(
@@ -43,6 +45,10 @@ def get_gemini_service() -> GeminiService:
 
 def get_health_classifier() -> HealthClassifier:
     return _health_classifier
+
+
+def get_guardrail_service() -> GuardrailService:
+    return _guardrail_service
 
 
 def get_line_message_service() -> LineMessageService:

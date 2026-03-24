@@ -3,8 +3,8 @@ import logging
 from app.services.gemini import GeminiService
 from app.services.RAG.client import embed_query
 from app.services.RAG.shared.vector_search import MongoVectorSearchReader
-from app.tools.registry import get_all_gemini_tools
 
+from .errors import RagNoHitsError
 from .retriever import search_similar_chunks
 
 logger = logging.getLogger(__name__)
@@ -33,11 +33,7 @@ class RagAnswerService:
                 context_lines.append(f"{idx}. {text}")
 
         if not context_lines:
-            fallback = await self.gemini_service.generate_response(
-                user_text,
-                tools=get_all_gemini_tools(),
-            )
-            return fallback.text or "抱歉，我目前找不到相關資料，請稍後再試。"
+            raise RagNoHitsError(user_text)
 
         rag_prompt = (
             "請根據以下檢索到的醫療知識內容回答使用者問題。"

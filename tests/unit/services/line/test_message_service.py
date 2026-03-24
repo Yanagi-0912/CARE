@@ -64,4 +64,3 @@ async def test_process_fallback_on_value_error(mock_send_reply):
     message_sent = mock_send_reply.call_args[0][1]
     assert "抱歉" in message_sent and "API 錯誤" in message_sent
 
-

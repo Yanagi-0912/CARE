@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
 from app.services.gemini import GeminiService, GeminiHttpError
 
 
@@ -42,6 +43,52 @@ async def test_generate_response_returns_text_on_success(
 
     assert result.text == "AI 回覆內容"
     assert post.called  # 確定 generate_response 有去呼叫 post
+
+
+@pytest.mark.asyncio
+async def test_generate_response_returns_validation_error_without_api_call(
+    mock_settings, mock_http_client
+):
+    response = MagicMock()
+    response.status_code = 200
+    post = mock_http_client(response)
+
+    result = await GeminiService().generate_response("   ")
+
+    assert result.text == "請輸入訊息內容，不能為空白。"
+    assert result.is_function_call is False
+    assert not post.called
+
+
+@pytest.mark.asyncio
+async def test_generate_response_returns_function_call_from_model(
+    mock_settings, mock_http_client
+):
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [
+                        {
+                            "functionCall": {
+                                "name": "request_location",
+                                "args": {},
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+    mock_http_client(response)
+
+    result = await GeminiService().generate_response("附近哪裡有醫院")
+
+    assert result.is_function_call is True
+    assert result.function_name == "request_location"
+    assert result.function_args == {}
 
 
 @pytest.mark.asyncio

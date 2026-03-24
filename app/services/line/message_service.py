@@ -30,7 +30,7 @@ class LineMessageService:
     ) -> bool:
         try:
             logger.info(f"Processing message from user {user_id}: {user_text[:50]}...")
-            result = await self.response_orchestrator.route_response(user_text)
+            result = await self.response_orchestrator.orchestrate_response(user_text)
 
             if result.is_function_call and result.function_name == "request_location":
                 return await self.send_location_quick_reply(reply_token, user_id)

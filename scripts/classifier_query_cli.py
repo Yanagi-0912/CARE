@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 load_dotenv(_PROJECT_ROOT / ".env")
 
-from app.dependencies import get_health_classifier
+from app.dependencies import get_guardrail_service
 
 
 async def main() -> None:
@@ -21,12 +21,12 @@ async def main() -> None:
         print("問題不能為空。", file=sys.stderr)
         sys.exit(1)
 
-    classifier = get_health_classifier()
-    result = await classifier.classify(question)
+    guardrail = get_guardrail_service()
+    is_health_related = await guardrail.allow_rag_tool(question)
 
     output = {
         "question": question,
-        "is_health_related": result.is_health_related,
+        "is_health_related": is_health_related,
     }
     print(json.dumps(output, ensure_ascii=False, indent=2))
 

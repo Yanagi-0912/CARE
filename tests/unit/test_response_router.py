@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from app.services.gemini import ClassificationResult, GeminiResult
+from app.services.gemini import GeminiResult
 from app.orchestration.response_orchestrator import ResponseOrchestrator
 
 
@@ -9,19 +9,17 @@ from app.orchestration.response_orchestrator import ResponseOrchestrator
 async def test_route_response_text_uses_gemini_directly():
     gemini_service = MagicMock()
     gemini_service.generate_response = AsyncMock(return_value=GeminiResult(text="一般回覆"))
-    health_classifier = MagicMock()
-    health_classifier.classify = AsyncMock(
-        return_value=ClassificationResult(is_health_related=False)
-    )
+    guardrail_service = MagicMock()
+    guardrail_service.allow_rag_tool = AsyncMock(return_value=False)
     rag_answer_service = MagicMock()
 
     orchestrator = ResponseOrchestrator(
         gemini_service=gemini_service,
-        health_classifier=health_classifier,
+        guardrail_service=guardrail_service,
         rag_answer_service=rag_answer_service,
     )
 
-    result = await orchestrator.route_response("今天天氣如何")
+    result = await orchestrator.orchestrate_response("今天天氣如何")
     assert result.text == "一般回覆"
 
 
@@ -34,20 +32,18 @@ async def test_route_response_calls_rag_tool():
             function_args={"query": "我有高血壓要注意什麼"},
         )
     )
-    health_classifier = MagicMock()
-    health_classifier.classify = AsyncMock(
-        return_value=ClassificationResult(is_health_related=True)
-    )
+    guardrail_service = MagicMock()
+    guardrail_service.allow_rag_tool = AsyncMock(return_value=True)
     rag_answer_service = MagicMock()
     rag_answer_service.answer = AsyncMock(return_value="RAG 回覆")
 
     orchestrator = ResponseOrchestrator(
         gemini_service=gemini_service,
-        health_classifier=health_classifier,
+        guardrail_service=guardrail_service,
         rag_answer_service=rag_answer_service,
     )
 
-    result = await orchestrator.route_response("我有高血壓要注意什麼")
+    result = await orchestrator.orchestrate_response("我有高血壓要注意什麼")
 
     assert result.text == "RAG 回覆"
 
@@ -61,20 +57,18 @@ async def test_route_response_rag_tool_fallbacks_to_gemini_when_rag_fails():
             GeminiResult(text="一般回覆"),
         ]
     )
-    health_classifier = MagicMock()
-    health_classifier.classify = AsyncMock(
-        return_value=ClassificationResult(is_health_related=True)
-    )
+    guardrail_service = MagicMock()
+    guardrail_service.allow_rag_tool = AsyncMock(return_value=True)
     rag_answer_service = MagicMock()
     rag_answer_service.answer = AsyncMock(side_effect=RuntimeError("RAG failed"))
 
     orchestrator = ResponseOrchestrator(
         gemini_service=gemini_service,
-        health_classifier=health_classifier,
+        guardrail_service=guardrail_service,
         rag_answer_service=rag_answer_service,
     )
 
-    result = await orchestrator.route_response("我有高血壓要注意什麼")
+    result = await orchestrator.orchestrate_response("我有高血壓要注意什麼")
     assert result.text == "一般回覆"
 
 
@@ -82,19 +76,17 @@ async def test_route_response_rag_tool_fallbacks_to_gemini_when_rag_fails():
 async def test_route_response_non_health_disables_rag_tool():
     gemini_service = MagicMock()
     gemini_service.generate_response = AsyncMock(return_value=GeminiResult(text="一般回覆"))
-    health_classifier = MagicMock()
-    health_classifier.classify = AsyncMock(
-        return_value=ClassificationResult(is_health_related=False)
-    )
+    guardrail_service = MagicMock()
+    guardrail_service.allow_rag_tool = AsyncMock(return_value=False)
     rag_answer_service = MagicMock()
 
     orchestrator = ResponseOrchestrator(
         gemini_service=gemini_service,
-        health_classifier=health_classifier,
+        guardrail_service=guardrail_service,
         rag_answer_service=rag_answer_service,
     )
 
-    result = await orchestrator.route_response("今天天氣如何")
+    result = await orchestrator.orchestrate_response("今天天氣如何")
     assert result.text == "一般回覆"
     gemini_service.generate_response.assert_awaited_once()
     _, kwargs = gemini_service.generate_response.await_args

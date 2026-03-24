@@ -28,7 +28,9 @@ class UserSessionStore:
 
 session_store = UserSessionStore()
 
-NO_FACILITY_MESSAGE = "抱歉，您附近 1 公里內暫時找不到醫療院所資料。\n功能仍在建置中，敬請期待！"
+NO_FACILITY_MESSAGE = (
+    "抱歉，您附近 1 公里內暫時找不到醫療院所資料。\n功能仍在建置中，敬請期待！"
+)
 
 
 def format_facility_list(facilities: list[MedicalFacility]) -> str:
@@ -36,9 +38,7 @@ def format_facility_list(facilities: list[MedicalFacility]) -> str:
     lines = [f"為您找到附近 {len(facilities)} 間醫療院所：\n"]
     for i, f in enumerate(facilities, 1):
         dist = (
-            f"（{f.distance_meters:.0f} 公尺）"
-            if f.distance_meters is not None
-            else ""
+            f"（{f.distance_meters:.0f} 公尺）" if f.distance_meters is not None else ""
         )
         lines.append(f"{i}. {f.name}{dist}\n   {f.address}")
     return "\n".join(lines)
@@ -90,21 +90,21 @@ class MedicalService:
             f"Searching hospitals near ({lat}, {lng}) "
             f"within {radius_meters}m, limit={limit}"
         )
-        
+
         collection = MongoDBManager.get_medical_collection()
-        
+
         pipeline = [
             {
                 "$geoNear": {
                     "near": {"type": "Point", "coordinates": [lng, lat]},
                     "distanceField": "distance_calculated",
                     "maxDistance": radius_meters,
-                    "spherical": True
+                    "spherical": True,
                 }
             },
-            {"$limit": limit}
+            {"$limit": limit},
         ]
-        
+
         results = []
         try:
             # 透過 async for 尋訪游標
@@ -117,13 +117,13 @@ class MedicalService:
                     address=doc.get("address", "暫無地址資訊"),
                     phone=doc.get("phone") or "暫無聯絡電話",
                     type=doc.get("type", "醫療院所"),
-                    distance_meters=doc.get("distance_calculated", 0.0)
+                    distance_meters=doc.get("distance_calculated", 0.0),
                 )
                 results.append(facility)
-                
+
         except Exception as e:
             logger.error(f"MongoDB geospatial query failed: {e}", exc_info=True)
-            
+
         return results
 
 

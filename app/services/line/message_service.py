@@ -9,10 +9,9 @@ from linebot.v3.messaging import (
     QuickReplyItem,
     LocationAction,
 )
-from app.services.gemini import GeminiService, HealthClassifier
+from app.orchestration import ResponseOrchestrator
 from app.services.line.token_manager import line_token_manager
 from app.services.medical.medical_service import medical_service
-from app.tools.registry import get_all_gemini_tools
 import logging
 
 logger = logging.getLogger(__name__)
@@ -21,11 +20,9 @@ logger = logging.getLogger(__name__)
 class LineMessageService:
     def __init__(
         self,
-        gemini_service: GeminiService,
-        health_classifier: HealthClassifier,
+        response_orchestrator: ResponseOrchestrator,
     ):
-        self.gemini_service = gemini_service
-        self.health_classifier = health_classifier
+        self.response_orchestrator = response_orchestrator
         logger.info("LineMessageService initialized with Gemini AI")
 
     async def process_and_reply(
@@ -33,9 +30,7 @@ class LineMessageService:
     ) -> bool:
         try:
             logger.info(f"Processing message from user {user_id}: {user_text[:50]}...")
-            result = await self.gemini_service.generate_response(
-                user_text, tools=get_all_gemini_tools()
-            )
+            result = await self.response_orchestrator.orchestrate_response(user_text)
 
             if result.is_function_call and result.function_name == "request_location":
                 return await self.send_location_quick_reply(reply_token, user_id)
@@ -126,9 +121,3 @@ class LineMessageService:
         except Exception as e:
             logger.error(f"Failed to send error reply: {e}")
             return False
-
-
-line_message_service = LineMessageService(
-    gemini_service=GeminiService(),
-    health_classifier=HealthClassifier(),
-)

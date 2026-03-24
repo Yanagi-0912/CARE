@@ -12,8 +12,9 @@ from dotenv import load_dotenv
 
 load_dotenv(_PROJECT_ROOT / ".env")
 
-from app.services.RAG.embedding_gemini import embed_query
-from app.services.RAG.retriever import search_similar_chunks
+from app.dependencies import get_vector_search_reader
+from app.services.RAG.client import embed_query
+from app.services.RAG.retrieval import search_similar_chunks
 
 
 async def main() -> None:
@@ -24,7 +25,7 @@ async def main() -> None:
         sys.exit(1)
 
     vec = await embed_query(question)
-    out = await search_similar_chunks(vec)
+    out = await search_similar_chunks(vec, reader=get_vector_search_reader())
     print(json.dumps(out, ensure_ascii=False, indent=2))
 
 

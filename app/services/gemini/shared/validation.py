@@ -1,6 +1,6 @@
 import re
 import logging
-from app.services.gemini.types import ValidationResult
+from app.services.gemini.shared.types import ValidationResult
 
 logger = logging.getLogger(__name__)
 
@@ -12,17 +12,21 @@ _SYMBOL_ONLY_PATTERN = re.compile(r"^[\s\W]+$", re.UNICODE)
 
 
 def validate_user_input(text: str) -> ValidationResult:
-  #使用者輸入不能為空
+    # 使用者輸入不能為空
     if not text or not text.strip():
         logger.warning("Validation failed: empty input")
-        return ValidationResult(is_valid=False, error_message="請輸入訊息內容，不能為空白。")
+        return ValidationResult(
+            is_valid=False, error_message="請輸入訊息內容，不能為空白。"
+        )
 
     stripped = text.strip()
 
     # 長度下限
     if len(stripped) < MIN_INPUT_LENGTH:
         logger.warning(f"Validation failed: input too short ({len(stripped)} chars)")
-        return ValidationResult(is_valid=False, error_message="訊息內容太短，請提供更多資訊。")
+        return ValidationResult(
+            is_valid=False, error_message="訊息內容太短，請提供更多資訊。"
+        )
 
     # 長度上限
     if len(stripped) > MAX_INPUT_LENGTH:
@@ -35,6 +39,8 @@ def validate_user_input(text: str) -> ValidationResult:
     # 純符號 / 純標點
     if _SYMBOL_ONLY_PATTERN.match(stripped):
         logger.warning("Validation failed: symbol-only input")
-        return ValidationResult(is_valid=False, error_message="請輸入有意義的文字內容。")
+        return ValidationResult(
+            is_valid=False, error_message="請輸入有意義的文字內容。"
+        )
 
     return ValidationResult(is_valid=True)

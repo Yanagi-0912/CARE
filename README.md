@@ -109,6 +109,45 @@ pytest           # 或 pytest tests/ -v
 uvicorn app.main:app --port 8000 --reload --reload-exclude venv
 ```
 
+## Tool-First 開發規範（重要）
+
+為了避免流程分散與重複邏輯，本專案統一採用 **Tool-First** 寫法。新增 AI 能力時請遵守以下原則：
+
+- **先宣告工具，不直接在 service 硬寫分流**
+  - 在 `app/tools/` 新增或擴充 tool declaration（名稱、描述、參數 schema）。
+  - 例如：`app/tools/rag_tools.py`、`app/tools/medical_tools.py`。
+
+- **由 registry 統一管理工具清單**
+  - 在 `app/tools/registry.py` 的 `get_all_gemini_tools(...)` 統一組裝。
+  - 需要 guardrail 時，用參數控制是否暴露特定工具（例如 `include_rag_tool`）。
+
+- **Gemini client 只做通訊與解析，不做業務決策**
+  - `app/services/gemini/client/service.py` 只負責：
+    - 呼叫 Gemini API
+    - 解析 `functionCall` / text
+    - 錯誤處理與資料驗證
+  - 不在這層做 RAG 分流、商業規則判斷。
+
+- **Orchestrator 負責接住 functionCall 並分派執行**
+  - `app/orchestration/response_orchestrator.py` 是唯一工具調度入口。
+  - 根據 `function_name` 呼叫對應 service（如 `RagAnswerService`）。
+
+- **Guardrail 獨立成 service**
+  - `app/services/guardrail/service.py` 負責「工具前置判斷」。
+  - 先做 guardrail，再決定哪些 tools 可提供給模型。
+
+- **Line / Router 層不處理 AI 分流細節**
+  - `message_service`、`event_handler` 只做通道協調與 I/O，不寫模型決策邏輯。
+
+### 標準流程
+
+1. 使用者訊息進入 `LineMessageService`
+2. 交給 `ResponseOrchestrator`
+3. `GuardrailService` 判斷是否允許 RAG tool
+4. `GeminiService.generate_response(..., tools=...)`
+5. 若回傳 `functionCall`，由 `ResponseOrchestrator` 分派到對應 service
+6. 回傳最終文字給 LINE
+
 ## n8n workflow 多媒體處理功能
 
 1.首先使用docker啟動n8n，docker預設運行在 ``http://localhost:5678/``上，local asr 與 file parser兩服務分別運行在 port 8200 和 8100 上。

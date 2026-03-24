@@ -9,12 +9,9 @@ from linebot.v3.messaging import (
     QuickReplyItem,
     LocationAction,
 )
-from app.orchestration import ResponseRouter
+from app.orchestration import ResponseOrchestrator
 from app.services.line.token_manager import line_token_manager
 from app.services.medical.medical_service import medical_service
-from app.services.gemini import GeminiService, HealthClassifier
-from app.services.RAG.shared.vector_search import MongoVectorSearchReader, VectorSearchConfig
-from app.services.RAG.retrieval import RagAnswerService
 import logging
 
 logger = logging.getLogger(__name__)
@@ -23,9 +20,9 @@ logger = logging.getLogger(__name__)
 class LineMessageService:
     def __init__(
         self,
-        response_router: ResponseRouter,
+        response_orchestrator: ResponseOrchestrator,
     ):
-        self.response_router = response_router
+        self.response_orchestrator = response_orchestrator
         logger.info("LineMessageService initialized with Gemini AI")
 
     async def process_and_reply(
@@ -33,7 +30,7 @@ class LineMessageService:
     ) -> bool:
         try:
             logger.info(f"Processing message from user {user_id}: {user_text[:50]}...")
-            result = await self.response_router.route_response(user_text)
+            result = await self.response_orchestrator.route_response(user_text)
 
             if result.is_function_call and result.function_name == "request_location":
                 return await self.send_location_quick_reply(reply_token, user_id)
@@ -124,21 +121,3 @@ class LineMessageService:
         except Exception as e:
             logger.error(f"Failed to send error reply: {e}")
             return False
-
-
-_line_gemini_service = GeminiService()
-_line_health_classifier = HealthClassifier(gemini_service=_line_gemini_service)
-_line_vector_search_config = VectorSearchConfig.from_settings()
-_line_vector_search_reader = MongoVectorSearchReader(_line_vector_search_config)
-_line_rag_answer_service = RagAnswerService(
-    gemini_service=_line_gemini_service,
-    vector_search_reader=_line_vector_search_reader,
-)
-_line_response_router = ResponseRouter(
-    gemini_service=_line_gemini_service,
-    health_classifier=_line_health_classifier,
-    rag_answer_service=_line_rag_answer_service,
-)
-line_message_service = LineMessageService(
-    response_router=_line_response_router,
-)

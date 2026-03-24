@@ -17,11 +17,11 @@ def mock_send_reply():
 @pytest.mark.asyncio
 async def test_process_success(mock_send_reply):
     # router 回傳一般文字（非 function call）
-    mock_response_router = MagicMock()
-    mock_response_router.route_response = AsyncMock(
+    mock_response_orchestrator = MagicMock()
+    mock_response_orchestrator.route_response = AsyncMock(
         return_value=GeminiResult(text="AI 回覆")
     )
-    svc = LineMessageService(response_router=mock_response_router)
+    svc = LineMessageService(response_orchestrator=mock_response_orchestrator)
     ok = await svc.process_and_reply("你好", "reply_token_xxx")
 
     assert ok is True
@@ -37,11 +37,11 @@ async def test_process_function_call_request_location(mock_send_reply):
         new_callable=AsyncMock,
         return_value=True,
     ) as mock_quick_reply:
-        mock_response_router = MagicMock()
-        mock_response_router.route_response = AsyncMock(
+        mock_response_orchestrator = MagicMock()
+        mock_response_orchestrator.route_response = AsyncMock(
             return_value=GeminiResult(function_name="request_location")
         )
-        svc = LineMessageService(response_router=mock_response_router)
+        svc = LineMessageService(response_orchestrator=mock_response_orchestrator)
         ok = await svc.process_and_reply(
             "附近有醫院嗎", "reply_token_xxx", user_id="U123"
         )
@@ -54,9 +54,9 @@ async def test_process_function_call_request_location(mock_send_reply):
 @pytest.mark.asyncio
 async def test_process_fallback_on_value_error(mock_send_reply):
     # router 發生錯誤時，應送出 fallback 訊息
-    mock_response_router = MagicMock()
-    mock_response_router.route_response = AsyncMock(side_effect=ValueError("API 錯誤"))
-    svc = LineMessageService(response_router=mock_response_router)
+    mock_response_orchestrator = MagicMock()
+    mock_response_orchestrator.route_response = AsyncMock(side_effect=ValueError("API 錯誤"))
+    svc = LineMessageService(response_orchestrator=mock_response_orchestrator)
     ok = await svc.process_and_reply("hi", "reply_token_xxx")
 
     assert ok is False

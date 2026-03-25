@@ -8,6 +8,9 @@ from app.services.guardrail import GuardrailService
 from app.services.RAG.client import embed_query
 from app.services.RAG.retrieval import RagAnswerService, search_similar_chunks
 from app.services.line.message_service import LineMessageService
+from app.services.line.messaging_client import LineMessagingClient
+from app.services.line.token_manager import line_token_manager
+from app.services.medical.medical_service import medical_service
 from app.services.RAG.shared.vector_search import (
     MongoVectorSearchReader,
     VectorSearchConfig,
@@ -33,8 +36,12 @@ _response_orchestrator = ResponseOrchestrator(
     guardrail_service=_guardrail_service,
     rag_answer_service=_rag_answer_service,
 )
+
 _line_message_service = LineMessageService(
     response_orchestrator=_response_orchestrator,
+    token_provider=line_token_manager,
+    medical_service=medical_service,
+    line_messaging_client=LineMessagingClient(),
 )
 
 

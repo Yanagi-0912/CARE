@@ -3,6 +3,7 @@
 
 from typing import TYPE_CHECKING, Any
 
+from app.services.line.messaging_client import LineMessagingClient
 from app.services.line.token_manager import LineTokenManager, line_token_manager
 
 if TYPE_CHECKING:
@@ -11,6 +12,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "LineMessageService",
+    "LineMessagingClient",
     "LineTokenManager",
     "line_token_manager",
     "LineEventContext",

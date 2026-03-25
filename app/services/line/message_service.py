@@ -1,8 +1,5 @@
-from typing import Optional
+from typing import Optional, Protocol
 from linebot.v3.messaging import (
-    Configuration,
-    ApiClient,
-    MessagingApi,
     ReplyMessageRequest,
     TextMessage,
     QuickReply,
@@ -10,19 +7,35 @@ from linebot.v3.messaging import (
     LocationAction,
 )
 from app.orchestration import ResponseOrchestrator
-from app.services.line.token_manager import line_token_manager
-from app.services.medical.medical_service import medical_service
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+class TokenProvider(Protocol):
+    def get_token(self) -> str: ...
+
+
+class MedicalServiceLike(Protocol):
+    def request_location(self, user_id: str) -> dict: ...
+
+
+class LineMessagingClientLike(Protocol):
+    def reply_message(self, access_token: str, request: ReplyMessageRequest) -> None: ...
 
 
 class LineMessageService:
     def __init__(
         self,
         response_orchestrator: ResponseOrchestrator,
+        token_provider: TokenProvider,
+        medical_service: MedicalServiceLike,
+        line_messaging_client: LineMessagingClientLike,
     ):
         self.response_orchestrator = response_orchestrator
+        self.token_provider = token_provider
+        self.medical_service = medical_service
+        self.line_messaging_client = line_messaging_client
         logger.info("LineMessageService initialized with Gemini AI")
 
     async def process_and_reply(
@@ -57,16 +70,14 @@ class LineMessageService:
         self, reply_token: str, message_text: str, user_id: Optional[str] = None
     ) -> bool:
         try:
-            access_token = line_token_manager.get_token()
-            line_config = Configuration(access_token=access_token)
-            with ApiClient(line_config) as api_client:
-                line_bot_api = MessagingApi(api_client)
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=reply_token,
-                        messages=[TextMessage(text=message_text)],
-                    )
-                )
+            access_token = self.token_provider.get_token()
+            self.line_messaging_client.reply_message(
+                access_token,
+                ReplyMessageRequest(
+                    reply_token=reply_token,
+                    messages=[TextMessage(text=message_text)],
+                ),
+            )
 
             logger.info(f"Message sent to LINE for user {user_id}")
             return True
@@ -83,28 +94,24 @@ class LineMessageService:
         self, reply_token: str, user_id: Optional[str] = None
     ) -> bool:
         try:
-            medical_service.request_location(user_id)
-            access_token = line_token_manager.get_token()
-            line_config = Configuration(access_token=access_token)
-            with ApiClient(line_config) as api_client:
-                line_bot_api = MessagingApi(api_client)
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=reply_token,
-                        messages=[
-                            TextMessage(
-                                text="請傳送您目前的位置資訊，我將為您尋找附近的醫療院所 🏥",
-                                quick_reply=QuickReply(
-                                    items=[
-                                        QuickReplyItem(
-                                            action=LocationAction(label="傳送位置資訊")
-                                        )
-                                    ]
-                                ),
-                            )
-                        ],
+            self.medical_service.request_location(user_id)
+            access_token = self.token_provider.get_token()
+            request = ReplyMessageRequest(
+                reply_token=reply_token,
+                messages=[
+                    TextMessage(
+                        text="請傳送您目前的位置資訊，我將為您尋找附近的醫療院所 ",
+                        quick_reply=QuickReply(
+                            items=[
+                                QuickReplyItem(
+                                    action=LocationAction(label="傳送位置資訊")
+                                )
+                            ]
+                        ),
                     )
-                )
+                ],
+            )
+            self.line_messaging_client.reply_message(access_token, request)
             logger.info(f"Location quick reply sent to user {user_id}")
             return True
 

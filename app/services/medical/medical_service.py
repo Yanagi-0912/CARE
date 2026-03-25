@@ -29,7 +29,7 @@ class UserSessionStore:
 session_store = UserSessionStore()
 
 NO_FACILITY_MESSAGE = (
-    "抱歉，您附近 1 公里內暫時找不到醫療院所資料。\n功能仍在建置中，敬請期待！"
+    "抱歉，您附近 5 公里內暫時找不到醫療院所資料。\n功能仍在建置中，敬請期待！"
 )
 
 
@@ -83,7 +83,7 @@ class MedicalService:
         self,
         lat: float,
         lng: float,
-        radius_meters: int = 1000,
+        radius_meters: int = 5000,
         limit: int = 5,
     ) -> list[MedicalFacility]:
         logger.info(

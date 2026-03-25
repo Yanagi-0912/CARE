@@ -1,6 +1,10 @@
+import logging
+
 from fastapi import FastAPI
 from app.routers.line.webhook import router as line_router
 from app.routers.system import router as system_router
+
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI()
 

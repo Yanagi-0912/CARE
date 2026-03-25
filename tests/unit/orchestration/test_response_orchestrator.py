@@ -5,7 +5,7 @@ from app.services.gemini import GeminiResult
 from app.services.RAG.retrieval import RagNoHitsError
 from app.orchestration.response_orchestrator import ResponseOrchestrator
 
-
+#這邊是在測說我的流程有沒有邏輯錯誤
 @pytest.mark.asyncio
 async def test_route_response_text_uses_gemini_directly():
     gemini_service = MagicMock()

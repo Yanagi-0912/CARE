@@ -1,8 +1,9 @@
 import logging
+from collections.abc import Awaitable, Callable
 
 from app.services.gemini import GeminiService
 from app.services.RAG.client import embed_query
-from app.services.RAG.shared.vector_search import MongoVectorSearchReader
+from app.services.RAG.shared.vector_search import ChunkHits, MongoVectorSearchReader
 
 from .errors import RagNoHitsError
 from .retriever import search_similar_chunks
@@ -15,15 +16,21 @@ class RagAnswerService:
         self,
         gemini_service: GeminiService,
         vector_search_reader: MongoVectorSearchReader,
+        embed_query_fn: Callable[[str], Awaitable[list[float]]] = embed_query,
+        search_similar_chunks_fn: Callable[
+            [list[float], MongoVectorSearchReader], Awaitable[ChunkHits]
+        ] = search_similar_chunks,
     ) -> None:
         self.gemini_service = gemini_service
         self.vector_search_reader = vector_search_reader
+        self.embed_query_fn = embed_query_fn
+        self.search_similar_chunks_fn = search_similar_chunks_fn
 
     async def answer(self, user_text: str) -> str:
-        query_vec = await embed_query(user_text)
-        hits = await search_similar_chunks(
+        query_vec = await self.embed_query_fn(user_text)
+        hits = await self.search_similar_chunks_fn(
             query_vec,
-            reader=self.vector_search_reader,
+            self.vector_search_reader,
         )
 
         context_lines = []

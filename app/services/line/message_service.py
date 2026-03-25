@@ -7,6 +7,11 @@ from linebot.v3.messaging import (
     LocationAction,
 )
 from app.orchestration import ResponseOrchestrator
+from app.services.line.shared.errors import LineTokenError, LineValidationError
+from app.services.line.shared.validation import (
+    validate_reply_context,
+    validate_text_message,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -42,8 +47,12 @@ class LineMessageService:
         self, user_text: str, reply_token: str, user_id: Optional[str] = None
     ) -> bool:
         try:
+            validate_reply_context(reply_token, user_id)
+            normalized_text = validate_text_message(user_text)
             logger.info(f"Processing message from user {user_id}: {user_text[:50]}...")
-            result = await self.response_orchestrator.orchestrate_response(user_text)
+            result = await self.response_orchestrator.orchestrate_response(
+                normalized_text
+            )
 
             if result.is_function_call and result.function_name == "request_location":
                 return await self.send_location_quick_reply(reply_token, user_id)
@@ -54,6 +63,16 @@ class LineMessageService:
             if success:
                 logger.info(f"Successfully processed and replied to user {user_id}")
             return success
+
+        except LineValidationError as e:
+            logger.warning(f"Validation in process_and_reply: {e}")
+            await self.send_line_reply(reply_token, str(e), user_id)
+            return False
+
+        except LineTokenError as e:
+            logger.error(f"LINE token error in process_and_reply: {e}")
+            await self._send_error_reply(reply_token, user_id)
+            return False
 
         except ValueError as e:
             logger.error(f"API error in process_and_reply: {e}")
@@ -70,6 +89,7 @@ class LineMessageService:
         self, reply_token: str, message_text: str, user_id: Optional[str] = None
     ) -> bool:
         try:
+            validate_reply_context(reply_token, user_id)
             access_token = self.token_provider.get_token()
             self.line_messaging_client.reply_message(
                 access_token,
@@ -82,7 +102,11 @@ class LineMessageService:
             logger.info(f"Message sent to LINE for user {user_id}")
             return True
 
-        except ValueError as e:
+        except LineValidationError as e:
+            logger.warning(f"Validation in send_line_reply: {e}")
+            return False
+
+        except LineTokenError as e:
             logger.error(f"Failed to get LINE token: {e}")
             return False
 
@@ -94,6 +118,7 @@ class LineMessageService:
         self, reply_token: str, user_id: Optional[str] = None
     ) -> bool:
         try:
+            validate_reply_context(reply_token, user_id)
             self.medical_service.request_location(user_id)
             access_token = self.token_provider.get_token()
             request = ReplyMessageRequest(
@@ -114,6 +139,14 @@ class LineMessageService:
             self.line_messaging_client.reply_message(access_token, request)
             logger.info(f"Location quick reply sent to user {user_id}")
             return True
+
+        except LineValidationError as e:
+            logger.warning(f"Validation in send_location_quick_reply: {e}")
+            return False
+
+        except LineTokenError as e:
+            logger.error(f"LINE token error in send_location_quick_reply: {e}")
+            return False
 
         except Exception as e:
             logger.error(f"Failed to send location quick reply: {e}", exc_info=True)

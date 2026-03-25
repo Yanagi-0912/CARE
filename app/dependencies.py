@@ -6,10 +6,10 @@ from app.services.gemini import GeminiService
 from app.orchestration import ResponseOrchestrator
 from app.services.guardrail import GuardrailService
 from app.services.RAG.client import embed_query
-from app.services.RAG.retrieval import RagAnswerService, search_similar_chunks
+from app.services.RAG.retrieval import search_similar_chunks
+from app.services.RAG.services import RagAnswerService
 from app.services.line.message_service import LineMessageService
-from app.services.line.messaging_client import LineMessagingClient
-from app.services.line.token_manager import line_token_manager
+from app.services.line.client import LineMessagingClient, LineTokenManager
 from app.services.medical.medical_service import medical_service
 from app.services.RAG.shared.vector_search import (
     MongoVectorSearchReader,
@@ -37,9 +37,14 @@ _response_orchestrator = ResponseOrchestrator(
     rag_answer_service=_rag_answer_service,
 )
 
+_line_token_manager = LineTokenManager(
+    channel_id=settings.LINE_CHANNEL_ID,
+    channel_secret=settings.LINE_CHANNEL_SECRET,
+)
+
 _line_message_service = LineMessageService(
     response_orchestrator=_response_orchestrator,
-    token_provider=line_token_manager,
+    token_provider=_line_token_manager,
     medical_service=medical_service,
     line_messaging_client=LineMessagingClient(),
 )
@@ -62,6 +67,10 @@ def get_guardrail_service() -> GuardrailService:
 
 def get_line_message_service() -> LineMessageService:
     return _line_message_service
+
+
+def get_line_token_manager() -> LineTokenManager:
+    return _line_token_manager
 
 
 def get_vector_search_config() -> VectorSearchConfig:

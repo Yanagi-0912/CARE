@@ -1,5 +1,5 @@
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import pytest
 
 from app.services.media.mutimedia_processor import MediaProcessorService
@@ -44,8 +44,13 @@ def svc():
 
 @pytest.mark.asyncio
 async def test_process_media_success_and_cleanup(svc, tmp_path):
+    token_mgr = MagicMock()
+    token_mgr.get_token.return_value = "t"
     with patch("app.services.media.mutimedia_processor.TMP_DIR", tmp_path), \
-         patch("app.services.media.mutimedia_processor.line_token_manager.get_token", return_value="t"), \
+         patch(
+             "app.services.media.mutimedia_processor.get_line_token_manager",
+             return_value=token_mgr,
+         ), \
          patch("app.services.media.mutimedia_processor.requests.get", return_value=FakeGetResponse(
              headers={"Content-Type": "image/jpeg", "Content-Length": "3"},
              chunks=[b"abc"],

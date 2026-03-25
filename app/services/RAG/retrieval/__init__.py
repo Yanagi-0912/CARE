@@ -1,6 +1,6 @@
 from .errors import RagNoHitsError
-from .rag_answer_service import RagAnswerService
 from .retriever import search_similar_chunks
+from app.services.RAG.services.rag_answer_service import RagAnswerService
 
 __all__ = [
     "RagAnswerService",

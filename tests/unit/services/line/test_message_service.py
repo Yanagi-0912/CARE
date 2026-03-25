@@ -27,7 +27,7 @@ async def test_process_success(mock_send_reply):
         medical_service=MagicMock(),
         line_messaging_client=MagicMock(),
     )
-    ok = await svc.process_and_reply("你好", "reply_token_xxx")
+    ok = await svc.process_and_reply("你好", "reply_token_xxx", user_id="U123")
 
     assert ok is True
     mock_send_reply.assert_called_once()
@@ -72,7 +72,7 @@ async def test_process_fallback_on_value_error(mock_send_reply):
         medical_service=MagicMock(),
         line_messaging_client=MagicMock(),
     )
-    ok = await svc.process_and_reply("hi", "reply_token_xxx")
+    ok = await svc.process_and_reply("hi", "reply_token_xxx", user_id="U123")
 
     assert ok is False
     mock_send_reply.assert_called_once()

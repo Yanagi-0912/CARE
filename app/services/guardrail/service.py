@@ -4,7 +4,7 @@ from app.services.guardrail.config import (
     CLASSIFICATION_GENERATION_CONFIG,
     CLASSIFICATION_PROMPT,
 )
-from app.services.gemini.client.service import GeminiService
+from app.services.gemini import GeminiService
 from app.services.gemini.shared.errors import (
     GeminiHttpError,
     GeminiNetworkError,

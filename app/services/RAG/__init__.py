@@ -1,4 +1,4 @@
-# RAG：client（embedding）、retrieval（檢索流程）、shared（共用型別與 reader）。
+# RAG：client（embedding_client）、services（RagAnswerService）、retrieval（retriever）、shared（reader）。
 
 from .client import embed_document, embed_query
 from .retrieval import search_similar_chunks

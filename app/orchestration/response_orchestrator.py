@@ -2,7 +2,8 @@ import logging
 
 from app.services.gemini import GeminiResult, GeminiService
 from app.services.guardrail import GuardrailService
-from app.services.RAG.retrieval import RagAnswerService, RagNoHitsError
+from app.services.RAG.retrieval import RagNoHitsError
+from app.services.RAG.services import RagAnswerService
 from app.tools.registry import get_all_gemini_tools
 
 logger = logging.getLogger(__name__)

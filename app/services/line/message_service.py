@@ -17,10 +17,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class TokenProvider(Protocol):
+class TokenProvider(Protocol): # protocol 是來規範 傳進來的 di 要怎麼使用 建立一個role 給他
     def get_token(self) -> str: ...
-
-
+'''get_token() 的實作在 LineTokenManager；
+LineMessageService 只依賴 TokenProvider 介面，
+具體實例由 dependencies.py 建立並注入，避免 service 耦合具體類別與建立邏輯。
+'''
 class MedicalServiceLike(Protocol):
     def request_location(self, user_id: str) -> dict: ...
 
@@ -30,10 +32,13 @@ class LineMessagingClientLike(Protocol):
 
 
 class LineMessageService:
-    def __init__(
+    def __init__( # 依賴注入點
+    #有沒有想過不直接使用 token_manager 的class 就好
+    # 因為要 low coupling 不要使用 直接依賴 token_manager 的class 會造成耦合
+    
         self,
         response_orchestrator: ResponseOrchestrator,
-        token_provider: TokenProvider,
+        token_provider: TokenProvider, 
         medical_service: MedicalServiceLike,
         line_messaging_client: LineMessagingClientLike,
     ):

@@ -50,7 +50,7 @@ class MedicalService:
         logger.info(f"Generating location request payload for user {user_id}")
         payload: dict[str, Any] = {
             "type": "text",
-            "text": "請傳送您目前的位置資訊，我將為您尋找附近的醫療院所 🏥",
+            "text": "請傳送您目前的位置資訊，我將為您尋找附近的醫療院所 ",
             "quickReply": {
                 "items": [
                     {

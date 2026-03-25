@@ -4,7 +4,7 @@ from datetime import datetime
 import mimetypes
 from app.core.config import settings
 from app.services.gemini import GeminiService
-from app.services.line.token_manager import line_token_manager
+from app.dependencies import get_line_token_manager
 import logging
 import secrets
 import requests
@@ -107,7 +107,7 @@ class MediaProcessorService:
         TMP_DIR.mkdir(parents=True, exist_ok=True)
         target = TMP_DIR / f"{safe_type}_{timestamp}_{random_suffix}{extension}"
 
-        access_token = line_token_manager.get_token()
+        access_token = get_line_token_manager().get_token()
         headers = {"Authorization": f"Bearer {access_token}"}
         content_url = LINE_MESSAGE_CONTENT_API.format(message_id=media_message_id)
 

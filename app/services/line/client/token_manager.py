@@ -2,15 +2,16 @@ import requests
 import logging
 from datetime import datetime, timedelta
 from typing import Optional
-from app.core.config import settings
+
+from app.services.line.shared.errors import LineTokenError
 
 logger = logging.getLogger(__name__)
 
 
 class LineTokenManager:
-    def __init__(self):
-        self.channel_id = settings.LINE_CHANNEL_ID
-        self.channel_secret = settings.LINE_CHANNEL_SECRET
+    def __init__(self, channel_id: str | None, channel_secret: str | None):
+        self.channel_id = channel_id
+        self.channel_secret = channel_secret
 
         # Token 緩存
         self._access_token: Optional[str] = None
@@ -36,7 +37,7 @@ class LineTokenManager:
 
     def _fetch_new_token(self) -> str:
         if not self.channel_id or not self.channel_secret:
-            raise ValueError(
+            raise LineTokenError(
                 "無法獲取 token：LINE_CHANNEL_ID 和 LINE_CHANNEL_SECRET 未設定。"
                 "請在 .env 檔案中設定這些變數。"
             )
@@ -58,7 +59,7 @@ class LineTokenManager:
             expires_in = result.get("expires_in", 2592000)  # 預設 30 天 (秒)
 
             if not access_token:
-                raise ValueError("API 返回的響應中沒有 access_token")
+                raise LineTokenError("API 返回的響應中沒有 access_token")
 
             # 緩存 token 和過期時間
             self._access_token = access_token
@@ -76,7 +77,4 @@ class LineTokenManager:
             if hasattr(e, "response") and e.response is not None:
                 error_msg += f"\nAPI 響應: {e.response.text}"
             logger.error(error_msg)
-            raise ValueError(error_msg)
-
-
-line_token_manager = LineTokenManager()
+            raise LineTokenError(error_msg) from e

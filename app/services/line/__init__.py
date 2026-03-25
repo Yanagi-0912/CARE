@@ -3,8 +3,7 @@
 
 from typing import TYPE_CHECKING, Any
 
-from app.services.line.messaging_client import LineMessagingClient
-from app.services.line.token_manager import LineTokenManager, line_token_manager
+from app.services.line.client import LineMessagingClient, LineTokenManager
 
 if TYPE_CHECKING:
     from app.services.line.event_handler import LineEventContext
@@ -14,12 +13,16 @@ __all__ = [
     "LineMessageService",
     "LineMessagingClient",
     "LineTokenManager",
-    "line_token_manager",
+    "get_line_token_manager",
     "LineEventContext",
 ]
 
 
 def __getattr__(name: str) -> Any:
+    if name == "get_line_token_manager":
+        from app.dependencies import get_line_token_manager
+
+        return get_line_token_manager
     if name == "LineMessageService":
         from app.services.line.message_service import LineMessageService
 

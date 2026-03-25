@@ -3,10 +3,9 @@ from collections.abc import Awaitable, Callable
 
 from app.services.gemini import GeminiService
 from app.services.RAG.client import embed_query
+from app.services.RAG.retrieval.errors import RagNoHitsError
+from app.services.RAG.retrieval.retriever import search_similar_chunks
 from app.services.RAG.shared.vector_search import ChunkHits, MongoVectorSearchReader
-
-from .errors import RagNoHitsError
-from .retriever import search_similar_chunks
 
 logger = logging.getLogger(__name__)
 

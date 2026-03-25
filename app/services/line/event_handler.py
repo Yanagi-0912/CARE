@@ -25,6 +25,11 @@ from app.services.medical.medical_service import (
     NO_FACILITY_MESSAGE,
 )
 from app.services.media.mutimedia_processor import media_processor_service
+from app.services.line.shared.validation import (
+    validate_media_message,
+    validate_reply_context,
+    validate_text_message,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -45,14 +50,8 @@ AUDIO_FILE_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".opus", ".aac
 
 class LineEventContext:
     def __init__(self, event: MessageEvent):
-        if not event.reply_token:
-            logger.warning("Missing reply_token in LINE event")
-            raise ValueError("Missing reply_token in LINE event")
-
         user_id = getattr(event.source, "user_id", None)
-        if not user_id:
-            logger.warning("Missing user_id in LINE event")
-            raise ValueError("Missing user_id in LINE event")
+        validate_reply_context(event.reply_token, user_id)
 
         self.event = event
         self.reply_token = event.reply_token
@@ -82,10 +81,11 @@ class LineEventContext:
     async def handle_text_message(self) -> None:
         logger.info(f"Received text message event from user {self.user_id}")
         message = cast(TextMessageContent, self.message)
+        user_text = validate_text_message(message.text)
 
         line_message_service = get_line_message_service()
         await line_message_service.process_and_reply(
-            user_text=message.text,
+            user_text=user_text,
             reply_token=self.reply_token,
             user_id=self.user_id,
         )
@@ -116,6 +116,7 @@ class LineEventContext:
 
         if media_type == "file" and file_name:
             media_type = self._infer_media_type_from_file_name(file_name)
+        validate_media_message(media_id, media_type, file_name)
 
         log_msg = f"Received {media_type} message event from user {self.user_id}"
         if file_name:

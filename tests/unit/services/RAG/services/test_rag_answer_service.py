@@ -22,7 +22,7 @@ if "motor.motor_asyncio" not in sys.modules:
     sys.modules["motor.motor_asyncio"] = motor_asyncio_module
 
 from app.services.RAG.retrieval import RagNoHitsError
-from app.services.RAG.retrieval.rag_answer_service import RagAnswerService
+from app.services.RAG.services import RagAnswerService
 
 
 @pytest.mark.asyncio

@@ -4,7 +4,7 @@ import sys
 
 import requests
 
-from app.services.line.token_manager import line_token_manager
+from app.dependencies import get_line_token_manager
 
 
 def main() -> None:
@@ -16,7 +16,7 @@ def main() -> None:
 
     # 2. 透過 LineTokenManager 取得 channel access token
     try:
-        access_token = line_token_manager.get_token()
+        access_token = get_line_token_manager().get_token()
     except Exception as e:
         print(f"取得 LINE access token 失敗：{e}")
         sys.exit(1)

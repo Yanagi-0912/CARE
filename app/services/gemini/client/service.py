@@ -1,5 +1,7 @@
 import httpx
-from app.core.config import settings
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
+
 from app.services.gemini.shared.errors import (
     GeminiHttpError,
     GeminiNetworkError,
@@ -14,9 +16,22 @@ logger = logging.getLogger(__name__)
 
 
 class GeminiService:
-    def __init__(self):
-        self.api_key = settings.GEMINI_API_KEY
-        self.model_name = settings.MODEL_NAME
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model_name: str,
+        http_client_factory: Callable[
+            [float], AbstractAsyncContextManager[httpx.AsyncClient]
+        ] | None = None,
+    ):
+        self.api_key = api_key
+        self.model_name = model_name
+        self.http_client_factory = (
+            http_client_factory
+            if http_client_factory is not None
+            else (lambda timeout: httpx.AsyncClient(timeout=timeout))
+        )
         self.api_url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
             f"{self.model_name}:generateContent"
@@ -34,7 +49,7 @@ class GeminiService:
     async def generate_content(self, payload: dict, timeout: float = 300.0) -> dict:
         """呼叫 Gemini generateContent 並回傳原始 JSON。"""
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with self.http_client_factory(timeout) as client:
                 response = await client.post(
                     self.api_url,
                     params={"key": self.api_key},

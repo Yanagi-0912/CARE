@@ -47,7 +47,10 @@ class MediaProcessorService:
     """Handle incoming LINE text and send replies based on Gemini tool output."""
 
     def __init__(self):
-        self.gemini_service = GeminiService()
+        self.gemini_service = GeminiService(
+            api_key=settings.GEMINI_API_KEY,
+            model_name=settings.MODEL_NAME,
+        )
         logger.info("MediaProcessorService initialized with Gemini AI")
 
     async def process_media(

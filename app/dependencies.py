@@ -48,9 +48,9 @@ _line_message_service = LineMessageService(
 
 def get_mongodb_url() -> str:
     """提供 MongoDB 連線字串做為依賴注入"""
-    if not mongodb_url:
+    if not _mongodb_url:
         raise ValueError("未設定 MONGODB_URL 參數")
-    return mongodb_url
+    return _mongodb_url
 
 
 def get_gemini_service() -> GeminiService:

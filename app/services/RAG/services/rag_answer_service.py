@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Awaitable, Callable
+from typing import Protocol
 
 from app.services.gemini import GeminiService
 from app.services.RAG.client import embed_query
@@ -10,24 +10,48 @@ from app.services.RAG.shared.vector_search import ChunkHits, MongoVectorSearchRe
 logger = logging.getLogger(__name__)
 
 
+class EmbedQueryProvider(Protocol):
+    async def embed_query(self, text: str) -> list[float]: ...
+
+
+class SimilarChunkSearcher(Protocol):
+    async def search_similar_chunks(
+        self, query_embedding: list[float], reader: MongoVectorSearchReader
+    ) -> ChunkHits: ...
+
+
+class GeminiEmbedQueryProvider:
+    async def embed_query(self, text: str) -> list[float]:
+        return await embed_query(text)
+
+
+class VectorSearchChunkSearcher:
+    async def search_similar_chunks(
+        self, query_embedding: list[float], reader: MongoVectorSearchReader
+    ) -> ChunkHits:
+        return await search_similar_chunks(query_embedding, reader)
+
+
 class RagAnswerService:
     def __init__(
         self,
         gemini_service: GeminiService,
         vector_search_reader: MongoVectorSearchReader,
-        embed_query_fn: Callable[[str], Awaitable[list[float]]] = embed_query,
-        search_similar_chunks_fn: Callable[
-            [list[float], MongoVectorSearchReader], Awaitable[ChunkHits]
-        ] = search_similar_chunks,
+        embed_query_provider: EmbedQueryProvider | None = None,
+        similar_chunk_searcher: SimilarChunkSearcher | None = None,
     ) -> None:
         self.gemini_service = gemini_service
         self.vector_search_reader = vector_search_reader
-        self.embed_query_fn = embed_query_fn
-        self.search_similar_chunks_fn = search_similar_chunks_fn
+        self.embed_query_provider = (
+            embed_query_provider or GeminiEmbedQueryProvider()
+        )
+        self.similar_chunk_searcher = (
+            similar_chunk_searcher or VectorSearchChunkSearcher()
+        )
 
     async def answer(self, user_text: str) -> str:
-        query_vec = await self.embed_query_fn(user_text)
-        hits = await self.search_similar_chunks_fn(
+        query_vec = await self.embed_query_provider.embed_query(user_text)
+        hits = await self.similar_chunk_searcher.search_similar_chunks(
             query_vec,
             self.vector_search_reader,
         )

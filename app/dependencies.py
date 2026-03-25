@@ -5,8 +5,6 @@ from app.core.config import settings
 from app.services.gemini import GeminiService
 from app.orchestration import ResponseOrchestrator
 from app.services.guardrail import GuardrailService
-from app.services.RAG.client import embed_query
-from app.services.RAG.retrieval import search_similar_chunks
 from app.services.RAG.services import RagAnswerService
 from app.services.line.message_service import LineMessageService
 from app.services.line.client import LineMessagingClient, LineTokenManager
@@ -16,7 +14,7 @@ from app.services.RAG.shared.vector_search import (
     VectorSearchConfig,
 )
 
-mongodb_url = os.getenv("MONGODB_URL")
+_mongodb_url = os.getenv("MONGODB_URL")
 
 _gemini_service = GeminiService(
     api_key=settings.GEMINI_API_KEY,
@@ -28,8 +26,6 @@ _vector_search_reader = MongoVectorSearchReader(_vector_search_config)
 _rag_answer_service = RagAnswerService(
     gemini_service=_gemini_service,
     vector_search_reader=_vector_search_reader,
-    embed_query_fn=embed_query,
-    search_similar_chunks_fn=search_similar_chunks,
 )
 _response_orchestrator = ResponseOrchestrator(
     gemini_service=_gemini_service,

@@ -29,8 +29,10 @@ from app.services.RAG.services import RagAnswerService
 async def test_answer_uses_hits_to_build_rag_prompt():
     gemini_service = MagicMock()
     gemini_service.generate_response = AsyncMock(return_value=GeminiResult(text="RAG 回覆"))
-    embed_query_fn = AsyncMock(return_value=[0.1, 0.2])
-    search_similar_chunks_fn = AsyncMock(
+    embed_query_provider = MagicMock()
+    embed_query_provider.embed_query = AsyncMock(return_value=[0.1, 0.2])
+    similar_chunk_searcher = MagicMock()
+    similar_chunk_searcher.search_similar_chunks = AsyncMock(
         return_value=[
             {"id": "1", "text": "高血壓建議低鈉飲食", "score": 0.9},
             {"id": "2", "text": "規律量血壓", "score": 0.8},
@@ -40,13 +42,13 @@ async def test_answer_uses_hits_to_build_rag_prompt():
     svc = RagAnswerService(
         gemini_service=gemini_service,
         vector_search_reader=vector_search_reader,
-        embed_query_fn=embed_query_fn,
-        search_similar_chunks_fn=search_similar_chunks_fn,
+        embed_query_provider=embed_query_provider,
+        similar_chunk_searcher=similar_chunk_searcher,
     )
     result = await svc.answer("我有高血壓要注意什麼")
 
     assert result == "RAG 回覆"
-    search_similar_chunks_fn.assert_awaited_once_with(
+    similar_chunk_searcher.search_similar_chunks.assert_awaited_once_with(
         [0.1, 0.2], vector_search_reader
     )
     prompt = gemini_service.generate_response.await_args.args[0]
@@ -63,8 +65,10 @@ async def test_answer_uses_hits_to_build_rag_prompt():
 async def test_answer_uses_default_message_when_model_returns_empty_text(model_text):
     gemini_service = MagicMock()
     gemini_service.generate_response = AsyncMock(return_value=GeminiResult(text=model_text))
-    embed_query_fn = AsyncMock(return_value=[0.1, 0.2])
-    search_similar_chunks_fn = AsyncMock(
+    embed_query_provider = MagicMock()
+    embed_query_provider.embed_query = AsyncMock(return_value=[0.1, 0.2])
+    similar_chunk_searcher = MagicMock()
+    similar_chunk_searcher.search_similar_chunks = AsyncMock(
         return_value=[
             {"id": "1", "text": "高血壓建議低鈉飲食", "score": 0.9},
         ]
@@ -72,8 +76,8 @@ async def test_answer_uses_default_message_when_model_returns_empty_text(model_t
     svc = RagAnswerService(
         gemini_service=gemini_service,
         vector_search_reader=MagicMock(),
-        embed_query_fn=embed_query_fn,
-        search_similar_chunks_fn=search_similar_chunks_fn,
+        embed_query_provider=embed_query_provider,
+        similar_chunk_searcher=similar_chunk_searcher,
     )
     result = await svc.answer("我有高血壓要注意什麼")
 
@@ -84,13 +88,15 @@ async def test_answer_uses_default_message_when_model_returns_empty_text(model_t
 async def test_answer_raises_rag_no_hits_when_no_hits():
     gemini_service = MagicMock()
     gemini_service.generate_response = AsyncMock()
-    embed_query_fn = AsyncMock(return_value=[0.1, 0.2])
-    search_similar_chunks_fn = AsyncMock(return_value=[])
+    embed_query_provider = MagicMock()
+    embed_query_provider.embed_query = AsyncMock(return_value=[0.1, 0.2])
+    similar_chunk_searcher = MagicMock()
+    similar_chunk_searcher.search_similar_chunks = AsyncMock(return_value=[])
     svc = RagAnswerService(
         gemini_service=gemini_service,
         vector_search_reader=MagicMock(),
-        embed_query_fn=embed_query_fn,
-        search_similar_chunks_fn=search_similar_chunks_fn,
+        embed_query_provider=embed_query_provider,
+        similar_chunk_searcher=similar_chunk_searcher,
     )
     with pytest.raises(RagNoHitsError):
         await svc.answer("我有高血壓要注意什麼")
@@ -102,12 +108,13 @@ async def test_answer_raises_rag_no_hits_when_no_hits():
 async def test_answer_raises_when_embed_query_fails():
     gemini_service = MagicMock()
     gemini_service.generate_response = AsyncMock()
-    embed_query_fn = AsyncMock(side_effect=RuntimeError("embed failed"))
+    embed_query_provider = MagicMock()
+    embed_query_provider.embed_query = AsyncMock(side_effect=RuntimeError("embed failed"))
     svc = RagAnswerService(
         gemini_service=gemini_service,
         vector_search_reader=MagicMock(),
-        embed_query_fn=embed_query_fn,
-        search_similar_chunks_fn=AsyncMock(),
+        embed_query_provider=embed_query_provider,
+        similar_chunk_searcher=MagicMock(),
     )
 
     with pytest.raises(RuntimeError, match="embed failed"):
@@ -118,13 +125,17 @@ async def test_answer_raises_when_embed_query_fails():
 async def test_answer_raises_when_search_fails():
     gemini_service = MagicMock()
     gemini_service.generate_response = AsyncMock()
-    embed_query_fn = AsyncMock(return_value=[0.1, 0.2])
-    search_similar_chunks_fn = AsyncMock(side_effect=RuntimeError("search failed"))
+    embed_query_provider = MagicMock()
+    embed_query_provider.embed_query = AsyncMock(return_value=[0.1, 0.2])
+    similar_chunk_searcher = MagicMock()
+    similar_chunk_searcher.search_similar_chunks = AsyncMock(
+        side_effect=RuntimeError("search failed")
+    )
     svc = RagAnswerService(
         gemini_service=gemini_service,
         vector_search_reader=MagicMock(),
-        embed_query_fn=embed_query_fn,
-        search_similar_chunks_fn=search_similar_chunks_fn,
+        embed_query_provider=embed_query_provider,
+        similar_chunk_searcher=similar_chunk_searcher,
     )
     with pytest.raises(RuntimeError, match="search failed"):
         await svc.answer("我有高血壓要注意什麼")

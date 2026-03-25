@@ -121,12 +121,10 @@ uvicorn app.main:app --port 8000 --reload --reload-exclude venv
   - 在 `app/tools/registry.py` 的 `get_all_gemini_tools(...)` 統一組裝。
   - 需要 guardrail 時，用參數控制是否暴露特定工具（例如 `include_rag_tool`）。
 
-- **Gemini client 只做通訊與解析，不做業務決策**
-  - `app/services/gemini/client/service.py` 只負責：
-    - 呼叫 Gemini API
-    - 解析 `functionCall` / text
-    - 錯誤處理與資料驗證
-  - 不在這層做 RAG 分流、商業規則判斷。
+- **Gemini 邊界層與應用層分離**
+  - `app/services/gemini/client/gemini_client.py`：只負責 HTTP 呼叫與錯誤映射（`GeminiHttpError` 等）。
+  - `app/services/gemini/services/gemini_service.py`：負責輸入驗證、組 payload、呼叫 client、解析 `functionCall` / 文字。
+  - 不在 HTTP client 內做 RAG 分流或商業規則判斷。
 
 - **Orchestrator 負責接住 functionCall 並分派執行**
   - `app/orchestration/response_orchestrator.py` 是唯一工具調度入口。
@@ -147,6 +145,45 @@ uvicorn app.main:app --port 8000 --reload --reload-exclude venv
 4. `GeminiService.generate_response(..., tools=...)`
 5. 若回傳 `functionCall`，由 `ResponseOrchestrator` 分派到對應 service
 6. 回傳最終文字給 LINE
+
+## 架構與 SRP：`client`／`service`／`shared` 基本寫法
+
+本專案在 `app/services/` 底下，大致依 **單一職責（SRP）** 用資料夾區分「邊界」「用例」「共用」，方便擴充與測試。以下為約定俗成的角色，**不必每個模組三種都有**，但命名與放置位置應一致。
+
+### `client/`（對外邊界層）
+
+- **職責**：與**外部系統**通訊——HTTP、gRPC、官方 SDK、OAuth／token 端點。
+- **原則**：輸入輸出偏「技術面」；錯誤可映射成專案自訂例外（例如 `GeminiHttpError`、`LineTokenError`），**不寫業務流程**（例如不決定要不要走 RAG）。
+- **本專案範例**
+  - `app/services/gemini/client/`：`GeminiClient`、`PromptConfig`（請求 URL 與系統提示設定）。
+  - `app/services/RAG/client/`：`embedding_client.py`（呼叫 Gemini Embedding API）。
+  - `app/services/line/client/`：`LineMessagingClient`、`LineTokenManager`（LINE SDK 與 channel token）。
+
+### `services/`（應用／用例層）
+
+- **職責**：一條完整 **use case**：驗證（若屬此流程）、組資料、呼叫一個或多個 `client`、組結果、決定錯誤要怎麼呈現給上層。
+- **原則**：類名常見 `*Service`；**不**在這裡直接實作低階 HTTP（應委派給 `client`）。
+- **本專案範例**
+  - `app/services/gemini/services/gemini_service.py`：`GeminiService`。
+  - `app/services/RAG/services/rag_answer_service.py`：`RagAnswerService`（embed → 向量檢索 → 組 prompt → `GeminiService`）。
+- **備註**：部分領域用其他資料夾表達「流程」亦屬同層概念，例如 `app/services/RAG/retrieval/` 的 `retriever`（檢索步驟），與 `services/` 的 `RagAnswerService` 分工不同步驟。
+
+### `shared/`（模組內共用）
+
+- **職責**：同一大模組（例如 `gemini`、`line`、`RAG`）內**多處會用到**的項目：型別、錯誤基底、純驗證函式、常數、與業務無關的小工具。
+- **原則**：**不**放「只對單一 HTTP 端點說話」的程式（那屬於 `client`）；**不**放整條業務主流程（那屬於 `services` 或 orchestrator）。
+- **本專案範例**
+  - `app/services/gemini/shared/`：`GeminiResult`、共用驗證、錯誤型別、parser。
+  - `app/services/line/shared/`：`validation.py`、`errors.py`（`LineValidationError`、`LineTokenError` 等）。
+  - `app/services/RAG/shared/`：向量搜尋 reader、型別、pipeline 設定等。
+
+### 組裝與進入點
+
+- **`app/dependencies.py`** 作為 **composition root**：在此建立單例、注入 `client`／`service`，對外只暴露 `get_*()`。業務程式應**優先**由這裡取得依賴，避免在模組載入時隱性建立全域實例。
+
+### 單元測試目錄對齊
+
+- `tests/unit/services/` 底下的子路徑盡量與 `app/services/` 對應（例如 `gemini/client/`、`gemini/services/`、`line/shared/`），方便對照維護。
 
 ## n8n workflow 多媒體處理功能
 

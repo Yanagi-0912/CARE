@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Request, Header, HTTPException
+from fastapi import APIRouter, Request, Header, HTTPException, Depends
 from linebot.v3.webhook import WebhookParser
 from linebot.v3.exceptions import InvalidSignatureError
-from app.services.line import LineEventContext
+from app.services.line.event_handler import LineEventHandler
+from app.services.line.shared.errors import LineValidationError
+from app.dependencies import get_line_event_handler
 from app.core.config import settings
 import logging
 
@@ -12,28 +14,27 @@ parser = WebhookParser(settings.LINE_CHANNEL_SECRET)
 
 
 @router.post("/callback")
-async def callback(request: Request, x_line_signature: str = Header(None)):
-    # 驗證是否包含 X-Line-Signature header
+async def callback(
+    request: Request,
+    x_line_signature: str = Header(None),
+    handler: LineEventHandler = Depends(get_line_event_handler),
+):
     if x_line_signature is None:
         logger.error("Missing X-Line-Signature header")
         raise HTTPException(status_code=400, detail="Missing X-Line-Signature header")
 
-    # 獲取請求 body
     body = await request.body()
     body_decoded = body.decode("utf-8")
 
     try:
-        # 驗證簽名並解析事件
         events = parser.parse(body_decoded, x_line_signature)
 
         for event in events:
             try:
-                event_context = LineEventContext(event)
-            except ValueError as e:
+                await handler.handle(event)
+            except LineValidationError as e:
                 logger.warning(f"跳過無效的 LINE 事件: {e}")
                 continue
-
-            await event_context.dispatch()
 
         logger.info("Webhook events processed successfully")
 

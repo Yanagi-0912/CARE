@@ -8,7 +8,8 @@ from app.services.guardrail import GuardrailService
 from app.services.RAG.services import RagAnswerService
 from app.services.line.message_service import LineMessageService
 from app.services.line.client import LineMessagingClient, LineTokenManager
-from app.services.medical.medical_service import medical_service
+from app.services.line.event_handler import LineEventHandler
+from app.services.medical.medical_service import MedicalService, medical_service
 from app.services.RAG.shared.vector_search import (
     MongoVectorSearchReader,
     VectorSearchConfig,
@@ -45,6 +46,11 @@ _line_message_service = LineMessageService(
     line_messaging_client=LineMessagingClient(),
 )
 
+_line_event_handler = LineEventHandler(
+    line_message_service=_line_message_service,
+    medical_service=medical_service,
+)
+
 
 def get_mongodb_url() -> str:
     """提供 MongoDB 連線字串做為依賴注入"""
@@ -69,8 +75,16 @@ def get_line_message_service() -> LineMessageService:
     return _line_message_service
 
 
+def get_line_event_handler() -> LineEventHandler:
+    return _line_event_handler
+
+
 def get_line_token_manager() -> LineTokenManager:
     return _line_token_manager
+
+
+def get_medical_service() -> MedicalService:
+    return medical_service
 
 
 def get_vector_search_config() -> VectorSearchConfig:

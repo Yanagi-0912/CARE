@@ -18,9 +18,7 @@ from linebot.v3.webhooks import (
     AudioMessageContent,
     FileMessageContent,
 )
-from app.dependencies import get_line_message_service
 from app.services.medical.medical_service import (
-    medical_service,
     format_facility_list,
     NO_FACILITY_MESSAGE,
 )
@@ -48,23 +46,26 @@ VIDEO_FILE_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 AUDIO_FILE_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".opus", ".aac"}
 
 
-class LineEventContext:
-    def __init__(self, event: MessageEvent):
+class LineEventHandler:
+    def __init__(
+        self,
+        line_message_service,
+        medical_service,
+    ):
+        self._line_message_service = line_message_service
+        self._medical_service = medical_service
+
+    async def handle(self, event: MessageEvent) -> None:
         user_id = getattr(event.source, "user_id", None)
         validate_reply_context(event.reply_token, user_id)
 
-        self.event = event
-        self.reply_token = event.reply_token
-        self.user_id = user_id
-        self.message = event.message
-
-    async def dispatch(self) -> None:
-        message = self.message
+        reply_token = event.reply_token
+        message = event.message
 
         if isinstance(message, TextMessageContent):
-            await self.handle_text_message()
+            await self._handle_text_message(message, reply_token, user_id)
         elif isinstance(message, LocationMessageContent):
-            await self.handle_location_message()
+            await self._handle_location_message(message, reply_token, user_id)
         elif isinstance(
             message,
             (
@@ -74,51 +75,53 @@ class LineEventContext:
                 FileMessageContent,
             ),
         ):
-            await self.handle_media_message()
+            await self._handle_media_message(message, reply_token, user_id)
         else:
             logger.warning(f"Unsupported message type: {type(message).__name__}")
 
-    async def handle_text_message(self) -> None:
-        logger.info(f"Received text message event from user {self.user_id}")
-        message = cast(TextMessageContent, self.message)
+    async def _handle_text_message(
+        self, message: TextMessageContent, reply_token: str, user_id: Optional[str]
+    ) -> None:
+        logger.info(f"Received text message event from user {user_id}")
         user_text = validate_text_message(message.text)
 
-        line_message_service = get_line_message_service()
-        await line_message_service.process_and_reply(
+        await self._line_message_service.process_and_reply(
             user_text=user_text,
-            reply_token=self.reply_token,
-            user_id=self.user_id,
+            reply_token=reply_token,
+            user_id=user_id,
         )
 
-    async def handle_location_message(self) -> None:
-        message = cast(LocationMessageContent, self.message)
+    async def _handle_location_message(
+        self, message: LocationMessageContent, reply_token: str, user_id: Optional[str]
+    ) -> None:
         lat: float = message.latitude
         lng: float = message.longitude
 
-        logger.info(f"Received location from user {self.user_id}: ({lat}, {lng})")
+        logger.info(f"Received location from user {user_id}: ({lat}, {lng})")
 
-        facilities = await medical_service.handle_location(self.user_id, lat, lng)
+        facilities = await self._medical_service.handle_location(user_id, lat, lng)
         if facilities is None:
             return
 
         reply_text = (
             format_facility_list(facilities) if facilities else NO_FACILITY_MESSAGE
         )
-        line_message_service = get_line_message_service()
-        await line_message_service.send_line_reply(
-            self.reply_token, reply_text, self.user_id
+        await self._line_message_service.send_line_reply(
+            reply_token, reply_text, user_id
         )
 
-    async def handle_media_message(self) -> None:
-        media_id = self.message.id
-        media_type = self.message.type
-        file_name = getattr(self.message, "file_name", None)
+    async def _handle_media_message(
+        self, message, reply_token: str, user_id: Optional[str]
+    ) -> None:
+        media_id = message.id
+        media_type = message.type
+        file_name = getattr(message, "file_name", None)
 
         if media_type == "file" and file_name:
             media_type = self._infer_media_type_from_file_name(file_name)
         validate_media_message(media_id, media_type, file_name)
 
-        log_msg = f"Received {media_type} message event from user {self.user_id}"
+        log_msg = f"Received {media_type} message event from user {user_id}"
         if file_name:
             log_msg += f": {file_name}"
         logger.info(log_msg)
@@ -127,17 +130,15 @@ class LineEventContext:
             media_message_id=media_id,
             user_media_type=media_type,
             source_file_name=file_name,
-            user_id=self.user_id,
+            user_id=user_id,
         )
 
-        line_message_service = get_line_message_service()
-        await line_message_service.process_and_reply(
+        await self._line_message_service.process_and_reply(
             user_text=f"以下為用戶傳送的{media_type}媒體內容：\n{media_content}",
-            reply_token=self.reply_token,
-            user_id=self.user_id,
+            reply_token=reply_token,
+            user_id=user_id,
         )
 
-    # 應用在media部分 根據副檔名推斷媒體類型
     @staticmethod
     def _infer_media_type_from_file_name(file_name: str) -> str:
         extension = Path(file_name).suffix.lower()

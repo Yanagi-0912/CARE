@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 from app.services.line.client import LineMessagingClient, LineTokenManager
 
 if TYPE_CHECKING:
-    from app.services.line.event_handler import LineEventContext
+    from app.services.line.event_handler import LineEventHandler
     from app.services.line.message_service import LineMessageService
 
 __all__ = [
@@ -14,7 +14,7 @@ __all__ = [
     "LineMessagingClient",
     "LineTokenManager",
     "get_line_token_manager",
-    "LineEventContext",
+    "LineEventHandler",
 ]
 
 
@@ -27,8 +27,8 @@ def __getattr__(name: str) -> Any:
         from app.services.line.message_service import LineMessageService
 
         return LineMessageService
-    if name == "LineEventContext":
-        from app.services.line.event_handler import LineEventContext
+    if name == "LineEventHandler":
+        from app.services.line.event_handler import LineEventHandler
 
-        return LineEventContext
+        return LineEventHandler
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -22,7 +22,7 @@ from app.services.medical.medical_service import (
     format_facility_list,
     NO_FACILITY_MESSAGE,
 )
-from app.services.media.mutimedia_processor import media_processor_service
+from app.services.line.shared.errors import LineValidationError
 from app.services.line.shared.validation import (
     validate_media_message,
     validate_reply_context,
@@ -57,27 +57,33 @@ class LineEventHandler:
 
     async def handle(self, event: MessageEvent) -> None:
         user_id = getattr(event.source, "user_id", None)
-        validate_reply_context(event.reply_token, user_id)
-
         reply_token = event.reply_token
-        message = event.message
+        try:
+            validate_reply_context(reply_token, user_id)
 
-        if isinstance(message, TextMessageContent):
-            await self._handle_text_message(message, reply_token, user_id)
-        elif isinstance(message, LocationMessageContent):
-            await self._handle_location_message(message, reply_token, user_id)
-        elif isinstance(
-            message,
-            (
-                ImageMessageContent,
-                VideoMessageContent,
-                AudioMessageContent,
-                FileMessageContent,
-            ),
-        ):
-            await self._handle_media_message(message, reply_token, user_id)
-        else:
-            logger.warning(f"Unsupported message type: {type(message).__name__}")
+            message = event.message
+
+            if isinstance(message, TextMessageContent):
+                await self._handle_text_message(message, reply_token, user_id)
+            elif isinstance(message, LocationMessageContent):
+                await self._handle_location_message(message, reply_token, user_id)
+            elif isinstance(
+                message,
+                (
+                    ImageMessageContent,
+                    VideoMessageContent,
+                    AudioMessageContent,
+                    FileMessageContent,
+                ),
+            ):
+                await self._handle_media_message(message, reply_token, user_id)
+            else:
+                logger.warning(f"Unsupported message type: {type(message).__name__}")
+        except LineValidationError as e:
+            logger.warning(f"LINE validation failed: {e}")
+            await self._line_message_service.send_line_reply(
+                reply_token, str(e), user_id
+            )
 
     async def _handle_text_message(
         self, message: TextMessageContent, reply_token: str, user_id: Optional[str]
@@ -125,6 +131,9 @@ class LineEventHandler:
         if file_name:
             log_msg += f": {file_name}"
         logger.info(log_msg)
+
+        # 延遲匯入，避免 event_handler → mutimedia_processor → dependencies 循環匯入
+        from app.services.media.mutimedia_processor import media_processor_service
 
         media_content = await media_processor_service.process_media(
             media_message_id=media_id,

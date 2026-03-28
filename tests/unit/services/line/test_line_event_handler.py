@@ -1,48 +1,65 @@
-import pytest
+"""LineEventHandler 單元測試（媒體副檔名推斷與 process_media 參數）"""
+
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from linebot.v3.webhooks import (
-    MessageEvent,
+    DeliveryContext,
     FileMessageContent,
     ImageMessageContent,
+    MessageEvent,
+    UserSource,
 )
-from app.services.line.event_handler import LineEventContext
+
+from app.services.line.event_handler import LineEventHandler
+
+
+def _message_event(
+    message,
+    *,
+    reply_token: str = "dummy_token",
+    user_id: str = "U12345",
+) -> MessageEvent:
+    return MessageEvent(
+        timestamp=1,
+        mode="active",
+        webhookEventId="01HZTEST000000000000000000",
+        deliveryContext=DeliveryContext(isRedelivery=False),
+        replyToken=reply_token,
+        source=UserSource(type="user", userId=user_id),
+        message=message,
+    )
 
 
 @pytest.fixture
-def mock_event():
-    event = MagicMock(spec=MessageEvent)
-    event.reply_token = "dummy_token"
-    source = MagicMock()
-    source.user_id = "U12345"
-    event.source = source
-    return event
-
-
-def _mock_line_service():
+def mock_line_message_service():
     svc = MagicMock()
     svc.process_and_reply = AsyncMock()
+    svc.send_line_reply = AsyncMock()
     return svc
 
 
-@pytest.mark.asyncio
-async def test_handle_media_message_infers_image(mock_event):
-    message = MagicMock(spec=FileMessageContent)
-    message.id = "M123"
-    message.type = "file"
-    message.file_name = "test.png"
-    mock_event.message = message
+@pytest.fixture
+def mock_medical_service():
+    return MagicMock()
 
-    context = LineEventContext(mock_event)
+
+@pytest.fixture
+def handler(mock_line_message_service, mock_medical_service):
+    return LineEventHandler(mock_line_message_service, mock_medical_service)
+
+
+@pytest.mark.asyncio
+async def test_handle_media_message_infers_image(handler, mock_line_message_service):
+    message = FileMessageContent(id="M123", fileName="test.png", fileSize=100)
+    event = _message_event(message)
 
     with patch(
-        "app.services.line.event_handler.media_processor_service.process_media",
+        "app.services.media.mutimedia_processor.media_processor_service.process_media",
         new_callable=AsyncMock,
         return_value="[processed]",
-    ) as mock_process, patch(
-        "app.services.line.event_handler.get_line_message_service",
-        return_value=_mock_line_service(),
-    ):
-        await context.handle_media_message()
+    ) as mock_process:
+        await handler.handle(event)
 
     mock_process.assert_called_once_with(
         media_message_id="M123",
@@ -50,27 +67,25 @@ async def test_handle_media_message_infers_image(mock_event):
         source_file_name="test.png",
         user_id="U12345",
     )
+    mock_line_message_service.process_and_reply.assert_called_once()
+    call_kw = mock_line_message_service.process_and_reply.call_args.kwargs
+    assert call_kw["reply_token"] == "dummy_token"
+    assert call_kw["user_id"] == "U12345"
+    assert "image" in call_kw["user_text"]
+    assert "[processed]" in call_kw["user_text"]
 
 
 @pytest.mark.asyncio
-async def test_handle_media_message_infers_video(mock_event):
-    message = MagicMock(spec=FileMessageContent)
-    message.id = "M124"
-    message.type = "file"
-    message.file_name = "demo.mp4"
-    mock_event.message = message
-
-    context = LineEventContext(mock_event)
+async def test_handle_media_message_infers_video(handler, mock_line_message_service):
+    message = FileMessageContent(id="M124", fileName="demo.mp4", fileSize=200)
+    event = _message_event(message)
 
     with patch(
-        "app.services.line.event_handler.media_processor_service.process_media",
+        "app.services.media.mutimedia_processor.media_processor_service.process_media",
         new_callable=AsyncMock,
         return_value="[processed]",
-    ) as mock_process, patch(
-        "app.services.line.event_handler.get_line_message_service",
-        return_value=_mock_line_service(),
-    ):
-        await context.handle_media_message()
+    ) as mock_process:
+        await handler.handle(event)
 
     mock_process.assert_called_once_with(
         media_message_id="M124",
@@ -81,24 +96,16 @@ async def test_handle_media_message_infers_video(mock_event):
 
 
 @pytest.mark.asyncio
-async def test_handle_media_message_infers_audio(mock_event):
-    message = MagicMock(spec=FileMessageContent)
-    message.id = "M125"
-    message.type = "file"
-    message.file_name = "voice.mp3"
-    mock_event.message = message
-
-    context = LineEventContext(mock_event)
+async def test_handle_media_message_infers_audio(handler, mock_line_message_service):
+    message = FileMessageContent(id="M125", fileName="voice.mp3", fileSize=300)
+    event = _message_event(message)
 
     with patch(
-        "app.services.line.event_handler.media_processor_service.process_media",
+        "app.services.media.mutimedia_processor.media_processor_service.process_media",
         new_callable=AsyncMock,
         return_value="[processed]",
-    ) as mock_process, patch(
-        "app.services.line.event_handler.get_line_message_service",
-        return_value=_mock_line_service(),
-    ):
-        await context.handle_media_message()
+    ) as mock_process:
+        await handler.handle(event)
 
     mock_process.assert_called_once_with(
         media_message_id="M125",
@@ -109,24 +116,16 @@ async def test_handle_media_message_infers_audio(mock_event):
 
 
 @pytest.mark.asyncio
-async def test_handle_media_message_unknown_file(mock_event):
-    message = MagicMock(spec=FileMessageContent)
-    message.id = "M126"
-    message.type = "file"
-    message.file_name = "document.pdf"
-    mock_event.message = message
-
-    context = LineEventContext(mock_event)
+async def test_handle_media_message_unknown_file(handler, mock_line_message_service):
+    message = FileMessageContent(id="M126", fileName="document.pdf", fileSize=400)
+    event = _message_event(message)
 
     with patch(
-        "app.services.line.event_handler.media_processor_service.process_media",
+        "app.services.media.mutimedia_processor.media_processor_service.process_media",
         new_callable=AsyncMock,
         return_value="[processed]",
-    ) as mock_process, patch(
-        "app.services.line.event_handler.get_line_message_service",
-        return_value=_mock_line_service(),
-    ):
-        await context.handle_media_message()
+    ) as mock_process:
+        await handler.handle(event)
 
     mock_process.assert_called_once_with(
         media_message_id="M126",
@@ -137,24 +136,20 @@ async def test_handle_media_message_unknown_file(mock_event):
 
 
 @pytest.mark.asyncio
-async def test_handle_media_message_native_image(mock_event):
-    message = MagicMock(spec=ImageMessageContent)
-    message.id = "M127"
-    message.type = "image"
-    message.file_name = None
-    mock_event.message = message
-
-    context = LineEventContext(mock_event)
+async def test_handle_media_message_native_image(handler, mock_line_message_service):
+    message = ImageMessageContent(
+        id="M127",
+        contentProvider={"type": "line"},
+        quoteToken="qt",
+    )
+    event = _message_event(message)
 
     with patch(
-        "app.services.line.event_handler.media_processor_service.process_media",
+        "app.services.media.mutimedia_processor.media_processor_service.process_media",
         new_callable=AsyncMock,
         return_value="[processed]",
-    ) as mock_process, patch(
-        "app.services.line.event_handler.get_line_message_service",
-        return_value=_mock_line_service(),
-    ):
-        await context.handle_media_message()
+    ) as mock_process:
+        await handler.handle(event)
 
     mock_process.assert_called_once_with(
         media_message_id="M127",

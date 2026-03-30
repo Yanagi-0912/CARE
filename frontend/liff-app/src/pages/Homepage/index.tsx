@@ -1,56 +1,46 @@
-import './index.css'
+import { useNavigate } from 'react-router-dom';
+import './index.css';
 
 function Homepage() {
-	return (
-		<main className="home">
-			<section className="home-hero">
-				<p className="home-kicker">CARE Assistant</p>
-				<h1>把照護與醫療資訊，整理成每一天都能用的決策</h1>
-				<p className="home-subtitle">
-					你的健康紀錄、衛教內容與提醒，集中在同一個入口。從症狀理解到下一步建議，都更清楚。
-				</p>
-				<div className="home-actions">
-					<button type="button" className="btn btn-primary">
-						立即開始
-					</button>
-					<button type="button" className="btn btn-ghost">
-						觀看介紹
-					</button>
-				</div>
-			</section>
+  const navigate = useNavigate();
 
-			<section className="home-grid" aria-label="CARE 主要功能">
-				<article className="feature-card">
-					<h2>智慧對話</h2>
-					<p>將日常健康問題轉成可行動的建議，包含追蹤重點與就醫提醒。</p>
-				</article>
-				<article className="feature-card">
-					<h2>整合紀錄</h2>
-					<p>彙整問答、症狀與檢索內容，建立持續可追蹤的個人健康脈絡。</p>
-				</article>
-				<article className="feature-card">
-					<h2>安心守門</h2>
-					<p>透過風險檢核與回應守則，降低錯誤解讀，提供更穩健的資訊支持。</p>
-				</article>
-			</section>
+  return (
+    <main className="home-container">
+      <section className="hero-section">
+        <h2>早安，今天想了解什麼？</h2>
+        <p>您的專屬健康與預約管理小幫手</p>
+      </section>
 
-			<section className="home-band" aria-label="延伸資源">
-				<div>
-					<p className="band-label">下一步</p>
-					<h3>把你的首頁逐步接上真實資料</h3>
-					<p>這是視覺初版，下一階段可串接你的 API 與 LIFF 流程。</p>
-				</div>
-				<a
-					className="band-link"
-					href="https://developers.line.biz/en/docs/liff/"
-					target="_blank"
-					rel="noopener noreferrer"
-				>
-					LIFF 文件
-				</a>
-			</section>
-		</main>
-	)
+      <section className="feature-grid">
+        <button 
+          className="feature-card health-card" 
+          onClick={() => navigate('/health')}
+        >
+          <div className="card-icon">🏥</div>
+          <h3>個人健康</h3>
+          <p>健康紀錄與醫院預約</p>
+        </button>
+
+        <button 
+          className="feature-card family-card" 
+          onClick={() => navigate('/family')}
+        >
+          <div className="card-icon">👨‍👩‍👧‍👦</div>
+          <h3>家庭介面</h3>
+          <p>管理長輩與家人狀況</p>
+        </button>
+
+        <button 
+          className="feature-card settings-card" 
+          onClick={() => navigate('/settings')}
+        >
+          <div className="card-icon">⚙️</div>
+          <h3>設定頁面</h3>
+          <p>系統偏好與通知管理</p>
+        </button>
+      </section>
+    </main>
+  );
 }
 
-export default Homepage
+export default Homepage;

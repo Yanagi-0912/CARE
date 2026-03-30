@@ -1,0 +1,151 @@
+:root {
+    --background-color: #f9fafb;
+    --primary-color: #0D9488;
+    --input-border: #e0e4ea;
+    --input-bg: #fff;
+    --label-color: #222;
+    --button-bg: var(--primary-color);
+    --button-text: #fff;
+    --button-hover-bg: #305b57;
+}
+
+/* 主內容區塊，寬度與 Header 完全一致 */
+.pageContainer {
+    background: var(--background-color);
+    min-height: 100vh;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 24px;
+    box-sizing: border-box;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 表單容器 */
+.formContainer {
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 40px 0 0 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: static;
+}
+
+/* 標題與欄位統一左對齊 */
+.formTitle {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-bottom: 32px;
+    text-align: left;
+    padding-left: 0;
+}
+
+.formGroup {
+    margin-bottom: 28px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 24px;
+    padding: 0;
+}
+
+
+
+.label {
+    color: var(--label-color);
+    font-weight: 600;
+    font-size: 1.5rem;
+    min-width: 200px;
+    margin-bottom: 0;
+}
+
+.input {
+    flex: 1;
+    min-width: 0;
+    max-width: 220px;
+    /* 新增最大寬度，讓欄位不會太長 */
+    padding: 12px 14px;
+    border: 1.5px solid var(--input-border);
+    border-radius: 8px;
+    background: var(--input-bg);
+    font-size: 1rem;
+    transition: border 0.2s;
+    box-sizing: border-box;
+}
+
+
+input.longInput,
+textarea.input.longInput {
+    max-width: 500px;
+}
+
+
+select.input {
+    max-width: 220px;
+    /* 下拉選單同樣限制最大寬度 */
+}
+
+.input:focus {
+    border-color: var(--primary-color);
+    outline: none;
+}
+
+.button {
+    width: 200px;
+    margin: 32px 0 0 0;
+    align-self: flex-end;
+    padding: 14px 0;
+    background: var(--button-bg);
+    color: var(--button-text);
+    border: none;
+    border-radius: 8px;
+    font-size: 1.1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.button:hover {
+    background: var(--button-hover-bg);
+}
+
+.result {
+    margin: 40px auto 0 auto;
+    background: #eaf6ff;
+    border-radius: 12px;
+    padding: 24px 32px;
+    color: #222;
+    font-size: 1.05rem;
+    max-width: 800px;
+    box-shadow: 0 2px 8px rgba(74, 144, 226, 0.08);
+}
+
+.otherInputRow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 0;
+    flex: 1;
+}
+
+.otherInputRow input {
+    flex: 1;
+}
+
+.otherInputRow button {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+}
+
+.otherInputRow svg {
+    stroke: black;
+}

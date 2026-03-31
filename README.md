@@ -109,81 +109,79 @@ pytest           # 或 pytest tests/ -v
 uvicorn app.main:app --port 8000 --reload --reload-exclude venv
 ```
 
-## Tool-First 開發規範（重要）
+## 目前已上線的 Tool 流程
 
-為了避免流程分散與重複邏輯，本專案統一採用 **Tool-First** 寫法。新增 AI 能力時請遵守以下原則：
+目前只有 **RAG 回答**這條路徑有使用 tool calling；其他功能暫時不以 Tool-First 為主。
 
-- **先宣告工具，不直接在 service 硬寫分流**
-  - 在 `app/tools/` 新增或擴充 tool declaration（名稱、描述、參數 schema）。
-  - 例如：`app/tools/rag_tools.py`、`app/tools/medical_tools.py`。
-
-- **由 registry 統一管理工具清單**
-  - 在 `app/tools/registry.py` 的 `get_all_gemini_tools(...)` 統一組裝。
-  - 需要 guardrail 時，用參數控制是否暴露特定工具（例如 `include_rag_tool`）。
-
-- **Gemini 邊界層與應用層分離**
-  - `app/services/gemini/client/gemini_client.py`：只負責 HTTP 呼叫與錯誤映射（`GeminiHttpError` 等）。
-  - `app/services/gemini/services/gemini_service.py`：負責輸入驗證、組 payload、呼叫 client、解析 `functionCall` / 文字。
-  - 不在 HTTP client 內做 RAG 分流或商業規則判斷。
-
-- **Orchestrator 負責接住 functionCall 並分派執行**
-  - `app/orchestration/response_orchestrator.py` 是唯一工具調度入口。
-  - 根據 `function_name` 呼叫對應 service（如 `RagAnswerService`）。
-
-- **Guardrail 獨立成 service**
-  - `app/services/guardrail/service.py` 負責「工具前置判斷」。
-  - 先做 guardrail，再決定哪些 tools 可提供給模型。
-
-- **Line / Router 層不處理 AI 分流細節**
-  - `message_service`、`event_handler` 只做通道協調與 I/O，不寫模型決策邏輯。
-
-### 標準流程
-
-1. 使用者訊息進入 `LineMessageService`
-2. 交給 `ResponseOrchestrator`
-3. `GuardrailService` 判斷是否允許 RAG tool
-4. `GeminiService.generate_response(..., tools=...)`
-5. 若回傳 `functionCall`，由 `ResponseOrchestrator` 分派到對應 service
-6. 回傳最終文字給 LINE
+- 工具宣告在 `app/tools/rag_tools.py`，並由 `app/tools/registry.py` 組裝成 Gemini 可用的 tools。
+- 請求進入後，由 `app/application/orchestration/response_orchestrator.py` 先呼叫 `GuardrailService` 判斷是否允許暴露 RAG tool。
+- `app/infrastructure/gemini/services/gemini_service.py` 送出 `generate_response(..., tools=...)` 給模型。
+- 如果模型回傳 `functionCall` 且 `function_name == "get_rag_answer"`，`ResponseOrchestrator` 會呼叫 `RagAnswerService` 執行檢索與回答。
+- 若 RAG 無命中或執行失敗，會 fallback 成「不含 RAG tool」再次呼叫 Gemini 產生一般文字回覆。
+- 回覆結果再交回 LINE 通道層送出。
 
 ## 架構與 SRP：`client`／`service`／`shared` 基本寫法
 
-本專案在 `app/services/` 底下，大致依 **單一職責（SRP）** 用資料夾區分「邊界」「用例」「共用」，方便擴充與測試。以下為約定俗成的角色，**不必每個模組三種都有**，但命名與放置位置應一致。
+本專案目前採 `app/application` 與 `app/infrastructure` 分層。以下為角色定義。
 
 ### `client/`（對外邊界層）
 
 - **職責**：與**外部系統**通訊——HTTP、gRPC、官方 SDK、OAuth／token 端點。
-- **原則**：輸入輸出偏「技術面」；錯誤可映射成專案自訂例外（例如 `GeminiHttpError`、`LineTokenError`），**不寫業務流程**（例如不決定要不要走 RAG）。
-- **本專案範例**
-  - `app/services/gemini/client/`：`GeminiClient`、`PromptConfig`（請求 URL 與系統提示設定）。
-  - `app/services/RAG/client/`：`embedding_client.py`（呼叫 Gemini Embedding API）。
-  - `app/services/line/client/`：`LineMessagingClient`、`LineTokenManager`（LINE SDK 與 channel token）。
+- **原則**：輸入輸出偏技術面，可映射自訂錯誤；不寫業務流程。
 
-### `services/`（應用／用例層）
+### `service`（應用／用例層）
 
 - **職責**：一條完整 **use case**：驗證（若屬此流程）、組資料、呼叫一個或多個 `client`、組結果、決定錯誤要怎麼呈現給上層。
 - **原則**：類名常見 `*Service`；**不**在這裡直接實作低階 HTTP（應委派給 `client`）。
-- **本專案範例**
-  - `app/services/gemini/services/gemini_service.py`：`GeminiService`。
-  - `app/services/RAG/services/rag_answer_service.py`：`RagAnswerService`（embed → 向量檢索 → 組 prompt → `GeminiService`）。
-- **備註**：部分領域用其他資料夾表達「流程」亦屬同層概念，例如 `app/services/RAG/retrieval/` 的 `retriever`（檢索步驟），與 `services/` 的 `RagAnswerService` 分工不同步驟。
+- **備註**：同層流程可拆分成多個模組（例如 retrieval 與 answer service）。
 
 ### `shared/`（模組內共用）
 
-- **職責**：同一大模組（例如 `gemini`、`line`、`RAG`）內**多處會用到**的項目：型別、錯誤基底、純驗證函式、常數、與業務無關的小工具。
-- **原則**：**不**放「只對單一 HTTP 端點說話」的程式（那屬於 `client`）；**不**放整條業務主流程（那屬於 `services` 或 orchestrator）。
-- **本專案範例**
-  - `app/services/gemini/shared/`：`GeminiResult`、共用驗證、錯誤型別、parser。
-  - `app/services/line/shared/`：`validation.py`、`errors.py`（`LineValidationError`、`LineTokenError` 等）。
-  - `app/services/RAG/shared/`：向量搜尋 reader、型別、pipeline 設定等。
+- **職責**：同一模組內多處共用：型別、錯誤基底、純驗證函式、常數、與業務無關的小工具。
+- **原則**：**不**放「只對單一 HTTP 端點說話」的程式（那屬於 `client`）；**不**放整條業務主流程（那屬於 service 或 orchestrator）。
 
 ### 組裝與進入點
 
 - **`app/dependencies.py`** 作為 **composition root**：在此建立單例、注入 `client`／`service`，對外只暴露 `get_*()`。業務程式應**優先**由這裡取得依賴，避免在模組載入時隱性建立全域實例。
 
+## 後端新規範（目前版）
+
+以下規範以目前專案現況為準，後續若再調整分層，請同步更新本段。
+本專案目前採 **朝 Clean Architecture 演進** 的做法（以 `application` / `infrastructure` 分層、DI 與組裝點分離為核心原則），並依現階段需求做漸進式落地，而非一次到位的教科書重構。
+
+### 1) 分層與放置規範
+
+- `app/application/`：放用例流程、協調邏輯（orchestration、rag 流程、line event 流程）。
+- `app/infrastructure/`：放技術實作（SDK/HTTP client、shared validation/errors、vector search）。
+- `app/tools/`：放 Gemini tool declarations 與 registry。
+- `app/dependencies.py`：唯一組裝點（composition root）。
+
+### 2) 依賴方向規範（重要）
+
+- 允許：`application -> infrastructure`（透過介面或注入使用）。
+- 禁止：`infrastructure/db -> app/dependencies` 反向依賴。
+- 原則：由 `dependencies.py` 注入設定與實例，不在底層模組主動回頭拿依賴。
+
+### 3) DI 與物件建立規範
+
+- 新增服務時，優先使用 constructor 注入（`Protocol` 或明確介面）。
+- 避免在模組 import 階段偷偷 `new` 外部 client（尤其是網路、DB、SDK 物件）。
+- 全域單例只能在 `dependencies.py` 組裝，不要分散在各模組自行建立。
+
+### 4) Tool 使用規範（現行）
+
+- 目前只有 RAG 回答流程使用 tool calling。
+- 新功能若不需要 tool，先走一般流程即可；不要為了形式硬接 tool。
+- 要新增 tool 時，必須同步更新：
+  - `app/tools/*.py`（declaration）
+  - `app/tools/registry.py`（註冊）
+  - `ResponseOrchestrator` 的分派邏輯（若需 function call 處理）
+
 ### 單元測試目錄對齊
 
-- `tests/unit/services/` 底下的子路徑盡量與 `app/services/` 對應（例如 `gemini/client/`、`gemini/services/`、`line/shared/`），方便對照維護。
+- `tests/unit/application/` 底下子路徑對應 `app/application/`。
+- `tests/unit/infrastructure/` 底下子路徑對應 `app/infrastructure/`。
+- 舊的 `tests/unit/services/` 視為歷史目錄，新增測試請優先放在 `application` / `infrastructure` 對應位置。
 
 ## n8n workflow 多媒體處理功能
 

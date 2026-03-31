@@ -10,7 +10,6 @@ from app.orchestration import ResponseOrchestrator
 from app.services.line.shared.errors import LineTokenError, LineValidationError
 from app.services.line.shared.validation import (
     validate_reply_context,
-    validate_text_message,
 )
 import logging
 
@@ -52,11 +51,9 @@ class LineMessageService:
         self, user_text: str, reply_token: str, user_id: Optional[str] = None
     ) -> bool:
         try:
-            validate_reply_context(reply_token, user_id)
-            normalized_text = validate_text_message(user_text)
             logger.info(f"Processing message from user {user_id}: {user_text[:50]}...")
             result = await self.response_orchestrator.orchestrate_response(
-                normalized_text
+                user_text
             )
 
             if result.is_function_call and result.function_name == "request_location":

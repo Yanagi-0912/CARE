@@ -1,9 +1,9 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from app.services.gemini import GeminiResult
-from app.services.RAG.retrieval import RagNoHitsError
-from app.orchestration.response_orchestrator import ResponseOrchestrator
+from app.infrastructure.gemini import GeminiResult
+from app.application.rag.retrieval import RagNoHitsError
+from app.application.orchestration.response_orchestrator import ResponseOrchestrator
 
 #這邊是在測說我的流程有沒有邏輯錯誤
 @pytest.mark.asyncio

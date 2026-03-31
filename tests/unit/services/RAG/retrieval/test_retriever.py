@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from app.services.RAG.retrieval.retriever import search_similar_chunks
+from app.application.rag.retrieval.retriever import search_similar_chunks
 
 
 @pytest.mark.asyncio

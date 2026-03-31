@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import sys
 import types
 
-from app.services.gemini import GeminiResult
+from app.infrastructure.gemini import GeminiResult
 
 # 測試環境可能未安裝 motor，先提供最小 stub 避免 import 失敗
 if "motor.motor_asyncio" not in sys.modules:
@@ -21,8 +21,8 @@ if "motor.motor_asyncio" not in sys.modules:
     sys.modules["motor"] = motor_module
     sys.modules["motor.motor_asyncio"] = motor_asyncio_module
 
-from app.services.RAG.retrieval import RagNoHitsError
-from app.services.RAG.services import RagAnswerService
+from app.application.rag.retrieval import RagNoHitsError
+from app.application.rag.services import RagAnswerService
 
 
 @pytest.mark.asyncio

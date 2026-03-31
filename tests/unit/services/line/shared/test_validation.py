@@ -1,7 +1,7 @@
 import pytest
 
-from app.services.line.shared.errors import LineValidationError
-from app.services.line.shared.validation import (
+from app.infrastructure.line.shared.errors import LineValidationError
+from app.infrastructure.line.shared.validation import (
     validate_media_message,
     validate_reply_context,
     validate_text_message,

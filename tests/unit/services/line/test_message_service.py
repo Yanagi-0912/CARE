@@ -1,13 +1,13 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from app.services.line.message_service import LineMessageService
-from app.services.gemini import GeminiResult
+from app.infrastructure.line.message_service import LineMessageService
+from app.infrastructure.gemini import GeminiResult
 
 
 @pytest.fixture
 def mock_send_reply():
     with patch(
-        "app.services.line.message_service.LineMessageService.send_line_reply",
+        "app.infrastructure.line.message_service.LineMessageService.send_line_reply",
         new_callable=AsyncMock,
         return_value=True,
     ) as m:
@@ -38,7 +38,7 @@ async def test_process_success(mock_send_reply):
 async def test_process_function_call_request_location(mock_send_reply):
     # router 決定呼叫 request_location 工具
     with patch(
-        "app.services.line.message_service.LineMessageService.send_location_quick_reply",
+        "app.infrastructure.line.message_service.LineMessageService.send_location_quick_reply",
         new_callable=AsyncMock,
         return_value=True,
     ) as mock_quick_reply:

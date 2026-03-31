@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from app.services.gemini import GeminiHttpError, GeminiService
+from app.infrastructure.gemini import GeminiHttpError, GeminiService
 
 
 class _FakeClientContext:

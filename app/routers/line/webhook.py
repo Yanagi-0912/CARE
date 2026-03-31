@@ -30,11 +30,7 @@ async def callback(
         events = parser.parse(body_decoded, x_line_signature)
 
         for event in events:
-            try:
-                await handler.handle(event)
-            except LineValidationError as e:
-                logger.warning(f"跳過無效的 LINE 事件: {e}")
-                continue
+            await handler.handle(event)
 
         logger.info("Webhook events processed successfully")
 

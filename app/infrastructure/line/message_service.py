@@ -10,7 +10,6 @@ from linebot.v3.messaging import (
 from app.infrastructure.line.shared.errors import LineTokenError, LineValidationError
 from app.infrastructure.line.shared.validation import (
     validate_reply_context,
-    validate_text_message,
 )
 import logging
 

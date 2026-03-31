@@ -1,14 +1,14 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from app.services.gemini.shared.errors import (
+from app.infrastructure.gemini.shared.errors import (
     GeminiHttpError,
     GeminiNetworkError,
     GeminiParseError,
     GeminiSchemaError,
     GeminiUnknownError,
 )
-from app.services.guardrail.service import GuardrailService
+from app.application.guardrail.service import GuardrailService
 
 
 @pytest.mark.asyncio

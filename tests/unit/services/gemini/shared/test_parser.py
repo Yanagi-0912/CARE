@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from app.services.gemini.shared.errors import GeminiParseError
-from app.services.gemini.shared.parser import parse_json_from_model_text
+from app.infrastructure.gemini.shared.errors import GeminiParseError
+from app.infrastructure.gemini.shared.parser import parse_json_from_model_text
 
 
 def test_parse_plain_json_object():

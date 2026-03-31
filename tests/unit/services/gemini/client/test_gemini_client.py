@@ -2,8 +2,8 @@ import httpx
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from app.services.gemini.client.gemini_client import GeminiClient
-from app.services.gemini.shared.errors import (
+from app.infrastructure.gemini.client.gemini_client import GeminiClient
+from app.infrastructure.gemini.shared.errors import (
     GeminiHttpError,
     GeminiNetworkError,
     GeminiSchemaError,

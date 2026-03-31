@@ -1,6 +1,6 @@
 import pytest
-from app.services.line.client import LineTokenManager
-from app.services.line.shared.errors import LineTokenError
+from app.application.line.client import LineTokenManager
+from app.infrastructure.line.shared.errors import LineTokenError
 
 
 # 兩個測試邏輯完全一樣，只有 credential 值不同，用 parametrize 合併

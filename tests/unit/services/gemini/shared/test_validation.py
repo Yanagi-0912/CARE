@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.gemini.shared.validation import MAX_INPUT_LENGTH, validate_user_input
+from app.infrastructure.gemini.shared.validation import MAX_INPUT_LENGTH, validate_user_input
 
 
 def test_validate_accepts_normal_text():

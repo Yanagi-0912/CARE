@@ -2,7 +2,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 import pytest
 
-from app.services.media.mutimedia_processor import MediaProcessorService
+from app.application.media.mutimedia_processor import MediaProcessorService
 
 class FakeGetResponse:
     def __init__(self, headers=None, chunks=None, status_code=200):
@@ -46,12 +46,12 @@ def svc():
 async def test_process_media_success_and_cleanup(svc, tmp_path):
     token_mgr = MagicMock()
     token_mgr.get_token.return_value = "t"
-    with patch("app.services.media.mutimedia_processor.TMP_DIR", tmp_path), \
+    with patch("app.application.media.mutimedia_processor.TMP_DIR", tmp_path), \
          patch(
-             "app.services.media.mutimedia_processor.get_line_token_manager",
+             "app.application.media.mutimedia_processor.get_line_token_manager",
              return_value=token_mgr,
          ), \
-         patch("app.services.media.mutimedia_processor.requests.get", return_value=FakeGetResponse(
+         patch("app.application.media.mutimedia_processor.requests.get", return_value=FakeGetResponse(
              headers={"Content-Type": "image/jpeg", "Content-Length": "3"},
              chunks=[b"abc"],
          )), \
@@ -67,8 +67,8 @@ def test_download_rejects_bad_media_type(svc):
 def test_extract_json_user_text(svc, tmp_path):
     p = tmp_path / "a.jpg"
     p.write_bytes(b"x")
-    with patch("app.services.media.mutimedia_processor.MEDIA_PARSE_WEBHOOK_URL", "https://x"), \
-         patch("app.services.media.mutimedia_processor.requests.post", return_value=FakePostResponse(
+    with patch("app.application.media.mutimedia_processor.MEDIA_PARSE_WEBHOOK_URL", "https://x"), \
+        patch("app.application.media.mutimedia_processor.requests.post", return_value=FakePostResponse(
              headers={"Content-Type": "application/json"},
              text='{"user_text":"hello"}',
              payload={"user_text": "hello"},

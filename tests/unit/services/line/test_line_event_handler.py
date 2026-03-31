@@ -11,7 +11,7 @@ from linebot.v3.webhooks import (
     UserSource,
 )
 
-from app.services.line.event_handler import LineEventHandler
+from app.application.line.event_handler import LineEventHandler
 
 
 def _message_event(
@@ -55,7 +55,7 @@ async def test_handle_media_message_infers_image(handler, mock_line_message_serv
     event = _message_event(message)
 
     with patch(
-        "app.services.media.mutimedia_processor.media_processor_service.process_media",
+        "app.application.media.mutimedia_processor.media_processor_service.process_media",
         new_callable=AsyncMock,
         return_value="[processed]",
     ) as mock_process:
@@ -81,7 +81,7 @@ async def test_handle_media_message_infers_video(handler, mock_line_message_serv
     event = _message_event(message)
 
     with patch(
-        "app.services.media.mutimedia_processor.media_processor_service.process_media",
+        "app.application.media.mutimedia_processor.media_processor_service.process_media",
         new_callable=AsyncMock,
         return_value="[processed]",
     ) as mock_process:
@@ -101,7 +101,7 @@ async def test_handle_media_message_infers_audio(handler, mock_line_message_serv
     event = _message_event(message)
 
     with patch(
-        "app.services.media.mutimedia_processor.media_processor_service.process_media",
+        "app.application.media.mutimedia_processor.media_processor_service.process_media",
         new_callable=AsyncMock,
         return_value="[processed]",
     ) as mock_process:
@@ -121,7 +121,7 @@ async def test_handle_media_message_unknown_file(handler, mock_line_message_serv
     event = _message_event(message)
 
     with patch(
-        "app.services.media.mutimedia_processor.media_processor_service.process_media",
+        "app.application.media.mutimedia_processor.media_processor_service.process_media",
         new_callable=AsyncMock,
         return_value="[processed]",
     ) as mock_process:
@@ -145,7 +145,7 @@ async def test_handle_media_message_native_image(handler, mock_line_message_serv
     event = _message_event(message)
 
     with patch(
-        "app.services.media.mutimedia_processor.media_processor_service.process_media",
+        "app.application.media.mutimedia_processor.media_processor_service.process_media",
         new_callable=AsyncMock,
         return_value="[processed]",
     ) as mock_process:

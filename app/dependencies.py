@@ -14,8 +14,10 @@ from app.infrastructure.vector_search import (
     MongoVectorSearchReader,
     VectorSearchConfig,
 )
+from app.db.mongodb import MongoDBManager
 
 _mongodb_url = os.getenv("MONGODB_URL")
+MongoDBManager.configure(_mongodb_url or settings.MONGODB_URI)
 
 _gemini_service = GeminiService(
     api_key=settings.GEMINI_API_KEY,

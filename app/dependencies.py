@@ -2,15 +2,15 @@
 import os
 
 from app.core.config import settings
-from app.services.gemini import GeminiService
-from app.orchestration import ResponseOrchestrator
-from app.services.guardrail import GuardrailService
-from app.services.RAG.services import RagAnswerService
-from app.services.line.message_service import LineMessageService
-from app.services.line.client import LineMessagingClient, LineTokenManager
-from app.services.line.event_handler import LineEventHandler
-from app.services.medical.medical_service import MedicalService, medical_service
-from app.services.RAG.shared.vector_search import (
+from app.infrastructure.gemini import GeminiService
+from app.application.orchestration import ResponseOrchestrator
+from app.application.guardrail import GuardrailService
+from app.application.rag.services import RagAnswerService
+from app.infrastructure.line.message_service import LineMessageService
+from app.infrastructure.line.client import LineMessagingClient, LineTokenManager
+from app.application.line.event_handler import LineEventHandler
+from app.application.medical.medical_service import MedicalService, medical_service
+from app.infrastructure.vector_search import (
     MongoVectorSearchReader,
     VectorSearchConfig,
 )
@@ -40,13 +40,13 @@ _line_token_manager = LineTokenManager(
 )
 
 _line_message_service = LineMessageService(
-    response_orchestrator=_response_orchestrator,
     token_provider=_line_token_manager,
     medical_service=medical_service,
     line_messaging_client=LineMessagingClient(),
 )
 
 _line_event_handler = LineEventHandler(
+    response_orchestrator=_response_orchestrator,
     line_message_service=_line_message_service,
     medical_service=medical_service,
 )

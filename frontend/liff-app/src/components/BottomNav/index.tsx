@@ -10,29 +10,29 @@ function BottomNav() {
 
   return (
     <nav className="bottom-nav">
-      <button 
-        className={`nav-item ${isActive('/')}`} 
+      <button
+        className={`nav-item ${isActive('/')}`}
         onClick={() => navigate('/')}
       >
         <span className="icon">🏠</span>
         <span className="label">首頁</span>
       </button>
-      <button 
-        className={`nav-item ${isActive('/health')}`} 
-        onClick={() => navigate('/health')}
+      <button
+        className={`nav-item ${isActive('/personalhealth')}`}
+        onClick={() => navigate('/personalhealth')}
       >
         <span className="icon">🏥</span>
         <span className="label">健康</span>
       </button>
-      <button 
-        className={`nav-item ${isActive('/family')}`} 
+      <button
+        className={`nav-item ${isActive('/family')}`}
         onClick={() => navigate('/family')}
       >
         <span className="icon">👥</span>
         <span className="label">家庭</span>
       </button>
-      <button 
-        className={`nav-item ${isActive('/settings')}`} 
+      <button
+        className={`nav-item ${isActive('/settings')}`}
         onClick={() => navigate('/settings')}
       >
         <span className="icon">⚙️</span>

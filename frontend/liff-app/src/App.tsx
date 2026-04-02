@@ -2,7 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import Homepage from './pages/Homepage'
 import Header from './components/Header'
 import BottomNav from './components/BottomNav'
-
+import PersonalHealthPage from './pages/PersonalHealth'
 // 原本的三個佔位頁面
 const HealthPage = () => (
   <div style={{ padding: '24px' }}>
@@ -30,15 +30,15 @@ const LoginPage = () => (
   <div style={{ padding: '48px 24px', textAlign: 'center' }}>
     <h2>登入 CARE</h2>
     <p style={{ color: '#6b7280', marginBottom: '24px' }}>請登入以查看您的專屬健康資訊</p>
-    <button style={{ 
+    <button style={{
       backgroundColor: '#06C755', /* LINE 官方綠色 */
-      color: 'white', 
-      border: 'none', 
-      padding: '12px 24px', 
-      borderRadius: '8px', 
+      color: 'white',
+      border: 'none',
+      padding: '12px 24px',
+      borderRadius: '8px',
       fontSize: '1rem',
       fontWeight: 'bold',
-      cursor: 'pointer' 
+      cursor: 'pointer'
     }}>
       使用 LINE 帳號登入
     </button>
@@ -50,11 +50,11 @@ function App() {
     <Router>
       <div className="app-layout">
         <Header />
-        
+
         <div className="main-content" style={{ paddingBottom: '80px' }}>
           <Routes>
             <Route path="/" element={<Homepage />} />
-            <Route path="/health" element={<HealthPage />} />
+            <Route path="/personalhealth" element={<PersonalHealthPage />} />
             <Route path="/family" element={<FamilyPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             {/* 新增：登入頁面的路由 */}

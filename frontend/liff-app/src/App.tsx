@@ -1,9 +1,13 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { useEffect } from 'react'
 import Homepage from './pages/Homepage'
 import Header from './components/Header'
 import BottomNav from './components/BottomNav'
 import PersonalHealthPage from './pages/PersonalHealth'
-// 原本的三個佔位頁面
+import SettingsPage, { applyTheme, STORAGE_KEY, defaultSettings } from './pages/Settings'
+import type { SettingsState } from './pages/Settings'
+
+// 原本的三個佔位頁面 (此處保留 Family，而 Settings 已抽出)
 const HealthPage = () => (
   <div style={{ padding: '24px' }}>
     <h2>🏥 個人健康</h2>
@@ -15,13 +19,6 @@ const FamilyPage = () => (
   <div style={{ padding: '24px' }}>
     <h2>👥 家庭介面</h2>
     <p>這裡將管理長輩與家人的健康狀況。</p>
-  </div>
-)
-
-const SettingsPage = () => (
-  <div style={{ padding: '24px' }}>
-    <h2>⚙️ 設定頁面</h2>
-    <p>這裡可以調整系統偏好與通知管理。</p>
   </div>
 )
 
@@ -46,6 +43,16 @@ const LoginPage = () => (
 )
 
 function App() {
+  /* 啟動時：讀取 SettingsPage 存的 localStorage 設定套用主題 */
+  useEffect(() => {
+    let settings: SettingsState = defaultSettings
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (raw) settings = { ...defaultSettings, ...JSON.parse(raw) }
+    } catch { /* ignore */ }
+    applyTheme(settings)
+  }, [])
+
   return (
     <Router>
       <div className="app-layout">

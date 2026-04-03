@@ -1,0 +1,192 @@
+/* ==========================================
+   Settings Page – 手機優先 / 大字 / 高對比
+   設計基準：375px 寬度的手機螢幕
+   ========================================== */
+
+.settings-page {
+  width: 100%;
+  padding: 20px 16px 120px;
+  /* 預留底部導覽列空間 */
+}
+
+.settings-title {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--heading-color, #111827);
+  margin: 0 0 20px;
+  padding-left: 2px;
+}
+
+/* ── 區塊卡片 ── */
+.settings-section {
+  background: var(--card-bg, #ffffff);
+  border: 2px solid var(--card-border, #e5e7eb);
+  border-radius: 14px;
+  padding: 18px 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.section-heading {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--heading-color, #111827);
+  margin: 0 0 4px;
+}
+
+.section-desc {
+  font-size: 0.9rem;
+  color: var(--text-muted, #6b7280);
+  margin: 0 0 14px;
+  line-height: 1.5;
+}
+
+/* ── 字體大小選項 ── */
+.font-size-options {
+  display: flex;
+  gap: 10px;
+}
+
+.font-size-btn {
+  flex: 1;
+  padding: 14px 6px;
+  border: 2.5px solid var(--card-border, #d1d5db);
+  border-radius: 12px;
+  background: var(--card-bg, #f9fafb);
+  color: var(--text-color, #374151);
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+  /* 手指觸控友善：最小 44px 高 */
+  min-height: 48px;
+}
+
+.font-size-btn:active {
+  transform: scale(0.96);
+}
+
+.font-size-btn.active {
+  border-color: #0D9488;
+  background: rgba(13, 148, 136, 0.12);
+  color: #0D9488;
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
+}
+
+/* ── 字體預覽 ── */
+.font-preview {
+  margin-top: 12px;
+  padding: 14px 12px;
+  border-radius: 10px;
+  background: var(--preview-bg, #f3f4f6);
+  font-size: var(--base-font-size, 20px);
+  color: var(--text-color, #1f2937);
+  font-weight: 600;
+  line-height: 1.6;
+  text-align: center;
+  border: 1.5px dashed var(--card-border, #d1d5db);
+}
+
+/* ── Toggle 開關 (手指友善尺寸) ── */
+.toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--card-border, #f0f0f0);
+  /* 觸控區域足夠大 */
+  min-height: 52px;
+}
+
+.toggle-row:last-child {
+  border-bottom: none;
+  padding-bottom: 4px;
+}
+
+.toggle-label {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-color, #1f2937);
+}
+
+.toggle-switch {
+  position: relative;
+  width: 56px;
+  height: 30px;
+  border-radius: 999px;
+  border: 2px solid #d1d5db;
+  background: #e5e7eb;
+  cursor: pointer;
+  transition: all 0.25s;
+  padding: 0;
+  flex-shrink: 0;
+  /* 加大觸控判定範圍 */
+  -webkit-tap-highlight-color: transparent;
+}
+
+.toggle-switch.on {
+  background: #0D9488;
+  border-color: #0D9488;
+}
+
+.toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  transition: transform 0.25s;
+}
+
+.toggle-switch.on .toggle-knob {
+  transform: translateX(26px);
+}
+
+/* ── 關於 ── */
+.about-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.about-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 1rem;
+  color: var(--text-color, #374151);
+  padding: 4px 0;
+}
+
+.about-row strong {
+  color: var(--heading-color, #111827);
+}
+
+/* ── 儲存按鈕 (滿版寬、手指好按) ── */
+.save-btn {
+  display: block;
+  width: 100%;
+  margin: 16px 0 0;
+  padding: 16px 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #0D9488, #0f766e);
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.25);
+  letter-spacing: 0.04em;
+  /* 觸控友善 */
+  min-height: 52px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.save-btn:active {
+  transform: scale(0.98);
+  box-shadow: 0 2px 8px rgba(13, 148, 136, 0.2);
+}

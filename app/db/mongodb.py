@@ -26,3 +26,13 @@ class MongoDBManager:
     def get_medical_collection(cls):
         client = cls.get_client()
         return client["CARE_database"]["medicalFacilities"]
+
+    @classmethod
+    def get_family_tree_collection(cls):
+        client = cls.get_client()
+        return client["CARE_database"]["family_trees"]
+
+    @classmethod
+    def get_pending_invitations_collection(cls):
+        client = cls.get_client()
+        return client["CARE_database"]["pending_invitations"]

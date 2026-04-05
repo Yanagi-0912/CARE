@@ -21,6 +21,9 @@ class Settings:
     # 多媒體解析 webhook
     MEDIA_PARSE_WEBHOOK_URL: str = os.getenv("MEDIA_PARSE_WEBHOOK_URL", "")
 
+    # LINE LIFF 配置
+    LIFF_URL: str = os.getenv("LIFF_URL", "")
+
     # MongoDB Vector Search 配置
     MONGODB_URI: str = os.getenv("MONGODB_URI", "")
     MONGODB_DB: str = os.getenv("MONGODB_DB", "")

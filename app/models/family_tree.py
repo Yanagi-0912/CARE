@@ -1,6 +1,19 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
+
+
+# 關係類型的反向對照表：User A 設定 → User B 自動取得的反向關係
+REVERSE_RELATIONSHIP: Dict[str, str] = {
+    "parent":      "child",
+    "child":       "parent",
+    "spouse":      "spouse",
+    "sibling":     "sibling",
+    "grandparent": "grandchild",
+    "grandchild":  "grandparent",
+    "other":       "other",
+}
+
 
 
 class FamilyMember(BaseModel):

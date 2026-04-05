@@ -7,7 +7,7 @@ from app.application.orchestration import ResponseOrchestrator
 from app.application.guardrail import GuardrailService
 from app.application.rag.services import RagAnswerService
 from app.infrastructure.line.message_service import LineMessageService
-from app.infrastructure.line.client import LineMessagingClient, LineTokenManager
+from app.application.line.client import LineMessagingClient, LineTokenManager
 from app.application.line.event_handler import LineEventHandler
 from app.application.medical.medical_service import MedicalService, medical_service
 from app.infrastructure.vector_search import (

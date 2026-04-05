@@ -1,6 +1,6 @@
 from typing import List
 
-from ..shared.vector_search import ChunkHits, MongoVectorSearchReader
+from app.infrastructure.vector_search import ChunkHits, MongoVectorSearchReader
 
 
 async def search_similar_chunks(

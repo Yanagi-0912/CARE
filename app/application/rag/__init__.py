@@ -2,7 +2,7 @@
 
 from .client import embed_document, embed_query
 from .retrieval import search_similar_chunks
-from .shared.vector_search import ChunkHit, ChunkHits
+from app.infrastructure.vector_search import ChunkHit, ChunkHits
 
 __all__ = [
     "ChunkHit",

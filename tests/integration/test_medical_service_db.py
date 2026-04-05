@@ -8,8 +8,11 @@ from app.schemas import MedicalFacility
 async def test_find_nearby_hospitals_real_db():
 
     from app.dependencies import get_mongodb_url
+    from app.db.mongodb import MongoDBManager
     try:
-        get_mongodb_url()
+        url = get_mongodb_url()
+        MongoDBManager._client = None
+        MongoDBManager.configure(url)
     except ValueError:
         pytest.fail("測試環境缺少 MONGODB_URL")
 

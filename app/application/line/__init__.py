@@ -3,7 +3,7 @@
 
 from typing import TYPE_CHECKING, Any
 
-from app.infrastructure.line.client import LineMessagingClient, LineTokenManager
+from app.application.line.client import LineMessagingClient, LineTokenManager
 
 if TYPE_CHECKING:
     from app.application.line.event_handler import LineEventHandler

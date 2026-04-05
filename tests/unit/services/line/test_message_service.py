@@ -1,81 +1,60 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from app.infrastructure.line.message_service import LineMessageService
-from app.infrastructure.gemini import GeminiResult
-
+from app.infrastructure.line.shared.errors import LineTokenError, LineValidationError
 
 @pytest.fixture
-def mock_send_reply():
-    with patch(
-        "app.infrastructure.line.message_service.LineMessageService.send_line_reply",
-        new_callable=AsyncMock,
-        return_value=True,
-    ) as m:
-        yield m
+def mock_deps():
+    return {
+        "token_provider": MagicMock(),
+        "medical_service": MagicMock(),
+        "line_messaging_client": MagicMock(),
+    }
 
+@pytest.fixture
+def svc(mock_deps):
+    return LineMessageService(
+        token_provider=mock_deps["token_provider"],
+        medical_service=mock_deps["medical_service"],
+        line_messaging_client=mock_deps["line_messaging_client"]
+    )
 
 @pytest.mark.asyncio
-async def test_process_success(mock_send_reply):
-    # router 回傳一般文字（非 function call）
-    mock_response_orchestrator = MagicMock()
-    mock_response_orchestrator.orchestrate_response = AsyncMock(
-        return_value=GeminiResult(text="AI 回覆")
-    )
-    svc = LineMessageService(
-        response_orchestrator=mock_response_orchestrator,
-        token_provider=MagicMock(),
-        medical_service=MagicMock(),
-        line_messaging_client=MagicMock(),
-    )
-    ok = await svc.process_and_reply("你好", "reply_token_xxx", user_id="U123")
-
+async def test_send_line_reply_success(svc, mock_deps):
+    mock_deps["token_provider"].get_token.return_value = "secret_token"
+    
+    ok = await svc.send_line_reply("token", "hello", "user_1")
+    
     assert ok is True
-    mock_send_reply.assert_called_once()
-    assert mock_send_reply.call_args[0][1] == "AI 回覆"
-
-
-@pytest.mark.asyncio
-async def test_process_function_call_request_location(mock_send_reply):
-    # router 決定呼叫 request_location 工具
-    with patch(
-        "app.infrastructure.line.message_service.LineMessageService.send_location_quick_reply",
-        new_callable=AsyncMock,
-        return_value=True,
-    ) as mock_quick_reply:
-        mock_response_orchestrator = MagicMock()
-        mock_response_orchestrator.orchestrate_response = AsyncMock(
-            return_value=GeminiResult(function_name="request_location")
-        )
-        svc = LineMessageService(
-            response_orchestrator=mock_response_orchestrator,
-            token_provider=MagicMock(),
-            medical_service=MagicMock(),
-            line_messaging_client=MagicMock(),
-        )
-        ok = await svc.process_and_reply(
-            "附近有醫院嗎", "reply_token_xxx", user_id="U123"
-        )
-
-    assert ok is True
-    mock_quick_reply.assert_called_once()
-    mock_send_reply.assert_not_called()  # 不應走一般文字回覆路徑
-
+    mock_deps["line_messaging_client"].reply_message.assert_called_once()
+    args = mock_deps["line_messaging_client"].reply_message.call_args[0]
+    assert args[0] == "secret_token"
+    assert args[1].reply_token == "token"
+    assert args[1].messages[0].text == "hello"
 
 @pytest.mark.asyncio
-async def test_process_fallback_on_value_error(mock_send_reply):
-    # router 發生錯誤時，應送出 fallback 訊息
-    mock_response_orchestrator = MagicMock()
-    mock_response_orchestrator.orchestrate_response = AsyncMock(side_effect=ValueError("API 錯誤"))
-    svc = LineMessageService(
-        response_orchestrator=mock_response_orchestrator,
-        token_provider=MagicMock(),
-        medical_service=MagicMock(),
-        line_messaging_client=MagicMock(),
-    )
-    ok = await svc.process_and_reply("hi", "reply_token_xxx", user_id="U123")
-
+async def test_send_line_reply_token_error(svc, mock_deps):
+    mock_deps["token_provider"].get_token.side_effect = LineTokenError("Expired")
+    
+    ok = await svc.send_line_reply("token", "hello")
+    
     assert ok is False
-    mock_send_reply.assert_called_once()
-    message_sent = mock_send_reply.call_args[0][1]
-    assert "抱歉" in message_sent and "API 錯誤" in message_sent
+    mock_deps["line_messaging_client"].reply_message.assert_not_called()
 
+@pytest.mark.asyncio
+async def test_send_line_reply_validation_error(svc, mock_deps):
+    # 傳入空的 reply_token 會觸發 validate_reply_context 的 LineValidationError
+    ok = await svc.send_line_reply("", "hello")
+    
+    assert ok is False
+    mock_deps["line_messaging_client"].reply_message.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_send_location_quick_reply_success(svc, mock_deps):
+    mock_deps["token_provider"].get_token.return_value = "token"
+    
+    ok = await svc.send_location_quick_reply("rt", "u1")
+    
+    assert ok is True
+    mock_deps["medical_service"].request_location.assert_called_once_with("u1")
+    mock_deps["line_messaging_client"].reply_message.assert_called_once()

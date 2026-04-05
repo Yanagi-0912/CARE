@@ -1,4 +1,4 @@
-from .vector_search import (
+from app.infrastructure.vector_search import (
     ChunkHit,
     ChunkHits,
     MongoVectorSearchReader,

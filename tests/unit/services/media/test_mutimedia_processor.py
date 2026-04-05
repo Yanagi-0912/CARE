@@ -48,7 +48,7 @@ async def test_process_media_success_and_cleanup(svc, tmp_path):
     token_mgr.get_token.return_value = "t"
     with patch("app.application.media.mutimedia_processor.TMP_DIR", tmp_path), \
          patch(
-             "app.application.media.mutimedia_processor.get_line_token_manager",
+             "app.dependencies.get_line_token_manager",
              return_value=token_mgr,
          ), \
          patch("app.application.media.mutimedia_processor.requests.get", return_value=FakeGetResponse(

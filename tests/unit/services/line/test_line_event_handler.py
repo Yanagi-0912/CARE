@@ -34,9 +34,17 @@ def _message_event(
 @pytest.fixture
 def mock_line_message_service():
     svc = MagicMock()
-    svc.process_and_reply = AsyncMock()
-    svc.send_line_reply = AsyncMock()
+    svc.send_line_reply = AsyncMock(return_value=True)
+    svc.send_location_quick_reply = AsyncMock(return_value=True)
     return svc
+
+
+@pytest.fixture
+def mock_response_orchestrator():
+    from app.infrastructure.gemini import GeminiResult
+    orc = MagicMock()
+    orc.orchestrate_response = AsyncMock(return_value=GeminiResult(text="AI 回覆"))
+    return orc
 
 
 @pytest.fixture
@@ -45,13 +53,17 @@ def mock_medical_service():
 
 
 @pytest.fixture
-def handler(mock_line_message_service, mock_medical_service):
-    return LineEventHandler(mock_line_message_service, mock_medical_service)
+def handler(mock_response_orchestrator, mock_line_message_service, mock_medical_service):
+    return LineEventHandler(
+        mock_response_orchestrator, mock_line_message_service, mock_medical_service
+    )
 
 
 @pytest.mark.asyncio
-async def test_handle_media_message_infers_image(handler, mock_line_message_service):
-    message = FileMessageContent(id="M123", fileName="test.png", fileSize=100)
+async def test_handle_media_message_infers_image(handler, mock_response_orchestrator, mock_line_message_service):
+    message = FileMessageContent(
+        id="M123", fileName="test.png", fileSize=100, quoteToken="dummy"
+    )
     event = _message_event(message)
 
     with patch(
@@ -67,17 +79,21 @@ async def test_handle_media_message_infers_image(handler, mock_line_message_serv
         source_file_name="test.png",
         user_id="U12345",
     )
-    mock_line_message_service.process_and_reply.assert_called_once()
-    call_kw = mock_line_message_service.process_and_reply.call_args.kwargs
-    assert call_kw["reply_token"] == "dummy_token"
-    assert call_kw["user_id"] == "U12345"
-    assert "image" in call_kw["user_text"]
-    assert "[processed]" in call_kw["user_text"]
+    mock_response_orchestrator.orchestrate_response.assert_called_once()
+    orchestrator_input = mock_response_orchestrator.orchestrate_response.call_args[0][0]
+    assert "image" in orchestrator_input
+    assert "[processed]" in orchestrator_input
+    
+    mock_line_message_service.send_line_reply.assert_called_once_with(
+        "dummy_token", "AI 回覆", "U12345"
+    )
 
 
 @pytest.mark.asyncio
-async def test_handle_media_message_infers_video(handler, mock_line_message_service):
-    message = FileMessageContent(id="M124", fileName="demo.mp4", fileSize=200)
+async def test_handle_media_message_infers_video(handler, mock_response_orchestrator, mock_line_message_service):
+    message = FileMessageContent(
+        id="M124", fileName="demo.mp4", fileSize=200, quoteToken="dummy"
+    )
     event = _message_event(message)
 
     with patch(
@@ -96,8 +112,10 @@ async def test_handle_media_message_infers_video(handler, mock_line_message_serv
 
 
 @pytest.mark.asyncio
-async def test_handle_media_message_infers_audio(handler, mock_line_message_service):
-    message = FileMessageContent(id="M125", fileName="voice.mp3", fileSize=300)
+async def test_handle_media_message_infers_audio(handler, mock_response_orchestrator, mock_line_message_service):
+    message = FileMessageContent(
+        id="M125", fileName="voice.mp3", fileSize=300, quoteToken="dummy"
+    )
     event = _message_event(message)
 
     with patch(
@@ -116,8 +134,10 @@ async def test_handle_media_message_infers_audio(handler, mock_line_message_serv
 
 
 @pytest.mark.asyncio
-async def test_handle_media_message_unknown_file(handler, mock_line_message_service):
-    message = FileMessageContent(id="M126", fileName="document.pdf", fileSize=400)
+async def test_handle_media_message_unknown_file(handler, mock_response_orchestrator, mock_line_message_service):
+    message = FileMessageContent(
+        id="M126", fileName="document.pdf", fileSize=400, quoteToken="dummy"
+    )
     event = _message_event(message)
 
     with patch(
@@ -136,7 +156,7 @@ async def test_handle_media_message_unknown_file(handler, mock_line_message_serv
 
 
 @pytest.mark.asyncio
-async def test_handle_media_message_native_image(handler, mock_line_message_service):
+async def test_handle_media_message_native_image(handler, mock_response_orchestrator, mock_line_message_service):
     message = ImageMessageContent(
         id="M127",
         contentProvider={"type": "line"},
@@ -157,3 +177,43 @@ async def test_handle_media_message_native_image(handler, mock_line_message_serv
         source_file_name=None,
         user_id="U12345",
     )
+@pytest.mark.asyncio
+async def test_handle_text_message_success(handler, mock_response_orchestrator, mock_line_message_service):
+    from linebot.v3.webhooks import TextMessageContent
+    message = TextMessageContent(id="M1", text="你好", quoteToken="dummy")
+    event = _message_event(message)
+    
+    await handler.handle(event)
+    
+    mock_response_orchestrator.orchestrate_response.assert_called_once_with("你好")
+    mock_line_message_service.send_line_reply.assert_called_once_with("dummy_token", "AI 回覆", "U12345")
+
+
+@pytest.mark.asyncio
+async def test_handle_text_message_function_call(handler, mock_response_orchestrator, mock_line_message_service):
+    from linebot.v3.webhooks import TextMessageContent
+    from app.infrastructure.gemini import GeminiResult
+    message = TextMessageContent(id="M2", text="附近有醫院嗎", quoteToken="dummy")
+    event = _message_event(message)
+    
+    mock_response_orchestrator.orchestrate_response.return_value = GeminiResult(
+        function_name="request_location"
+    )
+    
+    await handler.handle(event)
+    
+    mock_line_message_service.send_location_quick_reply.assert_called_once_with("dummy_token", "U12345")
+
+
+@pytest.mark.asyncio
+async def test_handle_text_message_error_fallback(handler, mock_response_orchestrator, mock_line_message_service):
+    from linebot.v3.webhooks import TextMessageContent
+    message = TextMessageContent(id="M3", text="hi", quoteToken="dummy")
+    event = _message_event(message)
+    
+    mock_response_orchestrator.orchestrate_response.side_effect = Exception("AI Crash")
+    
+    await handler.handle(event)
+    
+    mock_line_message_service.send_line_reply.assert_called_once()
+    assert "發生錯誤" in mock_line_message_service.send_line_reply.call_args[0][1]

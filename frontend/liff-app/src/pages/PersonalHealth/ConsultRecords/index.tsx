@@ -13,17 +13,23 @@ const LOCAL_KEY = 'consult_records';
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function saveRecords(records: ConsultRecord[]) {
-    localStorage.setItem(LOCAL_KEY, JSON.stringify(records));
+    try {
+        localStorage.setItem(LOCAL_KEY, JSON.stringify(records));
+    }
+    catch {
+        console.error('Failed to save consult records');
+    }
 }
 
 function loadRecords(): ConsultRecord[] {
-    const raw = localStorage.getItem(LOCAL_KEY);
-    if (!raw) return [];
     try {
+        const raw = localStorage.getItem(LOCAL_KEY);
+        if (!raw) return [];
         const arr = JSON.parse(raw);
-        if (Array.isArray(arr)) return arr;
-        return [];
-    } catch {
+        return Array.isArray(arr) ? arr : [];
+    }
+    catch {
+        console.error('Failed to load consult records');
         return [];
     }
 }
@@ -54,7 +60,8 @@ const ConsultRecordsPage: React.FC = () => {
         a.href = url;
         a.download = `consult_records_${new Date().toISOString().slice(0, 10)}.json`;
         a.click();
-        URL.revokeObjectURL(url);
+        // 1 秒後釋放 URL 物件
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
     };
 
     return (

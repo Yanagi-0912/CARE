@@ -42,11 +42,12 @@ const chronicDiseaseOptions = [
 
 const PersonalHealthPage: React.FC = () => {
     const [form, setForm] = useState<HealthData>(defaultData);
-    const [saved, setSaved] = useState<HealthData | null>(null);
     const [otherInput, setOtherInput] = useState('');
     const [otherSaved, setOtherSaved] = useState(false);
     // 儲存成功提示狀態
     const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
+    // 儲存提示訊息
+    const [saveMessage, setSaveMessage] = useState('');
     // 慢性病史下拉開關
     const [isChronicOpen, setIsChronicOpen] = useState(false);
     // 修改：性別下拉開關
@@ -98,6 +99,12 @@ const PersonalHealthPage: React.FC = () => {
         e.preventDefault();
         // 修改：送出前重置提示狀態
         setSaveStatus('idle');
+        // 性別必填檢查，避免空值送出
+        if (!form.gender) {
+            setSaveMessage('請先選擇性別');
+            setSaveStatus('error');
+            return;
+        }
         // 慢性病沒有選或是選其他但不輸入都存"無"
         // 慢性病史改為可複選，整理成陣列再轉成字串
         const hasOther = form.chronicDisease.includes('其他');
@@ -122,7 +129,6 @@ const PersonalHealthPage: React.FC = () => {
             surgeryHistory: (form.surgeryHistory || '').trim() || '無'
         };
 
-        setSaved(finalData);
         console.log("最終提交資料：", finalData);
         // TODO: 你要用真實 LINE user_id，先暫時手動填入或從 LIFF 取得
         const userId = "123456789";
@@ -142,24 +148,33 @@ const PersonalHealthPage: React.FC = () => {
 
         const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
-        const res = await fetch(`${baseUrl}/profiles/${userId}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
+        try {
+            const res = await fetch(`${baseUrl}/profiles/${userId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
 
-        if (!res.ok) {
-            const text = await res.text();
-            console.error("儲存失敗:", text);
+            if (!res.ok) {
+                const text = await res.text();
+                console.error("儲存失敗:", text);
+                // 儲存失敗提示狀態
+                setSaveMessage('儲存失敗，請稍後再試');
+                setSaveStatus('error');
+                return;
+            }
+
+            const data = await res.json();
+            console.log("儲存成功:", data);
+            // 儲存成功提示狀態
+            setSaveMessage('已成功儲存個人健康資料');
+            setSaveStatus('success');
+        } catch (error) {
+            console.error('儲存失敗（網路或請求中斷）:', error);
             // 儲存失敗提示狀態
+            setSaveMessage('網路異常，請稍後再試');
             setSaveStatus('error');
-            return;
         }
-
-        const data = await res.json();
-        console.log("儲存成功:", data);
-        // 儲存成功提示狀態
-        setSaveStatus('success');
     };
 
 
@@ -186,10 +201,10 @@ const PersonalHealthPage: React.FC = () => {
         <div className="pageContainer">
             {/* 儲存成功/失敗提示 */}
             {saveStatus === 'success' && (
-                <div className="saveToast saveToastSuccess">已成功儲存個人健康資料</div>
+                <div className="saveToast saveToastSuccess">{saveMessage || '已成功儲存個人健康資料'}</div>
             )}
             {saveStatus === 'error' && (
-                <div className="saveToast saveToastError">儲存失敗，請稍後再試</div>
+                <div className="saveToast saveToastError">{saveMessage || '儲存失敗，請稍後再試'}</div>
             )}
             <form id="personalHealthForm" className="formContainer" onSubmit={handleSubmit}>
                 <div className="formTitle">個人健康資料</div>

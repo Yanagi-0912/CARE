@@ -36,3 +36,8 @@ class MongoDBManager:
     def get_pending_invitations_collection(cls):
         client = cls.get_client()
         return client["CARE_database"]["pending_invitations"]
+
+    @classmethod
+    def get_users_collection(cls):
+        client = cls.get_client()
+        return client["CARE_database"]["users"]

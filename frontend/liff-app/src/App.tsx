@@ -4,10 +4,13 @@ import Homepage from './pages/Homepage'
 import Header from './components/Header'
 import BottomNav from './components/BottomNav'
 import PersonalHealthPage from './pages/PersonalHealth'
+import ConsultRecordsPage from './pages/PersonalHealth/ConsultRecords'
 import SettingsPage, { applyTheme, STORAGE_KEY, defaultSettings } from './pages/Settings'
 import type { SettingsState } from './pages/Settings'
 
 // 原本的三個佔位頁面 (此處保留 Family，而 Settings 已抽出)
+
+// 原本的三個佔位頁面
 const HealthPage = () => (
   <div style={{ padding: '24px' }}>
     <h2>🏥 個人健康</h2>
@@ -62,6 +65,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Homepage />} />
             <Route path="/personalhealth" element={<PersonalHealthPage />} />
+            <Route path="/personalhealth/consult" element={<ConsultRecordsPage />} />
             <Route path="/family" element={<FamilyPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             {/* 新增：登入頁面的路由 */}

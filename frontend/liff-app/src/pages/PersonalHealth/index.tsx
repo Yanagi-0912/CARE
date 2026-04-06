@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './index.css';
 /*http://localhost:5173/personalHealth*/
 interface HealthData {
@@ -7,7 +8,8 @@ interface HealthData {
     height: string;
     weight: string;
     age: string;
-    chronicDisease: string;
+    // 修改：慢性病史改為可複選
+    chronicDisease: string[];
     chronicDiseaseOther: string;
     majorIllness: string;
     surgeryHistory?: string;
@@ -19,14 +21,14 @@ const defaultData: HealthData = {
     height: '',
     weight: '',
     age: '',
-    chronicDisease: '',
+    // 修改：慢性病史改為可複選
+    chronicDisease: [],
     chronicDiseaseOther: '',
     majorIllness: '',
     surgeryHistory: '',
 };
 
 const chronicDiseaseOptions = [
-    '無',
     '高血壓',
     '糖尿病',
     '高血脂',
@@ -43,14 +45,18 @@ const PersonalHealthPage: React.FC = () => {
     const [saved, setSaved] = useState<HealthData | null>(null);
     const [otherInput, setOtherInput] = useState('');
     const [otherSaved, setOtherSaved] = useState(false);
+    // 儲存成功提示狀態
+    const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
+    // 慢性病史下拉開關
+    const [isChronicOpen, setIsChronicOpen] = useState(false);
+    // 修改：性別下拉開關
+    const [isGenderOpen, setIsGenderOpen] = useState(false);
+    const navigate = useNavigate();
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
-        if (name === 'chronicDisease') {
-            setForm((prev) => ({ ...prev, chronicDisease: value, chronicDiseaseOther: '' }));
-            setOtherInput('');
-            setOtherSaved(false);
-        } else if (name === 'chronicDiseaseOther') {
+        // 慢性病史改為可複選，這裡只處理其他欄位
+        if (name === 'chronicDiseaseOther') {
             setOtherInput(value);
             setOtherSaved(false);
         } else {
@@ -58,42 +64,134 @@ const PersonalHealthPage: React.FC = () => {
         }
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    // 慢性病史改為可複選（dropdown list 勾選處理）
+    const handleChronicToggle = (value: string) => {
+        setForm((prev) => {
+            const exists = prev.chronicDisease.includes(value);
+            const next = exists
+                ? prev.chronicDisease.filter((item) => item !== value)
+                : [...prev.chronicDisease, value];
+            return { ...prev, chronicDisease: next, chronicDiseaseOther: '' };
+        });
+        if (value === '其他' && form.chronicDisease.includes('其他')) {
+            setOtherInput('');
+            setOtherSaved(false);
+        }
+    };
+
+    // 修改：性別單選下拉處理
+    const handleGenderSelect = (value: string) => {
+        setForm((prev) => ({ ...prev, gender: value }));
+        setIsGenderOpen(false);
+    };
+
+    // 修改：儲存訊息 3 秒後收回
+    useEffect(() => {
+        if (saveStatus === 'idle') {
+            return;
+        }
+        const timer = window.setTimeout(() => setSaveStatus('idle'), 3000);
+        return () => window.clearTimeout(timer);
+    }, [saveStatus]);
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        let chronicDisease = form.chronicDisease;
-        let chronicDiseaseOther = form.chronicDiseaseOther;
-        if (chronicDisease === '') {
-            chronicDisease = '無';
-            chronicDiseaseOther = '';
+        // 修改：送出前重置提示狀態
+        setSaveStatus('idle');
+        // 慢性病沒有選或是選其他但不輸入都存"無"
+        // 慢性病史改為可複選，整理成陣列再轉成字串
+        const hasOther = form.chronicDisease.includes('其他');
+        const selected = form.chronicDisease.filter((v) => v !== '其他');
+        const otherValue = otherInput.trim();
+        let finalChronicList = selected;
+        // 選擇其他但未輸入時，不自動塞 "無"
+        if (hasOther && otherValue) {
+            finalChronicList = [...selected, otherValue];
+        }
+        if (finalChronicList.length === 0) {
+            finalChronicList = ['無'];
         }
 
-        else if (chronicDisease === '其他') {
-            /*有填寫就保存填寫的內容，若是空的就存"無" */
-            chronicDiseaseOther = (otherSaved && otherInput.trim()) ? otherInput : '無';
+        const finalData: HealthData = {
+            ...form,
+            // 慢性病史改為可複選
+            chronicDisease: finalChronicList,
+            // 重大傷病紀錄：如果沒填就存 "無"
+            majorIllness: form.majorIllness.trim() || '無',
+            // 手術史：如果沒填或不存在，就存 "無"
+            surgeryHistory: (form.surgeryHistory || '').trim() || '無'
+        };
+
+        setSaved(finalData);
+        console.log("最終提交資料：", finalData);
+        // TODO: 你要用真實 LINE user_id，先暫時手動填入或從 LIFF 取得
+        const userId = "123456789";
+
+        const payload = {
+            name: finalData.name,
+            gender: finalData.gender,
+            height: Number(finalData.height),
+            weight: Number(finalData.weight),
+            age: Number(finalData.age),
+            // 修改：慢性病史改為可複選，後端目前是字串欄位
+            chronic_history: finalData.chronicDisease.join('、'),
+            major_illness_history: finalData.majorIllness,
+            surgery_history: finalData.surgeryHistory,
+            health_consultations: {} // 先放空 JSON
+        };
+
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+
+        const res = await fetch(`${baseUrl}/profiles/${userId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            const text = await res.text();
+            console.error("儲存失敗:", text);
+            // 儲存失敗提示狀態
+            setSaveStatus('error');
+            return;
         }
-        setSaved({ ...form, chronicDisease, chronicDiseaseOther });
+
+        const data = await res.json();
+        console.log("儲存成功:", data);
+        // 儲存成功提示狀態
+        setSaveStatus('success');
     };
+
 
     const handleOtherSave = () => {
         setForm((prev) => ({ ...prev, chronicDiseaseOther: otherInput }));
         setOtherSaved(true);
     };
 
-    const showOtherInput = form.chronicDisease === '其他';
+    // 慢性病史改為可複選
+    const showOtherInput = form.chronicDisease.includes('其他');
 
     // 判斷是否有任一欄位有輸入
     const hasInput =
         !!form.height ||
         !!form.weight ||
         !!form.age ||
-        !!form.chronicDisease ||
+        // 慢性病史改為可複選
+        form.chronicDisease.length > 0 ||
         !!form.chronicDiseaseOther ||
         !!form.majorIllness ||
         !!otherInput;
 
     return (
         <div className="pageContainer">
-            <form className="formContainer" onSubmit={handleSubmit}>
+            {/* 儲存成功/失敗提示 */}
+            {saveStatus === 'success' && (
+                <div className="saveToast saveToastSuccess">已成功儲存個人健康資料</div>
+            )}
+            {saveStatus === 'error' && (
+                <div className="saveToast saveToastError">儲存失敗，請稍後再試</div>
+            )}
+            <form id="personalHealthForm" className="formContainer" onSubmit={handleSubmit}>
                 <div className="formTitle">個人健康資料</div>
                 <div className="formGroup">
                     <label className="label" htmlFor="name">姓名</label>
@@ -110,18 +208,35 @@ const PersonalHealthPage: React.FC = () => {
                 </div>
                 <div className="formGroup">
                     <label className="label" htmlFor="gender">性別</label>
-                    <select
-                        className="input"
-                        id="gender"
-                        name="gender"
-                        value={form.gender}
-                        onChange={handleChange}
-                        required
-                    >
-                        <option value="">請選擇性別</option>
-                        <option value="男">男</option>
-                        <option value="女">女</option>
-                    </select>
+                    {/* 修改：性別改為自訂下拉樣式 */}
+                    <div className="singleSelectWrapper">
+                        <button
+                            type="button"
+                            className="singleSelectButton"
+                            aria-haspopup="listbox"
+                            aria-expanded={isGenderOpen}
+                            onClick={() => setIsGenderOpen((prev) => !prev)}
+                        >
+                            <span className="singleSelectText">
+                                {form.gender || '請選擇性別'}
+                            </span>
+                            <span className="singleSelectCaret" aria-hidden="true">▼</span>
+                        </button>
+                        {isGenderOpen && (
+                            <div className="singleSelectMenu" role="listbox">
+                                {['男', '女'].map((opt) => (
+                                    <button
+                                        key={opt}
+                                        type="button"
+                                        className={`singleSelectItem ${form.gender === opt ? 'isSelected' : ''}`}
+                                        onClick={() => handleGenderSelect(opt)}
+                                    >
+                                        {opt}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
                 <div className="formGroup">
 
@@ -167,20 +282,44 @@ const PersonalHealthPage: React.FC = () => {
                     />
                 </div>
                 <div className="formGroup">
-                    <label className="label" htmlFor="chronicDisease">慢性病史</label>
-                    <select
-                        className="input"
-                        id="chronicDisease"
-                        name="chronicDisease"
-                        value={form.chronicDisease}
-                        onChange={handleChange}
-                        style={{ marginBottom: showOtherInput ? 8 : 0 }}
-                    >
-                        <option value="" disabled>請選擇慢性病史</option>
-                        {chronicDiseaseOptions.map(opt => (
-                            <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                    </select>
+                    <label className="label">慢性病史</label>
+                    {/* 用自訂下拉與勾勾標記取代藍色選取背景 */}
+                    <div className="multiSelectWrapper" style={{ marginBottom: showOtherInput ? 8 : 0 }}>
+                        <button
+                            type="button"
+                            className="multiSelectButton"
+                            aria-haspopup="listbox"
+                            aria-expanded={isChronicOpen}
+                            onClick={() => setIsChronicOpen((prev) => !prev)}
+                        >
+                            <span className="multiSelectText">
+                                {form.chronicDisease.length > 0
+                                    ? form.chronicDisease.join('、')
+                                    : '請選擇慢性病史'}
+                            </span>
+                            <span className="multiSelectCaret" aria-hidden="true">▼</span>
+                        </button>
+                        {isChronicOpen && (
+                            <div className="multiSelectMenu" role="listbox" aria-multiselectable="true">
+                                {chronicDiseaseOptions.map(opt => {
+                                    const checked = form.chronicDisease.includes(opt);
+                                    return (
+                                        <button
+                                            key={opt}
+                                            type="button"
+                                            className={`multiSelectItem ${checked ? 'isSelected' : ''}`}
+                                            onClick={() => handleChronicToggle(opt)}
+                                        >
+                                            <span className="multiSelectCheck" aria-hidden="true">
+                                                {checked ? '✓' : ''}
+                                            </span>
+                                            <span>{opt}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
                     {showOtherInput && (
                         <div className="otherInputRow">
                             <input
@@ -231,29 +370,16 @@ const PersonalHealthPage: React.FC = () => {
                         rows={2}
                     />
                 </div>
-                {hasInput && (
-                    <button className="button" type="submit">儲存紀錄</button>
-                )}
             </form>
-            <div className="consultRecord">
-                <h2>諮詢紀錄(還沒做)
-                </h2>
+            <div className="actionRow">
+                {hasInput && (
+                    <button className="button" type="submit" form="personalHealthForm">儲存紀錄</button>
+                )}
+                <button onClick={() => navigate('/personalhealth/consult')} className="button consultButton">
+                    查看諮詢紀錄
+                </button>
             </div>
-            {saved && (
-                <div className="result">
-                    <div>姓名：{saved.name}</div>
-                    <div>性別：{saved.gender}</div>
-                    <div>身高：{saved.height} cm</div>
-                    <div>體重：{saved.weight} kg</div>
-                    <div>年齡：{saved.age}</div>
-                    {/*選擇其他慢性病但是不輸入就存"無"*/}
-                    <div>
-                        慢性病史：
-                        {saved.chronicDisease}
-                    </div>
-                    <div>重大傷病紀錄：{saved.majorIllness || '無'}</div>
-                </div>
-            )}
+
         </div>
     );
 };

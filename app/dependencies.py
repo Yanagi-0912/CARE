@@ -15,7 +15,9 @@ from app.infrastructure.vector_search import (
     VectorSearchConfig,
 )
 from app.db.mongodb import MongoDBManager
-
+from app.application.users.profile_service import ProfileService
+from app.repositories.user_profile_repository import UserProfileRepository
+from app.application.family.family_tree_service import FamilyTreeService
 _mongodb_url = os.getenv("MONGODB_URL")
 MongoDBManager.configure(_mongodb_url or settings.MONGODB_URI)
 
@@ -52,6 +54,13 @@ _line_event_handler = LineEventHandler(
     line_message_service=_line_message_service,
     medical_service=medical_service,
 )
+
+# 使用者資料相關的依賴注入
+_profile_repository = UserProfileRepository()
+_profile_service = ProfileService(repo=_profile_repository)
+
+# Family Tree 服務
+_family_tree_service = FamilyTreeService()
 
 
 def get_mongodb_url() -> str:
@@ -95,3 +104,11 @@ def get_vector_search_config() -> VectorSearchConfig:
 
 def get_vector_search_reader() -> MongoVectorSearchReader:
     return _vector_search_reader
+
+
+def get_user_profile_service() -> ProfileService:
+    return _profile_service
+
+
+def get_family_tree_service() -> FamilyTreeService:
+    return _family_tree_service

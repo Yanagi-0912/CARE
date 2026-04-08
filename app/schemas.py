@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Any, Optional, Dict
 
 
 # pydantic 是來做資料驗證的還有資料管理的，比一般的python class 好一點的是為自動檢查是否符合規則
@@ -77,3 +77,20 @@ class MedicalFacility(BaseModel):
     distance_meters: Optional[float] = Field(
         None, description="距離用戶的直線距離（公尺），由 PostGIS 計算填入"
     )
+
+class ProfileUpsertRequest(BaseModel):
+    """使用者健康資料更新請求模型"""
+    name: str = Field(..., description="姓名")
+    gender: str = Field(..., description="性別")
+    height: float = Field(..., description="身高")
+    weight: float = Field(..., description="體重")
+    age: int = Field(..., description="年齡")
+    chronic_history: str = Field(..., description="慢性病史")
+    major_illness_history: str = Field(..., description="重大傷病紀錄")
+    surgery_history: str = Field(..., description="開刀紀錄")
+    health_consultations: Dict[str, Any] = Field(..., description="健康諮詢紀錄(JSON)")
+
+class ProfileUpsertResponse(BaseModel):
+    """使用者健康資料更新回應模型"""
+    user_id: str
+    updated: bool

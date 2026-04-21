@@ -5,7 +5,13 @@ from app.infrastructure.vector_search.pipeline import build_vector_search_pipeli
 
 def test_mongo_document_to_chunk_hit_handles_missing_fields():
     hit = mongo_document_to_chunk_hit({}, text_field="chunk_text")
-    assert hit == {"id": "None", "text": None, "score": None}
+    assert hit == {
+        "id": "None",
+        "text": None,
+        "score": None,
+        "source_name": None,
+        "url": None,
+    }
 
 
 def test_build_vector_search_pipeline_contains_expected_projection():
@@ -27,6 +33,8 @@ def test_build_vector_search_pipeline_contains_expected_projection():
     assert pipeline[0]["$vectorSearch"]["limit"] == 5
     assert pipeline[0]["$vectorSearch"]["numCandidates"] == 100
     assert pipeline[1]["$project"]["chunk_text"] == 1
+    assert pipeline[1]["$project"]["source_name"] == 1
+    assert pipeline[1]["$project"]["url"] == 1
     assert pipeline[1]["$project"]["score"] == {"$meta": "vectorSearchScore"}
 
 

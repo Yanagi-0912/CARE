@@ -12,4 +12,6 @@ def mongo_document_to_chunk_hit(
         "id": str(doc.get("_id")),
         "text": doc.get(text_field),
         "score": doc.get("score"),
+        "source_name": doc.get("source_name"),
+        "url": doc.get("url"),
     }

@@ -7,45 +7,34 @@ import PersonalHealthPage from './pages/PersonalHealth'
 import ConsultRecordsPage from './pages/PersonalHealth/ConsultRecords'
 import SettingsPage, { applyTheme, STORAGE_KEY, defaultSettings } from './pages/Settings'
 import type { SettingsState } from './pages/Settings'
+import './App.css'
+import { I18nProvider, useI18n, getInitialLanguage } from './i18n'
 
-// 原本的三個佔位頁面 (此處保留 Family，而 Settings 已抽出)
-
-// 原本的三個佔位頁面
-const HealthPage = () => (
-  <div style={{ padding: '24px' }}>
-    <h2>🏥 個人健康</h2>
-    <p>這裡將顯示您的健康紀錄與醫院預約功能。</p>
-  </div>
-)
-
-const FamilyPage = () => (
-  <div style={{ padding: '24px' }}>
-    <h2>👥 家庭介面</h2>
-    <p>這裡將管理長輩與家人的健康狀況。</p>
-  </div>
-)
+const FamilyPage = () => {
+  const { t } = useI18n()
+  return (
+    <div className="placeholder-page">
+      <h2>👥 {t('family.title')}</h2>
+      <p>{t('family.desc')}</p>
+    </div>
+  )
+}
 
 // 新增：登入佔位頁面 (順便放一個假的 LINE 登入按鈕)
-const LoginPage = () => (
-  <div style={{ padding: '48px 24px', textAlign: 'center' }}>
-    <h2>登入 CARE</h2>
-    <p style={{ color: '#6b7280', marginBottom: '24px' }}>請登入以查看您的專屬健康資訊</p>
-    <button style={{
-      backgroundColor: '#06C755', /* LINE 官方綠色 */
-      color: 'white',
-      border: 'none',
-      padding: '12px 24px',
-      borderRadius: '8px',
-      fontSize: '1rem',
-      fontWeight: 'bold',
-      cursor: 'pointer'
-    }}>
-      使用 LINE 帳號登入
-    </button>
-  </div>
-)
+const LoginPage = () => {
+  const { t } = useI18n()
+  return (
+    <div className="login-page">
+      <h2>{t('login.title')}</h2>
+      <p>{t('login.desc')}</p>
+      <button className="line-login-btn">
+        {t('login.button')}
+      </button>
+    </div>
+  )
+}
 
-function App() {
+function AppContent() {
   /* 啟動時：讀取 SettingsPage 存的 localStorage 設定套用主題 */
   useEffect(() => {
     let settings: SettingsState = defaultSettings
@@ -61,7 +50,7 @@ function App() {
       <div className="app-layout">
         <Header />
 
-        <div className="main-content" style={{ paddingBottom: '80px' }}>
+        <div className="main-content">
           <Routes>
             <Route path="/" element={<Homepage />} />
             <Route path="/personalhealth" element={<PersonalHealthPage />} />
@@ -76,6 +65,16 @@ function App() {
         <BottomNav />
       </div>
     </Router>
+  )
+}
+
+function App() {
+  const initialLanguage = getInitialLanguage(STORAGE_KEY)
+
+  return (
+    <I18nProvider initialLanguage={initialLanguage}>
+      <AppContent />
+    </I18nProvider>
   )
 }
 

@@ -56,3 +56,34 @@
   color: #6b7280;
   font-size: 0.9rem;
 }
+
+@media (max-width: 640px) {
+  .home-container {
+    padding: 16px;
+  }
+
+  .hero-section {
+    text-align: left;
+    margin-bottom: 20px;
+  }
+
+  .hero-section h2 {
+    font-size: 1.3rem;
+    margin: 0 0 6px;
+  }
+
+  .feature-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .feature-card {
+    padding: 18px;
+    border-radius: 12px;
+  }
+
+  .card-icon {
+    font-size: 2rem;
+    margin-bottom: 12px;
+  }
+}

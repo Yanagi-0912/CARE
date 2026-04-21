@@ -1,14 +1,16 @@
 import { useNavigate } from 'react-router-dom';
 import './index.css';
+import { useI18n } from '../../i18n';
 
 function Homepage() {
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   return (
     <main className="home-container">
       <section className="hero-section">
-        <h2>早安，今天想了解什麼？</h2>
-        <p>您的專屬健康與預約管理小幫手</p>
+        <h2>{t('home.greetingTitle')}</h2>
+        <p>{t('home.greetingDesc')}</p>
       </section>
 
       <section className="feature-grid">
@@ -17,8 +19,8 @@ function Homepage() {
           onClick={() => navigate('/personalhealth')}
         >
           <div className="card-icon">🏥</div>
-          <h3>個人健康</h3>
-          <p>健康紀錄與醫院預約</p>
+          <h3>{t('home.personalHealth')}</h3>
+          <p>{t('home.personalHealthDesc')}</p>
         </button>
 
         <button
@@ -26,8 +28,8 @@ function Homepage() {
           onClick={() => navigate('/family')}
         >
           <div className="card-icon">👨‍👩‍👧‍👦</div>
-          <h3>家庭介面</h3>
-          <p>管理長輩與家人狀況</p>
+          <h3>{t('home.family')}</h3>
+          <p>{t('home.familyDesc')}</p>
         </button>
 
         <button
@@ -35,8 +37,8 @@ function Homepage() {
           onClick={() => navigate('/settings')}
         >
           <div className="card-icon">⚙️</div>
-          <h3>設定頁面</h3>
-          <p>系統偏好與通知管理</p>
+          <h3>{t('home.settings')}</h3>
+          <p>{t('home.settingsDesc')}</p>
         </button>
       </section>
     </main>

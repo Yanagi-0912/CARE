@@ -18,22 +18,22 @@ function BottomNav() {
         <span className="label">首頁</span>
       </button>
       <button
-        className={`nav-item ${isActive('/personalhealth')}`}
-        onClick={() => navigate('/personalhealth')}
+        className={`nav-item ${isActive('/PersonalHealth')}`}
+        onClick={() => navigate('/PersonalHealth')}
       >
         <span className="icon">🏥</span>
         <span className="label">健康</span>
       </button>
       <button
-        className={`nav-item ${isActive('/family')}`}
-        onClick={() => navigate('/family')}
+        className={`nav-item ${isActive('/Family')}`}
+        onClick={() => navigate('/Family')}
       >
         <span className="icon">👥</span>
         <span className="label">家庭</span>
       </button>
       <button
-        className={`nav-item ${isActive('/settings')}`}
-        onClick={() => navigate('/settings')}
+        className={`nav-item ${isActive('/Settings')}`}
+        onClick={() => navigate('/Settings')}
       >
         <span className="icon">⚙️</span>
         <span className="label">設定</span>

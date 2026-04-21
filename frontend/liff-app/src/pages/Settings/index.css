@@ -63,6 +63,18 @@
   min-height: 48px;
 }
 
+.font-size-btn-normal {
+  font-size: 16px;
+}
+
+.font-size-btn-large {
+  font-size: 20px;
+}
+
+.font-size-btn-xlarge {
+  font-size: 24px;
+}
+
 .font-size-btn:active {
   transform: scale(0.96);
 }
@@ -86,6 +98,31 @@
   line-height: 1.6;
   text-align: center;
   border: 1.5px dashed var(--card-border, #d1d5db);
+}
+
+/* ── 語言下拉選單 ── */
+.select-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-select {
+  width: 100%;
+  min-height: 48px;
+  border: 2px solid var(--card-border, #d1d5db);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-color, #1f2937);
+  background: var(--card-bg, #ffffff);
+}
+
+.settings-select:focus {
+  outline: none;
+  border-color: #0D9488;
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
 }
 
 /* ── Toggle 開關 (手指友善尺寸) ── */
@@ -189,4 +226,32 @@
 .save-btn:active {
   transform: scale(0.98);
   box-shadow: 0 2px 8px rgba(13, 148, 136, 0.2);
+}
+
+@media (max-width: 480px) {
+  .settings-page {
+    padding: 14px 12px 116px;
+  }
+
+  .settings-title {
+    font-size: 1.35rem;
+    margin-bottom: 14px;
+  }
+
+  .settings-section {
+    padding: 14px 12px;
+    border-radius: 12px;
+  }
+
+  .font-size-options {
+    gap: 8px;
+  }
+
+  .font-size-btn {
+    padding: 12px 4px;
+  }
+
+  .toggle-label {
+    font-size: 0.98rem;
+  }
 }

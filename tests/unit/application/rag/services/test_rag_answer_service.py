@@ -34,8 +34,20 @@ async def test_answer_uses_hits_to_build_rag_prompt():
     similar_chunk_searcher = MagicMock()
     similar_chunk_searcher.search_similar_chunks = AsyncMock(
         return_value=[
-            {"id": "1", "text": "高血壓建議低鈉飲食", "score": 0.9},
-            {"id": "2", "text": "規律量血壓", "score": 0.8},
+            {
+                "id": "1",
+                "text": "高血壓建議低鈉飲食",
+                "score": 0.9,
+                "source_name": "衛福部闢謠網站",
+                "url": "https://www.hpa.gov.tw/Pages/Detail.aspx?nodeid=5020&pid=19922",
+            },
+            {
+                "id": "2",
+                "text": "規律量血壓",
+                "score": 0.8,
+                "source_name": "衛福部闢謠網站",
+                "url": "https://www.hpa.gov.tw/Pages/Detail.aspx?nodeid=5020&pid=19922",
+            },
         ]
     )
     vector_search_reader = MagicMock()
@@ -47,7 +59,9 @@ async def test_answer_uses_hits_to_build_rag_prompt():
     )
     result = await svc.answer("我有高血壓要注意什麼")
 
-    assert result == "RAG 回覆"
+    assert "RAG 回覆" in result
+    assert "資料來源：" in result
+    assert "衛福部闢謠網站" in result
     similar_chunk_searcher.search_similar_chunks.assert_awaited_once_with(
         [0.1, 0.2], vector_search_reader
     )
@@ -70,7 +84,13 @@ async def test_answer_uses_default_message_when_model_returns_empty_text(model_t
     similar_chunk_searcher = MagicMock()
     similar_chunk_searcher.search_similar_chunks = AsyncMock(
         return_value=[
-            {"id": "1", "text": "高血壓建議低鈉飲食", "score": 0.9},
+            {
+                "id": "1",
+                "text": "高血壓建議低鈉飲食",
+                "score": 0.9,
+                "source_name": None,
+                "url": None,
+            },
         ]
     )
     svc = RagAnswerService(

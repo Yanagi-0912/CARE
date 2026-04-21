@@ -11,14 +11,6 @@ import type { SettingsState } from './pages/Settings'
 
 // 原本的三個佔位頁面 (此處保留 Family，而 Settings 已抽出)
 
-// 原本的三個佔位頁面
-const HealthPage = () => (
-  <div style={{ padding: '24px' }}>
-    <h2>🏥 個人健康</h2>
-    <p>這裡將顯示您的健康紀錄與醫院預約功能。</p>
-  </div>
-)
-
 const FamilyPage = () => (
   <div style={{ padding: '24px' }}>
     <h2>👥 家庭介面</h2>
@@ -49,7 +41,6 @@ function App() {
             <Route path="/personalhealth/consult" element={<ConsultRecordsPage />} />
             <Route path="/family" element={<FamilyPage />} />
             <Route path="/settings" element={<SettingsPage />} />
-            {/* 新增：登入頁面的路由 */}
             <Route path="/login" element={<LoginPage />} />
           </Routes>
         </div>

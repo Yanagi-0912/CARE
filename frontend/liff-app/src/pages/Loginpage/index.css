@@ -15,17 +15,8 @@
 	color: #6b7280;
 }
 
-.line-login-btn {
-	background-color: #06c755;
-	color: #fff;
-	border: none;
-	padding: 12px 24px;
-	border-radius: 8px;
-	font-size: 1rem;
-	font-weight: 700;
-	cursor: pointer;
-}
-
-.line-login-btn:hover {
-	filter: brightness(0.95);
+.login-error {
+	margin: 0;
+	color: #dc2626;
+	font-weight: 600;
 }

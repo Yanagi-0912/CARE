@@ -20,22 +20,22 @@ function BottomNav() {
         <span className="label">{t('nav.home')}</span>
       </button>
       <button
-        className={`nav-item ${isActive('/personalhealth')}`}
-        onClick={() => navigate('/personalhealth')}
+        className={`nav-item ${isActive('/PersonalHealth')}`}
+        onClick={() => navigate('/PersonalHealth')}
       >
         <span className="icon">🏥</span>
         <span className="label">{t('nav.health')}</span>
       </button>
       <button
-        className={`nav-item ${isActive('/family')}`}
-        onClick={() => navigate('/family')}
+        className={`nav-item ${isActive('/Family')}`}
+        onClick={() => navigate('/Family')}
       >
         <span className="icon">👥</span>
         <span className="label">{t('nav.family')}</span>
       </button>
       <button
-        className={`nav-item ${isActive('/settings')}`}
-        onClick={() => navigate('/settings')}
+        className={`nav-item ${isActive('/Settings')}`}
+        onClick={() => navigate('/Settings')}
       >
         <span className="icon">⚙️</span>
         <span className="label">{t('nav.settings')}</span>

@@ -1,0 +1,48 @@
+.home-grid {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.home-hero {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.card-container {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.feature-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.feature-card:active {
+  transform: scale(0.98);
+}
+
+/* RWD 中大螢幕調整 */
+@media (min-width: 640px) {
+  .card-container {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .card-container {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .feature-card {
+    flex-direction: column;
+    text-align: center;
+  }
+}

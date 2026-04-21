@@ -13,5 +13,10 @@ export default defineConfig({
       // 你也可以直接加入 '.ngrok-free.dev'，這樣以後不管網址前面怎麼變，都不用再回來改這行了！
       '.ngrok-free.dev' 
     ]
-  }
+  },
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.ts',
+  },
 })

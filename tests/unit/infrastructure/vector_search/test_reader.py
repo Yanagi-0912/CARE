@@ -65,8 +65,20 @@ async def test_search_by_embedding_maps_docs_to_hits():
         hits = await reader.search_by_embedding(query_embedding=[0.1, 0.2], k=2)
 
     assert hits == [
-        {"id": "123", "text": "A", "score": 0.9},
-        {"id": "b", "text": "B", "score": None},
+        {
+            "id": "123",
+            "text": "A",
+            "score": 0.9,
+            "source_name": None,
+            "url": None,
+        },
+        {
+            "id": "b",
+            "text": "B",
+            "score": None,
+            "source_name": None,
+            "url": None,
+        },
     ]
     fake_collection.aggregate.assert_called_once_with([{"$vectorSearch": {}}])
     mock_pipeline.assert_called_once()

@@ -1,0 +1,50 @@
+.app-layout {
+  min-height: 100vh;
+}
+
+.main-content {
+  max-width: 980px;
+  margin: 0 auto;
+  width: 100%;
+  padding-bottom: 80px;
+}
+
+.placeholder-page {
+  padding: 24px 16px 110px;
+}
+
+.placeholder-page p {
+  color: #6b7280;
+}
+
+.login-page {
+  padding: 48px 24px 110px;
+  text-align: center;
+}
+
+.login-page p {
+  color: #6b7280;
+  margin-bottom: 24px;
+}
+
+.line-login-btn {
+  background-color: #06c755;
+  color: #fff;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .main-content {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .login-page {
+    padding: 32px 16px 110px;
+  }
+}

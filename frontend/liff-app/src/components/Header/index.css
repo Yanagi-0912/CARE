@@ -25,6 +25,10 @@
   flex-shrink: 0;
 }
 
+.clickable {
+  cursor: pointer;
+}
+
 /* 搜尋框設計：圓角、淡灰背景 */
 .search-box {
   flex-grow: 1;
@@ -69,7 +73,25 @@
 
 /* 手機版微調：隱藏搜尋框，改放一個放大鏡 icon 就好（節省空間） */
 @media (max-width: 600px) {
+  .app-header {
+    padding: 10px 12px;
+  }
+
+  .header-container {
+    gap: 10px;
+  }
+
+  .header-logo {
+    font-size: 1.2rem;
+  }
+
   .search-box {
     display: none; 
+  }
+
+  .login-btn {
+    padding: 7px 12px;
+    font-size: 0.9rem;
+    border-radius: 7px;
   }
 }

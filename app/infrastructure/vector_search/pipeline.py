@@ -24,6 +24,8 @@ def build_vector_search_pipeline(
             "$project": {
                 config.text_field: 1,
                 "_id": 1,
+                "source_name": 1,
+                "url": 1,
                 "score": {"$meta": "vectorSearchScore"},
             }
         },

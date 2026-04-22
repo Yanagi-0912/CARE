@@ -5,6 +5,7 @@ import BottomNav from './components/BottomNav';
 import Sidebar from './components/Sidebar';
 import Home from './pages/Home';
 import PersonalHealth from './pages/PersonalHealth';
+import Family from './pages/Family';
 import ConsultRecordsPage from './pages/PersonalHealth/ConsultRecords';
 import { I18nProvider, useI18n, getInitialLanguage } from './i18n';
 import SettingsPage, { applyTheme, STORAGE_KEY, defaultSettings } from './pages/Settings';
@@ -12,15 +13,6 @@ import type { SettingsState } from './pages/Settings';
 import './App.css';
 
 /* 佔位組件：後續開發可直接替換檔案 */
-const Family = () => {
-  const { t } = useI18n();
-  return (
-    <div className="placeholder-page">
-      <h2>👥 {t('family.title')}</h2>
-      <p>{t('family.desc')}</p>
-    </div>
-  );
-};
 const Login = () => {
   const { t } = useI18n();
   return (

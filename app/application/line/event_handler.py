@@ -100,16 +100,21 @@ class LineEventHandler:
 
         logger.info(f"Received location from user {user_id}: ({lat}, {lng})")
 
-        facilities = await self._medical_service.handle_location(user_id, lat, lng)
-        if facilities is None:
-            return
+        try:
+            facilities = await self._medical_service.handle_location(user_id, lat, lng)
+            if facilities is None:
+                return
 
-        reply_text = (
-            format_facility_list(facilities) if facilities else NO_FACILITY_MESSAGE
-        )
-        await self._line_message_service.send_line_reply(
-            reply_token, reply_text, user_id
-        )
+            reply_text = (
+                format_facility_list(facilities) if facilities else NO_FACILITY_MESSAGE
+            )
+            await self._line_message_service.send_line_reply(
+                reply_token, reply_text, user_id
+            )
+        except Exception as e:
+            logger.error(f"Error handling location from user {user_id}: {e}", exc_info=True)
+            error_message = "抱歉，伺服器發生內部問題，請稍後再試"
+            await self._line_message_service.send_line_reply(reply_token, error_message, user_id)
 
     async def _handle_media_message(
         self, message, reply_token: str, user_id: Optional[str]

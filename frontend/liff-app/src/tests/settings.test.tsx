@@ -11,23 +11,23 @@ function renderSettings(initialLanguage = 'zh-TW' as const) {
   );
 }
 
-describe('Settings language behavior', () => {
+describe('設定頁語言行為', () => {
   beforeEach(() => {
     localStorage.clear();
   });
 
-  it('updates localStorage and UI language when selection changes', () => {
+  it('切換語言後，應同步更新 localStorage 與畫面語言', () => {
     renderSettings();
 
     const select = screen.getByLabelText('顯示語言') as HTMLSelectElement;
     fireEvent.change(select, { target: { value: 'en' } });
-
+//使用者改語言 → 有沒有存進 localStorage
     const saved = JSON.parse(localStorage.getItem('care-settings') || '{}');
     expect(saved.language).toBe('en');
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument();
   });
-
-  it('keeps selected language after re-mount', () => {
+//UI 有沒有真的變英文
+  it('重新掛載後，應保留先前選擇的語言', () => {
     localStorage.setItem(
       'care-settings',
       JSON.stringify({

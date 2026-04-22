@@ -184,3 +184,4 @@ class LineEventHandler:
             error_message = "抱歉，處理您的訊息時發生錯誤，請稍後再試"
             await self._line_message_service.send_line_reply(reply_token, error_message, user_id)
             return False
+

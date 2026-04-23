@@ -120,7 +120,7 @@ class FamilyTreeService:
             raise HTTPException(
                 status_code=400,
                 detail=f"不支援的關係類型：{relationship_type}。"
-                       f"可用值：{list(REVERSE_RELATIONSHIP.keys())}",
+                f"可用值：{list(REVERSE_RELATIONSHIP.keys())}",
             )
 
         # 1. 更新自身族譜
@@ -144,6 +144,8 @@ class FamilyTreeService:
                     f"set_relationship：{member_id} 族譜中無 {user_id}，略過反向更新"
                 )
         except Exception as e:
-            logger.error(f"set_relationship：反向更新失敗 ({member_id} → {user_id}): {e}")
+            logger.error(
+                f"set_relationship：反向更新失敗 ({member_id} → {user_id}): {e}"
+            )
 
         return updated_tree

@@ -103,6 +103,13 @@ pip install -r requirements.txt
 pytest           # 或 pytest tests/ -v
 ```
 
+- **執行前端測試（LIFF App）**
+
+```bash
+cd frontend/liff-app
+npm run test
+```
+
 - **啟動後端服務**
 
 ```bash

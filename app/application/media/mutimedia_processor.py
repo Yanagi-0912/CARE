@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # 媒體解析 webhook URL
 MEDIA_PARSE_WEBHOOK_URL = settings.MEDIA_PARSE_WEBHOOK_URL
-WEBHOOK_TIMEOUT_SECONDS = 30
+WEBHOOK_TIMEOUT_SECONDS = 120
 LINE_MESSAGE_CONTENT_API = (
     "https://api-data.line.me/v2/bot/message/{message_id}/content"
 )
@@ -108,6 +108,7 @@ class MediaProcessorService:
         target = TMP_DIR / f"{safe_type}_{timestamp}_{random_suffix}{extension}"
 
         from app.dependencies import get_line_token_manager
+
         access_token = get_line_token_manager().get_token()
         headers = {"Authorization": f"Bearer {access_token}"}
         content_url = LINE_MESSAGE_CONTENT_API.format(message_id=media_message_id)

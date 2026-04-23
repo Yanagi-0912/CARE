@@ -12,5 +12,5 @@ async def upsert_profile(
     body: ProfileUpsertRequest,
     service: ProfileService = Depends(get_user_profile_service),
 ):
-    updated = await service.upsert_profile(user_id, body.model_dump())
+    updated = await service.upsert_user_profile(user_id, body.model_dump())
     return ProfileUpsertResponse(user_id=user_id, updated=updated)

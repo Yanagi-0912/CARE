@@ -1,5 +1,5 @@
 # 測試更新、插入使用者資料API的測試程式
-# pytest tests/api/test_upsert_users.py
+# pytest tests/unit/routers/test_upsert_users.py
 from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient

@@ -18,6 +18,9 @@ from app.db.mongodb import MongoDBManager
 from app.application.users.profile_service import ProfileService
 from app.repositories.user_profile_repository import UserProfileRepository
 from app.application.family.family_tree_service import FamilyTreeService
+from app.application.liff.auth_service import LiffAuthApplicationService
+from app.services.liff.jwt_service import AppJwtService
+from app.services.liff.line_id_token_service import LineIdTokenService
 _mongodb_url = os.getenv("MONGODB_URL")
 MongoDBManager.configure(_mongodb_url or settings.MONGODB_URI)
 
@@ -61,6 +64,18 @@ _profile_service = ProfileService(repo=_profile_repository)
 
 # Family Tree 服務
 _family_tree_service = FamilyTreeService()
+
+# LIFF Auth 服務
+_line_id_token_service = LineIdTokenService()
+_app_jwt_service = AppJwtService(
+    secret=settings.AUTH_JWT_SECRET,
+    algorithm=settings.AUTH_JWT_ALGORITHM,
+    expires_minutes=settings.AUTH_JWT_EXPIRES_MINUTES,
+)
+_liff_auth_application_service = LiffAuthApplicationService(
+    line_id_token_service=_line_id_token_service,
+    jwt_service=_app_jwt_service,
+)
 
 
 def get_mongodb_url() -> str:
@@ -112,3 +127,7 @@ def get_user_profile_service() -> ProfileService:
 
 def get_family_tree_service() -> FamilyTreeService:
     return _family_tree_service
+
+
+def get_liff_auth_application_service() -> LiffAuthApplicationService:
+    return _liff_auth_application_service

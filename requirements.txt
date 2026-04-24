@@ -26,3 +26,4 @@ pytest-cov==7.0.0
 # 工具套件
 pydantic==2.12.5
 typing-extensions==4.15.0
+PyJWT==2.10.1

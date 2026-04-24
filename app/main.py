@@ -2,6 +2,7 @@ import logging
 
 from fastapi import FastAPI
 from app.routers.line.webhook import router as line_router
+from app.routers.liff.auth import router as auth_router
 from app.routers.system import router as system_router
 from app.routers.users.upsert_users import router as profile_router
 from app.core.cors import add_cors_middleware
@@ -21,6 +22,7 @@ app.include_router(
     tags=["LINE Bot"],
 )
 app.include_router(profile_router, prefix="/profiles", tags=["Profile"])
+app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(
     family_tree_router, 
     prefix="/api/family-tree", 

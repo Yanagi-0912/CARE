@@ -34,13 +34,6 @@ class UserProfileData(BaseModel):
         description="Health consultation records in JSON format",
     )
 
-    def to_payload(self) -> Dict[str, Any]:
-        """
-        將模型序列化成 repository 可直接寫入的 payload。
-        """
-
-        return self.model_dump()
-
 
 # 這裡userprofile繼承userprofiledata，並且加上line_id、created_at、updated_at等欄位
 class UserProfile(UserProfileData):
@@ -73,6 +66,13 @@ class UserProfile(UserProfileData):
         """
 
         return cls(line_id=line_id, **payload)
+
+    def to_payload(self) -> Dict[str, Any]:
+        """
+        將模型序列化成 repository 可直接寫入的 payload。
+        """
+        # 這裡排除 created_at 和 updated_at，因為這兩個欄位由 repository 在寫入時自動添加。
+        return self.model_dump(exclude={"created_at", "updated_at"})
 
 
 # __all__表示當其他文件使用 import * 時，僅會匯入 UserProfileData 和

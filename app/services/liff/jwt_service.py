@@ -31,3 +31,16 @@ class AppJwtService:
             algorithm=self._algorithm,
         )
         return token, self._expires_minutes * 60
+
+    def decode_user_id(self, token: str) -> str:
+        payload = jwt.decode(
+            token,
+            self._secret,
+            algorithms=[self._algorithm],
+            issuer=self._issuer,
+        )
+
+        line_user_id = payload.get("sub")
+        if not line_user_id:
+            raise ValueError("JWT payload missing sub")
+        return line_user_id

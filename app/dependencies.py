@@ -1,5 +1,9 @@
 #  小註解：不從原有程式new物件，依賴dependency injection注入物件 那dependencies 就叫做 container
+from dataclasses import dataclass
 import os
+
+import jwt  # type: ignore[import-not-found]
+from fastapi import Header, HTTPException
 
 from app.core.config import settings
 from app.infrastructure.gemini import GeminiService
@@ -131,3 +135,28 @@ def get_family_tree_service() -> FamilyTreeService:
 
 def get_liff_auth_application_service() -> LiffAuthApplicationService:
     return _liff_auth_application_service
+
+
+@dataclass
+class CurrentUser:
+    line_user_id: str
+
+
+def get_current_user(authorization: str | None = Header(default=None)) -> CurrentUser:
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(status_code=401, detail="Invalid Authorization header format")
+
+    try:
+        line_user_id = _app_jwt_service.decode_user_id(token.strip())
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+
+    return CurrentUser(line_user_id=line_user_id)

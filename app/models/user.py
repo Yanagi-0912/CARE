@@ -11,7 +11,6 @@ class UserProfileData(BaseModel):
     設計目的：
     1. 集中定義 user profile 的欄位與驗證規則。
     2. 同一份欄位可被「API 請求模型」與「資料庫文件模型」重複使用。
-    3. 輸入格式固定使用字串，避免前後端欄位格式不一致。
     """
 
     # field 內的 ... 代表必填欄位。

@@ -1,31 +1,41 @@
-# 測試更新、插入使用者資料API的測試程式
-# pytest tests/unit/routers/test_upsert_users.py
+# tests/unit/routers/test_upsert_users.py
 from unittest.mock import AsyncMock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.dependencies import get_user_profile_service
 from app.main import app
 
 
-# 測試用的假物件，模擬 ProfileService 的行為
-# Stub 在測試裡通常表示「固定回應的替身」，我用fake
-class FakeProfileService:
+class FakeUserProfileService:
     def __init__(self, result: bool = True, error: Exception | None = None) -> None:
         self._result = result
         self._error = error
         self.upsert_user_profile = AsyncMock(side_effect=self._call)
 
-    # 當測試真的呼叫 upsert_user_profile 時，跑這段邏輯
     async def _call(self, user_id: str, payload: dict) -> bool:
         if self._error is not None:
             raise self._error
         return self._result
 
 
-client = TestClient(app)
+@pytest.fixture()
+def client():
+    return TestClient(app)
 
+#用dependency_overrides，把原本的get_user_profile_service改成
+# 用FakeUserProfileService來測試，避免呼叫service
+@pytest.fixture()
+def override_user_profile_service():
+    def _override(service: FakeUserProfileService):
+        app.dependency_overrides[get_user_profile_service] = lambda: service
+        return service
+    
+    yield _override
+    app.dependency_overrides.clear()
 
+# 下面是測試用的payload，包含所有必填欄位和一些範例資料。
 def _valid_payload() -> dict:
     return {
         "name": "Amy",
@@ -39,47 +49,40 @@ def _valid_payload() -> dict:
         "health_consultations": {"last_visit": "2026-04-20"},
     }
 
-
-# 測試成功更新或插入使用者資料，預期回 200 和正確的 response body
-def test_upsert_user_profile_success_returns_200_and_response_body():
-    # 用 dependency override 注入假的 service，隔離 router 行為
-    fake_service = FakeProfileService(result=True)
-    app.dependency_overrides[get_user_profile_service] = lambda: fake_service
+#測試成功的情況，應該回傳200和預期的response body
+def test_upsert_user_profile_success_returns_200_and_response_body(
+    client, override_user_profile_service
+):
+    fake_service = override_user_profile_service(FakeUserProfileService(result=True))
 
     response = client.put("/profiles/U123", json=_valid_payload())
-
-    app.dependency_overrides.clear()
-
     assert response.status_code == 200
     assert response.json() == {"user_id": "U123", "updated": True}
+
     fake_service.upsert_user_profile.assert_awaited_once()
 
-
-# 缺少必要欄位時，應由 Pydantic/FastAPI 回 422
-def test_upsert_user_profile_invalid_body_returns_422():
-
-    fake_service = FakeProfileService(result=True)
-    app.dependency_overrides[get_user_profile_service] = lambda: fake_service
+#測試payload缺少必填欄位的情況，應該回傳422 Unprocessable Entity
+def test_upsert_user_profile_invalid_body_returns_422(
+    client, override_user_profile_service
+):
+    override_user_profile_service(FakeUserProfileService(result=True))
 
     invalid_payload = _valid_payload()
-    # pop是用來移除欄位的
     invalid_payload.pop("name")
 
     response = client.put("/profiles/U123", json=invalid_payload)
-
-    app.dependency_overrides.clear()
-
     assert response.status_code == 422
 
-
-def test_upsert_user_profile_service_error_returns_500():
-    # service 丟例外時，router 目前未攔截，預期回 500
-    fake_service = FakeProfileService(error=RuntimeError("db down"))
-    app.dependency_overrides[get_user_profile_service] = lambda: fake_service
+#測試service層發生錯誤的情況，應該回傳500 Internal Server Error
+def test_upsert_user_profile_service_error_returns_500(override_user_profile_service):
+    fake_service = override_user_profile_service(
+        FakeUserProfileService(error=RuntimeError("db down"))
+    )
 
     error_client = TestClient(app, raise_server_exceptions=False)
     response = error_client.put("/profiles/U123", json=_valid_payload())
-
-    app.dependency_overrides.clear()
-
     assert response.status_code == 500
+
+    fake_service.upsert_user_profile.assert_awaited_once()
+
+#之後登入後端合併到main後要寫驗證使用者的測試

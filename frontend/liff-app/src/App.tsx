@@ -7,22 +7,11 @@ import Home from './pages/Home';
 import PersonalHealth from './pages/PersonalHealth';
 import Family from './pages/Family';
 import ConsultRecordsPage from './pages/PersonalHealth/ConsultRecords';
-import { I18nProvider, useI18n, getInitialLanguage } from './i18n';
+import { I18nProvider, getInitialLanguage } from './i18n';
 import SettingsPage, { applyTheme, STORAGE_KEY, defaultSettings } from './pages/Settings';
 import type { SettingsState } from './pages/Settings';
 import './App.css';
-
-/* 佔位組件：後續開發可直接替換檔案 */
-const Login = () => {
-  const { t } = useI18n();
-  return (
-    <div className="login-page">
-      <h2>{t('login.title')}</h2>
-      <p>{t('login.desc')}</p>
-      <button className="line-login-btn">{t('login.button')}</button>
-    </div>
-  );
-};
+import Login from './pages/Loginpage';
 
 function AppContent() {
   useEffect(() => {

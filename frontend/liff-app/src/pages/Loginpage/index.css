@@ -1,0 +1,22 @@
+.login-page {
+	padding: 48px 24px;
+	text-align: center;
+}
+
+.login-title {
+	margin: 0;
+	font-size: 1.75rem;
+	font-weight: 700;
+	color: #0f172a;
+}
+
+.login-desc {
+	margin: 16px 0 24px;
+	color: #6b7280;
+}
+
+.login-error {
+	margin: 0;
+	color: #dc2626;
+	font-weight: 600;
+}

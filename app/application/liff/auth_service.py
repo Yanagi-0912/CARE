@@ -20,17 +20,19 @@ class LiffAuthApplicationService:
         self._jwt_service = jwt_service
 
     def login_with_id_token(self, id_token: str) -> dict:
-        if not settings.LINE_CHANNEL_ID:
-            logger.error("LINE_CHANNEL_ID 未設定，無法驗證 LIFF ID token")
+        liff_client_id = settings.LIFF_CHANNEL_ID or settings.LINE_CHANNEL_ID
+
+        if not liff_client_id:
+            logger.error("LIFF_CHANNEL_ID/LINE_CHANNEL_ID 未設定，無法驗證 LIFF ID token")
             raise HTTPException(
                 status_code=500,
-                detail="LINE_CHANNEL_ID is not configured",
+                detail="LIFF_CHANNEL_ID (or LINE_CHANNEL_ID) is not configured",
             )
 
         try:
             verify_payload = self._line_id_token_service.verify(
                 id_token=id_token,
-                client_id=settings.LINE_CHANNEL_ID,
+                client_id=liff_client_id,
             )
         except requests.RequestException as exc:
             logger.error(f"驗證 LIFF ID token 時 LINE API 連線失敗: {exc}")

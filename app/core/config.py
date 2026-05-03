@@ -22,7 +22,9 @@ class Settings:
     MEDIA_PARSE_WEBHOOK_URL: str = os.getenv("MEDIA_PARSE_WEBHOOK_URL", "")
 
     # LINE LIFF 配置
+    LIFF_CHANNEL_ID: str = os.getenv("LIFF_CHANNEL_ID", "")
     LIFF_URL: str = os.getenv("LIFF_URL", "")
+    LIFF_ID: str = os.getenv("LIFF_ID", "")
 
     # App Auth JWT 配置（LIFF 登入後由後端簽發）
     AUTH_JWT_SECRET: str = os.getenv("AUTH_JWT_SECRET", "dev-only-change-me")

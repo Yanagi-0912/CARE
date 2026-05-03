@@ -13,13 +13,13 @@ function Sidebar() {
         <button className={`side-item ${isActive('/')}`} onClick={() => navigate('/')}>
           <span className="icon">🏠</span>首頁
         </button>
-        <button className={`side-item ${isActive('/personalhealth')}`} onClick={() => navigate('/PersonalHealth')}>
+        <button className={`side-item ${isActive('/personalhealth')}`} onClick={() => navigate('/personalhealth')}>
           <span className="icon">🏥</span>個人健康
         </button>
         <button className={`side-item ${isActive('/family')}`} onClick={() => navigate('/family')}>
           <span className="icon">👥</span>家庭介面
         </button>
-        <button className={`side-item ${isActive('/settings')}`} onClick={() => navigate('/Settings')}>
+        <button className={`side-item ${isActive('/settings')}`} onClick={() => navigate('/settings')}>
           <span className="icon">⚙️</span>系統設定
         </button>
       </nav>

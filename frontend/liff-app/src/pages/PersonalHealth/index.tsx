@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import liff from '@line/liff';
+import { upsertPersonalHealthProfile } from '../../api/profileApi';
+
 import './index.css';
 /*http://localhost:5173/personalHealth*/
 interface HealthData {
@@ -44,6 +47,7 @@ const PersonalHealthPage: React.FC = () => {
     const [form, setForm] = useState<HealthData>(defaultData);
     const [otherInput, setOtherInput] = useState('');
     const [otherSaved, setOtherSaved] = useState(false);
+    const [storageEntries, setStorageEntries] = useState<Array<{ key: string; value: string }>>([]);
     // 儲存成功提示狀態
     const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
     // 儲存提示訊息
@@ -52,7 +56,31 @@ const PersonalHealthPage: React.FC = () => {
     const [isChronicOpen, setIsChronicOpen] = useState(false);
     // 修改：性別下拉開關
     const [isGenderOpen, setIsGenderOpen] = useState(false);
+    // 顯示使用者名稱
+    const [userName] = useState<string>('');
     const navigate = useNavigate();
+
+    const refreshStorageEntries = () => {
+        const entries: Array<{ key: string; value: string }> = [];
+        for (let index = 0; index < localStorage.length; index += 1) {
+            const key = localStorage.key(index);
+            if (!key) {
+                continue;
+            }
+            entries.push({ key, value: localStorage.getItem(key) ?? '' });
+        }
+        entries.sort((left, right) => left.key.localeCompare(right.key));
+        setStorageEntries(entries);
+        console.table(entries);
+    };
+
+    useEffect(() => {
+        const displayName = (localStorage.getItem('CARE_LINE_DISPLAY_NAME') || '').trim();
+        if (displayName) {
+            setForm((prev) => ({ ...prev, name: prev.name || displayName }));
+        }
+    }, []);
+
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -130,9 +158,16 @@ const PersonalHealthPage: React.FC = () => {
         };
 
         console.log("最終提交資料：", finalData);
-        // TODO: 你要用真實 LINE user_id，先暫時手動填入或從 LIFF 取得
-        const userId = "123456789";
-
+        // 不再寫死Id，而是從 LIFF 取得 userId 作為 API 識別用
+        const userId = (localStorage.getItem('CARE_LINE_USER_ID') || '').trim();
+        if (!userId) {
+            setSaveMessage('找不到 LINE 使用者資訊，請先重新登入');
+            setSaveStatus('error');
+            return;
+        }
+        const userName = (await liff.getProfile()).displayName;
+        console.log("LIFF User ID:", userId);
+        console.log("LIFF User Name:", userName);
         const payload = {
             name: finalData.name,
             gender: finalData.gender,
@@ -142,37 +177,19 @@ const PersonalHealthPage: React.FC = () => {
             // 修改：慢性病史改為可複選，後端目前是字串欄位
             chronic_history: finalData.chronicDisease.join('、'),
             major_illness_history: finalData.majorIllness,
-            surgery_history: finalData.surgeryHistory,
+            surgery_history: finalData.surgeryHistory || '無',
             health_consultations: {} // 先放空 JSON
         };
 
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
         try {
-            const res = await fetch(`${baseUrl}/profiles/${userId}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            });
-
-            if (!res.ok) {
-                const text = await res.text();
-                console.error("儲存失敗:", text);
-                // 儲存失敗提示狀態
-                setSaveMessage('儲存失敗，請稍後再試');
-                setSaveStatus('error');
-                return;
-            }
-
-            const data = await res.json();
-            console.log("儲存成功:", data);
-            // 儲存成功提示狀態
+            const data = await upsertPersonalHealthProfile(userId, payload);
+            console.log('儲存成功:', data);
             setSaveMessage('已成功儲存個人健康資料');
             setSaveStatus('success');
         } catch (error) {
             console.error('儲存失敗（網路或請求中斷）:', error);
-            // 儲存失敗提示狀態
-            setSaveMessage('網路異常，請稍後再試');
+            setSaveMessage(error instanceof Error ? error.message : '網路異常，請稍後再試');
             setSaveStatus('error');
         }
     };
@@ -199,6 +216,37 @@ const PersonalHealthPage: React.FC = () => {
 
     return (
         <div className="pageContainer">
+            <section style={{ marginBottom: '16px', padding: '12px', border: '1px solid #dbeafe', borderRadius: '12px', background: '#f8fbff' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', marginBottom: '8px' }}>
+                    <strong>localStorage 除錯視圖</strong>
+                    <button type="button" onClick={refreshStorageEntries} className="button" style={{ padding: '8px 12px' }}>
+                        重新讀取
+                    </button>
+                </div>
+                {storageEntries.length === 0 ? (
+                    <div style={{ color: '#64748b' }}>目前沒有任何 localStorage 資料</div>
+                ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                            <thead>
+                                <tr>
+                                    <th style={{ textAlign: 'left', padding: '8px', borderBottom: '1px solid #cbd5e1' }}>key</th>
+                                    <th style={{ textAlign: 'left', padding: '8px', borderBottom: '1px solid #cbd5e1' }}>value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {storageEntries.map((entry) => (
+                                    <tr key={entry.key}>
+                                        <td style={{ padding: '8px', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{entry.key}</td>
+                                        <td style={{ padding: '8px', borderBottom: '1px solid #e2e8f0', wordBreak: 'break-all' }}>{entry.value}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </section>
+
             {/* 儲存成功/失敗提示 */}
             {saveStatus === 'success' && (
                 <div className="saveToast saveToastSuccess">{saveMessage || '已成功儲存個人健康資料'}</div>
@@ -207,7 +255,7 @@ const PersonalHealthPage: React.FC = () => {
                 <div className="saveToast saveToastError">{saveMessage || '儲存失敗，請稍後再試'}</div>
             )}
             <form id="personalHealthForm" className="formContainer" onSubmit={handleSubmit}>
-                <div className="formTitle">個人健康資料</div>
+                <div className="formTitle">{userName ? `${userName} 的健康資料` : '個人健康資料'}</div>
                 <div className="formGroup">
                     <label className="label" htmlFor="name">姓名</label>
                     <input
@@ -217,6 +265,7 @@ const PersonalHealthPage: React.FC = () => {
                         name="name"
                         value={form.name}
                         onChange={handleChange}
+                        /*若有登入就顯示user名字*/
                         placeholder="請輸入姓名"
                         required
                     />

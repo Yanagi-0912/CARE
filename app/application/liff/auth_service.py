@@ -36,10 +36,14 @@ class LiffAuthApplicationService:
             )
         except requests.RequestException as exc:
             logger.error(f"驗證 LIFF ID token 時 LINE API 連線失敗: {exc}")
-            raise HTTPException(status_code=502, detail="Failed to verify id_token") from exc
+            raise HTTPException(
+                status_code=502, detail="Failed to verify id_token"
+            ) from exc
         except ValueError as exc:
             logger.warning(f"LIFF ID token 驗證失敗: {exc}")
-            raise HTTPException(status_code=401, detail="Invalid LIFF id_token") from exc
+            raise HTTPException(
+                status_code=401, detail="Invalid LIFF id_token"
+            ) from exc
 
         line_user_id = verify_payload.get("sub")
         if not line_user_id:

@@ -10,7 +10,6 @@ function LoginPage() {
 	const navigate = useNavigate()
 	const [statusText, setStatusText] = useState('正在初始化 LINE 登入...')
 	const [errorText, setErrorText] = useState('')
-
 	useEffect(() => {
 		let cancelled = false
 
@@ -40,7 +39,8 @@ function LoginPage() {
 				const authResult = await loginWithLiffIdToken(idToken)
 				localStorage.setItem('CARE_AUTH_TOKEN', authResult.access_token)
 				localStorage.setItem('CARE_LINE_USER_ID', authResult.line_user_id)
-
+				console.log("authResult.access_token:", authResult.access_token)
+				console.log("authResult.line_user_id:", authResult.line_user_id)
 				setStatusText('驗證成功，正在返回首頁...')
 				navigate('/', { replace: true })
 			} catch (error) {

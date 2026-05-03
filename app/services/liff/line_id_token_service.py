@@ -6,13 +6,15 @@ class LineIdTokenService:
         self._verify_url = verify_url
 
     def verify(self, id_token: str, client_id: str) -> dict:
-        response = requests.get(
+        response = requests.post(
             self._verify_url,
-            params={"id_token": id_token, "client_id": client_id},
+            data={"id_token": id_token, "client_id": client_id},
             timeout=10,
         )
 
         if response.status_code != 200:
-            raise ValueError(f"Invalid id_token: status={response.status_code}")
+            raise ValueError(
+                f"Invalid id_token: status={response.status_code}, body={response.text}"
+            )
 
         return response.json()

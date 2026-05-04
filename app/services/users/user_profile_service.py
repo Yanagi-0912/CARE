@@ -18,3 +18,9 @@ class UserProfileService:
         profile = UserProfile.from_upsert(line_id=line_id, payload=payload)
         normalized_payload = profile.to_payload()
         return await self._repo.upsert_user_profile(line_id, normalized_payload)
+
+    async def get_user_profile(self, line_id: str):
+        """
+        從資料庫取得使用者個人健康資料。
+        """
+        return await self._repo.get_user_profile(line_id)

@@ -37,3 +37,25 @@ export async function upsertPersonalHealthProfile(
 
     return res.json()
 }
+
+export async function getPersonalHealthProfile(userId: string) {
+    const token = (localStorage.getItem('CARE_AUTH_TOKEN') || '').trim()
+    if (!token) {
+        throw new Error('缺少登入憑證，請先重新登入')
+    }
+
+    const res = await fetch(`${BASE_URL}/profiles/${userId}`, {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+        },
+    })
+
+    if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        throw new Error(`取得個人資料失敗：${res.status}${text ? ` - ${text}` : ''}`)
+    }
+
+    return res.json()
+}

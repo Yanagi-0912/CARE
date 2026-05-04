@@ -7,6 +7,30 @@ from app.dependencies import get_user_profile_service, get_current_user, Current
 router = APIRouter(tags=["Profile"])
 
 
+@router.get("/{user_id}")
+async def get_user_profile(
+    user_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: UserProfileService = Depends(get_user_profile_service),
+):
+    """
+    取得使用者個人健康資料
+    需要有效的 JWT 認證令牌
+    """
+    # 確保使用者只能查看自己的資料
+    if current_user.line_user_id != user_id:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=403, detail="無權查看其他使用者的資料")
+
+    profile = await service.get_user_profile(user_id)
+    if not profile:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail="找不到使用者資料")
+    return profile
+
+
 @router.put("/{user_id}")
 async def upsert_user_profile(
     user_id: str,
@@ -16,7 +40,7 @@ async def upsert_user_profile(
 ):
     """
     更新使用者個人健康資料
-    需要有效的 JWT 認證令牌
+    需要帶上有效的 JWT 認證令牌
     """
     # 確保使用者只能修改自己的資料
     if current_user.line_user_id != user_id:

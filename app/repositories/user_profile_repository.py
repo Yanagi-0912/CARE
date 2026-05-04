@@ -29,4 +29,8 @@ class UserProfileRepository:
     @staticmethod
     async def get_user_profile(line_id: str) -> Optional[Dict[str, Any]]:
         col = MongoDBManager.get_users_collection()
-        return await col.find_one({"line_id": line_id})
+        profile = await col.find_one({"line_id": line_id})
+        if profile:
+            # 移除 MongoDB 的 _id 欄位以便 JSON 序列化
+            profile.pop("_id", None)
+        return profile

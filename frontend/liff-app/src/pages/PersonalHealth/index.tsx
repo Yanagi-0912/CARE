@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { upsertPersonalHealthProfile } from '../../api/profileApi';
+import { upsertPersonalHealthProfile, getPersonalHealthProfile } from '../../api/profileApi';
 
 import './index.css';
 /*http://localhost:5173/personalHealth*/
@@ -109,6 +109,44 @@ const PersonalHealthPage: React.FC = () => {
         if (avatarUrl) {
             setUserAvatar(avatarUrl);
         }
+
+        // 讀取使用者資料，預填表單
+        const loadUserData = async () => {
+            const userId = (localStorage.getItem('CARE_LINE_USER_ID') || '').trim();
+            if (!userId) {
+                console.log('未找到使用者ID，跳過加載資料');
+                return;
+            }
+
+            try {
+                //呼叫api取得user資料
+                const data = await getPersonalHealthProfile(userId);
+                console.log('已加載使用者資料:', data);
+                if (data) {
+                    setForm((prev) => ({
+                        ...prev,
+                        name: data.name || prev.name,  // 資料庫優先，沒有才用LINE 名稱
+                        gender: data.gender || '',
+                        height: data.height?.toString() || '',
+                        weight: data.weight?.toString() || '',
+                        age: data.age?.toString() || '',
+                        chronicDisease: data.chronic_history ? data.chronic_history.split('、').filter(Boolean) : [],
+                        chronicDiseaseOther: '',
+                        majorIllness: data.major_illness_history || '',
+                        surgeryHistory: data.surgery_history || '',
+                    }));
+                    // 若資料庫有 name，也更新顯示用的 userName
+                    if (data.name) {
+                        setUserName(data.name);
+                    }
+                }
+            } catch (error) {
+                console.warn('載入使用者資料失敗:', error);
+                // 不阻斷頁面使用
+            }
+        };
+
+        loadUserData();
     }, []);
 
 
@@ -244,6 +282,11 @@ const PersonalHealthPage: React.FC = () => {
         !!form.majorIllness ||
         !!otherInput;
 
+    const isLoggedIn = Boolean(
+        (localStorage.getItem('CARE_AUTH_TOKEN') || '').trim() &&
+        (localStorage.getItem('CARE_LINE_USER_ID') || '').trim()
+    );
+
     return (
         <div className="pageContainer">
             <section className="profileBanner">
@@ -261,7 +304,7 @@ const PersonalHealthPage: React.FC = () => {
                     )}
                 </div>
                 <div className="profileBannerText">
-                    <div className="profileBannerLabel">已登入</div>
+                    <div className="profileBannerLabel">{isLoggedIn ? '已登入' : '您尚未登入!'}</div>
                     <div className="formTitle profileBannerTitle">{userName ? `${userName} 的健康資料` : '個人健康資料'}</div>
                 </div>
             </section>

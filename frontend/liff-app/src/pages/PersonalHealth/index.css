@@ -23,6 +23,66 @@
     flex-direction: column;
 }
 
+/* 使用者資訊卡 */
+.profileBanner {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 18px 20px;
+    margin-bottom: 20px;
+    border-radius: 18px;
+    background: linear-gradient(135deg, rgba(13, 148, 136, 0.12), rgba(255, 255, 255, 0.96));
+    border: 1px solid rgba(13, 148, 136, 0.12);
+    box-shadow: 0 10px 24px rgba(13, 148, 136, 0.08);
+}
+
+.profileAvatarWrap {
+    flex: 0 0 auto;
+}
+
+.profileAvatar {
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid #ffffff;
+    box-shadow: 0 8px 18px rgba(13, 148, 136, 0.15);
+    background: #e2e8f0;
+}
+
+.profileAvatarFallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.profileBannerText {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    padding-top: 4px;
+}
+
+.profileBannerLabel {
+    font-family: 'Microsoft JhengHei', 'Noto Sans TC', sans-serif;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #64748b;
+}
+
+.profileBannerTitle {
+    margin-bottom: 0;
+
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--text-color);
+    word-break: break-word;
+}
+
 /* 表單容器 */
 .formContainer {
     width: 100%;
@@ -373,6 +433,29 @@ consultRecord {
 
 /* 手機版 */
 @media (max-width: 600px) {
+    .profileBanner {
+        padding: 16px;
+        gap: 14px;
+    }
+
+    .profileBannerText {
+        padding-top: 2px;
+        gap: 8px;
+    }
+
+    .profileBannerLabel {
+        font-size: 1rem;
+    }
+
+    .profileAvatar {
+        width: 64px;
+        height: 64px;
+    }
+
+    .profileBannerTitle {
+        font-size: 1.2rem;
+    }
+
     .formGroup {
         flex-direction: column;
         align-items: flex-start;

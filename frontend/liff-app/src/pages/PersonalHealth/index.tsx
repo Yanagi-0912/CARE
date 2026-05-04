@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import liff from '@line/liff';
 import { upsertPersonalHealthProfile } from '../../api/profileApi';
 
 import './index.css';
@@ -16,6 +15,11 @@ interface HealthData {
     chronicDiseaseOther: string;
     majorIllness: string;
     surgeryHistory?: string;
+}
+
+interface DecodedIdToken {
+    name?: string;
+    picture?: string;
 }
 
 const defaultData: HealthData = {
@@ -47,7 +51,6 @@ const PersonalHealthPage: React.FC = () => {
     const [form, setForm] = useState<HealthData>(defaultData);
     const [otherInput, setOtherInput] = useState('');
     const [otherSaved, setOtherSaved] = useState(false);
-    const [storageEntries, setStorageEntries] = useState<Array<{ key: string; value: string }>>([]);
     // 儲存成功提示狀態
     const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
     // 儲存提示訊息
@@ -56,28 +59,55 @@ const PersonalHealthPage: React.FC = () => {
     const [isChronicOpen, setIsChronicOpen] = useState(false);
     // 修改：性別下拉開關
     const [isGenderOpen, setIsGenderOpen] = useState(false);
-    // 顯示使用者名稱
-    const [userName] = useState<string>('');
+    // 顯示使用者名稱與頭像
+    const [userName, setUserName] = useState<string>('');
+    const [userAvatar, setUserAvatar] = useState<string>('');
     const navigate = useNavigate();
 
-    const refreshStorageEntries = () => {
-        const entries: Array<{ key: string; value: string }> = [];
-        for (let index = 0; index < localStorage.length; index += 1) {
-            const key = localStorage.key(index);
-            if (!key) {
-                continue;
+    const readDecodedIdToken = (): DecodedIdToken | null => {
+        const liffId = (import.meta.env.VITE_LIFF_ID ?? '').trim();
+        if (liffId) {
+            const storedKey = `LIFF_STORE:${liffId}:decodedIDToken`;
+            const storedValue = localStorage.getItem(storedKey);
+            if (storedValue) {
+                try {
+                    return JSON.parse(storedValue) as DecodedIdToken;
+                } catch (error) {
+                    console.warn('解析 decodedIDToken 失敗:', error);
+                }
             }
-            entries.push({ key, value: localStorage.getItem(key) ?? '' });
         }
-        entries.sort((left, right) => left.key.localeCompare(right.key));
-        setStorageEntries(entries);
-        console.table(entries);
+
+        const fallbackKey = Object.keys(localStorage).find((key) => key.endsWith(':decodedIDToken'));
+        if (!fallbackKey) {
+            return null;
+        }
+
+        const fallbackValue = localStorage.getItem(fallbackKey);
+        if (!fallbackValue) {
+            return null;
+        }
+
+        try {
+            return JSON.parse(fallbackValue) as DecodedIdToken;
+        } catch (error) {
+            console.warn('解析 fallback decodedIDToken 失敗:', error);
+            return null;
+        }
     };
 
     useEffect(() => {
-        const displayName = (localStorage.getItem('CARE_LINE_DISPLAY_NAME') || '').trim();
+        const decodedIdToken = readDecodedIdToken();
+        const displayName = (decodedIdToken?.name || localStorage.getItem('CARE_LINE_DISPLAY_NAME') || '').trim();
+        const avatarUrl = (decodedIdToken?.picture || '').trim();
+
         if (displayName) {
+            setUserName(displayName);
             setForm((prev) => ({ ...prev, name: prev.name || displayName }));
+        }
+
+        if (avatarUrl) {
+            setUserAvatar(avatarUrl);
         }
     }, []);
 
@@ -165,9 +195,9 @@ const PersonalHealthPage: React.FC = () => {
             setSaveStatus('error');
             return;
         }
-        const userName = (await liff.getProfile()).displayName;
+        const profileName = userName || (readDecodedIdToken()?.name || '').trim();
         console.log("LIFF User ID:", userId);
-        console.log("LIFF User Name:", userName);
+        console.log("LIFF User Name:", profileName);
         const payload = {
             name: finalData.name,
             gender: finalData.gender,
@@ -216,35 +246,24 @@ const PersonalHealthPage: React.FC = () => {
 
     return (
         <div className="pageContainer">
-            <section style={{ marginBottom: '16px', padding: '12px', border: '1px solid #dbeafe', borderRadius: '12px', background: '#f8fbff' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', marginBottom: '8px' }}>
-                    <strong>localStorage 除錯視圖</strong>
-                    <button type="button" onClick={refreshStorageEntries} className="button" style={{ padding: '8px 12px' }}>
-                        重新讀取
-                    </button>
+            <section className="profileBanner">
+                <div className="profileAvatarWrap">
+                    {userAvatar ? (
+                        <img
+                            className="profileAvatar"
+                            src={userAvatar}
+                            alt={userName ? `${userName} 的頭像` : '使用者頭像'}
+                        />
+                    ) : (
+                        <div className="profileAvatar profileAvatarFallback" aria-hidden="true">
+                            {userName ? userName.charAt(0) : 'U'}
+                        </div>
+                    )}
                 </div>
-                {storageEntries.length === 0 ? (
-                    <div style={{ color: '#64748b' }}>目前沒有任何 localStorage 資料</div>
-                ) : (
-                    <div style={{ overflowX: 'auto' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
-                            <thead>
-                                <tr>
-                                    <th style={{ textAlign: 'left', padding: '8px', borderBottom: '1px solid #cbd5e1' }}>key</th>
-                                    <th style={{ textAlign: 'left', padding: '8px', borderBottom: '1px solid #cbd5e1' }}>value</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {storageEntries.map((entry) => (
-                                    <tr key={entry.key}>
-                                        <td style={{ padding: '8px', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{entry.key}</td>
-                                        <td style={{ padding: '8px', borderBottom: '1px solid #e2e8f0', wordBreak: 'break-all' }}>{entry.value}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
+                <div className="profileBannerText">
+                    <div className="profileBannerLabel">已登入</div>
+                    <div className="formTitle profileBannerTitle">{userName ? `${userName} 的健康資料` : '個人健康資料'}</div>
+                </div>
             </section>
 
             {/* 儲存成功/失敗提示 */}
@@ -255,7 +274,6 @@ const PersonalHealthPage: React.FC = () => {
                 <div className="saveToast saveToastError">{saveMessage || '儲存失敗，請稍後再試'}</div>
             )}
             <form id="personalHealthForm" className="formContainer" onSubmit={handleSubmit}>
-                <div className="formTitle">{userName ? `${userName} 的健康資料` : '個人健康資料'}</div>
                 <div className="formGroup">
                     <label className="label" htmlFor="name">姓名</label>
                     <input

@@ -64,8 +64,8 @@ _line_event_handler = LineEventHandler(
 )
 
 # 使用者資料相關的依賴注入
-_profile_repository = UserProfileRepository()
-_profile_service = UserProfileService(repo=_profile_repository)
+_user_profile_repository = UserProfileRepository()
+_user_profile_service = UserProfileService(repo=_user_profile_repository)
 
 # Family Tree 服務
 _family_tree_service = FamilyTreeService()
@@ -127,7 +127,7 @@ def get_vector_search_reader() -> MongoVectorSearchReader:
 
 
 def get_user_profile_service() -> UserProfileService:
-    return _profile_service
+    return _user_profile_service
 
 
 def get_family_tree_service() -> FamilyTreeService:

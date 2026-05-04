@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
-from app.dependencies import get_user_profile_service
+from app.dependencies import CurrentUser, get_current_user, get_user_profile_service
 from app.main import app
 
 
@@ -37,6 +37,17 @@ def override_user_profile_service():
     app.dependency_overrides.clear()
 
 
+@pytest.fixture()
+def override_current_user():
+    def _override(user_id: str = "U123"):
+        app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+            line_user_id=user_id
+        )
+
+    yield _override
+    app.dependency_overrides.clear()
+
+
 # 下面是測試用的payload，包含所有必填欄位和一些範例資料。
 def _valid_payload() -> dict:
     return {
@@ -54,8 +65,9 @@ def _valid_payload() -> dict:
 
 # 測試成功的情況，應該回傳200和預期的response body
 def test_upsert_user_profile_success_returns_200_and_response_body(
-    client, override_user_profile_service
+    client, override_user_profile_service, override_current_user
 ):
+    override_current_user("U123")
     fake_service = override_user_profile_service(FakeUserProfileService(result=True))
 
     response = client.put("/profiles/U123", json=_valid_payload())
@@ -67,8 +79,9 @@ def test_upsert_user_profile_success_returns_200_and_response_body(
 
 # 測試payload缺少必填欄位的情況，應該回傳422 Unprocessable Entity
 def test_upsert_user_profile_invalid_body_returns_422(
-    client, override_user_profile_service
+    client, override_user_profile_service, override_current_user
 ):
+    override_current_user("U123")
     override_user_profile_service(FakeUserProfileService(result=True))
 
     invalid_payload = _valid_payload()
@@ -80,6 +93,9 @@ def test_upsert_user_profile_invalid_body_returns_422(
 
 # 測試service層發生錯誤的情況，應該回傳500 Internal Server Error
 def test_upsert_user_profile_service_error_returns_500(override_user_profile_service):
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        line_user_id="U123"
+    )
     fake_service = override_user_profile_service(
         FakeUserProfileService(error=RuntimeError("db down"))
     )

@@ -1,5 +1,9 @@
 #  小註解：不從原有程式new物件，依賴dependency injection注入物件 那dependencies 就叫做 container
+from dataclasses import dataclass
 import os
+
+import jwt  # type: ignore[import-not-found]
+from fastapi import Header, HTTPException
 
 from app.core.config import settings
 from app.infrastructure.gemini import GeminiService
@@ -18,6 +22,9 @@ from app.db.mongodb import MongoDBManager
 from app.services.users.user_profile_service import UserProfileService
 from app.repositories.user_profile_repository import UserProfileRepository
 from app.application.family.family_tree_service import FamilyTreeService
+from app.application.liff.auth_service import LiffAuthApplicationService
+from app.services.liff.jwt_service import AppJwtService
+from app.services.liff.line_id_token_service import LineIdTokenService
 
 _mongodb_url = os.getenv("MONGODB_URL")
 MongoDBManager.configure(_mongodb_url or settings.MONGODB_URI)
@@ -57,11 +64,23 @@ _line_event_handler = LineEventHandler(
 )
 
 # 使用者資料相關的依賴注入
-_user_profile_repository = UserProfileRepository()
-_user_profile_service = UserProfileService(repo=_user_profile_repository)
+_profile_repository = UserProfileRepository()
+_profile_service = UserProfileService(repo=_profile_repository)
 
 # Family Tree 服務
 _family_tree_service = FamilyTreeService()
+
+# LIFF Auth 服務
+_line_id_token_service = LineIdTokenService()
+_app_jwt_service = AppJwtService(
+    secret=settings.AUTH_JWT_SECRET,
+    algorithm=settings.AUTH_JWT_ALGORITHM,
+    expires_minutes=settings.AUTH_JWT_EXPIRES_MINUTES,
+)
+_liff_auth_application_service = LiffAuthApplicationService(
+    line_id_token_service=_line_id_token_service,
+    jwt_service=_app_jwt_service,
+)
 
 
 def get_mongodb_url() -> str:
@@ -108,8 +127,39 @@ def get_vector_search_reader() -> MongoVectorSearchReader:
 
 
 def get_user_profile_service() -> UserProfileService:
-    return _user_profile_service
+    return _profile_service
 
 
 def get_family_tree_service() -> FamilyTreeService:
     return _family_tree_service
+
+
+def get_liff_auth_application_service() -> LiffAuthApplicationService:
+    return _liff_auth_application_service
+
+
+@dataclass
+class CurrentUser:
+    line_user_id: str
+
+
+def get_current_user(authorization: str | None = Header(default=None)) -> CurrentUser:
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
+
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization header format"
+        )
+
+    try:
+        line_user_id = _app_jwt_service.decode_user_id(token.strip())
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+
+    return CurrentUser(line_user_id=line_user_id)

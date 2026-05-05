@@ -1,8 +1,6 @@
 from .service import GuardrailService
-from .config import CLASSIFICATION_GENERATION_CONFIG, CLASSIFICATION_PROMPT
 
+# Guardrail 對外只暴露 application service，不暴露底層模型或 structured output 實作。
 __all__ = [
-    "CLASSIFICATION_GENERATION_CONFIG",
-    "CLASSIFICATION_PROMPT",
     "GuardrailService",
 ]

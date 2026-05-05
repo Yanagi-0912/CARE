@@ -32,6 +32,14 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
+### 前端（LIFF App）
+
+```bash
+cd frontend/liff-app
+npm install    # 首次或 package 有變更時
+npm run dev    # 預設 http://localhost:5173
+```
+
 ## LINE Webhook（蘇奕勳 callback 網址）
 
 - Callback URL：`https://care.jamessu2016.com/line/callback`

@@ -23,7 +23,9 @@ _gemini_service = GeminiService(
     api_key=settings.GEMINI_API_KEY,
     model_name=settings.MODEL_NAME,
 )
-_guardrail_service = GuardrailService(gemini_service=_gemini_service)
+_guardrail_service = GuardrailService(
+    async_text_to_bool=_gemini_service.invoke_boolean_structured_output,
+)
 _vector_search_config = VectorSearchConfig.from_settings()
 _vector_search_reader = MongoVectorSearchReader(_vector_search_config)
 _rag_answer_service = RagAnswerService(

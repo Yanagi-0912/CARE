@@ -1,51 +1,49 @@
-import logging
+"""Guardrail：判斷使用者訊息是否與健康相關，決定是否啟用 RAG 工具。
 
-from app.application.guardrail.config import (
-    CLASSIFICATION_GENERATION_CONFIG,
-    CLASSIFICATION_PROMPT,
+舊：自己組 raw Gemini payload → generate_content → 解析 JSON。
+新：只依賴注入的 `AsyncStrToBool`（例如由 DI 傳入 `gemini_service.invoke_boolean_structured_output`），
+    不 import、不綁 `GeminiService`。
+"""
+
+import logging
+from collections.abc import Awaitable, Callable
+
+from app.application.guardrail.shared.errors import (
+    GuardrailClassificationError,
+    map_guardrail_classification_error,
 )
-from app.infrastructure.gemini import GeminiService
-from app.infrastructure.gemini.shared.errors import (
-    GeminiHttpError,
-    GeminiNetworkError,
-    GeminiParseError,
-    GeminiSchemaError,
-    GeminiUnknownError,
-)
-from app.infrastructure.gemini.shared.parser import parse_json_from_model_text
 
 logger = logging.getLogger(__name__)
 
+_CLASSIFICATION_PROMPT = (
+    "你是一個訊息分類器。請判斷以下使用者訊息是否與「健康、醫療、身體狀況、疾病、藥物、營養、運動健身、心理健康」相關。\n\n"
+    "使用者訊息：\n"
+)
+
+AsyncStrToBool = Callable[[str], Awaitable[bool]]
+
+
 class GuardrailService:
-    def __init__(self, gemini_service: GeminiService) -> None:
-        self.gemini_service = gemini_service
+    """以注入的「文字 → bool」分類器，決定使用者訊息是否可以走 RAG 工具。"""
+
+    def __init__(self, async_text_to_bool: AsyncStrToBool) -> None:
+        """注入分類器；不綁特定模型實作，方便替換或測試。"""
+        self._async_text_to_bool = async_text_to_bool
 
     async def allow_rag_tool(self, user_text: str) -> bool:
-        payload = {
-            "contents": [{"parts": [{"text": f"{CLASSIFICATION_PROMPT}{user_text}"}]}],
-            "generationConfig": CLASSIFICATION_GENERATION_CONFIG,
-        }
-
+        """組分類 prompt 後呼叫分類器，回傳是否允許 RAG；分類失敗時 fail-open。"""
         try:
-            data = await self.gemini_service.generate_content(payload, timeout=30.0)
-            raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
-            parsed = parse_json_from_model_text(raw_text)
-            return bool(parsed.get("is_health_related", True))
-        except GeminiParseError as e:
-            logger.warning(f"Guardrail 分類解析失敗: {e}")
-            return True
-        except GeminiNetworkError as e:
-            logger.error(f"Guardrail 分類失敗（網路錯誤）: {e}")
-            return True
-        except GeminiHttpError as e:
-            logger.error(f"Guardrail 分類失敗（HTTP 錯誤）: {e}")
-            return True
-        except GeminiSchemaError as e:
-            logger.error(f"Guardrail 分類失敗（回應格式錯誤）: {e}")
-            return True
-        except GeminiUnknownError as e:
-            logger.error(f"Guardrail 分類失敗（未知錯誤）: {e}")
-            return True
+            result = await self._async_text_to_bool(
+                f"{_CLASSIFICATION_PROMPT}{user_text}",
+            )
+            return bool(result)
         except Exception as e:
+            # Guardrail 分類失敗時採 fail-open，避免 Gemini 暫時錯誤阻斷使用者流程。
+            try:
+                raise map_guardrail_classification_error(e) from e
+            except GuardrailClassificationError as mapped:
+                logger.error(f"Guardrail 分類失敗（{mapped}）")
+                return True
+        except BaseException as e:
             logger.error(f"Guardrail 分類失敗（未處理錯誤）: {e}")
             return True

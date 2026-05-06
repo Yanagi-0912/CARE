@@ -2,6 +2,26 @@
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
+## Environment Variables
+
+1. Create a local environment file from `.env.example` in this folder.
+2. Set the values before running the app.
+
+Example `.env`:
+
+```dotenv
+VITE_LIFF_ID=your_liff_id_here
+VITE_API_BASE_URL=http://127.0.0.1:8000
+```
+
+Notes:
+
+- `VITE_LIFF_ID`: LIFF ID from LINE Developers Console.
+- `VITE_API_BASE_URL`: backend API base URL used by the frontend.
+- Vite only exposes variables that start with `VITE_` to browser code.
+
+After updating `.env`, restart the dev server.
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)

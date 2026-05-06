@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Any, Optional, Dict
 
 
 # pydantic 是來做資料驗證的還有資料管理的，比一般的python class 好一點的是為自動檢查是否符合規則

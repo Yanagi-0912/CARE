@@ -21,6 +21,14 @@ class ResponseOrchestrator:
         self.rag_answer_service = rag_answer_service
 
     async def orchestrate_response(self, user_text: str) -> GeminiResult:
+        """主回覆編排入口。
+
+        流程：
+        1) 先由 Guardrail 判斷是否允許暴露 RAG tool。
+        2) 帶著對應 tool 清單呼叫 Gemini 產生回覆或 tool-call。
+        3) 若模型要求 `get_rag_answer`，交由 `RagAnswerService` 執行；
+           若 RAG 無命中或執行失敗，改走「不含 RAG tool」重試一次。
+        """
         allow_rag_tool = await self.guardrail_service.allow_rag_tool(user_text)
         tools = get_all_gemini_tools(include_rag_tool=allow_rag_tool)
 

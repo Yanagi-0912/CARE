@@ -4,7 +4,8 @@ from typing import Optional
 
 @dataclass
 class GeminiResult:
-    text: Optional[str] = None
+    # LangChain AIMessage.content 可能是純文字，或是內容區塊陣列（tool-call 回合常見）。
+    text: Optional[str | list[object]] = None
     function_name: Optional[str] = None
     function_args: dict = field(default_factory=dict)
 

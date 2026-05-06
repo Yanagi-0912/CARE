@@ -1,5 +1,4 @@
 from app.infrastructure.gemini.services.gemini_service import GeminiService
-from app.infrastructure.gemini.client.gemini_client import GeminiClient
 from app.infrastructure.gemini.client.prompt_config import PromptConfig
 from app.infrastructure.gemini.shared.errors import (
     GeminiError,
@@ -15,7 +14,6 @@ from app.infrastructure.gemini.shared.parser import parse_json_from_model_text
 
 __all__ = [
     "GeminiService",
-    "GeminiClient",
     "PromptConfig",
     "GeminiError",
     "GeminiNetworkError",

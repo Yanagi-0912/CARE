@@ -150,7 +150,5 @@ async def test_route_response_non_health_disables_rag_tool():
     gemini_service.generate_response.assert_awaited_once()
     _, kwargs = gemini_service.generate_response.await_args
     assert "tools" in kwargs
-    tool_names = {
-        d["name"] for d in kwargs["tools"][0]["functionDeclarations"]
-    }
+    tool_names = {d["name"] for d in kwargs["tools"]}
     assert "get_rag_answer" not in tool_names

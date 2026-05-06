@@ -5,6 +5,7 @@
 - `generate_response`：一般對話／tool-call 路由。
 - `invoke_boolean_structured_output`：結構化 boolean，用於 Guardrail 等分類場景。
 """
+
 import logging
 from collections.abc import Awaitable
 from typing import Any
@@ -28,6 +29,7 @@ logger = logging.getLogger(__name__)
 CHAT_RESPONSE_TIMEOUT_SEC = 30.0
 STRUCTURED_OUTPUT_TIMEOUT_SEC = 30.0
 
+
 async def _await_with_mapped_gemini_errors(awaitable: Awaitable[Any]) -> Any:
     """await 一個 LangChain coroutine；底層例外統一 map 成專案 `Gemini*Error`。"""
     try:
@@ -36,6 +38,7 @@ async def _await_with_mapped_gemini_errors(awaitable: Awaitable[Any]) -> Any:
         raise
     except Exception as e:
         raise_mapped_gemini_error(e)
+
 
 def _single_tool_call(msg: AIMessage) -> tuple[str, dict] | None:
     """從 `AIMessage.tool_calls` 取出唯一一筆 (name, args)；不是恰好 1 筆則回 `None`。"""
@@ -54,11 +57,13 @@ def _single_tool_call(msg: AIMessage) -> tuple[str, dict] | None:
         return None
     return str(name), dict(args) if isinstance(args, dict) else {}
 
+
 class GeminiService:
     """封裝 LangChain `ChatGoogleGenerativeAI`，提供：
     - `generate_response`：一般對話／tool-call 路由。
     - `invoke_boolean_structured_output`：boolean structured output（給 Guardrail 等分類使用）。
     """
+
     def __init__(
         self,
         *,
@@ -96,9 +101,7 @@ class GeminiService:
         if isinstance(result, bool):
             return result
         # LangChain structured output 理論上應回傳 bool；若不是，視為模型回應格式錯誤。
-        raise GeminiSchemaError(
-            "AI 服務回應格式異常：預期 boolean"
-        )
+        raise GeminiSchemaError("AI 服務回應格式異常：預期 boolean")
 
     async def generate_response(
         self, user_input: str, tools: list | None = None
@@ -113,7 +116,7 @@ class GeminiService:
             HumanMessage(content=user_input),
         ]
         # 清洗傳入 tools：只保留 dict 宣告；None 會視為空清單。
-        decls = [t for t in (tools or []) if isinstance(t, dict)]
+        decls = tools or []
         # 有工具宣告就 bind tools（開啟 tool-calling 模式）；否則走純聊天模式。
         # 注意：bind_tools 只讓模型「可以提出工具呼叫需求」，不會自動執行工具。
         runnable: Runnable = (

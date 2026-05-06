@@ -4,7 +4,7 @@ from app.tools.registry import get_all_gemini_tools
 def _tool_names(tools: list) -> set[str]:
     if not tools:
         return set()
-    return {d["name"] for d in tools if isinstance(d, dict) and "name" in d}
+    return {getattr(t, "name", str(t)) for t in tools}
 
 
 def test_get_all_gemini_tools_includes_rag_when_enabled():

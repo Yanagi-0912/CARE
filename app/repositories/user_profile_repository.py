@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class UserProfileRepository:
     @staticmethod
-    async def upsert_profile(line_id: str, payload: Dict[str, Any]) -> bool:
+    async def upsert_user_profile(line_id: str, payload: Dict[str, Any]) -> bool:
         col = MongoDBManager.get_users_collection()
         now = datetime.now(tz=timezone.utc)
         result = await col.update_one(
@@ -27,6 +27,10 @@ class UserProfileRepository:
         return result.matched_count > 0 or result.upserted_id is not None
 
     @staticmethod
-    async def get_profile(line_id: str) -> Optional[Dict[str, Any]]:
-        col = MongoDBManager.get_profile_collection()
-        return await col.find_one({"line_id": line_id})
+    async def get_user_profile(line_id: str) -> Optional[Dict[str, Any]]:
+        col = MongoDBManager.get_users_collection()
+        profile = await col.find_one({"line_id": line_id})
+        if profile:
+            # 移除 MongoDB 的 _id 欄位以便 JSON 序列化
+            profile.pop("_id", None)
+        return profile

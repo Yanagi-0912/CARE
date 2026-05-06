@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { upsertPersonalHealthProfile, getPersonalHealthProfile } from '../../api/profileApi';
+
 import './index.css';
 /*http://localhost:5173/personalHealth*/
 interface HealthData {
@@ -13,6 +15,11 @@ interface HealthData {
     chronicDiseaseOther: string;
     majorIllness: string;
     surgeryHistory?: string;
+}
+
+interface DecodedIdToken {
+    name?: string;
+    picture?: string;
 }
 
 const defaultData: HealthData = {
@@ -52,7 +59,96 @@ const PersonalHealthPage: React.FC = () => {
     const [isChronicOpen, setIsChronicOpen] = useState(false);
     // 修改：性別下拉開關
     const [isGenderOpen, setIsGenderOpen] = useState(false);
+    // 顯示使用者名稱與頭像
+    const [userName, setUserName] = useState<string>('');
+    const [userAvatar, setUserAvatar] = useState<string>('');
     const navigate = useNavigate();
+
+    const readDecodedIdToken = (): DecodedIdToken | null => {
+        const liffId = (import.meta.env.VITE_LIFF_ID ?? '').trim();
+        if (liffId) {
+            const storedKey = `LIFF_STORE:${liffId}:decodedIDToken`;
+            const storedValue = localStorage.getItem(storedKey);
+            if (storedValue) {
+                try {
+                    return JSON.parse(storedValue) as DecodedIdToken;
+                } catch (error) {
+                    console.warn('解析 decodedIDToken 失敗:', error);
+                }
+            }
+        }
+
+        const fallbackKey = Object.keys(localStorage).find((key) => key.endsWith(':decodedIDToken'));
+        if (!fallbackKey) {
+            return null;
+        }
+
+        const fallbackValue = localStorage.getItem(fallbackKey);
+        if (!fallbackValue) {
+            return null;
+        }
+
+        try {
+            return JSON.parse(fallbackValue) as DecodedIdToken;
+        } catch (error) {
+            console.warn('解析 fallback decodedIDToken 失敗:', error);
+            return null;
+        }
+    };
+
+    useEffect(() => {
+        const decodedIdToken = readDecodedIdToken();
+        const displayName = (decodedIdToken?.name || localStorage.getItem('CARE_LINE_DISPLAY_NAME') || '').trim();
+        const avatarUrl = (decodedIdToken?.picture || '').trim();
+
+        if (displayName) {
+            setUserName(displayName);
+            setForm((prev) => ({ ...prev, name: prev.name || displayName }));
+        }
+
+        if (avatarUrl) {
+            setUserAvatar(avatarUrl);
+        }
+
+        // 讀取使用者資料，預填表單
+        const loadUserData = async () => {
+            const userId = (localStorage.getItem('CARE_LINE_USER_ID') || '').trim();
+            if (!userId) {
+                console.log('未找到使用者ID，跳過加載資料');
+                return;
+            }
+
+            try {
+                //呼叫api取得user資料
+                const data = await getPersonalHealthProfile(userId);
+                console.log('已加載使用者資料:', data);
+                if (data) {
+                    setForm((prev) => ({
+                        ...prev,
+                        name: data.name || prev.name,  // 資料庫優先，沒有才用LINE 名稱
+                        gender: data.gender || '',
+                        height: data.height?.toString() || '',
+                        weight: data.weight?.toString() || '',
+                        age: data.age?.toString() || '',
+                        chronicDisease: data.chronic_history ? data.chronic_history.split('、').filter(Boolean) : [],
+                        chronicDiseaseOther: '',
+                        majorIllness: data.major_illness_history || '',
+                        surgeryHistory: data.surgery_history || '',
+                    }));
+                    // 若資料庫有 name，也更新顯示用的 userName
+                    if (data.name) {
+                        setUserName(data.name);
+                    }
+                }
+            } catch (error) {
+                console.warn('載入使用者資料失敗:', error);
+                // 不阻斷頁面使用
+            }
+        };
+
+        loadUserData();
+    }, []);
+
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -130,9 +226,16 @@ const PersonalHealthPage: React.FC = () => {
         };
 
         console.log("最終提交資料：", finalData);
-        // TODO: 你要用真實 LINE user_id，先暫時手動填入或從 LIFF 取得
-        const userId = "123456789";
-
+        // 不再寫死Id，而是從 LIFF 取得 userId 作為 API 識別用
+        const userId = (localStorage.getItem('CARE_LINE_USER_ID') || '').trim();
+        if (!userId) {
+            setSaveMessage('找不到 LINE 使用者資訊，請先重新登入');
+            setSaveStatus('error');
+            return;
+        }
+        const profileName = userName || (readDecodedIdToken()?.name || '').trim();
+        console.log("LIFF User ID:", userId);
+        console.log("LIFF User Name:", profileName);
         const payload = {
             name: finalData.name,
             gender: finalData.gender,
@@ -142,37 +245,19 @@ const PersonalHealthPage: React.FC = () => {
             // 修改：慢性病史改為可複選，後端目前是字串欄位
             chronic_history: finalData.chronicDisease.join('、'),
             major_illness_history: finalData.majorIllness,
-            surgery_history: finalData.surgeryHistory,
+            surgery_history: finalData.surgeryHistory || '無',
             health_consultations: {} // 先放空 JSON
         };
 
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
         try {
-            const res = await fetch(`${baseUrl}/profiles/${userId}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            });
-
-            if (!res.ok) {
-                const text = await res.text();
-                console.error("儲存失敗:", text);
-                // 儲存失敗提示狀態
-                setSaveMessage('儲存失敗，請稍後再試');
-                setSaveStatus('error');
-                return;
-            }
-
-            const data = await res.json();
-            console.log("儲存成功:", data);
-            // 儲存成功提示狀態
+            const data = await upsertPersonalHealthProfile(userId, payload);
+            console.log('儲存成功:', data);
             setSaveMessage('已成功儲存個人健康資料');
             setSaveStatus('success');
         } catch (error) {
             console.error('儲存失敗（網路或請求中斷）:', error);
-            // 儲存失敗提示狀態
-            setSaveMessage('網路異常，請稍後再試');
+            setSaveMessage(error instanceof Error ? error.message : '網路異常，請稍後再試');
             setSaveStatus('error');
         }
     };
@@ -197,8 +282,33 @@ const PersonalHealthPage: React.FC = () => {
         !!form.majorIllness ||
         !!otherInput;
 
+    const isLoggedIn = Boolean(
+        (localStorage.getItem('CARE_AUTH_TOKEN') || '').trim() &&
+        (localStorage.getItem('CARE_LINE_USER_ID') || '').trim()
+    );
+
     return (
         <div className="pageContainer">
+            <section className="profileBanner">
+                <div className="profileAvatarWrap">
+                    {userAvatar ? (
+                        <img
+                            className="profileAvatar"
+                            src={userAvatar}
+                            alt={userName ? `${userName} 的頭像` : '使用者頭像'}
+                        />
+                    ) : (
+                        <div className="profileAvatar profileAvatarFallback" aria-hidden="true">
+                            {userName ? userName.charAt(0) : 'U'}
+                        </div>
+                    )}
+                </div>
+                <div className="profileBannerText">
+                    <div className="profileBannerLabel">{isLoggedIn ? '已登入' : '您尚未登入!'}</div>
+                    <div className="formTitle profileBannerTitle">{userName ? `${userName} 的健康資料` : '個人健康資料'}</div>
+                </div>
+            </section>
+
             {/* 儲存成功/失敗提示 */}
             {saveStatus === 'success' && (
                 <div className="saveToast saveToastSuccess">{saveMessage || '已成功儲存個人健康資料'}</div>
@@ -207,7 +317,6 @@ const PersonalHealthPage: React.FC = () => {
                 <div className="saveToast saveToastError">{saveMessage || '儲存失敗，請稍後再試'}</div>
             )}
             <form id="personalHealthForm" className="formContainer" onSubmit={handleSubmit}>
-                <div className="formTitle">個人健康資料</div>
                 <div className="formGroup">
                     <label className="label" htmlFor="name">姓名</label>
                     <input
@@ -217,6 +326,7 @@ const PersonalHealthPage: React.FC = () => {
                         name="name"
                         value={form.name}
                         onChange={handleChange}
+                        /*若有登入就顯示user名字*/
                         placeholder="請輸入姓名"
                         required
                     />

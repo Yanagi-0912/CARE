@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import sys
 import types
 
-from app.infrastructure.gemini import GeminiResult
+
 
 # 測試環境可能未安裝 motor，先提供最小 stub 避免 import 失敗
 if "motor.motor_asyncio" not in sys.modules:
@@ -27,8 +27,11 @@ from app.application.rag.services import RagAnswerService
 
 @pytest.mark.asyncio
 async def test_answer_uses_hits_to_build_rag_prompt():
+    from langchain_core.messages import AIMessage
     gemini_service = MagicMock()
-    gemini_service.generate_response = AsyncMock(return_value=GeminiResult(text="RAG 回覆"))
+    gemini_service._chat_llm = MagicMock()
+    gemini_service._chat_llm.ainvoke = AsyncMock(return_value=AIMessage(content="RAG 回覆"))
+    
     embed_query_provider = MagicMock()
     embed_query_provider.embed_query = AsyncMock(return_value=[0.1, 0.2])
     similar_chunk_searcher = MagicMock()
@@ -65,20 +68,25 @@ async def test_answer_uses_hits_to_build_rag_prompt():
     similar_chunk_searcher.search_similar_chunks.assert_awaited_once_with(
         [0.1, 0.2], vector_search_reader
     )
-    prompt = gemini_service.generate_response.await_args.args[0]
+    
+    # Verify the prompt contents
+    prompt = gemini_service._chat_llm.ainvoke.await_args.args[0][0].content
     assert "高血壓建議低鈉飲食" in prompt
     assert "規律量血壓" in prompt
 
 
 @pytest.mark.parametrize(
     "model_text",
-    [None, ""],
-    ids=["none", "empty_str"],
+    [""],
+    ids=["empty_str"],
 )
 @pytest.mark.asyncio
 async def test_answer_uses_default_message_when_model_returns_empty_text(model_text):
+    from langchain_core.messages import AIMessage
     gemini_service = MagicMock()
-    gemini_service.generate_response = AsyncMock(return_value=GeminiResult(text=model_text))
+    gemini_service._chat_llm = MagicMock()
+    gemini_service._chat_llm.ainvoke = AsyncMock(return_value=AIMessage(content=model_text))
+    
     embed_query_provider = MagicMock()
     embed_query_provider.embed_query = AsyncMock(return_value=[0.1, 0.2])
     similar_chunk_searcher = MagicMock()
@@ -107,11 +115,14 @@ async def test_answer_uses_default_message_when_model_returns_empty_text(model_t
 @pytest.mark.asyncio
 async def test_answer_raises_rag_no_hits_when_no_hits():
     gemini_service = MagicMock()
-    gemini_service.generate_response = AsyncMock()
+    gemini_service._chat_llm = MagicMock()
+    gemini_service._chat_llm.ainvoke = AsyncMock()
+    
     embed_query_provider = MagicMock()
     embed_query_provider.embed_query = AsyncMock(return_value=[0.1, 0.2])
     similar_chunk_searcher = MagicMock()
     similar_chunk_searcher.search_similar_chunks = AsyncMock(return_value=[])
+    
     svc = RagAnswerService(
         gemini_service=gemini_service,
         vector_search_reader=MagicMock(),
@@ -121,15 +132,18 @@ async def test_answer_raises_rag_no_hits_when_no_hits():
     with pytest.raises(RagNoHitsError):
         await svc.answer("我有高血壓要注意什麼")
 
-    gemini_service.generate_response.assert_not_awaited()
+    gemini_service._chat_llm.ainvoke.assert_not_awaited()
 
 
 @pytest.mark.asyncio
 async def test_answer_raises_when_embed_query_fails():
     gemini_service = MagicMock()
-    gemini_service.generate_response = AsyncMock()
+    gemini_service._chat_llm = MagicMock()
+    gemini_service._chat_llm.ainvoke = AsyncMock()
+    
     embed_query_provider = MagicMock()
     embed_query_provider.embed_query = AsyncMock(side_effect=RuntimeError("embed failed"))
+    
     svc = RagAnswerService(
         gemini_service=gemini_service,
         vector_search_reader=MagicMock(),
@@ -144,13 +158,16 @@ async def test_answer_raises_when_embed_query_fails():
 @pytest.mark.asyncio
 async def test_answer_raises_when_search_fails():
     gemini_service = MagicMock()
-    gemini_service.generate_response = AsyncMock()
+    gemini_service._chat_llm = MagicMock()
+    gemini_service._chat_llm.ainvoke = AsyncMock()
+    
     embed_query_provider = MagicMock()
     embed_query_provider.embed_query = AsyncMock(return_value=[0.1, 0.2])
     similar_chunk_searcher = MagicMock()
     similar_chunk_searcher.search_similar_chunks = AsyncMock(
         side_effect=RuntimeError("search failed")
     )
+    
     svc = RagAnswerService(
         gemini_service=gemini_service,
         vector_search_reader=MagicMock(),

@@ -23,8 +23,7 @@ def test_dependency_wiring_is_correct():
     assert line_message_service.token_provider is dependencies.get_line_token_manager()
     assert line_message_service.medical_service is dependencies.get_medical_service()
     assert handler._line_message_service is line_message_service
-    assert handler._medical_service is dependencies.get_medical_service()
-    assert handler._response_orchestrator is dependencies._response_orchestrator
+    assert handler._agent is dependencies._care_agent
     assert profile_service._repo is dependencies._user_profile_repository
 
 

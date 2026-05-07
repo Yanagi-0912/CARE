@@ -6,7 +6,7 @@ from app.infrastructure.gemini.shared.validation import MAX_INPUT_LENGTH, valida
 def test_validate_accepts_normal_text():
     r = validate_user_input("  我頭痛  ")
     assert r.is_valid is True
-    assert r.error_message is None
+    assert r.error_message == ""
 
 
 @pytest.mark.parametrize(

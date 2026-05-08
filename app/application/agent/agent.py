@@ -7,6 +7,13 @@ from app.application.agent.utils.nodes import AgentNodes
 from app.application.agent.prompt import SYSTEM_PROMPT
 from app.tools.registry import get_all_tools
 
+# LangGraph 基本概念：
+# - State：流程共用資料（例如 messages、allow_rag）
+# - Node：每一步要做的事（函式）
+# - Edge：定義下一步走向
+# - START / END：流程起點與終點
+# 執行時會依邊的定義由 START 流向各節點，最後到 END。
+
 
 class Agent:
     def __init__(self, llm, guardrail_service) -> None:
@@ -36,6 +43,7 @@ class Agent:
         builder.add_node("post_process", nodes.post_process_node)
 
         # 設定邏輯流程
+        # 把圖的起點（START）連到 guardrail，表示每次執行都先進行 guardrail 檢查。
         builder.add_edge(START, "guardrail")
         builder.add_edge("guardrail", "agent")
 

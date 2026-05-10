@@ -51,10 +51,18 @@ jobs:
 
       - name: Run tests with pytest
         env:
-          # 使用 GitHub Secrets 中的測試資料庫 URI
-          # 若 Secrets 未設定，預設會使用上面的本地 MongoDB service (localhost)
-          MONGODB_URI: ${{ secrets.MONGODB_URI_TEST || 'mongodb://localhost:27017' }}
-          MONGODB_DB: care_test
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          MONGODB_DB: ${{ secrets.MONGODB_DB }}
+          MONGODB_URL: ${{ secrets.MONGODB_URI }}
+          MONGODB_COLLECTION: ${{ vars.MONGODB_COLLECTION }}
+          MONGODB_VECTOR_INDEX: ${{ vars.MONGODB_VECTOR_INDEX }}
+          MONGODB_VECTOR_FIELD: ${{ vars.MONGODB_VECTOR_FIELD }}
+          MONGODB_TEXT_FIELD: ${{ vars.MONGODB_TEXT_FIELD }}
+          MONGODB_VECTOR_DIM: ${{ vars.MONGODB_VECTOR_DIM }}
+          LIFF_URL: ${{ secrets.LIFF_URL }}
+          LIFF_CHANNEL_ID: ${{ secrets.LIFF_CHANNEL_ID }}
+          LIFF_CHANNEL_SECRET: ${{ secrets.LIFF_CHANNEL_SECRET }}
+          LIFF_ID: ${{ secrets.LIFF_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           LINE_CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
           LINE_CHANNEL_ID: ${{ secrets.LINE_CHANNEL_ID }}

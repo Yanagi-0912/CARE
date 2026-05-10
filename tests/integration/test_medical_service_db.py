@@ -1,11 +1,12 @@
 import pytest
-import os
 from app.application.medical.medical_service import medical_service
 from app.schemas import MedicalFacility
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_find_nearby_hospitals_real_db():
+    """真實 Mongo：`CARE_database.medicalFacilities` 需含 2dsphere 索引與測試座標附近資料。"""
 
     from app.dependencies import get_mongodb_url
     from app.db.mongodb import MongoDBManager
@@ -14,7 +15,7 @@ async def test_find_nearby_hospitals_real_db():
         MongoDBManager._client = None
         MongoDBManager.configure(url)
     except ValueError:
-        pytest.fail("測試環境缺少 MONGODB_URL")
+        pytest.fail("測試環境缺少 MONGODB_URL 或 MONGODB_URI")
 
     # 模擬使用者送出的經緯度 (這組座標使用之前資料庫內的基隆地區範例)
     test_lat = 25.093118

@@ -3,6 +3,8 @@ __pycache__/
 *.py[codz]
 *$py.class
 .DS_Store
+# Node（根目錄誤跑 npm 時產生；前端請用 frontend/liff-app）
+node_modules/
 # C extensions
 *.so
 

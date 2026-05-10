@@ -2,6 +2,8 @@
 
 一個以高齡友善設計、資料準確性保障與 AI 科技整合為核心目標的適地性健康醫療資訊 AI 助手。
 
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=Yanagi-0912_CARE&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=Yanagi-0912_CARE) [![SonarQube Cloud](https://sonarcloud.io/images/project_badges/sonarcloud-dark.svg)](https://sonarcloud.io/summary/new_code?id=Yanagi-0912_CARE)
+
 ## 聲明
 
 暫無

@@ -16,6 +16,8 @@ spec:
       labels:
         app: care-backend
     spec:
+      # 不需呼叫 K8s API 的 workload 應關閉，降低 token 外洩／權限過大風險（Sonar／安全掃描建議）。
+      automountServiceAccountToken: false
       containers:
         # Pod 內實際執行的後端容器設定。
         - name: care-backend
@@ -24,6 +26,14 @@ spec:
           ports:
             # 容器內應用程式監聽的埠號。
             - containerPort: 8000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+              ephemeral-storage: 512Mi
+            limits:
+              memory: 512Mi
+              ephemeral-storage: 1Gi
           envFrom:
             # 將 Secret 中的鍵值作為環境變數注入容器。
             - secretRef:

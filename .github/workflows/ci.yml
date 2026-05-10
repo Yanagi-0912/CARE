@@ -1,4 +1,4 @@
-name: CARE CI/CD - Backend Testing
+name: CARE CI — Backend Testing
 
 on:
   push:
@@ -8,12 +8,17 @@ on:
       - "tests/**"
       - "requirements.txt"
       - "Dockerfile"
+      - ".github/workflows/**"
+      - "sonar-project.properties"
   pull_request:
     branches: [ main, master ]
     paths:
       - "app/**"
       - "tests/**"
       - "requirements.txt"
+      - "Dockerfile"
+      - ".github/workflows/**"
+      - "sonar-project.properties"
 
 jobs:
   test:
@@ -29,6 +34,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -61,3 +68,11 @@ jobs:
           file: ./coverage.xml
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }} # 選填，若有 Codecov 帳號可設定
+
+      # SonarCloud：在 repo Secrets 設定 SONAR_TOKEN；fork 發起的 PR 通常無 Secret，故此步會略過。
+      # SonarQube Server：須在本 step 的 env 加入 SONAR_HOST_URL（常用 Repository variables），見 SonarSource 官方說明。
+      - name: SonarQube Scan
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

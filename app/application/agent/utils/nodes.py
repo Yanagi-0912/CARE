@@ -27,14 +27,3 @@ class AgentNodes:
         # 直接回傳 AI message，LangGraph 會自動併入 state["messages"]
         return {"messages": [response]}
 
-    async def post_process_node(self, state: State) -> dict:
-        """後處理節點：掃描對話歷史，偵測是否有呼叫過 request_location。"""
-        called_location = False
-        for msg in state["messages"]:
-            for tc in getattr(msg, "tool_calls", []):
-                if tc.get("name") == "request_location":
-                    called_location = True
-                    break
-            if called_location:
-                break
-        return {"call_request_location": called_location}

@@ -153,11 +153,6 @@ class LineEventHandler:
             # 呼叫 Agent 進行決策
             result = await self._agent.invoke(user_input=user_text)
 
-            # 若 Agent 在過程中有呼叫 request_location 工具，則觸發 Quick Reply
-            if result.get("call_request_location"):
-                return await self._line_message_service.send_location_quick_reply(
-                    reply_token, user_id
-                )
 
             # 回傳 Agent 最終產出的文字回覆
             response_text = (

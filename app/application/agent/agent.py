@@ -40,7 +40,6 @@ class Agent:
         builder.add_node("guardrail", nodes.guardrail_node)
         builder.add_node("agent", nodes.agent_node)
         builder.add_node("tools", tool_executor)
-        builder.add_node("post_process", nodes.post_process_node)
 
         # 設定邏輯流程
         # 把圖的起點（START）連到 guardrail，表示每次執行都先進行 guardrail 檢查。
@@ -51,12 +50,11 @@ class Agent:
         builder.add_conditional_edges(
             "agent",
             tools_condition,
-            {"tools": "tools", END: "post_process"},
+            {"tools": "tools", END: END},
         )
 
         # 工具執行完 → 回到 agent 讓它根據結果繼續思考
         builder.add_edge("tools", "agent")
-        builder.add_edge("post_process", END)
 
         return builder.compile()
 
@@ -66,7 +64,6 @@ class Agent:
             {
                 "messages": [HumanMessage(content=user_input)],
                 "allow_rag": False,
-                "call_request_location": False,
             }
         )
 
@@ -78,5 +75,4 @@ class Agent:
 
         return {
             "response": response,
-            "call_request_location": result.get("call_request_location", False),
         }

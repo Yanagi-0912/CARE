@@ -14,17 +14,7 @@ def configure_medical_tools(medical_service: MedicalService) -> None:
     _medical_service = medical_service
 
 
-@tool
-def request_location() -> str:
-    """
-    當使用者想要尋找、前往、或詢問醫療院所/醫院/診所/藥局的位置時，必須先呼叫此工具。
-    此工具會要求用戶傳送目前的 GPS 位置，以便搜尋附近院所。
-    在拿到座標之前，不要直接回傳院所清單或地址，也不要用文字叫使用者傳位置。
-    適用情境範例：'附近有哪些醫院'、'我要去醫院'、'最近的藥局在哪'、
-    '幫我找診所'、'推薦醫院'、'我要看醫生'。
-    """
-    # 回傳特殊標記，讓上層知道要發送要求位置的 Quick Reply
-    return "__REQUEST_LOCATION__"
+
 
 
 @tool

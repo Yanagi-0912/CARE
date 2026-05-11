@@ -35,7 +35,6 @@ def _message_event(
 def mock_line_message_service():
     svc = MagicMock()
     svc.send_line_reply = AsyncMock(return_value=True)
-    svc.send_location_quick_reply = AsyncMock(return_value=True)
     return svc
 
 
@@ -43,7 +42,7 @@ def mock_line_message_service():
 def mock_agent():
     agent = MagicMock()
     agent.invoke = AsyncMock(
-        return_value={"response": "AI 回覆", "call_request_location": False}
+        return_value={"response": "AI 回覆"}
     )
     return agent
 
@@ -201,27 +200,26 @@ async def test_handle_text_message_success(
 
 
 @pytest.mark.asyncio
-async def test_handle_text_message_function_call(
+async def test_handle_text_message_hospital_guide(
     handler, mock_agent, mock_line_message_service
 ):
     """
-    測試處理文字訊息且 Agent 回傳 request_location 的情況。
-    預期會導向發送位置快速回覆。
+    測試使用者詢問醫院時，Agent 應回傳導引文字而非觸發工具。
     """
     from linebot.v3.webhooks import TextMessageContent
 
-    message = TextMessageContent(id="M2", text="附近有醫院嗎", quoteToken="dummy")
+    message = TextMessageContent(id="M_HOSP", text="附近有醫院嗎", quoteToken="dummy")
     event = _message_event(message)
 
+    guide_text = "請開啟功能選單並點擊『搜尋附近醫院』按鈕..."
     mock_agent.invoke.return_value = {
-        "response": "",
-        "call_request_location": True,
+        "response": guide_text
     }
 
     await handler.handle(event)
 
-    mock_line_message_service.send_location_quick_reply.assert_called_once_with(
-        "dummy_token", "U12345"
+    mock_line_message_service.send_line_reply.assert_called_once_with(
+        "dummy_token", guide_text, "U12345"
     )
 
 
@@ -262,7 +260,6 @@ async def test_handle_location_message_delegates_to_agent(
 
     mock_agent.invoke.return_value = {
         "response": "為您找到附近醫療院所...",
-        "call_request_location": False,
     }
 
     await handler.handle(event)

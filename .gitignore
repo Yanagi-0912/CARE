@@ -5,6 +5,9 @@ __pycache__/
 .DS_Store
 # Node（根目錄誤跑 npm 時產生；前端請用 frontend/liff-app）
 node_modules/
+# pip 錯誤安裝到 repo 根的套件目錄（應只用 venv，勿 commit）
+.deps_prometheus/
+.venv_tmp/
 # C extensions
 *.so
 

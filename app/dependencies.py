@@ -7,13 +7,15 @@ from fastapi import Header, HTTPException
 
 from app.core.config import settings
 from app.infrastructure.gemini import GeminiService
-from app.application.orchestration import ResponseOrchestrator
+from app.application.agent.agent import Agent
 from app.application.guardrail import GuardrailService
 from app.application.rag.services import RagAnswerService
 from app.infrastructure.line.message_service import LineMessageService
 from app.application.line.client import LineMessagingClient, LineTokenManager
 from app.application.line.event_handler import LineEventHandler
 from app.application.medical.medical_service import MedicalService, medical_service
+from app.tools.rag_tools import configure_rag_tool
+from app.tools.medical_tools import configure_medical_tools
 from app.infrastructure.vector_search import (
     MongoVectorSearchReader,
     VectorSearchConfig,
@@ -38,14 +40,19 @@ _guardrail_service = GuardrailService(
 )
 _vector_search_config = VectorSearchConfig.from_settings()
 _vector_search_reader = MongoVectorSearchReader(_vector_search_config)
+
 _rag_answer_service = RagAnswerService(
     gemini_service=_gemini_service,
     vector_search_reader=_vector_search_reader,
 )
-_response_orchestrator = ResponseOrchestrator(
-    gemini_service=_gemini_service,
+
+# DI tools
+configure_rag_tool(_rag_answer_service)
+configure_medical_tools(medical_service)
+
+_care_agent = Agent(
+    llm=_gemini_service._chat_llm,
     guardrail_service=_guardrail_service,
-    rag_answer_service=_rag_answer_service,
 )
 
 _line_token_manager = LineTokenManager(
@@ -60,9 +67,8 @@ _line_message_service = LineMessageService(
 )
 
 _line_event_handler = LineEventHandler(
-    response_orchestrator=_response_orchestrator,
+    agent=_care_agent,
     line_message_service=_line_message_service,
-    medical_service=medical_service,
 )
 
 # 使用者資料相關的依賴注入

@@ -29,6 +29,12 @@ class TestFamilyTreeIntegration:
         MongoDBManager._client = None
         MongoDBManager.configure(mongodb_url)
         logger.info("Integration Test: MongoDB client reset")
+
+        # 確保 LIFF_URL 有值，否則 FamilyTreeService.send_invitation 會拋出 500
+        if not settings.LIFF_URL:
+            settings.LIFF_URL = "https://liff.line.me/test-dummy-url"
+            logger.info(f"Integration Test: Setting dummy LIFF_URL: {settings.LIFF_URL}")
+            
         yield
 
     async def _cleanup(self):

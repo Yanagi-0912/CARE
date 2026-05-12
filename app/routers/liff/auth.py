@@ -18,7 +18,12 @@ class LiffLoginResponse(BaseModel):
     line_user_id: str
 
 
-@router.post("/liff/login", response_model=LiffLoginResponse)
+@router.post(
+    "/liff/login",
+    response_model=LiffLoginResponse,
+    summary="LIFF 登入",
+    description="前端送 LIFF ID token，後端向 LINE verify endpoint 驗證後，簽發應用內 JWT 給前端後續 API 使用。",
+)
 async def liff_login(
     req: LiffLoginRequest,
     service: LiffAuthApplicationService = Depends(get_liff_auth_application_service),

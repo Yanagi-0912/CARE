@@ -13,7 +13,11 @@ router = APIRouter()
 parser = WebhookParser(settings.LINE_CHANNEL_SECRET)
 
 
-@router.post("/callback")
+@router.post(
+    "/callback",
+    summary="LINE Webhook 回呼",
+    description="接收並處理 LINE 平台傳遞的 Webhook 事件。",
+)
 async def callback(
     request: Request,
     x_line_signature: str = Header(None),

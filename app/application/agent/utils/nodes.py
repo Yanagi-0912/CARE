@@ -1,3 +1,4 @@
+from app.application.guardrail.service import logger
 from langchain_core.messages import SystemMessage
 from app.application.agent.utils.state import State
 from app.tools.registry import get_all_tools
@@ -20,10 +21,10 @@ class AgentNodes:
         tools = get_all_tools(include_rag_tool=state.get("allow_rag", False))
         llm_with_tools = self._llm.bind_tools(tools)
 
-        # 將系統提示詞注入到對話最前面
+        logger.info(f"Using tools: {[t.name for t in tools]}")
+
         messages = [SystemMessage(content=self._prompt)] + state["messages"]
         response = await llm_with_tools.ainvoke(messages)
 
         # 直接回傳 AI message，LangGraph 會自動併入 state["messages"]
         return {"messages": [response]}
-

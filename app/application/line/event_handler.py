@@ -153,7 +153,6 @@ class LineEventHandler:
             # 呼叫 Agent 進行決策
             result = await self._agent.invoke(user_input=user_text)
 
-
             # 回傳 Agent 最終產出的文字回覆
             response_text = (
                 result.get("response") or "抱歉，我無法理解您的問題，請重新輸入。"

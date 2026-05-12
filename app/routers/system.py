@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 
 from app.schemas import HealthResponse, RootResponse
 
@@ -23,3 +23,8 @@ async def root():
 )
 async def health():
     return {"status": "Welcome to CARE Backend!"}
+
+
+@router.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)

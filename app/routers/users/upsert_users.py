@@ -7,7 +7,11 @@ from app.dependencies import get_user_profile_service, get_current_user, Current
 router = APIRouter(tags=["Profile"])
 
 
-@router.get("/{user_id}")
+@router.get(
+    "/{user_id}",
+    summary="取得使用者個人健康資料",
+    description="回傳指定使用者的健康資料，需要有效的 JWT 認證令牌且僅能查看自己的資料。",
+)
 async def get_user_profile(
     user_id: str,
     current_user: CurrentUser = Depends(get_current_user),
@@ -31,7 +35,11 @@ async def get_user_profile(
     return profile
 
 
-@router.put("/{user_id}")
+@router.put(
+    "/{user_id}",
+    summary="更新使用者個人健康資料",
+    description="更新或建立使用者的健康資料，需要帶上有效的 JWT 認證令牌且僅能修改自己的資料。",
+)
 async def upsert_user_profile(
     user_id: str,
     body: UserProfileData,

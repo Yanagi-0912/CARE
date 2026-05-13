@@ -18,7 +18,12 @@ router = APIRouter()
 # ----------------------------------------------------------------------
 #  取得個人族譜 (Get Family Tree)
 # ----------------------------------------------------------------------
-@router.get("/me", response_model=GetFamilyTreeResponse)
+@router.get(
+    "/me",
+    response_model=GetFamilyTreeResponse,
+    summary="取得個人族譜",
+    description="取得指定使用者的家族樹。如果尚未建立，則初始化並回傳空族譜。",
+)
 async def get_my_tree(
     user_id: str,
     service: FamilyTreeService = Depends(get_family_tree_service)
@@ -35,7 +40,12 @@ async def get_my_tree(
 # ----------------------------------------------------------------------
 #  產生邀請連結 (Create / Send Invitation)
 # ----------------------------------------------------------------------
-@router.post("/invite", response_model=SendInvitationResponse)
+@router.post(
+    "/invite",
+    response_model=SendInvitationResponse,
+    summary="產生邀請連結",
+    description="產生一組邀請連結與邀請碼，回傳的 invite_url 由前端呼叫 liff.shareTargetPicker 傳送給其他 LINE 使用者。",
+)
 async def create_invite(
     req: SendInvitationRequest,
     service: FamilyTreeService = Depends(get_family_tree_service)
@@ -49,7 +59,12 @@ async def create_invite(
 # ----------------------------------------------------------------------
 #  接受加入族譜 (Accept Invitation)
 # ----------------------------------------------------------------------
-@router.post("/accept", response_model=AddToFamilyResponse)
+@router.post(
+    "/accept",
+    response_model=AddToFamilyResponse,
+    summary="接受加入族譜",
+    description="受邀者點擊邀請連結後，呼叫此 API 以雙向加入族譜。",
+)
 async def accept_invite(
     req: AddToFamilyRequest,
     service: FamilyTreeService = Depends(get_family_tree_service)
@@ -65,7 +80,12 @@ async def accept_invite(
 # ----------------------------------------------------------------------
 #  設定指定成員的關係 (Set Relationship)
 # ----------------------------------------------------------------------
-@router.post("/relationship", response_model=FamilyTree)
+@router.post(
+    "/relationship",
+    response_model=FamilyTree,
+    summary="設定指定成員的關係",
+    description="設定發出請求的 user 與其族譜內特定 member_id 之間的關係，Service 層會自動嘗試雙向更新。",
+)
 async def set_relationship(
     req: SetRelationshipRequest,
     service: FamilyTreeService = Depends(get_family_tree_service)

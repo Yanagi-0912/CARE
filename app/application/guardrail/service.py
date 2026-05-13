@@ -32,6 +32,11 @@ class GuardrailService:
 
     async def allow_rag_tool(self, user_text: str) -> bool:
         """組分類 prompt 後呼叫分類器，回傳是否允許 RAG；分類失敗時 fail-open。"""
+        # 快速路徑：如果是座標位置訊息，不啟用 RAG 工具
+        if user_text.startswith("這是我的目前位置") or "lat=" in user_text:
+            logger.info("檢測到位置訊息，自動跳過 RAG Guardrail 並禁用 RAG 工具。")
+            return False
+
         try:
             result = await self._async_text_to_bool(
                 f"{_CLASSIFICATION_PROMPT}{user_text}",

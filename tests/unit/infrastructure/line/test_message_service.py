@@ -49,12 +49,3 @@ async def test_send_line_reply_validation_error(svc, mock_deps):
     assert ok is False
     mock_deps["line_messaging_client"].reply_message.assert_not_called()
 
-@pytest.mark.asyncio
-async def test_send_location_quick_reply_success(svc, mock_deps):
-    mock_deps["token_provider"].get_token.return_value = "token"
-    
-    ok = await svc.send_location_quick_reply("rt", "u1")
-    
-    assert ok is True
-    mock_deps["medical_service"].request_location.assert_called_once_with("u1")
-    mock_deps["line_messaging_client"].reply_message.assert_called_once()

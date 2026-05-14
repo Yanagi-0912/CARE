@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.application.line.client.token_manager import LineTokenManager
+from app.services.line_messaging.client.token_manager import LineTokenManager
 
 def main():
     load_dotenv()

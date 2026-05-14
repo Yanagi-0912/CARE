@@ -8,7 +8,7 @@ import logging
 from collections.abc import Awaitable
 from typing import Any
 from langchain_core.messages import HumanMessage
-from langchain_core.runnables import Runnable, RunnableConfig
+from langchain_core.runnables import Runnable
 from langchain_google_genai import ChatGoogleGenerativeAI
 from app.services.gemini.shared.errors import (
     GeminiHttpError,
@@ -20,8 +20,7 @@ from app.services.gemini.shared.errors import (
 
 logger = logging.getLogger(__name__)
 
-# Gemini 結構化輸出逾時（秒）
-STRUCTURED_OUTPUT_TIMEOUT_SEC = 30.0
+
 
 
 class GeminiService:
@@ -55,10 +54,7 @@ class GeminiService:
             method="json_schema",
         )
         result = await _await_with_mapped_gemini_errors(
-            structured.ainvoke(
-                messages,
-                config=RunnableConfig(timeout=STRUCTURED_OUTPUT_TIMEOUT_SEC),
-            )
+            structured.ainvoke(messages)
         )
         if isinstance(result, bool):
             return result

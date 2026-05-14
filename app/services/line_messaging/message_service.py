@@ -61,7 +61,7 @@ class LineMessageService:
             self.line_messaging_client.reply_message(
                 access_token,
                 ReplyMessageRequest(
-                    reply_token=reply_token,
+                    replyToken=reply_token,
                     messages=[TextMessage(text=message_text)],
                 ),
             )

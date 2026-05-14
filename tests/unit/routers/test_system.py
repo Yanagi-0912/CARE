@@ -21,3 +21,9 @@ def test_status_endpoints(url, expected_json):
     response = client.get(url)
     assert response.status_code == 200
     assert response.json() == expected_json
+
+
+def test_favicon_endpoint_returns_no_content():
+    response = client.get("/favicon.ico")
+    assert response.status_code == 204
+    assert response.content == b""

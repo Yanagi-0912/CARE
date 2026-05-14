@@ -1,6 +1,6 @@
 import pytest
 import os
-from app.application.medical.medical_service import medical_service
+from app.services.medical.medical_service import medical_service
 from app.schemas import MedicalFacility
 
 

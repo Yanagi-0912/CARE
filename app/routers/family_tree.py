@@ -10,7 +10,7 @@ from app.models.family_tree import (
     SetRelationshipRequest,
     GetFamilyTreeResponse,
 )
-from app.application.family.family_tree_service import FamilyTreeService
+from app.services.family.family_tree_service import FamilyTreeService
 from app.dependencies import get_family_tree_service
 
 router = APIRouter()

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from app.application.liff.auth_service import LiffAuthApplicationService
+from app.services.liff.auth_service import LiffAuthApplicationService
 from app.dependencies import get_liff_auth_application_service
 
 router = APIRouter()

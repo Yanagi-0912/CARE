@@ -6,25 +6,25 @@ import jwt  # type: ignore[import-not-found]
 from fastapi import Header, HTTPException
 
 from app.core.config import settings
-from app.infrastructure.gemini import GeminiService
-from app.application.agent.agent import Agent
-from app.application.guardrail import GuardrailService
-from app.application.rag.services import RagAnswerService
-from app.infrastructure.line.message_service import LineMessageService
-from app.application.line.client import LineMessagingClient, LineTokenManager
-from app.application.line.event_handler import LineEventHandler
-from app.application.medical.medical_service import MedicalService, medical_service
+from app.services.gemini import GeminiService
+from app.services.agent.agent import Agent
+from app.services.guardrail import GuardrailService
+from app.services.rag.services import RagAnswerService
+from app.services.line_messaging.message_service import LineMessageService
+from app.services.line_messaging.client import LineMessagingClient, LineTokenManager
+from app.services.line_messaging.event_handler import LineEventHandler
+from app.services.medical.medical_service import MedicalService, medical_service
 from app.tools.rag_tools import configure_rag_tool
 from app.tools.medical_tools import configure_medical_tools
-from app.infrastructure.vector_search import (
+from app.services.vector_search import (
     MongoVectorSearchReader,
     VectorSearchConfig,
 )
 from app.db.mongodb import MongoDBManager
 from app.services.users.user_profile_service import UserProfileService
 from app.repositories.user_profile_repository import UserProfileRepository
-from app.application.family.family_tree_service import FamilyTreeService
-from app.application.liff.auth_service import LiffAuthApplicationService
+from app.services.family.family_tree_service import FamilyTreeService
+from app.services.liff.auth_service import LiffAuthApplicationService
 from app.services.liff.jwt_service import AppJwtService
 from app.services.liff.line_id_token_service import LineIdTokenService
 

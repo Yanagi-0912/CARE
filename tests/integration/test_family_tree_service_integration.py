@@ -3,7 +3,7 @@ import os
 from datetime import datetime, timezone
 import logging
 
-from app.application.family.family_tree_service import FamilyTreeService
+from app.services.family.family_tree_service import FamilyTreeService
 from app.db.mongodb import MongoDBManager
 from app.core.config import settings
 from app.models.family_tree import REVERSE_RELATIONSHIP

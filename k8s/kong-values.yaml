@@ -1,0 +1,27 @@
+# Kong Helm values（使用 Ingress resource）
+deployment:
+  kong:
+    enabled: true
+
+env:
+  database: "off"
+  router_flavor: "traditional"
+  log_level: "info"
+
+ingressController:
+  enabled: true
+  ingressClass: kong
+
+proxy:
+  enabled: true
+  type: LoadBalancer
+  http:
+    enabled: true
+    servicePort: 80
+
+admin:
+  enabled: true
+  type: ClusterIP
+  http:
+    enabled: true
+    servicePort: 8001

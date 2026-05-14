@@ -1,0 +1,19 @@
+# Ingress：由 Kong Ingress Controller 解析規則，轉發到 care-backend Service。
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: care-backend
+  annotations:
+    konghq.com/strip-path: "false"
+spec:
+  ingressClassName: kong
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: care-backend
+                port:
+                  number: 8000

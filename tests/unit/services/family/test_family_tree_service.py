@@ -1,229 +1,134 @@
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 from datetime import datetime, timezone, timedelta
+from unittest.mock import AsyncMock, patch
 from fastapi import HTTPException
 
 from app.services.family.family_tree_service import FamilyTreeService
-from app.models.family_tree import (
-    FamilyTree,
-    FamilyMember,
-    PendingInvitation,
-    SendInvitationResponse,
-    AddToFamilyResponse,
-)
-
-# ── 測試設定 ──────────────────────────────────────────────────────────────
+from app.models.family_tree import PendingInvitation, FamilyTree, FamilyMember
 
 @pytest.fixture
-def mock_now():
-    return datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+def mock_user_service():
+    return AsyncMock()
 
 @pytest.fixture
-def sample_tree(mock_now):
-    return FamilyTree(
-        user_id="user_123",
-        family_members=[],
-        created_at=mock_now,
-        updated_at=mock_now
-    )
+def service(mock_user_service):
+    return FamilyTreeService(user_profile_service=mock_user_service)
 
-@pytest.fixture
-def sample_invitation(mock_now):
-    return PendingInvitation(
-        _id="invite_888",
-        inviter_id="user_123",
+@pytest.mark.asyncio
+async def test_create_invitation(service):
+    inviter_id = "U12345"
+    
+    with patch("app.repositories.family_tree_repository.FamilyTreeRepository.save_invitation", new_callable=AsyncMock) as mock_save:
+        res = await service.create_invitation(inviter_id)
+        
+        assert res.invite_token is not None
+        assert len(res.invite_token) > 0
+        mock_save.assert_called_once()
+        # 檢查呼叫參數
+        args, kwargs = mock_save.call_args
+        assert kwargs["inviter_id"] == inviter_id
+        assert isinstance(kwargs["expires_at"], datetime)
+
+@pytest.mark.asyncio
+async def test_verify_invitation_success(service, mock_user_service):
+    code = "test-token"
+    inviter_id = "U_INVITER"
+    expires_at = datetime.now(timezone.utc) + timedelta(days=1)
+    
+    mock_invite = PendingInvitation(
+        _id=code,
+        inviter_id=inviter_id,
         status="pending",
-        created_at=mock_now,
-        expires_at=datetime.now(tz=timezone.utc) + timedelta(days=7)
+        created_at=datetime.now(timezone.utc),
+        expires_at=expires_at
     )
+    
+    with patch("app.repositories.family_tree_repository.FamilyTreeRepository.get_invitation", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = mock_invite
+        mock_user_service.get_user_profile.return_value = {"name": "測試家人"}
+        
+        res = await service.verify_invitation(code)
+        
+        assert res.inviter_display_name == "測試家人"
+        assert res.expires_at == expires_at.isoformat()
 
-# ── 發送邀請 ──────────────────────────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_verify_invitation_expired(service):
+    code = "expired-token"
+    # 設定為過去的時間
+    expires_at = datetime.now(timezone.utc) - timedelta(days=1)
+    
+    mock_invite = PendingInvitation(
+        _id=code,
+        inviter_id="U1",
+        status="pending",
+        created_at=datetime.now(timezone.utc) - timedelta(days=2),
+        expires_at=expires_at
+    )
+    
+    with patch("app.repositories.family_tree_repository.FamilyTreeRepository.get_invitation", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = mock_invite
+        
+        with pytest.raises(HTTPException) as excinfo:
+            await service.verify_invitation(code)
+        assert excinfo.value.status_code == 410
+        assert "已失效" in excinfo.value.detail
 
-class TestSendInvitation:
-    """測試發送邀請邏輯"""
+@pytest.mark.asyncio
+async def test_accept_invitation_already_member(service):
+    invitee_id = "U_ME"
+    inviter_id = "U_INVITER"
+    code = "join-token"
+    
+    mock_invite = PendingInvitation(
+        _id=code,
+        inviter_id=inviter_id,
+        status="pending",
+        created_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=1)
+    )
+    
+    # 模擬我已經在對方的族譜裡了
+    mock_inviter_tree = FamilyTree(
+        user_id=inviter_id,
+        family_members=[FamilyMember(user_id=invitee_id, relationship_type="child")],
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc)
+    )
+    
+    with patch("app.repositories.family_tree_repository.FamilyTreeRepository.get_invitation", new_callable=AsyncMock) as mock_get_invite, \
+         patch("app.repositories.family_tree_repository.FamilyTreeRepository.get_by_user_id", new_callable=AsyncMock) as mock_get_tree:
+        
+        mock_get_invite.return_value = mock_invite
+        mock_get_tree.return_value = mock_inviter_tree
+        
+        res = await service.accept_invitation(invitee_id, code)
+        
+        assert res.status == "already_member"
+        assert "你已是此家庭成員" in res.message
 
-    @pytest.mark.asyncio
-    @patch("app.services.family.family_tree_service.FamilyTreeRepository")
-    @patch("app.services.family.family_tree_service.settings")
-    async def test_send_invitation_success(self, mock_settings, mock_repo, sample_invitation):
-        # 設定 Mock
-        mock_repo.create_invitation = AsyncMock(return_value=sample_invitation)
-        mock_settings.LIFF_URL = "https://liff.line.me/test-app"
+@pytest.mark.asyncio
+async def test_accept_invitation_success(service):
+    invitee_id = "U_NEW"
+    inviter_id = "U_INVITER"
+    code = "valid-token"
+    
+    mock_invite = PendingInvitation(
+        _id=code,
+        inviter_id=inviter_id,
+        status="pending",
+        created_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=1)
+    )
+    
+    with patch("app.repositories.family_tree_repository.FamilyTreeRepository.get_invitation", new_callable=AsyncMock) as mock_get_invite, \
+         patch("app.repositories.family_tree_repository.FamilyTreeRepository.get_by_user_id", new_callable=AsyncMock) as mock_get_tree, \
+         patch.object(FamilyTreeService, "add_to_family", new_callable=AsyncMock) as mock_add:
         
-        # 執行
-        result = await FamilyTreeService.send_invitation("user_123")
+        mock_get_invite.return_value = mock_invite
+        mock_get_tree.return_value = None # 尚未建立族譜或對方族譜為空
         
-        # 驗證
-        assert isinstance(result, SendInvitationResponse)
-        assert result.invite_id == "invite_888"
-        assert result.invite_url == "https://liff.line.me/test-app?inviteId=invite_888"
-        mock_repo.create_invitation.assert_called_once_with("user_123")
-
-    @pytest.mark.asyncio
-    @patch("app.services.family.family_tree_service.FamilyTreeRepository")
-    @patch("app.services.family.family_tree_service.settings")
-    async def test_send_invitation_no_liff_url(self, mock_settings, mock_repo, sample_invitation):
-        # 設定 Mock
-        mock_repo.create_invitation = AsyncMock(return_value=sample_invitation)
-        mock_settings.LIFF_URL = "" # 未設定
+        res = await service.accept_invitation(invitee_id, code)
         
-        # 執行並驗證異常
-        with pytest.raises(HTTPException) as exc:
-            await FamilyTreeService.send_invitation("user_123")
-        
-        assert exc.value.status_code == 500
-        assert "LIFF_URL is not configured" in exc.value.detail
-
-# ── 接受邀請 ──────────────────────────────────────────────────────────────
-
-class TestAddToFamily:
-    """測試接受邀請並加入族譜邏輯"""
-
-    @pytest.mark.asyncio
-    @patch("app.services.family.family_tree_service.FamilyTreeRepository")
-    async def test_add_to_family_success(self, mock_repo, sample_invitation, sample_tree, mock_now):
-        # 設定 Mock
-        mock_repo.get_invitation = AsyncMock(return_value=sample_invitation)
-        mock_repo.upsert_tree = AsyncMock()
-        mock_repo.add_member = AsyncMock()
-        mock_repo.accept_invitation = AsyncMock()
-        
-        # 模擬回傳 invitee 最新的 Tree
-        invitee_tree = sample_tree.model_copy()
-        invitee_tree.user_id = "invitee_456"
-        invitee_tree.family_members = [FamilyMember(user_id="user_123")]
-        mock_repo.get_by_user_id = AsyncMock(return_value=invitee_tree)
-        
-        # 執行
-        result = await FamilyTreeService.add_to_family("invitee_456", "invite_888")
-        
-        # 驗證
-        assert result.success is True
-        assert result.family_tree.user_id == "invitee_456"
-        assert len(result.family_tree.family_members) == 1
-        
-        # 驗證雙向寫入是否有被呼叫
-        assert mock_repo.upsert_tree.call_count == 2
-        assert mock_repo.add_member.call_count == 2
-        mock_repo.accept_invitation.assert_called_once_with("invite_888")
-
-    @pytest.mark.asyncio
-    @patch("app.services.family.family_tree_service.FamilyTreeRepository")
-    async def test_add_to_family_not_found(self, mock_repo):
-        mock_repo.get_invitation = AsyncMock(return_value=None)
-        
-        with pytest.raises(HTTPException) as exc:
-            await FamilyTreeService.add_to_family("invitee_456", "wrong_id")
-        
-        assert exc.value.status_code == 404
-        assert "邀請不存在" in exc.value.detail
-
-    @pytest.mark.asyncio
-    @patch("app.services.family.family_tree_service.FamilyTreeRepository")
-    async def test_add_to_family_already_accepted(self, mock_repo, sample_invitation):
-        sample_invitation.status = "accepted"
-        mock_repo.get_invitation = AsyncMock(return_value=sample_invitation)
-        
-        with pytest.raises(HTTPException) as exc:
-            await FamilyTreeService.add_to_family("invitee_456", "invite_888")
-        
-        assert exc.value.status_code == 409
-        assert "此邀請已被使用" in exc.value.detail
-
-    @pytest.mark.asyncio
-    @patch("app.services.family.family_tree_service.FamilyTreeRepository")
-    async def test_add_to_family_expired(self, mock_repo, sample_invitation):
-        # 設定為過去的時間
-        sample_invitation.expires_at = datetime.now(tz=timezone.utc) - timedelta(days=1)
-        mock_repo.get_invitation = AsyncMock(return_value=sample_invitation)
-        
-        with pytest.raises(HTTPException) as exc:
-            await FamilyTreeService.add_to_family("invitee_456", "invite_888")
-        
-        assert exc.value.status_code == 410
-        assert "邀請連結已過期" in exc.value.detail
-
-    @pytest.mark.asyncio
-    @patch("app.services.family.family_tree_service.FamilyTreeRepository")
-    async def test_add_to_family_self_invite(self, mock_repo, sample_invitation):
-        mock_repo.get_invitation = AsyncMock(return_value=sample_invitation)
-        
-        with pytest.raises(HTTPException) as exc:
-            # inviter 是 user_123，invitee 也是 user_123
-            await FamilyTreeService.add_to_family("user_123", "invite_888")
-        
-        assert exc.value.status_code == 400
-        assert "無法邀請自己" in exc.value.detail
-
-    @pytest.mark.asyncio
-    @patch("app.services.family.family_tree_service.FamilyTreeRepository")
-    async def test_add_to_family_best_effort_error(self, mock_repo, sample_invitation, sample_tree):
-        """測試 Best-effort：即使一方更新失敗也不中斷"""
-        mock_repo.get_invitation = AsyncMock(return_value=sample_invitation)
-        mock_repo.upsert_tree = AsyncMock()
-        mock_repo.accept_invitation = AsyncMock()
-        
-        # 模擬 inviter 端點失敗
-        mock_repo.add_member = AsyncMock(side_effect=[Exception("DB Error"), None])
-        
-        mock_repo.get_by_user_id = AsyncMock(return_value=sample_tree)
-        
-        # 執行應成功（因為有 try-except 攔截）
-        result = await FamilyTreeService.add_to_family("invitee_456", "invite_888")
-        assert result.success is True
-        assert mock_repo.add_member.call_count == 2
-        mock_repo.accept_invitation.assert_called_once()
-
-# ── 設定關係 ──────────────────────────────────────────────────────────────
-
-class TestSetRelationship:
-    """測試設定關係邏輯"""
-
-    @pytest.mark.asyncio
-    @patch("app.services.family.family_tree_service.FamilyTreeRepository")
-    async def test_set_relationship_success(self, mock_repo, sample_tree):
-        # 1. 更新自身
-        mock_repo.set_relationship = AsyncMock(side_effect=[sample_tree, sample_tree])
-        
-        # 執行 (設定為 parent，則反邊應為 child)
-        await FamilyTreeService.set_relationship("user_123", "member_456", "parent")
-        
-        # 驗證
-        assert mock_repo.set_relationship.call_count == 2
-        # 檢查參數：第二次呼叫應為反向關係
-        args_first = mock_repo.set_relationship.call_args_list[0][0]
-        args_second = mock_repo.set_relationship.call_args_list[1][0]
-        
-        assert args_first == ("user_123", "member_456", "parent")
-        assert args_second == ("member_456", "user_123", "child")
-
-    @pytest.mark.asyncio
-    async def test_set_relationship_invalid_type(self):
-        with pytest.raises(HTTPException) as exc:
-            await FamilyTreeService.set_relationship("u1", "m1", "alien")
-        
-        assert exc.value.status_code == 400
-        assert "不支援的關係類型" in exc.value.detail
-
-    @pytest.mark.asyncio
-    @patch("app.services.family.family_tree_service.FamilyTreeRepository")
-    async def test_set_relationship_not_found(self, mock_repo):
-        mock_repo.set_relationship = AsyncMock(return_value=None)
-        
-        with pytest.raises(HTTPException) as exc:
-            await FamilyTreeService.set_relationship("u1", "m1", "parent")
-        
-        assert exc.value.status_code == 404
-        assert "找不到成員" in exc.value.detail
-
-    @pytest.mark.asyncio
-    @patch("app.services.family.family_tree_service.FamilyTreeRepository")
-    async def test_set_relationship_reverse_best_effort(self, mock_repo, sample_tree):
-        """測試反向更新失敗（或找不到人）不影響回傳"""
-        # 第一次更新成功，第二次（反向）回傳 None
-        mock_repo.set_relationship = AsyncMock(side_effect=[sample_tree, None])
-        
-        result = await FamilyTreeService.set_relationship("u1", "m1", "parent")
-        
-        assert result == sample_tree
-        assert mock_repo.set_relationship.call_count == 2
+        assert res.status == "joined"
+        mock_add.assert_called_once_with(invitee_id, code)

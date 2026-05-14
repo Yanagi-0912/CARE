@@ -76,7 +76,7 @@ _user_profile_repository = UserProfileRepository()
 _user_profile_service = UserProfileService(repo=_user_profile_repository)
 
 # Family Tree 服務
-_family_tree_service = FamilyTreeService()
+_family_tree_service = FamilyTreeService(user_profile_service=_user_profile_service)
 
 # LIFF Auth 服務
 _line_id_token_service = LineIdTokenService()

@@ -66,10 +66,12 @@ class RagAnswerService:
             raise RagNoHitsError(user_text)
 
         rag_prompt = (
-            "請根據以下 RAG 提供的醫療知識內容回答使用者問題。"
-            "回覆中不要使用「根據檢索內容」這類字眼，改用「根據 RAG 資訊」等說法。"
-            "請使用一般純文字，不要使用 Markdown 格式符號。"
-            "若內容不足，請明確說明不知道，勿捏造。\n\n"
+            "請根據以下提供的醫療知識內容回答問題。\n\n"
+            "規則：\n"
+            "1. 請在回答中適當引用內容來源的編號，例如：『...這是常見的症狀 [1]。』\n"
+            "2. 回覆中不要使用「根據檢索內容」這類字眼，改用「根據 RAG 資訊」等說法。\n"
+            "3. 請使用一般純文字，不要使用 Markdown 格式符號。\n"
+            "4. 若內容不足，請明確說明不知道，勿捏造。\n\n"
             f"使用者問題：{user_text}\n\n"
             "RAG 內容：\n"
             f"{chr(10).join(context_lines)}"
@@ -83,31 +85,25 @@ class RagAnswerService:
 
     @staticmethod
     def _append_sources(answer_text: str, hits: ChunkHits) -> str:
-        max_sources = 3
         source_lines: list[str] = []
-        seen: set[tuple[str, str]] = set()
+        seen_urls: set[str] = set()
 
-        sorted_hits = sorted(
-            hits,
-            key=lambda h: h.get("score") if h.get("score") is not None else float("-inf"),
-            reverse=True,
-        )
-
-        for hit in sorted_hits:
+        # 這裡的 hits 順序應與 prompt 中的編號 1, 2, 3... 一致
+        for idx, hit in enumerate(hits[:5], start=1):
             source_name = (hit.get("source_name") or "").strip()
             url = (hit.get("url") or "").strip()
+            
             if not source_name or not url:
                 continue
-
-            key = (source_name, url)
-            if key in seen:
+                
+            # 避免重複列出相同的 URL
+            if url in seen_urls:
                 continue
-            seen.add(key)
-            source_lines.append(f"- {source_name}：{url}")
-            if len(source_lines) >= max_sources:
-                break
+            seen_urls.add(url)
+            
+            source_lines.append(f"[{idx}] {source_name}：{url}")
 
         if not source_lines:
             return answer_text
 
-        return f"{answer_text}\n\n資料來源：\n" + "\n".join(source_lines)
+        return f"{answer_text}\n\n參考資料來源：\n" + "\n".join(source_lines)

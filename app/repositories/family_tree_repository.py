@@ -1,6 +1,5 @@
-import secrets
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional
 
 from app.db.mongodb import MongoDBManager
@@ -8,14 +7,9 @@ from app.models.family_tree import FamilyMember, FamilyTree, PendingInvitation
 
 logger = logging.getLogger(__name__)
 
-_INVITE_TTL_DAYS = 7
-_INVITE_ID_BYTES = 4  # secrets.token_hex(4) → 8 hex chars
-
 
 class FamilyTreeRepository:
     """封裝所有族譜相關的 MongoDB 操作"""
-
-    # ── FamilyTree ────────────────────────────────────────────────────────────
 
     @staticmethod
     async def get_by_user_id(user_id: str) -> Optional[FamilyTree]:
@@ -90,18 +84,19 @@ class FamilyTreeRepository:
     # ── PendingInvitation ─────────────────────────────────────────────────────
 
     @staticmethod
-    async def create_invitation(inviter_id: str) -> PendingInvitation:
-        """建立一筆新的邀請記錄，使用 8 碼隨機 hex 作為 ID。"""
+    async def save_invitation(
+        token: str, inviter_id: str, expires_at: datetime
+    ) -> PendingInvitation:
+        """根據 Service 層提供的資訊儲存邀請記錄。"""
         col = MongoDBManager.get_pending_invitations_collection()
         now = datetime.now(tz=timezone.utc)
-        invite_id = secrets.token_hex(_INVITE_ID_BYTES)  # e.g. "a3f8bc2e"
 
         doc = {
-            "_id": invite_id,
+            "_id": token,
             "inviter_id": inviter_id,
             "status": "pending",
             "created_at": now,
-            "expires_at": now + timedelta(days=_INVITE_TTL_DAYS),
+            "expires_at": expires_at,
         }
         await col.insert_one(doc)
         return PendingInvitation(**doc)

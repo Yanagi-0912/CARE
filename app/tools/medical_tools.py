@@ -1,5 +1,5 @@
 from langchain_core.tools import tool
-from app.application.medical.medical_service import (
+from app.services.medical.medical_service import (
     MedicalService,
     NO_FACILITY_MESSAGE,
     format_facility_list,

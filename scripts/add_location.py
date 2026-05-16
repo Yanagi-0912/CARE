@@ -10,6 +10,7 @@ def main():
 
     # 從依賴注入取得 MONGODB_URL
     from app.dependencies import get_mongodb_url
+
     try:
         mongodb_url = get_mongodb_url()
     except ValueError as e:

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Request, Header, HTTPException, Depends
 from linebot.v3.webhook import WebhookParser
 from linebot.v3.exceptions import InvalidSignatureError
-from app.application.line.event_handler import LineEventHandler
-from app.infrastructure.line.shared.errors import LineValidationError
+from app.services.line_messaging.event_handler import LineEventHandler
+from app.services.line_messaging.shared.errors import LineValidationError
 from app.dependencies import get_line_event_handler
 from app.core.config import settings
 import logging

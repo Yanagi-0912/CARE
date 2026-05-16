@@ -1,5 +1,5 @@
 from langchain_core.tools import tool
-from app.application.rag.retrieval.errors import RagNoHitsError
+from app.services.rag.retrieval.errors import RagNoHitsError
 
 _rag_answer_service = None
 

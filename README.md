@@ -68,60 +68,9 @@ ngrok http 8000
 
 在 [LINE Developers 管理頁面](https://developers.line.biz/console/channel/2008834990/messaging-api) 的 webhook URL 改為 `"ngrok url"/line/callback`。
 
-## Kubernetes：用 Helm 安裝 Kong（使用 Ingress）
+## Kubernetes 與 Kong（Ingress）
 
-以下流程是「Kong 當 Ingress Controller，由 `k8s/ingress.yaml` 控制路由」的最小可用版本。
-
-1) 先套用後端 Secret：
-
-```bash
-kubectl apply -f k8s/secret.yaml
-```
-
-2) 再套用其餘後端資源：
-
-```bash
-kubectl apply -f k8s/deployment.yaml
-kubectl apply -f k8s/service.yaml
-```
-
-3) 加入 Kong Helm repo 並更新：
-
-```bash
-helm repo add kong https://charts.konghq.com
-helm repo update
-```
-
-4) 安裝 Kong（使用 `k8s/kong-values.yaml`）：
-
-```bash
-helm upgrade --install kong kong/kong -n kong --create-namespace -f k8s/kong-values.yaml
-```
-
-5) 確認 Kong 與後端 Service：
-
-```bash
-kubectl get pods -n kong
-kubectl get svc -n kong
-kubectl get svc care-backend
-```
-
-6) 套用 Ingress 規則：
-
-```bash
-kubectl apply -f k8s/ingress.yaml
-kubectl get ingress
-```
-
-7) 測試（把 `<KONG_PROXY_IP>` 換成 `kubectl get svc -n kong` 看到的 EXTERNAL-IP）：
-
-```bash
-curl http://<KONG_PROXY_IP>/api
-```
-
-說明：
-- `k8s/kong-values.yaml` 已啟用 Kong Ingress Controller（`ingressController.enabled: true`）。
-- 路由規則由 Kubernetes `Ingress` 資源管理（`k8s/ingress.yaml`）。
+後端的 K8s manifest 與 Kong Helm values 已獨立放在 **`CARE-infra`** 專案（與本 repo 同層目錄的 `CARE-infra/`），請到該目錄依 `CARE-infra/README.md` 操作 `kubectl` 與 `helm`。
 
 ## 在 Windows 上執行測試
 

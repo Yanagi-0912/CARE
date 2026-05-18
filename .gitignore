@@ -220,6 +220,3 @@ app_data/tmp/*
 
 # Firecrawl outputs
 .firecrawl/
-
-# Kubernetes local secrets (never commit real keys)
-k8s/secret.local.yaml

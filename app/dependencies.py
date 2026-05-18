@@ -21,12 +21,22 @@ from app.services.vector_search import (
     VectorSearchConfig,
 )
 from app.db.mongodb import MongoDBManager
+from app.db.redis import RedisManager
 from app.services.users.user_profile_service import UserProfileService
 from app.repositories.user_profile_repository import UserProfileRepository
 from app.services.family.family_tree_service import FamilyTreeService
 from app.services.liff.auth_service import LiffAuthApplicationService
 from app.services.liff.jwt_service import AppJwtService
 from app.services.liff.line_id_token_service import LineIdTokenService
+from app.models.consultation import ConsultationMessage
+from app.repositories.consultation_repository import ConsultationRepository
+from app.services.consultation.context import ConsultationContext
+from app.services.consultation.proxies import (
+    ConsultationAwareAgent,
+    ConsultationAwareLineMessageService,
+)
+from app.services.consultation.consultation_service import ConsultationService
+from app.services.consultation.store import build_consultation_store
 
 _mongodb_url = os.getenv("MONGODB_URL")
 MongoDBManager.configure(_mongodb_url or settings.MONGODB_URI)
@@ -66,9 +76,37 @@ _line_message_service = LineMessageService(
     line_messaging_client=LineMessagingClient(),
 )
 
-_line_event_handler = LineEventHandler(
+# 強制檢查 REDIS_URL，沒有設定就報錯啟動失敗
+_redis_url = settings.REDIS_URL or os.getenv("REDIS_URL")
+if not _redis_url:
+    raise ValueError(
+        "缺少 REDIS_URL 環境變數。"
+        "諮詢紀錄系統強制使用 Redis，請在 .env 或系統環境變數中設定 REDIS_URL。"
+    )
+
+RedisManager.configure(_redis_url)
+
+_consultation_store = build_consultation_store()
+_consultation_repository = ConsultationRepository()
+_consultation_service = ConsultationService(
+    store=_consultation_store,
+    repository=_consultation_repository,
+    gemini_service=_gemini_service,
+)
+
+_consultation_aware_agent = ConsultationAwareAgent(
     agent=_care_agent,
-    line_message_service=_line_message_service,
+    consultation_service=_consultation_service,
+)
+
+_consultation_aware_line_message_service = ConsultationAwareLineMessageService(
+    service=_line_message_service,
+    consultation_service=_consultation_service,
+)
+
+_line_event_handler = LineEventHandler(
+    agent=_consultation_aware_agent,
+    line_message_service=_consultation_aware_line_message_service,
 )
 
 # 使用者資料相關的依賴注入
@@ -117,6 +155,10 @@ def get_line_message_service() -> LineMessageService:
 
 def get_line_event_handler() -> LineEventHandler:
     return _line_event_handler
+
+
+def get_consultation_service() -> ConsultationService:
+    return _consultation_service
 
 
 def get_line_token_manager() -> LineTokenManager:

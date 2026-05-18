@@ -43,4 +43,4 @@ async def upsert_user_profile(
     """
     user_id = current_user.line_user_id
     updated = await service.upsert_user_profile(user_id, body.model_dump())
-    return {"user_id": user_id, "updated": updated}
+    return {"updated": updated}

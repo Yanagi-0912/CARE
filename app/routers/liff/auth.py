@@ -32,5 +32,5 @@ async def liff_login(
     前端送 LIFF ID token，後端向 LINE verify endpoint 驗證後，
     簽發應用內 JWT 給前端後續 API 使用。
     """
-    result = service.login_with_id_token(req.id_token)
+    result = await service.login_with_id_token(req.id_token)
     return LiffLoginResponse(**result)

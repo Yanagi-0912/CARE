@@ -88,6 +88,7 @@ _app_jwt_service = AppJwtService(
 _liff_auth_application_service = LiffAuthApplicationService(
     line_id_token_service=_line_id_token_service,
     jwt_service=_app_jwt_service,
+    user_profile_service=_user_profile_service,
 )
 
 

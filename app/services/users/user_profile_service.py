@@ -24,3 +24,24 @@ class UserProfileService:
         從資料庫取得使用者個人健康資料。
         """
         return await self._repo.get_user_profile(line_id)
+
+    async def create_default_user_profile(
+        self,
+        line_id: str,
+        display_name: str | None = None,
+    ) -> bool:
+        """
+        建立初始使用者資料，供首次登入且尚未填寫健康資料者使用。
+        """
+        default_payload = {
+            "name": (display_name or "LINE User").strip() or "LINE User",
+            "gender": "unknown",
+            "height": 1.0,
+            "weight": 1.0,
+            "age": 0,
+            "chronic_history": "",
+            "major_illness_history": "",
+            "surgery_history": "",
+            "health_consultations": {},
+        }
+        return await self.upsert_user_profile(line_id=line_id, payload=default_payload)

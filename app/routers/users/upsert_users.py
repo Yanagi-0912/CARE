@@ -8,18 +8,25 @@ router = APIRouter(tags=["Profile"])
 
 
 @router.get(
-    "/me",
-    summary="取得目前登入使用者個人健康資料",
-    description="回傳目前登入使用者的健康資料，需要有效的 JWT 認證令牌。",
+    "/{user_id}",
+    summary="取得使用者個人健康資料",
+    description="回傳指定使用者的健康資料，需要有效的 JWT 認證令牌且僅能查看自己的資料。",
 )
 async def get_user_profile(
+    user_id: str,
     current_user: CurrentUser = Depends(get_current_user),
     service: UserProfileService = Depends(get_user_profile_service),
 ):
     """
-    取得目前登入使用者個人健康資料。
+    取得使用者個人健康資料
+    需要有效的 JWT 認證令牌
     """
-    user_id = current_user.line_user_id
+    # 確保使用者只能查看自己的資料
+    if current_user.line_user_id != user_id:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=403, detail="無權查看其他使用者的資料")
+
     profile = await service.get_user_profile(user_id)
     if not profile:
         from fastapi import HTTPException
@@ -29,18 +36,25 @@ async def get_user_profile(
 
 
 @router.put(
-    "/me/update",
-    summary="更新目前登入使用者個人健康資料",
-    description="更新或建立目前登入使用者的健康資料，需要帶上有效的 JWT 認證令牌。",
+    "/{user_id}",
+    summary="更新使用者個人健康資料",
+    description="更新或建立使用者的健康資料，需要帶上有效的 JWT 認證令牌且僅能修改自己的資料。",
 )
 async def upsert_user_profile(
+    user_id: str,
     body: UserProfileData,
     current_user: CurrentUser = Depends(get_current_user),
     service: UserProfileService = Depends(get_user_profile_service),
 ):
     """
-    更新目前登入使用者個人健康資料。
+    更新使用者個人健康資料
+    需要帶上有效的 JWT 認證令牌
     """
-    user_id = current_user.line_user_id
+    # 確保使用者只能修改自己的資料
+    if current_user.line_user_id != user_id:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=403, detail="無權修改其他使用者的資料")
+
     updated = await service.upsert_user_profile(user_id, body.model_dump())
-    return {"updated": updated}
+    return {"user_id": user_id, "updated": updated}

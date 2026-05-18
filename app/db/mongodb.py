@@ -41,9 +41,3 @@ class MongoDBManager:
     def get_users_collection(cls):
         client = cls.get_client()
         return client["CARE_database"]["users"]
-
-    @classmethod
-    def get_consultation_summaries_collection(cls):
-        """回傳存放諮詢摘要的 collection（consultation_summaries）。"""
-        client = cls.get_client()
-        return client["CARE_database"]["consultation_summaries"]

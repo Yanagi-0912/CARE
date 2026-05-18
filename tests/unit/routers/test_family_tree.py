@@ -37,7 +37,7 @@ def test_create_invite_success(client, override_family_service, override_current
         expires_at="2026-05-20T00:00:00Z"
     )
 
-    response = client.post("/api/v1/invites")
+    response = client.post("/api/family/invites")
     assert response.status_code == 200
     assert response.json()["invite_token"] == "token123"
     override_family_service.create_invitation.assert_awaited_once_with("U_ME")
@@ -49,7 +49,7 @@ def test_verify_invite_public_access(client, override_family_service):
         expires_at="2026-05-20T00:00:00Z"
     )
 
-    response = client.get("/api/v1/invites/verify/token123")
+    response = client.get("/api/family/invites/verify/token123")
     assert response.status_code == 200
     assert response.json()["inviter_display_name"] == "小明"
     override_family_service.verify_invitation.assert_awaited_once_with("token123")
@@ -60,7 +60,7 @@ def test_accept_invite_success(client, override_family_service, override_current
         status="joined"
     )
 
-    response = client.post("/api/v1/invites/accept", json={"code": "token123"})
+    response = client.post("/api/family/invites/accept", json={"code": "token123"})
     assert response.status_code == 200
     assert response.json()["status"] == "joined"
     override_family_service.accept_invitation.assert_awaited_once_with(invitee_id="U_ME", code="token123")
@@ -68,5 +68,5 @@ def test_accept_invite_success(client, override_family_service, override_current
 def test_create_invite_unauthorized(client, override_family_service):
     # 沒有提供 token (沒有 override_current_user) 應該回傳 401
     # 註：這裡假設 get_current_user 會拋出 401，符合 app/dependencies.py 的實作
-    response = client.post("/api/v1/invites")
+    response = client.post("/api/family/invites")
     assert response.status_code == 401

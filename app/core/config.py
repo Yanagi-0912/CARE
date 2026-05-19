@@ -43,5 +43,10 @@ class Settings:
     # Consultation / Redis 配置
     REDIS_URL: str = os.getenv("REDIS_URL", "")
 
+    # Consultation daily summary scheduler
+    CONSULTATION_DAILY_SUMMARY_TIME: str = os.getenv(
+        "CONSULTATION_DAILY_SUMMARY_TIME", "02:00"
+    )
+
 
 settings = Settings()

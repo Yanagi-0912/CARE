@@ -25,6 +25,8 @@ class ConsultationStore(Protocol):
 
     async def list_dates(self, line_id: str) -> list[date]: ...
 
+    async def list_line_ids_by_date(self, summary_date: date) -> list[str]: ...
+
 
 class RedisConsultationStore:
     """Redis 為主的諮詢對話儲存實作
@@ -34,7 +36,7 @@ class RedisConsultationStore:
     - 支援依日期查詢對話列表
     - 自動設定 1 天 TTL，過期自動清除
 
-    Key 格式：consultation:{line_id}:{date}
+    Key 格式：consultationRecord:{line_id}:{date}
     Value：JSON 陣列，每筆元素是一個 ConsultationMessage
     """
 
@@ -51,10 +53,23 @@ class RedisConsultationStore:
         - 序列化訊息成 JSON 字串，用 rpush 加到 list 尾端
         - 設定 1 天 TTL，自動過期清除
         """
+        import logging
+
+        logger = logging.getLogger(__name__)
         key = self._build_key(line_id, summary_date)
         payload = message.model_dump(mode="json")
         await self._client.rpush(key, json.dumps(payload, ensure_ascii=False))
+        # 設定 TTL 為 1 天
         await self._client.expire(key, int(timedelta(days=1).total_seconds()))
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.info(
+            f"[RedisConsultationStore] 成功寫入 Redis，key={key}, message_type={message.message_type}"
+        )
+        logger.info(
+            f"[RedisConsultationStore] 成功寫入 Redis，key={key}, message_type={message.message_type}"
+        )
 
     async def list_messages(
         self, line_id: str, summary_date: date
@@ -78,10 +93,10 @@ class RedisConsultationStore:
         """取出該使用者在 Redis 內有對話記錄的所有日期。
 
         實作細節：
-        - 用 keys() 掃出所有 consultation:{line_id}:* 的 key
+        - 用 keys() 掃出所有 consultationRecord:{line_id}:* 的 key
         - 從 key 尾端解析出日期字串，轉成 date 物件
         """
-        key_pattern = f"consultation:{line_id}:*"
+        key_pattern = f"consultationRecord:{line_id}:*"
         keys = await self._client.keys(key_pattern)
         dates: list[date] = []
         for key in keys:
@@ -94,11 +109,31 @@ class RedisConsultationStore:
                 continue
         return sorted(set(dates))
 
+    async def list_line_ids_by_date(self, summary_date: date) -> list[str]:
+        # 取出指定日期在 Redis 內有對話記錄的所有 line_id，目前每天自動摘要的 scheduler
+        # 會先用它從 Redis 找出今天有對話的使用者，再逐一呼叫摘要，避免對沒有對話的人跑摘要。
+        date_text = summary_date.isoformat()
+        key_pattern = f"consultationRecord:*:{date_text}"
+        keys = await self._client.keys(key_pattern)
+        line_ids: set[str] = set()
+        prefix = "consultationRecord:"
+        suffix = f":{date_text}"
+        for key in keys:
+            if isinstance(key, bytes):
+                key = key.decode("utf-8")
+            if not key.startswith(prefix) or not key.endswith(suffix):
+                continue
+            line_id = key[len(prefix) : -len(suffix)]
+            if line_id:
+                line_ids.add(line_id)
+        return sorted(line_ids)
+
     @staticmethod
     def _build_key(line_id: str, summary_date: date) -> str:
-        # 組合 Redis key，格式為 consultation:{line_id}:{date}
-
-        return f"consultation:{line_id}:{summary_date.isoformat()}"
+        # 組合 Redis key，格式為 consultationRecord:{line_id}:{date}
+        # redis用 ":" 分隔不同層級的資訊，下方將最終context存在consultationRecord
+        # 下的line_id層下的summary_date層內
+        return f"consultationRecord:{line_id}:{summary_date.isoformat()}"
 
 
 def build_consultation_store() -> RedisConsultationStore:

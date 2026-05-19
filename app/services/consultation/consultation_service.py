@@ -17,6 +17,7 @@ from app.services.consultation.context import (
 )
 from app.services.consultation.store import ConsultationStore
 from app.infrastructure.gemini import GeminiService
+from app.infrastructure.gemini.shared.errors import raise_mapped_gemini_error
 
 
 @dataclass(frozen=True)
@@ -42,8 +43,17 @@ class ConsultationService:
     # record_user_message負責記錄使用者的訊息，從當前的 ConsultationContext
     # 取得必要資訊， 然後將訊息封裝成 ConsultationMessage 並存入 store。
     async def record_user_message(self, user_input: str) -> ConsultationRecordResult:
+        import logging
+
+        logger = logging.getLogger(__name__)
         context = get_current_consultation_context()
+        logger.info(
+            f"[ConsultationService.record_user_message] context={context}, line_id={context.line_id if context else None}"
+        )
         if context is None or not context.line_id:
+            logger.warning(
+                f"[ConsultationService.record_user_message] 失敗：context 或 line_id 為空"
+            )
             return ConsultationRecordResult(stored=False)
 
         raw_text = self._normalize_raw_text(
@@ -200,7 +210,10 @@ class ConsultationService:
             "對話內容：\n" + "\n".join(transcript_lines)
         )
 
-        result = await self._gemini_service._chat_llm.ainvoke(prompt)
+        try:
+            result = await self._gemini_service._chat_llm.ainvoke(prompt)
+        except Exception as exc:
+            raise_mapped_gemini_error(exc)
         content = getattr(result, "content", "")
         summary_text = str(content).strip()
         return summary_text or "今日尚無可摘要內容。"

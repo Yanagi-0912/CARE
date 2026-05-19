@@ -15,6 +15,15 @@ class ConsultationAwareAgent:
 
     async def invoke(self, user_input: str) -> dict:
         # 先把使用者輸入記錄到 consultation service
+        from app.services.consultation.context import get_current_consultation_context
+
+        ctx = get_current_consultation_context()
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.info(
+            f"[ConsultationAwareAgent] 開始呼叫 record_user_message，line_id={ctx.line_id if ctx else None}"
+        )
         await self._consultation_service.record_user_message(user_input)
         # 再調用原本的 agent 來獲取回覆
         return await self._agent.invoke(user_input=user_input)

@@ -118,20 +118,14 @@ class FamilyTreeService:
         await FamilyTreeRepository.upsert_tree(invitee_id)
 
         # 1. inviter 的族譜加入 invitee
-        try:
-            await FamilyTreeRepository.add_member(
-                inviter_id, FamilyMember(user_id=invitee_id)
-            )
-        except Exception as e:
-            logger.error(f"add_to_family：寫入 inviter 族譜失敗 ({inviter_id}): {e}")
+        await FamilyTreeRepository.add_member(
+            inviter_id, FamilyMember(user_id=invitee_id)
+        )
 
-        # 2. invitee 的族譜加入 inviter（best-effort，失敗不中斷）
-        try:
-            await FamilyTreeRepository.add_member(
-                invitee_id, FamilyMember(user_id=inviter_id)
-            )
-        except Exception as e:
-            logger.error(f"add_to_family：寫入 invitee 族譜失敗 ({invitee_id}): {e}")
+        # 2. invitee 的族譜加入 inviter
+        await FamilyTreeRepository.add_member(
+            invitee_id, FamilyMember(user_id=inviter_id)
+        )
 
         # 3. 標記邀請為已使用
         await FamilyTreeRepository.accept_invitation(invite_id)

@@ -119,6 +119,14 @@ def get_line_event_handler() -> LineEventHandler:
     return _line_event_handler
 
 
+def get_consultation_service() -> ConsultationService:
+    return _consultation_service
+
+
+def get_consultation_store():
+    return _consultation_store
+
+
 def get_line_token_manager() -> LineTokenManager:
     return _line_token_manager
 

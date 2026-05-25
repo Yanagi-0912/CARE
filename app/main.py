@@ -9,6 +9,7 @@ from app.routers.users.upsert_users import router as profile_router
 from app.core.cors import add_cors_middleware
 from app.core.config import settings
 from app.dependencies import get_consultation_service, get_consultation_store
+from app.repositories.consultation_repository import ConsultationRepository
 from app.services.consultation.scheduler import (
     start_consultation_daily_summary_scheduler,
 )
@@ -21,6 +22,9 @@ logging.basicConfig(level=logging.INFO)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # FastAPI lifespan 會在 yield 前執行 startup 邏輯。
+    # 先確認 MongoDB 摘要 collection 有 TTL index，讓摘要只保留 7 天。
+    await ConsultationRepository.ensure_indexes()
+
     # 這裡啟動每日諮詢摘要排程，讓它在背景 task 中持續等待下一次執行時間。
     scheduler = start_consultation_daily_summary_scheduler(
         enabled=True,  # 啟動自動排程

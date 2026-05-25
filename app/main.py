@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from app.routers.line.webhook import router as line_router
@@ -16,21 +17,33 @@ from app.routers.family_tree import router as family_tree_router
 
 logging.basicConfig(level=logging.INFO)
 
-app = FastAPI(
-    title="CARE Backend API",
-    description="CARE 系統後端 API (包含 LINE Bot Webhook 與 LIFF REST API)",
-    version="1.0.0",
-)
 
-
-@app.on_event("startup")
-async def start_up_event() -> None:
-    start_consultation_daily_summary_scheduler(
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # FastAPI lifespan 會在 yield 前執行 startup 邏輯。
+    # 這裡啟動每日諮詢摘要排程，讓它在背景 task 中持續等待下一次執行時間。
+    scheduler = start_consultation_daily_summary_scheduler(
         enabled=True,  # 啟動自動排程
         run_time=settings.CONSULTATION_DAILY_SUMMARY_TIME,
         consultation_service=get_consultation_service(),
         consultation_store=get_consultation_store(),
     )
+    try:
+        # yield 期間代表 app 正在運行並處理 requests。
+        # 當 app 關閉時，FastAPI 會離開這個 yield，繼續執行 finally 清理邏輯。
+        yield
+    finally:
+        # shutdown 時取消背景排程 task
+        if scheduler is not None:
+            await scheduler.stop()
+
+
+app = FastAPI(
+    title="CARE Backend API",
+    description="CARE 系統後端 API (包含 LINE Bot Webhook 與 LIFF REST API)",
+    version="1.0.0",
+    lifespan=lifespan,
+)
 
 
 # Centralized CORS config

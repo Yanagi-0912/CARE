@@ -27,6 +27,13 @@ from app.services.family.family_tree_service import FamilyTreeService
 from app.services.liff.auth_service import LiffAuthApplicationService
 from app.services.liff.jwt_service import AppJwtService
 from app.services.liff.line_id_token_service import LineIdTokenService
+from app.repositories.consultation_repository import ConsultationRepository
+from app.services.consultation.proxies import (
+    ConsultationAwareAgent,
+    ConsultationAwareLineMessageService,
+)
+from app.services.consultation.consultation_service import ConsultationService
+from app.services.consultation.store import build_consultation_store
 
 _mongodb_url = os.getenv("MONGODB_URL")
 MongoDBManager.configure(_mongodb_url or settings.MONGODB_URI)

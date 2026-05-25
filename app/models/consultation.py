@@ -12,9 +12,6 @@ class ConsultationMessage(BaseModel):
     message_type: str = Field(..., description="訊息類型，例如 text / location / image")
     content: str = Field(..., description="可供摘要與顯示的訊息內容")
     raw_text: Optional[str] = Field(default=None, description="原始文字或原始媒體描述")
-    ai_analyzed_text: Optional[str] = Field(
-        default=None, description="媒體經 AI 轉寫或分析後的文字"
-    )
     timestamp: datetime = Field(..., description="UTC timestamp")
 
 

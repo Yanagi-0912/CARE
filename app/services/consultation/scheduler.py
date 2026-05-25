@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import suppress
 from datetime import date, datetime, time, timedelta
 
 from app.services.consultation.consultation_service import ConsultationService
@@ -27,14 +28,33 @@ class ConsultationDailySummaryScheduler:
     def start(self) -> None:
         if self._task is not None and not self._task.done():
             return
+        # 建立背景 task；呼叫端不需要等待它完成，排程會自己在 _run_loop 中循環。
         self._task = asyncio.create_task(self._run_loop())
-        logger.info("[ConsultationDailySummaryScheduler] started")
+        logger.info(
+            "[ConsultationDailySummaryScheduler] started, run_time=%s",
+            self._run_time,
+        )
+
+    async def stop(self) -> None:
+        if self._task is None or self._task.done():
+            return
+        # app shutdown 時取消 sleep 中或執行中的背景 task，並吞掉預期中的 CancelledError。
+        self._task.cancel()
+        with suppress(asyncio.CancelledError):
+            await self._task
+        logger.info("[ConsultationDailySummaryScheduler] stopped")
 
     async def _run_loop(self) -> None:
         while True:
             now = datetime.now()
             next_run = self._next_run_at(now)
             wait_seconds = max(0.0, (next_run - now).total_seconds())
+            # 等到下一次排程時間；執行完 _run_once 後會回到 while True，繼續等待隔天。
+            logger.info(
+                "   [ConsultationDailySummaryScheduler] next_run=%s, wait_seconds=%.1f",
+                next_run.isoformat(timespec="seconds"),
+                wait_seconds,
+            )
             await asyncio.sleep(wait_seconds)
             await self._run_once()
 
@@ -58,8 +78,19 @@ class ConsultationDailySummaryScheduler:
         target_date = date.today()
         # 從 Redis 找出今天有對話記錄的 line_id，然後逐一呼叫 summarize_today_if_needed
         line_ids = await self._consultation_store.list_line_ids_by_date(target_date)
+        # 如果沒有任何 line_id 就直接印出訊息並結束
         if not line_ids:
+            logger.warning(  # 用logger warning，並將文字大寫
+                "[ConsultationDailySummaryScheduler]Attention! NO CONSULTATION RECORDS FOR %s",
+                target_date.isoformat(),
+            )
             return
+
+        logger.info(
+            "[ConsultationDailySummaryScheduler] summarizing %d user(s) for %s",
+            len(line_ids),
+            target_date.isoformat(),
+        )
 
         for line_id in line_ids:
             try:
@@ -71,16 +102,17 @@ class ConsultationDailySummaryScheduler:
                 )
 
 
+# 在main的lifespan中呼叫，yield前的code表示在app啟動時執行，yield後的code表示在app關閉時執行。
 def start_consultation_daily_summary_scheduler(
     *,
     enabled: bool,
     run_time: str,
     consultation_service: ConsultationService,
     consultation_store: ConsultationStore,
-) -> None:
+) -> ConsultationDailySummaryScheduler | None:
     if not enabled:
         logger.info("[ConsultationDailySummaryScheduler] disabled")
-        return
+        return None
 
     scheduler = ConsultationDailySummaryScheduler(
         consultation_service=consultation_service,
@@ -88,3 +120,4 @@ def start_consultation_daily_summary_scheduler(
         run_time=run_time,
     )
     scheduler.start()
+    return scheduler

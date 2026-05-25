@@ -67,9 +67,6 @@ class RedisConsultationStore:
         logger.info(
             f"[RedisConsultationStore] 成功寫入 Redis，key={key}, message_type={message.message_type}"
         )
-        logger.info(
-            f"[RedisConsultationStore] 成功寫入 Redis，key={key}, message_type={message.message_type}"
-        )
 
     async def list_messages(
         self, line_id: str, summary_date: date

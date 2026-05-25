@@ -6,8 +6,19 @@ from typing import Optional
 from app.db.mongodb import MongoDBManager
 from app.models.consultation import ConsultationSummary
 
+SUMMARY_TTL_SECONDS = 7 * 24 * 60 * 60  # TTL設定一周
+
 
 class ConsultationRepository:
+    @staticmethod
+    async def ensure_indexes() -> None:
+        collection = MongoDBManager.get_consultation_summaries_collection()
+        await collection.create_index(
+            [("created_at", 1)],
+            expireAfterSeconds=SUMMARY_TTL_SECONDS,
+            name="consultation_summary_created_at_ttl",
+        )
+
     @staticmethod
     async def upsert_summary(summary: ConsultationSummary) -> ConsultationSummary:
         collection = MongoDBManager.get_consultation_summaries_collection()

@@ -94,7 +94,7 @@ async def test_record_user_message_stores_context_metadata(
     assert stored_messages[0].message_type == "image"
     # raw_text 由 _normalize_raw_text 從 raw_message.id 提取
     assert stored_messages[0].raw_text == "M1"
-    assert stored_messages[0].ai_analyzed_text == "這是一張紅疹照片的分析文字"
+    assert stored_messages[0].content == "這是一張紅疹照片的分析文字"
     assert stored_messages[0].timestamp == datetime(
         2026, 5, 17, 8, 0, tzinfo=timezone.utc
     )
@@ -157,7 +157,8 @@ async def test_get_raw_view_returns_messages(
 
 @pytest.mark.asyncio
 async def test_summarize_uses_generated_text(
-    consultation_service: ConsultationService, monkeypatch
+    consultation_service: ConsultationService,
+    monkeypatch,
 ):
     context = ConsultationContext(line_id="U123", message_type="text")
     with consultation_context_scope(context):

@@ -27,12 +27,6 @@ class UserProfileData(BaseModel):
     major_illness_history: str = Field(..., description="Major illness history")
     surgery_history: str = Field(..., description="Surgery history")
 
-    # 健康諮詢記錄使用 JSON 物件，預設空 dict
-    health_consultations: Dict[str, Any] = Field(
-        default_factory=dict,
-        description="Health consultation records in JSON format",
-    )
-
 
 # 這裡userprofile繼承userprofiledata，並且加上line_id、created_at、updated_at等欄位
 class UserProfile(UserProfileData):

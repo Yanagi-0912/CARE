@@ -28,9 +28,7 @@ from app.application.family.family_tree_service import FamilyTreeService
 from app.application.liff.auth_service import LiffAuthApplicationService
 from app.services.liff.jwt_service import AppJwtService
 from app.services.liff.line_id_token_service import LineIdTokenService
-from app.models.consultation import ConsultationMessage
 from app.repositories.consultation_repository import ConsultationRepository
-from app.services.consultation.context import ConsultationContext
 from app.services.consultation.proxies import (
     ConsultationAwareAgent,
     ConsultationAwareLineMessageService,

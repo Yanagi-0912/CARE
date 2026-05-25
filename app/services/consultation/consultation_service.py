@@ -65,7 +65,6 @@ class ConsultationService:
             message_type=context.message_type,
             content=user_input,
             raw_text=raw_text,
-            ai_analyzed_text=user_input if context.message_type != "text" else None,
             timestamp=context.event_time or datetime.now(timezone.utc),
         )
         await self._store.append_message(

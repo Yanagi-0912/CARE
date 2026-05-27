@@ -134,8 +134,27 @@ class FamilyTreeService:
     # ── 取得族譜 ──────────────────────────────────────────────────────────────
 
     async def get_family_tree(self, user_id: str) -> FamilyTree:
-        """取得族譜；若尚不存在則建立空族譜並回傳。"""
-        return await FamilyTreeRepository.upsert_tree(user_id)
+        """取得族譜並豐富每個成員的 display_name 與 picture_url；若尚不存在則建立空族譜並回傳。"""
+        tree = await FamilyTreeRepository.upsert_tree(user_id)
+
+        # 豐富每個成員的個人資料
+        enriched_members = []
+        for member in tree.family_members:
+            profile = await self._user_profile_service.get_user_profile(member.user_id)
+            display_name = profile.get("name") if profile else None
+            picture_url = profile.get("picture_url") if profile else None
+
+            enriched_members.append(
+                FamilyMember(
+                    user_id=member.user_id,
+                    relationship_type=member.relationship_type,
+                    display_name=display_name,
+                    picture_url=picture_url,
+                )
+            )
+
+        tree.family_members = enriched_members
+        return tree
 
     # ── 設定關係類型（雙向）────────────────────────────────────────────────────
 

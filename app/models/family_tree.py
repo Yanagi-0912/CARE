@@ -19,6 +19,8 @@ class FamilyMember(BaseModel):
 
     user_id: str
     relationship_type: Optional[str] = None  # 加入後由使用者在 UI 設定
+    display_name: Optional[str] = None       # 額外擴充：LINE 姓名（方案 A）
+    picture_url: Optional[str] = None        # 額外擴充：LINE 頭像（方案 A）
 
 
 class FamilyTree(BaseModel):

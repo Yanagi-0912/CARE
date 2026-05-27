@@ -67,9 +67,7 @@ class ConsultationService:
             raw_text=raw_text,
             timestamp=context.event_time or datetime.now(timezone.utc),
         )
-        await self._store.append_message(
-            context.line_id, message.timestamp.date(), message
-        )
+        await self._store.append_message(context.line_id, message)
         return ConsultationRecordResult(stored=True)
 
     # 負責記錄agent的回覆訊息，邏輯與 record_user_message 類似，但訊息類型固定為
@@ -88,18 +86,31 @@ class ConsultationService:
             raw_text=assistant_text,
             timestamp=datetime.now(timezone.utc),
         )
-        await self._store.append_message(
-            context.line_id, message.timestamp.date(), message
-        )
+        await self._store.append_message(context.line_id, message)
         return ConsultationRecordResult(stored=True)
 
-    # 這裡的 get_view 方法會優先嘗試從 repository 取得摘要，如果沒有摘要才會
+    # 這裡的 get_view 方法會優先嘗試從 repository 取得最新的摘要，如果沒有摘要才會
     # 從 store 取得原始訊息列表。
+
     async def get_view(
         self, user_id: str, target_date: Optional[date] = None
     ) -> ConsultationViewResponse:
-        target = target_date or date.today()
-        summary = await self._repository.get_summary(user_id, target)
+        if target_date is None:
+            summary = await self._repository.get_latest_summary(user_id)
+            if summary is not None:
+                return ConsultationViewResponse(
+                    line_id=user_id,
+                    view_type="summary",
+                    summary=summary.summary,
+                )
+
+            return ConsultationViewResponse(
+                line_id=user_id,
+                view_type="summary",
+                summary=None,
+            )
+
+        summary = await self._repository.get_summary(user_id, target_date)
         if summary is not None:
             return ConsultationViewResponse(
                 line_id=user_id,
@@ -107,36 +118,49 @@ class ConsultationService:
                 summary=summary.summary,
             )
 
-        messages = await self._store.list_messages(user_id, target)
         return ConsultationViewResponse(
             line_id=user_id,
-            view_type="raw",
-            messages=messages,
+            view_type="summary",
+            summary=None,
         )
 
     # get_raw_view 方法則是直接從 store 取得原始訊息列表，不考慮是否有摘要。
     async def get_raw_view(
         self, user_id: str, target_date: Optional[date] = None
     ) -> ConsultationViewResponse:
-        target = target_date or date.today()
-        messages = await self._store.list_messages(user_id, target)
+        messages = await self._store.list_messages(user_id)
+        if target_date is not None:
+            messages = [
+                message
+                for message in messages
+                if message.timestamp.date() == target_date
+            ]
         return ConsultationViewResponse(
             line_id=user_id,
             view_type="raw",
             messages=messages,
         )
 
-    # summarize 方法會根據指定的日期或是當天從 store 取得原始訊息列表，
+    async def get_all_summaries(self, user_id: str) -> list[ConsultationSummary]:
+        return await self._repository.get_all_summaries(user_id)
+
+    # summarize 方法會直接從 store 取得目前使用者的完整對話列表，
     # 然後使用 Gemini 生成摘要，最後將摘要存到 repository。
     async def summarize(
         self, user_id: str, request: ConsultationSummarizeRequest
     ) -> ConsultationSummary:
-        target_date = request.target_date or date.today()
+        messages = await self._store.list_messages(user_id)
+
+        if messages:
+            latest_message = max(messages, key=lambda message: message.timestamp)
+            target_date = latest_message.timestamp.date()
+        else:
+            target_date = date.today()
+
         existing = await self._repository.get_summary(user_id, target_date)
         if existing is not None and not request.force:
             return existing
 
-        messages = await self._store.list_messages(user_id, target_date)
         # 調用內部方法 _generate_summary 來產生摘要
         summary_text = await self._generate_summary(user_id, target_date, messages)
         summary = ConsultationSummary(
@@ -152,7 +176,7 @@ class ConsultationService:
     async def summarize_today_if_needed(
         self, user_id: str
     ) -> Optional[ConsultationSummary]:
-        messages = await self._store.list_messages(user_id, date.today())
+        messages = await self._store.list_messages(user_id)
         if not messages:
             return None
         return await self.summarize(user_id, ConsultationSummarizeRequest())
@@ -195,7 +219,7 @@ class ConsultationService:
         self, user_id: str, target_date: date, messages: list[ConsultationMessage]
     ) -> str:
         if not messages:
-            return "今日尚無諮詢記錄。"
+            return "該日期尚無諮詢記錄。"
 
         transcript_lines = []
         for message in messages:
@@ -215,4 +239,4 @@ class ConsultationService:
             raise_mapped_gemini_error(exc)
         content = getattr(result, "content", "")
         summary_text = str(content).strip()
-        return summary_text or "今日尚無可摘要內容。"
+        return summary_text or "該日期尚無可摘要內容。"

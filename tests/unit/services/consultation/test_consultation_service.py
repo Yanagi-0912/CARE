@@ -20,25 +20,24 @@ from app.services.consultation.consultation_service import ConsultationService
 
 class FakeStore:
     def __init__(self) -> None:
-        self.messages: dict[date, list[ConsultationMessage]] = {}
+        self.messages: dict[str, list[ConsultationMessage]] = {}
 
-    async def append_message(
-        self, line_id: str, summary_date: date, message: ConsultationMessage
-    ) -> None:
-        self.messages.setdefault(summary_date, []).append(message)
+    async def append_message(self, line_id: str, message: ConsultationMessage) -> None:
+        self.messages.setdefault(line_id, []).append(message)
 
-    async def list_messages(
-        self, line_id: str, summary_date: date
-    ) -> list[ConsultationMessage]:
-        return list(self.messages.get(summary_date, []))
+    async def list_messages(self, line_id: str) -> list[ConsultationMessage]:
+        return list(self.messages.get(line_id, []))
 
     async def list_dates(self, line_id: str) -> list[date]:
-        return sorted(self.messages)
+        return sorted(
+            {message.timestamp.date() for message in self.messages.get(line_id, [])}
+        )
 
 
 class FakeRepository:
     def __init__(self) -> None:
         self.summary: ConsultationSummary | None = None
+        self.summaries: list[ConsultationSummary] = []
 
     async def get_summary(self, line_id: str, target_date: date):
         if (
@@ -57,6 +56,9 @@ class FakeRepository:
     async def upsert_summary(self, summary: ConsultationSummary):
         self.summary = summary
         return summary
+
+    async def get_all_summaries(self, line_id: str):
+        return [summary for summary in self.summaries if summary.line_id == line_id]
 
 
 @pytest.fixture
@@ -88,9 +90,7 @@ async def test_record_user_message_stores_context_metadata(
         )
 
     assert result.stored is True
-    stored_messages = await consultation_service._store.list_messages(
-        "U123", date(2026, 5, 17)
-    )
+    stored_messages = await consultation_service._store.list_messages("U123")
     assert stored_messages[0].message_type == "image"
     # raw_text 由 _normalize_raw_text 從 raw_message.id 提取
     assert stored_messages[0].raw_text == "M1"
@@ -112,9 +112,7 @@ async def test_record_assistant_message_stores_reply(
         )
 
     assert result.stored is True
-    stored_messages = await consultation_service._store.list_messages(
-        "U123", datetime.now(timezone.utc).date()
-    )
+    stored_messages = await consultation_service._store.list_messages("U123")
     assert stored_messages[0].message_type == "assistant_reply"
     assert stored_messages[0].content == "請多喝水並觀察症狀"
 
@@ -136,6 +134,42 @@ async def test_get_view_prefers_summary(
     assert view.view_type == "summary"
     assert view.summary == "今天主要是腸胃不適"
     assert view.messages == []
+
+
+@pytest.mark.asyncio
+async def test_get_view_without_summary_does_not_fallback_to_raw(
+    consultation_service: ConsultationService,
+):
+    view = await consultation_service.get_view("U123")
+
+    assert view.view_type == "summary"
+    assert view.summary is None
+    assert view.messages == []
+
+
+@pytest.mark.asyncio
+async def test_list_summary_history_returns_repository_data(
+    consultation_service: ConsultationService,
+):
+    consultation_service._repository.summaries = [
+        ConsultationSummary(
+            line_id="U123",
+            summary_date=date(2026, 5, 26),
+            summary="5/26 摘要",
+            created_at=datetime.now(timezone.utc),
+        ),
+        ConsultationSummary(
+            line_id="U999",
+            summary_date=date(2026, 5, 26),
+            summary="別人摘要",
+            created_at=datetime.now(timezone.utc),
+        ),
+    ]
+
+    summaries = await consultation_service.get_all_summaries("U123")
+
+    assert len(summaries) == 1
+    assert summaries[0].summary == "5/26 摘要"
 
 
 @pytest.mark.asyncio
@@ -174,3 +208,103 @@ async def test_summarize_uses_generated_text(
 
     assert summary.summary == "摘要完成"
     assert consultation_service._repository.summary is not None
+    assert consultation_service._repository.summary.summary_date == date(2026, 5, 17)
+
+
+@pytest.mark.asyncio
+async def test_summarize_without_target_date_includes_cross_midnight_messages(
+    consultation_service: ConsultationService,
+    monkeypatch,
+):
+    context = ConsultationContext(line_id="U123", message_type="text")
+    with consultation_context_scope(context):
+        await consultation_service._store.append_message(
+            "U123",
+            ConsultationMessage(
+                line_id="U123",
+                message_type="text",
+                content="23:59 的訊息",
+                raw_text="23:59 的訊息",
+                timestamp=datetime(2026, 5, 26, 23, 59, tzinfo=timezone.utc),
+            ),
+        )
+        await consultation_service._store.append_message(
+            "U123",
+            ConsultationMessage(
+                line_id="U123",
+                message_type="text",
+                content="00:00 的訊息",
+                raw_text="00:00 的訊息",
+                timestamp=datetime(2026, 5, 27, 0, 0, tzinfo=timezone.utc),
+            ),
+        )
+
+    captured_messages: list[ConsultationMessage] = []
+
+    async def fake_generate_summary(user_id: str, target_date: date, messages):
+        captured_messages.extend(messages)
+        return "跨午夜摘要"
+
+    monkeypatch.setattr(
+        consultation_service, "_generate_summary", fake_generate_summary
+    )
+
+    summary = await consultation_service.summarize(
+        "U123", ConsultationSummarizeRequest()
+    )
+
+    assert summary.summary == "跨午夜摘要"
+    assert [message.content for message in captured_messages] == [
+        "23:59 的訊息",
+        "00:00 的訊息",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_summarize_ignores_target_date_and_uses_full_conversation(
+    consultation_service: ConsultationService,
+    monkeypatch,
+):
+    context = ConsultationContext(line_id="U123", message_type="text")
+    with consultation_context_scope(context):
+        await consultation_service._store.append_message(
+            "U123",
+            ConsultationMessage(
+                line_id="U123",
+                message_type="text",
+                content="5/26 的訊息",
+                raw_text="5/26 的訊息",
+                timestamp=datetime(2026, 5, 26, 23, 59, tzinfo=timezone.utc),
+            ),
+        )
+        await consultation_service._store.append_message(
+            "U123",
+            ConsultationMessage(
+                line_id="U123",
+                message_type="text",
+                content="5/27 的訊息",
+                raw_text="5/27 的訊息",
+                timestamp=datetime(2026, 5, 27, 0, 0, tzinfo=timezone.utc),
+            ),
+        )
+
+    captured_messages: list[ConsultationMessage] = []
+
+    async def fake_generate_summary(user_id: str, target_date: date, messages):
+        captured_messages.extend(messages)
+        return "忽略 target_date"
+
+    monkeypatch.setattr(
+        consultation_service, "_generate_summary", fake_generate_summary
+    )
+
+    summary = await consultation_service.summarize(
+        "U123", ConsultationSummarizeRequest(target_date=date(2026, 5, 26))
+    )
+
+    assert summary.summary == "忽略 target_date"
+    assert summary.summary_date == date(2026, 5, 27)
+    assert [message.content for message in captured_messages] == [
+        "5/26 的訊息",
+        "5/27 的訊息",
+    ]

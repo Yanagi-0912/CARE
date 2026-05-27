@@ -1,0 +1,48 @@
+[
+  {
+    "id": "harness-setup",
+    "priority": 1,
+    "area": "harness",
+    "title": "Configure and test CARE backend harness",
+    "user_visible_behavior": "The bootstrap script (init.sh) successfully activates the Python virtual environment (.venv), installs dependencies, and runs all pytest unit/integration tests successfully.",
+    "status": "passing",
+    "verification": [
+      "1. Open the CARE backend project directory in the terminal.",
+      "2. Run './init.sh'.",
+      "3. Verify that virtual environment activation, package installation (pip install), and all tests (pytest) pass successfully.",
+      "4. Verify that the FastAPI uvicorn start command is correctly printed."
+    ],
+    "evidence": "Successfully created and customized AGENTS.md, CLAUDE.md, init.sh, init.ps1, claude-progress.md, and feature_list.json inside C:\\Users\\York\\Project CARE\\CARE. Ran tests via powershell.exe: 102 passed in 8.80s (exit code 0). Environment is verified green.",
+    "notes": "Harness base structure is fully prepared and optimized for python/FastAPI/pytest."
+  },
+  {
+    "id": "line-webhook-integration",
+    "priority": 2,
+    "area": "line-gateway",
+    "title": "LINE Signature Verification & Webhook Callback",
+    "user_visible_behavior": "LINE channel webhook receives messaging-api callbacks, verifies the signatures, and orchestrates requests correctly.",
+    "status": "not_started",
+    "verification": [
+      "1. Send a POST request to /line/callback with invalid signature and expect a 403/401 unauthorized.",
+      "2. Send a POST request to /line/callback with a valid signature and mock event and expect a 200 OK.",
+      "3. Run 'pytest tests/unit/test_line_webhook.py' and assert all tests pass."
+    ],
+    "evidence": null,
+    "notes": "Ensure LINE_CHANNEL_SECRET and LINE_CHANNEL_ACCESS_TOKEN env variables are configured."
+  },
+  {
+    "id": "rag-tools-gemini",
+    "priority": 3,
+    "area": "rag",
+    "title": "Gemini Function Calling integration with RAG tools",
+    "user_visible_behavior": "When a user asks a medical/clinical question, Gemini calls 'get_rag_answer' tool and replies with authenticated resource facts.",
+    "status": "not_started",
+    "verification": [
+      "1. Send a test medical query using the local FastAPI swagger docs at /docs.",
+      "2. Check console/logs to verify the Registry successfully loads Gemini tools.",
+      "3. Run integration tests 'pytest tests/integration/test_rag_flow.py' and ensure successful mock tool-calling and response orchestration."
+    ],
+    "evidence": null,
+    "notes": "Main logic resides in app/application/orchestration/response_orchestrator.py and app/tools/rag_tools.py."
+  }
+]

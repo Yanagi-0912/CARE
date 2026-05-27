@@ -51,14 +51,21 @@ class ConsultationRepository:
     @staticmethod
     async def get_latest_summary(line_id: str) -> Optional[ConsultationSummary]:
         collection = MongoDBManager.get_consultation_summaries_collection()
-        document = (
-            await collection.find({"line_id": line_id})
-            .sort("summary_date", -1)
-            .limit(1)
-            .to_list(length=1)
-        )
+        cursor = collection.find({"line_id": line_id}).sort("summary_date", -1)
+        document = await cursor.limit(1).to_list(length=1)
         if not document:
             return None
         latest = document[0]
         latest.pop("_id", None)
         return ConsultationSummary.model_validate(latest)
+
+    @staticmethod
+    async def get_all_summaries(line_id: str) -> list[ConsultationSummary]:
+        collection = MongoDBManager.get_consultation_summaries_collection()
+        cursor = collection.find({"line_id": line_id}).sort("summary_date", -1)
+        documents = await cursor.to_list(length=None)
+        summaries: list[ConsultationSummary] = []
+        for document in documents:
+            document.pop("_id", None)
+            summaries.append(ConsultationSummary.model_validate(document))
+        return summaries

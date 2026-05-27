@@ -29,6 +29,7 @@ class UserProfileService:
         self,
         line_id: str,
         display_name: str | None = None,
+        picture_url: str | None = None,
     ) -> bool:
         """
         建立初始使用者資料，供首次登入且尚未填寫健康資料者使用。
@@ -43,5 +44,6 @@ class UserProfileService:
             "major_illness_history": "",
             "surgery_history": "",
             "health_consultations": {},
+            "picture_url": picture_url,
         }
         return await self.upsert_user_profile(line_id=line_id, payload=default_payload)

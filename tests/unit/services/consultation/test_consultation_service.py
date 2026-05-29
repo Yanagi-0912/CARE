@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -192,19 +192,23 @@ async def test_get_raw_view_returns_messages(
 @pytest.mark.asyncio
 async def test_summarize_uses_generated_text(
     consultation_service: ConsultationService,
-    monkeypatch,
 ):
-    context = ConsultationContext(line_id="U123", message_type="text")
+    context = ConsultationContext(
+        line_id="U123",
+        message_type="text",
+        event_time=datetime(2026, 5, 17, 8, 0, tzinfo=timezone.utc),
+    )
     with consultation_context_scope(context):
         await consultation_service.record_user_message("今天肚子痛")
 
-    monkeypatch.setattr(
-        consultation_service, "_generate_summary", AsyncMock(return_value="摘要完成")
-    )
-
-    summary = await consultation_service.summarize(
-        "U123", ConsultationSummarizeRequest(target_date=date.today())
-    )
+    with patch.object(
+        consultation_service,
+        "_generate_summary",
+        new=AsyncMock(return_value="摘要完成"),
+    ):
+        summary = await consultation_service.summarize(
+            "U123", ConsultationSummarizeRequest(target_date=date.today())
+        )
 
     assert summary.summary == "摘要完成"
     assert consultation_service._repository.summary is not None
@@ -214,7 +218,6 @@ async def test_summarize_uses_generated_text(
 @pytest.mark.asyncio
 async def test_summarize_without_target_date_includes_cross_midnight_messages(
     consultation_service: ConsultationService,
-    monkeypatch,
 ):
     context = ConsultationContext(line_id="U123", message_type="text")
     with consultation_context_scope(context):
@@ -245,13 +248,14 @@ async def test_summarize_without_target_date_includes_cross_midnight_messages(
         captured_messages.extend(messages)
         return "跨午夜摘要"
 
-    monkeypatch.setattr(
-        consultation_service, "_generate_summary", fake_generate_summary
-    )
-
-    summary = await consultation_service.summarize(
-        "U123", ConsultationSummarizeRequest()
-    )
+    with patch.object(
+        consultation_service,
+        "_generate_summary",
+        new=fake_generate_summary,
+    ):
+        summary = await consultation_service.summarize(
+            "U123", ConsultationSummarizeRequest()
+        )
 
     assert summary.summary == "跨午夜摘要"
     assert [message.content for message in captured_messages] == [
@@ -263,7 +267,6 @@ async def test_summarize_without_target_date_includes_cross_midnight_messages(
 @pytest.mark.asyncio
 async def test_summarize_ignores_target_date_and_uses_full_conversation(
     consultation_service: ConsultationService,
-    monkeypatch,
 ):
     context = ConsultationContext(line_id="U123", message_type="text")
     with consultation_context_scope(context):
@@ -294,13 +297,14 @@ async def test_summarize_ignores_target_date_and_uses_full_conversation(
         captured_messages.extend(messages)
         return "忽略 target_date"
 
-    monkeypatch.setattr(
-        consultation_service, "_generate_summary", fake_generate_summary
-    )
-
-    summary = await consultation_service.summarize(
-        "U123", ConsultationSummarizeRequest(target_date=date(2026, 5, 26))
-    )
+    with patch.object(
+        consultation_service,
+        "_generate_summary",
+        new=fake_generate_summary,
+    ):
+        summary = await consultation_service.summarize(
+            "U123", ConsultationSummarizeRequest(target_date=date(2026, 5, 26))
+        )
 
     assert summary.summary == "忽略 target_date"
     assert summary.summary_date == date(2026, 5, 27)

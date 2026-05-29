@@ -17,7 +17,7 @@ from app.models.consultation import (
     ConsultationSummary,
 )
 from app.services.consultation.consultation_service import ConsultationService
-from app.infrastructure.gemini.shared.errors import GeminiHttpError
+from app.services.gemini.shared.errors import GeminiHttpError
 
 router = APIRouter(tags=["Consultation"])
 

@@ -16,8 +16,8 @@ from app.services.consultation.context import (
     get_current_consultation_context,
 )
 from app.services.consultation.store import ConsultationStore
-from app.infrastructure.gemini import GeminiService
-from app.infrastructure.gemini.shared.errors import raise_mapped_gemini_error
+from app.services.gemini.services import GeminiService
+from app.services.gemini.shared.errors import raise_mapped_gemini_error
 
 
 @dataclass(frozen=True)

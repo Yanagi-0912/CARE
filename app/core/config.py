@@ -31,10 +31,6 @@ class Settings:
     AUTH_JWT_ALGORITHM: str = os.getenv("AUTH_JWT_ALGORITHM", "HS256")
     AUTH_JWT_EXPIRES_MINUTES: int = int(os.getenv("AUTH_JWT_EXPIRES_MINUTES", "120"))
 
-    # Consultation downloadToken 配置
-    # token期效為5分鐘
-    CONSULTATION_DOWNLOAD_TOKEN_EXPIRES_MINUTES: int = 5
-
     # MongoDB Vector Search 配置
     MONGODB_URI: str = os.getenv("MONGODB_URI", "")
     MONGODB_DB: str = os.getenv("MONGODB_DB", "")

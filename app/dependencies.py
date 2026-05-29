@@ -38,7 +38,8 @@ from app.services.consultation.store import build_consultation_store
 
 _mongodb_url = os.getenv("MONGODB_URL")
 MongoDBManager.configure(_mongodb_url or settings.MONGODB_URI)
-
+_redis_url = os.getenv("REDIS_URL")
+RedisManager.configure(_redis_url or settings.REDIS_URL)
 _gemini_service = GeminiService(
     api_key=settings.GEMINI_API_KEY,
     model_name=settings.MODEL_NAME,
@@ -74,15 +75,6 @@ _line_message_service = LineMessageService(
     line_messaging_client=LineMessagingClient(),
 )
 
-# 強制檢查 REDIS_URL，沒有設定就報錯啟動失敗
-_redis_url = settings.REDIS_URL or os.getenv("REDIS_URL")
-if not _redis_url:
-    raise ValueError(
-        "缺少 REDIS_URL 環境變數。"
-        "諮詢紀錄系統強制使用 Redis，請在 .env 或系統環境變數中設定 REDIS_URL。"
-    )
-
-RedisManager.configure(_redis_url)
 
 _consultation_store = build_consultation_store()
 _consultation_repository = ConsultationRepository()
@@ -144,6 +136,14 @@ def get_mongodb_url() -> str:
     url = _mongodb_url or settings.MONGODB_URI
     if not url:
         raise ValueError("未設定 MONGODB_URL（或 MONGODB_URI）參數")
+    return url
+
+
+def get_redis_url() -> str:
+    """提供 Redis 連線字串做為依賴注入"""
+    url = _redis_url or settings.REDIS_URL
+    if not url:
+        raise ValueError("未設定 REDIS_URL 參數")
     return url
 
 

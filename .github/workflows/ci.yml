@@ -63,6 +63,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           LINE_CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
           LINE_CHANNEL_ID: ${{ secrets.LINE_CHANNEL_ID }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
           PYTHONPATH: .
         run: |
           python -m pytest tests/ -v --cov=app --cov-report=xml

@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import json
+from datetime import date, datetime
+
+import jwt  # type: ignore[import-not-found]
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pymongo.errors import PyMongoError
 from redis.exceptions import RedisError
-from datetime import date
-from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 from app.dependencies import (
     CurrentUser,
+    get_consultation_download_token_service,
     get_consultation_service,
     get_current_user,
-    get_consultation_store,
 )
 from app.models.consultation import (
     ConsultationSummarizeRequest,
@@ -18,8 +22,24 @@ from app.models.consultation import (
 )
 from app.services.consultation.consultation_service import ConsultationService
 from app.services.gemini.shared.errors import GeminiHttpError
+from app.services.liff.jwt_service import AppJwtService
 
 router = APIRouter(tags=["Consultation"])
+
+
+class DownloadTokenResponse(BaseModel):
+    downloadToken: str = Field(..., description="下載用短效 token")
+    expiresIn: int = Field(..., description="token 有效秒數")
+
+
+def _build_download_response(payload: list[dict]) -> Response:
+    filename = f"CARE_consult_summart_{datetime.now().strftime('%Y%m%d%H%M%S')}.json"
+    content = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+    return Response(
+        content=content,
+        media_type="application/json; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get(
@@ -86,6 +106,54 @@ async def get_my_summary_history(
         return await consultation_service.get_all_summaries(current_user.line_user_id)
     except PyMongoError:
         raise HTTPException(status_code=503, detail="MongoDB 連線異常，請稍後再試")
+
+
+@router.get(
+    "/me/allsummaries/downloadtoken",
+    response_model=DownloadTokenResponse,
+    summary="取得摘要下載 token",
+    description="先由 LIFF 前端帶著登入態呼叫，取得短效 downloadToken。",
+)
+async def get_my_summary_download_token(
+    current_user: CurrentUser = Depends(get_current_user),
+    download_token_service: AppJwtService = Depends(
+        get_consultation_download_token_service
+    ),
+) -> DownloadTokenResponse:
+    download_token, expires_in = download_token_service.issue_for_user(
+        current_user.line_user_id
+    )
+    return DownloadTokenResponse(
+        downloadToken=download_token,
+        expiresIn=expires_in,
+    )
+
+
+@router.get(
+    "/me/allsummaries/download",
+    summary="下載目前使用者所有摘要紀錄",
+    description="以 JSON 檔案下載目前登入使用者的所有諮詢摘要紀錄。",
+)
+async def download_my_summary_history(
+    download_token: str = Query(..., alias="downloadToken", min_length=1),
+    consultation_service: ConsultationService = Depends(get_consultation_service),
+    download_token_service: AppJwtService = Depends(
+        get_consultation_download_token_service
+    ),
+):
+    try:
+        current_user_id = download_token_service.decode_user_id(download_token)
+        summaries = await consultation_service.get_all_summaries(current_user_id)
+        payload = [summary.model_dump(mode="json") for summary in summaries]
+        return _build_download_response(payload)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="downloadToken expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid downloadToken")
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid downloadToken")
+    except PyMongoError:
+        raise HTTPException(status_code=503, detail="資料庫連線異常，請稍後再試")
 
 
 @router.post(

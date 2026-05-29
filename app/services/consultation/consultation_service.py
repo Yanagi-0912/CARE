@@ -152,7 +152,10 @@ class ConsultationService:
         messages = await self._store.list_messages(user_id)
 
         if messages:
-            latest_message = max(messages, key=lambda message: message.timestamp)
+            latest_message = max(
+                messages,
+                key=lambda message: self._normalize_timestamp(message.timestamp),
+            )
             target_date = latest_message.timestamp.date()
         else:
             target_date = date.today()
@@ -214,6 +217,12 @@ class ConsultationService:
         else:
             return fallback
 
+    @staticmethod
+    def _normalize_timestamp(timestamp: datetime) -> datetime:
+        if timestamp.tzinfo is None:
+            return timestamp.replace(tzinfo=timezone.utc)
+        return timestamp.astimezone(timezone.utc)
+
     # 真正呼叫gemini做摘要
     async def _generate_summary(
         self, user_id: str, target_date: date, messages: list[ConsultationMessage]
@@ -224,14 +233,40 @@ class ConsultationService:
         transcript_lines = []
         for message in messages:
             transcript_lines.append(f"[{message.message_type}] {message.content}")
+            print(f"message: {message}")
+        prompt = f"""
+        你是醫療諮詢摘要助手。
+        請根據對話輸出 JSON。
 
-        prompt = (
-            "你是醫療諮詢紀錄整理助手。請根據以下對話整理成簡潔的中文摘要，"
-            "保留症狀、檢查、建議與重要時間點，避免冗長。\n\n"
-            f"使用者：{user_id}\n"
-            f"日期：{target_date.isoformat()}\n"
-            "對話內容：\n" + "\n".join(transcript_lines)
-        )
+        規則：
+        - 僅輸出 JSON
+        - 不要 markdown
+        - 不要額外說明
+        - 不要輸出任何空陣列 []
+        - 只要沒有資料，就直接填寫「無」
+        - 若某欄位有多個項目，請用「、」分隔成單一字串
+
+        schema:
+        {{
+        "主訴": string,
+        "症狀": string,
+        "檢查": string,
+        "建議": string,
+        "重要時間點": string,
+        "其他": string,
+        "AI小摘要": string
+        }}
+
+        輸出格式注意：
+        - 每個欄位都必須是可直接閱讀的中文字串
+        - 若該欄位沒有可填內容，請寫「無」
+        - "AI小摘要" 請用 1 到 3 句話總結整體重點，並給出下一步建議或提醒
+
+        日期：{target_date.isoformat()}
+
+        對話：
+        {transcript_lines}
+        """
 
         try:
             result = await self._gemini_service._chat_llm.ainvoke(prompt)

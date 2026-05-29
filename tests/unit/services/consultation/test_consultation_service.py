@@ -312,3 +312,53 @@ async def test_summarize_ignores_target_date_and_uses_full_conversation(
         "5/26 的訊息",
         "5/27 的訊息",
     ]
+
+
+@pytest.mark.asyncio
+async def test_summarize_handles_mixed_timezone_timestamps(
+    consultation_service: ConsultationService,
+):
+    context = ConsultationContext(line_id="U123", message_type="text")
+    with consultation_context_scope(context):
+        await consultation_service._store.append_message(
+            "U123",
+            ConsultationMessage(
+                line_id="U123",
+                message_type="text",
+                content="naive timestamp message",
+                raw_text="naive timestamp message",
+                timestamp=datetime(2026, 5, 28, 9, 30),
+            ),
+        )
+        await consultation_service._store.append_message(
+            "U123",
+            ConsultationMessage(
+                line_id="U123",
+                message_type="text",
+                content="aware timestamp message",
+                raw_text="aware timestamp message",
+                timestamp=datetime(2026, 5, 28, 10, 0, tzinfo=timezone.utc),
+            ),
+        )
+
+    captured_messages: list[ConsultationMessage] = []
+
+    async def fake_generate_summary(user_id: str, target_date: date, messages):
+        captured_messages.extend(messages)
+        return "mixed timezone summary"
+
+    with patch.object(
+        consultation_service,
+        "_generate_summary",
+        new=fake_generate_summary,
+    ):
+        summary = await consultation_service.summarize(
+            "U123", ConsultationSummarizeRequest()
+        )
+
+    assert summary.summary == "mixed timezone summary"
+    assert summary.summary_date == date(2026, 5, 28)
+    assert [message.content for message in captured_messages] == [
+        "naive timestamp message",
+        "aware timestamp message",
+    ]

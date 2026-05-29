@@ -121,6 +121,14 @@ _app_jwt_service = AppJwtService(
     algorithm=settings.AUTH_JWT_ALGORITHM,
     expires_minutes=settings.AUTH_JWT_EXPIRES_MINUTES,
 )
+# 提供給前端取得一個臨時token來完成下載檔案功能
+_consultation_download_token_service = AppJwtService(
+    secret=settings.AUTH_JWT_SECRET,
+    algorithm=settings.AUTH_JWT_ALGORITHM,
+    # 效期設定為5分鐘
+    expires_minutes=5,
+    issuer="care-consultation-download",
+)
 _liff_auth_application_service = LiffAuthApplicationService(
     line_id_token_service=_line_id_token_service,
     jwt_service=_app_jwt_service,
@@ -189,6 +197,10 @@ def get_family_tree_service() -> FamilyTreeService:
 
 def get_liff_auth_application_service() -> LiffAuthApplicationService:
     return _liff_auth_application_service
+
+
+def get_consultation_download_token_service() -> AppJwtService:
+    return _consultation_download_token_service
 
 
 @dataclass

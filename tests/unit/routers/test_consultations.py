@@ -84,7 +84,7 @@ def test_get_my_summary_download_token_returns_token(
     override_consultation_service(FakeConsultationService(summaries=[]))
     override_download_token_service(FakeDownloadTokenService())
 
-    response = client.get("/api/consultations/me/allsummaries/download-token")
+    response = client.get("/api/consultations/me/allsummaries/downloadtoken")
 
     assert response.status_code == 200
     assert response.json() == {

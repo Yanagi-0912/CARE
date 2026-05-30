@@ -53,16 +53,29 @@ class LineMessageService:
         logger.info("LineMessageService initialized with Gemini AI")
 
     async def send_line_reply(
-        self, reply_token: str, message_text: str, user_id: Optional[str] = None
+        self, reply_token: str, message_text: str, user_id: Optional[str] = None, request_location: bool = False
     ) -> bool:
         try:
             validate_reply_context(reply_token, user_id)
             access_token = self.token_provider.get_token()
+            
+            if request_location:
+                quick_reply = QuickReply(
+                    items=[
+                        QuickReplyItem(
+                            action=LocationAction(label="分享位置資訊")
+                        )
+                    ]
+                )
+                text_message = TextMessage(text=message_text, quickReply=quick_reply)
+            else:
+                text_message = TextMessage(text=message_text)
+
             self.line_messaging_client.reply_message(
                 access_token,
                 ReplyMessageRequest(
                     replyToken=reply_token,
-                    messages=[TextMessage(text=message_text)],
+                    messages=[text_message],
                 ),
             )
 

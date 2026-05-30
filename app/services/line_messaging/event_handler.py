@@ -157,8 +157,12 @@ class LineEventHandler:
             response_text = (
                 result.get("response") or "抱歉，我無法理解您的問題，請重新輸入。"
             )
+            call_request_location = result.get("call_request_location", False)
+            kwargs = {}
+            if call_request_location:
+                kwargs["request_location"] = True
             success = await self._line_message_service.send_line_reply(
-                reply_token, response_text, user_id
+                reply_token, response_text, user_id, **kwargs
             )
 
             if success:

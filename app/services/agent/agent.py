@@ -87,6 +87,14 @@ class Agent:
                     sources_part = "參考資料來源：" + parts[1]
                     response = f"{response.strip()}\n\n{sources_part.strip()}"
 
+        # 檢測是否調用了位置請求工具
+        call_request_location = False
+        for msg in result.get("messages", []):
+            if getattr(msg, "name", None) == "request_location_quick_reply":
+                call_request_location = True
+                break
+
         return {
             "response": response,
+            "call_request_location": call_request_location,
         }

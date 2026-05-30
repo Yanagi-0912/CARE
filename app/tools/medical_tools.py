@@ -31,3 +31,12 @@ async def find_nearby_hospitals(lat: float, lng: float) -> str:
         return NO_FACILITY_MESSAGE
 
     return format_facility_list(facilities)
+
+
+@tool
+async def request_location_quick_reply() -> str:
+    """
+    當使用者想要尋找、前往、或詢問醫療院所/醫院/診所/藥局的位置，
+    且我們尚未取得其經緯度座標時，呼叫此工具以引導使用者傳送其當前位置。
+    """
+    return "請點擊下方的『分享位置資訊』按鈕傳送您的位置，我馬上為您尋找附近的醫療院所！"

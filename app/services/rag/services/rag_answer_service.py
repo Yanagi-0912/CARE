@@ -57,7 +57,7 @@ class RagAnswerService:
         )
 
         context_lines = []
-        for idx, hit in enumerate(hits[:5], start=1):
+        for idx, hit in enumerate(hits[:3], start=1):
             text = (hit.get("text") or "").strip()
             if text:
                 context_lines.append(f"{idx}. {text}")
@@ -89,7 +89,7 @@ class RagAnswerService:
         seen_urls: set[str] = set()
 
         # 這裡的 hits 順序應與 prompt 中的編號 1, 2, 3... 一致
-        for idx, hit in enumerate(hits[:5], start=1):
+        for idx, hit in enumerate(hits[:3], start=1):
             source_name = (hit.get("source_name") or "").strip()
             url = (hit.get("url") or "").strip()
             

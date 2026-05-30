@@ -1,66 +1,53 @@
 #!/bin/bash
+set -e
 
-# ==============================================================================
-# CARE Backend Environment Bootstrapper & Health Check
-# ==============================================================================
+# ANSI escape codes for colors
+CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
 
-echo "=== Step 1: Activating Virtual Environment ==="
-# Detect and activate Python virtual environment
-if [ -f ".venv/Scripts/activate" ]; then
-    echo "Detected Windows-style virtual environment."
-    source .venv/Scripts/activate
-elif [ -f ".venv/bin/activate" ]; then
-    echo "Detected Unix-style/WSL virtual environment."
-    source .venv/bin/activate
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+echo -e "${CYAN}=== Step 1: Activating Virtual Environment ===${NC}"
+VENV_DIR="$SCRIPT_DIR/.venv"
+
+if [ ! -d "$VENV_DIR" ]; then
+    echo -e "${YELLOW}Creating Python virtual environment...${NC}"
+    python3 -m venv .venv
+fi
+
+# Detect OS to activate virtual environment
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]; then
+    PYTHON_EXE="$VENV_DIR/Scripts/python.exe"
+    PIP_EXE="$VENV_DIR/Scripts/pip.exe"
 else
-    echo "❌ Virtual environment (.venv) not found! Please create it first using 'python -m venv .venv'."
+    PYTHON_EXE="$VENV_DIR/bin/python"
+    PIP_EXE="$VENV_DIR/bin/pip"
+fi
+
+echo "Python Executable: $PYTHON_EXE"
+echo "Pip Executable: $PIP_EXE"
+echo "Current directory: $SCRIPT_DIR"
+
+echo -e "${CYAN}=== Step 2: Installing Dependencies ===${NC}"
+if $PIP_EXE install -r requirements.txt; then
+    echo -e "${GREEN}Dependency installation successful!${NC}"
+else
+    echo -e "${RED}Dependency installation failed!${NC}"
     exit 1
 fi
 
-echo "Python Executable: $(which python)"
-echo "Pip Executable: $(which pip)"
-echo ""
-
-# Configure your commands here (specifically set for the CARE Python FastAPI backend):
-INSTALL_CMD="pip install -r requirements.txt"
-VERIFY_CMD="python -m pytest tests/ -v"
-START_CMD="uvicorn app.main:app --port 8000 --reload --reload-exclude .venv"
-
-# Set RUN_START_COMMAND=1 to automatically run the start command on success
-RUN_START_COMMAND=${RUN_START_COMMAND:-0}
-
-echo "=== Environment Info ==="
-echo "Current directory: $(pwd)"
-echo ""
-
-echo "=== Step 2: Installing Dependencies ==="
-echo "Executing: $INSTALL_CMD"
-eval "$INSTALL_CMD"
-INSTALL_STATUS=$?
-if [ $INSTALL_STATUS -ne 0 ]; then
-    echo "❌ Dependency installation failed (exit code: $INSTALL_STATUS)!"
-    exit $INSTALL_STATUS
-fi
-echo "✅ Dependency installation completed successfully."
-echo ""
-
-echo "=== Step 3: Running Verification Checks (pytest) ==="
-echo "Executing: $VERIFY_CMD"
-eval "$VERIFY_CMD"
-VERIFY_STATUS=$?
-if [ $VERIFY_STATUS -ne 0 ]; then
-    echo "❌ Verification failed (exit code: $VERIFY_STATUS)!"
-    echo "⚠️  STOP! Fix the broken baseline before continuing with new features."
-    exit $VERIFY_STATUS
-fi
-echo "✅ Verification successful (All tests passed!)."
-echo ""
-
-echo "=== Step 4: Startup Info ==="
-echo "Standard Start Command: $START_CMD"
-if [ "$RUN_START_COMMAND" = "1" ]; then
-    echo "Launching FastAPI application..."
-    eval "$START_CMD"
+echo -e "${CYAN}=== Step 3: Running Tests ===${NC}"
+if $PYTHON_EXE -m pytest tests/ -v; then
+    echo -e "${GREEN}All tests passed successfully!${NC}"
 else
-    echo "Tip: Run with 'RUN_START_COMMAND=1 ./init.sh' to automatically launch on success."
+    echo -e "${RED}Some tests failed! Please review the errors above.${NC}"
+    exit 1
 fi
+
+echo -e "\n${GREEN}=== Environment is Ready ===${NC}"
+echo -e "To start the development server, run:"
+echo -e "  $PYTHON_EXE -m uvicorn app.main:app --port 8000 --reload --reload-exclude .venv"

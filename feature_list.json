@@ -4,45 +4,42 @@
     "priority": 1,
     "area": "harness",
     "title": "Configure and test CARE backend harness",
-    "user_visible_behavior": "The bootstrap script (init.sh) successfully activates the Python virtual environment (.venv), installs dependencies, and runs all pytest unit/integration tests successfully.",
+    "user_visible_behavior": "The bootstrap script successfully activates the Python virtual environment (.venv), installs dependencies, and runs all pytest unit/integration tests successfully.",
     "status": "passing",
     "verification": [
       "1. Open the CARE backend project directory in the terminal.",
-      "2. Run './init.sh'.",
-      "3. Verify that virtual environment activation, package installation (pip install), and all tests (pytest) pass successfully.",
-      "4. Verify that the FastAPI uvicorn start command is correctly printed."
+      "2. Run './init.sh' or '.\\init.ps1'.",
+      "3. Verify that virtual environment activation, package installation (pip install), and all tests (pytest) pass successfully."
     ],
-    "evidence": "Successfully created and customized AGENTS.md, CLAUDE.md, init.sh, init.ps1, claude-progress.md, and feature_list.json inside C:\\Users\\York\\Project CARE\\CARE. Ran tests via powershell.exe: 102 passed in 8.80s (exit code 0). Environment is verified green.",
+    "evidence": "All 106 automated pytest tests pass successfully (exit code 0). Generic cross-platform environment bootstrapper scripts created.",
     "notes": "Harness base structure is fully prepared and optimized for python/FastAPI/pytest."
   },
   {
-    "id": "line-webhook-integration",
+    "id": "rag-response-references",
     "priority": 2,
-    "area": "line-gateway",
-    "title": "LINE Signature Verification & Webhook Callback",
-    "user_visible_behavior": "LINE channel webhook receives messaging-api callbacks, verifies the signatures, and orchestrates requests correctly.",
-    "status": "not_started",
+    "area": "rag",
+    "title": "Display reference URLs in RAG responses",
+    "user_visible_behavior": "RAG responses display up to 3 highly relevant reference source URLs appended at the bottom, even if source name is missing.",
+    "status": "passing",
     "verification": [
-      "1. Send a POST request to /line/callback with invalid signature and expect a 403/401 unauthorized.",
-      "2. Send a POST request to /line/callback with a valid signature and mock event and expect a 200 OK.",
-      "3. Run 'pytest tests/unit/test_line_webhook.py' and assert all tests pass."
+      "1. Query the RAG service with a medical query.",
+      "2. Verify that the answer text is returned with '參考資料來源：' and exactly up to 3 reference URLs."
     ],
-    "evidence": null,
-    "notes": "Ensure LINE_CHANNEL_SECRET and LINE_CHANNEL_ACCESS_TOKEN env variables are configured."
+    "evidence": "Modified app/services/rag/services/rag_answer_service.py to enforce limit of 3, allow empty source_names, and added agent_node prompt rule and Agent.invoke defensive fail-safe post-processing.",
+    "notes": "Fully verified and covered by existing unit tests."
   },
   {
-    "id": "rag-tools-gemini",
+    "id": "location-quick-reply-workflow",
     "priority": 3,
-    "area": "rag",
-    "title": "Gemini Function Calling integration with RAG tools",
-    "user_visible_behavior": "When a user asks a medical/clinical question, Gemini calls 'get_rag_answer' tool and replies with authenticated resource facts.",
-    "status": "not_started",
+    "area": "maps-location",
+    "title": "Agent location quick reply and clinic search workflow",
+    "user_visible_behavior": "When requesting clinics/hospitals without location, Agent triggers a LINE Location Quick Reply button. Tapping it sends coordinates, which triggers find_nearby_hospitals search with Google Maps address links.",
+    "status": "passing",
     "verification": [
-      "1. Send a test medical query using the local FastAPI swagger docs at /docs.",
-      "2. Check console/logs to verify the Registry successfully loads Gemini tools.",
-      "3. Run integration tests 'pytest tests/integration/test_rag_flow.py' and ensure successful mock tool-calling and response orchestration."
+      "1. Send a query like '幫我找附近醫院' without coordinates and expect a location quick reply prompt.",
+      "2. Send coordinates '這是我的目前位置：lat=25.033, lng=121.56' and expect a hospital search list with Google Maps search links."
     ],
-    "evidence": null,
-    "notes": "Main logic resides in app/application/orchestration/response_orchestrator.py and app/tools/rag_tools.py."
+    "evidence": "Created request_location_quick_reply tool, updated SYSTEM_PROMPT, and integrated LINE quick reply payload in send_line_reply and event_handler. Verified all 106 tests green.",
+    "notes": "Extremely robust backwards-compatible implementation."
   }
 ]

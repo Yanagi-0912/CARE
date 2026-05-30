@@ -93,7 +93,7 @@ class RagAnswerService:
             source_name = (hit.get("source_name") or "").strip()
             url = (hit.get("url") or "").strip()
             
-            if not source_name or not url:
+            if not url:
                 continue
                 
             # 避免重複列出相同的 URL
@@ -101,7 +101,10 @@ class RagAnswerService:
                 continue
             seen_urls.add(url)
             
-            source_lines.append(f"[{idx}] {source_name}：{url}")
+            if source_name:
+                source_lines.append(f"[{idx}] {source_name}：{url}")
+            else:
+                source_lines.append(f"[{idx}] {url}")
 
         if not source_lines:
             return answer_text

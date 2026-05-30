@@ -73,6 +73,20 @@ class Agent:
             last_msg.content if isinstance(last_msg, AIMessage) else str(last_msg)
         )
 
+        # 防禦性後置處理：若呼叫了 get_rag_answer，但 AI 的最終回覆中遺漏了「參考資料來源」，則自動由工具輸出中提取並後補。
+        rag_tool_content = None
+        for msg in reversed(result.get("messages", [])):
+            if getattr(msg, "name", None) == "get_rag_answer":
+                rag_tool_content = msg.content
+                break
+
+        if rag_tool_content and "參考資料來源：" in rag_tool_content:
+            if "參考資料來源：" not in response:
+                parts = rag_tool_content.split("參考資料來源：")
+                if len(parts) > 1:
+                    sources_part = "參考資料來源：" + parts[1]
+                    response = f"{response.strip()}\n\n{sources_part.strip()}"
+
         return {
             "response": response,
         }

@@ -233,13 +233,14 @@ class ConsultationService:
         transcript_lines = []
         for message in messages:
             transcript_lines.append(f"[{message.message_type}] {message.content}")
-            print(f"message: {message}")
         prompt = f"""
         你是醫療諮詢摘要助手。
         請根據對話輸出 JSON。
 
         規則：
         - 僅輸出 JSON
+        - "症狀"欄位只能填寫使用者自己明確提到的症狀，不可包含 AI 回覆中提到的內容
+        - 「建議」只填寫 AI 給出的核心行動建議，大約 3-5 項
         - 不要 markdown
         - 不要額外說明
         - 不要輸出任何空陣列 []

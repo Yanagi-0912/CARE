@@ -41,6 +41,7 @@ async def test_login_with_id_token_creates_default_profile_when_user_not_found(m
     user_profile_service.create_default_user_profile.assert_awaited_once_with(
         line_id="U123",
         display_name="Amy",
+        picture_url=None,
     )
 
 

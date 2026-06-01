@@ -39,6 +39,10 @@ class UserProfile(UserProfileData):
     """
 
     line_id: str = Field(..., min_length=1, description="LINE user ID")
+    picture_url: Optional[str] = Field(
+        default=None,
+        description="LINE user avatar URL",
+    )
     created_at: Optional[datetime] = Field(
         default=None,
         description="UTC timestamp when profile was created",

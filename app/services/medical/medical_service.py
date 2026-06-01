@@ -1,4 +1,5 @@
 import logging
+import urllib.parse
 from app.schemas import MedicalFacility
 from app.db.mongodb import MongoDBManager
 
@@ -16,7 +17,9 @@ def format_facility_list(facilities: list[MedicalFacility]) -> str:
         dist = (
             f"（{f.distance_meters:.0f} 公尺）" if f.distance_meters is not None else ""
         )
-        lines.append(f"{i}. {f.name}{dist}\n   {f.address}")
+        escaped_addr = urllib.parse.quote(f.address)
+        map_url = f"https://www.google.com/maps/search/?api=1&query={escaped_addr}"
+        lines.append(f"{i}. {f.name}{dist}\n   地址：{f.address}\n   地圖連結：{map_url}")
     return "\n".join(lines)
 
 

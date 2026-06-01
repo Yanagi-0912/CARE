@@ -58,6 +58,7 @@ class LiffAuthApplicationService:
             await self._user_profile_service.create_default_user_profile(
                 line_id=line_user_id,
                 display_name=verify_payload.get("name"),
+                picture_url=verify_payload.get("picture"),
             )
 
         access_token, expires_in = self._jwt_service.issue_for_user(line_user_id)

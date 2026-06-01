@@ -18,6 +18,7 @@ from app.services.consultation.context import (
 from app.services.consultation.store import ConsultationStore
 from app.services.gemini.services import GeminiService
 from app.services.gemini.shared.errors import raise_mapped_gemini_error
+import logging
 
 
 @dataclass(frozen=True)
@@ -43,7 +44,6 @@ class ConsultationService:
     # record_user_message負責記錄使用者的訊息，從當前的 ConsultationContext
     # 取得必要資訊， 然後將訊息封裝成 ConsultationMessage 並存入 store。
     async def record_user_message(self, user_input: str) -> ConsultationRecordResult:
-        import logging
 
         logger = logging.getLogger(__name__)
         context = get_current_consultation_context()
@@ -83,7 +83,6 @@ class ConsultationService:
             line_id=context.line_id,
             message_type="assistant_reply",
             content=assistant_text,
-            raw_text=assistant_text,
             timestamp=datetime.now(timezone.utc),
         )
         await self._store.append_message(context.line_id, message)

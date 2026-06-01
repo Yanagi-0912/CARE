@@ -203,13 +203,13 @@ class LineEventHandler:
             with consultation_context_scope(context):
                 result = await self._agent.invoke(user_input=user_text)
 
-                # 回傳 Agent 最終產出的文字回覆
-                response_text = (
-                    result.get("response") or "抱歉，我無法理解您的問題，請重新輸入。"
-                )
-                success = await self._line_message_service.send_line_reply(
-                    reply_token, response_text, user_id
-                )
+            # 回傳 Agent 最終產出的文字回覆
+            response_text = (
+                result.get("response") or "抱歉，我無法理解您的問題，請重新輸入。"
+            )
+            success = await self._line_message_service.send_line_reply(
+                reply_token, response_text, user_id
+            )
 
             if success:
                 logger.info(f"Successfully processed and replied to user {user_id}")

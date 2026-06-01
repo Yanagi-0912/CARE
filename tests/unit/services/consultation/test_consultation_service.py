@@ -115,6 +115,7 @@ async def test_record_assistant_message_stores_reply(
     stored_messages = await consultation_service._store.list_messages("U123")
     assert stored_messages[0].message_type == "assistant_reply"
     assert stored_messages[0].content == "請多喝水並觀察症狀"
+    assert stored_messages[0].raw_text is None
 
 
 @pytest.mark.asyncio

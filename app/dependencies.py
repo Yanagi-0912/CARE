@@ -50,13 +50,21 @@ _guardrail_service = GuardrailService(
 _vector_search_config = VectorSearchConfig.from_settings()
 _vector_search_reader = MongoVectorSearchReader(_vector_search_config)
 
+_consultation_store = build_consultation_store()
+_consultation_repository = ConsultationRepository()
+_consultation_service = ConsultationService(
+    store=_consultation_store,
+    repository=_consultation_repository,
+    gemini_service=_gemini_service,
+)
+
 _rag_answer_service = RagAnswerService(
     gemini_service=_gemini_service,
     vector_search_reader=_vector_search_reader,
 )
 
 # DI tools
-configure_rag_tool(_rag_answer_service)
+configure_rag_tool(_rag_answer_service, _consultation_service)
 configure_medical_tools(medical_service)
 
 _care_agent = Agent(
@@ -75,14 +83,6 @@ _line_message_service = LineMessageService(
     line_messaging_client=LineMessagingClient(),
 )
 
-
-_consultation_store = build_consultation_store()
-_consultation_repository = ConsultationRepository()
-_consultation_service = ConsultationService(
-    store=_consultation_store,
-    repository=_consultation_repository,
-    gemini_service=_gemini_service,
-)
 
 _consultation_aware_agent = ConsultationAwareAgent(
     agent=_care_agent,

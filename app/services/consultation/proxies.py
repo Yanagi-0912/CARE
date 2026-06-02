@@ -35,13 +35,23 @@ class ConsultationAwareLineMessageService:
         self._consultation_service = consultation_service
 
     async def send_line_reply(
-        self, reply_token: str, message_text: str, user_id: Optional[str] = None
+        self,
+        reply_token: str,
+        message_text: str,
+        user_id: Optional[str] = None,
+        request_location: bool = False,
     ) -> bool:
+
         success = await self._service.send_line_reply(
-            reply_token, message_text, user_id
+            reply_token,
+            message_text,
+            user_id,
+            request_location=request_location,
         )
+
         if success:
             await self._consultation_service.record_assistant_message(message_text)
+
         return success
 
     def __getattr__(self, item: str) -> Any:

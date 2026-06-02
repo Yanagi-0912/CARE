@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime
-
+from typing import Annotated
 import jwt  # type: ignore[import-not-found]
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -25,6 +25,8 @@ from app.services.gemini.shared.errors import GeminiHttpError
 from app.services.liff.jwt_service import AppJwtService
 
 router = APIRouter(tags=["Consultation"])
+
+DB_ERROR_DETAIL = "資料庫連線異常，請稍後再試"
 
 
 class DownloadTokenResponse(BaseModel):
@@ -49,13 +51,15 @@ def _build_download_response(payload: list[dict]) -> Response:
     description="優先回傳最新的摘要，如果沒有摘要則回傳原始對話。",
 )
 async def get_my_consultations(
-    current_user: CurrentUser = Depends(get_current_user),
-    consultation_service: ConsultationService = Depends(get_consultation_service),
-):
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    consultation_service: Annotated[
+        ConsultationService, Depends(get_consultation_service)
+    ],
+) -> ConsultationViewResponse:
     try:
         return await consultation_service.get_view(current_user.line_user_id)
     except (RedisError, PyMongoError):
-        raise HTTPException(status_code=503, detail="資料庫連線異常，請稍後再試")
+        raise HTTPException(status_code=503, detail=DB_ERROR_DETAIL)
 
 
 @router.get(
@@ -65,15 +69,17 @@ async def get_my_consultations(
     description="回傳今天的摘要或原始對話。",
 )
 async def get_today_consultations(
-    current_user: CurrentUser = Depends(get_current_user),
-    consultation_service: ConsultationService = Depends(get_consultation_service),
-):
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    consultation_service: Annotated[
+        ConsultationService, Depends(get_consultation_service)
+    ],
+) -> ConsultationViewResponse:
     try:
         return await consultation_service.get_view(
             current_user.line_user_id, date.today()
         )
     except (RedisError, PyMongoError):
-        raise HTTPException(status_code=503, detail="資料庫連線異常，請稍後再試")
+        raise HTTPException(status_code=503, detail=DB_ERROR_DETAIL)
 
 
 @router.get(
@@ -83,13 +89,15 @@ async def get_today_consultations(
     description="直接回傳 Redis 內的原始對話。",
 )
 async def get_raw_consultations(
-    current_user: CurrentUser = Depends(get_current_user),
-    consultation_service: ConsultationService = Depends(get_consultation_service),
-):
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    consultation_service: Annotated[
+        ConsultationService, Depends(get_consultation_service)
+    ],
+) -> ConsultationViewResponse:
     try:
         return await consultation_service.get_raw_view(current_user.line_user_id)
     except RedisError:
-        raise HTTPException(status_code=503, detail="Redis 連線異常，請稍後再試")
+        raise HTTPException(status_code=503, detail=DB_ERROR_DETAIL)
 
 
 @router.get(
@@ -99,13 +107,15 @@ async def get_raw_consultations(
     description="直接回傳目前登入使用者在 MongoDB 中的所有諮詢摘要，依日期由新到舊排序。",
 )
 async def get_my_summary_history(
-    current_user: CurrentUser = Depends(get_current_user),
-    consultation_service: ConsultationService = Depends(get_consultation_service),
-):
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    consultation_service: Annotated[
+        ConsultationService, Depends(get_consultation_service)
+    ],
+) -> list[ConsultationSummary]:
     try:
         return await consultation_service.get_all_summaries(current_user.line_user_id)
     except PyMongoError:
-        raise HTTPException(status_code=503, detail="MongoDB 連線異常，請稍後再試")
+        raise HTTPException(status_code=503, detail=DB_ERROR_DETAIL)
 
 
 @router.get(
@@ -115,10 +125,10 @@ async def get_my_summary_history(
     description="先由 LIFF 前端帶著登入態呼叫，取得短效 downloadToken。",
 )
 async def get_my_summary_download_token(
-    current_user: CurrentUser = Depends(get_current_user),
-    download_token_service: AppJwtService = Depends(
-        get_consultation_download_token_service
-    ),
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    download_token_service: Annotated[
+        AppJwtService, Depends(get_consultation_download_token_service)
+    ],
 ) -> DownloadTokenResponse:
     download_token, expires_in = download_token_service.issue_for_user(
         current_user.line_user_id
@@ -135,12 +145,14 @@ async def get_my_summary_download_token(
     description="以 JSON 檔案下載目前登入使用者的所有諮詢摘要紀錄。",
 )
 async def download_my_summary_history(
-    download_token: str = Query(..., alias="downloadToken", min_length=1),
-    consultation_service: ConsultationService = Depends(get_consultation_service),
-    download_token_service: AppJwtService = Depends(
-        get_consultation_download_token_service
-    ),
-):
+    download_token: Annotated[str, Query(alias="downloadToken", min_length=1)] = ...,
+    consultation_service: Annotated[
+        ConsultationService, Depends(get_consultation_service)
+    ] = ...,
+    download_token_service: Annotated[
+        AppJwtService, Depends(get_consultation_download_token_service)
+    ] = ...,
+) -> ConsultationSummary:
     try:
         current_user_id = download_token_service.decode_user_id(download_token)
         summaries = await consultation_service.get_all_summaries(current_user_id)
@@ -153,7 +165,7 @@ async def download_my_summary_history(
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid downloadToken")
     except PyMongoError:
-        raise HTTPException(status_code=503, detail="資料庫連線異常，請稍後再試")
+        raise HTTPException(status_code=503, detail=DB_ERROR_DETAIL)
 
 
 @router.post(
@@ -164,9 +176,11 @@ async def download_my_summary_history(
 )
 async def summarize_consultations(
     request: ConsultationSummarizeRequest,
-    current_user: CurrentUser = Depends(get_current_user),
-    consultation_service: ConsultationService = Depends(get_consultation_service),
-):
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    consultation_service: Annotated[
+        ConsultationService, Depends(get_consultation_service)
+    ],
+) -> ConsultationSummary:
     try:
         return await consultation_service.summarize(current_user.line_user_id, request)
     except GeminiHttpError as exc:

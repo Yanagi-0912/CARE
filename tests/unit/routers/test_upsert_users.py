@@ -71,7 +71,7 @@ def test_upsert_user_profile_success_returns_200_and_response_body(
 
     response = client.put("/api/profiles/me/update", json=_valid_payload())
     assert response.status_code == 200
-    assert response.json() == {"updated": True}
+    assert response.json() == {"user_id": "U123", "updated": True}
 
     fake_service.upsert_user_profile.assert_awaited_once()
 

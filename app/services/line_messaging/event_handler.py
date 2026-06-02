@@ -158,7 +158,7 @@ class LineEventHandler:
             user_id=user_id,
             raw_message=message,
             message_type=media_type,
-            event_time=datetime.utcnow(),
+            event_time=event_time,
         )
 
     @staticmethod

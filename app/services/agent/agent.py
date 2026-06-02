@@ -69,9 +69,16 @@ class Agent:
 
         # 從 messages 取得最後的 AI 回覆
         last_msg = result["messages"][-1]
-        response = (
-            last_msg.content if isinstance(last_msg, AIMessage) else str(last_msg)
-        )
+        response = last_msg.content if isinstance(last_msg, AIMessage) else str(last_msg)
+        if isinstance(response, list):
+            response = "".join(
+                part if isinstance(part, str) else (part.get("text", "") if isinstance(part, dict) else str(part))
+                for part in response
+            )
+        elif response is None:
+            response = ""
+        else:
+            response = str(response)
 
         # 防禦性後置處理：若呼叫了 get_rag_answer，但 AI 的最終回覆中遺漏了「參考資料來源」，則自動由工具輸出中提取並後補。
         rag_tool_content = None

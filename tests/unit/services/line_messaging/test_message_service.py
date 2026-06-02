@@ -49,3 +49,18 @@ async def test_send_line_reply_validation_error(svc, mock_deps):
     assert ok is False
     mock_deps["line_messaging_client"].reply_message.assert_not_called()
 
+
+@pytest.mark.asyncio
+async def test_send_line_reply_non_string_conversion(svc, mock_deps):
+    mock_deps["token_provider"].get_token.return_value = "secret_token"
+    
+    # Pass a list of dicts/strings/ints as message_text
+    non_string_msg = ["hello", {"type": "text", "text": " world"}, 123]
+    ok = await svc.send_line_reply("token", non_string_msg, "user_1")
+    
+    assert ok is True
+    mock_deps["line_messaging_client"].reply_message.assert_called_once()
+    args = mock_deps["line_messaging_client"].reply_message.call_args[0]
+    assert args[1].messages[0].text == "hello world123"
+
+

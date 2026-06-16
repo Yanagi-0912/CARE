@@ -20,7 +20,9 @@ def get_cors_origins() -> List[str]:
 
 
 def add_cors_middleware(app: FastAPI) -> None:
-    """設定 CORS 中間件"""
+    """
+    設定 CORS 中間件
+    """
     app.add_middleware(
         CORSMiddleware,
         allow_origins=get_cors_origins(),

@@ -27,24 +27,15 @@ def test_dependency_wiring_is_correct():
     assert profile_service._repo is dependencies._user_profile_repository
 
 
-def test_get_mongodb_url_prefers_env_var(monkeypatch):
-    monkeypatch.setattr(dependencies, "_mongodb_url", "mongodb://from-env")
+def test_get_mongodb_uri_returns_settings_uri(monkeypatch):
     monkeypatch.setattr(dependencies.settings, "MONGODB_URI", "mongodb://from-settings")
 
-    assert dependencies.get_mongodb_url() == "mongodb://from-env"
+    assert dependencies.get_mongodb_uri() == "mongodb://from-settings"
 
 
-def test_get_mongodb_url_falls_back_to_settings(monkeypatch):
-    monkeypatch.setattr(dependencies, "_mongodb_url", None)
-    monkeypatch.setattr(dependencies.settings, "MONGODB_URI", "mongodb://from-settings")
-
-    assert dependencies.get_mongodb_url() == "mongodb://from-settings"
-
-
-def test_get_mongodb_url_raises_when_missing(monkeypatch):
-    monkeypatch.setattr(dependencies, "_mongodb_url", None)
+def test_get_mongodb_uri_raises_when_missing(monkeypatch):
     monkeypatch.setattr(dependencies.settings, "MONGODB_URI", "")
 
     with pytest.raises(ValueError) as exc:
-        dependencies.get_mongodb_url()
-    assert "MONGODB_URL" in str(exc.value)
+        dependencies.get_mongodb_uri()
+    assert "MONGODB_URI" in str(exc.value)

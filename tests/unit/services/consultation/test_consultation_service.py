@@ -28,11 +28,6 @@ class FakeStore:
     async def list_messages(self, line_id: str) -> list[ConsultationMessage]:
         return list(self.messages.get(line_id, []))
 
-    async def list_dates(self, line_id: str) -> list[date]:
-        return sorted(
-            {message.timestamp.date() for message in self.messages.get(line_id, [])}
-        )
-
 
 class FakeRepository:
     def __init__(self) -> None:
@@ -116,6 +111,47 @@ async def test_record_assistant_message_stores_reply(
     assert stored_messages[0].message_type == "assistant_reply"
     assert stored_messages[0].content == "請多喝水並觀察症狀"
     assert stored_messages[0].raw_text is None
+
+
+@pytest.mark.asyncio
+async def test_record_user_message_skips_location_message(
+    consultation_service: ConsultationService,
+):
+    location_message = SimpleNamespace(
+        type="location",
+        id="M_LOC1",
+        latitude=25.0330,
+        longitude=121.5654,
+    )
+    context = ConsultationContext(
+        line_id="U123",
+        message_type="location",
+        event_time=datetime(2026, 5, 17, 8, 0, tzinfo=timezone.utc),
+        raw_message=location_message,
+    )
+
+    with consultation_context_scope(context):
+        result = await consultation_service.record_user_message(
+            "這是我的目前位置：lat=25.033, lng=121.5654"
+        )
+
+    assert result.stored is False
+    assert await consultation_service._store.list_messages("U123") == []
+
+
+@pytest.mark.asyncio
+async def test_record_assistant_message_skips_location_context(
+    consultation_service: ConsultationService,
+):
+    context = ConsultationContext(line_id="U123", message_type="location")
+
+    with consultation_context_scope(context):
+        result = await consultation_service.record_assistant_message(
+            "為您找到附近醫療院所..."
+        )
+
+    assert result.stored is False
+    assert await consultation_service._store.list_messages("U123") == []
 
 
 @pytest.mark.asyncio

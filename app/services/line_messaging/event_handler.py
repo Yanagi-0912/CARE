@@ -153,7 +153,7 @@ class LineEventHandler:
         )
 
         await self._invoke_and_reply(
-            user_text=f"以下為用戶傳送的{media_type}媒體內容：\n{media_content}",
+            user_text=f"以下為使用者傳送的{media_type}媒體內容：\n{media_content}",
             reply_token=reply_token,
             user_id=user_id,
             raw_message=message,

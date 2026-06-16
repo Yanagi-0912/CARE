@@ -55,6 +55,9 @@ class ConsultationService:
                 f"[ConsultationService.record_user_message] 失敗：context 或 line_id 為空"
             )
             return ConsultationRecordResult(stored=False)
+        if context.message_type == "location":
+            # logger.info("[ConsultationService.record_user_message] 略過 location 訊息寫入 Redis")
+            return ConsultationRecordResult(stored=False)
 
         raw_text = self._normalize_raw_text(
             context.message_type, context.raw_message, user_input
@@ -77,6 +80,8 @@ class ConsultationService:
     ) -> ConsultationRecordResult:
         context = get_current_consultation_context()
         if context is None or not context.line_id:
+            return ConsultationRecordResult(stored=False)
+        if context.message_type == "location":
             return ConsultationRecordResult(stored=False)
 
         message = ConsultationMessage(
@@ -202,10 +207,6 @@ class ConsultationService:
 
         if message_type == "text":
             return getattr(raw_message, "text", fallback)
-        elif message_type == "location":
-            lat = getattr(raw_message, "latitude", "")
-            lng = getattr(raw_message, "longitude", "")
-            return f"lat={lat}, lng={lng}" if lat or lng else fallback
         elif message_type == "file":
             file_name = getattr(raw_message, "file_name", None)
             media_id = getattr(raw_message, "id", None)

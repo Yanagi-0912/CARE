@@ -2,22 +2,18 @@
 import os
 from dataclasses import dataclass
 
-# 第三方套件
 import jwt  # type: ignore[import-not-found]
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException
 
-# 專案核心設定
 from app.core.config import settings
 from app.db.mongodb import MongoDBManager
 from app.db.redis import RedisManager
 
-# 專案模型、倉庫與工具
 from app.repositories.consultation_repository import ConsultationRepository
 from app.repositories.user_profile_repository import UserProfileRepository
 from app.tools.medical_tools import configure_medical_tools
 from app.tools.rag_tools import configure_rag_tool
 
-# 專案各項服務
 from app.services.agent.agent import Agent
 from app.services.consultation.consultation_service import ConsultationService
 from app.services.consultation.proxies import (
@@ -245,6 +241,11 @@ def get_consultation_download_token_service() -> AppJwtService:
     return _consultation_download_token_service
 
 
+def get_jwt_service() -> AppJwtService:
+    """取得 JWT 權限驗證服務"""
+    return _app_jwt_service
+
+
 # ==============================================================================
 # 9. 身分驗證依賴 (User Authentication Dependency)
 # ==============================================================================
@@ -255,7 +256,10 @@ class CurrentUser:
     line_user_id: str
 
 
-def get_current_user(authorization: str | None = Header(default=None)) -> CurrentUser:
+def get_current_user(
+    authorization: str | None = Header(default=None),
+    jwt_service: AppJwtService = Depends(get_jwt_service),
+) -> CurrentUser:
     """
     從 Authorization Header 解析 JWT，取得目前使用者。
     """
@@ -269,7 +273,7 @@ def get_current_user(authorization: str | None = Header(default=None)) -> Curren
         )
 
     try:
-        line_user_id = _app_jwt_service.decode_user_id(token.strip())
+        line_user_id = jwt_service.decode_user_id(token.strip())
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:

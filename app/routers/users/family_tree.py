@@ -69,7 +69,6 @@ async def create_invite(
 async def verify_invite(
     code: str, service: FamilyTreeService = Depends(get_family_tree_service)
 ):
-    """驗證邀請碼效期與資訊。"""
     return await service.verify_invitation(code)
 
 
@@ -84,7 +83,6 @@ async def accept_invite(
     current_user: CurrentUser = Depends(get_current_user),
     service: FamilyTreeService = Depends(get_family_tree_service),
 ):
-    """正式接受邀請並加入家族。"""
     return await service.accept_invitation(
         invitee_id=current_user.line_user_id, code=req.code
     )

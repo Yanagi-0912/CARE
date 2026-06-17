@@ -45,10 +45,10 @@ def _build_download_response(payload: list[dict]) -> Response:
 
 
 @router.get(
-    "/me",
+    "/me/summary/latest",
     response_model=ConsultationViewResponse,
     summary="取得目前使用者諮詢紀錄",
-    description="優先回傳最新的摘要，如果沒有摘要則回傳原始對話。",
+    description="優先回傳最新的摘要，如果沒有摘要會回傳None",
 )
 async def get_my_consultations(
     current_user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -63,10 +63,10 @@ async def get_my_consultations(
 
 
 @router.get(
-    "/me/today",
+    "/me/summary/today",
     response_model=ConsultationViewResponse,
-    summary="取得今天的諮詢紀錄",
-    description="回傳今天的摘要或原始對話。",
+    summary="取得今天的摘要紀錄",
+    description="回傳今天的摘要。",
 )
 async def get_today_consultations(
     current_user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -83,7 +83,7 @@ async def get_today_consultations(
 
 
 @router.get(
-    "/me/raw",
+    "/me/messages/raw",
     response_model=ConsultationViewResponse,
     summary="取得原始諮詢快取",
     description="直接回傳 Redis 內的原始對話。",
@@ -119,7 +119,7 @@ async def get_my_summary_history(
 
 
 @router.get(
-    "/me/allsummaries/downloadtoken",
+    "/me/summary/downloadtoken",
     response_model=DownloadTokenResponse,
     summary="取得摘要下載 token",
     description="先由 LIFF 前端帶著登入態呼叫，取得短效 downloadToken。",
@@ -140,7 +140,7 @@ async def get_my_summary_download_token(
 
 
 @router.get(
-    "/me/allsummaries/download",
+    "/me/summary/download",
     summary="下載目前使用者所有摘要紀錄",
     description="以 JSON 檔案下載目前登入使用者的所有諮詢摘要紀錄。",
 )
@@ -169,7 +169,7 @@ async def download_my_summary_history(
 
 
 @router.post(
-    "/me/summarize",
+    "/me/summary/generate",
     response_model=ConsultationSummary,
     summary="手動摘要諮詢紀錄",
     description="把指定日期或今天的對話摘要後寫入 MongoDB。",

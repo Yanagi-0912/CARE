@@ -14,8 +14,6 @@ from app.models.family_tree import (
     AcceptInviteResponse,
 )
 from app.repositories.family_tree_repository import FamilyTreeRepository
-from app.services.users.user_profile_service import UserProfileService
-
 logger = logging.getLogger(__name__)
 
 
@@ -24,9 +22,16 @@ class FamilyTreeService:
     家庭服務功能。
     """
 
-    def __init__(self, user_profile_service: UserProfileService):
-        self._user_profile_service = user_profile_service
-
+    async def get_family_tree(self, user_id: str) -> FamilyTree:
+        """
+        取得族譜，若尚不存在則建立空族譜並回傳。
+        使用 MongoDB Aggregation $lookup 進行資料庫關聯查詢以確保效能與實時更新。
+        """
+        await FamilyTreeRepository.upsert_tree(user_id)
+        tree = await FamilyTreeRepository.get_by_user_id(user_id)
+        assert tree is not None
+        return tree
+    
     async def create_invitation(self, inviter_id: str) -> CreateInviteResponse:
         """
         建立邀請碼與過期時間，並存入資料庫。
@@ -63,12 +68,7 @@ class FamilyTreeService:
         if now > expires_at:
             raise HTTPException(status_code=410, detail="邀請連結已失效")
 
-        inviter_profile = await self._user_profile_service.get_user_profile(
-            invitation.inviter_id
-        )
-        display_name = (
-            inviter_profile.get("name", "家人") if inviter_profile else "家人"
-        )
+        display_name = invitation.inviter_display_name or "家人"
 
         return VerifyInviteResponse(
             inviter_display_name=display_name, expires_at=expires_at.isoformat()
@@ -134,32 +134,6 @@ class FamilyTreeService:
         await FamilyTreeRepository.accept_invitation(invite_id)
         logger.info(f"成員加入成功：inviter={inviter_id}, invitee={invitee_id}")
 
-
-    async def get_family_tree(self, user_id: str) -> FamilyTree:
-        """
-        取得族譜並豐富每個成員的 display_name 與 picture_url；若尚不存在則建立空族譜並回傳。
-        """
-        tree = await FamilyTreeRepository.upsert_tree(user_id)
-
-        enriched_members = []
-        for member in tree.family_members:
-            profile = await self._user_profile_service.get_user_profile(member.user_id)
-            display_name = profile.get("name") if profile else None
-            picture_url = profile.get("picture_url") if profile else None
-
-            enriched_members.append(
-                FamilyMember(
-                    user_id=member.user_id,
-                    relationship_type=member.relationship_type,
-                    display_name=display_name,
-                    picture_url=picture_url,
-                )
-            )
-
-        tree.family_members = enriched_members
-        return tree
-
-
     async def set_relationship(
         self, user_id: str, member_id: str, relationship_type: str
     ) -> FamilyTree:
@@ -186,19 +160,19 @@ class FamilyTreeService:
                 detail=f"在 {user_id} 的族譜中找不到成員 {member_id}",
             )
 
-        # 2. 計算反向關係並嘗試更新對方族譜（best-effort）
-        reverse_rel = REVERSE_RELATIONSHIP[relationship_type]
-        try:
-            result = await FamilyTreeRepository.set_relationship(
-                member_id, user_id, reverse_rel
-            )
-            if result is None:
-                logger.info(
-                    f"set_relationship：{member_id} 族譜中無 {user_id}，略過反向更新"
-                )
-        except Exception as e:
-            logger.error(
-                f"set_relationship：反向更新失敗 ({member_id} → {user_id}): {e}"
-            )
+        # 2. 計算反向關係並嘗試更新對方族譜（已被使用者要求停用，改為單向設定）
+        # reverse_rel = REVERSE_RELATIONSHIP[relationship_type]
+        # try:
+        #     result = await FamilyTreeRepository.set_relationship(
+        #         member_id, user_id, reverse_rel
+        #     )
+        #     if result is None:
+        #         logger.info(
+        #             f"set_relationship：{member_id} 族譜中無 {user_id}，略過反向更新"
+        #         )
+        # except Exception as e:
+        #     logger.error(
+        #         f"set_relationship：反向更新失敗 ({member_id} → {user_id}): {e}"
+        #     )
 
         return updated_tree

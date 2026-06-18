@@ -7,12 +7,8 @@ from app.services.family.family_tree_service import FamilyTreeService
 from app.models.family_tree import PendingInvitation, FamilyTree, FamilyMember
 
 @pytest.fixture
-def mock_user_service():
-    return AsyncMock()
-
-@pytest.fixture
-def service(mock_user_service):
-    return FamilyTreeService(user_profile_service=mock_user_service)
+def service():
+    return FamilyTreeService()
 
 @pytest.mark.asyncio
 async def test_create_invitation(service):
@@ -30,7 +26,7 @@ async def test_create_invitation(service):
         assert isinstance(kwargs["expires_at"], datetime)
 
 @pytest.mark.asyncio
-async def test_verify_invitation_success(service, mock_user_service):
+async def test_verify_invitation_success(service):
     code = "test-token"
     inviter_id = "U_INVITER"
     expires_at = datetime.now(timezone.utc) + timedelta(days=1)
@@ -40,12 +36,12 @@ async def test_verify_invitation_success(service, mock_user_service):
         inviter_id=inviter_id,
         status="pending",
         created_at=datetime.now(timezone.utc),
-        expires_at=expires_at
+        expires_at=expires_at,
+        inviter_display_name="測試家人"
     )
     
     with patch("app.repositories.family_tree_repository.FamilyTreeRepository.get_invitation", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = mock_invite
-        mock_user_service.get_user_profile.return_value = {"name": "測試家人"}
         
         res = await service.verify_invitation(code)
         
@@ -132,3 +128,37 @@ async def test_accept_invitation_success(service):
         
         assert res.status == "joined"
         mock_add.assert_called_once_with(invitee_id, code)
+
+
+@pytest.mark.asyncio
+async def test_get_family_tree(service):
+    user_id = "U12345"
+    mock_tree = FamilyTree(
+        user_id=user_id,
+        family_members=[
+            FamilyMember(
+                user_id="U67890",
+                relationship_type="spouse",
+                display_name="另一半",
+                picture_url="http://example.com/pic.jpg",
+            )
+        ],
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+
+    with patch(
+        "app.repositories.family_tree_repository.FamilyTreeRepository.upsert_tree",
+        new_callable=AsyncMock,
+    ) as mock_upsert, patch(
+        "app.repositories.family_tree_repository.FamilyTreeRepository.get_by_user_id",
+        new_callable=AsyncMock,
+    ) as mock_get:
+        mock_upsert.return_value = mock_tree
+        mock_get.return_value = mock_tree
+
+        result = await service.get_family_tree(user_id)
+
+        assert result == mock_tree
+        mock_upsert.assert_called_once_with(user_id)
+        mock_get.assert_called_once_with(user_id)

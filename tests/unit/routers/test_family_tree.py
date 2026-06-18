@@ -70,3 +70,25 @@ def test_create_invite_unauthorized(client, override_family_service):
     # 註：這裡假設 get_current_user 會拋出 401，符合 app/dependencies.py 的實作
     response = client.post("/api/family/invites")
     assert response.status_code == 401
+
+
+def test_get_my_tree_success(
+    client, override_family_service, override_current_user
+):
+    from datetime import datetime, timezone
+
+    from app.models.family_tree import FamilyTree
+
+    override_current_user("U_ME")
+    mock_tree = FamilyTree(
+        user_id="U_ME",
+        family_members=[],
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    override_family_service.get_family_tree.return_value = mock_tree
+
+    response = client.get("/api/family/me")
+    assert response.status_code == 200
+    assert response.json()["family_tree"]["user_id"] == "U_ME"
+    override_family_service.get_family_tree.assert_awaited_once_with("U_ME")

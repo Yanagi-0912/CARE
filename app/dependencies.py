@@ -126,7 +126,7 @@ _line_event_handler = LineEventHandler(
 _user_profile_repository = UserProfileRepository()
 _user_profile_service = UserProfileService(repo=_user_profile_repository)
 
-_family_tree_service = FamilyTreeService(user_profile_service=_user_profile_service)
+_family_tree_service = FamilyTreeService()
 
 _line_id_token_service = LineIdTokenService()
 

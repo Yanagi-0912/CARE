@@ -9,9 +9,7 @@ from app.models.family_tree import (
     FamilyMember,
     FamilyTree,
     REVERSE_RELATIONSHIP,
-    CreateInviteResponse,
-    VerifyInviteResponse,
-    AcceptInviteResponse,
+    PendingInvitation,
 )
 from app.repositories.family_tree_repository import FamilyTreeRepository
 logger = logging.getLogger(__name__)
@@ -32,23 +30,21 @@ class FamilyTreeService:
         assert tree is not None
         return tree
     
-    async def create_invitation(self, inviter_id: str) -> CreateInviteResponse:
+    async def create_invitation(self, inviter_id: str) -> PendingInvitation:
         """
         建立邀請碼與過期時間，並存入資料庫。
         """
         token = secrets.token_urlsafe(8)
         expires_at = datetime.now(tz=timezone.utc) + timedelta(days=7)
 
-        await FamilyTreeRepository.save_invitation(
+        invitation = await FamilyTreeRepository.save_invitation(
             token=token, inviter_id=inviter_id, expires_at=expires_at
         )
 
         logger.info(f"邀請已建立：inviter={inviter_id}, token={token}")
-        return CreateInviteResponse(
-            invite_token=token, expires_at=expires_at.isoformat()
-        )
+        return invitation
 
-    async def verify_invitation(self, code: str) -> VerifyInviteResponse:
+    async def verify_invitation(self, code: str) -> PendingInvitation:
         """
         驗證邀請碼並取得邀請者名稱。
         """
@@ -68,17 +64,14 @@ class FamilyTreeService:
         if now > expires_at:
             raise HTTPException(status_code=410, detail="邀請連結已失效")
 
-        display_name = invitation.inviter_display_name or "家人"
-
-        return VerifyInviteResponse(
-            inviter_display_name=display_name, expires_at=expires_at.isoformat()
-        )
+        return invitation
 
     async def accept_invitation(
         self, invitee_id: str, code: str
-    ) -> AcceptInviteResponse:
+    ) -> tuple[str, str | None]:
         """
         接受邀請並加入家族，處理 already_member 情況。
+        回傳 tuple (status, message)。
         """
         invitation = await FamilyTreeRepository.get_invitation(code)
 
@@ -98,13 +91,11 @@ class FamilyTreeService:
         if inviter_tree and any(
             m.user_id == invitee_id for m in inviter_tree.family_members
         ):
-            return AcceptInviteResponse(
-                status="already_member", message="你已是此家庭成員"
-            )
+            return "already_member", "你已是此家庭成員"
 
         await self.add_to_family(invitee_id, code)
 
-        return AcceptInviteResponse(status="joined")
+        return "joined", None
 
     async def add_to_family(self, invitee_id: str, invite_id: str) -> None:
         """
@@ -150,7 +141,7 @@ class FamilyTreeService:
                 f"可用值：{list(REVERSE_RELATIONSHIP.keys())}",
             )
 
-        # 1. 更新自身族譜
+        # 更新自身族譜
         updated_tree = await FamilyTreeRepository.set_relationship(
             user_id, member_id, relationship_type
         )
@@ -159,20 +150,5 @@ class FamilyTreeService:
                 status_code=404,
                 detail=f"在 {user_id} 的族譜中找不到成員 {member_id}",
             )
-
-        # 2. 計算反向關係並嘗試更新對方族譜（已被使用者要求停用，改為單向設定）
-        # reverse_rel = REVERSE_RELATIONSHIP[relationship_type]
-        # try:
-        #     result = await FamilyTreeRepository.set_relationship(
-        #         member_id, user_id, reverse_rel
-        #     )
-        #     if result is None:
-        #         logger.info(
-        #             f"set_relationship：{member_id} 族譜中無 {user_id}，略過反向更新"
-        #         )
-        # except Exception as e:
-        #     logger.error(
-        #         f"set_relationship：反向更新失敗 ({member_id} → {user_id}): {e}"
-        #     )
 
         return updated_tree

@@ -28,6 +28,52 @@ async def get_my_tree(
     tree = await service.get_family_tree(current_user.line_user_id)
     return GetFamilyTreeResponse(family_tree=tree)
 
+@router.post(
+    "/invites",
+    response_model=CreateInviteResponse,
+    summary="產生邀請碼",
+    description="根據目前登入的使用者產生一個隨機邀請碼。",
+)
+async def create_invite(
+    current_user: CurrentUser = Depends(get_current_user),
+    service: FamilyTreeService = Depends(get_family_tree_service),
+):
+    invitation = await service.create_invitation(current_user.line_user_id)
+    return CreateInviteResponse(
+        invite_token=invitation.id, expires_at=invitation.expires_at.isoformat()
+    )
+
+
+@router.get(
+    "/invites/verify/{code}",
+    response_model=VerifyInviteResponse,
+    summary="驗證邀請碼",
+    description="驗證邀請碼是否有效。此為公開 API，不需要認證。",
+)
+async def verify_invite(
+    code: str, service: FamilyTreeService = Depends(get_family_tree_service)
+):
+    invitation = await service.verify_invitation(code)
+    return VerifyInviteResponse(
+        inviter_display_name=invitation.inviter_display_name or "家人",
+        expires_at=invitation.expires_at.isoformat(),
+    )
+
+@router.post(
+    "/invites/accept",
+    response_model=AcceptInviteResponse,
+    summary="接受邀請",
+    description="受邀者登入後，正式加入家族。",
+)
+async def accept_invite(
+    req: AcceptInviteRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: FamilyTreeService = Depends(get_family_tree_service),
+):
+    status, message = await service.accept_invitation(
+        invitee_id=current_user.line_user_id, code=req.code
+    )
+    return AcceptInviteResponse(status=status, message=message)
 
 @router.post(
     "/relationship",
@@ -44,45 +90,4 @@ async def set_relationship(
         user_id=current_user.line_user_id,
         member_id=req.member_id,
         relationship_type=req.relationship_type,
-    )
-
-
-@router.post(
-    "/invites",
-    response_model=CreateInviteResponse,
-    summary="產生邀請碼",
-    description="根據目前登入的使用者產生一個隨機邀請碼。",
-)
-async def create_invite(
-    current_user: CurrentUser = Depends(get_current_user),
-    service: FamilyTreeService = Depends(get_family_tree_service),
-):
-    return await service.create_invitation(current_user.line_user_id)
-
-
-@router.get(
-    "/invites/verify/{code}",
-    response_model=VerifyInviteResponse,
-    summary="驗證邀請碼",
-    description="驗證邀請碼是否有效。此為公開 API，不需要認證。",
-)
-async def verify_invite(
-    code: str, service: FamilyTreeService = Depends(get_family_tree_service)
-):
-    return await service.verify_invitation(code)
-
-
-@router.post(
-    "/invites/accept",
-    response_model=AcceptInviteResponse,
-    summary="接受邀請",
-    description="受邀者登入後，正式加入家族。",
-)
-async def accept_invite(
-    req: AcceptInviteRequest,
-    current_user: CurrentUser = Depends(get_current_user),
-    service: FamilyTreeService = Depends(get_family_tree_service),
-):
-    return await service.accept_invitation(
-        invitee_id=current_user.line_user_id, code=req.code
     )

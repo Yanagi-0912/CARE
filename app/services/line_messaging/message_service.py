@@ -53,12 +53,13 @@ class LineMessageService:
         logger.info("LineMessageService initialized with Gemini AI")
 
     async def send_line_reply(
-        self, reply_token: str, message_text: str, user_id: Optional[str] = None, request_location: bool = False
+        self, reply_token: str, message_text: str, user_id: Optional[str] = None, request_location: bool = False, voice_reply_enabled: bool = True
     ) -> bool:
         try:
             validate_reply_context(reply_token, user_id)
             access_token = self.token_provider.get_token()
             
+            # 註：voice_reply_enabled 參數目前保留用於未來的 TTS 集成，暫時不影響當前的文字回覆
             # Defensively ensure message_text is a string to avoid Pydantic validation errors for TextMessage
             if not isinstance(message_text, str):
                 logger.warning(

@@ -48,8 +48,22 @@ def mock_agent():
 
 
 @pytest.fixture
-def handler(mock_agent, mock_line_message_service):
-    return LineEventHandler(mock_agent, mock_line_message_service)
+def mock_user_profile_service():
+    svc = MagicMock()
+    svc.get_user_profile = AsyncMock(
+        return_value={
+            "line_id": "U12345",
+            "name": "Test User",
+            "voice_reply_enabled": True,
+        }
+    )
+    svc.upsert_user_profile = AsyncMock(return_value=True)
+    return svc
+
+
+@pytest.fixture
+def handler(mock_agent, mock_line_message_service, mock_user_profile_service):
+    return LineEventHandler(mock_agent, mock_line_message_service, mock_user_profile_service)
 
 
 @pytest.mark.asyncio
@@ -271,4 +285,89 @@ async def test_handle_location_message_delegates_to_agent(
     
     mock_line_message_service.send_line_reply.assert_called_once_with(
         "dummy_token", "為您找到附近醫療院所...", "U12345"
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_postback_event_toggle_voice_reply_enabled(
+    handler, mock_user_profile_service, mock_line_message_service
+):
+    """測試 postback 事件處理語音回覆切換（啟用）"""
+    from linebot.v3.webhooks import (
+        PostbackEvent,
+        PostbackContent,
+        DeliveryContext,
+        UserSource,
+    )
+    
+    postback_event = PostbackEvent(
+        timestamp=1,
+        mode="active",
+        webhookEventId="01HZTEST000000000000000001",
+        deliveryContext=DeliveryContext(isRedelivery=False),
+        replyToken="dummy_token",
+        source=UserSource(type="user", userId="U12345"),
+        postback=PostbackContent(data="action=toggle_voice_reply&enabled=true")
+    )
+    
+    await handler.handle(postback_event)
+    
+    # 驗證讀取了使用者資料
+    mock_user_profile_service.get_user_profile.assert_called_once_with("U12345")
+    
+    # 驗證更新了使用者資料
+    mock_user_profile_service.upsert_user_profile.assert_called_once()
+    upsert_call = mock_user_profile_service.upsert_user_profile.call_args
+    assert upsert_call[0][0] == "U12345"  # 第一個位置參數是 user_id
+    assert upsert_call[0][1]["voice_reply_enabled"] is True  # 第二個位置參數中 voice_reply_enabled 為 True
+    
+    # 驗證回覆確認訊息
+    mock_line_message_service.send_line_reply.assert_called_once_with(
+        "dummy_token", "✓ 語音回覆已開啟成功", "U12345"
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_postback_event_toggle_voice_reply_disabled(
+    handler, mock_user_profile_service, mock_line_message_service
+):
+    """測試 postback 事件處理語音回覆切換（關閉）"""
+    from linebot.v3.webhooks import (
+        PostbackEvent,
+        PostbackContent,
+        DeliveryContext,
+        UserSource,
+    )
+    
+    postback_event = PostbackEvent(
+        timestamp=1,
+        mode="active",
+        webhookEventId="01HZTEST000000000000000002",
+        deliveryContext=DeliveryContext(isRedelivery=False),
+        replyToken="dummy_token_2",
+        source=UserSource(type="user", userId="U54321"),
+        postback=PostbackContent(data="action=toggle_voice_reply&enabled=false")
+    )
+    
+    # 設置 mock 返回已啟用的狀態
+    mock_user_profile_service.get_user_profile.return_value = {
+        "line_id": "U54321",
+        "name": "Test User 2",
+        "voice_reply_enabled": True,
+    }
+    
+    await handler.handle(postback_event)
+    
+    # 驗證讀取了使用者資料
+    mock_user_profile_service.get_user_profile.assert_called_once_with("U54321")
+    
+    # 驗證更新了使用者資料
+    mock_user_profile_service.upsert_user_profile.assert_called_once()
+    upsert_call = mock_user_profile_service.upsert_user_profile.call_args
+    assert upsert_call[0][0] == "U54321"  # 第一個位置參數是 user_id
+    assert upsert_call[0][1]["voice_reply_enabled"] is False  # 第二個位置參數中 voice_reply_enabled 為 False
+    
+    # 驗證回覆確認訊息
+    mock_line_message_service.send_line_reply.assert_called_once_with(
+        "dummy_token_2", "✓ 語音回覆已關閉成功", "U54321"
     )

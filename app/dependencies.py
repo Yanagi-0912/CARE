@@ -66,14 +66,15 @@ _line_message_service = LineMessageService(
     line_messaging_client=LineMessagingClient(),
 )
 
+# 使用者資料相關的依賴注入（必須在 LineEventHandler 之前定義）
+_user_profile_repository = UserProfileRepository()
+_user_profile_service = UserProfileService(repo=_user_profile_repository)
+
 _line_event_handler = LineEventHandler(
     agent=_care_agent,
     line_message_service=_line_message_service,
+    user_profile_service=_user_profile_service,
 )
-
-# 使用者資料相關的依賴注入
-_user_profile_repository = UserProfileRepository()
-_user_profile_service = UserProfileService(repo=_user_profile_repository)
 
 # Family Tree 服務
 _family_tree_service = FamilyTreeService(user_profile_service=_user_profile_service)

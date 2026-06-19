@@ -45,5 +45,6 @@ class UserProfileService:
             "surgery_history": "",
             "health_consultations": {},
             "picture_url": picture_url,
+            "voice_reply_enabled": True,
         }
         return await self.upsert_user_profile(line_id=line_id, payload=default_payload)

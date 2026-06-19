@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Optional, cast
 from linebot.v3.webhooks import (
     MessageEvent,
+    PostbackEvent,
     TextMessageContent,
     LocationMessageContent,
     ImageMessageContent,
@@ -41,34 +42,44 @@ class LineEventHandler:
         self,
         agent,
         line_message_service,
+        user_profile_service,
     ):
         self._agent = agent
         self._line_message_service = line_message_service
+        self._user_profile_service = user_profile_service
 
-    async def handle(self, event: MessageEvent) -> None:
+    async def handle(self, event) -> None:
         """對外進入點"""
         user_id = getattr(event.source, "user_id", None)
-        validate_reply_context(event.reply_token, user_id)
+        
+        # MessageEvent 才需要驗證 reply_token，PostbackEvent 也有但用途不同
+        if isinstance(event, MessageEvent):
+            validate_reply_context(event.reply_token, user_id)
+            reply_token = event.reply_token
+            message = event.message
 
-        reply_token = event.reply_token
-        message = event.message
-
-        if isinstance(message, TextMessageContent):
-            await self._handle_text_message(message, reply_token, user_id)
-        elif isinstance(message, LocationMessageContent):
-            await self._handle_location_message(message, reply_token, user_id)
-        elif isinstance(
-            message,
-            (
-                ImageMessageContent,
-                VideoMessageContent,
-                AudioMessageContent,
-                FileMessageContent,
-            ),
-        ):
-            await self._handle_media_message(message, reply_token, user_id)
+            if isinstance(message, TextMessageContent):
+                await self._handle_text_message(message, reply_token, user_id)
+            elif isinstance(message, LocationMessageContent):
+                await self._handle_location_message(message, reply_token, user_id)
+            elif isinstance(
+                message,
+                (
+                    ImageMessageContent,
+                    VideoMessageContent,
+                    AudioMessageContent,
+                    FileMessageContent,
+                ),
+            ):
+                await self._handle_media_message(message, reply_token, user_id)
+            else:
+                logger.warning(f"Unsupported message type: {type(message).__name__}")
+        
+        elif isinstance(event, PostbackEvent):
+            await self._handle_postback_event(event, user_id)
+        
         else:
-            logger.warning(f"Unsupported message type: {type(message).__name__}")
+            logger.warning(f"Unsupported event type: {type(event).__name__}")
 
     async def _handle_text_message(
         self, message: TextMessageContent, reply_token: str, user_id: Optional[str]
@@ -143,6 +154,60 @@ class LineEventHandler:
             return "audio"
         return "file"
 
+    async def _handle_postback_event(self, event: PostbackEvent, user_id: Optional[str]) -> None:
+        """處理 postback 事件（例如 rich menu 切換指令）"""
+        try:
+            postback_data = event.postback.data
+            reply_token = event.reply_token
+            
+            logger.info(f"Received postback event from user {user_id}: {postback_data}")
+            
+            # 解析 postback data，格式例如：action=toggle_voice_reply&enabled=true
+            params = {}
+            for param in postback_data.split("&"):
+                if "=" in param:
+                    key, value = param.split("=", 1)
+                    params[key] = value
+            
+            action = params.get("action")
+            
+            if action == "toggle_voice_reply":
+                # 切換語音回覆設定
+                enabled_str = params.get("enabled", "true").lower()
+                enabled = enabled_str == "true"
+                
+                # 取得使用者當前資料
+                profile = await self._user_profile_service.get_user_profile(user_id)
+                if profile is None:
+                    logger.warning(f"User profile not found for {user_id}")
+                    response_text = "抱歉，無法找到您的使用者資料。請稍後再試。"
+                else:
+                    # 更新使用者偏好
+                    profile["voice_reply_enabled"] = enabled
+                    await self._user_profile_service.upsert_user_profile(user_id, profile)
+                    
+                    status_text = "已開啟" if enabled else "已關閉"
+                    response_text = f"✓ 語音回覆{status_text}成功"
+                    logger.info(f"User {user_id} toggled voice_reply_enabled to {enabled}")
+                
+                # 回覆確認訊息
+                await self._line_message_service.send_line_reply(
+                    reply_token, response_text, user_id
+                )
+            else:
+                logger.warning(f"Unknown postback action: {action}")
+                await self._line_message_service.send_line_reply(
+                    reply_token, "抱歉，無法識別該操作。", user_id
+                )
+        
+        except Exception as e:
+            logger.error(f"Error handling postback event: {e}", exc_info=True)
+            reply_token = getattr(event, "reply_token", None)
+            if reply_token:
+                await self._line_message_service.send_line_reply(
+                    reply_token, "處理您的操作時發生錯誤，請稍後再試。", user_id
+                )
+
     async def _invoke_and_reply(
         self, user_text: str, reply_token: str, user_id: Optional[str] = None
     ) -> bool:
@@ -158,9 +223,23 @@ class LineEventHandler:
                 result.get("response") or "抱歉，我無法理解您的問題，請重新輸入。"
             )
             call_request_location = result.get("call_request_location", False)
+            
+            # 讀取使用者的語音回覆偏好
+            voice_reply_enabled = True
+            try:
+                profile = await self._user_profile_service.get_user_profile(user_id)
+                if profile:
+                    voice_reply_enabled = profile.get("voice_reply_enabled", True)
+            except Exception as e:
+                logger.warning(f"Failed to fetch user voice preference: {e}")
+            
             kwargs = {}
             if call_request_location:
                 kwargs["request_location"] = True
+            if not voice_reply_enabled:
+                # 若語音回覆未啟用，可在此加入標記（未來會用於決定是否生成音訊回覆）
+                kwargs["voice_reply_enabled"] = False
+            
             success = await self._line_message_service.send_line_reply(
                 reply_token, response_text, user_id, **kwargs
             )

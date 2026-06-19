@@ -33,6 +33,12 @@ class UserProfileData(BaseModel):
         description="Health consultation records in JSON format",
     )
 
+    # 使用者偏好：是否啟用語音回覆，預設為 True（啟用）
+    voice_reply_enabled: bool = Field(
+        default=True,
+        description="Whether to enable voice reply from AI agent (default: True)",
+    )
+
 
 # 這裡userprofile繼承userprofiledata，並且加上line_id、created_at、updated_at等欄位
 class UserProfile(UserProfileData):

@@ -1,5 +1,7 @@
 from typing import Optional, Protocol
+
 from linebot.v3.messaging import (
+    AudioMessage,
     ReplyMessageRequest,
     TextMessage,
     QuickReply,
@@ -7,11 +9,14 @@ from linebot.v3.messaging import (
     LocationAction,
 )
 
+from app.core.config import settings
 from app.services.line_messaging.shared.errors import LineTokenError, LineValidationError
 from app.services.line_messaging.shared.validation import (
     validate_reply_context,
 )
 import logging
+from pathlib import Path
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -46,14 +51,28 @@ class LineMessageService:
         token_provider: TokenProvider,
         medical_service: MedicalServiceLike,
         line_messaging_client: LineMessagingClientLike,
+        tts_service=None,
     ):
         self.token_provider = token_provider
         self.medical_service = medical_service
         self.line_messaging_client = line_messaging_client
-        logger.info("LineMessageService initialized with Gemini AI")
+        self.tts_service = tts_service
+        logger.info("LineMessageService initialized with Gemini AI and TTS")
+        if self.tts_service is None:
+            logger.info("No TTSService provided; voice replies will be disabled.")
+        else:
+            logger.info("TTSService available for voice replies.")
+            if hasattr(self.tts_service, "available") and not self.tts_service.available():
+                logger.warning("TTSService instance present but reports unavailable; voice replies may fail.")
 
     async def send_line_reply(
-        self, reply_token: str, message_text: str, user_id: Optional[str] = None, request_location: bool = False, voice_reply_enabled: bool = True
+        self,
+        reply_token: str,
+        message_text: str,
+        user_id: Optional[str] = None,
+        request_location: bool = False,
+        voice_reply_enabled: bool = True,
+        tts_locale: str = "zh-TW",
     ) -> bool:
         try:
             validate_reply_context(reply_token, user_id)
@@ -87,11 +106,45 @@ class LineMessageService:
             else:
                 text_message = TextMessage(text=message_text)
 
+            messages = [text_message]
+
+            # If voice reply requested and TTS service available, synthesize audio.
+            if voice_reply_enabled and self.tts_service is not None:
+                try:
+                    _audio_bytes, filename, _duration_ms = self.tts_service.synthesize(
+                        message_text, locale=tts_locale
+                    )
+                    tmp_path = Path(filename)
+                    public_base_url = settings.PUBLIC_BASE_URL.rstrip("/")
+                    audio_url_path = settings.TTS_AUDIO_URL_PATH.strip("/") or "tts"
+                    duration_ms = int(_duration_ms or 60_000)
+
+                    if public_base_url and tmp_path.exists():
+                        audio_url = (
+                            f"{public_base_url}/{audio_url_path}/"
+                            f"{quote(tmp_path.name)}"
+                        )
+                        messages.append(
+                            AudioMessage(
+                                originalContentUrl=audio_url,
+                                duration=duration_ms,
+                            )
+                        )
+                        logger.info(f"TTS audio message prepared: {audio_url}")
+                    elif not public_base_url:
+                        logger.warning(
+                            "PUBLIC_BASE_URL is not set; skipping LINE audio reply."
+                        )
+                    else:
+                        logger.warning(f"TTS output file not found: {tmp_path}")
+
+                except Exception:
+                    logger.exception("TTS generation failed; falling back to text reply.")
             self.line_messaging_client.reply_message(
                 access_token,
                 ReplyMessageRequest(
                     replyToken=reply_token,
-                    messages=[text_message],
+                    messages=messages,
                 ),
             )
 

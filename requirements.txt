@@ -6,6 +6,9 @@ starlette==0.52.1
 # LINE Bot SDK
 line-bot-sdk==3.22.0
 
+# Text-to-speech
+gTTS==2.5.4
+
 # 環境變數設定
 python-dotenv==1.1.1
 

@@ -11,6 +11,7 @@ from app.services.agent.agent import Agent
 from app.services.guardrail import GuardrailService
 from app.services.rag.services import RagAnswerService
 from app.services.line_messaging.message_service import LineMessageService
+from app.services.line_messaging.tts_service import TTSService
 from app.services.line_messaging.client import LineMessagingClient, LineTokenManager
 from app.services.line_messaging.event_handler import LineEventHandler
 from app.services.medical.medical_service import MedicalService, medical_service
@@ -64,6 +65,7 @@ _line_message_service = LineMessageService(
     token_provider=_line_token_manager,
     medical_service=medical_service,
     line_messaging_client=LineMessagingClient(),
+    tts_service=TTSService(),
 )
 
 # 使用者資料相關的依賴注入（必須在 LineEventHandler 之前定義）

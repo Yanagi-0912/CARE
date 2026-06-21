@@ -21,6 +21,11 @@ class Settings:
     # 多媒體解析 webhook
     MEDIA_PARSE_WEBHOOK_URL: str = os.getenv("MEDIA_PARSE_WEBHOOK_URL", "")
 
+    # Public app URL used to build LINE-accessible media links.
+    # Example: https://example.com or https://xxx.ngrok-free.app
+    PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "")
+    TTS_AUDIO_URL_PATH: str = os.getenv("TTS_AUDIO_URL_PATH", "/tts")
+
     # LINE LIFF 配置
     LIFF_CHANNEL_ID: str = os.getenv("LIFF_CHANNEL_ID", "")
     LIFF_URL: str = os.getenv("LIFF_URL", "")

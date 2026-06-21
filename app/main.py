@@ -1,6 +1,8 @@
 import logging
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from app.routers.line.webhook import router as line_router
 from app.routers.liff.auth import router as auth_router
 from app.routers.system import router as system_router
@@ -16,6 +18,22 @@ app = FastAPI(
     description="CARE 系統後端 API (包含 LINE Bot Webhook 與 LIFF REST API)",
     version="1.0.0",
 )
+
+tts_tmp_dir = Path("app_data") / "tmp"
+tts_tmp_dir.mkdir(parents=True, exist_ok=True)
+
+
+@app.get("/tts/{filename}", include_in_schema=False)
+async def get_tts_audio(filename: str):
+    if not filename.startswith("tts_") or Path(filename).name != filename:
+        raise HTTPException(status_code=404, detail="Audio not found")
+    if Path(filename).suffix.lower() != ".mp3":
+        raise HTTPException(status_code=404, detail="Audio not found")
+
+    audio_path = tts_tmp_dir / filename
+    if not audio_path.is_file():
+        raise HTTPException(status_code=404, detail="Audio not found")
+    return FileResponse(audio_path, media_type="audio/mpeg", filename=filename)
 
 # Centralized CORS config
 add_cors_middleware(app)

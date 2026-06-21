@@ -2,6 +2,7 @@ from typing import Optional, Protocol
 
 from linebot.v3.messaging import (
     AudioMessage,
+    Message,
     ReplyMessageRequest,
     TextMessage,
     QuickReply,
@@ -102,11 +103,11 @@ class LineMessageService:
                         )
                     ]
                 )
-                text_message = TextMessage(text=message_text, quickReply=quick_reply)
+                text_message = TextMessage(text=message_text, quick_reply=quick_reply)
             else:
-                text_message = TextMessage(text=message_text)
+                text_message = TextMessage(text=message_text, quick_reply=None)
 
-            messages = [text_message]
+            messages: list[Message] = [text_message]
 
             # If voice reply requested and TTS service available, synthesize audio.
             if voice_reply_enabled and self.tts_service is not None:
@@ -126,8 +127,8 @@ class LineMessageService:
                         )
                         messages.append(
                             AudioMessage(
-                                originalContentUrl=audio_url,
-                                duration=duration_ms,
+                                original_content_url=audio_url,
+                                duration=int(duration_ms),
                             )
                         )
                         logger.info(f"TTS audio message prepared: {audio_url}")

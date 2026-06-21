@@ -1,5 +1,6 @@
 import io
 import logging
+import time
 import uuid
 from pathlib import Path
 from typing import Tuple, Optional
@@ -20,6 +21,7 @@ __all__ = ["TTSService"]
 
 TTS_TMP_DIR = Path("app_data") / "tmp"
 DEFAULT_DURATION_MS = 1_000
+DEFAULT_TTS_FILE_TTL_SECONDS = 60 * 60
 
 
 class TTSService:
@@ -39,6 +41,8 @@ class TTSService:
             # Use gTTS to synthesize (this is synchronous but fine for small payloads)
             if gTTS is None:
                 raise RuntimeError("gTTS is not available in the environment")
+            TTS_TMP_DIR.mkdir(parents=True, exist_ok=True)
+            self.cleanup_expired_audio_files()
             tts = gTTS(text=text, lang=("zh-tw" if locale.startswith("zh") else "en"))
             buf = io.BytesIO()
             tts.write_to_fp(buf)
@@ -48,7 +52,6 @@ class TTSService:
             # write to temp file and return bytes
             filename = f"tts_{uuid.uuid4().hex}.mp3"
             tmp_path = TTS_TMP_DIR / filename
-            tmp_path.parent.mkdir(parents=True, exist_ok=True)
             with tmp_path.open("wb") as f:
                 f.write(data)
             logger.info(f"TTS synthesized audio (gTTS): {filename}, saved to {tmp_path}")
@@ -70,3 +73,15 @@ class TTSService:
 
         estimated_ms = len(text.strip()) * 250
         return max(DEFAULT_DURATION_MS, estimated_ms)
+
+    def cleanup_expired_audio_files(
+        self, max_age_seconds: int = DEFAULT_TTS_FILE_TTL_SECONDS
+    ) -> None:
+        cutoff = time.time() - max_age_seconds
+        for audio_path in TTS_TMP_DIR.glob("tts_*.mp3"):
+            try:
+                if audio_path.is_file() and audio_path.stat().st_mtime < cutoff:
+                    audio_path.unlink()
+                    logger.info(f"Deleted expired TTS audio file: {audio_path}")
+            except Exception as e:
+                logger.warning(f"Failed to delete expired TTS audio file {audio_path}: {e}")

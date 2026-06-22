@@ -323,7 +323,10 @@ async def test_handle_postback_event_toggle_voice_reply_enabled(
     
     # 驗證回覆確認訊息
     mock_line_message_service.send_line_reply.assert_called_once_with(
-        "dummy_token", "✓ 語音回覆已開啟成功", "U12345"
+        "dummy_token",
+        "✓ 語音回覆已開啟成功",
+        "U12345",
+        voice_reply_enabled=False,
     )
 
 
@@ -369,5 +372,8 @@ async def test_handle_postback_event_toggle_voice_reply_disabled(
     
     # 驗證回覆確認訊息
     mock_line_message_service.send_line_reply.assert_called_once_with(
-        "dummy_token_2", "✓ 語音回覆已關閉成功", "U54321"
+        "dummy_token_2",
+        "✓ 語音回覆已關閉成功",
+        "U54321",
+        voice_reply_enabled=False,
     )

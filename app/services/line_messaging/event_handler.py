@@ -192,12 +192,18 @@ class LineEventHandler:
                 
                 # 回覆確認訊息
                 await self._line_message_service.send_line_reply(
-                    reply_token, response_text, user_id
+                    reply_token,
+                    response_text,
+                    user_id,
+                    voice_reply_enabled=False,
                 )
             else:
                 logger.warning(f"Unknown postback action: {action}")
                 await self._line_message_service.send_line_reply(
-                    reply_token, "抱歉，無法識別該操作。", user_id
+                    reply_token,
+                    "抱歉，無法識別該操作。",
+                    user_id,
+                    voice_reply_enabled=False,
                 )
         
         except Exception as e:
@@ -205,7 +211,10 @@ class LineEventHandler:
             reply_token = getattr(event, "reply_token", None)
             if reply_token:
                 await self._line_message_service.send_line_reply(
-                    reply_token, "處理您的操作時發生錯誤，請稍後再試。", user_id
+                    reply_token,
+                    "處理您的操作時發生錯誤，請稍後再試。",
+                    user_id,
+                    voice_reply_enabled=False,
                 )
 
     async def _invoke_and_reply(

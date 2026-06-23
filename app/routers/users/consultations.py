@@ -63,26 +63,6 @@ async def get_my_consultations(
 
 
 @router.get(
-    "/me/summary/today",
-    response_model=ConsultationViewResponse,
-    summary="取得今天的摘要紀錄",
-    description="回傳今天的摘要。",
-)
-async def get_today_consultations(
-    current_user: Annotated[CurrentUser, Depends(get_current_user)],
-    consultation_service: Annotated[
-        ConsultationService, Depends(get_consultation_service)
-    ],
-) -> ConsultationViewResponse:
-    try:
-        return await consultation_service.get_view(
-            current_user.line_user_id, date.today()
-        )
-    except (RedisError, PyMongoError):
-        raise HTTPException(status_code=503, detail=DB_ERROR_DETAIL)
-
-
-@router.get(
     "/me/messages/raw",
     response_model=ConsultationViewResponse,
     summary="取得原始諮詢快取",

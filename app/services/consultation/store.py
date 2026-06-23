@@ -7,6 +7,7 @@ from typing import Any, Protocol
 
 from app.db.redis import RedisManager
 from app.models.consultation import ConsultationMessage
+import logging
 
 
 class ConsultationStore(Protocol):
@@ -47,7 +48,6 @@ class RedisConsultationStore:
         - 序列化訊息成 JSON 字串，用 rpush 加到 list 尾端
         - 設定 1 天 TTL，自動過期清除
         """
-        import logging
 
         logger = logging.getLogger(__name__)
         key = self._build_key(line_id)

@@ -5,7 +5,6 @@ import asyncio
 import logging
 from contextlib import suppress
 from datetime import date, datetime, time, timedelta
-
 from app.services.consultation.consultation_service import ConsultationService
 from app.services.consultation.store import ConsultationStore
 

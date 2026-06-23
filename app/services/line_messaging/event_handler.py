@@ -17,6 +17,10 @@ from app.services.line_messaging.shared.validation import (
     validate_reply_context,
     validate_text_message,
 )
+from app.services.consultation.context import (
+    ConsultationContext,
+    consultation_context_scope,
+)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -185,12 +189,6 @@ class LineEventHandler:
         """呼叫 Agent 並回覆訊息"""
         try:
             logger.info(f"Processing message from user {user_id}: {user_text[:50]}...")
-
-            # 在 呼叫 Agent 之前，設定 consultation context，讓下游服務可以取用
-            from app.services.consultation.context import (
-                ConsultationContext,
-                consultation_context_scope,
-            )
 
             context = ConsultationContext(
                 line_id=user_id,

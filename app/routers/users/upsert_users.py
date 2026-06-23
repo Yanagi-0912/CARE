@@ -9,6 +9,7 @@ from app.dependencies import (
     get_current_user,
     CurrentUser,
 )
+from fastapi import HTTPException
 
 router = APIRouter(tags=["Profile"])
 
@@ -28,8 +29,6 @@ async def get_user_profile(
     user_id = current_user.line_user_id
     profile = await service.get_user_profile(user_id)
     if not profile:
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=404, detail="找不到使用者資料")
     return profile
 

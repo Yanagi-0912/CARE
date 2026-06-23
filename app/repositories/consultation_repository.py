@@ -16,17 +16,6 @@ class ConsultationRepository:
         if collection is None:
             collection = MongoDBManager.get_consultation_summaries_collection()
 
-        # 嘗試防禦性地刪除舊的 TTL 索引，若不存在或權限不足則忽略
-        try:
-            await collection.drop_index("consultation_summary_created_at_ttl")
-            logger.info(
-                "Successfully dropped index: consultation_summary_created_at_ttl"
-            )
-        except Exception as e:
-            logger.info(
-                f"Index consultation_summary_created_at_ttl drop skipped or not found: {e}"
-            )
-
         # 建立複合索引以加速依使用者與日期的檢索與排序
         await collection.create_index(
             [("line_id", 1), ("summary_date", -1)],

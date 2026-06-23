@@ -8,23 +8,6 @@ from app.models.consultation import ConsultationSummary
 
 
 @pytest.mark.asyncio
-async def test_ensure_indexes_drops_ttl_and_creates_compound_index():
-    collection = AsyncMock()
-
-    # 呼叫 ensure_indexes 並傳入 mock collection 進行依賴注入
-    await ConsultationRepository.ensure_indexes(collection=collection)
-
-    # 驗證是否嘗試防禦性地刪除 TTL 索引，並建立複合索引
-    collection.drop_index.assert_called_once_with(
-        "consultation_summary_created_at_ttl"
-    )
-    collection.create_index.assert_called_once_with(
-        [("line_id", 1), ("summary_date", -1)],
-        name="consultation_summary_line_id_date",
-    )
-
-
-@pytest.mark.asyncio
 async def test_list_summaries_returns_sorted_user_history():
     collection = MagicMock()
     cursor = MagicMock()

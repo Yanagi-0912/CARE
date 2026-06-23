@@ -1,10 +1,10 @@
 # 包裝原本的agent 和 line message service，讓它們在處理訊息的同時也能記錄到
 # consultation service 中。
 from __future__ import annotations
-
 from typing import Any, Optional
-
 from app.services.consultation.consultation_service import ConsultationService
+from app.services.consultation.context import get_current_consultation_context
+import logging
 
 
 # 這裡定義了一些代理類別，用來包裝原本的 agent 和 line message service
@@ -15,10 +15,8 @@ class ConsultationAwareAgent:
 
     async def invoke(self, user_input: str) -> dict:
         # 先把使用者輸入記錄到 consultation service
-        from app.services.consultation.context import get_current_consultation_context
 
         ctx = get_current_consultation_context()
-        import logging
 
         logger = logging.getLogger(__name__)
         logger.info(

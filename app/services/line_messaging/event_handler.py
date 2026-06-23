@@ -182,14 +182,20 @@ class LineEventHandler:
                     logger.warning(f"User profile not found for {user_id}")
                     response_text = "抱歉，無法找到您的使用者資料。請稍後再試。"
                 else:
-                    # 更新使用者偏好
-                    profile["voice_reply_enabled"] = enabled
-                    await self._user_profile_service.upsert_user_profile(user_id, profile)
+                    # 更新使用者偏好；只更新單一欄位，避免舊資料結構不完整時被完整 profile 驗證擋住。
+                    updated = await self._user_profile_service.update_voice_reply_enabled(
+                        user_id, enabled
+                    )
+                    if not updated:
+                        logger.warning(f"Failed to update voice preference for {user_id}")
+                        response_text = "抱歉，語音回覆設定更新失敗，請稍後再試。"
+                    else:
+                        status_text = "已開啟" if enabled else "已關閉"
+                        response_text = f"✓ 語音回覆{status_text}成功"
+                        logger.info(
+                            f"User {user_id} toggled voice_reply_enabled to {enabled}"
+                        )
                     
-                    status_text = "已開啟" if enabled else "已關閉"
-                    response_text = f"✓ 語音回覆{status_text}成功"
-                    logger.info(f"User {user_id} toggled voice_reply_enabled to {enabled}")
-                
                 # 回覆確認訊息
                 await self._line_message_service.send_line_reply(
                     reply_token,

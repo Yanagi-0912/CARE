@@ -58,6 +58,7 @@ def mock_user_profile_service():
         }
     )
     svc.upsert_user_profile = AsyncMock(return_value=True)
+    svc.update_voice_reply_enabled = AsyncMock(return_value=True)
     return svc
 
 
@@ -315,11 +316,11 @@ async def test_handle_postback_event_toggle_voice_reply_enabled(
     # 驗證讀取了使用者資料
     mock_user_profile_service.get_user_profile.assert_called_once_with("U12345")
     
-    # 驗證更新了使用者資料
-    mock_user_profile_service.upsert_user_profile.assert_called_once()
-    upsert_call = mock_user_profile_service.upsert_user_profile.call_args
-    assert upsert_call[0][0] == "U12345"  # 第一個位置參數是 user_id
-    assert upsert_call[0][1]["voice_reply_enabled"] is True  # 第二個位置參數中 voice_reply_enabled 為 True
+    # 驗證只更新語音偏好欄位
+    mock_user_profile_service.update_voice_reply_enabled.assert_called_once_with(
+        "U12345", True
+    )
+    mock_user_profile_service.upsert_user_profile.assert_not_called()
     
     # 驗證回覆確認訊息
     mock_line_message_service.send_line_reply.assert_called_once_with(
@@ -364,11 +365,11 @@ async def test_handle_postback_event_toggle_voice_reply_disabled(
     # 驗證讀取了使用者資料
     mock_user_profile_service.get_user_profile.assert_called_once_with("U54321")
     
-    # 驗證更新了使用者資料
-    mock_user_profile_service.upsert_user_profile.assert_called_once()
-    upsert_call = mock_user_profile_service.upsert_user_profile.call_args
-    assert upsert_call[0][0] == "U54321"  # 第一個位置參數是 user_id
-    assert upsert_call[0][1]["voice_reply_enabled"] is False  # 第二個位置參數中 voice_reply_enabled 為 False
+    # 驗證只更新語音偏好欄位
+    mock_user_profile_service.update_voice_reply_enabled.assert_called_once_with(
+        "U54321", False
+    )
+    mock_user_profile_service.upsert_user_profile.assert_not_called()
     
     # 驗證回覆確認訊息
     mock_line_message_service.send_line_reply.assert_called_once_with(

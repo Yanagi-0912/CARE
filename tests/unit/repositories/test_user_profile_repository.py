@@ -108,3 +108,22 @@ async def test_get_user_profile_uses_users_collection_and_returns_document(
 
     assert doc == expected
     collection.find_one.assert_awaited_once_with({"line_id": "U123"})
+
+
+@pytest.mark.asyncio
+async def test_update_voice_reply_enabled_only_sets_voice_field(
+    override_users_collection,
+):
+    collection = MagicMock()
+    collection.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
+    override_users_collection(collection)
+
+    ok = await UserProfileRepository.update_voice_reply_enabled("U123", False)
+
+    assert ok is True
+    collection.update_one.assert_awaited_once()
+    args, kwargs = collection.update_one.await_args
+    assert args[0] == {"line_id": "U123"}
+    assert args[1]["$set"]["voice_reply_enabled"] is False
+    assert "updated_at" in args[1]["$set"]
+    assert kwargs == {}

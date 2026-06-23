@@ -110,8 +110,22 @@ class LineMessageService:
             messages: list[Message] = [text_message]
 
             # If voice reply requested and TTS service available, synthesize audio.
-            if voice_reply_enabled and self.tts_service is not None:
+            logger.info(
+                "Voice reply check for user %s: enabled=%s, tts_service=%s, public_base_url_set=%s",
+                user_id,
+                voice_reply_enabled,
+                type(self.tts_service).__name__ if self.tts_service is not None else None,
+                bool(settings.PUBLIC_BASE_URL.strip()),
+            )
+            if not voice_reply_enabled:
+                logger.info(f"Voice reply disabled for user {user_id}; sending text only.")
+            elif self.tts_service is None:
+                logger.warning("TTS service is not configured; sending text only.")
+            else:
                 try:
+                    if hasattr(self.tts_service, "available") and not self.tts_service.available():
+                        logger.warning("TTS service reports unavailable; attempting synthesis anyway.")
+
                     _audio_bytes, filename, _duration_ms = self.tts_service.synthesize(
                         message_text, locale=tts_locale
                     )
@@ -141,6 +155,12 @@ class LineMessageService:
 
                 except Exception:
                     logger.exception("TTS generation failed; falling back to text reply.")
+            logger.info(
+                "Prepared %s LINE message(s) for user %s: %s",
+                len(messages),
+                user_id,
+                [getattr(message, "type", type(message).__name__) for message in messages],
+            )
             self.line_messaging_client.reply_message(
                 access_token,
                 ReplyMessageRequest(

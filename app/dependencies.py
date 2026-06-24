@@ -34,7 +34,7 @@ from app.services.consultation.proxies import (
     ConsultationAwareLineMessageService,
 )
 from app.services.consultation.consultation_service import ConsultationService
-from app.services.consultation.store import build_consultation_store
+from app.repositories.chat_history_repository import build_consultation_store
 
 _mongodb_url = os.getenv("MONGODB_URL")
 MongoDBManager.configure(_mongodb_url or settings.MONGODB_URI)

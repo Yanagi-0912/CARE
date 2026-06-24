@@ -6,7 +6,7 @@ import logging
 from contextlib import suppress
 from datetime import date, datetime, time, timedelta
 from app.services.consultation.consultation_service import ConsultationService
-from app.services.consultation.store import ConsultationStore
+from app.repositories.chat_history_repository import ConsultationStore
 
 logger = logging.getLogger(__name__)
 

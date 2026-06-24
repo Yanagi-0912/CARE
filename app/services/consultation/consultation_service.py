@@ -15,7 +15,7 @@ from app.services.consultation.context import (
     ConsultationContext,
     get_current_consultation_context,
 )
-from app.services.consultation.store import ConsultationStore
+from app.repositories.chat_history_repository import ConsultationStore
 from app.services.gemini.services import GeminiService
 from app.services.gemini.shared.errors import raise_mapped_gemini_error
 import logging

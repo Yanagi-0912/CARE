@@ -7,7 +7,6 @@ from typing import Any, Protocol
 
 from app.db.redis import RedisManager
 from app.models.consultation import ConsultationMessage
-import logging
 
 
 class ConsultationStore(Protocol):
@@ -21,6 +20,8 @@ class ConsultationStore(Protocol):
     ) -> None: ...
 
     async def list_messages(self, line_id: str) -> list[ConsultationMessage]: ...
+
+    async def list_dates(self, line_id: str) -> list[date]: ...
 
     async def list_line_ids_by_date(self, summary_date: date) -> list[str]: ...
 
@@ -48,6 +49,7 @@ class RedisConsultationStore:
         - 序列化訊息成 JSON 字串，用 rpush 加到 list 尾端
         - 設定 1 天 TTL，自動過期清除
         """
+        import logging
 
         logger = logging.getLogger(__name__)
         key = self._build_key(line_id)
@@ -74,6 +76,18 @@ class RedisConsultationStore:
                 raw_item = raw_item.decode("utf-8")
             messages.append(ConsultationMessage.model_validate(json.loads(raw_item)))
         return messages
+
+    async def list_dates(self, line_id: str) -> list[date]:
+        """取出該使用者在 Redis 內所有對話訊息所涵蓋的日期。
+
+        實作細節：
+        - 直接讀取該使用者的完整對話列表
+        - 從每筆訊息的 timestamp 取出日期
+        """
+        dates: list[date] = []
+        for message in await self.list_messages(line_id):
+            dates.append(message.timestamp.date())
+        return sorted(set(dates))
 
     async def list_line_ids_by_date(self, summary_date: date) -> list[str]:
         # 現在 Redis 只按 user 分組，這裡回傳目前仍在 TTL 內的所有 user key。

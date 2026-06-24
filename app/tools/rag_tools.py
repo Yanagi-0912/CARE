@@ -25,11 +25,4 @@ async def get_rag_answer(query: str) -> str:
     except RagNoHitsError:
         return "知識庫中未找到相關資訊，請嘗試用不同方式描述問題。"
 
-    if _consultation_service is not None:
-        ctx = get_current_consultation_context()
-        if ctx is not None and ctx.line_id:
-            await _consultation_service.record_assistant_message(
-                f"以下為 RAG 回應：\n{answer}"
-            )
-
     return answer

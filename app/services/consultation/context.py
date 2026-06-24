@@ -18,7 +18,6 @@ class ConsultationContext:
     line_id: Optional[str]
     message_type: str
     event_time: Optional[datetime] = None
-    raw_message: Optional[object] = None
 
 
 _current_context: ContextVar[Optional[ConsultationContext]] = ContextVar(

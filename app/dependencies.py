@@ -29,12 +29,8 @@ from app.services.liff.auth_service import LiffAuthApplicationService
 from app.services.liff.jwt_service import AppJwtService
 from app.services.liff.line_id_token_service import LineIdTokenService
 from app.repositories.consultation_repository import ConsultationRepository
-from app.services.consultation.proxies import (
-    ConsultationAwareAgent,
-    ConsultationAwareLineMessageService,
-)
 from app.services.consultation.consultation_service import ConsultationService
-from app.repositories.chat_history_repository import build_consultation_store
+from app.repositories.chat_history_repository import build_chat_history_repository
 
 _mongodb_url = os.getenv("MONGODB_URL")
 MongoDBManager.configure(_mongodb_url or settings.MONGODB_URI)
@@ -50,10 +46,10 @@ _guardrail_service = GuardrailService(
 _vector_search_config = VectorSearchConfig.from_settings()
 _vector_search_reader = MongoVectorSearchReader(_vector_search_config)
 
-_consultation_store = build_consultation_store()
+_chat_history_repository = build_chat_history_repository()
 _consultation_repository = ConsultationRepository()
 _consultation_service = ConsultationService(
-    store=_consultation_store,
+    chat_history_repository=_chat_history_repository,
     repository=_consultation_repository,
     gemini_service=_gemini_service,
 )
@@ -84,19 +80,10 @@ _line_message_service = LineMessageService(
 )
 
 
-_consultation_aware_agent = ConsultationAwareAgent(
-    agent=_care_agent,
-    consultation_service=_consultation_service,
-)
-
-_consultation_aware_line_message_service = ConsultationAwareLineMessageService(
-    service=_line_message_service,
-    consultation_service=_consultation_service,
-)
-
 _line_event_handler = LineEventHandler(
-    agent=_consultation_aware_agent,
-    line_message_service=_consultation_aware_line_message_service,
+    agent=_care_agent,
+    line_message_service=_line_message_service,
+    chat_history_repository=_chat_history_repository,
 )
 
 # 使用者資料相關的依賴注入
@@ -167,8 +154,8 @@ def get_consultation_service() -> ConsultationService:
     return _consultation_service
 
 
-def get_consultation_store():
-    return _consultation_store
+def get_chat_history_repository():
+    return _chat_history_repository
 
 
 def get_line_token_manager() -> LineTokenManager:

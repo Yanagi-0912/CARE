@@ -57,7 +57,12 @@ async def get_my_consultations(
     ],
 ) -> ConsultationViewResponse:
     try:
-        return await consultation_service.get_view(current_user.line_user_id)
+        summary = await consultation_service.get_view(current_user.line_user_id)
+        return ConsultationViewResponse(
+            line_id=current_user.line_user_id,
+            view_type="summary",
+            summary=summary.summary if summary else None,
+        )
     except (RedisError, PyMongoError):
         raise HTTPException(status_code=503, detail=DB_ERROR_DETAIL)
 
@@ -75,7 +80,12 @@ async def get_raw_consultations(
     ],
 ) -> ConsultationViewResponse:
     try:
-        return await consultation_service.get_raw_view(current_user.line_user_id)
+        messages = await consultation_service.get_raw_view(current_user.line_user_id)
+        return ConsultationViewResponse(
+            line_id=current_user.line_user_id,
+            view_type="raw",
+            messages=messages,
+        )
     except RedisError:
         raise HTTPException(status_code=503, detail=DB_ERROR_DETAIL)
 

@@ -21,6 +21,7 @@ from app.services.consultation.context import (
     ConsultationContext,
     consultation_context_scope,
 )
+from app.models.chat_message import ChatMessage
 import logging
 
 logger = logging.getLogger(__name__)
@@ -40,27 +41,27 @@ AUDIO_FILE_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".opus", ".aac
 
 
 class LineEventHandler:
-    """處理 webhook 接受到的 event 並分發到對應的 service"""
+    """
+    處理 webhook 接受到的 event 並分發到對應的 service
+    """
 
     def __init__(
         self,
         agent,
         line_message_service,
+        chat_history_repository,
     ):
         self._agent = agent
         self._line_message_service = line_message_service
+        self._chat_history_repository = chat_history_repository
 
     async def handle(self, event: MessageEvent) -> None:
-        """對外進入點"""
+        """
+        對外進入點
+        """
 
-        # thug新增部分 debug用的，line的timestamp是以毫秒為單位的UNIX時間戳，轉換成datetime
-        # 物件時要除以1000並指定時區
         event_time = datetime.fromtimestamp(event.timestamp / 1000, tz=timezone.utc)
-        logger.info(
-            f"[LineEventHandler.handle] event.source 類型={type(event.source)}, 完整物件={event.source}"
-        )
         user_id = getattr(event.source, "user_id", None)
-        logger.info(f"[LineEventHandler.handle] 從 getattr 取得 user_id={user_id}")
         validate_reply_context(event.reply_token, user_id)
 
         reply_token = event.reply_token
@@ -92,7 +93,9 @@ class LineEventHandler:
         user_id: Optional[str],
         event_time: datetime,
     ) -> None:
-        """處理文字訊息"""
+        """
+        處理文字訊息
+        """
         logger.info(f"Received text message event from user {user_id}")
         user_text = validate_text_message(message.text)
 
@@ -100,9 +103,6 @@ class LineEventHandler:
             user_text=user_text,
             reply_token=reply_token,
             user_id=user_id,
-            # thug新增部分：將原始 message 物件也放入 context，讓下游服務
-            # 可以根據需要取用更多細節
-            raw_message=message,
             message_type="text",
             event_time=event_time,
         )
@@ -127,7 +127,6 @@ class LineEventHandler:
             user_text=location_text,
             reply_token=reply_token,
             user_id=user_id,
-            raw_message=message,
             message_type="location",
             event_time=event_time,
         )
@@ -160,7 +159,6 @@ class LineEventHandler:
             user_text=f"以下為使用者傳送的{media_type}媒體內容：\n{media_content}",
             reply_token=reply_token,
             user_id=user_id,
-            raw_message=message,
             message_type=media_type,
             event_time=event_time,
         )
@@ -182,7 +180,6 @@ class LineEventHandler:
         user_text: str,
         reply_token: str,
         user_id: Optional[str] = None,
-        raw_message: Optional[object] = None,
         message_type: str = "text",
         event_time: Optional[datetime] = None,
     ) -> bool:
@@ -194,8 +191,17 @@ class LineEventHandler:
                 line_id=user_id,
                 message_type=message_type,
                 event_time=event_time,
-                raw_message=raw_message,
             )
+
+            # 1. 記錄 User 訊息到 ChatHistoryRepository (排除 location)
+            if user_id and message_type != "location":
+                user_msg = ChatMessage(
+                    line_id=user_id,
+                    message_type=message_type,
+                    content=user_text,
+                    timestamp=event_time or datetime.now(timezone.utc),
+                )
+                await self._chat_history_repository.append_message(user_id, user_msg)
 
             # 呼叫 Agent 進行決策（在 context scope 內）
             with consultation_context_scope(context):
@@ -212,6 +218,16 @@ class LineEventHandler:
             success = await self._line_message_service.send_line_reply(
                 reply_token, response_text, user_id, **kwargs
             )
+
+            # 2. 成功送出後記錄 Assistant 訊息 (排除 location)
+            if success and user_id and message_type != "location":
+                assistant_msg = ChatMessage(
+                    line_id=user_id,
+                    message_type="assistant_reply",
+                    content=response_text,
+                    timestamp=datetime.now(timezone.utc),
+                )
+                await self._chat_history_repository.append_message(user_id, assistant_msg)
 
             if success:
                 logger.info(f"Successfully processed and replied to user {user_id}")

@@ -11,7 +11,7 @@ from typing import Any
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import Runnable
 from langchain_google_genai import ChatGoogleGenerativeAI
-from app.models.consultation import ConsultationMessage
+from app.models.chat_message import ChatMessage
 from app.services.gemini.shared.errors import (
     GeminiHttpError,
     GeminiNetworkError,
@@ -64,7 +64,7 @@ class GeminiService:
         raise GeminiSchemaError("AI 服務回應格式異常：預期 boolean")
 
     async def generate_consultation_summary(
-        self, target_date: date, messages: list[ConsultationMessage]
+        self, target_date: date, messages: list[ChatMessage]
     ) -> str:
         """呼叫 Gemini 生成對話摘要。"""
         if not messages:

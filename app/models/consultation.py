@@ -10,13 +10,10 @@ from pydantic import BaseModel, Field
 LINE_USER_ID_DESCRIPTION = "LINE user ID"
 
 
-class ConsultationMessage(BaseModel):
+from app.models.chat_message import ChatMessage
 
-    line_id: str = Field(..., description=LINE_USER_ID_DESCRIPTION)
-    message_type: str = Field(..., description="訊息類型，例如 text / location / image")
-    content: str = Field(..., description="可供摘要與顯示的訊息內容")
-    raw_text: Optional[str] = Field(default=None, description="原始文字或原始媒體描述")
-    timestamp: datetime = Field(..., description="UTC timestamp")
+class ConsultationMessage(ChatMessage):
+    pass
 
 
 class ConsultationSummary(BaseModel):

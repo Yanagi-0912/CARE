@@ -48,8 +48,15 @@ def mock_agent():
 
 
 @pytest.fixture
-def handler(mock_agent, mock_line_message_service):
-    return LineEventHandler(mock_agent, mock_line_message_service)
+def mock_chat_history_repository():
+    repo = MagicMock()
+    repo.append_message = AsyncMock()
+    return repo
+
+
+@pytest.fixture
+def handler(mock_agent, mock_line_message_service, mock_chat_history_repository):
+    return LineEventHandler(mock_agent, mock_line_message_service, mock_chat_history_repository)
 
 
 @pytest.mark.asyncio

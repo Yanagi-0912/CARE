@@ -55,7 +55,7 @@ class ConsultationRepository:
         return summary
 
     @staticmethod
-    async def get_summary(
+    async def get_summary_by_date(
         line_id: str, target_date: date, collection: Optional[Any] = None
     ) -> Optional[ConsultationSummary]:
         if collection is None:

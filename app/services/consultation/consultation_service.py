@@ -36,7 +36,7 @@ class ConsultationService:
     ) -> Optional[ConsultationSummary]:
         if target_date is None:
             return await self._repository.get_latest_summary(user_id)
-        return await self._repository.get_summary(user_id, target_date)
+        return await self._repository.get_summary_by_date(user_id, target_date)
 
     # get_raw_view 方法則是直接從 chat_history_repository 取得原始訊息列表，不考慮是否有摘要。
     async def get_raw_view(
@@ -70,7 +70,7 @@ class ConsultationService:
         else:
             target_date = date.today()
 
-        existing = await self._repository.get_summary(user_id, target_date)
+        existing = await self._repository.get_summary_by_date(user_id, target_date)
         if existing is not None and not request.force:
             return existing
 
@@ -147,7 +147,9 @@ class ConsultationService:
         """
 
         try:
-            result = await self._gemini_service.chat_model.ainvoke([HumanMessage(content=prompt)])
+            result = await self._gemini_service.chat_model.ainvoke(
+                [HumanMessage(content=prompt)]
+            )
         except Exception as exc:
             raise_mapped_gemini_error(exc)
         content = getattr(result, "content", "")

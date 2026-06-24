@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.models.consultation import (
-    ConsultationMessage,
     ConsultationSummary,
     ConsultationSummarizeRequest,
 )
@@ -31,7 +30,7 @@ class FakeRepository:
         self.summary: ConsultationSummary | None = None
         self.summaries: list[ConsultationSummary] = []
 
-    async def get_summary(self, line_id: str, target_date: date):
+    async def get_summary_by_date(self, line_id: str, target_date: date):
         if (
             self.summary
             and self.summary.line_id == line_id
@@ -59,7 +58,9 @@ def consultation_service() -> ConsultationService:
     fake_repo = FakeRepository()
     fake_gemini = SimpleNamespace(chat_model=SimpleNamespace(ainvoke=AsyncMock()))
     return ConsultationService(
-        chat_history_repository=fake_store, repository=fake_repo, gemini_service=fake_gemini
+        chat_history_repository=fake_store,
+        repository=fake_repo,
+        gemini_service=fake_gemini,
     )
 
 

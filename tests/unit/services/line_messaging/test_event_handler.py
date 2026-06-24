@@ -51,6 +51,7 @@ def mock_agent():
 def mock_chat_history_repository():
     repo = MagicMock()
     repo.append_message = AsyncMock()
+    repo.list_messages = AsyncMock(return_value=[])
     return repo
 
 
@@ -200,7 +201,8 @@ async def test_handle_text_message_success(
 
     await handler.handle(event)
 
-    mock_agent.invoke.assert_called_once_with(user_input="你好")
+    mock_agent.invoke.assert_called_once()
+    assert mock_agent.invoke.call_args[1]["user_input"] == "你好"
     mock_line_message_service.send_line_reply.assert_called_once_with(
         "dummy_token", "AI 回覆", "U12345"
     )

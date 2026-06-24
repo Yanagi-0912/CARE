@@ -57,7 +57,7 @@ class FakeRepository:
 def consultation_service() -> ConsultationService:
     fake_store = FakeChatHistoryRepository()
     fake_repo = FakeRepository()
-    fake_gemini = SimpleNamespace(_chat_llm=SimpleNamespace(ainvoke=AsyncMock()))
+    fake_gemini = SimpleNamespace(chat_model=SimpleNamespace(ainvoke=AsyncMock()))
     return ConsultationService(
         chat_history_repository=fake_store, repository=fake_repo, gemini_service=fake_gemini
     )

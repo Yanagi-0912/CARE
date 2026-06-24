@@ -64,7 +64,7 @@ configure_rag_tool(_rag_answer_service, _consultation_service)
 configure_medical_tools(medical_service)
 
 _care_agent = Agent(
-    llm=_gemini_service._chat_llm,
+    llm=_gemini_service.chat_model,
     guardrail_service=_guardrail_service,
 )
 

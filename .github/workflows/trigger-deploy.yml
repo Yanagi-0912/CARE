@@ -1,0 +1,23 @@
+# merge 到 main 後，通知 CARE-infra 開始 build + deploy（前後端都會重建）
+name: Trigger Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  trigger-infra-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch deploy to CARE-infra
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.INFRA_DEPLOY_TOKEN }}
+          repository: Yanagi-0912/CARE-infra
+          event-type: deploy
+          client-payload: |
+            {
+              "source": "backend",
+              "ref": "main",
+              "sha": "${{ github.sha }}"
+            }

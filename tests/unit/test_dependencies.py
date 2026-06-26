@@ -24,6 +24,7 @@ def test_dependency_wiring_is_correct():
     assert line_message_service.medical_service is dependencies.get_medical_service()
     assert handler._line_message_service is line_message_service
     assert handler._agent is dependencies._care_agent
+    assert handler._chat_history_repository is dependencies.get_chat_history_repository()
     assert profile_service._repo is dependencies._user_profile_repository
 
 

@@ -40,5 +40,13 @@ class Settings:
     MONGODB_TEXT_FIELD: str = os.getenv("MONGODB_TEXT_FIELD", "text")
     MONGODB_VECTOR_DIM: int = int(os.getenv("MONGODB_VECTOR_DIM", "0"))
 
+    # Consultation / Redis 配置
+    REDIS_URL: str = os.getenv("REDIS_URL", "")
+
+    # Consultation daily summary scheduler
+    CONSULTATION_DAILY_SUMMARY_TIME: str = os.getenv(
+        "CONSULTATION_DAILY_SUMMARY_TIME", "02:00"
+    )
+
 
 settings = Settings()

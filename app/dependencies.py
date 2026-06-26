@@ -21,16 +21,21 @@ from app.services.vector_search import (
     VectorSearchConfig,
 )
 from app.db.mongodb import MongoDBManager
+from app.db.redis import RedisManager
 from app.services.users.user_profile_service import UserProfileService
 from app.repositories.user_profile_repository import UserProfileRepository
 from app.services.family.family_tree_service import FamilyTreeService
 from app.services.liff.auth_service import LiffAuthApplicationService
 from app.services.liff.jwt_service import AppJwtService
 from app.services.liff.line_id_token_service import LineIdTokenService
+from app.repositories.consultation_repository import ConsultationRepository
+from app.services.consultation.consultation_service import ConsultationService
+from app.repositories.chat_history_repository import build_chat_history_repository
 
 _mongodb_url = os.getenv("MONGODB_URL")
 MongoDBManager.configure(_mongodb_url or settings.MONGODB_URI)
-
+_redis_url = os.getenv("REDIS_URL")
+RedisManager.configure(_redis_url or settings.REDIS_URL)
 _gemini_service = GeminiService(
     api_key=settings.GEMINI_API_KEY,
     model_name=settings.MODEL_NAME,
@@ -41,17 +46,25 @@ _guardrail_service = GuardrailService(
 _vector_search_config = VectorSearchConfig.from_settings()
 _vector_search_reader = MongoVectorSearchReader(_vector_search_config)
 
+_chat_history_repository = build_chat_history_repository()
+_consultation_repository = ConsultationRepository()
+_consultation_service = ConsultationService(
+    chat_history_repository=_chat_history_repository,
+    repository=_consultation_repository,
+    gemini_service=_gemini_service,
+)
+
 _rag_answer_service = RagAnswerService(
     gemini_service=_gemini_service,
     vector_search_reader=_vector_search_reader,
 )
 
 # DI tools
-configure_rag_tool(_rag_answer_service)
+configure_rag_tool(_rag_answer_service, _consultation_service)
 configure_medical_tools(medical_service)
 
 _care_agent = Agent(
-    llm=_gemini_service._chat_llm,
+    llm=_gemini_service.chat_model,
     guardrail_service=_guardrail_service,
 )
 
@@ -66,9 +79,11 @@ _line_message_service = LineMessageService(
     line_messaging_client=LineMessagingClient(),
 )
 
+
 _line_event_handler = LineEventHandler(
     agent=_care_agent,
     line_message_service=_line_message_service,
+    chat_history_repository=_chat_history_repository,
 )
 
 # 使用者資料相關的依賴注入
@@ -84,6 +99,14 @@ _app_jwt_service = AppJwtService(
     secret=settings.AUTH_JWT_SECRET,
     algorithm=settings.AUTH_JWT_ALGORITHM,
     expires_minutes=settings.AUTH_JWT_EXPIRES_MINUTES,
+)
+# 提供給前端取得一個臨時token來完成下載檔案功能
+_consultation_download_token_service = AppJwtService(
+    secret=settings.AUTH_JWT_SECRET,
+    algorithm=settings.AUTH_JWT_ALGORITHM,
+    # 效期設定為5分鐘
+    expires_minutes=5,
+    issuer="care-consultation-download",
 )
 _liff_auth_application_service = LiffAuthApplicationService(
     line_id_token_service=_line_id_token_service,
@@ -103,6 +126,14 @@ def get_mongodb_url() -> str:
     return url
 
 
+def get_redis_url() -> str:
+    """提供 Redis 連線字串做為依賴注入"""
+    url = _redis_url or settings.REDIS_URL
+    if not url:
+        raise ValueError("未設定 REDIS_URL 參數")
+    return url
+
+
 def get_gemini_service() -> GeminiService:
     return _gemini_service
 
@@ -117,6 +148,14 @@ def get_line_message_service() -> LineMessageService:
 
 def get_line_event_handler() -> LineEventHandler:
     return _line_event_handler
+
+
+def get_consultation_service() -> ConsultationService:
+    return _consultation_service
+
+
+def get_chat_history_repository():
+    return _chat_history_repository
 
 
 def get_line_token_manager() -> LineTokenManager:
@@ -145,6 +184,10 @@ def get_family_tree_service() -> FamilyTreeService:
 
 def get_liff_auth_application_service() -> LiffAuthApplicationService:
     return _liff_auth_application_service
+
+
+def get_consultation_download_token_service() -> AppJwtService:
+    return _consultation_download_token_service
 
 
 @dataclass

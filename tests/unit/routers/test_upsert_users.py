@@ -59,7 +59,6 @@ def _valid_payload() -> dict:
         "chronic_history": "無",
         "major_illness_history": "無",
         "surgery_history": "無",
-        "health_consultations": {"last_visit": "2026-04-20"},
     }
 
 

@@ -15,7 +15,7 @@ from app.services.consultation.scheduler import (
     start_consultation_daily_summary_scheduler,
 )
 
-from app.routers.family_tree import router as family_tree_router
+from app.routers.users.family_tree import router as family_tree_router
 
 logging.basicConfig(level=logging.INFO)
 

@@ -7,22 +7,25 @@ from app.services.family.family_tree_service import FamilyTreeService
 from app.models.family_tree import PendingInvitation, FamilyTree, FamilyMember
 
 @pytest.fixture
-def mock_user_service():
-    return AsyncMock()
-
-@pytest.fixture
-def service(mock_user_service):
-    return FamilyTreeService(user_profile_service=mock_user_service)
+def service():
+    return FamilyTreeService()
 
 @pytest.mark.asyncio
 async def test_create_invitation(service):
     inviter_id = "U12345"
+    mock_invite = PendingInvitation(
+        _id="token123",
+        inviter_id=inviter_id,
+        status="pending",
+        created_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+    )
     
     with patch("app.repositories.family_tree_repository.FamilyTreeRepository.save_invitation", new_callable=AsyncMock) as mock_save:
+        mock_save.return_value = mock_invite
         res = await service.create_invitation(inviter_id)
         
-        assert res.invite_token is not None
-        assert len(res.invite_token) > 0
+        assert res.id == "token123"
         mock_save.assert_called_once()
         # 檢查呼叫參數
         args, kwargs = mock_save.call_args
@@ -30,7 +33,7 @@ async def test_create_invitation(service):
         assert isinstance(kwargs["expires_at"], datetime)
 
 @pytest.mark.asyncio
-async def test_verify_invitation_success(service, mock_user_service):
+async def test_verify_invitation_success(service):
     code = "test-token"
     inviter_id = "U_INVITER"
     expires_at = datetime.now(timezone.utc) + timedelta(days=1)
@@ -40,17 +43,17 @@ async def test_verify_invitation_success(service, mock_user_service):
         inviter_id=inviter_id,
         status="pending",
         created_at=datetime.now(timezone.utc),
-        expires_at=expires_at
+        expires_at=expires_at,
+        inviter_display_name="測試家人"
     )
     
     with patch("app.repositories.family_tree_repository.FamilyTreeRepository.get_invitation", new_callable=AsyncMock) as mock_get:
         mock_get.return_value = mock_invite
-        mock_user_service.get_user_profile.return_value = {"name": "測試家人"}
         
         res = await service.verify_invitation(code)
         
         assert res.inviter_display_name == "測試家人"
-        assert res.expires_at == expires_at.isoformat()
+        assert res.expires_at == expires_at
 
 @pytest.mark.asyncio
 async def test_verify_invitation_expired(service):
@@ -102,10 +105,10 @@ async def test_accept_invitation_already_member(service):
         mock_get_invite.return_value = mock_invite
         mock_get_tree.return_value = mock_inviter_tree
         
-        res = await service.accept_invitation(invitee_id, code)
+        status, message = await service.accept_invitation(invitee_id, code)
         
-        assert res.status == "already_member"
-        assert "你已是此家庭成員" in res.message
+        assert status == "already_member"
+        assert "你已是此家庭成員" in message
 
 @pytest.mark.asyncio
 async def test_accept_invitation_success(service):
@@ -128,7 +131,64 @@ async def test_accept_invitation_success(service):
         mock_get_invite.return_value = mock_invite
         mock_get_tree.return_value = None # 尚未建立族譜或對方族譜為空
         
-        res = await service.accept_invitation(invitee_id, code)
+        status, message = await service.accept_invitation(invitee_id, code)
         
-        assert res.status == "joined"
+        assert status == "joined"
+        assert message is None
         mock_add.assert_called_once_with(invitee_id, code)
+
+
+@pytest.mark.asyncio
+async def test_get_family_tree(service):
+    user_id = "U12345"
+    mock_tree = FamilyTree(
+        user_id=user_id,
+        family_members=[
+            FamilyMember(
+                user_id="U67890",
+                relationship_type="spouse",
+                display_name="另一半",
+                picture_url="https://example.com/pic.jpg",
+            )
+        ],
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+
+    with patch(
+        "app.repositories.family_tree_repository.FamilyTreeRepository.upsert_tree",
+        new_callable=AsyncMock,
+    ) as mock_upsert, patch(
+        "app.repositories.family_tree_repository.FamilyTreeRepository.get_by_user_id",
+        new_callable=AsyncMock,
+    ) as mock_get:
+        mock_upsert.return_value = mock_tree
+        mock_get.return_value = mock_tree
+
+        result = await service.get_family_tree(user_id)
+
+        assert result == mock_tree
+        mock_upsert.assert_called_once_with(user_id)
+        mock_get.assert_called_once_with(user_id)
+
+
+@pytest.mark.asyncio
+async def test_set_relationship_unidirectional(service):
+    user_id = "U_ME"
+    member_id = "U_INVITER"
+    relationship_type = "parent"
+    
+    mock_tree = FamilyTree(
+        user_id=user_id,
+        family_members=[FamilyMember(user_id=member_id, relationship_type="parent")],
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc)
+    )
+    
+    with patch("app.repositories.family_tree_repository.FamilyTreeRepository.set_relationship", new_callable=AsyncMock) as mock_set:
+        mock_set.return_value = mock_tree
+        
+        result = await service.set_relationship(user_id, member_id, relationship_type)
+        
+        assert result == mock_tree
+        mock_set.assert_called_once_with(user_id, member_id, "parent")

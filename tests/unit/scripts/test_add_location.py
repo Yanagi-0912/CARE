@@ -37,7 +37,7 @@ def test_update_geojson_and_create_index(capsys):
     # patch: 固定 mongodb url，讓 MongoClient 回傳模擬 client
     # ，並避免真的讀取 .env
     with patch(
-        "app.dependencies.get_mongodb_url", return_value="mongodb://fake"
+        "app.dependencies.get_mongodb_uri", return_value="mongodb://fake"
     ), patch("scripts.add_location.pymongo.MongoClient", return_value=client), patch(
         "scripts.add_location.load_dotenv"
     ):

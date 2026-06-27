@@ -8,17 +8,17 @@ def main():
     # 載入 .env 檔案中的環境變數
     load_dotenv()
 
-    # 從依賴注入取得 MONGODB_URL
-    from app.dependencies import get_mongodb_url
+    # 從依賴注入取得 MONGODB_URI
+    from app.dependencies import get_mongodb_uri
 
     try:
-        mongodb_url = get_mongodb_url()
+        mongodb_uri = get_mongodb_uri()
     except ValueError as e:
         print(f"錯誤：{e}，請確認 .env 檔案設定是否確實存在。")
         return
 
     print("正在連線至 MongoDB...")
-    client = pymongo.MongoClient(mongodb_url)
+    client = pymongo.MongoClient(mongodb_uri)
 
     # 連接至指定資料庫與集合 (Collection)
     # 注意：這裡使用您提供的 CARE_datebase 名稱，若其實是 database 請手動修改

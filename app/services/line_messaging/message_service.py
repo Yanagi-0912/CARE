@@ -59,6 +59,21 @@ class LineMessageService:
             validate_reply_context(reply_token, user_id)
             access_token = self.token_provider.get_token()
             
+            # Defensively ensure message_text is a string to avoid Pydantic validation errors for TextMessage
+            if not isinstance(message_text, str):
+                logger.warning(
+                    f"send_line_reply received non-string message_text: {type(message_text)}. Converting to string."
+                )
+                if isinstance(message_text, list):
+                    message_text = "".join(
+                        part if isinstance(part, str) else (part.get("text", "") if isinstance(part, dict) else str(part))
+                        for part in message_text
+                    )
+                elif message_text is None:
+                    message_text = ""
+                else:
+                    message_text = str(message_text)
+
             if request_location:
                 quick_reply = QuickReply(
                     items=[

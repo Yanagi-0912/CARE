@@ -5,9 +5,8 @@ import asyncio
 import logging
 from contextlib import suppress
 from datetime import date, datetime, time, timedelta
-
 from app.services.consultation.consultation_service import ConsultationService
-from app.services.consultation.store import ConsultationStore
+from app.repositories.chat_history_repository import ChatHistoryRepository
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +16,7 @@ class ConsultationDailySummaryScheduler:
         self,
         *,
         consultation_service: ConsultationService,
-        consultation_store: ConsultationStore,
+        consultation_store: ChatHistoryRepository,
         run_time: str,
     ) -> None:
         self._consultation_service = consultation_service
@@ -108,7 +107,7 @@ def start_consultation_daily_summary_scheduler(
     enabled: bool,
     run_time: str,
     consultation_service: ConsultationService,
-    consultation_store: ConsultationStore,
+    consultation_store: ChatHistoryRepository,
 ) -> ConsultationDailySummaryScheduler | None:
     if not enabled:
         logger.info("[ConsultationDailySummaryScheduler] disabled")

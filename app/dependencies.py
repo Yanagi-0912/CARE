@@ -74,7 +74,7 @@ _rag_answer_service = RagAnswerService(
 _consultation_store = build_consultation_store()
 _consultation_repository = ConsultationRepository()
 _consultation_service = ConsultationService(
-    store=_consultation_store,
+    chat_history_repository=_chat_history_repository,
     repository=_consultation_repository,
     gemini_service=_gemini_service,
 )
@@ -89,7 +89,7 @@ configure_medical_tools(medical_service)
 # 6. 核心 Agent 與 LINE 整合服務 (Agent & LINE Integration)
 # ==============================================================================
 _care_agent = Agent(
-    llm=_gemini_service._chat_llm,
+    llm=_gemini_service.chat_model,
     guardrail_service=_guardrail_service,
 )
 
@@ -116,8 +116,9 @@ _consultation_aware_line_message_service = ConsultationAwareLineMessageService(
 )
 
 _line_event_handler = LineEventHandler(
-    agent=_consultation_aware_agent,
-    line_message_service=_consultation_aware_line_message_service,
+    agent=_care_agent,
+    line_message_service=_line_message_service,
+    chat_history_repository=_chat_history_repository,
 )
 
 # ==============================================================================

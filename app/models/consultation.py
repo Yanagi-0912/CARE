@@ -10,13 +10,7 @@ from pydantic import BaseModel, Field
 LINE_USER_ID_DESCRIPTION = "LINE user ID"
 
 
-class ConsultationMessage(BaseModel):
-
-    line_id: str = Field(..., description=LINE_USER_ID_DESCRIPTION)
-    message_type: str = Field(..., description="訊息類型，例如 text / location / image")
-    content: str = Field(..., description="可供摘要與顯示的訊息內容")
-    raw_text: Optional[str] = Field(default=None, description="原始文字或原始媒體描述")
-    timestamp: datetime = Field(..., description="UTC timestamp")
+from app.models.chat_message import ChatMessage
 
 
 class ConsultationSummary(BaseModel):
@@ -37,6 +31,6 @@ class ConsultationViewResponse(BaseModel):
     line_id: str = Field(..., description=LINE_USER_ID_DESCRIPTION)
     view_type: Literal["summary", "raw"] = Field(..., description="回傳資料來源")
     summary: Optional[str] = Field(default=None, description="摘要內容")
-    messages: list[ConsultationMessage] = Field(
+    messages: list[ChatMessage] = Field(
         default_factory=list, description="原始對話訊息"
     )

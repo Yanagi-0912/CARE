@@ -1,4 +1,5 @@
-from langchain_core.messages import HumanMessage, AIMessage
+from typing import Optional
+from langchain_core.messages import HumanMessage, AIMessage, AnyMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 
@@ -58,20 +59,34 @@ class Agent:
 
         return builder.compile()
 
-    async def invoke(self, user_input: str) -> dict:
+    async def invoke(
+        self,
+        user_input: str = "",
+        messages: Optional[list[AnyMessage]] = None,
+    ) -> dict:
         """對外的主要進入點，回傳格式維持不變。"""
+        if messages is None:
+            messages = [HumanMessage(content=user_input)]
+
         result = await self._graph.ainvoke(
             {
-                "messages": [HumanMessage(content=user_input)],
+                "messages": messages,
                 "allow_rag": False,
             }
         )
 
         # 從 messages 取得最後的 AI 回覆
         last_msg = result["messages"][-1]
-        response = (
-            last_msg.content if isinstance(last_msg, AIMessage) else str(last_msg)
-        )
+        response = last_msg.content if isinstance(last_msg, AIMessage) else str(last_msg)
+        if isinstance(response, list):
+            response = "".join(
+                part if isinstance(part, str) else (part.get("text", "") if isinstance(part, dict) else str(part))
+                for part in response
+            )
+        elif response is None:
+            response = ""
+        else:
+            response = str(response)
 
         # 防禦性後置處理：若呼叫了 get_rag_answer，但 AI 的最終回覆中遺漏了「參考資料來源」，則自動由工具輸出中提取並後補。
         rag_tool_content = None

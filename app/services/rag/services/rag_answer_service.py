@@ -77,7 +77,7 @@ class RagAnswerService:
             f"{chr(10).join(context_lines)}"
         )
         from langchain_core.messages import HumanMessage
-        rag_result = await self.gemini_service._chat_llm.ainvoke([HumanMessage(content=rag_prompt)])
+        rag_result = await self.gemini_service.chat_model.ainvoke([HumanMessage(content=rag_prompt)])
         answer_text = rag_result.content or "抱歉，我目前找不到相關資料，請稍後再試。"
         if not isinstance(answer_text, str):
             answer_text = str(answer_text)

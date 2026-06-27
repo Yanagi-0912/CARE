@@ -15,6 +15,7 @@ During active coding:
 - **Incremental Changes**: Make small, incremental modifications. Do not write massive chunks of untested code.
 - **Focus**: Stay strictly within the scope of the single feature you are working on.
 - **Test-Driven Verification**: Every feature must have a concrete, reproducible verification path. Run the automated tests to verify.
+- **Testing Discipline**: 寫測試時禁止使用 monkey patch (如 `unittest.mock.patch` 修改全域/別處導入之實例)，請使用依賴注入 (Dependency Injection) 的寫法傳入 mock 實例。
 
 ## 🏁 Definition of Done
 A feature is only considered "Done" and can be set to `passing` in `feature_list.json` when:

@@ -9,7 +9,7 @@ from app.routers.users.upsert_users import router as profile_router
 from app.routers.users.consultations import router as consultations_router
 from app.core.cors import add_cors_middleware
 from app.core.config import settings
-from app.dependencies import get_consultation_service, get_consultation_store
+from app.dependencies import get_consultation_service, get_chat_history_repository
 from app.repositories.consultation_repository import ConsultationRepository
 from app.services.consultation.scheduler import (
     start_consultation_daily_summary_scheduler,
@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
         enabled=True,  # 啟動自動排程
         run_time=settings.CONSULTATION_DAILY_SUMMARY_TIME,
         consultation_service=get_consultation_service(),
-        consultation_store=get_consultation_store(),
+        consultation_store=get_chat_history_repository(),
     )
     try:
         # yield 期間代表 app 正在運行並處理 requests。

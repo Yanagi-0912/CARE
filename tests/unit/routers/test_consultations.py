@@ -84,7 +84,7 @@ def test_get_my_summary_download_token_returns_token(
     override_consultation_service(FakeConsultationService(summaries=[]))
     override_download_token_service(FakeDownloadTokenService())
 
-    response = client.get("/api/consultations/me/allsummaries/downloadtoken")
+    response = client.get("/api/consultations/me/summary/downloadtoken")
 
     assert response.status_code == 200
     assert response.json() == {
@@ -121,7 +121,7 @@ def test_download_my_summary_history_returns_json_attachment(
     with patch("app.routers.users.consultations.datetime") as mock_datetime:
         mock_datetime.now.return_value = fixed_now
         response = client.get(
-            "/api/consultations/me/allsummaries/download?downloadToken=download-token"
+            "/api/consultations/me/summary/download?downloadToken=download-token"
         )
 
     assert response.status_code == 200

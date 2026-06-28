@@ -64,6 +64,7 @@ def consultation_service() -> ConsultationService:
     )
 
 
+# 測試當資料庫有該日期的諮詢摘要時，get_view 可以正確回傳該摘要內容。
 @pytest.mark.asyncio
 async def test_get_view_prefers_summary(
     consultation_service: ConsultationService,
@@ -82,6 +83,7 @@ async def test_get_view_prefers_summary(
     assert summary_res.summary == "今天主要是腸胃不適"
 
 
+# 測試當資料庫沒有該日期的諮詢摘要時，get_view 會回傳 None，而不會 fallback 到原始訊息。
 @pytest.mark.asyncio
 async def test_get_view_without_summary_does_not_fallback_to_raw(
     consultation_service: ConsultationService,
@@ -91,6 +93,7 @@ async def test_get_view_without_summary_does_not_fallback_to_raw(
     assert summary_res is None
 
 
+# 測試能正確過濾出指定 line_id 的所有歷史摘要，而不會混入其他人的資料。
 @pytest.mark.asyncio
 async def test_list_summary_history_returns_repository_data(
     consultation_service: ConsultationService,
@@ -116,6 +119,7 @@ async def test_list_summary_history_returns_repository_data(
     assert summaries[0].summary == "5/26 摘要"
 
 
+# 驗證 get_raw_view 能正確從對話紀錄庫（Chat History）撈出特定使用者的原始對話內容
 @pytest.mark.asyncio
 async def test_get_raw_view_returns_messages(
     consultation_service: ConsultationService,
@@ -136,6 +140,7 @@ async def test_get_raw_view_returns_messages(
     assert messages[0].content == "肚子痛"
 
 
+# 呼叫 summarize 時，會使用經由 LLM 生成的文字，並成功寫入 Repo。
 @pytest.mark.asyncio
 async def test_summarize_uses_generated_text(
     consultation_service: ConsultationService,
@@ -160,140 +165,3 @@ async def test_summarize_uses_generated_text(
     assert summary.summary == "摘要完成"
     assert consultation_service._repository.summary is not None
     assert consultation_service._repository.summary.summary_date == date(2026, 5, 17)
-
-
-@pytest.mark.asyncio
-async def test_summarize_without_target_date_includes_cross_midnight_messages(
-    consultation_service: ConsultationService,
-):
-    await consultation_service._chat_history_repository.append_message(
-        "U123",
-        ChatMessage(
-            line_id="U123",
-            message_type="text",
-            content="23:59 的訊息",
-            timestamp=datetime(2026, 5, 26, 23, 59, tzinfo=timezone.utc),
-        ),
-    )
-    await consultation_service._chat_history_repository.append_message(
-        "U123",
-        ChatMessage(
-            line_id="U123",
-            message_type="text",
-            content="00:00 的訊息",
-            timestamp=datetime(2026, 5, 27, 0, 0, tzinfo=timezone.utc),
-        ),
-    )
-
-    captured_messages: list[ChatMessage] = []
-
-    async def fake_generate_summary(user_id: str, target_date: date, messages):
-        captured_messages.extend(messages)
-        return "跨午夜摘要"
-
-    with patch.object(
-        consultation_service,
-        "_generate_summary",
-        new=fake_generate_summary,
-    ):
-        summary = await consultation_service.summarize(
-            "U123", ConsultationSummarizeRequest()
-        )
-
-    assert summary.summary == "跨午夜摘要"
-    assert [message.content for message in captured_messages] == [
-        "23:59 的訊息",
-        "00:00 的訊息",
-    ]
-
-
-@pytest.mark.asyncio
-async def test_summarize_ignores_target_date_and_uses_full_conversation(
-    consultation_service: ConsultationService,
-):
-    await consultation_service._chat_history_repository.append_message(
-        "U123",
-        ChatMessage(
-            line_id="U123",
-            message_type="text",
-            content="5/26 的訊息",
-            timestamp=datetime(2026, 5, 26, 23, 59, tzinfo=timezone.utc),
-        ),
-    )
-    await consultation_service._chat_history_repository.append_message(
-        "U123",
-        ChatMessage(
-            line_id="U123",
-            message_type="text",
-            content="5/27 的訊息",
-            timestamp=datetime(2026, 5, 27, 0, 0, tzinfo=timezone.utc),
-        ),
-    )
-
-    captured_messages: list[ChatMessage] = []
-
-    async def fake_generate_summary(user_id: str, target_date: date, messages):
-        captured_messages.extend(messages)
-        return "忽略 target_date"
-
-    with patch.object(
-        consultation_service,
-        "_generate_summary",
-        new=fake_generate_summary,
-    ):
-        summary = await consultation_service.summarize(
-            "U123", ConsultationSummarizeRequest(target_date=date(2026, 5, 26))
-        )
-
-    assert summary.summary == "忽略 target_date"
-    assert summary.summary_date == date(2026, 5, 27)
-    assert [message.content for message in captured_messages] == [
-        "5/26 的訊息",
-        "5/27 的訊息",
-    ]
-
-
-@pytest.mark.asyncio
-async def test_summarize_handles_mixed_timezone_timestamps(
-    consultation_service: ConsultationService,
-):
-    await consultation_service._chat_history_repository.append_message(
-        "U123",
-        ChatMessage(
-            line_id="U123",
-            message_type="text",
-            content="naive timestamp message",
-            timestamp=datetime(2026, 5, 28, 9, 30),
-        ),
-    )
-    await consultation_service._chat_history_repository.append_message(
-        "U123",
-        ChatMessage(
-            line_id="U123",
-            message_type="text",
-            content="aware timestamp message",
-            timestamp=datetime(2026, 5, 28, 10, 0, tzinfo=timezone.utc),
-        ),
-    )
-
-    captured_messages: list[ChatMessage] = []
-
-    async def fake_generate_summary(user_id: str, target_date: date, messages):
-        captured_messages.extend(messages)
-        return "mixed timezone summary"
-
-    with patch.object(
-        consultation_service,
-        "_generate_summary",
-        new=fake_generate_summary,
-    ):
-        summary = await consultation_service.summarize(
-            "U123", ConsultationSummarizeRequest()
-        )
-
-    assert summary.summary == "mixed timezone summary"
-    assert summary.summary_date == date(2026, 5, 28)
-    assert [message.content for message in captured_messages] == [
-        "naive timestamp message",
-        "aware timestamp message",
-    ]

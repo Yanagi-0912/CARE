@@ -16,11 +16,7 @@ from app.tools.rag_tools import configure_rag_tool
 
 from app.services.agent.agent import Agent
 from app.services.consultation.consultation_service import ConsultationService
-from app.services.consultation.proxies import (
-    ConsultationAwareAgent,
-    ConsultationAwareLineMessageService,
-)
-from app.services.consultation.store import build_consultation_store
+from app.repositories.chat_history_repository import build_chat_history_repository
 from app.services.family.family_tree_service import FamilyTreeService
 from app.services.gemini import GeminiService
 from app.services.guardrail import GuardrailService
@@ -71,7 +67,7 @@ _rag_answer_service = RagAnswerService(
 # ==============================================================================
 # 4. 諮詢管理服務 (Consultation Services)
 # ==============================================================================
-_consultation_store = build_consultation_store()
+_chat_history_repository = build_chat_history_repository()
 _consultation_repository = ConsultationRepository()
 _consultation_service = ConsultationService(
     chat_history_repository=_chat_history_repository,
@@ -102,17 +98,6 @@ _line_message_service = LineMessageService(
     token_provider=_line_token_manager,
     medical_service=medical_service,
     line_messaging_client=LineMessagingClient(),
-)
-
-# 帶有諮詢歷史上下文的 Proxy 服務
-_consultation_aware_agent = ConsultationAwareAgent(
-    agent=_care_agent,
-    consultation_service=_consultation_service,
-)
-
-_consultation_aware_line_message_service = ConsultationAwareLineMessageService(
-    service=_line_message_service,
-    consultation_service=_consultation_service,
 )
 
 _line_event_handler = LineEventHandler(
@@ -156,6 +141,7 @@ _liff_auth_application_service = LiffAuthApplicationService(
 # 8. FastAPI 依賴注入取得器 (Dependency Getters)
 # ==============================================================================
 
+
 def get_mongodb_uri() -> str:
     """提供 MongoDB 連線字串做為依賴注入"""
     uri = settings.MONGODB_URI
@@ -197,9 +183,9 @@ def get_consultation_service() -> ConsultationService:
     return _consultation_service
 
 
-def get_consultation_store():
-    """取得 ConsultationStore 實例"""
-    return _consultation_store
+def get_chat_history_repository():
+    """取得 ChatHistoryRepository 實例"""
+    return _chat_history_repository
 
 
 def get_line_token_manager() -> LineTokenManager:
@@ -251,9 +237,11 @@ def get_jwt_service() -> AppJwtService:
 # 9. 身分驗證依賴 (User Authentication Dependency)
 # ==============================================================================
 
+
 @dataclass
 class CurrentUser:
     """當前登入的使用者資訊"""
+
     line_user_id: str
 
 

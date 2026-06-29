@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Request, Header, HTTPException, Depends
+
 from linebot.v3.webhook import WebhookParser
 from linebot.v3.exceptions import InvalidSignatureError
+
 from app.services.line_messaging.event_handler import LineEventHandler
-from app.services.line_messaging.shared.errors import LineValidationError
 from app.dependencies import get_line_event_handler
 from app.core.config import settings
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,7 +17,7 @@ parser = WebhookParser(settings.LINE_CHANNEL_SECRET)
 
 @router.post(
     "/callback",
-    summary="LINE Webhook 回呼",
+    summary="LINE Webhook API",
     description="接收並處理 LINE 平台傳遞的 Webhook 事件。",
 )
 async def callback(
@@ -27,24 +29,21 @@ async def callback(
         logger.error("Missing X-Line-Signature header")
         raise HTTPException(status_code=400, detail="Missing X-Line-Signature header")
 
-    body = await request.body()
+    body = await request.body()         
     body_decoded = body.decode("utf-8")
 
     try:
         events = parser.parse(body_decoded, x_line_signature)
-
         for event in events:
             await handler.handle(event)
 
         logger.info("Webhook events processed successfully")
 
     except InvalidSignatureError:
-        logger.error("Invalid signature - possible security breach attempt")
+        logger.error("簽章驗證失敗")
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     except Exception as e:
         logger.error(f"Unexpected error in webhook: {e}", exc_info=True)
-        # LINE 平台仍然期望收到 200 OK，否則會重試
-        # 因此即使內部處理失敗，我們也返回 OK
 
     return "OK"

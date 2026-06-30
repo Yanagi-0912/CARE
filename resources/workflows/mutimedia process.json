@@ -148,7 +148,7 @@
         }
       },
       "type": "n8n-nodes-base.switch",
-      "typeVersion": 3.4,
+      "typeVersion": 3.3,
       "position": [
         -448,
         144
@@ -174,7 +174,7 @@
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
+      "typeVersion": 4.3,
       "position": [
         0,
         0
@@ -215,7 +215,7 @@
         "options": {}
       },
       "type": "@n8n/n8n-nodes-langchain.googleGemini",
-      "typeVersion": 1.1,
+      "typeVersion": 1,
       "position": [
         -160,
         144
@@ -260,7 +260,7 @@
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.4,
+      "typeVersion": 4.3,
       "position": [
         0,
         256

@@ -27,6 +27,10 @@ class Settings:
     # Example: https://example.com or https://xxx.ngrok-free.app
     PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "")
     TTS_AUDIO_URL_PATH: str = os.getenv("TTS_AUDIO_URL_PATH", "/tts")
+    N8N_TTS_WEBHOOK_URL: str = os.getenv("N8N_TTS_WEBHOOK_URL", "")
+    N8N_TTS_WEBHOOK_SECRET: str = os.getenv("N8N_TTS_WEBHOOK_SECRET", "")
+    N8N_TTS_TIMEOUT_SECONDS: int = int(os.getenv("N8N_TTS_TIMEOUT_SECONDS", "20"))
+    TTS_DEFAULT_VOICE: str = os.getenv("TTS_DEFAULT_VOICE", "")
 
     # LINE LIFF 配置
     LIFF_CHANNEL_ID: str = os.getenv("LIFF_CHANNEL_ID", "")

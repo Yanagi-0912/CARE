@@ -129,16 +129,10 @@ class LineMessageService:
                     _audio_bytes, filename, _duration_ms = self.tts_service.synthesize(
                         message_text, locale=tts_locale
                     )
-                    tmp_path = Path(filename)
-                    public_base_url = settings.PUBLIC_BASE_URL.rstrip("/")
-                    audio_url_path = settings.TTS_AUDIO_URL_PATH.strip("/") or "tts"
                     duration_ms = int(_duration_ms or 60_000)
 
-                    if public_base_url and tmp_path.exists():
-                        audio_url = (
-                            f"{public_base_url}/{audio_url_path}/"
-                            f"{quote(tmp_path.name)}"
-                        )
+                    if self._is_public_audio_url(filename):
+                        audio_url = filename
                         messages.append(
                             AudioMessage(
                                 original_content_url=audio_url,
@@ -146,12 +140,29 @@ class LineMessageService:
                             )
                         )
                         logger.info(f"TTS audio message prepared: {audio_url}")
-                    elif not public_base_url:
-                        logger.warning(
-                            "PUBLIC_BASE_URL is not set; skipping LINE audio reply."
-                        )
                     else:
-                        logger.warning(f"TTS output file not found: {tmp_path}")
+                        tmp_path = Path(filename)
+                        public_base_url = settings.PUBLIC_BASE_URL.rstrip("/")
+                        audio_url_path = settings.TTS_AUDIO_URL_PATH.strip("/") or "tts"
+
+                        if public_base_url and tmp_path.exists():
+                            audio_url = (
+                                f"{public_base_url}/{audio_url_path}/"
+                                f"{quote(tmp_path.name)}"
+                            )
+                            messages.append(
+                                AudioMessage(
+                                    original_content_url=audio_url,
+                                    duration=int(duration_ms),
+                                )
+                            )
+                            logger.info(f"TTS audio message prepared: {audio_url}")
+                        elif not public_base_url:
+                            logger.warning(
+                                "PUBLIC_BASE_URL is not set; skipping LINE audio reply."
+                            )
+                        else:
+                            logger.warning(f"TTS output file not found: {tmp_path}")
 
                 except Exception:
                     logger.exception("TTS generation failed; falling back to text reply.")
@@ -194,3 +205,7 @@ class LineMessageService:
         except Exception as e:
             logger.error(f"Failed to send error reply: {e}")
             return False
+
+    @staticmethod
+    def _is_public_audio_url(value: str) -> bool:
+        return value.startswith("https://") or value.startswith("http://")

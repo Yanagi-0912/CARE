@@ -147,3 +147,34 @@ async def test_send_line_reply_without_public_base_url_falls_back_to_text(
     args = mock_deps["line_messaging_client"].reply_message.call_args[0]
     assert len(args[1].messages) == 1
     audio_file.unlink(missing_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_send_line_reply_with_n8n_audio_url_adds_audio_without_public_base_url(
+    mock_deps, monkeypatch
+):
+    mock_deps["token_provider"].get_token.return_value = "secret_token"
+    tts_service = MagicMock()
+    tts_service.synthesize.return_value = (
+        b"",
+        "https://cdn.example/tts/n8n-test.mp3",
+        3456,
+    )
+    monkeypatch.setattr(settings, "PUBLIC_BASE_URL", "")
+
+    svc = LineMessageService(
+        token_provider=mock_deps["token_provider"],
+        medical_service=mock_deps["medical_service"],
+        line_messaging_client=mock_deps["line_messaging_client"],
+        tts_service=tts_service,
+    )
+
+    ok = await svc.send_line_reply("token", "hello", "user_1")
+
+    assert ok is True
+    args = mock_deps["line_messaging_client"].reply_message.call_args[0]
+    messages = args[1].messages
+    assert len(messages) == 2
+    assert messages[1].type == "audio"
+    assert messages[1].original_content_url == "https://cdn.example/tts/n8n-test.mp3"
+    assert messages[1].duration == 3456

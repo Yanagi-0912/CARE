@@ -1,8 +1,8 @@
-"""LineEventHandler 單元測試（媒體副檔名推斷與 process_media 參數）"""
+"""LineEventHandler 單元測試（所有輔助函式完全整合於 handle）"""
 
 from unittest.mock import AsyncMock, MagicMock, patch
-
 import pytest
+import requests
 from linebot.v3.webhooks import (
     DeliveryContext,
     FileMessageContent,
@@ -11,7 +11,10 @@ from linebot.v3.webhooks import (
     UserSource,
 )
 
-from app.services.line_messaging.event_handler import LineEventHandler
+from app.services.line_messaging.event_handler import (
+    LineEventHandler,
+    LineValidationError,
+)
 
 
 def _message_event(
@@ -32,13 +35,6 @@ def _message_event(
 
 
 @pytest.fixture
-def mock_line_message_service():
-    svc = MagicMock()
-    svc.send_line_reply = AsyncMock(return_value=True)
-    return svc
-
-
-@pytest.fixture
 def mock_agent():
     agent = MagicMock()
     agent.invoke = AsyncMock(
@@ -48,21 +44,32 @@ def mock_agent():
 
 
 @pytest.fixture
-def mock_chat_history_repository():
-    repo = MagicMock()
-    repo.append_message = AsyncMock()
-    repo.list_messages = AsyncMock(return_value=[])
-    return repo
+def handler(mock_agent):
+    h = LineEventHandler(
+        agent=mock_agent,
+        channel_id="dummy_id",
+        channel_secret="dummy_secret",
+    )
+    h.get_token = MagicMock(return_value="dummy_token")
+    return h
 
 
-@pytest.fixture
-def handler(mock_agent, mock_line_message_service, mock_chat_history_repository):
-    return LineEventHandler(mock_agent, mock_line_message_service, mock_chat_history_repository)
+@pytest.fixture(autouse=True)
+def mock_line_api():
+    """自動模擬 LINE API 連線以防止測試調用真實網路"""
+    with patch("app.services.line_messaging.event_handler.Configuration") as mock_config, \
+         patch("app.services.line_messaging.event_handler.ApiClient") as mock_api_client, \
+         patch("app.services.line_messaging.event_handler.MessagingApi") as mock_messaging_api:
+        
+        messaging_api = MagicMock()
+        mock_messaging_api.return_value = messaging_api
+        
+        yield messaging_api
 
 
 @pytest.mark.asyncio
 async def test_handle_media_message_infers_image(
-    handler, mock_agent, mock_line_message_service
+    handler, mock_agent, mock_line_api
 ):
     message = FileMessageContent(
         id="M123", fileName="test.png", fileSize=100, quoteToken="dummy"
@@ -87,14 +94,15 @@ async def test_handle_media_message_infers_image(
     assert "image" in agent_input
     assert "[processed]" in agent_input
 
-    mock_line_message_service.send_line_reply.assert_called_once_with(
-        "dummy_token", "AI 回覆", "U12345"
-    )
+    mock_line_api.reply_message.assert_called_once()
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert reply_req.reply_token == "dummy_token"
+    assert reply_req.messages[0].text == "AI 回覆"
 
 
 @pytest.mark.asyncio
 async def test_handle_media_message_infers_video(
-    handler, mock_agent, mock_line_message_service
+    handler, mock_agent, mock_line_api
 ):
     message = FileMessageContent(
         id="M124", fileName="demo.mp4", fileSize=200, quoteToken="dummy"
@@ -118,7 +126,7 @@ async def test_handle_media_message_infers_video(
 
 @pytest.mark.asyncio
 async def test_handle_media_message_infers_audio(
-    handler, mock_agent, mock_line_message_service
+    handler, mock_agent, mock_line_api
 ):
     message = FileMessageContent(
         id="M125", fileName="voice.mp3", fileSize=300, quoteToken="dummy"
@@ -142,7 +150,7 @@ async def test_handle_media_message_infers_audio(
 
 @pytest.mark.asyncio
 async def test_handle_media_message_unknown_file(
-    handler, mock_agent, mock_line_message_service
+    handler, mock_agent, mock_line_api
 ):
     message = FileMessageContent(
         id="M126", fileName="document.pdf", fileSize=400, quoteToken="dummy"
@@ -166,7 +174,7 @@ async def test_handle_media_message_unknown_file(
 
 @pytest.mark.asyncio
 async def test_handle_media_message_native_image(
-    handler, mock_agent, mock_line_message_service
+    handler, mock_agent, mock_line_api
 ):
     message = ImageMessageContent(
         id="M127",
@@ -192,7 +200,7 @@ async def test_handle_media_message_native_image(
 
 @pytest.mark.asyncio
 async def test_handle_text_message_success(
-    handler, mock_agent, mock_line_message_service
+    handler, mock_agent, mock_line_api
 ):
     from linebot.v3.webhooks import TextMessageContent
 
@@ -203,14 +211,16 @@ async def test_handle_text_message_success(
 
     mock_agent.invoke.assert_called_once()
     assert mock_agent.invoke.call_args[1]["user_input"] == "你好"
-    mock_line_message_service.send_line_reply.assert_called_once_with(
-        "dummy_token", "AI 回覆", "U12345"
-    )
+    
+    mock_line_api.reply_message.assert_called_once()
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert reply_req.reply_token == "dummy_token"
+    assert reply_req.messages[0].text == "AI 回覆"
 
 
 @pytest.mark.asyncio
 async def test_handle_text_message_hospital_guide(
-    handler, mock_agent, mock_line_message_service
+    handler, mock_agent, mock_line_api
 ):
     """
     測試使用者詢問醫院時，Agent 應回傳導引文字而非觸發工具。
@@ -227,14 +237,14 @@ async def test_handle_text_message_hospital_guide(
 
     await handler.handle(event)
 
-    mock_line_message_service.send_line_reply.assert_called_once_with(
-        "dummy_token", guide_text, "U12345"
-    )
+    mock_line_api.reply_message.assert_called_once()
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert reply_req.messages[0].text == guide_text
 
 
 @pytest.mark.asyncio
 async def test_handle_text_message_error_fallback(
-    handler, mock_agent, mock_line_message_service
+    handler, mock_agent, mock_line_api
 ):
     from linebot.v3.webhooks import TextMessageContent
 
@@ -245,13 +255,14 @@ async def test_handle_text_message_error_fallback(
 
     await handler.handle(event)
 
-    mock_line_message_service.send_line_reply.assert_called_once()
-    assert "發生錯誤" in mock_line_message_service.send_line_reply.call_args[0][1]
+    mock_line_api.reply_message.assert_called_once()
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert "發生錯誤" in reply_req.messages[0].text
 
 
 @pytest.mark.asyncio
 async def test_handle_location_message_delegates_to_agent(
-    handler, mock_agent, mock_line_message_service
+    handler, mock_agent, mock_line_api
 ):
     """
     測試處理位置訊息，預期把經緯度變成字串交給 Agent。
@@ -278,6 +289,92 @@ async def test_handle_location_message_delegates_to_agent(
     assert "25.033" in agent_input
     assert "121.5654" in agent_input
     
-    mock_line_message_service.send_line_reply.assert_called_once_with(
-        "dummy_token", "為您找到附近醫療院所...", "U12345"
+    mock_line_api.reply_message.assert_called_once()
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert reply_req.messages[0].text == "為您找到附近醫療院所..."
+
+
+@pytest.mark.asyncio
+async def test_handle_media_message_empty_ocr_returns_error(
+    handler, mock_agent, mock_line_api
+):
+    from linebot.v3.webhooks import ImageMessageContent
+
+    message = ImageMessageContent(
+        id="M127_empty",
+        contentProvider={"type": "line"},
+        quoteToken="qt",
     )
+    event = _message_event(message)
+
+    with patch(
+        "app.services.media.mutimedia_processor.media_processor_service.process_media",
+        new_callable=AsyncMock,
+        return_value="Unable to extract text from media file (no content extracted)",
+    ) as mock_process:
+        await handler.handle(event)
+
+    mock_process.assert_called_once()
+    mock_agent.invoke.assert_not_called()
+    mock_line_api.reply_message.assert_called_once()
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert "無法從您傳送的" in reply_req.messages[0].text
+
+
+# ==============================================================================
+# Token Manager 相關測試（由 LineEventHandler 擔當）
+# ==============================================================================
+
+@pytest.mark.parametrize(
+    "channel_id, channel_secret",
+    [
+        (None, None),
+        ("", ""),
+    ],
+)
+def test_get_token_raises_when_credentials_invalid(channel_id, channel_secret):
+    handler = LineEventHandler(
+        agent=MagicMock(),
+        channel_id=channel_id,
+        channel_secret=channel_secret,
+    )
+    with pytest.raises(ValueError) as exc_info:
+        handler.get_token()
+    assert "LINE_CHANNEL_ID" in str(exc_info.value) or "LINE_CHANNEL_SECRET" in str(
+        exc_info.value
+    )
+
+
+# ==============================================================================
+# 驗證媒體訊息錯誤之整合測試（直接透過 handle）
+# ==============================================================================
+
+@pytest.mark.asyncio
+async def test_handle_media_message_invalid_type(handler, mock_line_api):
+    message = FileMessageContent(
+        id="M123", fileName="test.invalid", fileSize=100, quoteToken="dummy"
+    )
+    # 模擬不支援的媒體類型
+    message.type = "unsupported_media_type"
+    event = _message_event(message)
+
+    await handler.handle(event)
+    
+    mock_line_api.reply_message.assert_called_once()
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert "不支援的媒體類型" in reply_req.messages[0].text
+
+
+@pytest.mark.asyncio
+async def test_handle_media_message_invalid_filename(handler, mock_line_api):
+    message = FileMessageContent(
+        id="M123", fileName="   ", fileSize=100, quoteToken="dummy"
+    )
+    message.type = "file"
+    event = _message_event(message)
+
+    await handler.handle(event)
+    
+    mock_line_api.reply_message.assert_called_once()
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert "不支援的媒體類型" in reply_req.messages[0].text or "無效的媒體檔名" in reply_req.messages[0].text

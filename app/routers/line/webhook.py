@@ -1,49 +1,38 @@
 from fastapi import APIRouter, Request, Header, HTTPException, Depends
-
 from linebot.v3.webhook import WebhookParser
 from linebot.v3.exceptions import InvalidSignatureError
 
-from app.services.line_messaging.event_handler import LineEventHandler
-from app.dependencies import get_line_event_handler
 from app.core.config import settings
-
-import logging
-
-logger = logging.getLogger(__name__)
+from app.dependencies import get_line_event_handler
+from app.services.line_messaging import LineEventHandler
 
 router = APIRouter()
+
+# 建立 LINE Webhook 解析器
 parser = WebhookParser(settings.LINE_CHANNEL_SECRET)
 
 
-@router.post(
-    "/callback",
-    summary="LINE Webhook API",
-    description="接收並處理 LINE 平台傳遞的 Webhook 事件。",
-)
+@router.post("/callback")
 async def callback(
     request: Request,
     x_line_signature: str = Header(None),
-    handler: LineEventHandler = Depends(get_line_event_handler),
+    event_handler: LineEventHandler = Depends(get_line_event_handler),
 ):
-    if x_line_signature is None:
-        logger.error("Missing X-Line-Signature header")
+    if not x_line_signature:
         raise HTTPException(status_code=400, detail="Missing X-Line-Signature header")
 
-    body = await request.body()         
-    body_decoded = body.decode("utf-8")
+    # 讀取請求內容
+    body = await request.body()
+    body_str = body.decode("utf-8")
 
     try:
-        events = parser.parse(body_decoded, x_line_signature)
-        for event in events:
-            await handler.handle(event)
-
-        logger.info("Webhook events processed successfully")
-
+        # 驗證簽名並解析 events
+        events = parser.parse(body_str, x_line_signature)
     except InvalidSignatureError:
-        logger.error("簽章驗證失敗")
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    except Exception as e:
-        logger.error(f"Unexpected error in webhook: {e}", exc_info=True)
+    # 處理每一個 event
+    for event in events:
+        await event_handler.handle(event)
 
     return "OK"

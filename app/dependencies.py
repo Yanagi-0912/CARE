@@ -24,6 +24,7 @@ from app.services.liff.auth_service import LiffAuthApplicationService
 from app.services.liff.jwt_service import AppJwtService
 from app.services.liff.line_id_token_service import LineIdTokenService
 from app.services.line_messaging.event_handler import LineEventHandler
+from app.services.history.history_service import LineMessageHistoryService
 from app.services.medical.medical_service import MedicalService, medical_service
 from app.services.rag.services import RagAnswerService
 from app.services.users.user_profile_service import UserProfileService
@@ -87,10 +88,13 @@ _care_agent = Agent(
     guardrail_service=_guardrail_service,
 )
 
+_line_history_service = LineMessageHistoryService(_chat_history_repository)
+
 _line_event_handler = LineEventHandler(
     agent=_care_agent,
     channel_id=settings.LINE_CHANNEL_ID,
     channel_secret=settings.LINE_CHANNEL_SECRET,
+    history_service=_line_history_service,
 )
 
 # ==============================================================================

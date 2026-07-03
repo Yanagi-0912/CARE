@@ -20,6 +20,8 @@ def test_dependency_wiring_is_correct():
 
     assert dependencies.get_line_token_manager() is handler
     assert handler._agent is dependencies._care_agent
+    assert handler._history_service is dependencies._line_history_service
+    assert handler._history_service._repo is dependencies.get_chat_history_repository()
     assert profile_service._repo is dependencies._user_profile_repository
 
 

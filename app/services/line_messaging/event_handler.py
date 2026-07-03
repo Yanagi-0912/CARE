@@ -22,7 +22,7 @@ from linebot.v3.messaging import (
     Configuration,
     MessagingApi,
 )
-
+from app.services.history.history_service import LineMessageHistoryService
 from app.services.media.mutimedia_processor import media_processor_service
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,9 @@ class LineValidationError(Exception):
     """LINE 訊息欄位格式或內容驗證失敗。"""
 
 
+
+
+
 class LineEventHandler:
 
     def __init__(
@@ -45,10 +48,12 @@ class LineEventHandler:
         agent,
         channel_id: Optional[str],
         channel_secret: Optional[str],
+        history_service: LineMessageHistoryService,
     ):
         self._agent = agent
         self._channel_id = channel_id
         self._channel_secret = channel_secret
+        self._history_service = history_service
 
         # Token 緩存
         self._access_token: Optional[str] = None
@@ -243,16 +248,38 @@ class LineEventHandler:
         try:
             logger.info(f"Processing message from user {user_id}: {user_text[:50]}...")
 
-            agent_response = await self._agent.invoke(user_input=user_text)
+            # 載入歷史紀錄並轉成 LangChain 訊息格式
+            chat_history = await self._history_service.load_history(
+                user_id=user_id,
+                current_input=user_text,
+                message_type=message_type,
+            )
+
+            # 呼叫 Agent
+            agent_response = await self._agent.invoke(
+                user_input=user_text,
+                messages=chat_history,
+            )
 
             response_text = (
                 agent_response.get("response") or "抱歉，我無法理解您的問題，請重新輸入。"
             )
             call_request_location = agent_response.get("call_request_location", False)
             
-            await send_reply(
+            # 回傳訊息
+            success = await send_reply(
                 reply_token, response_text, user_id, request_location=call_request_location
             )
+
+            # 回覆成功後，儲存這一輪對話到 Redis
+            if success:
+                await self._history_service.save_turn(
+                    user_id=user_id,
+                    user_text=user_text,
+                    ai_reply=response_text,
+                    message_type=message_type,
+                    event_time=event_time,
+                )
             logger.info(f"Successfully processed and replied to user {user_id}")
 
         except Exception as e:

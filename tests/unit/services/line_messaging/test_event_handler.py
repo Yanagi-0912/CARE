@@ -84,7 +84,7 @@ async def test_handle_media_message_infers_image(
     handler, mock_agent, mock_line_api, mock_history_service
 ):
     message = FileMessageContent(
-        id="M123", fileName="test.png", fileSize=100, quoteToken="dummy"
+        id="M123", fileName="test.png", fileSize=100
     )
     event = _message_event(message)
 
@@ -113,7 +113,7 @@ async def test_handle_media_message_infers_video(
     handler, mock_agent, mock_line_api, mock_history_service
 ):
     message = FileMessageContent(
-        id="M124", fileName="demo.mp4", fileSize=200, quoteToken="dummy"
+        id="M124", fileName="demo.mp4", fileSize=200
     )
     event = _message_event(message)
 
@@ -137,7 +137,7 @@ async def test_handle_media_message_infers_audio(
     handler, mock_agent, mock_line_api, mock_history_service
 ):
     message = FileMessageContent(
-        id="M125", fileName="voice.mp3", fileSize=300, quoteToken="dummy"
+        id="M125", fileName="voice.mp3", fileSize=300
     )
     event = _message_event(message)
 
@@ -161,7 +161,7 @@ async def test_handle_media_message_unknown_file(
     handler, mock_agent, mock_line_api, mock_history_service
 ):
     message = FileMessageContent(
-        id="M126", fileName="document.pdf", fileSize=400, quoteToken="dummy"
+        id="M126", fileName="document.pdf", fileSize=400
     )
     event = _message_event(message)
 
@@ -385,7 +385,7 @@ def test_get_token_raises_when_credentials_invalid(channel_id, channel_secret):
 @pytest.mark.asyncio
 async def test_handle_media_message_invalid_type(handler, mock_line_api):
     message = FileMessageContent(
-        id="M123", fileName="test.invalid", fileSize=100, quoteToken="dummy"
+        id="M123", fileName="test.invalid", fileSize=100
     )
     # 模擬不支援的媒體類型
     message.type = "unsupported_media_type"
@@ -401,7 +401,7 @@ async def test_handle_media_message_invalid_type(handler, mock_line_api):
 @pytest.mark.asyncio
 async def test_handle_media_message_invalid_filename(handler, mock_line_api):
     message = FileMessageContent(
-        id="M123", fileName="   ", fileSize=100, quoteToken="dummy"
+        id="M123", fileName="   ", fileSize=100
     )
     message.type = "file"
     event = _message_event(message)

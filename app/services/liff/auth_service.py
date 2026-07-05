@@ -6,9 +6,12 @@ from fastapi import HTTPException
 from app.core.config import settings
 from app.services.liff.jwt_service import AppJwtService
 from app.services.liff.line_id_token_service import LineIdTokenService
+from app.services.liff.line_language_service import LineLanguageService
 from app.services.users.user_profile_service import UserProfileService
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_LANGUAGE = "zh-TW"
 
 
 class LiffAuthApplicationService:
@@ -17,10 +20,12 @@ class LiffAuthApplicationService:
         line_id_token_service: LineIdTokenService,
         jwt_service: AppJwtService,
         user_profile_service: UserProfileService,
+        line_language_service: LineLanguageService,
     ):
         self._line_id_token_service = line_id_token_service
         self._jwt_service = jwt_service
         self._user_profile_service = user_profile_service
+        self._line_language_service = line_language_service
 
     async def login_with_id_token(self, id_token: str) -> dict:
         liff_client_id = settings.LIFF_CHANNEL_ID or settings.LINE_CHANNEL_ID
@@ -53,12 +58,26 @@ class LiffAuthApplicationService:
             logger.error("LIFF ID token 驗證回應缺少 sub")
             raise HTTPException(status_code=401, detail="Invalid LIFF id_token payload")
 
+        display_name = verify_payload.get("name")
+        picture_url = verify_payload.get("picture")
+
         profile = await self._user_profile_service.get_user_profile(line_user_id)
         if not profile:
+            # 新使用者：向 LINE 查一次初始語言（查不到就用預設值），之後不再覆蓋
+            language = self._line_language_service.get_language(line_user_id) or DEFAULT_LANGUAGE
             await self._user_profile_service.create_default_user_profile(
                 line_id=line_user_id,
-                display_name=verify_payload.get("name"),
-                picture_url=verify_payload.get("picture"),
+                display_name=display_name,
+                picture_url=picture_url,
+                language=language,
+            )
+        else:
+            # 舊使用者：一律以資料庫的值為準，不再打 Messaging API，
+            # 避免蓋掉使用者在前端手動選擇的語言
+            language = profile.get("language") or DEFAULT_LANGUAGE
+            await self._user_profile_service.sync_line_profile(
+                line_id=line_user_id,
+                picture_url=picture_url,
             )
 
         access_token, expires_in = self._jwt_service.issue_for_user(line_user_id)
@@ -67,4 +86,5 @@ class LiffAuthApplicationService:
             "token_type": "Bearer",
             "expires_in": expires_in,
             "line_user_id": line_user_id,
+            "language": language,
         }

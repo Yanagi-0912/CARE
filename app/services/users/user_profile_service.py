@@ -25,14 +25,30 @@ class UserProfileService:
         """
         return await self._repo.get_user_profile(line_id)
 
+    async def sync_line_profile(
+        self,
+        line_id: str,
+        *,
+        picture_url: str | None = None,
+    ) -> bool:
+        """同步 LINE profile 欄位至 MongoDB，不觸發健康資料驗證。"""
+        return await self._repo.sync_line_profile(
+            line_id,
+            picture_url=picture_url,
+        )
+
     async def create_default_user_profile(
         self,
         line_id: str,
         display_name: str | None = None,
         picture_url: str | None = None,
+        language: str | None = None,
     ) -> bool:
         """
         建立初始使用者資料，供首次登入且尚未填寫健康資料者使用。
+
+        language 只在「首次建立」時寫入一次（作為預設值）；
+        之後使用者若在前端手動變更語言，一律以資料庫的值為準。
         """
         default_payload = {
             "name": (display_name or "LINE User").strip() or "LINE User",
@@ -45,5 +61,6 @@ class UserProfileService:
             "surgery_history": "",
             "health_consultations": {},
             "picture_url": picture_url,
+            "language": language,
         }
         return await self.upsert_user_profile(line_id=line_id, payload=default_payload)

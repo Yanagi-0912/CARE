@@ -23,6 +23,7 @@ from app.services.guardrail import GuardrailService
 from app.services.liff.auth_service import LiffAuthApplicationService
 from app.services.liff.jwt_service import AppJwtService
 from app.services.liff.line_id_token_service import LineIdTokenService
+from app.services.liff.line_language_service import LineLanguageService
 from app.services.line_messaging.event_handler import LineEventHandler
 from app.services.history.history_service import LineMessageHistoryService
 from app.services.medical.medical_service import MedicalService, medical_service
@@ -122,10 +123,15 @@ _consultation_download_token_service = AppJwtService(
     issuer="care-consultation-download",
 )
 
+_line_language_service = LineLanguageService(
+    get_access_token=_line_event_handler.get_token,
+)
+
 _liff_auth_application_service = LiffAuthApplicationService(
     line_id_token_service=_line_id_token_service,
     jwt_service=_app_jwt_service,
     user_profile_service=_user_profile_service,
+    line_language_service=_line_language_service,
 )
 
 # ==============================================================================

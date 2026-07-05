@@ -14,18 +14,18 @@ class UserProfileData(BaseModel):
     """
 
     # field 內的 ... 代表必填欄位。
-    name: str = Field(..., min_length=1, description="User display name")
-    gender: str = Field(..., min_length=1, description="User gender")
-    height: float = Field(..., gt=0, description="Height in cm")
-    weight: float = Field(..., gt=0, description="Weight in kg")
-    age: int = Field(..., ge=0, le=130, description="Age in years")
+    name: str = Field(..., min_length=1, description="使用者顯示名稱")
+    gender: str = Field(..., min_length=1, description="使用者性別")
+    height: float = Field(..., gt=0, description="身高（公分）")
+    weight: float = Field(..., gt=0, description="體重（公斤）")
+    age: int = Field(..., ge=0, le=130, description="年齡")
 
     # 慢性病史固定為字串格式。
-    chronic_history: str = Field(..., description="Chronic disease history")
+    chronic_history: str = Field(..., description="慢性病史")
 
     # 下列兩個欄位目前以文字輸入
-    major_illness_history: str = Field(..., description="Major illness history")
-    surgery_history: str = Field(..., description="Surgery history")
+    major_illness_history: str = Field(..., description="重大疾病史")
+    surgery_history: str = Field(..., description="手術病史")
 
 
 # 這裡userprofile繼承userprofiledata，並且加上line_id、created_at、updated_at等欄位
@@ -38,18 +38,25 @@ class UserProfile(UserProfileData):
     - created_at / updated_at: DB 寫入時的時間戳
     """
 
-    line_id: str = Field(..., min_length=1, description="LINE user ID")
+    line_id: str = Field(..., min_length=1, description="LINE 使用者 ID")
     picture_url: Optional[str] = Field(
         default=None,
-        description="LINE user avatar URL",
+        description="LINE 使用者頭像網址",
+    )
+    language: Optional[str] = Field(
+        default=None,
+        description=(
+            "使用者顯示語言。首次登入時以 LINE 帳號語言為預設值，"
+            "之後若使用者在前端手動變更，以資料庫的值為準，不再被 LINE 覆蓋。"
+        ),
     )
     created_at: Optional[datetime] = Field(
         default=None,
-        description="UTC timestamp when profile was created",
+        description="資料建立時間（UTC）",
     )
     updated_at: Optional[datetime] = Field(
         default=None,
-        description="UTC timestamp when profile was last updated",
+        description="資料最後更新時間（UTC）",
     )
 
     @classmethod

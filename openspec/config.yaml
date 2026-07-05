@@ -30,6 +30,7 @@ rules:
     - 說明對 API/route 的影響與測試計畫
   tasks:
     - 引用 tests/ 下對應的 pytest 路徑
+    - 寫測試時禁止使用 monkey patch（如 unittest.mock.patch 修改全域/別處導入之實例），請使用依賴注入（Dependency Injection）傳入 mock 實例
     - 完成定義（Definition of Done）：./init.sh 全綠（所有 pytest 通過）且有清楚的 git commit
   spec:
     - LINE 回覆一律純文字、不得輸出 Markdown（詳見 specs/line-reply-rules）

@@ -1,4 +1,5 @@
-from langchain_core.messages import HumanMessage, AIMessage
+from typing import Optional
+from langchain_core.messages import HumanMessage, AIMessage, AnyMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 
@@ -58,11 +59,22 @@ class Agent:
 
         return builder.compile()
 
-    async def invoke(self, user_input: str) -> dict:
+    async def invoke(
+        self,
+        user_input: str = "",
+        messages: Optional[list[AnyMessage]] = None,
+    ) -> dict:
         """對外的主要進入點，回傳格式維持不變。"""
+        if messages is None:
+            messages = [HumanMessage(content=user_input)] if user_input else []
+        elif user_input:
+            # 確保目前的 user_input 存在於 messages 列表的最尾端，作為 AI 當前輪次的 Prompt
+            if not messages or messages[-1].content != user_input:
+                messages = list(messages) + [HumanMessage(content=user_input)]
+
         result = await self._graph.ainvoke(
             {
-                "messages": [HumanMessage(content=user_input)],
+                "messages": messages,
                 "allow_rag": False,
             }
         )

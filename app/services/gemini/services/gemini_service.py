@@ -21,11 +21,9 @@ from app.services.gemini.shared.errors import (
 logger = logging.getLogger(__name__)
 
 
-
-
 class GeminiService:
     """封裝 LangChain `ChatGoogleGenerativeAI`，提供：
-    - `_chat_llm`: 供 LangGraph Agent 綁定使用
+    - `chat_model`: 供外部業務服務與 LangGraph Agent 綁定使用
     - `invoke_boolean_structured_output`：boolean structured output（給 Guardrail 等分類使用）。
     """
 
@@ -35,8 +33,8 @@ class GeminiService:
         api_key: str,
         model_name: str,
     ) -> None:
-        """初始化 chat model；保留 `_chat_llm` 不對外暴露。"""
-        self._chat_llm = ChatGoogleGenerativeAI(
+        """初始化 chat model；公開 `chat_model` 屬性。"""
+        self.chat_model = ChatGoogleGenerativeAI(
             model=model_name,
             google_api_key=api_key,
             temperature=0,
@@ -49,7 +47,7 @@ class GeminiService:
     async def invoke_boolean_structured_output(self, user_content: str) -> bool:
         """以 JSON Schema `{"type": "boolean"}` 強制模型回傳 bool；非 bool 時拋 `GeminiSchemaError`。"""
         messages = [HumanMessage(content=user_content)]
-        structured: Runnable = self._chat_llm.with_structured_output(
+        structured: Runnable = self.chat_model.with_structured_output(
             {"type": "boolean"},
             method="json_schema",
         )

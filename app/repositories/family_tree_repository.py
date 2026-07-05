@@ -9,19 +9,88 @@ logger = logging.getLogger(__name__)
 
 
 class FamilyTreeRepository:
-    """封裝所有族譜相關的 MongoDB 操作"""
+    """
+    封裝所有族譜相關的 MongoDB 操作
+    """
 
     @staticmethod
     async def get_by_user_id(user_id: str) -> Optional[FamilyTree]:
+        """
+        透過 MongoDB Aggregation ($lookup) 關聯查詢，直接取得包含成員個人資料的族譜。
+        """
         col = MongoDBManager.get_family_tree_collection()
-        doc = await col.find_one({"user_id": user_id})
-        if doc is None:
+        pipeline = [
+            {"$match": {"user_id": user_id}},
+            {
+                "$lookup": {
+                    "from": "users",
+                    "localField": "family_members.user_id",
+                    "foreignField": "line_id",
+                    "as": "member_profiles",
+                }
+            },
+            {
+                "$addFields": {
+                    "family_members": {
+                        "$map": {
+                            "input": "$family_members",
+                            "as": "member",
+                            "in": {
+                                "$mergeObjects": [
+                                    "$$member",
+                                    {
+                                        "$let": {
+                                            "vars": {
+                                                "prof": {
+                                                    "$arrayElemAt": [
+                                                        {
+                                                            "$filter": {
+                                                                "input": "$member_profiles",
+                                                                "as": "p",
+                                                                "cond": {
+                                                                    "$eq": [
+                                                                        "$$p.line_id",
+                                                                        "$$member.user_id",
+                                                                    ]
+                                                                },
+                                                            }
+                                                        },
+                                                        0,
+                                                    ]
+                                                }
+                                            },
+                                            "in": {
+                                                "display_name": {
+                                                    "$ifNull": ["$$prof.name", None]
+                                                },
+                                                "picture_url": {
+                                                    "$ifNull": [
+                                                        "$$prof.picture_url",
+                                                        None,
+                                                    ]
+                                                },
+                                            },
+                                        }
+                                    },
+                                ]
+                            },
+                        }
+                    }
+                }
+            },
+            {"$project": {"member_profiles": 0}},
+        ]
+        cursor = col.aggregate(pipeline)
+        docs = await cursor.to_list(length=1)
+        if not docs:
             return None
-        return FamilyTree(**doc)
+        return FamilyTree(**docs[0])
 
     @staticmethod
     async def upsert_tree(user_id: str) -> FamilyTree:
-        """取得族譜；若不存在則建立空族譜並回傳。"""
+        """
+        取得族譜；若不存在則建立空族譜並回傳。
+        """
         col = MongoDBManager.get_family_tree_collection()
         now = datetime.now(tz=timezone.utc)
         await col.update_one(
@@ -104,10 +173,33 @@ class FamilyTreeRepository:
     @staticmethod
     async def get_invitation(invite_id: str) -> Optional[PendingInvitation]:
         col = MongoDBManager.get_pending_invitations_collection()
-        doc = await col.find_one({"_id": invite_id})
-        if doc is None:
+        pipeline = [
+            {"$match": {"_id": invite_id}},
+            {
+                "$lookup": {
+                    "from": "users",
+                    "localField": "inviter_id",
+                    "foreignField": "line_id",
+                    "as": "inviter_profile",
+                }
+            },
+            {
+                "$addFields": {
+                    "inviter_display_name": {
+                        "$ifNull": [
+                            {"$arrayElemAt": ["$inviter_profile.name", 0]},
+                            "家人",
+                        ]
+                    }
+                }
+            },
+            {"$project": {"inviter_profile": 0}},
+        ]
+        cursor = col.aggregate(pipeline)
+        docs = await cursor.to_list(length=1)
+        if not docs:
             return None
-        return PendingInvitation(**doc)
+        return PendingInvitation(**docs[0])
 
     @staticmethod
     async def accept_invitation(invite_id: str) -> None:

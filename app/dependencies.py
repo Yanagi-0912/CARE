@@ -23,9 +23,8 @@ from app.services.guardrail import GuardrailService
 from app.services.liff.auth_service import LiffAuthApplicationService
 from app.services.liff.jwt_service import AppJwtService
 from app.services.liff.line_id_token_service import LineIdTokenService
-from app.services.line_messaging.client import LineMessagingClient, LineTokenManager
 from app.services.line_messaging.event_handler import LineEventHandler
-from app.services.line_messaging.message_service import LineMessageService
+from app.services.history.history_service import LineMessageHistoryService
 from app.services.medical.medical_service import MedicalService, medical_service
 from app.services.rag.services import RagAnswerService
 from app.services.users.user_profile_service import UserProfileService
@@ -89,21 +88,13 @@ _care_agent = Agent(
     guardrail_service=_guardrail_service,
 )
 
-_line_token_manager = LineTokenManager(
-    channel_id=settings.LINE_CHANNEL_ID,
-    channel_secret=settings.LINE_CHANNEL_SECRET,
-)
-
-_line_message_service = LineMessageService(
-    token_provider=_line_token_manager,
-    medical_service=medical_service,
-    line_messaging_client=LineMessagingClient(),
-)
+_line_history_service = LineMessageHistoryService(_chat_history_repository)
 
 _line_event_handler = LineEventHandler(
     agent=_care_agent,
-    line_message_service=_line_message_service,
-    chat_history_repository=_chat_history_repository,
+    channel_id=settings.LINE_CHANNEL_ID,
+    channel_secret=settings.LINE_CHANNEL_SECRET,
+    history_service=_line_history_service,
 )
 
 # ==============================================================================
@@ -168,9 +159,7 @@ def get_guardrail_service() -> GuardrailService:
     return _guardrail_service
 
 
-def get_line_message_service() -> LineMessageService:
-    """取得 LineMessageService 實例"""
-    return _line_message_service
+
 
 
 def get_line_event_handler() -> LineEventHandler:
@@ -188,9 +177,9 @@ def get_chat_history_repository():
     return _chat_history_repository
 
 
-def get_line_token_manager() -> LineTokenManager:
-    """取得 LineTokenManager 實例"""
-    return _line_token_manager
+def get_line_token_manager() -> LineEventHandler:
+    """取得 LINE Token 管理實例（由 LineEventHandler 擔當）"""
+    return _line_event_handler
 
 
 def get_medical_service() -> MedicalService:

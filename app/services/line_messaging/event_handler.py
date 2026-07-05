@@ -1,6 +1,8 @@
+import logging
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Optional
-from datetime import datetime, timezone
+from typing import Optional, Any
+import requests
 from linebot.v3.webhooks import (
     MessageEvent,
     TextMessageContent,
@@ -10,20 +12,18 @@ from linebot.v3.webhooks import (
     AudioMessageContent,
     FileMessageContent,
 )
-
+from linebot.v3.messaging import (
+    ReplyMessageRequest,
+    TextMessage,
+    QuickReply,
+    QuickReplyItem,
+    LocationAction,
+    ApiClient,
+    Configuration,
+    MessagingApi,
+)
+from app.services.history.history_service import LineMessageHistoryService
 from app.services.media.mutimedia_processor import media_processor_service
-from app.services.line_messaging.shared.validation import (
-    validate_media_message,
-    validate_reply_context,
-    validate_text_message,
-)
-from app.services.consultation.context import (
-    ConsultationContext,
-    consultation_context_scope,
-)
-from app.models.chat_message import ChatMessage
-from langchain_core.messages import HumanMessage, AIMessage, AnyMessage
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -34,186 +34,256 @@ VIDEO_FILE_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 AUDIO_FILE_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".opus", ".aac"}
 
 
-class LineEventHandler:
-    """
-    處理 webhook 接受到的 event 並分發到對應的 service。
-    """
+class LineValidationError(Exception):
+    """LINE 訊息欄位格式或內容驗證失敗。"""
 
-    def __init__(self, agent, line_message_service, chat_history_repository):
+
+
+
+
+class LineEventHandler:
+
+    def __init__(
+        self,
+        agent,
+        channel_id: Optional[str],
+        channel_secret: Optional[str],
+        history_service: LineMessageHistoryService,
+    ):
         self._agent = agent
-        self._line_message_service = line_message_service
-        self._chat_history_repository = chat_history_repository
+        self._channel_id = channel_id
+        self._channel_secret = channel_secret
+        self._history_service = history_service
+
+        # Token 緩存
+        self._access_token: Optional[str] = None
+        self._token_expires_at: Optional[datetime] = None
+
+    def get_token(self) -> str:
+        # 檢查緩存是否有效
+        if self._access_token and self._token_expires_at:
+            # 提前 5 分鐘刷新，避免在使用時過期
+            buffer_time = timedelta(minutes=5)
+            if datetime.now(timezone.utc) < (self._token_expires_at - buffer_time):
+                logger.debug("使用緩存的 access token")
+                return self._access_token
+
+        # 獲取新的 token
+        logger.info("緩存的 token 已過期或不存在，正在獲取新的 token...")
+        if not self._channel_id or not self._channel_secret:
+            raise ValueError(
+                "無法獲取 token：LINE_CHANNEL_ID 和 LINE_CHANNEL_SECRET 未設定。"
+                "請在 .env 檔案中設定這些變數。"
+            )
+
+        url = "https://api.line.me/oauth2/v3/token"
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        data = {
+            "grant_type": "client_credentials",
+            "client_id": self._channel_id,
+            "client_secret": self._channel_secret,
+        }
+
+        try:
+            response = requests.post(url, headers=headers, data=data, timeout=10)
+            response.raise_for_status()
+
+            result = response.json()
+            access_token = result.get("access_token")
+            expires_in = result.get("expires_in", 2592000)  # 預設 30 天 (秒)
+
+            if not access_token:
+                raise RuntimeError("API 返回的響應中沒有 access_token")
+
+            # 緩存 token 和過期時間
+            self._access_token = access_token
+            self._token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+
+            logger.info(
+                f"成功獲取新的 access token，"
+                f"有效期至: {self._token_expires_at.strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+
+            return access_token
+
+        except requests.exceptions.RequestException as e:
+            error_msg = f"獲取 access token 失敗: {e}"
+            if hasattr(e, "response") and e.response is not None:
+                error_msg += f"\nAPI 響應: {e.response.text}"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg) from e
 
     async def handle(self, event: MessageEvent) -> None:
-        """對外進入點：驗證 → 提取內容 → 呼叫 Agent → 回覆"""
-        event_time = datetime.fromtimestamp(event.timestamp / 1000, tz=timezone.utc)
-        user_id = getattr(event.source, "user_id", None)
-        validate_reply_context(event.reply_token, user_id)
-
-        result = await self._extract_content(event.message, user_id)
-        if result is None:
+        user_id = getattr(event.source, "user_id", "")
+        reply_token = getattr(event, "reply_token", "")
+        if not user_id or not reply_token:
+            logger.warning("LINE event source missing user_id or reply_token")
             return
 
-        user_text, message_type = result
-        await self._invoke_and_reply(
-            user_text=user_text,
-            reply_token=event.reply_token,
-            user_id=user_id,
-            message_type=message_type,
-            event_time=event_time,
-        )
+        async def send_reply(
+            reply_token_str: str, message_text: str, uid: str, request_location: bool = False
+        ) -> bool:
+            try:
+                if not reply_token_str or not reply_token_str.strip():
+                    raise ValueError("LINE 事件缺少 reply_token")
+                if not uid or not uid.strip():
+                    raise ValueError("LINE 事件缺少 user_id")
+                
+                access_token = self.get_token()
+                
+                # 防禦性確保訊息文字為字串
+                if not isinstance(message_text, str):
+                    logger.warning(
+                        f"send_reply received non-string message_text: {type(message_text)}. Converting to string."
+                    )
+                    if isinstance(message_text, list):
+                        message_text = "".join(
+                            part if isinstance(part, str) else (part.get("text", "") if isinstance(part, dict) else str(part))
+                            for part in message_text
+                        )
+                    elif message_text is None:
+                        message_text = ""
+                    else:
+                        message_text = str(message_text)
 
-    async def _extract_content(
-        self, message, user_id: Optional[str]
-    ) -> Optional[tuple[str, str]]:
-        """
-        依訊息類型提取純文字內容與類型標籤。
-        回傳 (user_text, message_type)，不支援的類型回傳 None。
-        """
-        if isinstance(message, TextMessageContent):
-            logger.info(f"Received text message from user {user_id}")
-            return validate_text_message(message.text), "text"
+                if request_location:
+                    quick_reply = QuickReply(
+                        items=[
+                            QuickReplyItem(
+                                action=LocationAction(label="分享位置資訊")
+                            )
+                        ]
+                    )
+                    text_message = TextMessage(text=message_text, quickReply=quick_reply)
+                else:
+                    text_message = TextMessage(text=message_text)
 
-        if isinstance(message, LocationMessageContent):
-            logger.info(
-                f"Received location from user {user_id}: "
-                f"({message.latitude}, {message.longitude})"
-            )
-            return f"這是我的目前位置：lat={message.latitude}, lng={message.longitude}", "location"
+                line_config = Configuration(access_token=access_token)
+                with ApiClient(line_config) as api_client:
+                    line_bot_api = MessagingApi(api_client)
+                    line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            replyToken=reply_token_str,
+                            messages=[text_message],
+                        )
+                    )
 
-        if isinstance(
-            message,
-            (ImageMessageContent, VideoMessageContent, AudioMessageContent, FileMessageContent),
-        ):
-            media_id = message.id
-            media_type = message.type
-            file_name = getattr(message, "file_name", None)
+                logger.info(f"Message sent to LINE for user {uid}")
+                return True
 
-            if media_type == "file" and file_name:
-                media_type = self._infer_media_type_from_file_name(file_name)
-            validate_media_message(media_id, media_type, file_name)
+            except Exception as ex:
+                logger.error(f"Failed to send LINE message: {ex}", exc_info=True)
+                return False
 
-            log_msg = f"Received {media_type} message from user {user_id}"
-            if file_name:
-                log_msg += f": {file_name}"
-            logger.info(log_msg)
+        # 1. 處理 webhook parser 轉換後的資料，將他轉成給 agent 的格式
+        try:
+            message = event.message
+            user_text = ""
+            message_type = ""
 
-            media_content = await media_processor_service.process_media(
-                media_message_id=media_id,
-                user_media_type=media_type,
-                source_file_name=file_name,
-                user_id=user_id,
-            )
-            return f"以下為使用者傳送的{media_type}媒體內容：\n{media_content}", media_type
+            if isinstance(message, TextMessageContent):
+                user_text, message_type = message.text, "text"
 
-        logger.warning(f"Unsupported message type: {type(message).__name__}")
-        return None
+            elif isinstance(message, LocationMessageContent):
+                user_text = f"這是我的目前位置：lat={message.latitude}, lng={message.longitude}"
+                message_type = "location"
 
-    @staticmethod
-    def _infer_media_type_from_file_name(file_name: str) -> str:
-        """根據副檔名推斷媒體類型"""
-        extension = Path(file_name).suffix.lower()
-        if extension in IMAGE_FILE_EXTENSIONS:
-            return "image"
-        if extension in VIDEO_FILE_EXTENSIONS:
-            return "video"
-        if extension in AUDIO_FILE_EXTENSIONS:
-            return "audio"
-        return "file"
+            elif isinstance(
+                message,
+                (ImageMessageContent, VideoMessageContent, AudioMessageContent, FileMessageContent),
+            ):
+                media_id = message.id
+                media_type = message.type
+                file_name = getattr(message, "file_name", None)
 
-    async def _build_agent_messages(
-        self,
-        user_id: Optional[str],
-        current_content: str,
-        message_type: str,
-    ) -> list[AnyMessage]:
-        """從對話暫存庫載入歷史紀錄，並轉換為 LangChain 訊息格式。"""
-        if not user_id:
-            return [HumanMessage(content=current_content)]
+                # 推斷媒體類型
+                if media_type == "file" and file_name:
+                    extension = Path(file_name).suffix.lower()
+                    if extension in IMAGE_FILE_EXTENSIONS:
+                        media_type = "image"
+                    elif extension in VIDEO_FILE_EXTENSIONS:
+                        media_type = "video"
+                    elif extension in AUDIO_FILE_EXTENSIONS:
+                        media_type = "audio"
+                    else:
+                        media_type = "file"
+                
+                # 驗證媒體欄位
+                if not media_id or not media_id.strip():
+                    raise LineValidationError("缺少 media message id")
+                if media_type not in {"image", "video", "audio", "file"}:
+                    raise LineValidationError(f"不支援的媒體類型: {media_type}")
+                if file_name is not None and not file_name.strip():
+                    raise LineValidationError("無效的媒體檔名")
 
-        history = await self._chat_history_repository.list_messages(user_id)
-        langchain_messages: list[AnyMessage] = [
-            AIMessage(content=msg.content)
-            if msg.message_type == "assistant_reply"
-            else HumanMessage(content=msg.content)
-            for msg in history
-        ]
+                media_content = await media_processor_service.process_media(
+                    media_message_id=media_id,
+                    user_media_type=media_type,
+                    source_file_name=file_name,
+                    user_id=user_id,
+                )
 
-        # 位置訊息（location）未寫入 Redis，需手動追加至尾端
-        if message_type == "location":
-            langchain_messages.append(HumanMessage(content=current_content))
+                cleaned_content = media_content.strip()
+                if (
+                    not cleaned_content
+                    or cleaned_content.startswith("Unable to extract text")
+                    or cleaned_content.startswith("發生錯誤")
+                ):
+                    raise LineValidationError(f"無法從您傳送的{media_type}中辨識出任何文字，請確認內容清晰並重新傳送。")
 
-        # 防禦性處理：確保至少包含當前輸入
-        if not langchain_messages:
-            langchain_messages.append(HumanMessage(content=current_content))
+                user_text = f"以下為使用者傳送的{media_type}媒體內容：\n{media_content}"
+                message_type = media_type
 
-        return langchain_messages
+            else:
+                logger.warning(f"Unsupported message type: {type(message).__name__}")
+                return
 
-    async def _invoke_and_reply(
-        self,
-        user_text: str,
-        reply_token: str,
-        user_id: Optional[str] = None,
-        message_type: str = "text",
-        event_time: Optional[datetime] = None,
-    ) -> bool:
-        """呼叫 Agent 並回覆訊息"""
+            event_time = datetime.fromtimestamp(event.timestamp / 1000, tz=timezone.utc)
+
+        except LineValidationError as e:
+            await send_reply(reply_token, str(e), user_id)
+            return
+
+        # 呼叫 Agent 進行思考與決策
         try:
             logger.info(f"Processing message from user {user_id}: {user_text[:50]}...")
 
-            context = ConsultationContext(
-                line_id=user_id,
+            # 載入歷史紀錄並轉成 LangChain 訊息格式
+            chat_history = await self._history_service.load_history(
+                user_id=user_id,
+                current_input=user_text,
                 message_type=message_type,
-                event_time=event_time,
             )
 
-            # 1. 記錄 User 訊息到 ChatHistoryRepository (排除 location)
-            if user_id and message_type != "location":
-                user_msg = ChatMessage(
-                    line_id=user_id,
-                    message_type=message_type,
-                    content=user_text,
-                    timestamp=event_time or datetime.now(timezone.utc),
-                )
-                await self._chat_history_repository.append_message(user_id, user_msg)
-
-            # 2. 從對話暫存庫載入包含當前訊息的歷史上下文
-            agent_messages = await self._build_agent_messages(
-                user_id, user_text, message_type
+            # 呼叫 Agent
+            agent_response = await self._agent.invoke(
+                user_input=user_text,
+                messages=chat_history,
             )
-
-            # 呼叫 Agent 進行決策（在 context scope 內）
-            with consultation_context_scope(context):
-                result = await self._agent.invoke(
-                    user_input=user_text, messages=agent_messages
-                )
 
             response_text = (
-                result.get("response") or "抱歉，我無法理解您的問題，請重新輸入。"
+                agent_response.get("response") or "抱歉，我無法理解您的問題，請重新輸入。"
             )
-            call_request_location = result.get("call_request_location", False)
-            kwargs = {"request_location": True} if call_request_location else {}
-            success = await self._line_message_service.send_line_reply(
-                reply_token, response_text, user_id, **kwargs
+            call_request_location = agent_response.get("call_request_location", False)
+            
+            # 回傳訊息
+            success = await send_reply(
+                reply_token, response_text, user_id, request_location=call_request_location
             )
 
-            # 3. 成功送出後記錄 Assistant 訊息 (排除 location)
-            if success and user_id and message_type != "location":
-                assistant_msg = ChatMessage(
-                    line_id=user_id,
-                    message_type="assistant_reply",
-                    content=response_text,
-                    timestamp=datetime.now(timezone.utc),
-                )
-                await self._chat_history_repository.append_message(user_id, assistant_msg)
-
+            # 回覆成功後，儲存這一輪對話到 Redis
             if success:
-                logger.info(f"Successfully processed and replied to user {user_id}")
-            return success
+                await self._history_service.save_turn(
+                    user_id=user_id,
+                    user_text=user_text,
+                    ai_reply=response_text,
+                    message_type=message_type,
+                    event_time=event_time,
+                )
+            logger.info(f"Successfully processed and replied to user {user_id}")
 
         except Exception as e:
-            logger.error(f"Error in processing message: {e}", exc_info=True)
-            await self._line_message_service.send_line_reply(
+            logger.error(f"Error in processing Line message event: {e}", exc_info=True)
+            await send_reply(
                 reply_token, "抱歉，處理您的訊息時發生錯誤，請稍後再試", user_id
             )
-            return False

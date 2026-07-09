@@ -1,10 +1,10 @@
 {
-  "name": "mutimedia process",
+  "name": "multimedia process - optimized",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "bff1fd27-efc4-45cf-b64a-adb0475aa35c",
+        "path": "multimedia-process",
         "responseMode": "responseNode",
         "options": {}
       },
@@ -16,7 +16,7 @@
       ],
       "id": "8b45e6ba-6669-473c-913f-4972a6157694",
       "name": "Webhook",
-      "webhookId": "bff1fd27-efc4-45cf-b64a-adb0475aa35c",
+      "webhookId": "multimedia-process",
       "alwaysOutputData": false
     },
     {

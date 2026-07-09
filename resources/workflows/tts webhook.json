@@ -1,5 +1,5 @@
 {
-  "name": "tts webhook",
+  "name": "tts webhook - optimized",
   "nodes": [
     {
       "parameters": {
@@ -20,7 +20,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const body = $json.body ?? $json;\n\nconst text = String(body.text ?? '').trim();\nif (!text) {\n  throw new Error('Missing text');\n}\n\nconst locale = String(body.locale ?? 'zh-TW');\nconst rawLanguage = String(body.language ?? '').trim().toLowerCase();\nconst voice = body.voice || 'default';\n\nlet language = rawLanguage;\nif (!language) {\n  const normalizedLocale = locale.toLowerCase();\n  if (normalizedLocale.startsWith('zh')) {\n    language = 'zh';\n  } else if (normalizedLocale.startsWith('nan')) {\n    language = 'taiwanese';\n  } else {\n    language = 'zh';\n  }\n}\n\nlet route = 'unsupported';\nif (['zh', 'zh-tw', 'zh-hant', 'chinese', 'mandarin', '中文', '國語'].includes(language)) {\n  route = 'zh';\n}\nif (['tw', 'nan', 'taigi', 'taiwanese', '台語', '臺語'].includes(language)) {\n  route = 'taiwanese';\n}\n\nreturn [\n  {\n    json: {\n      text,\n      locale,\n      language,\n      voice,\n      route\n    }\n  }\n];"
+        "jsCode": "const MAX_TEXT_LENGTH = 5000;\nconst MIN_TEXT_LENGTH = 1;\n\nconst body = $json.body ?? $json;\n\nconst text = String(body.text ?? '').trim();\nif (!text) {\n  throw new Error('Missing text parameter');\n}\n\nif (text.length < MIN_TEXT_LENGTH) {\n  throw new Error(`Text must be at least ${MIN_TEXT_LENGTH} character(s)`);\n}\n\nif (text.length > MAX_TEXT_LENGTH) {\n  throw new Error(`Text exceeds maximum length of ${MAX_TEXT_LENGTH} characters. Current: ${text.length}`);\n}\n\nconst locale = String(body.locale ?? 'zh-TW').toLowerCase();\nconst rawLanguage = String(body.language ?? '').trim().toLowerCase();\nconst voice = body.voice || 'default';\nconst speed = body.speed ?? 1.0;\nconst pitch = body.pitch ?? 1.0;\n\nif (speed < 0.5 || speed > 2.0) {\n  throw new Error('Speed must be between 0.5 and 2.0');\n}\n\nif (pitch < 0.5 || pitch > 2.0) {\n  throw new Error('Pitch must be between 0.5 and 2.0');\n}\n\nlet language = rawLanguage;\nif (!language) {\n  const normalizedLocale = locale.toLowerCase();\n  if (normalizedLocale.startsWith('zh')) {\n    language = 'zh';\n  } else if (normalizedLocale.startsWith('nan')) {\n    language = 'taiwanese';\n  } else {\n    language = 'zh';\n  }\n}\n\nlet route = 'unsupported';\nif (['zh', 'zh-tw', 'zh-hant', 'chinese', 'mandarin', '中文', '國語'].includes(language)) {\n  route = 'zh';\n}\nif (['tw', 'nan', 'taigi', 'taiwanese', '台語', '臺語'].includes(language)) {\n  route = 'taiwanese';\n}\n\nreturn [{\n  json: {\n    text,\n    textLength: text.length,\n    locale,\n    language,\n    voice,\n    speed,\n    pitch,\n    route,\n    timestamp: new Date().toISOString()\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -29,7 +29,7 @@
         160
       ],
       "id": "487711a4-bb12-4c47-8e6b-e0a9e7d23344",
-      "name": "Normalize TTS Request"
+      "name": "Validate & Normalize TTS Request"
     },
     {
       "parameters": {
@@ -100,7 +100,7 @@
         "url": "http://local-tts:8300/synthesize",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"text\": $json.text,\n  \"language\": \"zh\",\n  \"voice\": $json.voice\n}",
+        "jsonBody": "={{ JSON.stringify({ text: $json.text, language: 'zh', voice: $json.voice, speed: $json.speed, pitch: $json.pitch }) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -110,12 +110,12 @@
         16
       ],
       "id": "37d63834-11ce-4fe1-a78e-de2db0ab8f6f",
-      "name": "Local TTS Chinese"
+      "name": "TTS - Chinese Synthesis"
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={\n  \"audio_url\": $json.audio_url,\n  \"duration_ms\": $json.duration_ms,\n  \"language\": $json.language,\n  \"voice\": $json.voice\n}",
+        "responseBody": "={{ JSON.stringify({ status: 'success', data: $json }) }}",
         "options": {
           "responseCode": 200
         }
@@ -127,7 +127,7 @@
         16
       ],
       "id": "3c4e4434-63f1-4f31-b8a8-8fc0591d71dd",
-      "name": "Respond Audio"
+      "name": "Respond - Success"
     },
     {
       "parameters": {
@@ -144,7 +144,7 @@
         192
       ],
       "id": "2a791aaa-56b7-4ee2-9093-74ffab5e7045",
-      "name": "Respond Taiwanese Not Implemented"
+      "name": "Respond - Taiwanese Not Implemented"
     },
     {
       "parameters": {
@@ -161,7 +161,7 @@
         368
       ],
       "id": "fe945d99-6580-45cc-9f1d-d0a44bb6a52d",
-      "name": "Respond Unsupported Language"
+      "name": "Respond - Unsupported Language"
     }
   ],
   "pinData": {},
@@ -177,7 +177,7 @@
         ]
       ]
     },
-    "Normalize TTS Request": {
+    "Validate & Normalize TTS Request": {
       "main": [
         [
           {
@@ -192,32 +192,32 @@
       "main": [
         [
           {
-            "node": "Local TTS Chinese",
+            "node": "TTS - Chinese Synthesis",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Respond Taiwanese Not Implemented",
+            "node": "Respond - Taiwanese Not Implemented",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Respond Unsupported Language",
+            "node": "Respond - Unsupported Language",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Local TTS Chinese": {
+    "TTS - Chinese Synthesis": {
       "main": [
         [
           {
-            "node": "Respond Audio",
+            "node": "Respond - Success",
             "type": "main",
             "index": 0
           }

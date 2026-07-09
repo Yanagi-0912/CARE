@@ -1,8 +1,4 @@
-from .errors import (
-    LineError,
-    LineTokenError,
-    LineValidationError,
-)
+from .errors import LineError, LineTokenError, LineValidationError
 from .validation import (
     ALLOWED_MEDIA_TYPES,
     MAX_TEXT_LENGTH,

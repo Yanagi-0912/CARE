@@ -40,6 +40,7 @@ class PendingInvitation(BaseModel):
     status: str = "pending"  # "pending" | "accepted" | "expired"
     created_at: datetime
     expires_at: datetime  # 建立後 7 天
+    inviter_display_name: Optional[str] = None  # 關聯查詢填充的邀請者姓名
 
 
 class GetFamilyTreeResponse(BaseModel):

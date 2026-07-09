@@ -39,7 +39,6 @@ class UserProfileData(BaseModel):
         description="Whether to enable voice reply from AI agent (default: True)",
     )
 
-
 # 這裡userprofile繼承userprofiledata，並且加上line_id、created_at、updated_at等欄位
 class UserProfile(UserProfileData):
     """

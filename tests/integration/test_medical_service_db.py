@@ -11,16 +11,16 @@ class TestMedicalServiceIntegration:
 
     @pytest.fixture(autouse=True)
     async def setup_mongodb(self):
-        from app.dependencies import get_mongodb_url
+        from app.dependencies import get_mongodb_uri
         from app.db.mongodb import MongoDBManager
         import pymongo
 
         try:
-            url = get_mongodb_url()
+            uri = get_mongodb_uri()
             MongoDBManager._client = None
-            MongoDBManager.configure(url)
+            MongoDBManager.configure(uri)
         except ValueError:
-            pytest.fail("測試環境缺少 MONGODB_URL")
+            pytest.fail("測試環境缺少 MONGODB_URI")
 
         # 準備測試資料
         collection = MongoDBManager.get_medical_collection()

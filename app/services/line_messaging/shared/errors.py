@@ -1,10 +1,10 @@
 class LineError(Exception):
-    """LINE 模組基底例外。"""
+    """Base exception for LINE messaging helpers."""
 
 
 class LineValidationError(LineError):
-    """輸入或 webhook 事件欄位驗證失敗。"""
+    """Invalid LINE webhook or reply payload."""
 
 
 class LineTokenError(LineError):
-    """Channel access token 取得失敗（設定、HTTP 或回應格式）。"""
+    """LINE channel access token retrieval failed."""

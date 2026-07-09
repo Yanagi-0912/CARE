@@ -103,9 +103,9 @@ class LineMessageService:
                         )
                     ]
                 )
-                text_message = TextMessage(text=message_text, quick_reply=quick_reply)
+                text_message = TextMessage(text=message_text, quickReply=quick_reply)
             else:
-                text_message = TextMessage(text=message_text, quick_reply=None)
+                text_message = TextMessage(text=message_text, quickReply=None)
 
             messages: list[Message] = [text_message]
 

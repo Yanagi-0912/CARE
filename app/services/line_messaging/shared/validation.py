@@ -18,14 +18,14 @@ def validate_text_message(text: str) -> str:
     if not normalized_text:
         raise LineValidationError("LINE 文字訊息不可為空白")
     if len(normalized_text) > MAX_TEXT_LENGTH:
-        raise LineValidationError(
-            f"LINE 文字訊息長度不可超過 {MAX_TEXT_LENGTH} 字"
-        )
+        raise LineValidationError(f"LINE 文字訊息長度不可超過 {MAX_TEXT_LENGTH} 字")
     return normalized_text
 
 
 def validate_media_message(
-    message_id: str, media_type: str, file_name: Optional[str] = None
+    message_id: str,
+    media_type: str,
+    file_name: Optional[str] = None,
 ) -> None:
     if not message_id or not message_id.strip():
         raise LineValidationError("缺少 media message id")

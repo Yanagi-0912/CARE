@@ -6,7 +6,7 @@ from app import dependencies
 def test_getters_return_singleton_instances():
     assert dependencies.get_gemini_service() is dependencies._gemini_service
     assert dependencies.get_guardrail_service() is dependencies._guardrail_service
-    assert dependencies.get_line_token_manager() is dependencies._line_event_handler
+    assert dependencies.get_line_token_manager() is dependencies._line_token_manager
     assert dependencies.get_line_event_handler() is dependencies._line_event_handler
     assert dependencies.get_medical_service() is dependencies.medical_service
     assert dependencies.get_vector_search_config() is dependencies._vector_search_config
@@ -17,8 +17,10 @@ def test_getters_return_singleton_instances():
 def test_dependency_wiring_is_correct():
     handler = dependencies.get_line_event_handler()
     profile_service = dependencies.get_user_profile_service()
+    token_manager = dependencies.get_line_token_manager()
 
-    assert dependencies.get_line_token_manager() is handler
+    assert token_manager is dependencies._line_token_manager
+    assert handler._token_manager is token_manager
     assert handler._agent is dependencies._care_agent
     assert handler._history_service is dependencies._line_history_service
     assert handler._history_service._repo is dependencies.get_chat_history_repository()

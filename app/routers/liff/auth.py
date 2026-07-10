@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
@@ -16,6 +18,13 @@ class LiffLoginResponse(BaseModel):
     token_type: str = "Bearer"
     expires_in: int
     line_user_id: str
+    language: Optional[str] = Field(
+        default=None,
+        description=(
+            "使用者顯示語言。新使用者首次登入時取自 LINE 帳號語言並存入資料庫，"
+            "之後一律以資料庫的值為準，供前端登入後立即設定介面語言使用。"
+        ),
+    )
 
 
 @router.post(

@@ -94,6 +94,99 @@ async def test_upsert_user_profile_builds_expected_update_query(
     assert "created_at" in update_doc["$setOnInsert"]
 
 
+@pytest.mark.asyncio
+async def test_sync_line_profile_updates_only_line_fields(override_users_collection):
+    collection = MagicMock()
+    collection.update_one = AsyncMock(
+        return_value=MagicMock(matched_count=1, upserted_id=None)
+    )
+    override_users_collection(collection)
+
+    ok = await UserProfileRepository.sync_line_profile(
+        "U123",
+        picture_url="https://line.example/pic.jpg",
+    )
+
+    assert ok is True
+    args, kwargs = collection.update_one.await_args
+    assert args[0] == {"line_id": "U123"}
+    assert kwargs.get("upsert") is not True
+    update_doc = args[1]["$set"]
+    assert update_doc["picture_url"] == "https://line.example/pic.jpg"
+    assert "updated_at" in update_doc
+    assert "name" not in update_doc
+
+
+@pytest.mark.asyncio
+async def test_sync_line_profile_returns_false_when_no_fields_provided(
+    override_users_collection,
+):
+    collection = MagicMock()
+    override_users_collection(collection)
+
+    ok = await UserProfileRepository.sync_line_profile("U123")
+
+    assert ok is False
+    collection.update_one.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_user_settings_uses_dot_notation_for_partial_fields(
+    override_users_collection,
+):
+    collection = MagicMock()
+    collection.update_one = AsyncMock(
+        return_value=MagicMock(matched_count=1, upserted_id=None)
+    )
+    override_users_collection(collection)
+
+    ok = await UserProfileRepository.update_user_settings(
+        "U123", {"font_size": "xlarge", "high_contrast": False}
+    )
+
+    assert ok is True
+    args, kwargs = collection.update_one.await_args
+    assert args[0] == {"line_id": "U123"}
+    assert kwargs.get("upsert") is not True
+
+    update_doc = args[1]["$set"]
+    assert update_doc["settings.font_size"] == "xlarge"
+    assert update_doc["settings.high_contrast"] is False
+    assert "updated_at" in update_doc
+    # 沒帶到的欄位不應該出現在更新內容裡
+    assert "settings.notify_reminder" not in update_doc
+
+
+@pytest.mark.asyncio
+async def test_update_user_settings_returns_false_when_no_fields_provided(
+    override_users_collection,
+):
+    collection = MagicMock()
+    override_users_collection(collection)
+
+    ok = await UserProfileRepository.update_user_settings("U123", {})
+
+    assert ok is False
+    collection.update_one.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_user_settings_returns_false_when_no_document_matched(
+    override_users_collection,
+):
+    collection = MagicMock()
+    collection.update_one = AsyncMock(
+        return_value=MagicMock(matched_count=0, upserted_id=None)
+    )
+    override_users_collection(collection)
+
+    ok = await UserProfileRepository.update_user_settings(
+        "U123", {"font_size": "normal"}
+    )
+
+    assert ok is False
+
+
 # 測試 get_user_profile 能否正確呼叫 find_one 並回傳資料
 @pytest.mark.asyncio
 async def test_get_user_profile_uses_users_collection_and_returns_document(

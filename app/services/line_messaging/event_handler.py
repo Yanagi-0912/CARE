@@ -1,8 +1,8 @@
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Any
-import requests
+from typing import Any
+
 from linebot.v3.webhooks import (
     MessageEvent,
     TextMessageContent,
@@ -24,6 +24,7 @@ from linebot.v3.messaging import (
 )
 from app.services.history.history_service import LineMessageHistoryService
 from app.services.media.mutimedia_processor import media_processor_service
+from app.services.line_messaging.token_manager import LineTokenManager
 
 logger = logging.getLogger(__name__)
 
@@ -38,80 +39,17 @@ class LineValidationError(Exception):
     """LINE 訊息欄位格式或內容驗證失敗。"""
 
 
-
-
-
 class LineEventHandler:
 
     def __init__(
         self,
         agent,
-        channel_id: Optional[str],
-        channel_secret: Optional[str],
+        token_manager: LineTokenManager,
         history_service: LineMessageHistoryService,
     ):
         self._agent = agent
-        self._channel_id = channel_id
-        self._channel_secret = channel_secret
+        self._token_manager = token_manager
         self._history_service = history_service
-
-        # Token 緩存
-        self._access_token: Optional[str] = None
-        self._token_expires_at: Optional[datetime] = None
-
-    def get_token(self) -> str:
-        # 檢查緩存是否有效
-        if self._access_token and self._token_expires_at:
-            # 提前 5 分鐘刷新，避免在使用時過期
-            buffer_time = timedelta(minutes=5)
-            if datetime.now(timezone.utc) < (self._token_expires_at - buffer_time):
-                logger.debug("使用緩存的 access token")
-                return self._access_token
-
-        # 獲取新的 token
-        logger.info("緩存的 token 已過期或不存在，正在獲取新的 token...")
-        if not self._channel_id or not self._channel_secret:
-            raise ValueError(
-                "無法獲取 token：LINE_CHANNEL_ID 和 LINE_CHANNEL_SECRET 未設定。"
-                "請在 .env 檔案中設定這些變數。"
-            )
-
-        url = "https://api.line.me/oauth2/v3/token"
-        headers = {"Content-Type": "application/x-www-form-urlencoded"}
-        data = {
-            "grant_type": "client_credentials",
-            "client_id": self._channel_id,
-            "client_secret": self._channel_secret,
-        }
-
-        try:
-            response = requests.post(url, headers=headers, data=data, timeout=10)
-            response.raise_for_status()
-
-            result = response.json()
-            access_token = result.get("access_token")
-            expires_in = result.get("expires_in", 2592000)  # 預設 30 天 (秒)
-
-            if not access_token:
-                raise RuntimeError("API 返回的響應中沒有 access_token")
-
-            # 緩存 token 和過期時間
-            self._access_token = access_token
-            self._token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
-
-            logger.info(
-                f"成功獲取新的 access token，"
-                f"有效期至: {self._token_expires_at.strftime('%Y-%m-%d %H:%M:%S')}"
-            )
-
-            return access_token
-
-        except requests.exceptions.RequestException as e:
-            error_msg = f"獲取 access token 失敗: {e}"
-            if hasattr(e, "response") and e.response is not None:
-                error_msg += f"\nAPI 響應: {e.response.text}"
-            logger.error(error_msg)
-            raise RuntimeError(error_msg) from e
 
     async def handle(self, event: MessageEvent) -> None:
         user_id = getattr(event.source, "user_id", "")
@@ -128,9 +66,9 @@ class LineEventHandler:
                     raise ValueError("LINE 事件缺少 reply_token")
                 if not uid or not uid.strip():
                     raise ValueError("LINE 事件缺少 user_id")
-                
-                access_token = self.get_token()
-                
+
+                access_token = self._token_manager.get_token()
+
                 # 防禦性確保訊息文字為字串
                 if not isinstance(message_text, str):
                     logger.warning(
@@ -207,7 +145,7 @@ class LineEventHandler:
                         media_type = "audio"
                     else:
                         media_type = "file"
-                
+
                 # 驗證媒體欄位
                 if not media_id or not media_id.strip():
                     raise LineValidationError("缺少 media message id")
@@ -265,7 +203,7 @@ class LineEventHandler:
                 agent_response.get("response") or "抱歉，我無法理解您的問題，請重新輸入。"
             )
             call_request_location = agent_response.get("call_request_location", False)
-            
+
             # 回傳訊息
             success = await send_reply(
                 reply_token, response_text, user_id, request_location=call_request_location

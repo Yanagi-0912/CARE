@@ -25,6 +25,7 @@ from app.services.liff.jwt_service import AppJwtService
 from app.services.liff.line_id_token_service import LineIdTokenService
 from app.services.liff.line_language_service import LineLanguageService
 from app.services.line_messaging.event_handler import LineEventHandler
+from app.services.line_messaging.token_manager import LineTokenManager
 from app.services.history.history_service import LineMessageHistoryService
 from app.services.medical.medical_service import MedicalService, medical_service
 from app.services.rag.services import RagAnswerService
@@ -91,10 +92,14 @@ _care_agent = Agent(
 
 _line_history_service = LineMessageHistoryService(_chat_history_repository)
 
-_line_event_handler = LineEventHandler(
-    agent=_care_agent,
+_line_token_manager = LineTokenManager(
     channel_id=settings.LINE_CHANNEL_ID,
     channel_secret=settings.LINE_CHANNEL_SECRET,
+)
+
+_line_event_handler = LineEventHandler(
+    agent=_care_agent,
+    token_manager=_line_token_manager,
     history_service=_line_history_service,
 )
 
@@ -124,7 +129,7 @@ _consultation_download_token_service = AppJwtService(
 )
 
 _line_language_service = LineLanguageService(
-    get_access_token=_line_event_handler.get_token,
+    get_access_token=_line_token_manager.get_token,
 )
 
 _liff_auth_application_service = LiffAuthApplicationService(
@@ -183,9 +188,9 @@ def get_chat_history_repository():
     return _chat_history_repository
 
 
-def get_line_token_manager() -> LineEventHandler:
-    """取得 LINE Token 管理實例（由 LineEventHandler 擔當）"""
-    return _line_event_handler
+def get_line_token_manager() -> LineTokenManager:
+    """取得 LINE Channel Access Token 管理實例"""
+    return _line_token_manager
 
 
 def get_medical_service() -> MedicalService:

@@ -56,13 +56,13 @@ def mock_history_service():
 
 @pytest.fixture
 def handler(mock_agent, mock_history_service):
+    token_manager = MagicMock()
+    token_manager.get_token.return_value = "dummy_token"
     h = LineEventHandler(
         agent=mock_agent,
-        channel_id="dummy_id",
-        channel_secret="dummy_secret",
+        token_manager=token_manager,
         history_service=mock_history_service,
     )
-    h.get_token = MagicMock(return_value="dummy_token")
     return h
 
 
@@ -351,31 +351,6 @@ async def test_handle_media_message_empty_ocr_returns_error(
 def test_validate_media_message_success() -> None:
     # 內置函式的基礎行為測試可以轉移到整合測試中，本處只確保 ValidationError 存在
     assert issubclass(LineValidationError, Exception)
-
-
-# ==============================================================================
-# Token Manager 相關測試（由 LineEventHandler 擔當）
-# ==============================================================================
-
-@pytest.mark.parametrize(
-    "channel_id, channel_secret",
-    [
-        (None, None),
-        ("", ""),
-    ],
-)
-def test_get_token_raises_when_credentials_invalid(channel_id, channel_secret):
-    handler = LineEventHandler(
-        agent=MagicMock(),
-        channel_id=channel_id,
-        channel_secret=channel_secret,
-        history_service=MagicMock(),
-    )
-    with pytest.raises(ValueError) as exc_info:
-        handler.get_token()
-    assert "LINE_CHANNEL_ID" in str(exc_info.value) or "LINE_CHANNEL_SECRET" in str(
-        exc_info.value
-    )
 
 
 # ==============================================================================

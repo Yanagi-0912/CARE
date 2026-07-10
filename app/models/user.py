@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -28,6 +28,51 @@ class UserProfileData(BaseModel):
     surgery_history: str = Field(..., description="手術病史")
 
 
+class UserSettings(BaseModel):
+    """
+    使用者介面偏好設定。
+
+    跟 picture_url 不同，這裡的欄位都跟「使用者可在前端自行調整的偏好」有關。
+    其中 language 比較特別：首次登入時以 LINE 帳號語言為預設值（由 service 層
+    在建立時帶入），之後若使用者手動變更，一律以資料庫的值為準，不再被 LINE 覆蓋；
+    其餘欄位（字體大小、通知、語音回覆等）則完全跟 LINE 無關，預設值直接採用
+    App 端目前的預設。
+    """
+
+    language: Optional[str] = Field(
+        default=None,
+        description=(
+            "使用者顯示語言。首次登入時以 LINE 帳號語言為預設值，"
+            "之後若使用者在前端手動變更，以資料庫的值為準，不再被 LINE 覆蓋。"
+        ),
+    )
+    font_size: Literal["normal", "large", "xlarge"] = Field(
+        default="large", description="字體大小"
+    )
+    high_contrast: bool = Field(default=True, description="是否啟用高對比模式")
+    notify_reminder: bool = Field(default=True, description="是否啟用用藥提醒通知")
+    notify_family: bool = Field(default=True, description="是否啟用家人健康通知")
+    voice_reply_enabled: bool = Field(default=False, description="是否啟用語音回覆")
+
+
+class UserSettingsUpdate(BaseModel):
+    """
+    更新使用者設定用的模型，所有欄位皆為可選。
+
+    只有實際帶入（non-null）的欄位才會被更新，
+    未帶入的欄位維持資料庫原值，避免部分更新時覆蓋掉其他設定。
+    """
+
+    language: Optional[str] = Field(default=None, description="使用者顯示語言")
+    font_size: Optional[Literal["normal", "large", "xlarge"]] = Field(
+        default=None, description="字體大小"
+    )
+    high_contrast: Optional[bool] = Field(default=None, description="是否啟用高對比模式")
+    notify_reminder: Optional[bool] = Field(default=None, description="是否啟用用藥提醒通知")
+    notify_family: Optional[bool] = Field(default=None, description="是否啟用家人健康通知")
+    voice_reply_enabled: Optional[bool] = Field(default=None, description="是否啟用語音回覆")
+
+
 # 這裡userprofile繼承userprofiledata，並且加上line_id、created_at、updated_at等欄位
 class UserProfile(UserProfileData):
     """
@@ -43,12 +88,9 @@ class UserProfile(UserProfileData):
         default=None,
         description="LINE 使用者頭像網址",
     )
-    language: Optional[str] = Field(
-        default=None,
-        description=(
-            "使用者顯示語言。首次登入時以 LINE 帳號語言為預設值，"
-            "之後若使用者在前端手動變更，以資料庫的值為準，不再被 LINE 覆蓋。"
-        ),
+    settings: UserSettings = Field(
+        default_factory=UserSettings,
+        description="使用者介面偏好設定（字體大小、高對比、通知、語音回覆等）",
     )
     created_at: Optional[datetime] = Field(
         default=None,
@@ -79,6 +121,5 @@ class UserProfile(UserProfileData):
         return self.model_dump(exclude={"created_at", "updated_at"})
 
 
-# __all__表示當其他文件使用 import * 時，僅會匯入 UserProfileData 和
-# UserProfile 這兩個類別。
-__all__ = ["UserProfileData", "UserProfile"]
+# __all__表示當其他文件使用 import * 時，僅會匯入下列類別。
+__all__ = ["UserProfileData", "UserProfile", "UserSettings", "UserSettingsUpdate"]

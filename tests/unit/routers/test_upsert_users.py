@@ -8,16 +8,46 @@ from app.dependencies import CurrentUser, get_current_user, get_user_profile_ser
 from app.main import app
 
 
+DEFAULT_SETTINGS = {
+    "language": None,
+    "font_size": "large",
+    "high_contrast": True,
+    "notify_reminder": True,
+    "notify_family": True,
+    "voice_reply_enabled": False,
+}
+
+
 class FakeUserProfileService:
-    def __init__(self, result: bool = True, error: Exception | None = None) -> None:
+    def __init__(
+        self,
+        result: bool = True,
+        error: Exception | None = None,
+        settings: dict | None = None,
+    ) -> None:
         self._result = result
         self._error = error
+        self._settings = settings or dict(DEFAULT_SETTINGS)
         self.upsert_user_profile = AsyncMock(side_effect=self._call)
+        self.get_user_settings = AsyncMock(side_effect=self._get_settings)
+        self.update_user_settings = AsyncMock(side_effect=self._update_settings)
 
     async def _call(self, user_id: str, payload: dict) -> bool:
         if self._error is not None:
             raise self._error
         return self._result
+
+    async def _get_settings(self, user_id: str) -> dict:
+        if self._error is not None:
+            raise self._error
+        return self._settings
+
+    async def _update_settings(self, user_id: str, update) -> dict:
+        if self._error is not None:
+            raise self._error
+        changed = update.model_dump(exclude_unset=True, exclude_none=True)
+        self._settings = {**self._settings, **changed}
+        return self._settings
 
 
 @pytest.fixture()
@@ -107,3 +137,43 @@ def test_upsert_user_profile_service_error_returns_500(override_user_profile_ser
 
 
 # 之後登入後端合併到main後要寫驗證使用者的測試
+
+
+def test_get_user_settings_returns_200_and_defaults(
+    client, override_user_profile_service, override_current_user
+):
+    override_current_user("U123")
+    override_user_profile_service(FakeUserProfileService())
+
+    response = client.get("/api/profiles/me/settings")
+    assert response.status_code == 200
+    assert response.json() == {"user_id": "U123", "settings": DEFAULT_SETTINGS}
+
+
+def test_patch_user_settings_only_updates_provided_fields(
+    client, override_user_profile_service, override_current_user
+):
+    override_current_user("U123")
+    fake_service = override_user_profile_service(FakeUserProfileService())
+
+    response = client.patch(
+        "/api/profiles/me/settings", json={"font_size": "xlarge"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["settings"]["font_size"] == "xlarge"
+    assert body["settings"]["high_contrast"] is True
+
+    fake_service.update_user_settings.assert_awaited_once()
+
+
+def test_patch_user_settings_invalid_font_size_returns_422(
+    client, override_user_profile_service, override_current_user
+):
+    override_current_user("U123")
+    override_user_profile_service(FakeUserProfileService())
+
+    response = client.patch(
+        "/api/profiles/me/settings", json={"font_size": "huge"}
+    )
+    assert response.status_code == 422

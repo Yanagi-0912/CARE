@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.models.user import UserProfileData
+from app.models.user import UserProfileData, UserSettingsUpdate
 from app.services.users.user_profile_service import UserProfileService
 from app.services.family.family_tree_service import FamilyTreeService
 from app.dependencies import (
@@ -49,6 +49,47 @@ async def upsert_user_profile(
     user_id = current_user.line_user_id
     updated = await service.upsert_user_profile(user_id, body.model_dump())
     return {"user_id": user_id, "updated": updated}
+
+
+@router.get(
+    "/me/settings",
+    summary="取得目前登入使用者的介面偏好設定",
+    description=(
+        "回傳目前登入使用者的介面偏好設定，若資料庫尚無資料（例如舊帳號）"
+        "則回傳預設值，不會回傳 404。"
+    ),
+)
+async def get_user_settings(
+    current_user: CurrentUser = Depends(get_current_user),
+    service: UserProfileService = Depends(get_user_profile_service),
+):
+    """
+    取得目前登入使用者的介面偏好設定。
+    """
+    user_id = current_user.line_user_id
+    settings = await service.get_user_settings(user_id)
+    return {"user_id": user_id, "settings": settings}
+
+
+@router.patch(
+    "/me/settings",
+    summary="更新目前登入使用者的介面偏好設定",
+    description=(
+        "部分更新目前登入使用者的介面偏好設定（字體大小、高對比、通知、語音回覆等），"
+        "只會更新有帶入的欄位，回傳更新後的完整設定。"
+    ),
+)
+async def update_user_settings(
+    body: UserSettingsUpdate,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: UserProfileService = Depends(get_user_profile_service),
+):
+    """
+    更新目前登入使用者的介面偏好設定。
+    """
+    user_id = current_user.line_user_id
+    settings = await service.update_user_settings(user_id, body)
+    return {"user_id": user_id, "settings": settings}
 
 
 @router.get(

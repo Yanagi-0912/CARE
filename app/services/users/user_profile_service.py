@@ -1,4 +1,4 @@
-from app.models.user import UserProfile
+from app.models.user import UserProfile, UserSettings, UserSettingsUpdate
 from app.repositories.user_profile_repository import UserProfileRepository
 
 
@@ -37,6 +37,30 @@ class UserProfileService:
             picture_url=picture_url,
         )
 
+    async def get_user_settings(self, line_id: str) -> dict:
+        """
+        取得使用者介面偏好設定。
+
+        若資料庫尚未寫入 settings（例如舊資料、尚未登入過新版），
+        則回傳預設值，不會噴錯。
+        """
+        profile = await self._repo.get_user_profile(line_id)
+        raw_settings = (profile or {}).get("settings") or {}
+        return UserSettings(**raw_settings).model_dump()
+
+    async def update_user_settings(
+        self, line_id: str, update: UserSettingsUpdate
+    ) -> dict:
+        """
+        只更新使用者實際帶入的設定欄位，其餘欄位維持不變。
+
+        回傳更新後的完整設定（合併資料庫原值 + 這次變更）。
+        """
+        changed_fields = update.model_dump(exclude_unset=True, exclude_none=True)
+        if changed_fields:
+            await self._repo.update_user_settings(line_id, changed_fields)
+        return await self.get_user_settings(line_id)
+
     async def create_default_user_profile(
         self,
         line_id: str,
@@ -61,6 +85,6 @@ class UserProfileService:
             "surgery_history": "",
             "health_consultations": {},
             "picture_url": picture_url,
-            "language": language,
+            "settings": UserSettings(language=language).model_dump(),
         }
         return await self.upsert_user_profile(line_id=line_id, payload=default_payload)

@@ -107,7 +107,11 @@ async def test_existing_user_uses_db_language_and_skips_line_api(monkeypatch):
 
     service, user_profile_service, line_language_service = _build_service(
         verify_payload={"sub": "U999", "name": "Bob", "picture": "https://id-token.example/bob.jpg"},
-        existing_profile={"line_id": "U999", "name": "Bob", "language": "en"},
+        existing_profile={
+            "line_id": "U999",
+            "name": "Bob",
+            "settings": {"language": "en"},
+        },
         line_api_language="zh-TW",  # 假設 LINE 帳號現在是中文，但不應該被使用
     )
 

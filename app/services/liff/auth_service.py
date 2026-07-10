@@ -72,9 +72,9 @@ class LiffAuthApplicationService:
                 language=language,
             )
         else:
-            # 舊使用者：一律以資料庫的值為準，不再打 Messaging API，
-            # 避免蓋掉使用者在前端手動選擇的語言
-            language = profile.get("language") or DEFAULT_LANGUAGE
+            # 舊使用者：一律以資料庫（settings.language）的值為準，
+            # 不再打 Messaging API，避免蓋掉使用者在前端手動選擇的語言
+            language = (profile.get("settings") or {}).get("language") or DEFAULT_LANGUAGE
             await self._user_profile_service.sync_line_profile(
                 line_id=line_user_id,
                 picture_url=picture_url,

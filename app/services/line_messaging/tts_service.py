@@ -63,8 +63,8 @@ class TTSService:
                 f.write(data)
             logger.info(f"TTS synthesized audio (gTTS): {filename}, saved to {tmp_path}")
             return data, str(tmp_path), duration_ms
-        except Exception as e:
-            logger.error(f"TTS synthesis failed: {e}")
+        except Exception:
+            logger.exception("TTS synthesis failed")
             raise
 
     def available(self) -> bool:

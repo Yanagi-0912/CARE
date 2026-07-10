@@ -1,4 +1,5 @@
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -70,13 +71,6 @@ def mock_history_service():
 
 
 @pytest.fixture
-def mock_line_message_service():
-    svc = MagicMock()
-    svc.send_line_reply = AsyncMock(return_value=True)
-    return svc
-
-
-@pytest.fixture
 def mock_user_profile_service():
     svc = MagicMock()
     svc.get_user_profile = AsyncMock(return_value={"voice_reply_enabled": True})
@@ -85,27 +79,35 @@ def mock_user_profile_service():
 
 
 @pytest.fixture
+def mock_tts_service():
+    svc = MagicMock()
+    svc.available.return_value = True
+    svc.synthesize.return_value = (b"", "https://cdn.example/tts/test.mp3", 1234)
+    return svc
+
+
+@pytest.fixture
 def handler(
     mock_agent,
-    mock_line_message_service,
     mock_user_profile_service,
     mock_history_service,
+    mock_tts_service,
 ):
-    return LineEventHandler(
+    h = LineEventHandler(
         agent=mock_agent,
-        line_message_service=mock_line_message_service,
-        user_profile_service=mock_user_profile_service,
+        channel_id="dummy_id",
+        channel_secret="dummy_secret",
         history_service=mock_history_service,
+        user_profile_service=mock_user_profile_service,
+        tts_service=mock_tts_service,
     )
+    h.get_token = MagicMock(return_value="dummy_token")
+    h._reply_message = MagicMock()
+    return h
 
 
 @pytest.mark.asyncio
-async def test_handle_text_message_success(
-    handler,
-    mock_agent,
-    mock_line_message_service,
-    mock_history_service,
-):
+async def test_handle_text_message_success(handler, mock_agent, mock_history_service):
     message = TextMessageContent(id="M1", text="hello", quoteToken="dummy")
     event = _message_event(message)
     mock_history_service.load_history.return_value = [HumanMessage(content="hello")]
@@ -121,12 +123,12 @@ async def test_handle_text_message_success(
         user_input="hello",
         messages=[HumanMessage(content="hello")],
     )
-    mock_line_message_service.send_line_reply.assert_called_once_with(
-        "dummy_token",
-        "AI reply",
-        "U12345",
-        request_location=False,
-        voice_reply_enabled=True,
+    reply_request = handler._reply_message.call_args.args[1]
+    assert reply_request.reply_token == "dummy_token"
+    assert reply_request.messages[0].text == "AI reply"
+    assert reply_request.messages[1].type == "audio"
+    assert reply_request.messages[1].original_content_url == (
+        "https://cdn.example/tts/test.mp3"
     )
     mock_history_service.save_turn.assert_called_once()
 
@@ -134,8 +136,8 @@ async def test_handle_text_message_success(
 @pytest.mark.asyncio
 async def test_handle_text_message_respects_voice_preference(
     handler,
-    mock_line_message_service,
     mock_user_profile_service,
+    mock_tts_service,
 ):
     mock_user_profile_service.get_user_profile.return_value = {
         "voice_reply_enabled": False
@@ -144,17 +146,13 @@ async def test_handle_text_message_respects_voice_preference(
 
     await handler.handle(_message_event(message))
 
-    assert mock_line_message_service.send_line_reply.call_args.kwargs[
-        "voice_reply_enabled"
-    ] is False
+    mock_tts_service.synthesize.assert_not_called()
+    reply_request = handler._reply_message.call_args.args[1]
+    assert len(reply_request.messages) == 1
 
 
 @pytest.mark.asyncio
-async def test_handle_text_message_request_location(
-    handler,
-    mock_agent,
-    mock_line_message_service,
-):
+async def test_handle_text_message_request_location(handler, mock_agent):
     mock_agent.invoke.return_value = {
         "response": "please share location",
         "call_request_location": True,
@@ -163,9 +161,8 @@ async def test_handle_text_message_request_location(
 
     await handler.handle(_message_event(message))
 
-    assert mock_line_message_service.send_line_reply.call_args.kwargs[
-        "request_location"
-    ] is True
+    reply_request = handler._reply_message.call_args.args[1]
+    assert reply_request.messages[0].quick_reply is not None
 
 
 @pytest.mark.asyncio
@@ -228,11 +225,7 @@ async def test_handle_media_message_native_image(handler):
 
 
 @pytest.mark.asyncio
-async def test_handle_media_message_empty_ocr_returns_error(
-    handler,
-    mock_agent,
-    mock_line_message_service,
-):
+async def test_handle_media_message_empty_ocr_returns_error(handler, mock_agent):
     message = ImageMessageContent(
         id="M127_empty",
         contentProvider={"type": "line"},
@@ -247,35 +240,33 @@ async def test_handle_media_message_empty_ocr_returns_error(
         await handler.handle(_message_event(message))
 
     mock_agent.invoke.assert_not_called()
-    mock_line_message_service.send_line_reply.assert_called_once()
-    assert "無法從您傳送的image中辨識出任何文字" in (
-        mock_line_message_service.send_line_reply.call_args.args[1]
-    )
+    reply_request = handler._reply_message.call_args.args[1]
+    assert "無法從您傳送的image中辨識出任何文字" in reply_request.messages[0].text
 
 
 @pytest.mark.asyncio
 async def test_handle_text_message_error_fallback(
     handler,
     mock_agent,
-    mock_line_message_service,
     mock_history_service,
+    mock_tts_service,
 ):
     message = TextMessageContent(id="M3", text="hi", quoteToken="dummy")
     mock_agent.invoke.side_effect = Exception("AI crash")
 
     await handler.handle(_message_event(message))
 
-    assert mock_line_message_service.send_line_reply.call_args.args[1] == (
-        "抱歉，處理您的訊息時發生錯誤，請稍後再試"
-    )
+    mock_tts_service.synthesize.assert_not_called()
+    reply_request = handler._reply_message.call_args.args[1]
+    assert reply_request.messages[0].text == "抱歉，處理您的訊息時發生錯誤，請稍後再試"
     mock_history_service.save_turn.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_handle_postback_toggle_voice_reply(
     handler,
-    mock_line_message_service,
     mock_user_profile_service,
+    mock_tts_service,
 ):
     event = _postback_event("action=toggle_voice_reply&enabled=false")
 
@@ -285,12 +276,33 @@ async def test_handle_postback_toggle_voice_reply(
         "U12345",
         False,
     )
-    mock_line_message_service.send_line_reply.assert_called_once_with(
-        "dummy_token",
-        "語音回覆已關閉成功",
-        "U12345",
-        voice_reply_enabled=False,
+    mock_tts_service.synthesize.assert_not_called()
+    reply_request = handler._reply_message.call_args.args[1]
+    assert reply_request.messages[0].text == "語音回覆已關閉成功"
+
+
+@pytest.mark.asyncio
+async def test_send_reply_with_local_tts_file_uses_public_base_url(
+    handler,
+    mock_tts_service,
+    monkeypatch,
+):
+    audio_file = Path("app_data") / "tmp" / "tts_test.mp3"
+    audio_file.parent.mkdir(parents=True, exist_ok=True)
+    audio_file.write_bytes(b"mp3")
+    mock_tts_service.synthesize.return_value = (b"mp3", str(audio_file), 2345)
+    monkeypatch.setattr("app.services.line_messaging.event_handler.settings.PUBLIC_BASE_URL", "https://example.com")
+    monkeypatch.setattr("app.services.line_messaging.event_handler.settings.TTS_AUDIO_URL_PATH", "/tts")
+
+    ok = await handler._send_reply("token", "hello", "U12345")
+
+    assert ok is True
+    reply_request = handler._reply_message.call_args.args[1]
+    assert reply_request.messages[1].original_content_url == (
+        "https://example.com/tts/tts_test.mp3"
     )
+    assert reply_request.messages[1].duration == 2345
+    audio_file.unlink(missing_ok=True)
 
 
 def test_validate_media_message_success() -> None:

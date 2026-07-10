@@ -18,9 +18,7 @@ from app.services.history.history_service import LineMessageHistoryService
 from app.services.liff.auth_service import LiffAuthApplicationService
 from app.services.liff.jwt_service import AppJwtService
 from app.services.liff.line_id_token_service import LineIdTokenService
-from app.services.line_messaging.client import LineMessagingClient, LineTokenManager
 from app.services.line_messaging.event_handler import LineEventHandler
-from app.services.line_messaging.message_service import LineMessageService
 from app.services.line_messaging.tts_service import TTSService
 from app.services.medical.medical_service import MedicalService, medical_service
 from app.services.rag.services import RagAnswerService
@@ -65,18 +63,6 @@ _care_agent = Agent(
     guardrail_service=_guardrail_service,
 )
 
-_line_token_manager = LineTokenManager(
-    channel_id=settings.LINE_CHANNEL_ID,
-    channel_secret=settings.LINE_CHANNEL_SECRET,
-)
-
-_line_message_service = LineMessageService(
-    token_provider=_line_token_manager,
-    medical_service=medical_service,
-    line_messaging_client=LineMessagingClient(),
-    tts_service=TTSService(),
-)
-
 _line_history_service = LineMessageHistoryService(_chat_history_repository)
 
 _user_profile_repository = UserProfileRepository()
@@ -84,9 +70,11 @@ _user_profile_service = UserProfileService(repo=_user_profile_repository)
 
 _line_event_handler = LineEventHandler(
     agent=_care_agent,
-    line_message_service=_line_message_service,
-    user_profile_service=_user_profile_service,
+    channel_id=settings.LINE_CHANNEL_ID,
+    channel_secret=settings.LINE_CHANNEL_SECRET,
     history_service=_line_history_service,
+    user_profile_service=_user_profile_service,
+    tts_service=TTSService(),
 )
 
 _family_tree_service = FamilyTreeService()
@@ -147,8 +135,8 @@ def get_chat_history_repository():
     return _chat_history_repository
 
 
-def get_line_token_manager() -> LineTokenManager:
-    return _line_token_manager
+def get_line_token_manager() -> LineEventHandler:
+    return _line_event_handler
 
 
 def get_medical_service() -> MedicalService:

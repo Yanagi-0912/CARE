@@ -21,6 +21,13 @@ class AuditResult:
     fixed: int
 
 
+@dataclass
+class AffectedUser:
+    query: dict[str, Any]
+    sample: dict[str, Any]
+    reason: str
+
+
 def _parse_bool(value: str) -> bool:
     normalized = value.strip().lower()
     if normalized in {"1", "true", "yes", "y", "on"}:
@@ -39,6 +46,74 @@ def _get_mongodb_url() -> str:
 
 def _is_valid_voice_value(value: Any) -> bool:
     return isinstance(value, bool)
+
+
+def _classify_user_document(doc: dict[str, Any]) -> tuple[str, AffectedUser | None]:
+    has_field = "voice_reply_enabled" in doc
+    current_value = doc.get("voice_reply_enabled")
+    if has_field and _is_valid_voice_value(current_value):
+        return "valid", None
+
+    reason = f"invalid value: {current_value!r}" if has_field else "missing field"
+    affected = AffectedUser(
+        query={"_id": doc["_id"]},
+        sample={
+            "_id": doc.get("_id"),
+            "line_id": doc.get("line_id"),
+            "name": doc.get("name"),
+            "reason": reason,
+        },
+        reason="invalid" if has_field else "missing",
+    )
+    return affected.reason, affected
+
+
+def _build_fix_operations(
+    affected_users: list[AffectedUser],
+    default_value: bool,
+) -> list[UpdateOne]:
+    return [
+        UpdateOne(user.query, {"$set": {"voice_reply_enabled": default_value}})
+        for user in affected_users
+    ]
+
+
+def _apply_fixes(collection, operations: list[UpdateOne]) -> int:
+    if not operations:
+        return 0
+    result = collection.bulk_write(operations, ordered=False)
+    return result.modified_count + len(getattr(result, "upserted_ids", {}) or {})
+
+
+def _print_audit_report(
+    result: AuditResult,
+    samples: list[dict[str, Any]],
+    *,
+    fix: bool,
+    default_value: bool,
+) -> None:
+    print("User voice_reply_enabled audit")
+    print(f"Total users: {result.total}")
+    print(f"Valid: {result.valid}")
+    print(f"Missing voice_reply_enabled: {result.missing}")
+    print(f"Invalid voice_reply_enabled type/value: {result.invalid}")
+
+    if samples:
+        print("\nSample affected users:")
+        for sample in samples:
+            print(
+                "- "
+                f"line_id={sample['line_id']!r}, "
+                f"name={sample['name']!r}, "
+                f"_id={sample['_id']!r}, "
+                f"reason={sample['reason']}"
+            )
+
+    if fix:
+        print(f"\nFixed users: {result.fixed}")
+        print(f"Default value applied: {default_value}")
+    else:
+        print("\nDry run only. Re-run with --fix to update affected users.")
 
 
 def audit_users_collection(
@@ -62,78 +137,37 @@ def audit_users_collection(
     valid = 0
     missing = 0
     invalid = 0
-    operations = []
+    affected_users: list[AffectedUser] = []
     samples = []
 
     for doc in cursor:
-        has_field = "voice_reply_enabled" in doc
-        current_value = doc.get("voice_reply_enabled")
-        is_valid = has_field and _is_valid_voice_value(current_value)
-
-        if is_valid:
+        status, affected = _classify_user_document(doc)
+        if status == "valid":
             valid += 1
             continue
 
-        if has_field:
-            invalid += 1
-            reason = f"invalid value: {current_value!r}"
-        else:
+        if status == "missing":
             missing += 1
-            reason = "missing field"
+        else:
+            invalid += 1
 
-        if len(samples) < sample_limit:
-            samples.append(
-                {
-                    "_id": doc.get("_id"),
-                    "line_id": doc.get("line_id"),
-                    "name": doc.get("name"),
-                    "reason": reason,
-                }
-            )
+        if affected is not None:
+            affected_users.append(affected)
+            if len(samples) < sample_limit:
+                samples.append(affected.sample)
 
-        if fix:
-            operations.append(
-                UpdateOne(
-                    {"_id": doc["_id"]},
-                    {"$set": {"voice_reply_enabled": default_value}},
-                )
-            )
+    operations = _build_fix_operations(affected_users, default_value) if fix else []
+    fixed = _apply_fixes(collection, operations)
 
-    fixed = 0
-    if operations:
-        result = collection.bulk_write(operations, ordered=False)
-        fixed = result.modified_count + len(getattr(result, "upserted_ids", {}) or {})
-
-    print("User voice_reply_enabled audit")
-    print(f"Total users: {total}")
-    print(f"Valid: {valid}")
-    print(f"Missing voice_reply_enabled: {missing}")
-    print(f"Invalid voice_reply_enabled type/value: {invalid}")
-
-    if samples:
-        print("\nSample affected users:")
-        for sample in samples:
-            print(
-                "- "
-                f"line_id={sample['line_id']!r}, "
-                f"name={sample['name']!r}, "
-                f"_id={sample['_id']!r}, "
-                f"reason={sample['reason']}"
-            )
-
-    if fix:
-        print(f"\nFixed users: {fixed}")
-        print(f"Default value applied: {default_value}")
-    else:
-        print("\nDry run only. Re-run with --fix to update affected users.")
-
-    return AuditResult(
+    result = AuditResult(
         total=total,
         valid=valid,
         missing=missing,
         invalid=invalid,
         fixed=fixed,
     )
+    _print_audit_report(result, samples, fix=fix, default_value=default_value)
+    return result
 
 
 def main() -> None:

@@ -11,7 +11,7 @@
 系統程式碼 SHALL 依下列頂層目錄分層放置：
 
 - `app/routers/`：HTTP 進入點（`line`、`liff`、`users`、`system` 等），只做路由與 I/O，不寫業務流程。
-- `app/services/<domain>/`：各領域用例（如 `agent`、`guardrail`、`rag`、`medical`、`gemini`、`line_messaging`、`media`、`family`、`vector_search`）。
+- `app/services/<domain>/`：各領域用例（如 `agent`、`guardrail`、`rag`、`medical`、`gemini`、`line_messaging`、`media`、`family`）。
 - `app/tools/`：Gemini／LangChain 工具宣告與 `registry.py` 組裝。
 - `app/repositories/`、`app/db/`、`app/models/`、`app/schemas.py`：資料存取與資料模型。
 - `app/core/`：設定與跨切面（`config.py`、`cors.py`）。

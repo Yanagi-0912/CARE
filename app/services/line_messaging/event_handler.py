@@ -24,6 +24,7 @@ from linebot.v3.messaging import (
 )
 from app.services.history.history_service import LineMessageHistoryService
 from app.services.media.mutimedia_processor import media_processor_service
+from app.services.line_messaging.loading_animation import LineLoadingAnimationService
 from app.services.line_messaging.token_manager import LineTokenManager
 
 logger = logging.getLogger(__name__)
@@ -46,10 +47,12 @@ class LineEventHandler:
         agent,
         token_manager: LineTokenManager,
         history_service: LineMessageHistoryService,
+        loading_animation_service: LineLoadingAnimationService,
     ):
         self._agent = agent
         self._token_manager = token_manager
         self._history_service = history_service
+        self._loading_animation_service = loading_animation_service
 
     async def handle(self, event: MessageEvent) -> None:
         user_id = getattr(event.source, "user_id", "")
@@ -193,7 +196,9 @@ class LineEventHandler:
                 message_type=message_type,
             )
 
-            # 呼叫 Agent
+            # 先顯示 Loading，再呼叫 Agent（不論是否會用到 tool）
+            await self._loading_animation_service.start(user_id)
+
             agent_response = await self._agent.invoke(
                 user_input=user_text,
                 messages=chat_history,

@@ -9,8 +9,8 @@ def test_getters_return_singleton_instances():
     assert dependencies.get_line_token_manager() is dependencies._line_token_manager
     assert dependencies.get_line_event_handler() is dependencies._line_event_handler
     assert dependencies.get_medical_service() is dependencies.medical_service
-    assert dependencies.get_vector_search_config() is dependencies._vector_search_config
-    assert dependencies.get_vector_search_reader() is dependencies._vector_search_reader
+    assert dependencies.get_query_embeddings() is dependencies._query_embeddings
+    assert dependencies.get_rag_retriever() is dependencies._rag_retriever
     assert dependencies.get_user_profile_service() is dependencies._user_profile_service
 
 

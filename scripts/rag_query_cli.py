@@ -1,4 +1,4 @@
-# 命令列：問題 → Gemini embedding → Mongo 向量檢索（取回筆數見 vector_search/config.py 的 default_top_k）
+# 命令列：問題 → LangChain retriever（embed + Mongo $vectorSearch）
 import asyncio
 import json
 import sys
@@ -12,9 +12,7 @@ from dotenv import load_dotenv
 
 load_dotenv(_PROJECT_ROOT / ".env")
 
-from app.dependencies import get_vector_search_reader
-from app.services.RAG.client import embed_query
-from app.services.RAG.retrieval import search_similar_chunks
+from app.dependencies import get_rag_retriever
 
 
 async def main() -> None:
@@ -24,8 +22,14 @@ async def main() -> None:
         print("問題不能為空。", file=sys.stderr)
         sys.exit(1)
 
-    vec = await embed_query(question)
-    out = await search_similar_chunks(vec, reader=get_vector_search_reader())
+    docs = await get_rag_retriever().ainvoke(question)
+    out = [
+        {
+            "text": doc.page_content,
+            **doc.metadata,
+        }
+        for doc in docs
+    ]
     print(json.dumps(out, ensure_ascii=False, indent=2))
 
 

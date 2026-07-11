@@ -1,13 +1,15 @@
-# RAG：client（embedding_client）、services（RagAnswerService）、retrieval（retriever）、shared（reader）。
-
-from .client import embed_document, embed_query
-from .retrieval import search_similar_chunks
-from app.services.vector_search import ChunkHit, ChunkHits
+from app.services.rag.answer_service import (
+    CITE_TOP_K,
+    NO_HITS_MESSAGE,
+    RETRIEVAL_TOP_K,
+    RagAnswerService,
+)
+from app.services.rag.retriever import MongoAtlasVectorRetriever
 
 __all__ = [
-    "ChunkHit",
-    "ChunkHits",
-    "embed_document",
-    "embed_query",
-    "search_similar_chunks",
+    "CITE_TOP_K",
+    "NO_HITS_MESSAGE",
+    "RETRIEVAL_TOP_K",
+    "MongoAtlasVectorRetriever",
+    "RagAnswerService",
 ]

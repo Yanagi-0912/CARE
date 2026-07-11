@@ -5,10 +5,12 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .event_handler import LineEventHandler
+    from .loading_animation import LineLoadingAnimationService
     from .token_manager import LineTokenManager
 
 __all__ = [
     "LineEventHandler",
+    "LineLoadingAnimationService",
     "LineTokenManager",
 ]
 
@@ -18,6 +20,10 @@ def __getattr__(name: str) -> Any:
         from .event_handler import LineEventHandler
 
         return LineEventHandler
+    if name == "LineLoadingAnimationService":
+        from .loading_animation import LineLoadingAnimationService
+
+        return LineLoadingAnimationService
     if name == "LineTokenManager":
         from .token_manager import LineTokenManager
 

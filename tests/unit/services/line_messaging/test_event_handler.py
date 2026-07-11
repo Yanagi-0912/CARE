@@ -55,13 +55,21 @@ def mock_history_service():
 
 
 @pytest.fixture
-def handler(mock_agent, mock_history_service):
+def mock_loading_animation_service():
+    svc = MagicMock()
+    svc.start = AsyncMock()
+    return svc
+
+
+@pytest.fixture
+def handler(mock_agent, mock_history_service, mock_loading_animation_service):
     token_manager = MagicMock()
     token_manager.get_token.return_value = "dummy_token"
     h = LineEventHandler(
         agent=mock_agent,
         token_manager=token_manager,
         history_service=mock_history_service,
+        loading_animation_service=mock_loading_animation_service,
     )
     return h
 
@@ -208,7 +216,7 @@ async def test_handle_media_message_native_image(
 
 @pytest.mark.asyncio
 async def test_handle_text_message_success(
-    handler, mock_agent, mock_line_api, mock_history_service
+    handler, mock_agent, mock_line_api, mock_history_service, mock_loading_animation_service
 ):
     from linebot.v3.webhooks import TextMessageContent
 
@@ -225,6 +233,7 @@ async def test_handle_text_message_success(
         current_input="你好",
         message_type="text",
     )
+    mock_loading_animation_service.start.assert_awaited_once_with("U12345")
     mock_agent.invoke.assert_called_once_with(
         user_input="你好",
         messages=[HumanMessage(content="你好")],

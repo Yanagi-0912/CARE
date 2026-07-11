@@ -25,15 +25,14 @@ from app.services.liff.jwt_service import AppJwtService
 from app.services.liff.line_id_token_service import LineIdTokenService
 from app.services.liff.line_language_service import LineLanguageService
 from app.services.line_messaging.event_handler import LineEventHandler
+from app.services.line_messaging.loading_animation import LineLoadingAnimationService
 from app.services.line_messaging.token_manager import LineTokenManager
 from app.services.history.history_service import LineMessageHistoryService
 from app.services.medical.medical_service import MedicalService, medical_service
-from app.services.rag.services import RagAnswerService
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+
+from app.services.rag import MongoAtlasVectorRetriever, RETRIEVAL_TOP_K, RagAnswerService
 from app.services.users.user_profile_service import UserProfileService
-from app.services.vector_search import (
-    MongoVectorSearchReader,
-    VectorSearchConfig,
-)
 
 # ==============================================================================
 # 1. 資料庫連線配置 (Database Initialization)
@@ -57,12 +56,30 @@ _guardrail_service = GuardrailService(
 # ==============================================================================
 # 3. 向量檢索與 RAG 服務 (Vector Search & RAG Services)
 # ==============================================================================
-_vector_search_config = VectorSearchConfig.from_settings()
-_vector_search_reader = MongoVectorSearchReader(_vector_search_config)
+_query_embeddings_kwargs: dict = {
+    "model": settings.EMBEDDING_MODEL,
+    "google_api_key": settings.GEMINI_API_KEY,
+    "task_type": "RETRIEVAL_QUERY",
+}
+if settings.MONGODB_VECTOR_DIM > 0:
+    _query_embeddings_kwargs["output_dimensionality"] = settings.MONGODB_VECTOR_DIM
+_query_embeddings = GoogleGenerativeAIEmbeddings(**_query_embeddings_kwargs)
+
+_rag_retriever = MongoAtlasVectorRetriever(
+    embeddings=_query_embeddings,
+    mongo_uri=settings.MONGODB_URI,
+    db_name=settings.MONGODB_DB,
+    collection_name=settings.MONGODB_COLLECTION,
+    index_name=settings.MONGODB_VECTOR_INDEX,
+    vector_field=settings.MONGODB_VECTOR_FIELD,
+    text_field=settings.MONGODB_TEXT_FIELD,
+    vector_dim=settings.MONGODB_VECTOR_DIM if settings.MONGODB_VECTOR_DIM > 0 else None,
+    k=RETRIEVAL_TOP_K,
+)
 
 _rag_answer_service = RagAnswerService(
     gemini_service=_gemini_service,
-    vector_search_reader=_vector_search_reader,
+    retriever=_rag_retriever,
 )
 
 # ==============================================================================
@@ -79,17 +96,12 @@ _consultation_service = ConsultationService(
 # ==============================================================================
 # 5. 工具配置 (Tools Configuration)
 # ==============================================================================
-configure_rag_tool(_rag_answer_service, _consultation_service)
+configure_rag_tool(_rag_answer_service)
 configure_medical_tools(medical_service)
 
 # ==============================================================================
 # 6. 核心 Agent 與 LINE 整合服務 (Agent & LINE Integration)
 # ==============================================================================
-_care_agent = Agent(
-    llm=_gemini_service.chat_model,
-    guardrail_service=_guardrail_service,
-)
-
 _line_history_service = LineMessageHistoryService(_chat_history_repository)
 
 _line_token_manager = LineTokenManager(
@@ -97,10 +109,18 @@ _line_token_manager = LineTokenManager(
     channel_secret=settings.LINE_CHANNEL_SECRET,
 )
 
+_line_loading_animation_service = LineLoadingAnimationService(_line_token_manager)
+
+_care_agent = Agent(
+    llm=_gemini_service.chat_model,
+    guardrail_service=_guardrail_service,
+)
+
 _line_event_handler = LineEventHandler(
     agent=_care_agent,
     token_manager=_line_token_manager,
     history_service=_line_history_service,
+    loading_animation_service=_line_loading_animation_service,
 )
 
 # ==============================================================================
@@ -198,14 +218,14 @@ def get_medical_service() -> MedicalService:
     return medical_service
 
 
-def get_vector_search_config() -> VectorSearchConfig:
-    """取得 VectorSearchConfig 實例"""
-    return _vector_search_config
+def get_query_embeddings() -> GoogleGenerativeAIEmbeddings:
+    """取得 RAG query embeddings 實例"""
+    return _query_embeddings
 
 
-def get_vector_search_reader() -> MongoVectorSearchReader:
-    """取得 MongoVectorSearchReader 實例"""
-    return _vector_search_reader
+def get_rag_retriever() -> MongoAtlasVectorRetriever:
+    """取得 MongoDB Atlas 向量檢索 retriever"""
+    return _rag_retriever
 
 
 def get_user_profile_service() -> UserProfileService:

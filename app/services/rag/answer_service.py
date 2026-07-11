@@ -1,0 +1,74 @@
+from langchain_core.documents import Document
+from langchain_core.prompts import ChatPromptTemplate
+
+from app.services.gemini import GeminiService
+from app.services.rag.retriever import MongoAtlasVectorRetriever
+
+RETRIEVAL_TOP_K = 10
+CITE_TOP_K = 3
+NO_HITS_MESSAGE = "知識庫中未找到相關資訊，請嘗試用不同方式描述問題。"
+
+RAG_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "human",
+            "請根據以下提供的醫療知識內容回答問題。\n\n"
+            "規則：\n"
+            "1. 請在回答中適當引用內容來源的編號，例如：『...這是常見的症狀 [1]。』\n"
+            "2. 回覆中不要使用「根據檢索內容」這類字眼，改用「根據 RAG 資訊」等說法。\n"
+            "3. 請使用一般純文字，不要使用 Markdown 格式符號。\n"
+            "4. 若內容不足，請明確說明不知道，勿捏造。\n\n"
+            "使用者問題：{question}\n\n"
+            "RAG 內容：\n"
+            "{context}",
+        )
+    ]
+)
+
+
+class RagAnswerService:
+    def __init__(
+        self,
+        gemini_service: GeminiService,
+        retriever: MongoAtlasVectorRetriever,
+    ) -> None:
+        self.gemini_service = gemini_service
+        self.retriever = retriever
+
+    async def answer(self, user_text: str) -> str:
+        docs = await self.retriever.ainvoke(user_text)
+        if not docs:
+            return NO_HITS_MESSAGE
+
+        context = "\n".join(
+            f"{idx}. {doc.page_content}" for idx, doc in enumerate(docs, start=1)
+        )
+        messages = RAG_PROMPT.format_messages(question=user_text, context=context)
+        rag_result = await self.gemini_service.chat_model.ainvoke(messages)
+        answer_text = rag_result.content or "抱歉，我目前找不到相關資料，請稍後再試。"
+        if not isinstance(answer_text, str):
+            answer_text = str(answer_text)
+        return self._append_sources(answer_text, docs)
+
+    @staticmethod
+    def _append_sources(answer_text: str, docs: list[Document]) -> str:
+        source_lines: list[str] = []
+        seen_urls: set[str] = set()
+
+        for idx, doc in enumerate(docs[:CITE_TOP_K], start=1):
+            source_name = str(doc.metadata.get("source_name") or "").strip()
+            url = str(doc.metadata.get("url") or "").strip()
+
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+
+            if source_name:
+                source_lines.append(f"[{idx}] {source_name}：{url}")
+            else:
+                source_lines.append(f"[{idx}] {url}")
+
+        if not source_lines:
+            return answer_text
+
+        return f"{answer_text}\n\n參考資料來源：\n" + "\n".join(source_lines)

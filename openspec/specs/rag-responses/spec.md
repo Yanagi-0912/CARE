@@ -2,7 +2,7 @@
 
 ## Purpose
 
-定義 CARE 知識庫問答（RAG）的行為：何時啟用、如何附上參考來源、以及無命中或失敗時的處理。實作位於 `app/services/rag/`（retrieval、services、client、shared）與 `app/tools/rag_tools.py`。
+定義 CARE 知識庫問答（RAG）的行為：何時啟用、如何附上參考來源、以及無命中或失敗時的處理。實作位於 `app/services/rag/`（`answer_service`、`retriever`）與 `app/tools/rag_tools.py`。
 
 ## Requirements
 
@@ -15,14 +15,14 @@
 - **WHEN** guardrail 判定使用者訊息與健康醫療無關
 - **THEN** 該輪不提供 `get_rag_answer` 工具給代理
 
-### Requirement: 參考來源上限與顯示
+### Requirement: 檢索上下文與參考來源上限
 
-RAG 回答 SHALL 在最下方附上最多 3 筆關聯度最高的參考來源網址。當某筆文件只有 `url` 而缺少 `source_name` 時，系統 SHALL 仍顯示該筆來源（以網址呈現），不得因缺名而遺漏。
+RAG 檢索 SHALL 取回最多 10 筆關聯文件，並將這 10 筆內容全部放入生成 prompt。回答最下方的「參考資料來源」SHALL 只列出最多 3 筆關聯度最高的網址。當某筆文件只有 `url` 而缺少 `source_name` 時，系統 SHALL 仍顯示該筆來源（以網址呈現），不得因缺名而遺漏。
 
-#### Scenario: 附上最多三筆來源
+#### Scenario: 多筆進 prompt、最多三筆來源
 
-- **WHEN** RAG 檢索命中多筆文件
-- **THEN** 回答文字後附「參考資料來源：」並列出最多 3 筆網址
+- **WHEN** RAG 檢索命中多筆文件（例如 10 筆）
+- **THEN** 生成 prompt 包含最多 10 筆內容，且回答文字後附「參考資料來源：」並列出最多 3 筆網址
 
 #### Scenario: 缺少來源名稱仍顯示
 
@@ -31,7 +31,7 @@ RAG 回答 SHALL 在最下方附上最多 3 筆關聯度最高的參考來源網
 
 ### Requirement: 無命中與失敗處理
 
-當知識庫查無相關資訊（`RagNoHitsError`）時，`get_rag_answer` SHALL 回傳提示請使用者換一種描述方式；當 RAG 服務尚未初始化時 SHALL 回傳可稍後再試的提示，而非拋出未處理例外。
+當知識庫查無相關資訊時，`get_rag_answer` SHALL 回傳提示請使用者換一種描述方式；當 RAG 服務尚未初始化時 SHALL 回傳可稍後再試的提示，而非拋出未處理例外。
 
 #### Scenario: 查無資料
 

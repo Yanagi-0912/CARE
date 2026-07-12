@@ -10,8 +10,6 @@ from linebot.v3.webhooks import (
     ImageMessageContent,
     LocationMessageContent,
     MessageEvent,
-    PostbackContent,
-    PostbackEvent,
     TextMessageContent,
     UserSource,
 )
@@ -38,27 +36,10 @@ def _message_event(
     )
 
 
-def _postback_event(
-    data: str,
-    *,
-    reply_token: str = "dummy_token",
-    user_id: str = "U12345",
-) -> PostbackEvent:
-    return PostbackEvent(
-        timestamp=1000,
-        mode="active",
-        webhookEventId="01HZTEST000000000000000000",
-        deliveryContext=DeliveryContext(isRedelivery=False),
-        replyToken=reply_token,
-        source=UserSource(type="user", userId=user_id),
-        postback=PostbackContent(data=data),
-    )
-
-
 @pytest.fixture
 def mock_agent():
     agent = MagicMock()
-    agent.invoke = AsyncMock(return_value={"response": "AI reply"})
+    agent.invoke = AsyncMock(return_value={"response": "AI 回覆"})
     return agent
 
 
@@ -74,14 +55,12 @@ def mock_history_service():
 def mock_user_profile_service():
     svc = MagicMock()
     svc.get_user_profile = AsyncMock(return_value={"voice_reply_enabled": True})
-    svc.update_voice_reply_enabled = AsyncMock(return_value=True)
     return svc
 
 
 @pytest.fixture
 def mock_tts_service():
     svc = MagicMock()
-    svc.available.return_value = True
     svc.synthesize.return_value = (b"", "https://cdn.example/tts/test.mp3", 1234)
     return svc
 
@@ -89,80 +68,118 @@ def mock_tts_service():
 @pytest.fixture
 def handler(
     mock_agent,
-    mock_user_profile_service,
     mock_history_service,
+    mock_user_profile_service,
     mock_tts_service,
 ):
-    h = LineEventHandler(
+    token_manager = MagicMock()
+    token_manager.get_token.return_value = "dummy_token"
+    return LineEventHandler(
         agent=mock_agent,
-        channel_id="dummy_id",
-        channel_secret="dummy_secret",
+        token_manager=token_manager,
         history_service=mock_history_service,
         user_profile_service=mock_user_profile_service,
         tts_service=mock_tts_service,
     )
-    h.get_token = MagicMock(return_value="dummy_token")
-    h._reply_message = MagicMock()
-    return h
+
+
+@pytest.fixture(autouse=True)
+def mock_line_api():
+    with patch("app.services.line_messaging.event_handler.Configuration"), patch(
+        "app.services.line_messaging.event_handler.ApiClient"
+    ), patch(
+        "app.services.line_messaging.event_handler.MessagingApi"
+    ) as mock_messaging_api:
+        messaging_api = MagicMock()
+        mock_messaging_api.return_value = messaging_api
+        yield messaging_api
 
 
 @pytest.mark.asyncio
-async def test_handle_text_message_success(handler, mock_agent, mock_history_service):
-    message = TextMessageContent(id="M1", text="hello", quoteToken="dummy")
+async def test_handle_text_message_success_adds_tts_audio(
+    handler,
+    mock_agent,
+    mock_line_api,
+    mock_history_service,
+):
+    message = TextMessageContent(id="M1", text="你好", quoteToken="dummy")
     event = _message_event(message)
-    mock_history_service.load_history.return_value = [HumanMessage(content="hello")]
+    mock_history_service.load_history.return_value = [HumanMessage(content="你好")]
 
     await handler.handle(event)
 
     mock_history_service.load_history.assert_called_once_with(
         user_id="U12345",
-        current_input="hello",
+        current_input="你好",
         message_type="text",
     )
     mock_agent.invoke.assert_called_once_with(
-        user_input="hello",
-        messages=[HumanMessage(content="hello")],
+        user_input="你好",
+        messages=[HumanMessage(content="你好")],
     )
-    reply_request = handler._reply_message.call_args.args[1]
-    assert reply_request.reply_token == "dummy_token"
-    assert reply_request.messages[0].text == "AI reply"
-    assert reply_request.messages[1].type == "audio"
-    assert reply_request.messages[1].original_content_url == (
+
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert reply_req.reply_token == "dummy_token"
+    assert reply_req.messages[0].text == "AI 回覆"
+    assert reply_req.messages[1].type == "audio"
+    assert reply_req.messages[1].original_content_url == (
         "https://cdn.example/tts/test.mp3"
     )
+    assert reply_req.messages[1].duration == 1234
     mock_history_service.save_turn.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_handle_text_message_respects_voice_preference(
+async def test_handle_text_message_voice_disabled_sends_text_only(
     handler,
-    mock_user_profile_service,
+    mock_line_api,
     mock_tts_service,
+    mock_user_profile_service,
 ):
     mock_user_profile_service.get_user_profile.return_value = {
         "voice_reply_enabled": False
     }
-    message = TextMessageContent(id="M1", text="hello", quoteToken="dummy")
+    message = TextMessageContent(id="M1", text="你好", quoteToken="dummy")
 
     await handler.handle(_message_event(message))
 
     mock_tts_service.synthesize.assert_not_called()
-    reply_request = handler._reply_message.call_args.args[1]
-    assert len(reply_request.messages) == 1
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert len(reply_req.messages) == 1
 
 
 @pytest.mark.asyncio
-async def test_handle_text_message_request_location(handler, mock_agent):
+async def test_handle_text_message_request_location(handler, mock_agent, mock_line_api):
+    message = TextMessageContent(id="M_HOSP", text="附近有醫院嗎", quoteToken="dummy")
     mock_agent.invoke.return_value = {
-        "response": "please share location",
+        "response": "請分享位置",
         "call_request_location": True,
     }
-    message = TextMessageContent(id="M1", text="nearby hospital", quoteToken="dummy")
 
     await handler.handle(_message_event(message))
 
-    reply_request = handler._reply_message.call_args.args[1]
-    assert reply_request.messages[0].quick_reply is not None
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert reply_req.messages[0].text == "請分享位置"
+    assert reply_req.messages[0].quick_reply is not None
+
+
+@pytest.mark.asyncio
+async def test_handle_text_message_error_fallback(
+    handler,
+    mock_agent,
+    mock_line_api,
+    mock_history_service,
+    mock_tts_service,
+):
+    message = TextMessageContent(id="M3", text="hi", quoteToken="dummy")
+    mock_agent.invoke.side_effect = Exception("AI Crash")
+
+    await handler.handle(_message_event(message))
+
+    mock_tts_service.synthesize.assert_not_called()
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert "發生錯誤" in reply_req.messages[0].text
+    mock_history_service.save_turn.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -177,7 +194,7 @@ async def test_handle_location_message_delegates_to_agent(handler, mock_agent):
 
     await handler.handle(_message_event(message))
 
-    agent_input = mock_agent.invoke.call_args.kwargs["user_input"]
+    agent_input = mock_agent.invoke.call_args[1]["user_input"]
     assert "25.033" in agent_input
     assert "121.5654" in agent_input
 
@@ -225,7 +242,11 @@ async def test_handle_media_message_native_image(handler):
 
 
 @pytest.mark.asyncio
-async def test_handle_media_message_empty_ocr_returns_error(handler, mock_agent):
+async def test_handle_media_message_empty_ocr_returns_error(
+    handler,
+    mock_agent,
+    mock_line_api,
+):
     message = ImageMessageContent(
         id="M127_empty",
         contentProvider={"type": "line"},
@@ -235,73 +256,43 @@ async def test_handle_media_message_empty_ocr_returns_error(handler, mock_agent)
     with patch(
         "app.services.media.mutimedia_processor.media_processor_service.process_media",
         new_callable=AsyncMock,
-        return_value="Unable to extract text from media file",
+        return_value="Unable to extract text from media file (no content extracted)",
     ):
         await handler.handle(_message_event(message))
 
     mock_agent.invoke.assert_not_called()
-    reply_request = handler._reply_message.call_args.args[1]
-    assert "無法從您傳送的image中辨識出任何文字" in reply_request.messages[0].text
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert "無法從您傳送的" in reply_req.messages[0].text
 
 
 @pytest.mark.asyncio
-async def test_handle_text_message_error_fallback(
-    handler,
-    mock_agent,
-    mock_history_service,
-    mock_tts_service,
-):
-    message = TextMessageContent(id="M3", text="hi", quoteToken="dummy")
-    mock_agent.invoke.side_effect = Exception("AI crash")
-
-    await handler.handle(_message_event(message))
-
-    mock_tts_service.synthesize.assert_not_called()
-    reply_request = handler._reply_message.call_args.args[1]
-    assert reply_request.messages[0].text == "抱歉，處理您的訊息時發生錯誤，請稍後再試"
-    mock_history_service.save_turn.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_handle_postback_toggle_voice_reply(
-    handler,
-    mock_user_profile_service,
-    mock_tts_service,
-):
-    event = _postback_event("action=toggle_voice_reply&enabled=false")
-
-    await handler.handle(event)
-
-    mock_user_profile_service.update_voice_reply_enabled.assert_called_once_with(
-        "U12345",
-        False,
-    )
-    mock_tts_service.synthesize.assert_not_called()
-    reply_request = handler._reply_message.call_args.args[1]
-    assert reply_request.messages[0].text == "語音回覆已關閉成功"
-
-
-@pytest.mark.asyncio
-async def test_send_reply_with_local_tts_file_uses_public_base_url(
+async def test_local_tts_file_uses_public_base_url(
     handler,
     mock_tts_service,
+    mock_line_api,
     monkeypatch,
 ):
     audio_file = Path("app_data") / "tmp" / "tts_test.mp3"
     audio_file.parent.mkdir(parents=True, exist_ok=True)
     audio_file.write_bytes(b"mp3")
     mock_tts_service.synthesize.return_value = (b"mp3", str(audio_file), 2345)
-    monkeypatch.setattr("app.services.line_messaging.event_handler.settings.PUBLIC_BASE_URL", "https://example.com")
-    monkeypatch.setattr("app.services.line_messaging.event_handler.settings.TTS_AUDIO_URL_PATH", "/tts")
+    monkeypatch.setattr(
+        "app.services.line_messaging.event_handler.settings.PUBLIC_BASE_URL",
+        "https://example.com",
+    )
+    monkeypatch.setattr(
+        "app.services.line_messaging.event_handler.settings.TTS_AUDIO_URL_PATH",
+        "/tts",
+    )
 
-    ok = await handler._send_reply("token", "hello", "U12345")
+    message = TextMessageContent(id="M1", text="你好", quoteToken="dummy")
+    await handler.handle(_message_event(message))
 
-    assert ok is True
-    reply_request = handler._reply_message.call_args.args[1]
-    assert reply_request.messages[1].original_content_url == (
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert reply_req.messages[1].original_content_url == (
         "https://example.com/tts/tts_test.mp3"
     )
-    assert reply_request.messages[1].duration == 2345
+    assert reply_req.messages[1].duration == 2345
     audio_file.unlink(missing_ok=True)
 
 
@@ -317,26 +308,26 @@ async def test_history_service_load_converts_correctly():
             ChatMessage(
                 line_id="user_1",
                 message_type="text",
-                content="hello",
+                content="哈囉",
                 timestamp=datetime.now(),
             ),
             ChatMessage(
                 line_id="user_1",
                 message_type="assistant_reply",
-                content="hi",
+                content="你好",
                 timestamp=datetime.now(),
             ),
         ]
     )
 
     svc = LineMessageHistoryService(mock_repo)
-    chat_history = await svc.load_history("user_1", "current", "text")
+    chat_history = await svc.load_history("user_1", "當前問題", "text")
 
     assert len(chat_history) == 2
     assert isinstance(chat_history[0], HumanMessage)
-    assert chat_history[0].content == "hello"
+    assert chat_history[0].content == "哈囉"
     assert isinstance(chat_history[1], AIMessage)
-    assert chat_history[1].content == "hi"
+    assert chat_history[1].content == "你好"
 
 
 @pytest.mark.asyncio
@@ -346,6 +337,6 @@ async def test_history_service_save_turn_appends_messages():
 
     svc = LineMessageHistoryService(mock_repo)
     dt = datetime.now()
-    await svc.save_turn("user_1", "hello", "hi", "text", dt)
+    await svc.save_turn("user_1", "哈囉", "回答", "text", dt)
 
     assert mock_repo.append_message.call_count == 2

@@ -19,6 +19,7 @@ from app.services.liff.auth_service import LiffAuthApplicationService
 from app.services.liff.jwt_service import AppJwtService
 from app.services.liff.line_id_token_service import LineIdTokenService
 from app.services.line_messaging.event_handler import LineEventHandler
+from app.services.line_messaging.token_manager import LineTokenManager
 from app.services.line_messaging.tts_service import TTSService
 from app.services.medical.medical_service import MedicalService, medical_service
 from app.services.rag.services import RagAnswerService
@@ -65,13 +66,17 @@ _care_agent = Agent(
 
 _line_history_service = LineMessageHistoryService(_chat_history_repository)
 
+_line_token_manager = LineTokenManager(
+    channel_id=settings.LINE_CHANNEL_ID,
+    channel_secret=settings.LINE_CHANNEL_SECRET,
+)
+
 _user_profile_repository = UserProfileRepository()
 _user_profile_service = UserProfileService(repo=_user_profile_repository)
 
 _line_event_handler = LineEventHandler(
     agent=_care_agent,
-    channel_id=settings.LINE_CHANNEL_ID,
-    channel_secret=settings.LINE_CHANNEL_SECRET,
+    token_manager=_line_token_manager,
     history_service=_line_history_service,
     user_profile_service=_user_profile_service,
     tts_service=TTSService(),
@@ -135,8 +140,8 @@ def get_chat_history_repository():
     return _chat_history_repository
 
 
-def get_line_token_manager() -> LineEventHandler:
-    return _line_event_handler
+def get_line_token_manager() -> LineTokenManager:
+    return _line_token_manager
 
 
 def get_medical_service() -> MedicalService:

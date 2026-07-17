@@ -1,30 +1,13 @@
-# AGENTS.md - CARE AI Agent Architecture
+# CARE
 
-This document describes the structure, nodes, and tools utilized by the CARE (Clinical Assistance & Resource Engine) AI Agent.
+工具中立的專案入口。所有規格與流程集中在 OpenSpec，任何編輯器或 AI（Cursor、VS Code、Claude Code、或不用 AI 的人）皆適用同一套。
 
-## 🧠 Architecture Overview
-CARE is built using **LangGraph** (atomic node pattern) to choreograph decision-making, guardrails, multi-turn reasoning, and tool calls.
+- 規格（單一真相）：`openspec/specs/`
+- 進行中的變更：`openspec/changes/`
+- 專案設定與工作流程：`openspec/config.yaml`
+- 環境安裝與測試：`./init.sh`（Windows：`.\init.ps1`）
+- 人類操作說明（啟動、LINE webhook、部署）：`README.md`
 
-```mermaid
-graph TD
-    START --> Guardrail[Guardrail Node]
-    Guardrail --> Agent[Agent Decision Node]
-    Agent -->|Call Tool| Tools[Tool Executor Node]
-    Tools --> Agent
-    Agent -->|Final Answer| END
-```
+工作流程：`openspec new <change>` → 寫 proposal/tasks → 實作 → `./init.sh` 全綠 → commit/PR → `openspec archive <change>`。
 
-### 1. Nodes
-- **`guardrail_node`**: Analyzes the latest user message to verify clinical/safety boundaries and determines whether to allow RAG (`allow_rag` state flag).
-- **`agent_node`**: Binds available tools dynamically based on the state. Uses Gemini LLM to decide whether to respond directly or invoke a tool.
-- **`tools` (ToolExecutor)**: Executes the selected tool asynchronously and passes the output back to `agent_node`.
-
-### 2. Available Tools
-- **`get_rag_answer(query: str)`**: Fetches clinical articles and medical context from MongoDB Atlas vector index, synthesizes an evidence-based answer, and appends the exact source URLs.
-- **`request_location_quick_reply()`**: Triggered when a user asks for nearby medical clinics/hospitals but coordinates are missing. Initiates a LINE Quick Reply requesting location coordinates.
-- **`find_nearby_hospitals(lat: float, lng: float)`**: Triggered when GPS coordinates are sent by the user. Performs a geospatial MongoDB query and returns the 5 closest facilities formatted with Google Maps links.
-
-## 🛡️ Coding Disciplines
-- **No Markdown in LINE replies**: Always use plain text and clean line breaks. Never output `**bold**`, `# headers`, or Markdown link syntax `[text](url)` to LINE bot.
-- **RAG Prefix**: When `get_rag_answer` is invoked, the final reply must start with `"以下為 RAG 回應："`.
-- **References**: Always preserve the exact references appended by the RAG service at the bottom of the reply.
+OpenSpec CLI 說明：https://github.com/Fission-AI/OpenSpec

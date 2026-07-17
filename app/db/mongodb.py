@@ -1,8 +1,9 @@
 import logging
 from typing import Optional
 
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -35,41 +36,47 @@ class MongoDBManager:
         return cls._client
 
     @classmethod
+    def get_database(cls) -> AsyncIOMotorDatabase:
+        """
+        取得資料庫實例，資料庫名稱統一從 settings.MONGODB_DB 讀取，
+        避免各個 collection getter 各自寫死資料庫名稱。
+        """
+        db_name = settings.MONGODB_DB
+        if not db_name:
+            raise ValueError("未設定 MONGODB_DB 參數")
+        return cls.get_client()[db_name]
+
+    @classmethod
     def get_users_collection(cls):
         """
         取得 users collection
         """
-        client = cls.get_client()
-        return client["CARE_database"]["users"]
+        return cls.get_database()["users"]
 
     @classmethod
     def get_medical_collection(cls):
         """
         取得 medicalFacilities collection
         """
-        client = cls.get_client()
-        return client["CARE_database"]["medicalFacilities"]
+        return cls.get_database()["medicalFacilities"]
 
     @classmethod
     def get_family_tree_collection(cls):
         """
         取得 family_trees collection
         """
-        client = cls.get_client()
-        return client["CARE_database"]["family_trees"]
+        return cls.get_database()["family_trees"]
 
     @classmethod
     def get_pending_invitations_collection(cls):
         """
         取得 pending_invitations collection
         """
-        client = cls.get_client()
-        return client["CARE_database"]["pending_invitations"]
+        return cls.get_database()["pending_invitations"]
 
     @classmethod
     def get_consultation_summaries_collection(cls):
         """
         取得 consultation_summaries collection
         """
-        client = cls.get_client()
-        return client["CARE_database"]["consultation_summaries"]
+        return cls.get_database()["consultation_summaries"]

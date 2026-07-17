@@ -3,8 +3,8 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from app.services.line_messaging import tts_service as tts_module
-from app.services.line_messaging.tts_service import TTSService
+from app.services.line_messaging.reply import tts_service as tts_module
+from app.services.line_messaging.reply.tts_service import TTSService
 from app.core.config import settings
 
 

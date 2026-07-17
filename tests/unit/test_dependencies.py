@@ -19,6 +19,7 @@ def test_dependency_wiring_is_correct():
     profile_service = dependencies.get_user_profile_service()
     token_manager = dependencies.get_line_token_manager()
 
+    assert token_manager is dependencies._line_token_manager
     assert handler._agent is dependencies._care_agent
     assert handler._token_manager is token_manager
     assert handler._user_profile_service is profile_service

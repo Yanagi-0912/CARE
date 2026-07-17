@@ -1,0 +1,36 @@
+schema: spec-driven
+
+context: |
+  專案：CARE Backend（Clinical Assistance & Resource Engine）
+  Repo：Yanagi-0912/CARE
+  技術棧：Python 3.12, FastAPI, LangGraph, MongoDB Atlas, LINE Bot SDK, Gemini API
+  分層：app/routers、app/services/<domain>、app/tools、app/repositories、app/db、app/models、app/core；唯一組裝點 app/dependencies.py
+  進入點：app/main.py（routes: /line, /api/*, /health）
+  測試：python -m pytest tests/（單元測試 tests/unit 對應 app 分層，整合測試 tests/integration）
+  本機開發：./init.sh（Windows：.\init.ps1）後 uvicorn app.main:app --port 8000 --reload
+
+  規格（單一真相）：openspec/specs/
+    - agent-architecture：LangGraph 節點流程與工具集
+    - backend-architecture：分層、SRP、DI 組裝點慣例
+    - line-reply-rules：LINE 回覆格式（純文字、不用 Markdown、RAG 前綴、參考來源）
+    - rag-responses：RAG 閘門、最多 3 筆參考來源、無命中處理
+    - location-search：位置快速回覆與鄰近院所搜尋
+  進行中的變更：openspec/changes/
+  語言：面向使用者文件與 commit/PR 描述使用繁體中文
+
+  工作流程（工具中立，任何編輯器或 AI 皆相同）：
+  1. openspec new <change>；於 changes/<change>/ 撰寫 proposal → design（可選）→ tasks
+  2. 開 branch 實作，維持小步、聚焦單一變更
+  3. ./init.sh 安裝依賴並跑 pytest，全綠才算完成
+  4. 建立清楚的 git commit / PR
+  5. 合併後執行 openspec archive <change>，內容併入 specs/
+
+rules:
+  proposal:
+    - 說明對 API/route 的影響與測試計畫
+  tasks:
+    - 引用 tests/ 下對應的 pytest 路徑
+    - 寫測試時禁止使用 monkey patch（如 unittest.mock.patch 修改全域/別處導入之實例），請使用依賴注入（Dependency Injection）傳入 mock 實例
+    - 完成定義（Definition of Done）：./init.sh 全綠（所有 pytest 通過）且有清楚的 git commit
+  spec:
+    - LINE 回覆一律純文字、不得輸出 Markdown（詳見 specs/line-reply-rules）

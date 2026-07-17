@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -14,18 +14,63 @@ class UserProfileData(BaseModel):
     """
 
     # field 內的 ... 代表必填欄位。
-    name: str = Field(..., min_length=1, description="User display name")
-    gender: str = Field(..., min_length=1, description="User gender")
-    height: float = Field(..., gt=0, description="Height in cm")
-    weight: float = Field(..., gt=0, description="Weight in kg")
-    age: int = Field(..., ge=0, le=130, description="Age in years")
+    name: str = Field(..., min_length=1, description="使用者顯示名稱")
+    gender: str = Field(..., min_length=1, description="使用者性別")
+    height: float = Field(..., gt=0, description="身高（公分）")
+    weight: float = Field(..., gt=0, description="體重（公斤）")
+    age: int = Field(..., ge=0, le=130, description="年齡")
 
     # 慢性病史固定為字串格式。
-    chronic_history: str = Field(..., description="Chronic disease history")
+    chronic_history: str = Field(..., description="慢性病史")
 
     # 下列兩個欄位目前以文字輸入
-    major_illness_history: str = Field(..., description="Major illness history")
-    surgery_history: str = Field(..., description="Surgery history")
+    major_illness_history: str = Field(..., description="重大疾病史")
+    surgery_history: str = Field(..., description="手術病史")
+
+
+class UserSettings(BaseModel):
+    """
+    使用者介面偏好設定。
+
+    跟 picture_url 不同，這裡的欄位都跟「使用者可在前端自行調整的偏好」有關。
+    其中 language 比較特別：首次登入時以 LINE 帳號語言為預設值（由 service 層
+    在建立時帶入），之後若使用者手動變更，一律以資料庫的值為準，不再被 LINE 覆蓋；
+    其餘欄位（字體大小、通知、語音回覆等）則完全跟 LINE 無關，預設值直接採用
+    App 端目前的預設。
+    """
+
+    language: Optional[str] = Field(
+        default=None,
+        description=(
+            "使用者顯示語言。首次登入時以 LINE 帳號語言為預設值，"
+            "之後若使用者在前端手動變更，以資料庫的值為準，不再被 LINE 覆蓋。"
+        ),
+    )
+    font_size: Literal["normal", "large", "xlarge"] = Field(
+        default="large", description="字體大小"
+    )
+    high_contrast: bool = Field(default=True, description="是否啟用高對比模式")
+    notify_reminder: bool = Field(default=True, description="是否啟用用藥提醒通知")
+    notify_family: bool = Field(default=True, description="是否啟用家人健康通知")
+    voice_reply_enabled: bool = Field(default=False, description="是否啟用語音回覆")
+
+
+class UserSettingsUpdate(BaseModel):
+    """
+    更新使用者設定用的模型，所有欄位皆為可選。
+
+    只有實際帶入（non-null）的欄位才會被更新，
+    未帶入的欄位維持資料庫原值，避免部分更新時覆蓋掉其他設定。
+    """
+
+    language: Optional[str] = Field(default=None, description="使用者顯示語言")
+    font_size: Optional[Literal["normal", "large", "xlarge"]] = Field(
+        default=None, description="字體大小"
+    )
+    high_contrast: Optional[bool] = Field(default=None, description="是否啟用高對比模式")
+    notify_reminder: Optional[bool] = Field(default=None, description="是否啟用用藥提醒通知")
+    notify_family: Optional[bool] = Field(default=None, description="是否啟用家人健康通知")
+    voice_reply_enabled: Optional[bool] = Field(default=None, description="是否啟用語音回覆")
 
     # 健康諮詢記錄使用 JSON 物件，預設空 dict
     health_consultations: Dict[str, Any] = Field(
@@ -49,18 +94,22 @@ class UserProfile(UserProfileData):
     - created_at / updated_at: DB 寫入時的時間戳
     """
 
-    line_id: str = Field(..., min_length=1, description="LINE user ID")
+    line_id: str = Field(..., min_length=1, description="LINE 使用者 ID")
     picture_url: Optional[str] = Field(
         default=None,
-        description="LINE user avatar URL",
+        description="LINE 使用者頭像網址",
+    )
+    settings: UserSettings = Field(
+        default_factory=UserSettings,
+        description="使用者介面偏好設定（字體大小、高對比、通知、語音回覆等）",
     )
     created_at: Optional[datetime] = Field(
         default=None,
-        description="UTC timestamp when profile was created",
+        description="資料建立時間（UTC）",
     )
     updated_at: Optional[datetime] = Field(
         default=None,
-        description="UTC timestamp when profile was last updated",
+        description="資料最後更新時間（UTC）",
     )
 
     @classmethod
@@ -83,6 +132,5 @@ class UserProfile(UserProfileData):
         return self.model_dump(exclude={"created_at", "updated_at"})
 
 
-# __all__表示當其他文件使用 import * 時，僅會匯入 UserProfileData 和
-# UserProfile 這兩個類別。
-__all__ = ["UserProfileData", "UserProfile"]
+# __all__表示當其他文件使用 import * 時，僅會匯入下列類別。
+__all__ = ["UserProfileData", "UserProfile", "UserSettings", "UserSettingsUpdate"]

@@ -18,9 +18,13 @@ from app.services.history.history_service import LineMessageHistoryService
 from app.services.liff.auth_service import LiffAuthApplicationService
 from app.services.liff.jwt_service import AppJwtService
 from app.services.liff.line_id_token_service import LineIdTokenService
-from app.services.line_messaging.event_handler import LineEventHandler
-from app.services.line_messaging.token_manager import LineTokenManager
-from app.services.line_messaging.tts_service import TTSService
+from app.services.liff.line_language_service import LineLanguageService
+from app.services.line_messaging.reply.reply import LineTokenManager, LineReplier
+from app.services.line_messaging.handler.message_handler import LineMessageHandler
+from app.services.line_messaging.handler.media_handler import LineMediaHandler
+from app.services.line_messaging.handler.location_handler import LineLocationHandler
+from app.services.line_messaging.dispatcher.dispatcher import LineEventDispatcher as LineEventHandler
+from app.services.line_messaging.reply.tts_service import TTSService
 from app.services.medical.medical_service import MedicalService, medical_service
 from app.services.rag.services import RagAnswerService
 from app.services.users.user_profile_service import UserProfileService
@@ -74,12 +78,33 @@ _line_token_manager = LineTokenManager(
 _user_profile_repository = UserProfileRepository()
 _user_profile_service = UserProfileService(repo=_user_profile_repository)
 
-_line_event_handler = LineEventHandler(
-    agent=_care_agent,
+_line_replier = LineReplier(
     token_manager=_line_token_manager,
+    tts_service=TTSService(),
+)
+_message_handler = LineMessageHandler(
+    agent=_care_agent,
     history_service=_line_history_service,
     user_profile_service=_user_profile_service,
-    tts_service=TTSService(),
+    replier=_line_replier,
+)
+_media_handler = LineMediaHandler(
+    agent=_care_agent,
+    history_service=_line_history_service,
+    user_profile_service=_user_profile_service,
+    replier=_line_replier,
+)
+_location_handler = LineLocationHandler(
+    agent=_care_agent,
+    history_service=_line_history_service,
+    user_profile_service=_user_profile_service,
+    replier=_line_replier,
+)
+_line_event_handler = LineEventHandler(
+    message_handler=_message_handler,
+    media_handler=_media_handler,
+    location_handler=_location_handler,
+    replier=_line_replier,
 )
 
 _family_tree_service = FamilyTreeService()
@@ -99,10 +124,15 @@ _consultation_download_token_service = AppJwtService(
     issuer="care-consultation-download",
 )
 
+_line_language_service = LineLanguageService(
+    get_access_token=_line_token_manager.get_token,
+)
+
 _liff_auth_application_service = LiffAuthApplicationService(
     line_id_token_service=_line_id_token_service,
     jwt_service=_app_jwt_service,
     user_profile_service=_user_profile_service,
+    line_language_service=_line_language_service,
 )
 
 
@@ -141,6 +171,7 @@ def get_chat_history_repository():
 
 
 def get_line_token_manager() -> LineTokenManager:
+    """取得 LINE Channel Access Token 管理實例"""
     return _line_token_manager
 
 

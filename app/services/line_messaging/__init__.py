@@ -4,16 +4,22 @@
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .event_handler import LineEventHandler
+    from .dispatcher.dispatcher import LineEventDispatcher as LineEventHandler
+    from .reply.reply import LineTokenManager
 
 __all__ = [
     "LineEventHandler",
+    "LineTokenManager",
 ]
 
 
 def __getattr__(name: str) -> Any:
     if name == "LineEventHandler":
-        from .event_handler import LineEventHandler
+        from .dispatcher.dispatcher import LineEventDispatcher
 
-        return LineEventHandler
+        return LineEventDispatcher
+    if name == "LineTokenManager":
+        from .reply.reply import LineTokenManager
+
+        return LineTokenManager
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

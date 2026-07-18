@@ -3,6 +3,8 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from app.services.gemini import GeminiService
 from app.services.rag.retriever import MongoAtlasVectorRetriever
+from app.services.rag.web_client import WebSearchClient
+from app.services.rag.whitelist import is_allowed_url
 
 RETRIEVAL_TOP_K = 10
 CITE_TOP_K = 3
@@ -14,6 +16,9 @@ CANNOT_ANSWER_MARKERS: tuple[str, ...] = (
     "未找到",
     "找不到相關",
 )
+WEB_ANSWER_PREFIX = "以下參考網路公開資料"
+WEB_SEARCH_LIMIT = 8
+WEB_PAGE_CHAR_LIMIT = 8000
 
 RAG_PROMPT = ChatPromptTemplate.from_messages(
     [
@@ -38,28 +43,75 @@ class RagAnswerService:
         self,
         gemini_service: GeminiService,
         retriever: MongoAtlasVectorRetriever,
+        web_client: WebSearchClient | None = None,
     ) -> None:
         self.gemini_service = gemini_service
         self.retriever = retriever
+        self.web_client = web_client
 
     async def answer(self, user_text: str) -> str:
         docs = await self.retriever.ainvoke(user_text)
-        if not docs:
-            return NO_HITS_MESSAGE
+        if docs:
+            kb_answer = await self._generate_answer(user_text, docs)
+            if not self._is_cannot_answer(kb_answer):
+                return self._append_sources(kb_answer, docs, source_kind="kb")
 
+        web_docs = await self._fetch_web_docs(user_text)
+        if not web_docs:
+            return NO_ANSWER_MESSAGE
+
+        web_answer = await self._generate_answer(user_text, web_docs)
+        if self._is_cannot_answer(web_answer):
+            return NO_ANSWER_MESSAGE
+
+        annotated = f"{WEB_ANSWER_PREFIX}\n\n{web_answer}"
+        return self._append_sources(annotated, web_docs, source_kind="web")
+
+    async def _generate_answer(self, question: str, docs: list[Document]) -> str:
         context = "\n".join(
             f"{idx}. {doc.page_content}" for idx, doc in enumerate(docs, start=1)
         )
-        messages = RAG_PROMPT.format_messages(question=user_text, context=context)
+        messages = RAG_PROMPT.format_messages(question=question, context=context)
         rag_result = await self.gemini_service.chat_model.ainvoke(messages)
         answer_text = rag_result.content or "抱歉，我目前找不到相關資料，請稍後再試。"
         if not isinstance(answer_text, str):
             answer_text = str(answer_text)
+        return answer_text
 
-        if self._is_cannot_answer(answer_text):
-            return answer_text
+    async def _fetch_web_docs(self, query: str) -> list[Document]:
+        if self.web_client is None:
+            return []
+        try:
+            hits = await self.web_client.search(query, limit=WEB_SEARCH_LIMIT)
+        except Exception:
+            return []
 
-        return self._append_sources(answer_text, docs, source_kind="kb")
+        docs: list[Document] = []
+        seen: set[str] = set()
+        for hit in hits:
+            url = (hit.url or "").strip()
+            if not url or url in seen or not is_allowed_url(url):
+                continue
+            try:
+                text = await self.web_client.scrape(url)
+            except Exception:
+                continue
+            text = (text or "").strip()
+            if not text:
+                continue
+            seen.add(url)
+            docs.append(
+                Document(
+                    page_content=text[:WEB_PAGE_CHAR_LIMIT],
+                    metadata={
+                        "source_name": (hit.title or "").strip() or url,
+                        "url": url,
+                    },
+                )
+            )
+            if len(docs) >= CITE_TOP_K:
+                break
+        return docs
 
     @staticmethod
     def _is_cannot_answer(text: str) -> bool:

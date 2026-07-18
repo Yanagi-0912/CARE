@@ -32,6 +32,7 @@ from app.services.medical.medical_service import MedicalService, medical_service
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 from app.services.rag import MongoAtlasVectorRetriever, RETRIEVAL_TOP_K, RagAnswerService
+from app.services.rag.firecrawl_client import FirecrawlClient
 from app.services.users.user_profile_service import UserProfileService
 
 # ==============================================================================
@@ -77,9 +78,14 @@ _rag_retriever = MongoAtlasVectorRetriever(
     k=RETRIEVAL_TOP_K,
 )
 
+_firecrawl_client = None
+if settings.FIRECRAWL_API_KEY:
+    _firecrawl_client = FirecrawlClient(api_key=settings.FIRECRAWL_API_KEY)
+
 _rag_answer_service = RagAnswerService(
     gemini_service=_gemini_service,
     retriever=_rag_retriever,
+    web_client=_firecrawl_client,
 )
 
 # ==============================================================================

@@ -132,6 +132,55 @@ async def test_answer_returns_message_when_no_docs():
     gemini_service.chat_model.ainvoke.assert_not_awaited()
 
 
+def test_append_sources_renumbers_after_skipping_missing_and_duplicate_urls():
+    docs = [
+        Document(page_content="a", metadata={"source_name": "缺網址", "url": ""}),
+        Document(
+            page_content="b",
+            metadata={
+                "source_name": "國健署",
+                "url": "https://www.hpa.gov.tw/a",
+            },
+        ),
+        Document(
+            page_content="c",
+            metadata={
+                "source_name": "重複",
+                "url": "https://www.hpa.gov.tw/a",
+            },
+        ),
+        Document(
+            page_content="d",
+            metadata={
+                "source_name": "疾管署",
+                "url": "https://www.cdc.gov.tw/b",
+            },
+        ),
+    ]
+    result = RagAnswerService._append_sources("答案正文", docs)
+    assert "參考資料來源：" in result
+    assert "[1] 國健署：https://www.hpa.gov.tw/a" in result
+    assert "[2] 疾管署：https://www.cdc.gov.tw/b" in result
+    assert "[3]" not in result
+    assert "缺網址" not in result
+
+
+def test_append_sources_web_kind_prefixes_network_label():
+    docs = [
+        Document(
+            page_content="x",
+            metadata={
+                "source_name": "衛福部",
+                "url": "https://www.mohw.gov.tw/x",
+            },
+        )
+    ]
+    result = RagAnswerService._append_sources(
+        "答案正文", docs, source_kind="web"
+    )
+    assert "[1] 網路：衛福部：https://www.mohw.gov.tw/x" in result
+
+
 @pytest.mark.asyncio
 async def test_answer_raises_when_retriever_fails():
     gemini_service = MagicMock()

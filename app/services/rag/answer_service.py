@@ -51,24 +51,33 @@ class RagAnswerService:
         return self._append_sources(answer_text, docs)
 
     @staticmethod
-    def _append_sources(answer_text: str, docs: list[Document]) -> str:
+    def _append_sources(
+        answer_text: str,
+        docs: list[Document],
+        *,
+        source_kind: str = "kb",
+    ) -> str:
         source_lines: list[str] = []
         seen_urls: set[str] = set()
 
-        for idx, doc in enumerate(docs[:CITE_TOP_K], start=1):
+        for doc in docs:
+            if len(source_lines) >= CITE_TOP_K:
+                break
             source_name = str(doc.metadata.get("source_name") or "").strip()
             url = str(doc.metadata.get("url") or "").strip()
-
             if not url or url in seen_urls:
                 continue
             seen_urls.add(url)
 
-            if source_name:
-                source_lines.append(f"[{idx}] {source_name}：{url}")
+            display_idx = len(source_lines) + 1
+            if source_kind == "web":
+                label = source_name if source_name else url
+                source_lines.append(f"[{display_idx}] 網路：{label}：{url}")
+            elif source_name:
+                source_lines.append(f"[{display_idx}] {source_name}：{url}")
             else:
-                source_lines.append(f"[{idx}] {url}")
+                source_lines.append(f"[{display_idx}] {url}")
 
         if not source_lines:
             return answer_text
-
         return f"{answer_text}\n\n參考資料來源：\n" + "\n".join(source_lines)

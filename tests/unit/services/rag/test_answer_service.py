@@ -181,6 +181,48 @@ def test_append_sources_web_kind_prefixes_network_label():
     assert "[1] 網路：衛福部：https://www.mohw.gov.tw/x" in result
 
 
+@pytest.mark.parametrize(
+    "answer_content",
+    [
+        "我不知道這個問題的答案。",
+        "根據現有資料無法提供建議。",
+        "未找到足夠資訊。",
+        "找不到相關的衛教說明。",
+    ],
+)
+@pytest.mark.asyncio
+async def test_answer_omits_kb_sources_when_model_cannot_answer(answer_content):
+    docs = [
+        Document(
+            page_content="無關片段",
+            metadata={
+                "source_name": "國健署",
+                "url": "https://www.hpa.gov.tw/x",
+            },
+        )
+    ]
+    svc, _gemini, _retriever = _make_service(
+        docs=docs, answer_content=answer_content
+    )
+    result = await svc.answer("某個冷門問題")
+    assert "參考資料來源" not in result
+    assert "https://www.hpa.gov.tw/x" not in result
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("正常可回答的衛教內容", False),
+        ("我不知道", True),
+        ("無法提供相關資訊", True),
+        ("", True),
+        ("   ", True),
+    ],
+)
+def test_is_cannot_answer_heuristic(text, expected):
+    assert RagAnswerService._is_cannot_answer(text) is expected
+
+
 @pytest.mark.asyncio
 async def test_answer_raises_when_retriever_fails():
     gemini_service = MagicMock()

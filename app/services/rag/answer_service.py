@@ -7,6 +7,13 @@ from app.services.rag.retriever import MongoAtlasVectorRetriever
 RETRIEVAL_TOP_K = 10
 CITE_TOP_K = 3
 NO_HITS_MESSAGE = "知識庫中未找到相關資訊，請嘗試用不同方式描述問題。"
+NO_ANSWER_MESSAGE = "目前無法提供相關資訊，請稍後再試或換一種方式描述問題。"
+CANNOT_ANSWER_MARKERS: tuple[str, ...] = (
+    "不知道",
+    "無法",
+    "未找到",
+    "找不到相關",
+)
 
 RAG_PROMPT = ChatPromptTemplate.from_messages(
     [
@@ -48,7 +55,18 @@ class RagAnswerService:
         answer_text = rag_result.content or "抱歉，我目前找不到相關資料，請稍後再試。"
         if not isinstance(answer_text, str):
             answer_text = str(answer_text)
-        return self._append_sources(answer_text, docs)
+
+        if self._is_cannot_answer(answer_text):
+            return answer_text
+
+        return self._append_sources(answer_text, docs, source_kind="kb")
+
+    @staticmethod
+    def _is_cannot_answer(text: str) -> bool:
+        normalized = (text or "").strip()
+        if not normalized:
+            return True
+        return any(marker in normalized for marker in CANNOT_ANSWER_MARKERS)
 
     @staticmethod
     def _append_sources(

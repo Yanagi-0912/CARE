@@ -77,10 +77,11 @@ _line_token_manager = LineTokenManager(
 
 _user_profile_repository = UserProfileRepository()
 _user_profile_service = UserProfileService(repo=_user_profile_repository)
+_tts_service = TTSService()
 
 _line_replier = LineReplier(
     token_manager=_line_token_manager,
-    tts_service=TTSService(),
+    tts_service=_tts_service,
 )
 _message_handler = LineMessageHandler(
     agent=_care_agent,
@@ -189,6 +190,10 @@ def get_vector_search_reader() -> MongoVectorSearchReader:
 
 def get_user_profile_service() -> UserProfileService:
     return _user_profile_service
+
+
+def get_tts_service() -> TTSService:
+    return _tts_service
 
 
 def get_family_tree_service() -> FamilyTreeService:

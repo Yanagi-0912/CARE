@@ -1,9 +1,7 @@
 import logging
 from contextlib import asynccontextmanager
-from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI
 from app.routers.line.webhook import router as line_router
 from app.routers.liff.auth import router as auth_router
 from app.routers.system import router as system_router

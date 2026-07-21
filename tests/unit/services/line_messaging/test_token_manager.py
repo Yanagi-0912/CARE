@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.services.line_messaging.reply.reply import LineTokenManager
+from app.services.line_messaging.token_manager import LineTokenManager
 
 
 @pytest.mark.parametrize(
@@ -36,7 +36,7 @@ def test_get_token_fetches_and_caches_token():
     }
 
     with patch(
-        "app.services.line_messaging.reply.reply.requests.post",
+        "app.services.line_messaging.token_manager.requests.post",
         return_value=mock_response,
     ) as mock_post:
         first = token_manager.get_token()
@@ -60,7 +60,7 @@ def test_get_token_refreshes_when_cache_expired():
     }
 
     with patch(
-        "app.services.line_messaging.reply.reply.requests.post",
+        "app.services.line_messaging.token_manager.requests.post",
         return_value=mock_response,
     ) as mock_post:
         token = token_manager.get_token()

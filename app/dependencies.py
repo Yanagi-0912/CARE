@@ -19,12 +19,13 @@ from app.services.liff.auth_service import LiffAuthApplicationService
 from app.services.liff.jwt_service import AppJwtService
 from app.services.liff.line_id_token_service import LineIdTokenService
 from app.services.liff.line_language_service import LineLanguageService
-from app.services.line_messaging.reply.reply import LineTokenManager, LineReplier
-from app.services.line_messaging.handler.message_handler import LineMessageHandler
-from app.services.line_messaging.handler.media_handler import LineMediaHandler
+from app.services.line_messaging.event_handler import LineEventHandler
 from app.services.line_messaging.handler.location_handler import LineLocationHandler
-from app.services.line_messaging.dispatcher.dispatcher import LineEventDispatcher as LineEventHandler
+from app.services.line_messaging.handler.media_handler import LineMediaHandler
+from app.services.line_messaging.handler.message_handler import LineMessageHandler
+from app.services.line_messaging.reply.reply import LineReplier
 from app.services.line_messaging.reply.tts_service import TTSService
+from app.services.line_messaging.token_manager import LineTokenManager
 from app.services.medical.medical_service import MedicalService, medical_service
 from app.services.rag.services import RagAnswerService
 from app.services.users.user_profile_service import UserProfileService
@@ -172,7 +173,6 @@ def get_chat_history_repository():
 
 
 def get_line_token_manager() -> LineTokenManager:
-    """取得 LINE Channel Access Token 管理實例"""
     return _line_token_manager
 
 

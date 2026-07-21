@@ -16,8 +16,11 @@ from linebot.v3.webhooks import (
 
 from app.models.chat_message import ChatMessage
 from app.services.history.history_service import LineMessageHistoryService
-from app.services.line_messaging.dispatcher.dispatcher import LineEventDispatcher as LineEventHandler
+from app.services.line_messaging.dispatcher.dispatcher import (
+    LineEventDispatcher as LineEventHandler,
+)
 from app.services.line_messaging.handler.message_handler import LineValidationError
+
 
 def create_handler(
     agent,
@@ -26,10 +29,10 @@ def create_handler(
     user_profile_service,
     tts_service,
 ):
-    from app.services.line_messaging.reply.reply import LineReplier
-    from app.services.line_messaging.handler.message_handler import LineMessageHandler
-    from app.services.line_messaging.handler.media_handler import LineMediaHandler
     from app.services.line_messaging.handler.location_handler import LineLocationHandler
+    from app.services.line_messaging.handler.media_handler import LineMediaHandler
+    from app.services.line_messaging.handler.message_handler import LineMessageHandler
+    from app.services.line_messaging.reply.reply import LineReplier
 
     replier = LineReplier(token_manager=token_manager, tts_service=tts_service)
     message_handler = LineMessageHandler(
@@ -56,6 +59,7 @@ def create_handler(
         location_handler=location_handler,
         replier=replier,
     )
+
 
 def _message_event(
     message,
@@ -339,21 +343,17 @@ def test_validate_media_message_success() -> None:
     assert issubclass(LineValidationError, Exception)
 
 
-# ==============================================================================
-# 驗證媒體訊息錯誤之整合測試（直接透過 handle）
-# ==============================================================================
-
 @pytest.mark.asyncio
 async def test_handle_media_message_invalid_type(handler, mock_line_api):
     message = FileMessageContent(
-        id="M123", fileName="test.invalid", fileSize=100
+        id="M123",
+        fileName="test.invalid",
+        fileSize=100,
     )
-    # 模擬不支援的媒體類型
     message.type = "unsupported_media_type"
-    event = _message_event(message)
 
-    await handler.handle(event)
-    
+    await handler.handle(_message_event(message))
+
     mock_line_api.reply_message.assert_called_once()
     reply_req = mock_line_api.reply_message.call_args[0][0]
     assert "不支援的媒體類型" in reply_req.messages[0].text
@@ -361,22 +361,16 @@ async def test_handle_media_message_invalid_type(handler, mock_line_api):
 
 @pytest.mark.asyncio
 async def test_handle_media_message_invalid_filename(handler, mock_line_api):
-    message = FileMessageContent(
-        id="M123", fileName="   ", fileSize=100
-    )
+    message = FileMessageContent(id="M123", fileName="   ", fileSize=100)
     message.type = "file"
-    event = _message_event(message)
 
-    await handler.handle(event)
-    
+    await handler.handle(_message_event(message))
+
     mock_line_api.reply_message.assert_called_once()
     reply_req = mock_line_api.reply_message.call_args[0][0]
     assert "不支援的媒體類型" in reply_req.messages[0].text or "無效的媒體檔名" in reply_req.messages[0].text
 
 
-# ==============================================================================
-# LineMessageHistoryService 單元測試
-# ==============================================================================
 @pytest.mark.asyncio
 async def test_history_service_load_converts_correctly():
     mock_repo = MagicMock()
@@ -419,14 +413,12 @@ async def test_history_service_save_turn_appends_messages():
     assert mock_repo.append_message.call_count == 2
     user_call, ai_call = mock_repo.append_message.call_args_list
 
-    # 檢查第一個寫入的 User 訊息
     user_msg = user_call[0][1]
     assert user_msg.line_id == "user_1"
     assert user_msg.message_type == "text"
     assert user_msg.content == "哈囉"
     assert user_msg.timestamp == dt
 
-    # 檢查第二個寫入的 AI 訊息
     ai_msg = ai_call[0][1]
     assert ai_msg.line_id == "user_1"
     assert ai_msg.message_type == "assistant_reply"
@@ -451,7 +443,6 @@ async def test_history_service_load_slices_to_last_five():
     svc = LineMessageHistoryService(mock_repo)
     chat_history = await svc.load_history("user_1", "當前問題", "text")
 
-    # 預期只會載入最後 5 筆訊息 (msg_2 到 msg_6)
     assert len(chat_history) == 5
     assert chat_history[0].content == "msg_2"
     assert chat_history[4].content == "msg_6"
@@ -461,8 +452,6 @@ async def test_history_service_load_slices_to_last_five():
 async def test_handle_text_message_with_user_profile(
     mock_agent, mock_line_api, mock_history_service, mock_tts_service
 ):
-    from linebot.v3.webhooks import TextMessageContent
-
     mock_profile_service = MagicMock()
     dummy_profile = {"name": "張三", "gender": "male", "voice_reply_enabled": True}
     mock_profile_service.get_user_profile = AsyncMock(return_value=dummy_profile)
@@ -470,7 +459,7 @@ async def test_handle_text_message_with_user_profile(
     token_manager = MagicMock()
     token_manager.get_token.return_value = "dummy_token"
 
-    h = create_handler(
+    handler = create_handler(
         agent=mock_agent,
         token_manager=token_manager,
         history_service=mock_history_service,
@@ -479,11 +468,9 @@ async def test_handle_text_message_with_user_profile(
     )
 
     message = TextMessageContent(id="M_PROF", text="你好", quoteToken="dummy")
-    event = _message_event(message, user_id="U_PROF")
-
     mock_history_service.load_history.return_value = [HumanMessage(content="你好")]
 
-    await h.handle(event)
+    await handler.handle(_message_event(message, user_id="U_PROF"))
 
     mock_profile_service.get_user_profile.assert_called_once_with("U_PROF")
     mock_agent.invoke.assert_called_once_with(

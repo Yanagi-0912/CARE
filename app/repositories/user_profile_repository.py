@@ -71,3 +71,18 @@ class UserProfileRepository:
             # 移除 MongoDB 的 _id 欄位以便 JSON 序列化
             profile.pop("_id", None)
         return profile
+
+    @staticmethod
+    async def update_voice_reply_enabled(line_id: str, enabled: bool) -> bool:
+        col = MongoDBManager.get_users_collection()
+        now = datetime.now(tz=timezone.utc)
+        result = await col.update_one(
+            {"line_id": line_id},
+            {
+                "$set": {
+                    "voice_reply_enabled": enabled,
+                    "updated_at": now,
+                }
+            },
+        )
+        return result.matched_count > 0

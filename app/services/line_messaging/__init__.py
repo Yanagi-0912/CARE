@@ -1,16 +1,10 @@
-# LINE Bot 服務層
-# 提供 LINE Messaging API 相關的業務邏輯服務
-
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .event_handler import LineEventHandler
     from .token_manager import LineTokenManager
 
-__all__ = [
-    "LineEventHandler",
-    "LineTokenManager",
-]
+__all__ = ["LineEventHandler", "LineTokenManager"]
 
 
 def __getattr__(name: str) -> Any:

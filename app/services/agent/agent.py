@@ -63,8 +63,14 @@ class Agent:
         self,
         user_input: str = "",
         messages: Optional[list[AnyMessage]] = None,
+        user_profile: Optional[dict] = None,
     ) -> dict:
-        """對外的主要進入點，回傳格式維持不變。"""
+        """對外的主要進入點，回傳格式維持不變。
+
+        user_profile 由 LINE handler 傳入（語音偏好等在 handler 層使用）；
+        目前 Agent 圖尚未消費此參數，先接受以避免呼叫端 TypeError。
+        """
+        _ = user_profile
         if messages is None:
             messages = [HumanMessage(content=user_input)] if user_input else []
         elif user_input:

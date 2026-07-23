@@ -16,6 +16,23 @@ def mock_guardrail_service():
 
 
 @pytest.mark.asyncio
+async def test_agent_invoke_accepts_user_profile_kwarg(mock_llm, mock_guardrail_service):
+    agent = Agent(llm=mock_llm, guardrail_service=mock_guardrail_service)
+    agent._graph = MagicMock()
+    agent._graph.ainvoke = AsyncMock(
+        return_value={"messages": [AIMessage(content="ok")]}
+    )
+
+    response = await agent.invoke(
+        user_input="Hello",
+        messages=None,
+        user_profile={"settings": {"voice_reply_enabled": True}},
+    )
+
+    assert response["response"] == "ok"
+
+
+@pytest.mark.asyncio
 async def test_agent_invoke_no_messages_provided(mock_llm, mock_guardrail_service):
     # Setup Agent with mock graph
     agent = Agent(llm=mock_llm, guardrail_service=mock_guardrail_service)

@@ -1,7 +1,11 @@
-from app.services.guardrail.service import logger
+import logging
+
 from langchain_core.messages import SystemMessage
+
 from app.services.agent.utils.state import State
 from app.tools.registry import get_all_tools
+
+logger = logging.getLogger(__name__)
 
 
 def format_user_profile_prompt(user_profile: dict | None) -> str:
@@ -51,7 +55,7 @@ class AgentNodes:
         tools = get_all_tools(include_rag_tool=state.get("allow_rag", False))
         llm_with_tools = self._llm.bind_tools(tools)
 
-        logger.info(f"Using tools: {[t.name for t in tools]}")
+        logger.info("Using tools: %s", [t.name for t in tools])
 
         user_profile_text = format_user_profile_prompt(state.get("user_profile"))
         full_prompt = self._prompt + user_profile_text

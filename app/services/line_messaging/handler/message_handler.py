@@ -21,11 +21,13 @@ class BaseLineMessageHandler:
         history_service,
         user_profile_service,
         replier: LineReplier,
+        loading_animation_service=None,
     ):
         self._agent = agent
         self._history_service = history_service
         self._user_profile_service = user_profile_service
         self._replier = replier
+        self._loading_animation_service = loading_animation_service
 
     async def _process_and_reply(
         self,
@@ -50,6 +52,10 @@ class BaseLineMessageHandler:
             user_profile = None
             if self._user_profile_service:
                 user_profile = await self._user_profile_service.get_user_profile(user_id)
+
+            # 先顯示 Loading，再呼叫 Agent
+            if self._loading_animation_service is not None:
+                await self._loading_animation_service.start(user_id)
 
             # 呼叫 Agent 大腦層
             agent_response = await self._agent.invoke(

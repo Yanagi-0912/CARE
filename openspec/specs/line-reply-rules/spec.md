@@ -37,3 +37,18 @@
 
 - **WHEN** 回覆使用了 `get_rag_answer` 且工具輸出含「參考資料來源：」
 - **THEN** 回覆末端完整包含該「參考資料來源：」段落，網址以純文字原樣顯示
+
+### Requirement: 處理訊息時顯示 Loading Animation
+
+系統收到有效使用者訊息並開始處理時，SHALL 在呼叫 Agent 前對該一對一聊天的 `chatId`（LINE user id）呼叫 Loading Animation API，且 `loadingSeconds` SHALL 為 10。Loading 失敗時系統 SHALL NOT 中斷後續 Agent 處理與最終回覆。
+
+#### Scenario: 進入處理前顯示 loading
+
+- **WHEN** LINE webhook 開始處理一則有效訊息
+- **THEN** 系統先對該使用者顯示 Loading Animation（10 秒），再呼叫 Agent
+
+#### Scenario: Loading 失敗不阻擋回覆
+
+- **WHEN** Loading Animation API 呼叫失敗
+- **THEN** 系統仍繼續呼叫 Agent 並完成對使用者的回覆
+

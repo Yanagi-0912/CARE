@@ -8,20 +8,6 @@
 
 暫無
 
-## 規格與開發流程
-
-架構、行為規則與開發流程集中在 OpenSpec（工具中立，任何編輯器或 AI 皆適用同一套）：
-
-| 內容 | 位置 |
-|------|------|
-| 已上線規格 | `openspec/specs/` |
-| 進行中的變更 | `openspec/changes/` |
-| 專案設定與工作流程 | `openspec/config.yaml`、`AGENTS.md` |
-
-主要規格：`agent-architecture`（LangGraph 流程與工具）、`backend-architecture`（分層與 DI）、`line-reply-rules`、`rag-responses`、`location-search`。
-
-本 README 只放「怎麼安裝、啟動與部署」的操作說明。
-
 ## 快速開始
 
 ```bash
@@ -103,8 +89,6 @@ ngrok http 8000
 
 ## 代理與工具流程（摘要）
 
-完整規格見 `openspec/specs/agent-architecture/` 與 `openspec/specs/location-search/`。
-
 目前代理以 **LangGraph** 編排（`app/services/agent/agent.py`）：
 
 ```
@@ -117,7 +101,7 @@ START → guardrail → agent →（tools → agent）→ END
 - `request_location_quick_reply`：引導使用者分享 LINE 位置
 - `find_nearby_hospitals`：依座標搜尋鄰近醫療院所
 
-LINE 訊息經 `app/services/line_messaging/` 進入代理，回覆由 `LineMessageService` 送出。分層、DI 與新增工具的慣例見 `openspec/specs/backend-architecture/`。
+LINE 訊息經 `app/services/line_messaging/` 進入代理，回覆由 `LineMessageService` 送出。
 
 ## n8n workflow 多媒體處理功能
 

@@ -2,14 +2,6 @@ import pytest
 from unittest.mock import AsyncMock
 
 from app.services.guardrail.service import GuardrailService
-from app.services.gemini.shared.errors import (
-    GeminiHttpError,
-    GeminiNetworkError,
-    GeminiSchemaError,
-    GeminiUnknownError,
-)
-
-# Guardrail 測試只驗證「文字分類結果如何影響是否允許 RAG」，不直接測 Gemini model。
 
 
 @pytest.mark.asyncio
@@ -18,6 +10,7 @@ async def test_allow_rag_tool_returns_false_when_non_health():
     guardrail = GuardrailService(async_text_to_bool=invoker)
     allowed = await guardrail.allow_rag_tool("今天天氣如何")
     assert allowed is False
+    invoker.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -29,41 +22,18 @@ async def test_allow_rag_tool_returns_true_when_health_related():
 
 
 @pytest.mark.asyncio
-async def test_allow_rag_tool_returns_true_on_schema_error():
-    invoker = AsyncMock(side_effect=GeminiSchemaError("invalid output"))
+async def test_allow_rag_tool_skips_classifier_for_location_message():
+    invoker = AsyncMock(return_value=True)
     guardrail = GuardrailService(async_text_to_bool=invoker)
-    allowed = await guardrail.allow_rag_tool("我頭痛")
-    assert allowed is True
-
-
-@pytest.mark.asyncio
-async def test_allow_rag_tool_returns_true_on_http_error():
-    invoker = AsyncMock(
-        side_effect=GeminiHttpError(status_code=429, message="quota exceeded")
+    allowed = await guardrail.allow_rag_tool(
+        "這是我的目前位置：lat=25.0, lng=121.5"
     )
-    guardrail = GuardrailService(async_text_to_bool=invoker)
-    allowed = await guardrail.allow_rag_tool("我頭痛")
-    assert allowed is True
+    assert allowed is False
+    invoker.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_allow_rag_tool_returns_true_on_network_error():
-    invoker = AsyncMock(side_effect=GeminiNetworkError("network down"))
-    guardrail = GuardrailService(async_text_to_bool=invoker)
-    allowed = await guardrail.allow_rag_tool("我頭痛")
-    assert allowed is True
-
-
-@pytest.mark.asyncio
-async def test_allow_rag_tool_returns_true_on_gemini_unknown_error():
-    invoker = AsyncMock(side_effect=GeminiUnknownError("unexpected"))
-    guardrail = GuardrailService(async_text_to_bool=invoker)
-    allowed = await guardrail.allow_rag_tool("我頭痛")
-    assert allowed is True
-
-
-@pytest.mark.asyncio
-async def test_allow_rag_tool_returns_true_on_unknown_error():
+async def test_allow_rag_tool_fail_open_on_error():
     invoker = AsyncMock(side_effect=RuntimeError("boom"))
     guardrail = GuardrailService(async_text_to_bool=invoker)
     allowed = await guardrail.allow_rag_tool("我頭痛")

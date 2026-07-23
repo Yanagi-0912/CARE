@@ -123,7 +123,7 @@ LINE 訊息經 `app/services/line_messaging/` 進入代理，回覆由 `LineMess
 
 1. 使用 docker 啟動 n8n，預設運行在 `http://localhost:5678/`；local ASR 與 file parser 兩服務分別運行在 port `8200` 和 `8100`。
 2. 將 `resources/mutimedia process.json` import 至 n8n，填寫 api key 並 publish。
-3. 向 webhook `http://localhost:5678/webhook/bff1fd27-efc4-45cf-b64a-adb0475aa35c` 傳送 POST Request，body 中帶有要解析的檔案。
+3. 向 webhook `http://localhost:5678/webhook/multimedia-process` 傳送 POST Request，body 中帶有要解析的檔案。
 
 ## direnv 虛擬環境提示字元（可選）
 

@@ -17,7 +17,6 @@ class UserProfileService:
         return await self._repo.get_user_profile(line_id)
 
     async def update_voice_reply_enabled(self, line_id: str, enabled: bool) -> bool:
-        await self._repo.update_user_settings(line_id, {"voice_reply_enabled": enabled})
         return await self._repo.update_voice_reply_enabled(line_id, enabled)
 
     async def sync_line_profile(

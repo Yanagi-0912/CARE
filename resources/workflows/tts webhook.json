@@ -170,7 +170,7 @@
       "main": [
         [
           {
-            "node": "Normalize TTS Request",
+            "node": "Validate & Normalize TTS Request",
             "type": "main",
             "index": 0
           }

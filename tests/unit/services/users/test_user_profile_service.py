@@ -112,3 +112,16 @@ async def test_create_default_user_profile_includes_default_settings():
         "notify_family": True,
         "voice_reply_enabled": False,
     }
+
+
+@pytest.mark.asyncio
+async def test_update_voice_reply_enabled_calls_repo_once():
+    service, repo = _build_service()
+    repo.update_voice_reply_enabled.return_value = True
+
+    ok = await service.update_voice_reply_enabled("U123", True)
+
+    assert ok is True
+    repo.update_voice_reply_enabled.assert_awaited_once_with("U123", True)
+    repo.update_user_settings.assert_not_awaited()
+

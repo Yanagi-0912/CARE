@@ -218,5 +218,6 @@ async def test_update_voice_reply_enabled_only_sets_voice_field(
     args, kwargs = collection.update_one.await_args
     assert args[0] == {"line_id": "U123"}
     assert args[1]["$set"]["voice_reply_enabled"] is False
+    assert args[1]["$set"]["settings.voice_reply_enabled"] is False
     assert "updated_at" in args[1]["$set"]
     assert kwargs == {}

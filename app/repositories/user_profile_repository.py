@@ -81,6 +81,7 @@ class UserProfileRepository:
             {
                 "$set": {
                     "voice_reply_enabled": enabled,
+                    "settings.voice_reply_enabled": enabled,
                     "updated_at": now,
                 }
             },

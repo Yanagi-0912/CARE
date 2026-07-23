@@ -5,7 +5,6 @@ from fastapi.responses import FileResponse
 router = APIRouter(tags=["TTS"])
 
 tts_tmp_dir = Path("app_data") / "tmp"
-tts_tmp_dir.mkdir(parents=True, exist_ok=True)
 
 AUDIO_NOT_FOUND_DETAIL = "Audio not found"
 TTS_NOT_FOUND_RESPONSE = {

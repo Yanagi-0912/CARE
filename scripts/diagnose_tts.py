@@ -9,7 +9,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.core.config import settings
-from app.services.line_messaging.tts_service import TTSService
+from app.services.line_messaging.reply.tts_service import TTSService
 
 
 def _mask(value: str) -> str:

@@ -10,6 +10,8 @@ from linebot.v3.webhooks import (
     ImageMessageContent,
     LocationMessageContent,
     MessageEvent,
+    PostbackContent,
+    PostbackEvent,
     TextMessageContent,
     UserSource,
 )
@@ -478,3 +480,53 @@ async def test_handle_text_message_with_user_profile(
         messages=[HumanMessage(content="你好")],
         user_profile=dummy_profile,
     )
+
+
+def _postback_event(
+    data: str,
+    *,
+    reply_token: str = "dummy_token",
+    user_id: str = "U12345",
+) -> PostbackEvent:
+    return PostbackEvent(
+        timestamp=1000,
+        mode="active",
+        webhookEventId="01HZTEST000000000000000000",
+        deliveryContext=DeliveryContext(isRedelivery=False),
+        replyToken=reply_token,
+        source=UserSource(type="user", userId=user_id),
+        postback=PostbackContent(data=data),
+    )
+
+
+@pytest.mark.asyncio
+async def test_handle_postback_event_toggle_voice_reply_enabled(
+    handler,
+    mock_user_profile_service,
+    mock_line_api,
+):
+    mock_user_profile_service.update_voice_reply_enabled = AsyncMock(return_value=True)
+    event = _postback_event("action=toggle_voice_reply&enabled=true", user_id="U12345")
+
+    await handler.handle(event)
+
+    mock_user_profile_service.update_voice_reply_enabled.assert_called_once_with("U12345", True)
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert reply_req.messages[0].text == "已開啟語音回覆"
+
+
+@pytest.mark.asyncio
+async def test_handle_postback_event_toggle_voice_reply_disabled(
+    handler,
+    mock_user_profile_service,
+    mock_line_api,
+):
+    mock_user_profile_service.update_voice_reply_enabled = AsyncMock(return_value=True)
+    event = _postback_event("action=toggle_voice_reply&enabled=false", user_id="U12345")
+
+    await handler.handle(event)
+
+    mock_user_profile_service.update_voice_reply_enabled.assert_called_once_with("U12345", False)
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert reply_req.messages[0].text == "已關閉語音回覆"
+

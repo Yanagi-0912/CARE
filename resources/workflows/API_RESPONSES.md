@@ -10,7 +10,7 @@
 
 ### Webhook URL
 ```
-POST http://localhost:5678/webhook/bff1fd27-efc4-45cf-b64a-adb0475aa35c
+POST http://localhost:5678/webhook/multimedia-process
 ```
 
 ### ✅ 成功響應
@@ -478,13 +478,13 @@ GET http://localhost:5678/api/v1/workflows/{workflow_id}/executions
 #### 上傳音頻檔案
 ```bash
 curl -F "file=@audio.mp3" \
-  http://localhost:5678/webhook/bff1fd27-efc4-45cf-b64a-adb0475aa35c
+  http://localhost:5678/webhook/multimedia-process
 ```
 
 #### 上傳圖片檔案
 ```bash
 curl -F "file=@image.png" \
-  http://localhost:5678/webhook/bff1fd27-efc4-45cf-b64a-adb0475aa35c
+  http://localhost:5678/webhook/multimedia-process
 ```
 
 ### 測試 TTS

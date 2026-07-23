@@ -1,11 +1,14 @@
 import logging
 
+from urllib.parse import parse_qs
+
 from linebot.v3.webhooks import (
     AudioMessageContent,
     FileMessageContent,
     ImageMessageContent,
     LocationMessageContent,
     MessageEvent,
+    PostbackEvent,
     TextMessageContent,
     VideoMessageContent,
 )
@@ -84,6 +87,30 @@ class LineEventDispatcher:
             await self._media_handler.handle(event)
         else:
             logger.warning("Unsupported message content type: %s", type(message).__name__)
+
+    async def _handle_PostbackEvent(self, event: PostbackEvent) -> None:
+        user_id = getattr(event.source, "user_id", "")
+        reply_token = getattr(event, "reply_token", "")
+        postback_data = getattr(getattr(event, "postback", None), "data", "")
+
+        params = parse_qs(postback_data)
+        action = params.get("action", [""])[0]
+
+        if action == "toggle_voice_reply":
+            enabled_str = params.get("enabled", ["false"])[0]
+            enabled = enabled_str.lower() == "true"
+            if self._user_profile_service:
+                await self._user_profile_service.update_voice_reply_enabled(user_id, enabled)
+
+            status_msg = "已開啟語音回覆" if enabled else "已關閉語音回覆"
+            await self._replier.reply(
+                reply_token=reply_token,
+                message_text=status_msg,
+                user_id=user_id,
+                voice_reply_enabled=False,
+            )
+        else:
+            logger.warning("Unknown postback action: %s", action)
 
     async def _handle_unsupported_event(self, event) -> None:
         logger.warning("Unsupported LINE event type: %s", type(event).__name__)

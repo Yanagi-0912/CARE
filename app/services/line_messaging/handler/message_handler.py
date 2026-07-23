@@ -81,7 +81,9 @@ class BaseLineMessageHandler:
                     message_type=message_type,
                     event_time=event_time,
                 )
-            logger.info("Successfully processed and replied to user %s", user_id)
+                logger.info("Successfully processed and replied to user %s", user_id)
+            else:
+                logger.error("Failed to reply to user %s", user_id)
 
         except Exception:
             logger.exception("Error in processing Line message event")

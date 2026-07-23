@@ -126,3 +126,60 @@ async def test_agent_invoke_with_history_already_containing_current_input(mock_l
     assert called_state["messages"][0].content == "A"
     assert called_state["messages"][1].content == "B"
     assert called_state["messages"][2].content == "C"
+
+
+def test_format_user_profile_prompt_builds_expected_header():
+    from app.services.agent.utils.nodes import format_user_profile_prompt
+
+    assert format_user_profile_prompt(None) == ""
+    assert format_user_profile_prompt({}) == ""
+
+    profile = {
+        "name": "王大明",
+        "gender": "male",
+        "age": 68,
+        "height": 165.0,
+        "weight": 62.0,
+        "chronic_history": "高血壓",
+        "major_illness_history": "無",
+        "surgery_history": "無",
+    }
+    result = format_user_profile_prompt(profile)
+    assert "王大明" in result
+    assert "68 歲" in result
+    assert "高血壓" in result
+    assert "【對話使用者的個人健康與病史檔案】" in result
+
+
+@pytest.mark.asyncio
+async def test_agent_node_injects_user_profile_prompt():
+    from app.services.agent.utils.nodes import AgentNodes
+
+    mock_llm = MagicMock()
+    mock_llm.bind_tools.return_value.ainvoke = AsyncMock(
+        return_value=AIMessage(content="Hello 王大明")
+    )
+    mock_guardrail = MagicMock()
+
+    nodes = AgentNodes(
+        llm=mock_llm,
+        guardrail_service=mock_guardrail,
+        prompt_instruction="System Prompt Instruction",
+    )
+
+    state = {
+        "messages": [HumanMessage(content="你好")],
+        "allow_rag": False,
+        "user_profile": {"name": "王大明", "age": 70, "chronic_history": "糖尿病"},
+    }
+
+    res = await nodes.agent_node(state)
+    assert len(res["messages"]) == 1
+
+    invoked_messages = mock_llm.bind_tools.return_value.ainvoke.call_args[0][0]
+    system_msg = invoked_messages[0]
+    assert "System Prompt Instruction" in system_msg.content
+    assert "【對話使用者的個人健康與病史檔案】" in system_msg.content
+    assert "王大明" in system_msg.content
+    assert "糖尿病" in system_msg.content
+

@@ -1,6 +1,3 @@
-# LINE Bot 服務層
-# 提供 LINE Messaging API 相關的業務邏輯服務
-
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:

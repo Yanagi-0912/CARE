@@ -16,6 +16,7 @@ from app.services.consultation.scheduler import (
 )
 
 from app.routers.users.family_tree import router as family_tree_router
+from app.routers.tts.tts import router as tts_router
 
 logging.basicConfig(level=logging.INFO)
 
@@ -61,3 +62,4 @@ app.include_router(
 )
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(family_tree_router, prefix="/api/family", tags=["Family Tree"])
+app.include_router(tts_router, prefix="/tts")

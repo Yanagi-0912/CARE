@@ -12,6 +12,7 @@ def test_getters_return_singleton_instances():
     assert dependencies.get_query_embeddings() is dependencies._query_embeddings
     assert dependencies.get_rag_retriever() is dependencies._rag_retriever
     assert dependencies.get_user_profile_service() is dependencies._user_profile_service
+    assert dependencies.get_tts_service() is dependencies._tts_service
 
 
 def test_dependency_wiring_is_correct():
@@ -20,10 +21,21 @@ def test_dependency_wiring_is_correct():
     token_manager = dependencies.get_line_token_manager()
 
     assert token_manager is dependencies._line_token_manager
-    assert handler._token_manager is token_manager
-    assert handler._agent is dependencies._care_agent
-    assert handler._history_service is dependencies._line_history_service
-    assert handler._history_service._repo is dependencies.get_chat_history_repository()
+    assert handler._message_handler._agent is dependencies._care_agent
+    assert handler._media_handler._agent is dependencies._care_agent
+    assert handler._location_handler._agent is dependencies._care_agent
+    assert handler._message_handler._history_service is dependencies._line_history_service
+    assert (
+        handler._message_handler._history_service._repo
+        is dependencies.get_chat_history_repository()
+    )
+    assert handler._message_handler._user_profile_service is profile_service
+    assert handler._replier._token_manager is token_manager
+    assert handler._replier._tts_service is dependencies._tts_service
+    assert (
+        handler._message_handler._loading_animation_service
+        is dependencies._line_loading_animation_service
+    )
     assert profile_service._repo is dependencies._user_profile_repository
 
 

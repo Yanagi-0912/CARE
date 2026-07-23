@@ -1,0 +1,111 @@
+import logging
+
+from linebot.v3.webhooks import (
+    AudioMessageContent,
+    FileMessageContent,
+    ImageMessageContent,
+    LocationMessageContent,
+    MessageEvent,
+    TextMessageContent,
+    VideoMessageContent,
+)
+from app.services.line_messaging.handler.message_handler import (
+    LineMessageHandler,
+    LineValidationError,
+)
+from app.services.line_messaging.handler.media_handler import LineMediaHandler
+from app.services.line_messaging.handler.location_handler import LineLocationHandler
+from app.services.line_messaging.reply.reply import LineReplier
+
+logger = logging.getLogger(__name__)
+
+
+class LineEventDispatcher:
+    """事件分發器，負責接收 Webhook 解析的事件，並分發至對應處理器。"""
+
+    def __init__(
+        self,
+        message_handler: LineMessageHandler,
+        media_handler: LineMediaHandler,
+        location_handler: LineLocationHandler,
+        replier: LineReplier,
+    ):
+        self._message_handler = message_handler
+        self._media_handler = media_handler
+        self._location_handler = location_handler
+        self._replier = replier
+
+    async def handle(self, event: MessageEvent) -> None:
+        """分發單一事件至對應的方法處理。"""
+        user_id = getattr(event.source, "user_id", "")
+        reply_token = getattr(event, "reply_token", "")
+        if not user_id or not reply_token:
+            logger.warning("LINE event source missing user_id or reply_token")
+            return
+
+        event_type = type(event).__name__
+        handler = getattr(self, f"_handle_{event_type}", self._handle_unsupported_event)
+
+        try:
+            await handler(event)
+        except LineValidationError as e:
+            # 針對內容驗證失敗的例外，直接回覆友善的錯誤提示
+            await self._replier.reply(
+                reply_token=reply_token,
+                message_text=str(e),
+                user_id=user_id,
+                voice_reply_enabled=False,
+            )
+        except Exception:
+            logger.exception("Error in event dispatcher handling event %s", event_type)
+            await self._replier.reply(
+                reply_token=reply_token,
+                message_text="抱歉，處理您的事件時發生錯誤，請稍後再試",
+                user_id=user_id,
+                voice_reply_enabled=False,
+            )
+
+    async def _handle_MessageEvent(self, event: MessageEvent) -> None:
+        message = event.message
+
+        if isinstance(message, TextMessageContent):
+            await self._message_handler.handle(event)
+        elif isinstance(message, LocationMessageContent):
+            await self._location_handler.handle(event)
+        elif isinstance(
+            message,
+            (
+                ImageMessageContent,
+                VideoMessageContent,
+                AudioMessageContent,
+                FileMessageContent,
+            ),
+        ):
+            await self._media_handler.handle(event)
+        else:
+            logger.warning("Unsupported message content type: %s", type(message).__name__)
+
+    async def _handle_unsupported_event(self, event) -> None:
+        logger.warning("Unsupported LINE event type: %s", type(event).__name__)
+
+    # --- 以下屬性為回溯相容與測試相容所設 ---
+
+    @property
+    def _agent(self):
+        return self._message_handler._agent
+
+    @property
+    def _token_manager(self):
+        return self._replier._token_manager
+
+    @property
+    def _user_profile_service(self):
+        return self._message_handler._user_profile_service
+
+    @property
+    def _history_service(self):
+        return self._message_handler._history_service
+
+    @property
+    def _tts_service(self):
+        return self._replier._tts_service

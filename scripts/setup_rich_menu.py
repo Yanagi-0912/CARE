@@ -51,11 +51,21 @@ def main():
             },
             {
                 "bounds": {"x": 800, "y": 270, "width": 400, "height": 270},
-                "action": {"type": "message", "label": "開發中1", "text": "開發中..."}
+                "action": {
+                    "type": "postback",
+                    "label": "啟用語音回覆",
+                    "data": "action=toggle_voice_reply&enabled=true",
+                    "displayText": "啟用語音回覆",
+                }
             },
             {
                 "bounds": {"x": 800, "y": 540, "width": 400, "height": 270},
-                "action": {"type": "message", "label": "開發中2", "text": "開發中..."}
+                "action": {
+                    "type": "postback",
+                    "label": "關閉語音回覆",
+                    "data": "action=toggle_voice_reply&enabled=false",
+                    "displayText": "關閉語音回覆",
+                }
             }
         ]
     }

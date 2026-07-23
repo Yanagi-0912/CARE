@@ -1,0 +1,375 @@
+{
+  "info": {
+    "name": "CARE n8n Workflows",
+    "description": "Collection for testing n8n workflows - Multimedia Processing & TTS",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "2.0"
+  },
+  "item": [
+    {
+      "name": "Multimedia Processing",
+      "item": [
+        {
+          "name": "Test Webhook Connection",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5678/api/v1/workflows",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5678",
+              "path": ["api", "v1", "workflows"]
+            },
+            "description": "Check n8n connection and list all workflows"
+          },
+          "response": []
+        },
+        {
+          "name": "Process Audio File (ASR)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "multipart/form-data"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "/path/to/your/audio.mp3",
+                  "description": "Audio file: mp3, wav, m4a, flac, ogg, opus"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://localhost:5678/webhook/multimedia-process",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5678",
+              "path": ["webhook", "multimedia-process"]
+            },
+            "description": "Send audio file for ASR transcription"
+          },
+          "response": []
+        },
+        {
+          "name": "Process Video File",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "multipart/form-data"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "/path/to/your/video.mp4",
+                  "description": "Video file: mp4, mov, avi, mkv, webm"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://localhost:5678/webhook/multimedia-process",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5678",
+              "path": ["webhook", "multimedia-process"]
+            },
+            "description": "Send video file for processing"
+          },
+          "response": []
+        },
+        {
+          "name": "Process Image File (OCR)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "multipart/form-data"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "/path/to/your/image.png",
+                  "description": "Image file: jpg, jpeg, png, gif, bmp, tiff, webp, svg"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://localhost:5678/webhook/multimedia-process",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5678",
+              "path": ["webhook", "multimedia-process"]
+            },
+            "description": "Send image file for OCR text extraction"
+          },
+          "response": []
+        },
+        {
+          "name": "Process Document File",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "multipart/form-data"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "/path/to/your/document.pdf",
+                  "description": "Document file: txt, md, csv, json, pdf, docx, xlsx, pptx, html, htm"
+                }
+              ]
+            },
+            "url": {
+              "raw": "http://localhost:5678/webhook/multimedia-process",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5678",
+              "path": ["webhook", "multimedia-process"]
+            },
+            "description": "Send document file for parsing"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "TTS (Text-to-Speech)",
+      "item": [
+        {
+          "name": "Chinese TTS - Basic",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"你好，這是一個測試。\",\n  \"language\": \"zh\",\n  \"locale\": \"zh-TW\",\n  \"voice\": \"default\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5678/webhook/tts",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5678",
+              "path": ["webhook", "tts"]
+            },
+            "description": "Convert Chinese text to speech"
+          },
+          "response": []
+        },
+        {
+          "name": "Chinese TTS - With Speed & Pitch",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"讀取您的設定檔，這是進階的文字轉語音測試。\",\n  \"language\": \"zh\",\n  \"locale\": \"zh-TW\",\n  \"voice\": \"default\",\n  \"speed\": 1.2,\n  \"pitch\": 1.0\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5678/webhook/tts",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5678",
+              "path": ["webhook", "tts"]
+            },
+            "description": "Convert Chinese text with custom speed and pitch"
+          },
+          "response": []
+        },
+        {
+          "name": "Long Text TTS",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"我的家族樹和醫療記錄已安全上傳到系統。我們的應用程式提供全方位的健康管理功能，包括醫療歷史追蹤、家庭成員管理和即時健康警告。通過我們的LINE整合功能，您可以隨時隨地接收更新信息和重要提醒。\",\n  \"language\": \"zh\",\n  \"locale\": \"zh-TW\",\n  \"voice\": \"default\",\n  \"speed\": 1.0,\n  \"pitch\": 1.0\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5678/webhook/tts",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5678",
+              "path": ["webhook", "tts"]
+            },
+            "description": "Convert longer Chinese text to speech"
+          },
+          "response": []
+        },
+        {
+          "name": "Taiwanese TTS (Not Implemented)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Guan-a tsiok-tsiok pik-kue-tsiok.\",\n  \"language\": \"taiwanese\",\n  \"locale\": \"nan\",\n  \"voice\": \"default\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5678/webhook/tts",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5678",
+              "path": ["webhook", "tts"]
+            },
+            "description": "Test Taiwanese TTS (will return 501 Not Implemented)"
+          },
+          "response": []
+        },
+        {
+          "name": "Invalid Text (Too Long)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"很長很長很長很長很長很長很長很長很長很長的文本\",\n  \"language\": \"zh\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5678/webhook/tts",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5678",
+              "path": ["webhook", "tts"]
+            },
+            "description": "Test validation error - extremely long text"
+          },
+          "response": []
+        },
+        {
+          "name": "Missing Text (Error Test)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"language\": \"zh\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5678/webhook/tts",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5678",
+              "path": ["webhook", "tts"]
+            },
+            "description": "Test validation error - missing text parameter"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "n8n API",
+      "item": [
+        {
+          "name": "List All Workflows",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5678/api/v1/workflows",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5678",
+              "path": ["api", "v1", "workflows"]
+            },
+            "description": "Get list of all workflows in n8n"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Workflow Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5678/api/v1/workflows/{{workflow_id}}",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5678",
+              "path": ["api", "v1", "workflows", "{{workflow_id}}"]
+            },
+            "description": "Get details of specific workflow (replace {{workflow_id}} with actual ID)"
+          },
+          "response": []
+        },
+        {
+          "name": "List Workflow Executions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5678/api/v1/workflows/{{workflow_id}}/executions",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5678",
+              "path": ["api", "v1", "workflows", "{{workflow_id}}", "executions"]
+            },
+            "description": "Get execution history for a workflow"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "workflow_id",
+      "value": "yKC658rkbLy0I3KC",
+      "type": "string",
+      "description": "Replace with actual workflow ID"
+    }
+  ]
+}

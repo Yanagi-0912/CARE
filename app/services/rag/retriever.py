@@ -8,7 +8,7 @@ from langchain_core.documents import Document
 from motor.motor_asyncio import AsyncIOMotorClient
 
 _NUM_CANDIDATES_MULTIPLIER = 30
-DEFAULT_MIN_SCORE = 0.9
+DEFAULT_MIN_SCORE = 0.5
 
 
 class MongoAtlasVectorRetriever:

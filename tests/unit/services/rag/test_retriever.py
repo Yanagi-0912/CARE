@@ -67,8 +67,8 @@ async def test_retriever_returns_documents():
                 "source_name": "來源A",
                 "url": "https://a.example",
             },
-            {"_id": "b", "chunk_text": "B"},
-            {"_id": "c", "chunk_text": "   "},
+            {"_id": "b", "chunk_text": "B", "score": 0.5},
+            {"_id": "c", "chunk_text": "   ", "score": 0.9},
         ]
     )
     fake_collection = MagicMock()
@@ -96,6 +96,30 @@ async def test_retriever_returns_documents():
     assert pipeline[0]["$vectorSearch"]["limit"] == 4
     assert pipeline[0]["$vectorSearch"]["numCandidates"] == 120
     assert pipeline[1]["$project"]["chunk_text"] == 1
+
+
+@pytest.mark.asyncio
+async def test_retriever_filters_by_min_score():
+    retriever, emb = _make_retriever(vector_dim=2, min_score=0.3)
+    emb.aembed_query = AsyncMock(return_value=[0.1, 0.2])
+
+    fake_cursor = MagicMock()
+    fake_cursor.to_list = AsyncMock(
+        return_value=[
+            {"_id": "keep", "chunk_text": "高血壓飲食", "score": 0.3},
+            {"_id": "drop-low", "chunk_text": "不相關", "score": 0.29},
+            {"_id": "drop-none", "chunk_text": "沒分數"},
+        ]
+    )
+    fake_collection = MagicMock()
+    fake_collection.aggregate.return_value = fake_cursor
+    retriever._collection = fake_collection
+
+    docs = await retriever.ainvoke("高血壓")
+
+    assert len(docs) == 1
+    assert docs[0].page_content == "高血壓飲食"
+    assert docs[0].metadata["score"] == 0.3
 
 
 def test_ensure_collection_creates_motor_collection_once():

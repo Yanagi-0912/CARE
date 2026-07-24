@@ -8,6 +8,7 @@ from langchain_core.documents import Document
 from motor.motor_asyncio import AsyncIOMotorClient
 
 _NUM_CANDIDATES_MULTIPLIER = 30
+DEFAULT_MIN_SCORE = 0.3
 
 
 class MongoAtlasVectorRetriever:
@@ -25,6 +26,7 @@ class MongoAtlasVectorRetriever:
         text_field: str = "text",
         vector_dim: int | None = None,
         k: int = 10,
+        min_score: float = DEFAULT_MIN_SCORE,
     ) -> None:
         self.embeddings = embeddings
         self.mongo_uri = mongo_uri
@@ -35,6 +37,7 @@ class MongoAtlasVectorRetriever:
         self.text_field = text_field
         self.vector_dim = vector_dim
         self.k = k
+        self.min_score = min_score
         self._collection: Any = None
 
     def _ensure_collection(self) -> Any:
@@ -97,12 +100,15 @@ class MongoAtlasVectorRetriever:
             text = str(doc.get(self.text_field) or "").strip()
             if not text:
                 continue
+            score = doc.get("score")
+            if not isinstance(score, (int, float)) or score < self.min_score:
+                continue
             documents.append(
                 Document(
                     page_content=text,
                     metadata={
                         "id": str(doc.get("_id")),
-                        "score": doc.get("score"),
+                        "score": score,
                         "source_name": doc.get("source_name"),
                         "url": doc.get("url"),
                     },

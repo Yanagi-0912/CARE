@@ -21,6 +21,9 @@ class FamilyMember(BaseModel):
     relationship_type: Optional[str] = None  # 加入後由使用者在 UI 設定
     display_name: Optional[str] = None       # 額外擴充：LINE 姓名（方案 A）
     picture_url: Optional[str] = None        # 額外擴充：LINE 頭像（方案 A）
+    is_care_recipient: bool = False          # 是否為照顧對象
+
+
 
 
 class FamilyTree(BaseModel):

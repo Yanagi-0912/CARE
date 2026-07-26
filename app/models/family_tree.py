@@ -72,3 +72,9 @@ class AcceptInviteResponse(BaseModel):
 class SetRelationshipRequest(BaseModel):
     member_id: str  # 要設定關係的成員的 LINE userId
     relationship_type: str  # "parent" | "child" | "spouse" | "sibling" | "other"
+
+
+class SetCareRecipientRequest(BaseModel):
+    member_id: str  # 要設定照顧對象標籤的成員 LINE userId
+    is_care_recipient: bool = True
+

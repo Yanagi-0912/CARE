@@ -13,6 +13,7 @@ from app.repositories.user_profile_repository import UserProfileRepository
 from app.services.agent.agent import Agent
 from app.services.consultation.consultation_service import ConsultationService
 from app.services.family.family_tree_service import FamilyTreeService
+from app.services.medication.medication_service import MedicationService
 from app.services.gemini import GeminiService
 from app.services.guardrail import GuardrailService
 from app.services.history.history_service import LineMessageHistoryService
@@ -140,6 +141,7 @@ _line_event_handler = LineEventHandler(
 )
 
 _family_tree_service = FamilyTreeService()
+_medication_service = MedicationService()
 
 _line_id_token_service = LineIdTokenService()
 
@@ -230,6 +232,11 @@ def get_tts_service() -> TTSService:
 
 def get_family_tree_service() -> FamilyTreeService:
     return _family_tree_service
+
+
+def get_medication_service() -> MedicationService:
+    return _medication_service
+
 
 
 def get_liff_auth_application_service() -> LiffAuthApplicationService:

@@ -150,6 +150,32 @@ class FamilyTreeRepository:
         doc = await col.find_one({"user_id": user_id})
         return FamilyTree(**doc)
 
+    @staticmethod
+    async def set_care_recipient(
+        user_id: str, member_id: str, is_care_recipient: bool
+    ) -> Optional[FamilyTree]:
+        """更新族譜中特定成員的 is_care_recipient 標籤。"""
+        col = MongoDBManager.get_family_tree_collection()
+        now = datetime.now(tz=timezone.utc)
+
+        result = await col.update_one(
+            {"user_id": user_id, "family_members.user_id": member_id},
+            {
+                "$set": {
+                    "family_members.$.is_care_recipient": is_care_recipient,
+                    "updated_at": now,
+                }
+            },
+        )
+        if result.matched_count == 0:
+            logger.warning(
+                f"set_care_recipient: member {member_id} not found in tree of {user_id}"
+            )
+            return None
+        doc = await col.find_one({"user_id": user_id})
+        return FamilyTree(**doc)
+
+
     # ── PendingInvitation ─────────────────────────────────────────────────────
 
     @staticmethod

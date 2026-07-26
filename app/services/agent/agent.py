@@ -1,5 +1,5 @@
 from typing import Optional
-from langchain_core.messages import HumanMessage, AIMessage, AnyMessage
+from langchain_core.messages import HumanMessage, AIMessage, AnyMessage, ToolMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 
@@ -83,16 +83,42 @@ class Agent:
 
         # 從 messages 取得最後的 AI 回覆
         last_msg = result["messages"][-1]
-        response = last_msg.content if isinstance(last_msg, AIMessage) else str(last_msg)
+        response = (
+            last_msg.content if isinstance(last_msg, AIMessage) else str(last_msg)
+        )
         if isinstance(response, list):
             response = "".join(
-                part if isinstance(part, str) else (part.get("text", "") if isinstance(part, dict) else str(part))
+                (
+                    part
+                    if isinstance(part, str)
+                    else (part.get("text", "") if isinstance(part, dict) else str(part))
+                )
                 for part in response
             )
         elif response is None:
             response = ""
         else:
             response = str(response)
+
+        # 醫療工具會直接產出要送給 LINE 的內容，避免讓模型重新改寫 Flex JSON。
+        medical_tool_names = {
+            "find_nearby_hospitals",  # 搜尋附近醫療院所
+            "lookup_medical_facility",  # 尋找特定醫療院所
+            "request_location_quick_reply",  # 分享位置
+        }
+        for msg in reversed(result.get("messages", [])):
+            if (
+                isinstance(msg, ToolMessage)
+                and getattr(msg, "name", None) in medical_tool_names
+            ):
+                tool_response = msg.content
+                if tool_response is not None:
+                    response = (
+                        tool_response
+                        if isinstance(tool_response, str)
+                        else str(tool_response)
+                    )
+                break
 
         # 防禦性後置處理：若呼叫了 get_rag_answer，但 AI 的最終回覆中遺漏了「參考資料來源」，則自動由工具輸出中提取並後補。
         rag_tool_content = None

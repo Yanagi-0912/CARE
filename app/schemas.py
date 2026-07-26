@@ -57,6 +57,38 @@ class RootResponse(BaseModel):
     )
 
 
+class ClinicTimeSlot(BaseModel):
+    """
+    單一時段的營業/門診時間。例如:
+    slots:[
+        {
+            "open": "08:00",
+            "close": "12:00"
+        },
+        {
+            "open": "13:30",
+            "close": "17:30"
+        }
+    ]
+    對應資料庫 clinicTime.<day>.slots 陣列中的元素。
+    """
+
+    open: str = Field(..., description="開始時間，例如：08:00")
+    close: str = Field(..., description="結束時間，例如：17:30")
+
+
+class ClinicDaySchedule(BaseModel):
+    """
+    單一天的營業/門診時間表。
+    對應資料庫 clinicTime.<day> 欄位，例如 clinicTime.monday。
+    """
+
+    isClosed: bool = Field(..., description="當天是否公休")
+    slots: list[ClinicTimeSlot] = Field(
+        default_factory=list, description="當天的營業時段清單，公休時為空陣列"
+    )
+
+
 class MedicalFacility(BaseModel):
     """
     醫療院所資料模型。
@@ -74,6 +106,17 @@ class MedicalFacility(BaseModel):
     address: str = Field(..., description="院所完整地址")
     phone: Optional[str] = Field(None, description="院所聯絡電話")
     type: str = Field(..., description="院所類型，例如：醫院、診所、藥局")
+    clinic_time: Optional[Dict[str, ClinicDaySchedule]] = Field(
+        None,
+        description=(
+            "院所營業/門診時間，對應資料庫 clinicTime 欄位。"
+            "key 為星期英文小寫（monday ~ sunday），"
+            "value 為當天的公休狀態與時段清單。"
+        ),
+    )
+    departments: Optional[list[str]] = Field(
+        None, description="院所診療科別，對應資料庫 departments 欄位"
+    )
     distance_meters: Optional[float] = Field(
         None, description="距離用戶的直線距離（公尺），由 PostGIS 計算填入"
     )

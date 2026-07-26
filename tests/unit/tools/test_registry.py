@@ -12,6 +12,7 @@ def test_get_all_tools_includes_rag_when_enabled():
     names = _tool_names(tools)
     assert "get_rag_answer" in names
     assert "find_nearby_hospitals" in names
+    assert "lookup_medical_facility" in names
     assert "request_location_quick_reply" in names
 
 
@@ -20,4 +21,5 @@ def test_get_all_tools_excludes_rag_when_disabled():
     names = _tool_names(tools)
     assert "get_rag_answer" not in names
     assert "find_nearby_hospitals" in names
+    assert "lookup_medical_facility" in names
     assert "request_location_quick_reply" in names

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -16,6 +17,8 @@ from linebot.v3.messaging import (
     ApiClient,
     AudioMessage,
     Configuration,
+    FlexContainer,
+    FlexMessage,
     LocationAction,
     MessagingApi,
     QuickReply,
@@ -47,7 +50,7 @@ class LineReplier:
         request_location: bool = False,
         voice_reply_enabled: bool = True,
     ) -> bool:
-        """發送 LINE 訊息（包含文字訊息與選填的 TTS 語音訊息）"""
+        """發送 LINE 訊息（包含文字訊息、Flex Message 與選填的 TTS 語音訊息）"""
         try:
             if not reply_token or not reply_token.strip():
                 raise ValueError("LINE 事件缺少 reply_token")
@@ -56,13 +59,18 @@ class LineReplier:
 
             access_token = self._token_manager.get_token()
             message_text = self._normalize_message_text(message_text)
-            text_message = self._build_text_message(message_text, request_location)
-            messages = [text_message]
-            self._append_tts_audio_message(
-                messages,
-                message_text,
-                voice_reply_enabled=voice_reply_enabled,
-            )
+
+            flex_message = self._try_parse_flex_message(message_text)
+            if flex_message is not None:
+                messages = [flex_message]
+            else:
+                text_message = self._build_text_message(message_text, request_location)
+                messages = [text_message]
+                self._append_tts_audio_message(
+                    messages,
+                    message_text,
+                    voice_reply_enabled=voice_reply_enabled,
+                )
 
             line_config = Configuration(access_token=access_token)
             with ApiClient(line_config) as api_client:
@@ -82,14 +90,41 @@ class LineReplier:
             return False
 
     @staticmethod
+    def _try_parse_flex_message(message_text: str) -> Optional[FlexMessage]:
+        if not message_text or not isinstance(message_text, str):
+            return None
+
+        text_strip = message_text.strip()
+        if not (text_strip.startswith("{") and text_strip.endswith("}")):
+            return None
+
+        try:
+            data = json.loads(text_strip)
+        except json.JSONDecodeError:
+            logger.debug("Message text is not valid JSON")
+            return None
+
+        if not isinstance(data, dict):
+            return None
+
+        if data.get("type") == "flex" and "contents" in data:
+            alt_text = data.get("altText") or "醫療院所查詢結果"
+            contents = FlexContainer.from_dict(data["contents"])
+            return FlexMessage(altText=alt_text, contents=contents)
+
+        return None
+
+    @staticmethod
     def _normalize_message_text(message_text: Any) -> str:
         if isinstance(message_text, str):
             return message_text
         if isinstance(message_text, list):
             return "".join(
-                part
-                if isinstance(part, str)
-                else (part.get("text", "") if isinstance(part, dict) else str(part))
+                (
+                    part
+                    if isinstance(part, str)
+                    else (part.get("text", "") if isinstance(part, dict) else str(part))
+                )
                 for part in message_text
             )
         if message_text is None:

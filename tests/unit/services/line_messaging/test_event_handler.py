@@ -530,3 +530,18 @@ async def test_handle_postback_event_toggle_voice_reply_disabled(
     reply_req = mock_line_api.reply_message.call_args[0][0]
     assert reply_req.messages[0].text == "已關閉語音回覆"
 
+
+@pytest.mark.asyncio
+async def test_handle_flex_message_reply(handler, mock_agent, mock_line_api):
+    flex_json = '{"type": "flex", "altText": "測試院所", "contents": {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": []}}}'
+    mock_agent.invoke.return_value = {"response": flex_json}
+    message = TextMessageContent(id="M_FLEX", text="找醫院", quoteToken="dummy")
+
+    await handler.handle(_message_event(message))
+
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert len(reply_req.messages) == 1
+    assert reply_req.messages[0].type == "flex"
+    assert reply_req.messages[0].alt_text == "測試院所"
+
+

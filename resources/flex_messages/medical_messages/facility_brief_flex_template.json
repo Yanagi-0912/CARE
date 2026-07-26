@@ -1,0 +1,113 @@
+{
+  "type": "bubble",
+  "size": "giga",
+  "body": {
+    "type": "box",
+    "layout": "vertical",
+    "spacing": "xl",
+    "contents": [
+      {
+        "type": "text",
+        "text": "附近醫療院所",
+        "weight": "bold",
+        "size": "4xl",
+        "color": "#111111"
+      },
+      {
+        "type": "text",
+        "text": "為您找到附近 5 間醫療院所",
+        "color": "#333333",
+        "size": "24px"
+      },
+      {
+        "type": "separator",
+        "margin": "md",
+        "color": "#CCCCCC"
+      },
+      {
+        "type": "box",
+        "layout": "vertical",
+        "margin": "xxl",
+        "spacing": "md",
+        "contents": [
+          {
+            "type": "text",
+            "text": "國立臺灣大學醫院新竹分院",
+            "weight": "bold",
+            "wrap": true,
+            "size": "xxl",
+            "color": "#111111"
+          },
+          {
+            "type": "text",
+            "text": "距離 60 公尺",
+            "size": "20px",
+            "weight": "bold",
+            "color": "#1B5E20"
+          },
+          {
+            "type": "text",
+            "text": "新竹市北區經國路一段442巷25號",
+            "wrap": true,
+            "size": "20px",
+            "color": "#333333"
+          },
+          {
+            "type": "box",
+            "layout": "horizontal",
+            "spacing": "md",
+            "margin": "lg",
+            "contents": [
+              {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#2E7D32",
+                "cornerRadius": "md",
+                "paddingAll": "md",
+                "flex": 1,
+                "action": {
+                  "type": "uri",
+                  "label": "📞 撥打電話",
+                  "uri": "tel:(03)5326151"
+                },
+                "contents": [
+                  {
+                    "type": "text",
+                    "text": "📞 撥打電話",
+                    "color": "#FFFFFF",
+                    "weight": "bold",
+                    "size": "20px",
+                    "align": "center"
+                  }
+                ]
+              },
+              {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#E0E0E0",
+                "cornerRadius": "md",
+                "paddingAll": "md",
+                "flex": 1,
+                "action": {
+                  "type": "uri",
+                  "label": "前往地圖",
+                  "uri": "https://www.google.com/maps/dir/?api=1&destination=%E5%9C%8B%E7%AB%8B%E8%87%BA%E7%81%A3%E5%A4%A7%E5%AD%B8%E9%86%AB%E9%99%A2%E6%96%B0%E7%AB%B9%E5%88%86%E9%99%A2&travelmode=driving"
+                },
+                "contents": [
+                  {
+                    "type": "text",
+                    "text": "前往地圖",
+                    "color": "#111111",
+                    "weight": "bold",
+                    "size": "20px",
+                    "align": "center"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

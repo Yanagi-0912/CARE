@@ -152,3 +152,20 @@ class FamilyTreeService:
             )
 
         return updated_tree
+
+    async def set_care_recipient(
+        self, user_id: str, member_id: str, is_care_recipient: bool = True
+    ) -> FamilyTree:
+        """
+        設定 user_id 族譜中成員 member_id 的照顧對象標籤 (is_care_recipient)。
+        """
+        updated_tree = await FamilyTreeRepository.set_care_recipient(
+            user_id, member_id, is_care_recipient
+        )
+        if updated_tree is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"在 {user_id} 的族譜中找不到成員 {member_id}",
+            )
+        return updated_tree
+

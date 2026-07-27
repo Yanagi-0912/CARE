@@ -80,3 +80,18 @@ class MongoDBManager:
         取得 consultation_summaries collection
         """
         return cls.get_database()["consultation_summaries"]
+
+    @classmethod
+    def get_medication_reminders_collection(cls):
+        """
+        取得 medication_reminders collection
+        """
+        return cls.get_database()["medication_reminders"]
+
+    @classmethod
+    def get_medication_logs_collection(cls):
+        """
+        取得 medication_logs collection
+        """
+        return cls.get_database()["medication_logs"]
+

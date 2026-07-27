@@ -43,7 +43,7 @@ class LineLoadingAnimationService:
                         loading_seconds=loading_seconds,
                     )
                 )
-            logger.info(
+            logger.debug(
                 "LINE loading animation started for chat %s (%ss)",
                 chat_id,
                 loading_seconds,

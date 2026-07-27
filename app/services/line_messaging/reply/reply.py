@@ -74,7 +74,7 @@ class LineReplier:
                     )
                 )
 
-            logger.info("Message sent to LINE for user %s", user_id)
+            logger.debug("Message sent to LINE for user %s", user_id)
             return True
 
         except Exception:

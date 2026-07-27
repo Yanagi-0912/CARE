@@ -56,7 +56,7 @@ class Settings:
         "CONSULTATION_DAILY_SUMMARY_TIME", "02:00"
     )
 
-    # Firecrawl（RAG Web Fallback）
+    # Firecrawl（search_public_web / WebSearchService）
     FIRECRAWL_API_KEY: str = os.getenv("FIRECRAWL_API_KEY", "")
 
 

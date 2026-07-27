@@ -15,8 +15,12 @@ if "motor.motor_asyncio" not in sys.modules:
     class _DummyMotorCollection:
         pass
 
+    class _DummyMotorDatabase:
+        pass
+
     motor_asyncio_module.AsyncIOMotorClient = _DummyMotorClient
     motor_asyncio_module.AsyncIOMotorCollection = _DummyMotorCollection
+    motor_asyncio_module.AsyncIOMotorDatabase = _DummyMotorDatabase
     sys.modules["motor"] = motor_module
     sys.modules["motor.motor_asyncio"] = motor_asyncio_module
 
@@ -26,35 +30,13 @@ from langchain_core.messages import AIMessage
 from app.services.rag import (
     CITE_TOP_K,
     NO_ANSWER_MESSAGE,
+    NO_HITS_MESSAGE,
     RETRIEVAL_TOP_K,
     RagAnswerService,
 )
-from app.services.rag.web_client import WebSearchHit
 
 
-class FakeWebClient:
-    def __init__(self, hits=None, pages=None, search_error=None, scrape_error=None):
-        self.hits = hits or []
-        self.pages = pages or {}
-        self.search_error = search_error
-        self.scrape_error = scrape_error
-        self.search_calls: list[str] = []
-        self.scrape_calls: list[str] = []
-
-    async def search(self, query: str, *, limit: int = 5):
-        self.search_calls.append(query)
-        if self.search_error:
-            raise self.search_error
-        return self.hits[:limit]
-
-    async def scrape(self, url: str) -> str:
-        self.scrape_calls.append(url)
-        if self.scrape_error:
-            raise self.scrape_error
-        return self.pages.get(url, "")
-
-
-def _make_service(*, docs, answer_content="RAG 回覆", web_client=None):
+def _make_service(*, docs, answer_content="RAG 回覆"):
     gemini_service = MagicMock()
     gemini_service.chat_model = MagicMock()
     gemini_service.chat_model.ainvoke = AsyncMock(
@@ -68,7 +50,6 @@ def _make_service(*, docs, answer_content="RAG 回覆", web_client=None):
         RagAnswerService(
             gemini_service=gemini_service,
             retriever=retriever,
-            web_client=web_client,
         ),
         gemini_service,
         retriever,
@@ -148,16 +129,15 @@ async def test_answer_uses_default_message_when_model_returns_empty_text(model_t
     ]
     svc, _gemini, _retriever = _make_service(docs=docs, answer_content=model_text)
     result = await svc.answer("我有高血壓要注意什麼")
-    # 空回應視為無法回答；無 web client 時降級為 NO_ANSWER_MESSAGE
     assert result == NO_ANSWER_MESSAGE
     assert "參考資料來源" not in result
 
 
 @pytest.mark.asyncio
-async def test_answer_returns_message_when_no_docs():
+async def test_answer_returns_hits_message_when_no_docs():
     svc, gemini_service, _retriever = _make_service(docs=[])
     result = await svc.answer("我有高血壓要注意什麼")
-    assert result == NO_ANSWER_MESSAGE
+    assert result == NO_HITS_MESSAGE
     gemini_service.chat_model.ainvoke.assert_not_awaited()
 
 
@@ -194,22 +174,6 @@ def test_append_sources_renumbers_after_skipping_missing_and_duplicate_urls():
     assert "缺網址" not in result
 
 
-def test_append_sources_web_kind_prefixes_network_label():
-    docs = [
-        Document(
-            page_content="x",
-            metadata={
-                "source_name": "衛福部",
-                "url": "https://www.mohw.gov.tw/x",
-            },
-        )
-    ]
-    result = RagAnswerService._append_sources(
-        "答案正文", docs, source_kind="web"
-    )
-    assert "[1] 網路：衛福部：https://www.mohw.gov.tw/x" in result
-
-
 @pytest.mark.parametrize(
     "answer_content",
     [
@@ -220,7 +184,7 @@ def test_append_sources_web_kind_prefixes_network_label():
     ],
 )
 @pytest.mark.asyncio
-async def test_answer_omits_kb_sources_when_model_cannot_answer(answer_content):
+async def test_answer_returns_no_answer_when_model_cannot_answer(answer_content):
     docs = [
         Document(
             page_content="無關片段",
@@ -234,6 +198,7 @@ async def test_answer_omits_kb_sources_when_model_cannot_answer(answer_content):
         docs=docs, answer_content=answer_content
     )
     result = await svc.answer("某個冷門問題")
+    assert result == NO_ANSWER_MESSAGE
     assert "參考資料來源" not in result
     assert "https://www.hpa.gov.tw/x" not in result
 
@@ -250,120 +215,6 @@ async def test_answer_omits_kb_sources_when_model_cannot_answer(answer_content):
 )
 def test_is_cannot_answer_heuristic(text, expected):
     assert RagAnswerService._is_cannot_answer(text) is expected
-
-
-@pytest.mark.asyncio
-async def test_answer_uses_web_fallback_when_no_kb_docs():
-    web = FakeWebClient(
-        hits=[
-            WebSearchHit(
-                title="國健署高血壓",
-                url="https://www.hpa.gov.tw/htn",
-            ),
-            WebSearchHit(title="論壇", url="https://forum.example/htn"),
-        ],
-        pages={
-            "https://www.hpa.gov.tw/htn": "控制血壓要規律量測與低鈉飲食。"
-        },
-    )
-    svc, gemini, _retriever = _make_service(
-        docs=[],
-        answer_content="根據網路資料，請規律量測血壓。",
-        web_client=web,
-    )
-    result = await svc.answer("高血壓要注意什麼")
-    assert "以下參考網路公開資料" in result
-    assert "根據網路資料，請規律量測血壓。" in result
-    assert "[1] 網路：國健署高血壓：https://www.hpa.gov.tw/htn" in result
-    assert "forum.example" not in result
-    assert web.search_calls == ["高血壓要注意什麼"]
-    gemini.chat_model.ainvoke.assert_awaited()
-
-
-@pytest.mark.asyncio
-async def test_answer_uses_web_when_kb_cannot_answer():
-    kb_docs = [
-        Document(
-            page_content="無關",
-            metadata={"source_name": "KB", "url": "https://www.hpa.gov.tw/kb"},
-        )
-    ]
-    web = FakeWebClient(
-        hits=[WebSearchHit(title="疾管署", url="https://www.cdc.gov.tw/w")],
-        pages={"https://www.cdc.gov.tw/w": "流感疫苗建議。"},
-    )
-    gemini_service = MagicMock()
-    gemini_service.chat_model = MagicMock()
-    gemini_service.chat_model.ainvoke = AsyncMock(
-        side_effect=[
-            AIMessage(content="我不知道這個問題的答案。"),
-            AIMessage(content="建議依時程接種流感疫苗。"),
-        ]
-    )
-    retriever = MagicMock()
-    retriever.ainvoke = AsyncMock(return_value=kb_docs)
-    svc = RagAnswerService(
-        gemini_service=gemini_service,
-        retriever=retriever,
-        web_client=web,
-    )
-    result = await svc.answer("流感疫苗")
-    assert "以下參考網路公開資料" in result
-    assert "建議依時程接種流感疫苗。" in result
-    assert "https://www.hpa.gov.tw/kb" not in result
-    assert "[1] 網路：疾管署：https://www.cdc.gov.tw/w" in result
-
-
-@pytest.mark.asyncio
-async def test_answer_returns_no_answer_without_sources_when_web_fails():
-    web = FakeWebClient(hits=[], pages={})
-    svc, gemini, _ = _make_service(docs=[], web_client=web)
-    result = await svc.answer("完全查不到的問題")
-    assert result == NO_ANSWER_MESSAGE
-    assert "參考資料來源" not in result
-    gemini.chat_model.ainvoke.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_answer_degrades_when_web_client_raises():
-    web = FakeWebClient(search_error=RuntimeError("boom"))
-    svc, _, _ = _make_service(docs=[], web_client=web)
-    result = await svc.answer("問題")
-    assert result == NO_ANSWER_MESSAGE
-    assert "參考資料來源" not in result
-
-
-@pytest.mark.asyncio
-async def test_answer_does_not_mix_kb_and_web_sources():
-    kb_docs = [
-        Document(
-            page_content="KB 內容",
-            metadata={"source_name": "KB來源", "url": "https://www.hpa.gov.tw/kb"},
-        )
-    ]
-    web = FakeWebClient(
-        hits=[WebSearchHit(title="Web", url="https://www.mohw.gov.tw/w")],
-        pages={"https://www.mohw.gov.tw/w": "Web 內容"},
-    )
-    gemini_service = MagicMock()
-    gemini_service.chat_model = MagicMock()
-    gemini_service.chat_model.ainvoke = AsyncMock(
-        side_effect=[
-            AIMessage(content="找不到相關資訊。"),
-            AIMessage(content="這是網路答案。"),
-        ]
-    )
-    retriever = MagicMock()
-    retriever.ainvoke = AsyncMock(return_value=kb_docs)
-    svc = RagAnswerService(
-        gemini_service=gemini_service,
-        retriever=retriever,
-        web_client=web,
-    )
-    result = await svc.answer("混合測試")
-    assert "KB來源" not in result
-    assert "https://www.hpa.gov.tw/kb" not in result
-    assert "網路：Web：https://www.mohw.gov.tw/w" in result
 
 
 @pytest.mark.asyncio

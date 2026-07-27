@@ -1,4 +1,3 @@
-import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -9,6 +8,7 @@ from app.routers.users.upsert_users import router as profile_router
 from app.routers.users.consultations import router as consultations_router
 from app.core.cors import add_cors_middleware
 from app.core.config import settings
+from app.core.logging_setup import configure_logging
 from app.dependencies import get_consultation_service, get_chat_history_repository
 from app.repositories.consultation_repository import ConsultationRepository
 from app.services.consultation.scheduler import (
@@ -18,7 +18,7 @@ from app.services.consultation.scheduler import (
 from app.routers.users.family_tree import router as family_tree_router
 from app.routers.tts.tts import router as tts_router
 
-logging.basicConfig(level=logging.INFO)
+configure_logging()
 
 
 @asynccontextmanager

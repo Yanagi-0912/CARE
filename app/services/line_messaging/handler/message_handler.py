@@ -1,8 +1,11 @@
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
+
+from app.core.request_logging import log_stage
 from app.services.line_messaging.reply.reply import LineReplier
 
 logger = logging.getLogger(__name__)
@@ -40,28 +43,43 @@ class BaseLineMessageHandler:
         event_time = datetime.fromtimestamp(event.timestamp / 1000, tz=timezone.utc)
 
         try:
-            logger.info("Processing %s message from user %s: %s...", message_type, user_id, user_text[:50])
+            log_stage(
+                logger,
+                "handle",
+                type=message_type,
+                text_len=len(user_text or ""),
+            )
 
+            t0 = time.perf_counter()
             chat_history = await self._history_service.load_history(
                 user_id=user_id,
                 current_input=user_text,
                 message_type=message_type,
             )
+            log_stage(
+                logger,
+                "history_loaded",
+                turns=len(chat_history or []),
+                ms=int((time.perf_counter() - t0) * 1000),
+            )
 
-            # 取得使用者資料
             user_profile = None
             if self._user_profile_service:
                 user_profile = await self._user_profile_service.get_user_profile(user_id)
 
-            # 先顯示 Loading，再呼叫 Agent
             if self._loading_animation_service is not None:
                 await self._loading_animation_service.start(user_id)
 
-            # 呼叫 Agent 大腦層
+            t1 = time.perf_counter()
             agent_response = await self._agent.invoke(
                 user_input=user_text,
                 messages=chat_history,
                 user_profile=user_profile,
+            )
+            log_stage(
+                logger,
+                "agent_done",
+                ms=int((time.perf_counter() - t1) * 1000),
             )
 
             response_text = (
@@ -70,13 +88,19 @@ class BaseLineMessageHandler:
             call_request_location = agent_response.get("call_request_location", False)
             voice_reply_enabled = self._parse_voice_reply_enabled(user_profile)
 
-            # 呼叫 Reply 層發送回覆
+            t2 = time.perf_counter()
             success = await self._replier.reply(
                 reply_token=reply_token,
                 message_text=response_text,
                 user_id=user_id,
                 request_location=call_request_location,
                 voice_reply_enabled=voice_reply_enabled,
+            )
+            log_stage(
+                logger,
+                "reply",
+                ok=success,
+                ms=int((time.perf_counter() - t2) * 1000),
             )
 
             if success:
@@ -87,7 +111,6 @@ class BaseLineMessageHandler:
                     message_type=message_type,
                     event_time=event_time,
                 )
-                logger.info("Successfully processed and replied to user %s", user_id)
             else:
                 logger.error("Failed to reply to user %s", user_id)
 

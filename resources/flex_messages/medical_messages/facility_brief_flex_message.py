@@ -12,11 +12,12 @@ from app.schemas import MedicalFacility
 
 def _build_flex_map_uri(facility: MedicalFacility) -> str:
     """生成最符合 LINE 導航按鈕規格的 Google Map 連結"""
+    # 優先級:經緯度->名稱->地址
     if facility.latitude and facility.longitude:
         query = f"{facility.latitude},{facility.longitude}"
     elif facility.name:
         query = facility.name
-    if facility.address:
+    elif facility.address:
         query = facility.address
     else:
         query = "醫療院所"
@@ -108,6 +109,12 @@ def create_facility_item_box(facility: MedicalFacility) -> dict[str, Any]:
         "layout": "vertical",
         "margin": "xxl",
         "spacing": "md",
+        "action": {
+            "type": "postback",  # postback action 會在使用者點擊時，將資料傳回你的 webhook，方便後續回船對應院所的flex message
+            "label": "查看詳情",
+            "data": f"action=view_facility_detail&facility_id={facility.id}",
+            "displayText": f"查看 {facility.name or '該院所'} 的詳細資訊",
+        },
         "contents": [
             {
                 "type": "text",
@@ -156,10 +163,10 @@ def generate_facility_list_flex_message(
     # 這裡的 is_candidate_list 變數用來判斷是否為候選清單情境，影響標題與提示文字的顯示
     if is_candidate_list:
         title_text = "找到多筆相似院所"
-        subtitle_text = f"為您找到 {len(facilities)} 間相似院所"
+        subtitle_text = f"為您找到 {len(facilities)} 間相似院所，點擊查看詳細資訊"
     else:
         title_text = "附近醫療院所"
-        subtitle_text = f"為您找到附近 {len(facilities)} 間醫療院所"
+        subtitle_text = f"為您找到附近 {len(facilities)} 間醫療院所，點擊查看詳細資訊"
 
     contents: list[dict[str, Any]] = [
         {
@@ -172,6 +179,7 @@ def generate_facility_list_flex_message(
         },
         {
             "type": "text",
+            "wrap": True,
             "text": subtitle_text,
             "color": "#333333",
             "size": "24px",

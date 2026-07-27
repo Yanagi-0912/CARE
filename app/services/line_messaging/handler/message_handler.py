@@ -7,6 +7,8 @@ from app.services.line_messaging.reply.reply import LineReplier
 
 logger = logging.getLogger(__name__)
 
+LOGGER_HEADER_TEXT = "[Handler:MessageHandler]"
+
 
 class LineValidationError(Exception):
     """LINE 訊息欄位格式或內容驗證失敗。"""
@@ -40,7 +42,12 @@ class BaseLineMessageHandler:
         event_time = datetime.fromtimestamp(event.timestamp / 1000, tz=timezone.utc)
 
         try:
-            logger.info("Processing %s message from user %s: %s...", message_type, user_id, user_text[:50])
+            logger.info(
+                "Processing %s message from user %s: %s...",
+                message_type,
+                user_id,
+                user_text[:50],
+            )
 
             chat_history = await self._history_service.load_history(
                 user_id=user_id,
@@ -51,7 +58,9 @@ class BaseLineMessageHandler:
             # 取得使用者資料
             user_profile = None
             if self._user_profile_service:
-                user_profile = await self._user_profile_service.get_user_profile(user_id)
+                user_profile = await self._user_profile_service.get_user_profile(
+                    user_id
+                )
 
             # 先顯示 Loading，再呼叫 Agent
             if self._loading_animation_service is not None:
@@ -64,9 +73,21 @@ class BaseLineMessageHandler:
                 user_profile=user_profile,
             )
 
-            response_text = (
-                agent_response.get("response") or "抱歉，我無法理解您的問題，請重新輸入。"
-            )
+            response_payload = agent_response.get("response")
+            if not response_payload:
+                logger.warning(
+                    f"{LOGGER_HEADER_TEXT} agent 回覆為空，將使用預設純文字回覆，message_type=%s, user_id=%s",
+                    message_type,
+                    user_id,
+                )
+            else:
+                logger.info(
+                    f"{LOGGER_HEADER_TEXT} 已取得 agent 回覆，message_type=%s, response_type=%s",
+                    message_type,
+                    type(response_payload).__name__,
+                )
+
+            response_text = response_payload or "抱歉，我無法理解您的問題，請重新輸入。"
             call_request_location = agent_response.get("call_request_location", False)
             voice_reply_enabled = self._parse_voice_reply_enabled(user_profile)
 

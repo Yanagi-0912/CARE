@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 from langchain_core.messages import HumanMessage, AIMessage, AnyMessage, ToolMessage
 from langgraph.graph import StateGraph, START, END
@@ -7,6 +8,8 @@ from app.services.agent.utils.state import State
 from app.services.agent.utils.nodes import AgentNodes
 from app.services.agent.prompt import SYSTEM_PROMPT
 from app.tools.registry import get_all_tools
+
+logger = logging.getLogger(__name__)
 
 # LangGraph 基本概念：
 # - State：流程共用資料（例如 messages、allow_rag）
@@ -73,6 +76,12 @@ class Agent:
             if not messages or messages[-1].content != user_input:
                 messages = list(messages) + [HumanMessage(content=user_input)]
 
+        logger.info(
+            "[Agent] 開始執行，messages=%s, user_input_preview=%s",
+            len(messages),
+            (user_input or "")[:80],
+        )
+
         result = await self._graph.ainvoke(
             {
                 "messages": messages,
@@ -106,11 +115,13 @@ class Agent:
             "lookup_medical_facility",  # 尋找特定醫療院所
             "request_location_quick_reply",  # 分享位置
         }
+        used_tool_names: list[str] = []
         for msg in reversed(result.get("messages", [])):
             if (
                 isinstance(msg, ToolMessage)
                 and getattr(msg, "name", None) in medical_tool_names
             ):
+                used_tool_names.append(getattr(msg, "name", ""))
                 tool_response = msg.content
                 if tool_response is not None:
                     response = (
@@ -118,7 +129,17 @@ class Agent:
                         if isinstance(tool_response, str)
                         else str(tool_response)
                     )
+                    logger.info(
+                        "[Agent] 已套用醫療工具回覆，tool_name=%s, response_type=%s",
+                        getattr(msg, "name", ""),
+                        type(tool_response).__name__,
+                    )
                 break
+
+        if not used_tool_names:
+            logger.warning("[Agent] 未找到可用的醫療工具回覆，將沿用 AI 最終輸出")
+        else:
+            logger.info("[Agent] 醫療工具使用紀錄：%s", used_tool_names)
 
         # 防禦性後置處理：若呼叫了 get_rag_answer，但 AI 的最終回覆中遺漏了「參考資料來源」，則自動由工具輸出中提取並後補。
         rag_tool_content = None
@@ -140,6 +161,12 @@ class Agent:
             if getattr(msg, "name", None) == "request_location_quick_reply":
                 call_request_location = True
                 break
+
+        logger.info(
+            "[Agent] 執行完成，response_type=%s, call_request_location=%s",
+            type(response).__name__,
+            call_request_location,
+        )
 
         return {
             "response": response,

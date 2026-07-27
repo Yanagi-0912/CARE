@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Any
 
 from langchain_core.tools import tool
@@ -6,7 +7,6 @@ from app.services.medical.medical_service import (
     MedicalService,
     NO_FACILITY_MESSAGE,
     NO_NAMED_FACILITY_MESSAGE,
-    format_facility_detail,
 )
 from resources.flex_messages.medical_messages.facility_brief_flex_message import (
     generate_facility_list_flex_message,
@@ -16,6 +16,9 @@ from resources.flex_messages.medical_messages.facility_detail_flex_message impor
 )
 
 _medical_service: MedicalService | None = None
+logger = logging.getLogger(__name__)
+
+LOGGER_HEADER_TEXT = "[Tool:find_nearby_hospitals]"
 
 
 def _to_flex_message_text(payload: dict[str, Any]) -> str:
@@ -37,10 +40,20 @@ async def find_nearby_hospitals(lat: float, lng: float) -> str:
     if _medical_service is None:
         return "醫療服務未初始化，請稍後再試。"
 
+    logger.info(
+        f"{LOGGER_HEADER_TEXT} 開始查詢附近醫療院所，lat=%s, lng=%s",
+        lat,
+        lng,
+    )
     facilities = await _medical_service.find_nearby_hospitals(lat, lng)
     if not facilities:
+        logger.info(f"{LOGGER_HEADER_TEXT} 查無附近醫療院所")
         return NO_FACILITY_MESSAGE
 
+    logger.info(
+        f"{LOGGER_HEADER_TEXT} 查詢完成，回傳筆數=%s",
+        len(facilities),
+    )
     return _to_flex_message_text(generate_facility_list_flex_message(facilities))
 
 
@@ -57,18 +70,31 @@ async def lookup_medical_facility(
     if _medical_service is None:
         return "醫療服務未初始化，請稍後再試。"
 
+    logger.info(
+        f"{LOGGER_HEADER_TEXT} 開始查詢醫療院所，keyword=%r, lat=%s, lng=%s",
+        keyword,
+        lat,
+        lng,
+    )
     facilities, total_count = await _medical_service.find_facility_by_name(
         keyword=keyword,
         lat=lat,
         lng=lng,
     )
     if not facilities:
+        logger.info(f"{LOGGER_HEADER_TEXT} 查無符合院所，keyword=%r", keyword)
         return NO_NAMED_FACILITY_MESSAGE
     if len(facilities) == 1:
+        logger.info(f"{LOGGER_HEADER_TEXT} 僅找到 1 筆院所，直接回傳詳情")
         return _to_flex_message_text(
             generate_facility_detail_flex_message(facilities[0])
         )
 
+    logger.info(
+        f"{LOGGER_HEADER_TEXT} 找到多筆候選，總數=%s，回傳前 %s 筆",
+        total_count,
+        min(len(facilities), medical_facility_limit),
+    )
     return _to_flex_message_text(
         generate_facility_list_flex_message(
             facilities[:medical_facility_limit], total_count=total_count

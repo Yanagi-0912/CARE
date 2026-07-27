@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 from app.schemas import MedicalFacility
-from app.services.medical.medical_service import WEEKDAY_LABELS
+from app.services.medical.medical_facility_matcher import WEEKDAY_LABELS
 from resources.flex_messages.medical_messages.facility_brief_flex_message import (
     _build_flex_map_uri,
     _build_flex_tel_uri,
@@ -98,9 +98,7 @@ def _department_chip(name: str, bg_color: str) -> dict[str, Any]:
     }
 
 
-def _build_department_grid(
-    departments: list[str] | None, facility_name: str
-) -> list[dict[str, Any]]:
+def _build_department_grid(departments: list[str] | None) -> list[dict[str, Any]]:
     """組出完整診療科別網格"""
 
     if not departments:
@@ -265,7 +263,7 @@ def generate_facility_detail_flex_message(facility: MedicalFacility) -> dict[str
                     "color": "#111111",
                 },
                 *_build_department_grid(
-                    facility.departments, facility.name or "此院所"
+                    facility.departments
                 ),
             ],
         }

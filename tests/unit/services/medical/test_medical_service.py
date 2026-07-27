@@ -1,14 +1,12 @@
-from app.schemas import MedicalFacility
-from app.services.medical.medical_service import (
+from app.schemas import MedicalFacility, ClinicDaySchedule, ClinicTimeSlot
+from app.services.medical.medical_facility_matcher import (
+    format_facility_detail,
     build_tel_uri,
     format_candidate_list,
     format_clinic_time,
-    format_facility_detail,
     normalize_facility_name,
 )
 
-
-# ── normalize_facility_name ──────────────────────────────────────────────────
 
 def test_normalize_facility_name_ignores_region_prefix_and_suffix():
     # [Test #3] 確認精確縣市清單能正確剝離縣市 + 鄉鎮市區前綴，不過度刪除機構名
@@ -33,25 +31,19 @@ def test_normalize_facility_name_replaces_tai_with_traditional():
 
 # ── format_clinic_time ───────────────────────────────────────────────────────
 
-def test_format_clinic_time_reads_new_slots_schema():
-    # [Test #2] 確認 format_clinic_time 正確讀取新 schema（slots 巢狀陣列）。
-    # 舊格式 open/close 平行陣列已全部遷移至 slots，不再支援。
+
+def test_format_clinic_time_reads_slots_schema():
+    # 確認 format_clinic_time 正確讀取slots 巢狀陣）。
     clinic_time = {
-        "monday": {
-            "isClosed": False,
-            "slots": [
-                {"start": "09:00", "end": "12:00"},
-                {"start": "14:00", "end": "17:30"},
+        "monday": ClinicDaySchedule(
+            isClosed=False,
+            slots=[
+                ClinicTimeSlot(open="09:00", close="12:00"),
+                ClinicTimeSlot(open="14:00", close="17:30"),
             ],
-        },
-        "tuesday": {
-            "isClosed": True,
-            "slots": [],
-        },
-        "wednesday": {
-            "isClosed": False,
-            "slots": [],  # slots 存在但為空，應顯示「無資料」
-        },
+        ),
+        "tuesday": ClinicDaySchedule(isClosed=True, slots=[]),
+        "wednesday": ClinicDaySchedule(isClosed=False, slots=[]),
     }
     result = format_clinic_time(clinic_time)
     assert "週一：09:00-12:00、14:00-17:30" in result
@@ -71,6 +63,7 @@ def test_format_clinic_time_returns_no_data_when_empty():
 
 # ── build_tel_uri ─────────────────────────────────────────────────────────────
 
+
 def test_build_tel_uri_strips_non_digits():
     assert build_tel_uri("(02)24621632") == "tel:0224621632"
     assert build_tel_uri("02-1234-5678") == "tel:0212345678"
@@ -78,6 +71,7 @@ def test_build_tel_uri_strips_non_digits():
 
 
 # ── format_facility_detail ───────────────────────────────────────────────────
+
 
 def test_format_facility_detail_marks_missing_fields_and_omits_invalid_tel():
     facility = MedicalFacility(
@@ -98,10 +92,11 @@ def test_format_facility_detail_marks_missing_fields_and_omits_invalid_tel():
     assert "營業時間：\n無資料" in message
     assert "診療科別：無資料" in message
     assert "撥打電話：" not in message
-    assert "地圖連結：https://www.google.com/maps/search/?api=1&query=25.0%2C121.0" in message
+    assert (
+        "地圖連結：https://www.google.com/maps/search/?api=1&query=25.0%2C121.0"
+        in message
+    )
 
-
-# ── format_candidate_list ────────────────────────────────────────────────────
 
 def test_format_candidate_list_shows_top_three_and_type():
     facilities = [

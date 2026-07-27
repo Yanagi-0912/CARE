@@ -32,6 +32,7 @@ from app.services.line_messaging.token_manager import LineTokenManager
 
 logger = logging.getLogger(__name__)
 
+LOGGER_HEADER_TEXT = "[LineReplier]"
 DEFAULT_AUDIO_DURATION_MS = 60_000
 
 
@@ -59,11 +60,23 @@ class LineReplier:
 
             access_token = self._token_manager.get_token()
             message_text = self._normalize_message_text(message_text)
+            logger.info(
+                f"{LOGGER_HEADER_TEXT} 準備回覆，user_id=%s, request_location=%s, message_preview=%s",
+                user_id,
+                request_location,
+                message_text[:120],
+            )
 
             flex_message = self._try_parse_flex_message(message_text)
             if flex_message is not None:
+                logger.info(
+                    f"{LOGGER_HEADER_TEXT} 解析為 Flex Message，將以 Flex 形式回覆"
+                )
                 messages = [flex_message]
             else:
+                logger.info(
+                    f"{LOGGER_HEADER_TEXT} 未解析為 Flex Message，將以純文字回覆"
+                )
                 text_message = self._build_text_message(message_text, request_location)
                 messages = [text_message]
                 self._append_tts_audio_message(
@@ -101,7 +114,7 @@ class LineReplier:
         try:
             data = json.loads(text_strip)
         except json.JSONDecodeError:
-            logger.debug("Message text is not valid JSON")
+            logger.debug(f"{LOGGER_HEADER_TEXT} 文字內容不是有效 JSON，略過 Flex 解析")
             return None
 
         if not isinstance(data, dict):
@@ -110,6 +123,9 @@ class LineReplier:
         if data.get("type") == "flex" and "contents" in data:
             alt_text = data.get("altText") or "醫療院所查詢結果"
             contents = FlexContainer.from_dict(data["contents"])
+            logger.info(
+                f"{LOGGER_HEADER_TEXT} Flex JSON 解析成功，altText=%s", alt_text
+            )
             return FlexMessage(altText=alt_text, contents=contents)
 
         return None

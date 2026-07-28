@@ -16,8 +16,10 @@ from linebot.v3.messaging import (
     ApiClient,
     AudioMessage,
     Configuration,
+    FlexMessage,
     LocationAction,
     MessagingApi,
+    PushMessageRequest,
     QuickReply,
     QuickReplyItem,
     ReplyMessageRequest,
@@ -80,6 +82,53 @@ class LineReplier:
         except Exception:
             logger.exception("Failed to send LINE message")
             return False
+
+    async def reply_flex(
+        self, reply_token: str, flex_message: FlexMessage, user_id: str
+    ) -> bool:
+        """回覆 LINE Flex Message"""
+        try:
+            if not reply_token or not reply_token.strip():
+                raise ValueError("LINE 事件缺少 reply_token")
+
+            access_token = self._token_manager.get_token()
+            line_config = Configuration(access_token=access_token)
+            with ApiClient(line_config) as api_client:
+                line_bot_api = MessagingApi(api_client)
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        replyToken=reply_token,
+                        messages=[flex_message],
+                    )
+                )
+            logger.info("Flex Message replied to LINE user %s", user_id)
+            return True
+        except Exception:
+            logger.exception("Failed to reply LINE Flex message")
+            return False
+
+    async def push_flex(self, user_id: str, flex_message: FlexMessage) -> bool:
+        """主動推播 LINE Flex Message"""
+        try:
+            if not user_id or not user_id.strip():
+                raise ValueError("LINE 推播缺少 user_id")
+
+            access_token = self._token_manager.get_token()
+            line_config = Configuration(access_token=access_token)
+            with ApiClient(line_config) as api_client:
+                line_bot_api = MessagingApi(api_client)
+                line_bot_api.push_message(
+                    PushMessageRequest(
+                        to=user_id,
+                        messages=[flex_message],
+                    )
+                )
+            logger.info("Flex Message pushed to LINE user %s", user_id)
+            return True
+        except Exception:
+            logger.exception("Failed to push LINE Flex message")
+            return False
+
 
     @staticmethod
     def _normalize_message_text(message_text: Any) -> str:

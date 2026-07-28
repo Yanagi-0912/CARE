@@ -133,15 +133,17 @@ _location_handler = LineLocationHandler(
     replier=_line_replier,
     loading_animation_service=_line_loading_animation_service,
 )
+_family_tree_service = FamilyTreeService()
+_medication_service = MedicationService()
+
 _line_event_handler = LineEventHandler(
     message_handler=_message_handler,
     media_handler=_media_handler,
     location_handler=_location_handler,
     replier=_line_replier,
+    medication_service=_medication_service,
 )
 
-_family_tree_service = FamilyTreeService()
-_medication_service = MedicationService()
 
 _line_id_token_service = LineIdTokenService()
 

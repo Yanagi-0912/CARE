@@ -24,8 +24,14 @@ def _today_date_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
 class MedicationReminder(BaseModel):
     """用藥提醒設定規則"""
+
+    # 允許使用欄位名稱 (id) 或別名 (_id) 進行初始化，支援 MongoDB Document 與 Python 物件存取
+    model_config = ConfigDict(populate_by_name=True)
 
     id: Optional[str] = Field(default=None, alias="_id")
     creator_user_id: str                   # 開立提醒者 (家屬) LINE userId
@@ -42,7 +48,12 @@ class MedicationReminder(BaseModel):
 class MedicationLog(BaseModel):
     """用藥執行與催促/警報日誌"""
 
+    # 允許使用欄位名稱 (id) 或別名 (_id) 進行初始化，支援 MongoDB Document 與 Python 物件存取
+    model_config = ConfigDict(populate_by_name=True)
+
     id: Optional[str] = Field(default=None, alias="_id")
+
+
     reminder_id: str
     user_id: str                           # 服用藥物的使用者 LINE userId
     alert_notify_user_id: str              # 逾時未用藥通報對象 (家屬) LINE userId
@@ -52,8 +63,10 @@ class MedicationLog(BaseModel):
     status: MedicationLogStatus = "pending"
     taken_at: Optional[datetime] = None
     patient_reminder_sent: bool = False
+    urgent_reminder_sent: bool = False
     caregiver_alert_sent: bool = False
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 
 
 class CreateMedicationReminderRequest(BaseModel):

@@ -14,6 +14,7 @@ from app.services.agent.agent import Agent
 from app.services.consultation.consultation_service import ConsultationService
 from app.services.family.family_tree_service import FamilyTreeService
 from app.services.medication.medication_service import MedicationService
+from app.services.medication.medication_scheduler import start_medication_scheduler
 from app.services.gemini import GeminiService
 from app.services.guardrail import GuardrailService
 from app.services.history.history_service import LineMessageHistoryService
@@ -133,15 +134,17 @@ _location_handler = LineLocationHandler(
     replier=_line_replier,
     loading_animation_service=_line_loading_animation_service,
 )
+_family_tree_service = FamilyTreeService()
+_medication_service = MedicationService()
+
 _line_event_handler = LineEventHandler(
     message_handler=_message_handler,
     media_handler=_media_handler,
     location_handler=_location_handler,
     replier=_line_replier,
+    medication_service=_medication_service,
 )
 
-_family_tree_service = FamilyTreeService()
-_medication_service = MedicationService()
 
 _line_id_token_service = LineIdTokenService()
 
@@ -236,6 +239,15 @@ def get_family_tree_service() -> FamilyTreeService:
 
 def get_medication_service() -> MedicationService:
     return _medication_service
+
+
+def get_line_replier() -> LineReplier:
+    return _line_replier
+
+
+def get_user_profile_service() -> UserProfileService:
+    return _user_profile_service
+
 
 
 

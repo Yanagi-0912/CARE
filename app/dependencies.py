@@ -14,6 +14,7 @@ from app.services.agent.agent import Agent
 from app.services.consultation.consultation_service import ConsultationService
 from app.services.family.family_tree_service import FamilyTreeService
 from app.services.medication.medication_service import MedicationService
+from app.services.medication.medication_scheduler import start_medication_scheduler
 from app.services.gemini import GeminiService
 from app.services.guardrail import GuardrailService
 from app.services.history.history_service import LineMessageHistoryService
@@ -238,6 +239,15 @@ def get_family_tree_service() -> FamilyTreeService:
 
 def get_medication_service() -> MedicationService:
     return _medication_service
+
+
+def get_line_replier() -> LineReplier:
+    return _line_replier
+
+
+def get_user_profile_service() -> UserProfileService:
+    return _user_profile_service
+
 
 
 

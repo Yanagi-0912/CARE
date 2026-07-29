@@ -152,11 +152,21 @@ class MedicationLogRepository:
 
     @staticmethod
     async def mark_patient_reminder_sent(log_id: str) -> bool:
-        """更新單一 Document 標記 T+20min 再提醒已發送"""
+        """更新單一 Document 標記 T+0min 首刷提醒已發送"""
         col = MongoDBManager.get_medication_logs_collection()
         result = await col.update_one(
             {"_id": log_id},
             {"$set": {"patient_reminder_sent": True}},
+        )
+        return result.matched_count > 0
+
+    @staticmethod
+    async def mark_patient_urgent_reminder_sent(log_id: str) -> bool:
+        """更新單一 Document 標記 T+20min 催促提醒已發送"""
+        col = MongoDBManager.get_medication_logs_collection()
+        result = await col.update_one(
+            {"_id": log_id},
+            {"$set": {"urgent_reminder_sent": True}},
         )
         return result.matched_count > 0
 
@@ -183,7 +193,28 @@ class MedicationLogRepository:
         return [MedicationLog(**{**doc, "_id": str(doc["_id"])}) for doc in docs]
 
     @staticmethod
+    async def list_pending_urgent_reminders(threshold_time: datetime) -> List[MedicationLog]:
+        """
+        查詢已過 T+20min (scheduled_at <= threshold_time) 且狀態仍為 pending 尚未發送催促提醒的日誌。
+        使用 $lte 可防範排程檢查秒數偏差或伺服器重啟造成的延遲漏發。
+        """
+        col = MongoDBManager.get_medication_logs_collection()
+        query = {
+            "status": "pending",
+            "patient_reminder_sent": True,
+            "urgent_reminder_sent": False,
+            "scheduled_at": {"$lte": threshold_time},
+        }
+        cursor = col.find(query)
+        docs = await cursor.to_list(length=None)
+        return [MedicationLog(**{**doc, "_id": str(doc["_id"])}) for doc in docs]
+
+    @staticmethod
     async def list_pending_caregiver_alerts(threshold_time: datetime) -> List[MedicationLog]:
+        """
+        查詢已過 T+30min (timeout_at <= threshold_time) 且狀態仍為 pending 尚未發送家屬警報的日誌。
+        使用 $lte 可防範排程檢查秒數偏差或伺服器重啟造成的延遲漏發。
+        """
         col = MongoDBManager.get_medication_logs_collection()
         query = {
             "status": "pending",
@@ -193,6 +224,8 @@ class MedicationLogRepository:
         cursor = col.find(query)
         docs = await cursor.to_list(length=None)
         return [MedicationLog(**{**doc, "_id": str(doc["_id"])}) for doc in docs]
+
+
 
     @staticmethod
     async def list_logs_by_user(user_id: str, limit: int = 50) -> List[MedicationLog]:

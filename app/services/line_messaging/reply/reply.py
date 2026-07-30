@@ -61,10 +61,9 @@ class LineReplier:
             access_token = self._token_manager.get_token()
             message_text = self._normalize_message_text(message_text)
             logger.info(
-                f"{LOGGER_HEADER_TEXT} 準備回覆，user_id=%s, request_location=%s, message_preview=%s",
+                f"{LOGGER_HEADER_TEXT} 準備回覆，user_id=%s, request_location=%s",
                 user_id,
                 request_location,
-                message_text[:120],
             )
 
             flex_message = self._try_parse_flex_message(message_text)
@@ -77,12 +76,21 @@ class LineReplier:
                 logger.info(
                     f"{LOGGER_HEADER_TEXT} 未解析為 Flex Message，將以純文字回覆"
                 )
-                text_message = self._build_text_message(message_text, request_location)
+                text_message = TextMessage(text=message_text)
                 messages = [text_message]
                 self._append_tts_audio_message(
                     messages,
                     message_text,
                     voice_reply_enabled=voice_reply_enabled,
+                )
+
+            # quickReply 只會顯示在陣列最後一則訊息上，因此統一在此處掛到最後一則，
+            # 避免 TTS 語音訊息排在文字訊息之後時，導致 Quick Reply 被 LINE 忽略。
+            if request_location and messages:
+                messages[-1].quick_reply = QuickReply(
+                    items=[
+                        QuickReplyItem(action=LocationAction(label="分享位置資訊")),
+                    ]
                 )
 
             line_config = Configuration(access_token=access_token)
@@ -147,16 +155,6 @@ class LineReplier:
             return ""
         return str(message_text)
 
-    @staticmethod
-    def _build_text_message(message_text: str, request_location: bool) -> TextMessage:
-        if request_location:
-            quick_reply = QuickReply(
-                items=[
-                    QuickReplyItem(action=LocationAction(label="分享位置資訊")),
-                ]
-            )
-            return TextMessage(text=message_text, quickReply=quick_reply)
-        return TextMessage(text=message_text)
 
     def _append_tts_audio_message(
         self,

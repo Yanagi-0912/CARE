@@ -29,6 +29,7 @@ from app.services.line_messaging.reply.reply import LineReplier
 from app.services.line_messaging.reply.tts_service import TTSService
 from app.services.line_messaging.token_manager import LineTokenManager
 from app.services.medical.medical_service import MedicalService, medical_service
+from app.services.line_messaging.handler.facility_detail_handler import LineFacilityDetailHandler
 from app.services.rag import MongoAtlasVectorRetriever, RETRIEVAL_TOP_K, RagAnswerService
 from app.services.rag.firecrawl_client import FirecrawlClient
 from app.services.users.user_profile_service import UserProfileService
@@ -111,6 +112,10 @@ _line_replier = LineReplier(
     token_manager=_line_token_manager,
     tts_service=_tts_service,
 )
+_facility_detail_handler = LineFacilityDetailHandler(
+    medical_service=medical_service,
+    replier=_line_replier,
+)
 _message_handler = LineMessageHandler(
     agent=_care_agent,
     history_service=_line_history_service,
@@ -136,6 +141,7 @@ _line_event_handler = LineEventHandler(
     message_handler=_message_handler,
     media_handler=_media_handler,
     location_handler=_location_handler,
+    facility_detail_handler=_facility_detail_handler,
     replier=_line_replier,
 )
 

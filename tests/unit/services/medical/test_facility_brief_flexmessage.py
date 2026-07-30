@@ -121,7 +121,7 @@ def test_generate_facility_list_flex_message():
 
     # 驗證上方標題與總數文字
     assert body_contents[0]["text"] == "附近醫療院所"
-    assert body_contents[1]["text"] == "為您找到附近 2 間醫療院所"
+    assert body_contents[1]["text"] == "為您找到附近 2 間醫療院所，點擊查看詳細資訊"
 
     # 分離出兩間診所的 Box 結構進行精準驗證
     # 只拿 type == "box" 的元素，剛好會對應到兩間診所
@@ -161,7 +161,7 @@ def test_generate_facility_list_flex_message_candidate_list():
 
     # 候選清單情境下標題與副標應切換
     assert body_contents[0]["text"] == "找到多筆相似院所"
-    assert body_contents[1]["text"] == "為您找到 1 間相似院所"
+    assert body_contents[1]["text"] == "為您找到 1 間相似院所，點擊查看詳細資訊"
 
     # total_count(5) > 實際顯示筆數(1)，應附加提示文字
     full_str = str(body_contents)
@@ -190,7 +190,7 @@ def test_generate_facility_list_flex_message_realistic_multi_candidates():
     body_contents = flex_result["contents"]["body"]["contents"]
 
     assert body_contents[0]["text"] == "找到多筆相似院所"
-    assert body_contents[1]["text"] == "為您找到 2 間相似院所"
+    assert body_contents[1]["text"] == "為您找到 2 間相似院所，點擊查看詳細資訊"
 
 
 def test_generate_facility_list_flex_message_candidate_list_no_hint_when_full():

@@ -3,8 +3,15 @@
 from app.schemas import MedicalFacility, ClinicDaySchedule
 import re
 import urllib.parse
+from typing import Any
 FACILITY_SUFFIXES = ("醫院", "診所", "衛生所", "藥局", "藥房")
-TYPE_KEYWORDS = ("診所", "醫院", "藥局")
+TYPE_KEYWORD_MAP = {
+    "診所": "診所",
+    "衛生所": "醫務室",#因為XX衛生所的type是醫務室，用診所做為value比對的範圍太廣
+    "醫院": "醫院",
+    "藥局": "藥局",
+}
+
 WEEKDAY_LABELS = {
     "monday": "週一", "tuesday": "週二", "wednesday": "週三",
     "thursday": "週四", "friday": "週五", "saturday": "週六", "sunday": "週日",
@@ -46,8 +53,10 @@ FACILITY_ALIASES = {
     "奇美": "奇美醫療",
     "慈濟": "慈濟醫療",
     "馬偕": "馬偕紀念醫院",
-    
+    "連江醫院": "連江縣立醫院",
+    "澎湖醫院": "衛生福利部澎湖醫院"
 }
+
 def normalize_facility_name(text: str) -> str:
     normalized = re.sub(r"\s+", "", text or "")
     normalized = re.sub(r"[，,。．.？?！!：:；;「」『』()（）\[\]【】]", "", normalized)
@@ -76,9 +85,9 @@ def normalize_facility_name(text: str) -> str:
     return normalized
 
 def detect_type_keyword(text: str) -> str | None:
-    for keyword in TYPE_KEYWORDS:
+    for keyword, mapped_type in TYPE_KEYWORD_MAP.items():
         if keyword in (text or ""):
-            return keyword
+            return mapped_type
     return None
 
 def _build_text_map_url(facility: MedicalFacility) -> str:
@@ -153,3 +162,90 @@ def format_candidate_list(facilities: list[MedicalFacility], total_count: int, *
     if total_count > 3:
         lines.append("結果超過 3 筆，您可以提供更明確的地區或完整名稱以縮小範圍。")
     return "\n".join(lines)
+
+def build_facility_query(keyword: str) -> tuple[dict[str, Any], str]:
+    """
+    依據使用者輸入的關鍵字，組出對應的 MongoDB 查詢條件。
+    回傳 (query, query_keyword_unified)：
+      - query：MongoDB 查詢條件 dict
+      - query_keyword_unified：正規化後的核心關鍵字（台->臺），供相似度排序使用
+    """
+    raw_clean = re.sub(r"\s+", "", keyword or "")
+
+    detected_city: str | None = None
+    keyword_for_normalize = keyword
+
+    # 偵測口語化地區（如新竹，沒有"市"）前綴
+    for city in _INFORMAL_CITY_NAMES:
+        if raw_clean.startswith(city) and len(raw_clean) > len(city):
+            remaining = raw_clean[len(city):]
+            if remaining and remaining[0] not in ("縣", "市"):
+                detected_city = city
+
+                if remaining == "衛生所":
+                    # 案例：連江/澎湖/新竹衛生所 -> 核心關鍵字保留為 "衛生所"
+                    keyword_for_normalize = "衛生所"
+                elif remaining == "醫院":
+                    keyword_for_normalize = raw_clean
+                elif remaining in ("醫院", "診所", "衛生所", "藥局", "藥房"):
+                    # 案例：花蓮醫院、高雄藥局 -> 泛稱，不比對 name
+                    keyword_for_normalize = ""
+                else:
+                    keyword_for_normalize = remaining
+                break
+
+    normalized_keyword = normalize_facility_name(keyword_for_normalize)
+
+    # 常用醫院名稱(台大、馬偕、三總...)對照表判定邏輯
+    if keyword_for_normalize in FACILITY_ALIASES:
+        query_keyword = FACILITY_ALIASES[keyword_for_normalize]
+    elif raw_clean in FACILITY_ALIASES:
+        query_keyword = FACILITY_ALIASES[raw_clean]
+    elif normalized_keyword in FACILITY_ALIASES:
+        query_keyword = FACILITY_ALIASES[normalized_keyword]
+    elif keyword_for_normalize == "衛生所":
+        query_keyword = "衛生所"
+    # 被拔過頭時才退回 raw_clean
+    elif keyword_for_normalize and (not normalized_keyword or len(normalized_keyword) < 2):
+        query_keyword = raw_clean
+    else:
+        query_keyword = normalized_keyword
+
+    query: dict[str, Any] = {}
+
+    # 只有在 query_keyword 有值時，才注入 name 條件
+    if query_keyword:
+        query_keyword_unified = query_keyword.replace("台", "臺")
+        escaped = re.escape(query_keyword_unified)
+        query["name"] = {"$regex": escaped, "$options": "i"}
+    else:
+        query_keyword_unified = ""
+
+    if detected_city:
+        city_normalized = detected_city.replace("台", "臺")
+        query["address"] = {"$regex": city_normalized, "$options": "i"}
+
+    type_keyword = detect_type_keyword(keyword)
+    if type_keyword == "藥局":
+        query["type"] = {"$regex": "自營", "$options": "i"}
+    elif type_keyword:
+        # 如果核心關鍵字已經是 "衛生所" 了，避免重複比對
+        if query_keyword != "衛生所":
+            query["type"] = {"$regex": type_keyword, "$options": "i"}
+
+    return query, query_keyword_unified
+
+# 依據關鍵字與院所名稱的相似度進行排序
+def similarity_rank(facility: MedicalFacility, keyword: str) -> tuple[int, int]:
+    facility_name = normalize_facility_name(facility.name)
+    if facility_name == keyword:
+        exact_rank = 0
+    elif facility_name.startswith(keyword):
+        exact_rank = 1
+    elif keyword in facility_name:
+        exact_rank = 2
+    else:
+        exact_rank = 3
+    if not facility_name:
+        return exact_rank, math.inf
+        return exact_rank, len(facility_name)

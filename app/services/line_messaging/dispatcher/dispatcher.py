@@ -16,6 +16,7 @@ from app.services.line_messaging.handler.message_handler import (
     LineMessageHandler,
     LineValidationError,
 )
+from app.services.line_messaging.handler.facility_detail_handler import LineFacilityDetailHandler
 from app.services.line_messaging.handler.media_handler import LineMediaHandler
 from app.services.line_messaging.handler.location_handler import LineLocationHandler
 from app.services.line_messaging.reply.reply import LineReplier
@@ -31,11 +32,13 @@ class LineEventDispatcher:
         message_handler: LineMessageHandler,
         media_handler: LineMediaHandler,
         location_handler: LineLocationHandler,
+        facility_detail_handler: LineFacilityDetailHandler,
         replier: LineReplier,
     ):
         self._message_handler = message_handler
         self._media_handler = media_handler
         self._location_handler = location_handler
+        self._facility_detail_handler = facility_detail_handler
         self._replier = replier
 
     async def handle(self, event: MessageEvent) -> None:
@@ -108,6 +111,14 @@ class LineEventDispatcher:
                 message_text=status_msg,
                 user_id=user_id,
                 voice_reply_enabled=False,
+            )
+        #點擊"查看院所詳細資訊"按鈕時，回應該診所的詳細資料
+        elif action == "view_facility_detail":
+            facility_id = params.get("facility_id", [""])[0]
+            await self._facility_detail_handler.handle_view_facility_detail(
+                facility_id=facility_id,
+                reply_token=reply_token,
+                user_id=user_id,
             )
         else:
             logger.warning("Unknown postback action: %s", action)

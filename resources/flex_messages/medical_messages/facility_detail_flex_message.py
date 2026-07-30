@@ -11,6 +11,8 @@ from app.services.medical.medical_facility_matcher import WEEKDAY_LABELS
 from resources.flex_messages.medical_messages.facility_brief_flex_message import (
     _build_flex_map_uri,
     _build_flex_tel_uri,
+    _build_status_indicator,
+    _get_business_status,
 )
 
 # 診療科別網格每列顯示筆數
@@ -170,7 +172,7 @@ def generate_facility_detail_flex_message(facility: MedicalFacility) -> dict[str
             "color": "#111111",
         }
     )
-
+    header_contents.append(_build_status_indicator(_get_business_status(facility.clinic_time)))
     body_contents: list[dict[str, Any]] = [
         {
             "type": "box",

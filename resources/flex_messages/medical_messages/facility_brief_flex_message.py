@@ -8,7 +8,11 @@ import re
 import urllib.parse
 from typing import Any
 from app.schemas import MedicalFacility
+from datetime import datetime, timedelta, timezone
 
+from app.services.medical.medical_facility_matcher import WEEKDAY_LABELS
+
+_TAIPEI_TZ = timezone(timedelta(hours=8))
 
 def _build_flex_map_uri(facility: MedicalFacility) -> str:
     """生成最符合 LINE 導航按鈕規格的 Google Map 連結"""
@@ -34,7 +38,74 @@ def _build_flex_tel_uri(phone: str | None) -> str:
     digits = re.sub(r"\D", "", phone)
     return f"tel:{digits}" if len(digits) >= 6 else "tel:"
 
+def _get_business_status(clinic_time: dict[str, Any] | None) -> bool | None:
+    """
+    根據目前台灣時間，比對營業時間資料判斷該院所目前是否營業中。
+    回傳 True 表示營業中，False 表示休診中，None 表示無營業時間資料可供判斷。
+    """
+    if not clinic_time:
+        return None
 
+    now = datetime.now(_TAIPEI_TZ)
+    weekday_keys = list(WEEKDAY_LABELS.keys())
+    today_key = weekday_keys[now.weekday()]  # weekday(): 星期一為0，需與 WEEKDAY_LABELS 順序一致
+
+    today = clinic_time.get(today_key)
+    if today is None:
+        return None
+
+    if today.isClosed:
+        return False
+
+    current_time_text = now.strftime("%H:%M")
+    for slot in today.slots:
+        if slot.open and slot.close and slot.open <= current_time_text <= slot.close:
+            return True
+
+    return False
+
+
+def _build_status_indicator(is_open: bool | None) -> dict[str, Any]:
+    """組出燈號指示 Box，以圓點顏色代表營業狀態，供簡略卡片與詳情頁共用"""
+    if is_open is None:
+        dot_color = "#9E9E9E"
+        status_text = "營業時間未提供"
+    elif is_open:
+        dot_color = "#2E7D32"
+        status_text = "營業中"
+    else:
+        dot_color = "#C62828"
+        status_text = "休診中"
+
+    return {
+        "type": "box",
+        "layout": "horizontal",
+        "spacing": "xs",
+        "alignItems": "center",
+        "contents": [
+            {
+                # 模擬圓點
+                "type": "box",
+                "layout": "vertical",
+                "width": "20px",
+                "height": "20px",
+                #borderRadius設為寬高的一半就可以模擬圓形效果
+                "cornerRadius": "10px",
+                "backgroundColor": dot_color,
+                "contents": [{"type": "filler"}],
+            },
+            {
+                "type": "text",
+                #故意留空白比較好閱讀
+                "text": f"  {status_text}",
+                "size": "xxl",
+                "weight": "bold",
+                "color": dot_color,
+                "flex": 0,
+            },
+        ],
+    }
+    
 def create_facility_item_box(facility: MedicalFacility) -> dict[str, Any]:
     """建立單一醫療院所的 Flex Message Box 結構"""
     dist_text = (
@@ -124,6 +195,7 @@ def create_facility_item_box(facility: MedicalFacility) -> dict[str, Any]:
                 "size": "xxl",
                 "color": "#111111",
             },
+            _build_status_indicator(_get_business_status(facility.clinic_time)),
             {
                 "type": "text",
                 "text": dist_text,
@@ -149,6 +221,7 @@ def create_facility_item_box(facility: MedicalFacility) -> dict[str, Any]:
     }
 
 
+    
 def generate_facility_list_flex_message(
     facilities: list[MedicalFacility], total_count: int | None = None
 ) -> dict[str, Any]:

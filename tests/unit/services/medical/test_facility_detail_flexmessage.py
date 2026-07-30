@@ -87,7 +87,7 @@ def test_build_clinic_time_rows_empty_slots_no_valid_range_shows_no_data():
 
 
 def test_build_department_grid_empty_returns_no_data_text():
-    result = _build_department_grid(None, "測試診所")
+    result = _build_department_grid(None)
     assert len(result) == 1
     assert result[0]["text"] == "無資料"
 
@@ -95,7 +95,7 @@ def test_build_department_grid_empty_returns_no_data_text():
 def test_build_department_grid_full_row_no_filler():
     # 剛好 3 項（DEPARTMENTS_PER_ROW），不應補 filler
     departments = ["內科", "外科", "兒科"]
-    rows = _build_department_grid(departments, "測試診所")
+    rows = _build_department_grid(departments)
     assert len(rows) == 1
     fillers = [c for c in rows[0]["contents"] if c.get("type") == "filler"]
     assert len(fillers) == 0
@@ -104,7 +104,7 @@ def test_build_department_grid_full_row_no_filler():
 def test_build_department_grid_partial_row_fills_with_filler():
     # 4 項會分成 3+1，第二列應補 2 個 filler 補滿到 3 格
     departments = ["內科", "外科", "兒科", "婦產科"]
-    rows = _build_department_grid(departments, "測試診所")
+    rows = _build_department_grid(departments)
     assert len(rows) == 2
     second_row_fillers = [c for c in rows[1]["contents"] if c.get("type") == "filler"]
     assert len(second_row_fillers) == 2
@@ -114,7 +114,7 @@ def test_build_department_grid_many_departments_all_rendered_without_collapse():
     # 目前實作沒有收合邏輯，25 項應全部展開渲染成 chip
     # 注意：若之後恢復草稿中的「其他 N 項」收合設計，此測試需要同步更新
     departments = [f"科別{i}" for i in range(25)]
-    rows = _build_department_grid(departments, "測試診所")
+    rows = _build_department_grid(departments)
     full_str = str(rows)
     assert "科別0" in full_str
     assert "科別24" in full_str
@@ -124,7 +124,7 @@ def test_build_department_grid_many_departments_all_rendered_without_collapse():
 def test_build_department_grid_alternating_row_colors():
     # 驗證列與列之間背景色確實交替（第一列 #EEEEEE，第二列 #FFFDE7）
     departments = ["內科", "外科", "兒科", "婦產科"]
-    rows = _build_department_grid(departments, "測試診所")
+    rows = _build_department_grid(departments)
     assert rows[0]["contents"][0]["backgroundColor"] == "#EEEEEE"
     assert rows[1]["contents"][0]["backgroundColor"] == "#FFFDE7"
 
@@ -215,4 +215,4 @@ def test_generate_facility_detail_flex_message_type_label_omitted_when_missing()
     result = generate_facility_detail_flex_message(facility)
     header_contents = result["contents"]["body"]["contents"][0]["contents"]
     # 只剩名稱這一個 text 元素，沒有分類標籤
-    assert len(header_contents) == 1
+    assert len(header_contents) == 2

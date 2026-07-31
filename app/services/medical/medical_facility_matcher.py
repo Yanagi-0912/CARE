@@ -4,6 +4,7 @@ from app.schemas import MedicalFacility, ClinicDaySchedule
 import re
 import urllib.parse
 from typing import Any
+import math
 FACILITY_SUFFIXES = ("醫院", "診所", "衛生所", "藥局", "藥房")
 TYPE_KEYWORD_MAP = {
     "診所": "診所",
@@ -248,4 +249,4 @@ def similarity_rank(facility: MedicalFacility, keyword: str) -> tuple[int, int]:
         exact_rank = 3
     if not facility_name:
         return exact_rank, math.inf
-        return exact_rank, len(facility_name)
+    return exact_rank, len(facility_name)

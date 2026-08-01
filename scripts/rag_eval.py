@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""批次評測 RAG 檢索（可選答案層）。
+"""批次評測 RAG 檢索（可選答案層／精排 A/B）。
 
 用法（專案根目錄）：
   python scripts/rag_eval.py
   python scripts/rag_eval.py --with-answer --out /tmp/rag-report.json
+  python scripts/rag_eval.py --rank-mode vector --top-n 5
+  python scripts/rag_eval.py --compare-rerank --out /tmp/rag-compare.json
   python scripts/rag_eval.py --fail-under 0.6
 """
 
@@ -24,7 +26,9 @@ from dotenv import load_dotenv
 
 load_dotenv(_PROJECT_ROOT / ".env")
 
+from app.core.config import settings
 from app.dependencies import get_rag_answer_service, get_rag_retriever
+from app.services.rag.cohere_reranker import CohereReranker, VectorScoreReranker
 from app.services.rag.eval_scoring import (
     CaseResult,
     EvalCase,
@@ -70,7 +74,50 @@ def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         default="",
         help="only evaluate cases with this split value (e.g. train)",
     )
+    parser.add_argument(
+        "--rank-mode",
+        choices=("none", "vector", "cohere"),
+        default="none",
+        help=(
+            "none=score all retrieved docs; "
+            "vector=vector-score top-n; "
+            "cohere=Cohere rerank top-n"
+        ),
+    )
+    parser.add_argument(
+        "--top-n",
+        type=int,
+        default=None,
+        help=f"truncate after ranking (default: RAG_RERANK_TOP_N={settings.RAG_RERANK_TOP_N})",
+    )
+    parser.add_argument(
+        "--compare-rerank",
+        action="store_true",
+        help="run vector vs cohere top-n side-by-side and print both hit_rates",
+    )
     return parser.parse_args(argv)
+
+
+def _build_reranker(rank_mode: str):
+    if rank_mode == "none":
+        return None
+    if rank_mode == "vector":
+        return VectorScoreReranker()
+    if not settings.COHERE_API_KEY:
+        raise RuntimeError(
+            "rank-mode=cohere requires COHERE_API_KEY in environment"
+        )
+    return CohereReranker(
+        api_key=settings.COHERE_API_KEY,
+        model=settings.COHERE_RERANK_MODEL,
+        timeout_seconds=settings.COHERE_RERANK_TIMEOUT_SECONDS,
+    )
+
+
+async def _maybe_rank(docs, *, query: str, rank_mode: str, top_n: int, reranker):
+    if rank_mode == "none" or reranker is None:
+        return docs
+    return await reranker.rerank(query, docs, top_n=top_n)
 
 
 async def _eval_one(
@@ -79,13 +126,19 @@ async def _eval_one(
     retriever,
     answer_service,
     with_answer: bool,
+    rank_mode: str,
+    top_n: int,
+    reranker,
 ) -> CaseResult:
-    needs_retrieval_score = case.route == "kb" and bool(case.expected_url_substrings)
+    needs_retrieval_score = case.route == "kb" and case.has_retrieval_expectations
     if not needs_retrieval_score and not with_answer:
         return score_case_retrieval(case, [])
 
     try:
         docs = await retriever.ainvoke(case.query)
+        docs = await _maybe_rank(
+            docs, query=case.query, rank_mode=rank_mode, top_n=top_n, reranker=reranker
+        )
     except Exception as exc:  # noqa: BLE001 - 評測要收斂錯誤到報告
         return CaseResult(
             id=case.id,
@@ -95,9 +148,11 @@ async def _eval_one(
             retrieval_hit=False if needs_retrieval_score else None,
             retrieved_urls=[],
             error=f"retrieve: {type(exc).__name__}: {exc}",
+            rank_mode=rank_mode,
         )
 
     result = score_case_retrieval(case, docs)
+    result.rank_mode = rank_mode
 
     if not with_answer:
         return result
@@ -116,49 +171,9 @@ async def _eval_one(
     return result
 
 
-async def run_eval(
-    golden: Path,
-    *,
-    with_answer: bool = False,
-    split: str = "",
-    retriever=None,
-    answer_service=None,
-) -> tuple[list[CaseResult], object]:
-    cases = load_golden_jsonl(golden)
-    if split:
-        cases = [c for c in cases if c.split == split]
-
-    if retriever is None:
-        retriever = get_rag_retriever()
-    if with_answer and answer_service is None:
-        answer_service = get_rag_answer_service()
-
-    results: list[CaseResult] = []
-    for case in cases:
-        results.append(
-            await _eval_one(
-                case,
-                retriever=retriever,
-                answer_service=answer_service,
-                with_answer=with_answer,
-            )
-        )
-    summary = summarize_results(results)
-    return results, summary
-
-
-def main(argv: Optional[list[str]] = None) -> int:
-    args = _parse_args(argv)
-    results, summary = asyncio.run(
-        run_eval(
-            args.golden,
-            with_answer=args.with_answer,
-            split=args.split.strip(),
-        )
-    )
-
-    print("=== RAG Eval Summary ===")
-    print(f"golden: {args.golden}")
+def _print_summary(label: str, golden: Path, summary, results, *, with_answer: bool) -> None:
+    print(f"=== RAG Eval Summary ({label}) ===")
+    print(f"golden: {golden}")
     print(f"total_cases: {summary.total_cases}")
     print(f"scored_cases: {summary.scored_cases}")
     print(f"hits: {summary.hits}")
@@ -168,8 +183,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"skipped_ids: {summary.skipped_ids}")
     if summary.error_ids:
         print(f"error_ids: {summary.error_ids}")
-
-    if args.with_answer:
+    if with_answer:
         refuse_cases = [r for r in results if r.refuse_ok is not None]
         source_cases = [r for r in results if r.source_hit is not None]
         if refuse_cases:
@@ -179,9 +193,216 @@ def main(argv: Optional[list[str]] = None) -> int:
             ok = sum(1 for r in source_cases if r.source_hit)
             print(f"source_hit: {ok}/{len(source_cases)}")
 
+
+async def run_eval(
+    golden: Path,
+    *,
+    with_answer: bool = False,
+    split: str = "",
+    rank_mode: str = "none",
+    top_n: Optional[int] = None,
+    retriever=None,
+    answer_service=None,
+    reranker=None,
+) -> tuple[list[CaseResult], object]:
+    cases = load_golden_jsonl(golden)
+    if split:
+        cases = [c for c in cases if c.split == split]
+
+    if retriever is None:
+        retriever = get_rag_retriever()
+    if with_answer and answer_service is None:
+        answer_service = get_rag_answer_service()
+    if reranker is None and rank_mode != "none":
+        reranker = _build_reranker(rank_mode)
+
+    effective_top_n = top_n if top_n is not None else settings.RAG_RERANK_TOP_N
+
+    results: list[CaseResult] = []
+    for case in cases:
+        results.append(
+            await _eval_one(
+                case,
+                retriever=retriever,
+                answer_service=answer_service,
+                with_answer=with_answer,
+                rank_mode=rank_mode,
+                top_n=effective_top_n,
+                reranker=reranker,
+            )
+        )
+    summary = summarize_results(results)
+    return results, summary
+
+
+async def run_compare_rerank(
+    golden: Path,
+    *,
+    split: str = "",
+    top_n: Optional[int] = None,
+    retriever=None,
+) -> dict:
+    """同一批 wide-retrieve，分別以 vector / cohere top-n 計分。"""
+    cases = load_golden_jsonl(golden)
+    if split:
+        cases = [c for c in cases if c.split == split]
+    if retriever is None:
+        retriever = get_rag_retriever()
+
+    effective_top_n = top_n if top_n is not None else settings.RAG_RERANK_TOP_N
+    vector_rr = VectorScoreReranker()
+    cohere_rr = _build_reranker("cohere")
+
+    vector_results: list[CaseResult] = []
+    cohere_results: list[CaseResult] = []
+
+    for case in cases:
+        needs = case.route == "kb" and case.has_retrieval_expectations
+        if not needs:
+            skipped = score_case_retrieval(case, [])
+            skipped.rank_mode = "vector"
+            vector_results.append(skipped)
+            skipped2 = score_case_retrieval(case, [])
+            skipped2.rank_mode = "cohere"
+            cohere_results.append(skipped2)
+            continue
+        try:
+            wide = await retriever.ainvoke(case.query)
+            v_docs = await vector_rr.rerank(case.query, wide, top_n=effective_top_n)
+            c_docs = await cohere_rr.rerank(case.query, wide, top_n=effective_top_n)
+        except Exception as exc:  # noqa: BLE001
+            err = CaseResult(
+                id=case.id,
+                query=case.query,
+                route=case.route,
+                skipped=False,
+                retrieval_hit=False,
+                retrieved_urls=[],
+                error=f"retrieve: {type(exc).__name__}: {exc}",
+            )
+            err.rank_mode = "vector"
+            vector_results.append(err)
+            err2 = CaseResult(
+                id=case.id,
+                query=case.query,
+                route=case.route,
+                skipped=False,
+                retrieval_hit=False,
+                retrieved_urls=[],
+                error=f"retrieve: {type(exc).__name__}: {exc}",
+                rank_mode="cohere",
+            )
+            cohere_results.append(err2)
+            continue
+
+        vr = score_case_retrieval(case, v_docs)
+        vr.rank_mode = "vector"
+        vector_results.append(vr)
+        cr = score_case_retrieval(case, c_docs)
+        cr.rank_mode = "cohere"
+        cohere_results.append(cr)
+
+    return {
+        "vector": {
+            "summary": summarize_results(vector_results),
+            "results": vector_results,
+        },
+        "cohere": {
+            "summary": summarize_results(cohere_results),
+            "results": cohere_results,
+        },
+        "top_n": effective_top_n,
+    }
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    args = _parse_args(argv)
+    top_n = args.top_n
+
+    if args.compare_rerank:
+        compare = asyncio.run(
+            run_compare_rerank(
+                args.golden,
+                split=args.split.strip(),
+                top_n=top_n,
+            )
+        )
+        v_sum = compare["vector"]["summary"]
+        c_sum = compare["cohere"]["summary"]
+        _print_summary(
+            f"vector top-{compare['top_n']}",
+            args.golden,
+            v_sum,
+            compare["vector"]["results"],
+            with_answer=False,
+        )
+        print()
+        _print_summary(
+            f"cohere top-{compare['top_n']}",
+            args.golden,
+            c_sum,
+            compare["cohere"]["results"],
+            with_answer=False,
+        )
+        print()
+        print("=== Delta (cohere - vector) ===")
+        if v_sum.hit_rate is not None and c_sum.hit_rate is not None:
+            delta = c_sum.hit_rate - v_sum.hit_rate
+            print(f"hit_rate_delta: {delta:+.3f}")
+            only_vector = sorted(set(c_sum.miss_ids) - set(v_sum.miss_ids))
+            only_cohere_fixed = sorted(set(v_sum.miss_ids) - set(c_sum.miss_ids))
+            print(f"fixed_by_cohere: {only_cohere_fixed}")
+            print(f"regressed_by_cohere: {only_vector}")
+        else:
+            print("hit_rate_delta: n/a")
+
+        if args.out:
+            payload = {
+                "top_n": compare["top_n"],
+                "vector": {
+                    "summary": v_sum.to_dict(),
+                    "results": [r.to_dict() for r in compare["vector"]["results"]],
+                },
+                "cohere": {
+                    "summary": c_sum.to_dict(),
+                    "results": [r.to_dict() for r in compare["cohere"]["results"]],
+                },
+            }
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            print(f"wrote: {args.out}")
+
+        if args.fail_under is not None:
+            rate = c_sum.hit_rate
+            if rate is None or rate < args.fail_under:
+                return 1
+        return 0
+
+    results, summary = asyncio.run(
+        run_eval(
+            args.golden,
+            with_answer=args.with_answer,
+            split=args.split.strip(),
+            rank_mode=args.rank_mode,
+            top_n=top_n,
+        )
+    )
+
+    _print_summary(
+        args.rank_mode,
+        args.golden,
+        summary,
+        results,
+        with_answer=args.with_answer,
+    )
+
     if args.out:
         payload = {
             "summary": summary.to_dict(),
+            "rank_mode": args.rank_mode,
             "results": [r.to_dict() for r in results],
         }
         args.out.parent.mkdir(parents=True, exist_ok=True)

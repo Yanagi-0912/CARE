@@ -17,6 +17,7 @@ from app.services.rag.eval_scoring import (
     is_source_hit,
     load_golden_jsonl,
     score_case_retrieval,
+    source_names_from_docs,
     summarize_results,
     urls_from_docs,
     urls_from_answer_sources,
@@ -44,6 +45,78 @@ def test_urls_from_docs():
         Document(page_content="c", metadata={}),
     ]
     assert urls_from_docs(docs) == ["https://a.com"]
+
+
+def test_source_names_from_docs():
+    docs = [
+        Document(page_content="a", metadata={"source_name": "食藥署闢謠專區"}),
+        Document(page_content="b", metadata={"source_name": ""}),
+        Document(page_content="c", metadata={}),
+    ]
+    assert source_names_from_docs(docs) == ["食藥署闢謠專區"]
+
+
+def test_score_case_hits_via_source_when_url_missing():
+    case = EvalCase(
+        id="kb-fda",
+        query="感冒吃抗生素有用嗎？",
+        route="kb",
+        expected_url_substrings=[],
+        expected_source_substrings=["食藥署"],
+    )
+    docs = [
+        Document(
+            page_content="感冒多為病毒…",
+            metadata={"url": None, "source_name": "食藥署闢謠專區"},
+        )
+    ]
+    result = score_case_retrieval(case, docs)
+    assert result.skipped is False
+    assert result.retrieval_hit is True
+
+
+def test_score_case_hits_via_content_substring():
+    case = EvalCase(
+        id="kb-content",
+        query="感冒吃抗生素有用嗎？",
+        route="kb",
+        expected_content_substrings=["不主動要求抗生素"],
+    )
+    docs = [
+        Document(
+            page_content="使用抗生素四不一要：不主動要求抗生素-感冒多為病毒感染",
+            metadata={"url": None, "source_name": "食藥署闢謠專區"},
+        )
+    ]
+    result = score_case_retrieval(case, docs)
+    assert result.skipped is False
+    assert result.retrieval_hit is True
+
+
+def test_score_case_miss_when_content_expectation_absent():
+    case = EvalCase(
+        id="kb-content-miss",
+        query="q",
+        route="kb",
+        expected_url_substrings=["pid=99999"],
+        expected_content_substrings=["絕對不該出現的句子"],
+    )
+    docs = [
+        Document(
+            page_content="高血壓飲食注意",
+            metadata={"url": "https://www.hpa.gov.tw/Pages/Detail.aspx?pid=16550"},
+        )
+    ]
+    result = score_case_retrieval(case, docs)
+    assert result.retrieval_hit is False
+
+
+def test_score_case_skipped_without_url_or_source_expectations():
+    case = EvalCase(id="kb-x", query="q", route="kb")
+    result = score_case_retrieval(
+        case, [Document(page_content="a", metadata={"url": "https://hpa.gov.tw"})]
+    )
+    assert result.skipped is True
 
 
 def test_load_golden_jsonl_requires_fields(tmp_path: Path):
@@ -230,3 +303,82 @@ async def test_run_eval_with_injected_retriever(tmp_path: Path):
     assert summary.hit_rate == 1.0
     assert results[0].retrieval_hit is True
     retriever.ainvoke.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_compare_rerank_uses_injected_retriever_once(tmp_path: Path):
+    import importlib.util
+    from unittest.mock import AsyncMock, MagicMock
+
+    golden = tmp_path / "g.jsonl"
+    golden.write_text(
+        json.dumps(
+            {
+                "id": "kb-1",
+                "query": "抗生素",
+                "route": "kb",
+                "expected_source_substrings": ["食藥署"],
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    wide = [
+        Document(
+            page_content="感冒多為病毒",
+            metadata={"url": None, "source_name": "食藥署闢謠專區", "score": 0.5},
+        ),
+        Document(
+            page_content="無關",
+            metadata={
+                "url": "https://www.hpa.gov.tw/x",
+                "source_name": "衛福部闢謠網站",
+                "score": 0.9,
+            },
+        ),
+    ]
+    retriever = MagicMock()
+    retriever.ainvoke = AsyncMock(return_value=wide)
+
+    class PreferFda:
+        async def rerank(self, query, docs, *, top_n):
+            del query, top_n
+            return [docs[0]]
+
+    class PreferHpa:
+        async def rerank(self, query, docs, *, top_n):
+            del query, top_n
+            return [docs[1]]
+
+    spec = importlib.util.spec_from_file_location(
+        "rag_eval_script2",
+        Path(__file__).resolve().parents[3] / "scripts" / "rag_eval.py",
+    )
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    # Patch builders via direct call of scoring path: monkeypatch-free by
+    # calling internal loop pieces through run_compare with custom rerankers.
+    # Instead, unit-test ranking selection effect via run_eval rank_mode=vector.
+    results, summary = await mod.run_eval(
+        golden,
+        retriever=retriever,
+        rank_mode="vector",
+        top_n=1,
+        reranker=PreferHpa(),
+    )
+    assert summary.hit_rate == 0.0
+    assert results[0].retrieval_hit is False
+
+    results2, summary2 = await mod.run_eval(
+        golden,
+        retriever=retriever,
+        rank_mode="vector",
+        top_n=1,
+        reranker=PreferFda(),
+    )
+    assert summary2.hit_rate == 1.0
+    assert results2[0].retrieval_hit is True

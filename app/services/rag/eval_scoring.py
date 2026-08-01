@@ -23,9 +23,19 @@ class EvalCase:
     query: str
     route: str
     expected_url_substrings: list[str] = field(default_factory=list)
+    expected_source_substrings: list[str] = field(default_factory=list)
+    expected_content_substrings: list[str] = field(default_factory=list)
     must_not_answer: bool = False
     notes: str = ""
     split: str = ""
+
+    @property
+    def has_retrieval_expectations(self) -> bool:
+        return bool(
+            self.expected_url_substrings
+            or self.expected_source_substrings
+            or self.expected_content_substrings
+        )
 
 
 @dataclass
@@ -36,10 +46,12 @@ class CaseResult:
     skipped: bool
     retrieval_hit: Optional[bool]
     retrieved_urls: list[str]
+    retrieved_sources: list[str] = field(default_factory=list)
     source_hit: Optional[bool] = None
     refuse_ok: Optional[bool] = None
     answer_preview: Optional[str] = None
     error: Optional[str] = None
+    rank_mode: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -68,14 +80,47 @@ def urls_from_docs(docs: list[Document]) -> list[str]:
     return urls
 
 
-def is_retrieval_hit(urls: list[str], expected_substrings: list[str]) -> bool:
-    if not urls or not expected_substrings:
+def source_names_from_docs(docs: list[Document]) -> list[str]:
+    names: list[str] = []
+    for doc in docs:
+        name = str(doc.metadata.get("source_name") or "").strip()
+        if name:
+            names.append(name)
+    return names
+
+
+def is_substring_hit(values: list[str], expected_substrings: list[str]) -> bool:
+    if not values or not expected_substrings:
         return False
-    for url in urls:
+    for value in values:
         for substr in expected_substrings:
-            if substr and substr in url:
+            if substr and substr in value:
                 return True
     return False
+
+
+def is_retrieval_hit(urls: list[str], expected_substrings: list[str]) -> bool:
+    return is_substring_hit(urls, expected_substrings)
+
+
+def contents_from_docs(docs: list[Document]) -> list[str]:
+    return [doc.page_content or "" for doc in docs]
+
+
+def is_doc_retrieval_hit(
+    docs: list[Document],
+    *,
+    expected_url_substrings: list[str],
+    expected_source_substrings: list[str],
+    expected_content_substrings: list[str] | None = None,
+) -> bool:
+    if is_substring_hit(urls_from_docs(docs), expected_url_substrings):
+        return True
+    if is_substring_hit(source_names_from_docs(docs), expected_source_substrings):
+        return True
+    return is_substring_hit(
+        contents_from_docs(docs), expected_content_substrings or []
+    )
 
 
 def urls_from_answer_sources(answer_text: str) -> list[str]:
@@ -148,12 +193,34 @@ def load_golden_jsonl(path: Path) -> list[EvalCase]:
                 )
             expected_clean = [str(x).strip() for x in expected if str(x).strip()]
 
+            expected_src = data.get("expected_source_substrings") or []
+            if not isinstance(expected_src, list):
+                raise ValueError(
+                    f"line {line_no} (id={case_id}): "
+                    "expected_source_substrings must be a list"
+                )
+            expected_src_clean = [
+                str(x).strip() for x in expected_src if str(x).strip()
+            ]
+
+            expected_content = data.get("expected_content_substrings") or []
+            if not isinstance(expected_content, list):
+                raise ValueError(
+                    f"line {line_no} (id={case_id}): "
+                    "expected_content_substrings must be a list"
+                )
+            expected_content_clean = [
+                str(x).strip() for x in expected_content if str(x).strip()
+            ]
+
             cases.append(
                 EvalCase(
                     id=case_id,
                     query=query,
                     route=route,
                     expected_url_substrings=expected_clean,
+                    expected_source_substrings=expected_src_clean,
+                    expected_content_substrings=expected_content_clean,
                     must_not_answer=bool(data.get("must_not_answer", False)),
                     notes=str(data.get("notes") or ""),
                     split=str(data.get("split") or ""),
@@ -164,8 +231,9 @@ def load_golden_jsonl(path: Path) -> list[EvalCase]:
 
 def score_case_retrieval(case: EvalCase, docs: list[Document]) -> CaseResult:
     urls = urls_from_docs(docs)
-    # kb 且有期望來源才計分；其餘 skip（web／refuse／未標來源）
-    if case.route != "kb" or not case.expected_url_substrings:
+    sources = source_names_from_docs(docs)
+    # kb 且有期望 url／source／content 才計分；其餘 skip
+    if case.route != "kb" or not case.has_retrieval_expectations:
         return CaseResult(
             id=case.id,
             query=case.query,
@@ -173,14 +241,21 @@ def score_case_retrieval(case: EvalCase, docs: list[Document]) -> CaseResult:
             skipped=True,
             retrieval_hit=None,
             retrieved_urls=urls,
+            retrieved_sources=sources,
         )
     return CaseResult(
         id=case.id,
         query=case.query,
         route=case.route,
         skipped=False,
-        retrieval_hit=is_retrieval_hit(urls, case.expected_url_substrings),
+        retrieval_hit=is_doc_retrieval_hit(
+            docs,
+            expected_url_substrings=case.expected_url_substrings,
+            expected_source_substrings=case.expected_source_substrings,
+            expected_content_substrings=case.expected_content_substrings,
+        ),
         retrieved_urls=urls,
+        retrieved_sources=sources,
     )
 
 

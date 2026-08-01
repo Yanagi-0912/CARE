@@ -17,8 +17,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
-# 複製應用程式原始碼
+# 複製應用程式原始碼（含 Flex Message 等 top-level resources）
 COPY app ./app
+COPY resources ./resources
 
 # 目錄擁有者改為 care，與下方 USER 一致
 RUN chown -R care:care /app

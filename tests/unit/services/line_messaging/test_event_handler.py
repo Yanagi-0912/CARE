@@ -549,6 +549,7 @@ async def test_handle_postback_event_toggle_voice_reply_disabled(
     reply_req = mock_line_api.reply_message.call_args[0][0]
     assert reply_req.messages[0].text == "已關閉語音回覆"
 
+
 #測試點擊醫療院所查看詳情的 postback 事件，應該呼叫 LineFacilityDetailHandler 並回覆 Flex Message
 @pytest.mark.asyncio
 async def test_handle_postback_event_view_facility_detail(
@@ -580,6 +581,7 @@ async def test_handle_postback_event_view_facility_detail(
     assert len(reply_req.messages) == 1
     assert reply_req.messages[0].type == "flex"
     assert reply_req.messages[0].alt_text == "測試診所詳細資訊"
+
 
 #測試當查無院所資料時，應回覆查無資料訊息
 @pytest.mark.asyncio
@@ -616,4 +618,33 @@ async def test_handle_flex_message_reply(handler, mock_agent, mock_line_api):
     assert reply_req.messages[0].type == "flex"
     assert reply_req.messages[0].alt_text == "測試院所"
 
+
+@pytest.mark.asyncio
+async def test_handle_postback_event_confirm_medication(
+    handler,
+    mock_line_api,
+):
+    from datetime import datetime, timezone
+    from app.models.medication import MedicationLog
+
+    mock_med_service = AsyncMock()
+    mock_med_service.confirm_medication.return_value = MedicationLog(
+        reminder_id="R123",
+        user_id="U12345",
+        alert_notify_user_id="U_CARE",
+        slot_type="morning",
+        scheduled_at=datetime.now(timezone.utc),
+        timeout_at=datetime.now(timezone.utc),
+        status="taken",
+        taken_at=datetime.now(timezone.utc),
+    )
+    handler._medication_service = mock_med_service
+
+    event = _postback_event("action=confirm_medication&log_id=L123", user_id="U12345")
+    await handler.handle(event)
+
+    mock_med_service.confirm_medication.assert_called_once_with("L123", "U12345")
+    mock_line_api.reply_message.assert_called_once()
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert reply_req.messages[0].type == "flex"
 

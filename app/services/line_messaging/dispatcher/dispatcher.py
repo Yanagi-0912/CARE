@@ -12,6 +12,7 @@ from linebot.v3.webhooks import (
     TextMessageContent,
     VideoMessageContent,
 )
+from app.services.line_messaging.flex.medication_flex import build_patient_medication_flex
 from app.services.line_messaging.handler.message_handler import (
     LineMessageHandler,
     LineValidationError,
@@ -34,12 +35,15 @@ class LineEventDispatcher:
         location_handler: LineLocationHandler,
         facility_detail_handler: LineFacilityDetailHandler,
         replier: LineReplier,
+        medication_service=None,
     ):
         self._message_handler = message_handler
         self._media_handler = media_handler
         self._location_handler = location_handler
         self._facility_detail_handler = facility_detail_handler
         self._replier = replier
+        self._medication_service = medication_service
+
 
     async def handle(self, event: MessageEvent) -> None:
         """分發單一事件至對應的方法處理。"""
@@ -99,7 +103,46 @@ class LineEventDispatcher:
         params = parse_qs(postback_data)
         action = params.get("action", [""])[0]
 
-        if action == "toggle_voice_reply":
+        if action == "confirm_medication":
+            log_id = params.get("log_id", [""])[0]
+            if not log_id:
+                logger.warning("confirm_medication postback missing log_id")
+                return
+
+            if self._medication_service:
+                log = await self._medication_service.confirm_medication(log_id, user_id)
+                taken_time_str = log.taken_at.strftime("%H:%M") if log.taken_at else ""
+                scheduled_time_str = (
+                    log.scheduled_at.strftime("%H:%M") if log.scheduled_at else "08:00"
+                )
+
+                disabled_flex = build_patient_medication_flex(
+                    log_id=log_id,
+                    slot_type=log.slot_type,
+                    scheduled_time=scheduled_time_str,
+                    disabled=True,
+                    taken_at_str=taken_time_str,
+                )
+                await self._replier.reply_flex(
+                    reply_token=reply_token,
+                    flex_message=disabled_flex,
+                    user_id=user_id,
+                )
+            else:
+                await self._replier.reply(
+                    reply_token=reply_token,
+                    message_text="已記錄您的服藥狀態！",
+                    user_id=user_id,
+                    voice_reply_enabled=False,
+                )
+        elif action == "already_done":
+            await self._replier.reply(
+                reply_token=reply_token,
+                message_text="此服藥提醒先前已完成紀錄囉！祝您身體健康！",
+                user_id=user_id,
+                voice_reply_enabled=False,
+            )
+        elif action == "toggle_voice_reply":
             enabled_str = params.get("enabled", ["false"])[0]
             enabled = enabled_str.lower() == "true"
             if self._user_profile_service:
@@ -122,6 +165,7 @@ class LineEventDispatcher:
             )
         else:
             logger.warning("Unknown postback action: %s", action)
+
 
     async def _handle_unsupported_event(self, event) -> None:
         logger.warning("Unsupported LINE event type: %s", type(event).__name__)

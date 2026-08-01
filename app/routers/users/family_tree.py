@@ -8,6 +8,7 @@ from app.models.family_tree import (
     AcceptInviteRequest,
     AcceptInviteResponse,
     SetRelationshipRequest,
+    SetCareRecipientRequest,
 )
 from app.services.family.family_tree_service import FamilyTreeService
 from app.dependencies import get_family_tree_service, get_current_user, CurrentUser
@@ -91,3 +92,22 @@ async def set_relationship(
         member_id=req.member_id,
         relationship_type=req.relationship_type,
     )
+
+
+@router.post(
+    "/care-recipient",
+    response_model=FamilyTree,
+    summary="設定照顧對象標籤",
+    description="設定目前使用者族譜內特定成員是否為照顧對象 (is_care_recipient)。",
+)
+async def set_care_recipient(
+    req: SetCareRecipientRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: FamilyTreeService = Depends(get_family_tree_service),
+):
+    return await service.set_care_recipient(
+        user_id=current_user.line_user_id,
+        member_id=req.member_id,
+        is_care_recipient=req.is_care_recipient,
+    )
+

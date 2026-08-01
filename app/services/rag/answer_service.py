@@ -3,8 +3,6 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from app.services.gemini import GeminiService
 from app.services.rag.retriever import MongoAtlasVectorRetriever
-from app.services.rag.web_client import WebSearchClient
-from app.services.rag.whitelist import is_allowed_url
 
 RETRIEVAL_TOP_K = 10
 CITE_TOP_K = 3
@@ -16,9 +14,6 @@ CANNOT_ANSWER_MARKERS: tuple[str, ...] = (
     "未找到",
     "找不到相關",
 )
-WEB_ANSWER_PREFIX = "以下參考網路公開資料"
-WEB_SEARCH_LIMIT = 8
-WEB_PAGE_CHAR_LIMIT = 8000
 
 RAG_PROMPT = ChatPromptTemplate.from_messages(
     [
@@ -43,29 +38,20 @@ class RagAnswerService:
         self,
         gemini_service: GeminiService,
         retriever: MongoAtlasVectorRetriever,
-        web_client: WebSearchClient | None = None,
     ) -> None:
         self.gemini_service = gemini_service
         self.retriever = retriever
-        self.web_client = web_client
 
     async def answer(self, user_text: str) -> str:
         docs = await self.retriever.ainvoke(user_text)
-        if docs:
-            kb_answer = await self._generate_answer(user_text, docs)
-            if not self._is_cannot_answer(kb_answer):
-                return self._append_sources(kb_answer, docs, source_kind="kb")
+        if not docs:
+            return NO_HITS_MESSAGE
 
-        web_docs = await self._fetch_web_docs(user_text)
-        if not web_docs:
+        kb_answer = await self._generate_answer(user_text, docs)
+        if self._is_cannot_answer(kb_answer):
             return NO_ANSWER_MESSAGE
 
-        web_answer = await self._generate_answer(user_text, web_docs)
-        if self._is_cannot_answer(web_answer):
-            return NO_ANSWER_MESSAGE
-
-        annotated = f"{WEB_ANSWER_PREFIX}\n\n{web_answer}"
-        return self._append_sources(annotated, web_docs, source_kind="web")
+        return self._append_sources(kb_answer, docs)
 
     async def _generate_answer(self, question: str, docs: list[Document]) -> str:
         context = "\n".join(
@@ -78,41 +64,6 @@ class RagAnswerService:
             answer_text = str(answer_text)
         return answer_text
 
-    async def _fetch_web_docs(self, query: str) -> list[Document]:
-        if self.web_client is None:
-            return []
-        try:
-            hits = await self.web_client.search(query, limit=WEB_SEARCH_LIMIT)
-        except Exception:
-            return []
-
-        docs: list[Document] = []
-        seen: set[str] = set()
-        for hit in hits:
-            url = (hit.url or "").strip()
-            if not url or url in seen or not is_allowed_url(url):
-                continue
-            try:
-                text = await self.web_client.scrape(url)
-            except Exception:
-                continue
-            text = (text or "").strip()
-            if not text:
-                continue
-            seen.add(url)
-            docs.append(
-                Document(
-                    page_content=text[:WEB_PAGE_CHAR_LIMIT],
-                    metadata={
-                        "source_name": (hit.title or "").strip() or url,
-                        "url": url,
-                    },
-                )
-            )
-            if len(docs) >= CITE_TOP_K:
-                break
-        return docs
-
     @staticmethod
     def _is_cannot_answer(text: str) -> bool:
         normalized = (text or "").strip()
@@ -121,12 +72,7 @@ class RagAnswerService:
         return any(marker in normalized for marker in CANNOT_ANSWER_MARKERS)
 
     @staticmethod
-    def _append_sources(
-        answer_text: str,
-        docs: list[Document],
-        *,
-        source_kind: str = "kb",
-    ) -> str:
+    def _append_sources(answer_text: str, docs: list[Document]) -> str:
         source_lines: list[str] = []
         seen_urls: set[str] = set()
 
@@ -140,10 +86,7 @@ class RagAnswerService:
             seen_urls.add(url)
 
             display_idx = len(source_lines) + 1
-            if source_kind == "web":
-                label = source_name if source_name else url
-                source_lines.append(f"[{display_idx}] 網路：{label}：{url}")
-            elif source_name:
+            if source_name:
                 source_lines.append(f"[{display_idx}] {source_name}：{url}")
             else:
                 source_lines.append(f"[{display_idx}] {url}")

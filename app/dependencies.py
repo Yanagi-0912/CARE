@@ -34,9 +34,11 @@ from app.services.medical.medical_service import MedicalService, medical_service
 from app.services.line_messaging.handler.facility_detail_handler import LineFacilityDetailHandler
 from app.services.rag import MongoAtlasVectorRetriever, RETRIEVAL_TOP_K, RagAnswerService
 from app.services.rag.firecrawl_client import FirecrawlClient
+from app.services.rag.web_search_service import WebSearchService
 from app.services.users.user_profile_service import UserProfileService
 from app.tools.medical_tools import configure_medical_tools
 from app.tools.rag_tools import configure_rag_tool
+from app.tools.web_tools import configure_web_tool
 
 MongoDBManager.configure(settings.MONGODB_URI)
 RedisManager.configure(settings.REDIS_URL)
@@ -78,6 +80,10 @@ if settings.FIRECRAWL_API_KEY:
 _rag_answer_service = RagAnswerService(
     gemini_service=_gemini_service,
     retriever=_rag_retriever,
+)
+
+_web_search_service = WebSearchService(
+    gemini_service=_gemini_service,
     web_client=_firecrawl_client,
 )
 
@@ -90,6 +96,7 @@ _consultation_service = ConsultationService(
 )
 
 configure_rag_tool(_rag_answer_service)
+configure_web_tool(_web_search_service)
 configure_medical_tools(medical_service)
 
 _care_agent = Agent(

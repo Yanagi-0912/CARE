@@ -1,5 +1,5 @@
 import logging
-
+import time
 from urllib.parse import parse_qs
 
 from linebot.v3.webhooks import (
@@ -12,6 +12,12 @@ from linebot.v3.webhooks import (
     TextMessageContent,
     VideoMessageContent,
 )
+from app.core.request_context import (
+    new_request_id,
+    reset_request_id,
+    set_request_id,
+)
+from app.core.request_logging import log_done, log_start
 from app.services.line_messaging.flex.medication_flex import build_patient_medication_flex
 from app.services.line_messaging.handler.message_handler import (
     LineMessageHandler,
@@ -23,6 +29,29 @@ from app.services.line_messaging.handler.location_handler import LineLocationHan
 from app.services.line_messaging.reply.reply import LineReplier
 
 logger = logging.getLogger(__name__)
+
+
+def _event_label(event) -> str:
+    if isinstance(event, PostbackEvent):
+        return "postback"
+    if isinstance(event, MessageEvent):
+        message = event.message
+        if isinstance(message, TextMessageContent):
+            return "text"
+        if isinstance(message, LocationMessageContent):
+            return "location"
+        if isinstance(
+            message,
+            (
+                ImageMessageContent,
+                VideoMessageContent,
+                AudioMessageContent,
+                FileMessageContent,
+            ),
+        ):
+            return getattr(message, "type", None) or type(message).__name__
+        return f"message:{type(message).__name__}"
+    return type(event).__name__
 
 
 class LineEventDispatcher:
@@ -53,13 +82,21 @@ class LineEventDispatcher:
             logger.warning("LINE event source missing user_id or reply_token")
             return
 
+        rid_token = set_request_id(new_request_id())
+        started = time.perf_counter()
+        status = "ok"
         event_type = type(event).__name__
         handler = getattr(self, f"_handle_{event_type}", self._handle_unsupported_event)
 
         try:
+            log_start(
+                logger,
+                event=_event_label(event),
+                user=user_id[:10],
+            )
             await handler(event)
         except LineValidationError as e:
-            # 針對內容驗證失敗的例外，直接回覆友善的錯誤提示
+            status = "validation_error"
             await self._replier.reply(
                 reply_token=reply_token,
                 message_text=str(e),
@@ -67,6 +104,7 @@ class LineEventDispatcher:
                 voice_reply_enabled=False,
             )
         except Exception:
+            status = "error"
             logger.exception("Error in event dispatcher handling event %s", event_type)
             await self._replier.reply(
                 reply_token=reply_token,
@@ -74,6 +112,10 @@ class LineEventDispatcher:
                 user_id=user_id,
                 voice_reply_enabled=False,
             )
+        finally:
+            total_ms = int((time.perf_counter() - started) * 1000)
+            log_done(logger, status=status, total_ms=total_ms)
+            reset_request_id(rid_token)
 
     async def _handle_MessageEvent(self, event: MessageEvent) -> None:
         message = event.message

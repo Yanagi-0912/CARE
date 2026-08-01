@@ -1,12 +1,17 @@
+from __future__ import annotations
+
 import logging
-from typing import Optional
-from langchain_core.messages import HumanMessage, AIMessage, AnyMessage, ToolMessage
-from langgraph.graph import StateGraph, START, END
+import time
+from typing import Any, Optional
+
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
+from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from app.services.agent.utils.state import State
-from app.services.agent.utils.nodes import AgentNodes
+from app.core.request_logging import log_stage
 from app.services.agent.prompt import SYSTEM_PROMPT
+from app.services.agent.utils.nodes import AgentNodes
+from app.services.agent.utils.state import State
 from app.tools.registry import get_all_tools
 
 logger = logging.getLogger(__name__)
@@ -17,6 +22,85 @@ logger = logging.getLogger(__name__)
 # - Edge：定義下一步走向
 # - START / END：流程起點與終點
 # 執行時會依邊的定義由 START 流向各節點，最後到 END。
+
+TOOL_RESULT_PREVIEW_LEN = 120
+
+
+def _tool_names_from_state(state: State) -> list[str]:
+    messages = state.get("messages") or []
+    if not messages:
+        return []
+    last = messages[-1]
+    tool_calls = getattr(last, "tool_calls", None) or []
+    names: list[str] = []
+    for tc in tool_calls:
+        if isinstance(tc, dict):
+            name = tc.get("name")
+        else:
+            name = getattr(tc, "name", None)
+        if name:
+            names.append(name)
+    return names
+
+
+def _content_to_text(content: Any) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict):
+                parts.append(str(part.get("text") or ""))
+            else:
+                parts.append(str(part))
+        return "".join(parts)
+    return str(content)
+
+
+def summarize_tool_messages(
+    messages: list[Any],
+    *,
+    preview_len: int = TOOL_RESULT_PREVIEW_LEN,
+) -> list[dict[str, Any]]:
+    """Build short, monitor-friendly summaries of ToolMessage outputs."""
+    summaries: list[dict[str, Any]] = []
+    for msg in messages or []:
+        if not isinstance(msg, ToolMessage):
+            continue
+        text = _content_to_text(getattr(msg, "content", ""))
+        flat = " ".join(text.split())
+        if len(flat) > preview_len:
+            preview = flat[:preview_len] + "…"
+        else:
+            preview = flat
+        summaries.append(
+            {
+                "name": getattr(msg, "name", None) or "tool",
+                "preview": preview,
+                "has_sources": "參考資料來源" in text,
+            }
+        )
+    return summaries
+
+
+def _log_tool_result_summaries(messages: list[Any], *, ms: int, names: list[str]) -> None:
+    summaries = summarize_tool_messages(messages)
+    if not summaries:
+        log_stage(logger, "tools_done", names=names, ms=ms)
+        return
+    for item in summaries:
+        log_stage(
+            logger,
+            "tool_result",
+            name=item["name"],
+            has_sources=item["has_sources"],
+            preview=item["preview"],
+        )
+    log_stage(logger, "tools_done", names=names, ms=ms)
 
 
 class Agent:
@@ -29,35 +113,47 @@ class Agent:
         """建立並編譯 LangGraph（原子化節點模式）"""
         builder = StateGraph(State)
 
-        # 實例化節點
         nodes = AgentNodes(
             llm=self._llm,
             guardrail_service=self._guardrail_service,
             prompt_instruction=SYSTEM_PROMPT,
         )
 
-        # ToolNode 註冊所有可能的工具（超集），只會執行 LLM 實際呼叫的工具
         all_tools = get_all_tools(include_rag_tool=True)
         tool_executor = ToolNode(all_tools)
 
-        # 加入節點
+        async def tools_node(state: State) -> dict:
+            names = _tool_names_from_state(state)
+            t0 = time.perf_counter()
+            log_stage(logger, "tools_start", names=names)
+            try:
+                result = await tool_executor.ainvoke(state)
+                elapsed_ms = int((time.perf_counter() - t0) * 1000)
+                result_messages = []
+                if isinstance(result, dict):
+                    result_messages = result.get("messages") or []
+                _log_tool_result_summaries(result_messages, ms=elapsed_ms, names=names)
+                return result
+            except Exception:
+                log_stage(
+                    logger,
+                    "tools_fail",
+                    names=names,
+                    ms=int((time.perf_counter() - t0) * 1000),
+                )
+                raise
+
         builder.add_node("guardrail", nodes.guardrail_node)
         builder.add_node("agent", nodes.agent_node)
-        builder.add_node("tools", tool_executor)
+        builder.add_node("tools", tools_node)
 
-        # 設定邏輯流程
-        # 把圖的起點（START）連到 guardrail，表示每次執行都先進行 guardrail 檢查。
         builder.add_edge(START, "guardrail")
         builder.add_edge("guardrail", "agent")
-
-        # tools_condition：AI 想用工具 → "tools"；直接回話 → post_process
         builder.add_conditional_edges(
             "agent",
             tools_condition,
             {"tools": "tools", END: END},
         )
-
-        # 工具執行完 → 回到 agent 讓它根據結果繼續思考
         builder.add_edge("tools", "agent")
 
         return builder.compile()
@@ -72,7 +168,6 @@ class Agent:
         if messages is None:
             messages = [HumanMessage(content=user_input)] if user_input else []
         elif user_input:
-            # 確保目前的 user_input 存在於 messages 列表的最尾端，作為 AI 當前輪次的 Prompt
             if not messages or messages[-1].content != user_input:
                 messages = list(messages) + [HumanMessage(content=user_input)]
 
@@ -90,18 +185,15 @@ class Agent:
             }
         )
 
-        # 從 messages 取得最後的 AI 回覆
         last_msg = result["messages"][-1]
         response = (
             last_msg.content if isinstance(last_msg, AIMessage) else str(last_msg)
         )
         if isinstance(response, list):
             response = "".join(
-                (
-                    part
-                    if isinstance(part, str)
-                    else (part.get("text", "") if isinstance(part, dict) else str(part))
-                )
+                part
+                if isinstance(part, str)
+                else (part.get("text", "") if isinstance(part, dict) else str(part))
                 for part in response
             )
         elif response is None:
@@ -136,9 +228,7 @@ class Agent:
                     )
                 break
 
-        if not used_tool_names:
-            logger.warning("[Agent] 未找到可用的醫療工具回覆，將沿用 AI 最終輸出")
-        else:
+        if used_tool_names:
             logger.info("[Agent] 醫療工具使用紀錄：%s", used_tool_names)
 
         # 防禦性後置處理：若呼叫了 get_rag_answer，但 AI 的最終回覆中遺漏了「參考資料來源」，則自動由工具輸出中提取並後補。
@@ -155,7 +245,6 @@ class Agent:
                     sources_part = "參考資料來源：" + parts[1]
                     response = f"{response.strip()}\n\n{sources_part.strip()}"
 
-        # 檢測是否調用了位置請求工具
         call_request_location = False
         for msg in result.get("messages", []):
             if getattr(msg, "name", None) == "request_location_quick_reply":

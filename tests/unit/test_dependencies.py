@@ -37,6 +37,8 @@ def test_dependency_wiring_is_correct():
         is dependencies._line_loading_animation_service
     )
     assert profile_service._repo is dependencies._user_profile_repository
+    assert dependencies._web_search_service is not None
+    assert dependencies._rag_answer_service is not None
 
 
 def test_get_mongodb_uri_returns_settings_uri(monkeypatch):

@@ -23,7 +23,7 @@ class GuardrailService:
 
     async def allow_rag_tool(self, user_text: str) -> bool:
         if user_text.startswith("這是我的目前位置") or "lat=" in user_text:
-            logger.info("檢測到位置訊息，跳過分類並禁用 RAG。")
+            logger.debug("檢測到位置訊息，跳過分類並禁用 RAG。")
             return False
 
         try:

@@ -61,7 +61,7 @@ class TTSService:
             tmp_path = TTS_TMP_DIR / filename
             with tmp_path.open("wb") as f:
                 f.write(data)
-            logger.info(f"TTS synthesized audio (gTTS): {filename}, saved to {tmp_path}")
+            logger.debug("TTS synthesized audio (gTTS): %s, saved to %s", filename, tmp_path)
             return data, str(tmp_path), duration_ms
         except Exception:
             logger.exception("TTS synthesis failed")
@@ -101,7 +101,7 @@ class TTSService:
         if duration_ms is not None:
             duration_ms = int(duration_ms)
 
-        logger.info(
+        logger.debug(
             "TTS synthesized via n8n: language=%s, voice=%s, url=%s",
             data.get("language") or language,
             data.get("voice") or settings.TTS_DEFAULT_VOICE or None,

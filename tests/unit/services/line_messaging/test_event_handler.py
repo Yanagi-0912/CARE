@@ -648,3 +648,27 @@ async def test_handle_postback_event_confirm_medication(
     reply_req = mock_line_api.reply_message.call_args[0][0]
     assert reply_req.messages[0].type == "flex"
 
+
+@pytest.mark.asyncio
+async def test_handle_text_message_emits_start_done_and_stage_logs(
+    handler,
+    mock_history_service,
+    caplog,
+):
+    import logging
+
+    message = TextMessageContent(id="M1", text="你好", quoteToken="dummy")
+    event = _message_event(message)
+    mock_history_service.load_history.return_value = [HumanMessage(content="你好")]
+
+    with caplog.at_level(logging.INFO):
+        await handler.handle(event)
+
+    messages = [r.getMessage() for r in caplog.records]
+    assert any(m.startswith("START event=text") for m in messages)
+    assert any(m.startswith("stage=handle") for m in messages)
+    assert any(m.startswith("stage=history_loaded") for m in messages)
+    assert any(m.startswith("stage=agent_done") for m in messages)
+    assert any(m.startswith("stage=reply") for m in messages)
+    assert any(m.startswith("DONE status=ok") for m in messages)
+

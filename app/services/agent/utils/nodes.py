@@ -1,7 +1,9 @@
 import logging
+import time
 
 from langchain_core.messages import SystemMessage
 
+from app.core.request_logging import log_stage
 from app.services.agent.utils.state import State
 from app.tools.registry import get_all_tools
 
@@ -47,20 +49,36 @@ class AgentNodes:
     async def guardrail_node(self, state: State) -> dict:
         """Guardrail 判斷：從最新的使用者訊息判斷是否允許 RAG。"""
         user_input = state["messages"][-1].content
+        t0 = time.perf_counter()
         allow_rag = await self._guardrail_service.allow_rag_tool(user_input)
+        log_stage(
+            logger,
+            "guardrail",
+            allow_rag=allow_rag,
+            ms=int((time.perf_counter() - t0) * 1000),
+        )
         return {"allow_rag": allow_rag}
 
     async def agent_node(self, state: State) -> dict:
         """LLM 決策節點：根據 allow_rag 動態綁定工具，讓 LLM 決定回話或呼叫工具。"""
         tools = get_all_tools(include_rag_tool=state.get("allow_rag", False))
         llm_with_tools = self._llm.bind_tools(tools)
-
-        logger.info("Using tools: %s", [t.name for t in tools])
+        tool_names = [t.name for t in tools]
 
         user_profile_text = format_user_profile_prompt(state.get("user_profile"))
         full_prompt = self._prompt + user_profile_text
         messages = [SystemMessage(content=full_prompt)] + state["messages"]
-        response = await llm_with_tools.ainvoke(messages)
 
-        # 直接回傳 AI message，LangGraph 會自動併入 state["messages"]
+        t0 = time.perf_counter()
+        response = await llm_with_tools.ainvoke(messages)
+        tool_calls = getattr(response, "tool_calls", None) or []
+        called = [tc.get("name") for tc in tool_calls if isinstance(tc, dict)]
+        log_stage(
+            logger,
+            "agent_decide",
+            tools=tool_names,
+            call=called or None,
+            ms=int((time.perf_counter() - t0) * 1000),
+        )
+
         return {"messages": [response]}

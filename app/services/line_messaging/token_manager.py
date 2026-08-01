@@ -37,7 +37,7 @@ class LineTokenManager:
                 logger.debug("使用緩存的 access token")
                 return self._access_token
 
-        logger.info("緩存的 token 已過期或不存在，正在獲取新的 token...")
+        logger.debug("緩存的 token 已過期或不存在，正在獲取新的 token...")
         if not self._channel_id or not self._channel_secret:
             raise ValueError(
                 "無法獲取 token：LINE_CHANNEL_ID 和 LINE_CHANNEL_SECRET 未設定。"
@@ -68,7 +68,7 @@ class LineTokenManager:
                 seconds=expires_in
             )
 
-            logger.info(
+            logger.debug(
                 "成功獲取新的 access token，有效期至: %s",
                 self._token_expires_at.strftime("%Y-%m-%d %H:%M:%S"),
             )

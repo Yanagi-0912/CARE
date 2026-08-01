@@ -17,6 +17,7 @@ from linebot.v3.webhooks import (
 )
 
 from app.models.chat_message import ChatMessage
+from app.schemas import MedicalFacility
 from app.services.history.history_service import LineMessageHistoryService
 from app.services.line_messaging.dispatcher.dispatcher import (
     LineEventDispatcher as LineEventHandler,
@@ -30,9 +31,11 @@ def create_handler(
     history_service,
     user_profile_service,
     tts_service,
+    medical_service,
 ):
     from app.services.line_messaging.handler.location_handler import LineLocationHandler
     from app.services.line_messaging.handler.media_handler import LineMediaHandler
+    from app.services.line_messaging.handler.facility_detail_handler import LineFacilityDetailHandler
     from app.services.line_messaging.handler.message_handler import LineMessageHandler
     from app.services.line_messaging.reply.reply import LineReplier
 
@@ -55,10 +58,15 @@ def create_handler(
         user_profile_service=user_profile_service,
         replier=replier,
     )
+    facility_detail_handler = LineFacilityDetailHandler(
+        medical_service=medical_service,
+        replier=replier,
+    )
     return LineEventHandler(
         message_handler=message_handler,
         media_handler=media_handler,
         location_handler=location_handler,
+        facility_detail_handler=facility_detail_handler,
         replier=replier,
     )
 
@@ -110,11 +118,19 @@ def mock_tts_service():
 
 
 @pytest.fixture
+def mock_medical_service():
+    svc = MagicMock()
+    svc.get_facility_by_id = AsyncMock(return_value=None)
+    return svc
+
+
+@pytest.fixture
 def handler(
     mock_agent,
     mock_history_service,
     mock_user_profile_service,
     mock_tts_service,
+    mock_medical_service,
 ):
     token_manager = MagicMock()
     token_manager.get_token.return_value = "dummy_token"
@@ -124,6 +140,7 @@ def handler(
         history_service=mock_history_service,
         user_profile_service=mock_user_profile_service,
         tts_service=mock_tts_service,
+        medical_service=mock_medical_service,
     )
 
 
@@ -205,7 +222,8 @@ async def test_handle_text_message_request_location(handler, mock_agent, mock_li
 
     reply_req = mock_line_api.reply_message.call_args[0][0]
     assert reply_req.messages[0].text == "請分享位置"
-    assert reply_req.messages[0].quick_reply is not None
+    # quickReply 應掛在陣列最後一則訊息上，不然開啟語音回覆時會被覆蓋
+    assert reply_req.messages[-1].quick_reply is not None
 
 
 @pytest.mark.asyncio
@@ -467,6 +485,7 @@ async def test_handle_text_message_with_user_profile(
         history_service=mock_history_service,
         user_profile_service=mock_profile_service,
         tts_service=mock_tts_service,
+        medical_service=mock_medical_service,
     )
 
     message = TextMessageContent(id="M_PROF", text="你好", quoteToken="dummy")
@@ -531,6 +550,75 @@ async def test_handle_postback_event_toggle_voice_reply_disabled(
     assert reply_req.messages[0].text == "已關閉語音回覆"
 
 
+#測試點擊醫療院所查看詳情的 postback 事件，應該呼叫 LineFacilityDetailHandler 並回覆 Flex Message
+@pytest.mark.asyncio
+async def test_handle_postback_event_view_facility_detail(
+    handler,
+    mock_medical_service,
+    mock_line_api,
+):
+    mock_medical_service.get_facility_by_id.return_value = MedicalFacility(
+        id="facility_1",
+        name="測試診所",
+        latitude=25.0,
+        longitude=121.0,
+        address="台北市測試路 1 號",
+        phone="02-12345678",
+        type="診所",
+        departments=["家醫科"],
+        clinic_time=None,
+    )
+    event = _postback_event(
+        "action=view_facility_detail&facility_id=facility_1",
+        user_id="U12345",
+    )
+
+    await handler.handle(event)
+
+    mock_medical_service.get_facility_by_id.assert_called_once_with("facility_1")
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert reply_req.reply_token == "dummy_token"
+    assert len(reply_req.messages) == 1
+    assert reply_req.messages[0].type == "flex"
+    assert reply_req.messages[0].alt_text == "測試診所詳細資訊"
+
+
+#測試當查無院所資料時，應回覆查無資料訊息
+@pytest.mark.asyncio
+async def test_handle_postback_event_view_facility_detail_not_found(
+    handler,
+    mock_medical_service,
+    mock_line_api,
+    mock_tts_service,
+):
+    mock_medical_service.get_facility_by_id.return_value = None
+    event = _postback_event(
+        "action=view_facility_detail&facility_id=missing_id",
+        user_id="U12345",
+    )
+
+    await handler.handle(event)
+
+    mock_medical_service.get_facility_by_id.assert_called_once_with("missing_id")
+    mock_tts_service.synthesize.assert_not_called()
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert reply_req.messages[0].text == "查無此院所資料，可能已被更新或移除。"
+
+
+@pytest.mark.asyncio
+async def test_handle_flex_message_reply(handler, mock_agent, mock_line_api):
+    flex_json = '{"type": "flex", "altText": "測試院所", "contents": {"type": "bubble", "body": {"type": "box", "layout": "vertical", "contents": []}}}'
+    mock_agent.invoke.return_value = {"response": flex_json}
+    message = TextMessageContent(id="M_FLEX", text="找醫院", quoteToken="dummy")
+
+    await handler.handle(_message_event(message))
+
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert len(reply_req.messages) == 1
+    assert reply_req.messages[0].type == "flex"
+    assert reply_req.messages[0].alt_text == "測試院所"
+
+
 @pytest.mark.asyncio
 async def test_handle_postback_event_confirm_medication(
     handler,
@@ -559,5 +647,4 @@ async def test_handle_postback_event_confirm_medication(
     mock_line_api.reply_message.assert_called_once()
     reply_req = mock_line_api.reply_message.call_args[0][0]
     assert reply_req.messages[0].type == "flex"
-
 

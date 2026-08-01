@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -16,6 +17,7 @@ from linebot.v3.messaging import (
     ApiClient,
     AudioMessage,
     Configuration,
+    FlexContainer,
     FlexMessage,
     LocationAction,
     MessagingApi,
@@ -31,6 +33,7 @@ from app.services.line_messaging.token_manager import LineTokenManager
 
 logger = logging.getLogger(__name__)
 
+LOGGER_HEADER_TEXT = "[LineReplier]"
 DEFAULT_AUDIO_DURATION_MS = 60_000
 
 
@@ -49,7 +52,7 @@ class LineReplier:
         request_location: bool = False,
         voice_reply_enabled: bool = True,
     ) -> bool:
-        """發送 LINE 訊息（包含文字訊息與選填的 TTS 語音訊息）"""
+        """發送 LINE 訊息（包含文字訊息、Flex Message 與選填的 TTS 語音訊息）"""
         try:
             if not reply_token or not reply_token.strip():
                 raise ValueError("LINE 事件缺少 reply_token")
@@ -58,13 +61,38 @@ class LineReplier:
 
             access_token = self._token_manager.get_token()
             message_text = self._normalize_message_text(message_text)
-            text_message = self._build_text_message(message_text, request_location)
-            messages = [text_message]
-            self._append_tts_audio_message(
-                messages,
-                message_text,
-                voice_reply_enabled=voice_reply_enabled,
+            logger.info(
+                f"{LOGGER_HEADER_TEXT} 準備回覆，user_id=%s, request_location=%s",
+                user_id,
+                request_location,
             )
+
+            flex_message = self._try_parse_flex_message(message_text)
+            if flex_message is not None:
+                logger.info(
+                    f"{LOGGER_HEADER_TEXT} 解析為 Flex Message，將以 Flex 形式回覆"
+                )
+                messages = [flex_message]
+            else:
+                logger.info(
+                    f"{LOGGER_HEADER_TEXT} 未解析為 Flex Message，將以純文字回覆"
+                )
+                text_message = TextMessage(text=message_text)
+                messages = [text_message]
+                self._append_tts_audio_message(
+                    messages,
+                    message_text,
+                    voice_reply_enabled=voice_reply_enabled,
+                )
+
+            # quickReply 只會顯示在陣列最後一則訊息上，因此統一在此處掛到最後一則，
+            # 避免 TTS 語音訊息排在文字訊息之後時，導致 Quick Reply 被 LINE 忽略。
+            if request_location and messages:
+                messages[-1].quick_reply = QuickReply(
+                    items=[
+                        QuickReplyItem(action=LocationAction(label="分享位置資訊")),
+                    ]
+                )
 
             line_config = Configuration(access_token=access_token)
             with ApiClient(line_config) as api_client:
@@ -131,30 +159,50 @@ class LineReplier:
 
 
     @staticmethod
+    def _try_parse_flex_message(message_text: str) -> Optional[FlexMessage]:
+        if not message_text or not isinstance(message_text, str):
+            return None
+
+        text_strip = message_text.strip()
+        if not (text_strip.startswith("{") and text_strip.endswith("}")):
+            return None
+
+        try:
+            data = json.loads(text_strip)
+        except json.JSONDecodeError:
+            logger.debug(f"{LOGGER_HEADER_TEXT} 文字內容不是有效 JSON，略過 Flex 解析")
+            return None
+
+        if not isinstance(data, dict):
+            return None
+
+        if data.get("type") == "flex" and "contents" in data:
+            alt_text = data.get("altText") or "醫療院所查詢結果"
+            contents = FlexContainer.from_dict(data["contents"])
+            logger.info(
+                f"{LOGGER_HEADER_TEXT} Flex JSON 解析成功，altText=%s", alt_text
+            )
+            return FlexMessage(altText=alt_text, contents=contents)
+
+        return None
+
+    @staticmethod
     def _normalize_message_text(message_text: Any) -> str:
         if isinstance(message_text, str):
             return message_text
         if isinstance(message_text, list):
             return "".join(
-                part
-                if isinstance(part, str)
-                else (part.get("text", "") if isinstance(part, dict) else str(part))
+                (
+                    part
+                    if isinstance(part, str)
+                    else (part.get("text", "") if isinstance(part, dict) else str(part))
+                )
                 for part in message_text
             )
         if message_text is None:
             return ""
         return str(message_text)
 
-    @staticmethod
-    def _build_text_message(message_text: str, request_location: bool) -> TextMessage:
-        if request_location:
-            quick_reply = QuickReply(
-                items=[
-                    QuickReplyItem(action=LocationAction(label="分享位置資訊")),
-                ]
-            )
-            return TextMessage(text=message_text, quickReply=quick_reply)
-        return TextMessage(text=message_text)
 
     def _append_tts_audio_message(
         self,

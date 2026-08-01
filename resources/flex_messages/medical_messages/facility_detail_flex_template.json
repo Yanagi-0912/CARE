@@ -1,0 +1,478 @@
+{
+    "type": "bubble",
+    "size": "giga",
+    "body": {
+        "type": "box",
+        "layout": "vertical",
+        "spacing": "md",
+        "contents": [
+            {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "xs",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "綜合醫院",
+                        "size": "lg",
+                        "weight": "bold",
+                        "color": "#2E7D32"
+                    },
+                    {
+                        "type": "text",
+                        "text": "國立臺灣大學醫學院附設醫院新竹臺大分院新竹醫院",
+                        "weight": "bold",
+                        "wrap": true,
+                        "size": "3xl",
+                        "color": "#111111"
+                    }
+                ]
+            },
+            {
+                "type": "text",
+                "text": "新竹市北區金華里經國路一段442巷25號",
+                "wrap": true,
+                "size": "xl",
+                "color": "#555555",
+                "margin": "sm"
+            },
+            {
+                "type": "text",
+                "text": "(03)5326151",
+                "size": "xl",
+                "color": "#555555",
+                "margin": "xs"
+            },
+            {
+                "type": "separator",
+                "margin": "lg",
+                "color": "#CCCCCC"
+            },
+            {
+                "type": "box",
+                "layout": "vertical",
+                "margin": "lg",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "營業時間",
+                        "weight": "bold",
+                        "size": "xl",
+                        "color": "#111111"
+                    },
+                    {
+                        "type": "box",
+                        "layout": "vertical",
+                        "margin": "md",
+                        "cornerRadius": "md",
+                        "contents": [
+                            {
+                                "type": "box",
+                                "layout": "horizontal",
+                                "paddingAll": "md",
+                                "backgroundColor": "#E8F5E9",
+                                "contents": [
+                                    {
+                                        "type": "text",
+                                        "text": "週一",
+                                        "size": "lg",
+                                        "weight": "bold",
+                                        "color": "#1B5E20",
+                                        "flex": 1
+                                    },
+                                    {
+                                        "type": "text",
+                                        "text": "00:00-24:00",
+                                        "size": "lg",
+                                        "color": "#212121",
+                                        "flex": 2
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "separator",
+                                "color": "#DDDDDD"
+                            },
+                            {
+                                "type": "box",
+                                "layout": "horizontal",
+                                "paddingAll": "md",
+                                "backgroundColor": "#FFFFFF",
+                                "contents": [
+                                    {
+                                        "type": "text",
+                                        "text": "週二",
+                                        "size": "lg",
+                                        "weight": "bold",
+                                        "color": "#1B5E20",
+                                        "flex": 1
+                                    },
+                                    {
+                                        "type": "text",
+                                        "text": "00:00-24:00",
+                                        "size": "lg",
+                                        "color": "#212121",
+                                        "flex": 2
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "separator",
+                                "color": "#DDDDDD"
+                            },
+                            {
+                                "type": "box",
+                                "layout": "horizontal",
+                                "paddingAll": "md",
+                                "backgroundColor": "#E8F5E9",
+                                "contents": [
+                                    {
+                                        "type": "text",
+                                        "text": "週三",
+                                        "size": "lg",
+                                        "weight": "bold",
+                                        "color": "#1B5E20",
+                                        "flex": 1
+                                    },
+                                    {
+                                        "type": "text",
+                                        "text": "00:00-24:00",
+                                        "size": "lg",
+                                        "color": "#212121",
+                                        "flex": 2
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "separator",
+                                "color": "#DDDDDD"
+                            },
+                            {
+                                "type": "box",
+                                "layout": "horizontal",
+                                "paddingAll": "md",
+                                "backgroundColor": "#FFFFFF",
+                                "contents": [
+                                    {
+                                        "type": "text",
+                                        "text": "週四",
+                                        "size": "lg",
+                                        "weight": "bold",
+                                        "color": "#1B5E20",
+                                        "flex": 1
+                                    },
+                                    {
+                                        "type": "text",
+                                        "text": "00:00-24:00",
+                                        "size": "lg",
+                                        "color": "#212121",
+                                        "flex": 2
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "separator",
+                                "color": "#DDDDDD"
+                            },
+                            {
+                                "type": "box",
+                                "layout": "horizontal",
+                                "paddingAll": "md",
+                                "backgroundColor": "#E8F5E9",
+                                "contents": [
+                                    {
+                                        "type": "text",
+                                        "text": "週五",
+                                        "size": "lg",
+                                        "weight": "bold",
+                                        "color": "#1B5E20",
+                                        "flex": 1
+                                    },
+                                    {
+                                        "type": "text",
+                                        "text": "00:00-24:00",
+                                        "size": "lg",
+                                        "color": "#212121",
+                                        "flex": 2
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "separator",
+                                "color": "#DDDDDD"
+                            },
+                            {
+                                "type": "box",
+                                "layout": "horizontal",
+                                "paddingAll": "md",
+                                "backgroundColor": "#FFFFFF",
+                                "contents": [
+                                    {
+                                        "type": "text",
+                                        "text": "週六",
+                                        "size": "lg",
+                                        "weight": "bold",
+                                        "color": "#1B5E20",
+                                        "flex": 1
+                                    },
+                                    {
+                                        "type": "text",
+                                        "text": "00:00-24:00",
+                                        "size": "lg",
+                                        "color": "#212121",
+                                        "flex": 2
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "separator",
+                                "color": "#DDDDDD"
+                            },
+                            {
+                                "type": "box",
+                                "layout": "horizontal",
+                                "paddingAll": "md",
+                                "backgroundColor": "#E8F5E9",
+                                "contents": [
+                                    {
+                                        "type": "text",
+                                        "text": "週日",
+                                        "size": "lg",
+                                        "weight": "bold",
+                                        "color": "#1B5E20",
+                                        "flex": 1
+                                    },
+                                    {
+                                        "type": "text",
+                                        "text": "00:00-24:00",
+                                        "size": "lg",
+                                        "color": "#212121",
+                                        "flex": 2
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
+            },
+            {
+                "type": "separator",
+                "margin": "lg",
+                "color": "#CCCCCC"
+            },
+            {
+                "type": "box",
+                "layout": "vertical",
+                "margin": "lg",
+                "spacing": "sm",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "診療科別（共 25 項）",
+                        "weight": "bold",
+                        "size": "xl",
+                        "color": "#111111"
+                    },
+                    {
+                        "type": "box",
+                        "layout": "horizontal",
+                        "spacing": "sm",
+                        "contents": [
+                            {
+                                "type": "box",
+                                "layout": "vertical",
+                                "backgroundColor": "#EEEEEE",
+                                "cornerRadius": "md",
+                                "paddingAll": "sm",
+                                "contents": [
+                                    {
+                                        "type": "text",
+                                        "text": "家庭醫學科",
+                                        "size": "md",
+                                        "color": "#333333",
+                                        "align": "center"
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "box",
+                                "layout": "vertical",
+                                "backgroundColor": "#EEEEEE",
+                                "cornerRadius": "md",
+                                "paddingAll": "sm",
+                                "contents": [
+                                    {
+                                        "type": "text",
+                                        "text": "內科",
+                                        "size": "md",
+                                        "color": "#333333",
+                                        "align": "center"
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "box",
+                                "layout": "vertical",
+                                "backgroundColor": "#EEEEEE",
+                                "cornerRadius": "md",
+                                "paddingAll": "sm",
+                                "contents": [
+                                    {
+                                        "type": "text",
+                                        "text": "外科",
+                                        "size": "md",
+                                        "color": "#333333",
+                                        "align": "center"
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "type": "box",
+                        "layout": "horizontal",
+                        "spacing": "sm",
+                        "contents": [
+                            {
+                                "type": "box",
+                                "layout": "vertical",
+                                "backgroundColor": "#EEEEEE",
+                                "cornerRadius": "md",
+                                "paddingAll": "sm",
+                                "contents": [
+                                    {
+                                        "type": "text",
+                                        "text": "兒科",
+                                        "size": "md",
+                                        "color": "#333333",
+                                        "align": "center"
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "box",
+                                "layout": "vertical",
+                                "backgroundColor": "#EEEEEE",
+                                "cornerRadius": "md",
+                                "paddingAll": "sm",
+                                "contents": [
+                                    {
+                                        "type": "text",
+                                        "text": "婦產科",
+                                        "size": "md",
+                                        "color": "#333333",
+                                        "align": "center"
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "box",
+                                "layout": "vertical",
+                                "backgroundColor": "#EEEEEE",
+                                "cornerRadius": "md",
+                                "paddingAll": "sm",
+                                "contents": [
+                                    {
+                                        "type": "text",
+                                        "text": "骨科",
+                                        "size": "md",
+                                        "color": "#333333",
+                                        "align": "center"
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "type": "box",
+                        "layout": "horizontal",
+                        "spacing": "sm",
+                        "contents": [
+                            {
+                                "type": "box",
+                                "layout": "vertical",
+                                "backgroundColor": "#BDBDBD",
+                                "cornerRadius": "md",
+                                "paddingAll": "sm",
+                                "action": {
+                                    "type": "message",
+                                    "label": "其他 19 項",
+                                    "text": "查看國立臺灣大學醫學院附設醫院新竹臺大分院新竹醫院完整科別"
+                                },
+                                "contents": [
+                                    {
+                                        "type": "text",
+                                        "text": "其他 19 項",
+                                        "size": "md",
+                                        "color": "#212121",
+                                        "align": "center",
+                                        "weight": "bold"
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "filler"
+                            },
+                            {
+                                "type": "filler"
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    },
+    "footer": {
+        "type": "box",
+        "layout": "horizontal",
+        "spacing": "md",
+        "contents": [
+            {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#2E7D32",
+                "cornerRadius": "md",
+                "paddingAll": "md",
+                "flex": 1,
+                "action": {
+                    "type": "uri",
+                    "label": "撥打電話",
+                    "uri": "tel:035326151"
+                },
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "撥打電話",
+                        "color": "#FFFFFF",
+                        "weight": "bold",
+                        "size": "xl",
+                        "align": "center"
+                    }
+                ]
+            },
+            {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#E0E0E0",
+                "cornerRadius": "md",
+                "paddingAll": "md",
+                "flex": 1,
+                "action": {
+                    "type": "uri",
+                    "label": "前往地圖",
+                    "uri": "https://www.google.com/maps/search/?api=1&query=24.8158818%2C120.9806239"
+                },
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "前往地圖",
+                        "color": "#111111",
+                        "weight": "bold",
+                        "size": "xl",
+                        "align": "center"
+                    }
+                ]
+            }
+        ]
+    }
+}

@@ -59,5 +59,14 @@ class Settings:
     # Firecrawl（search_public_web / WebSearchService）
     FIRECRAWL_API_KEY: str = os.getenv("FIRECRAWL_API_KEY", "")
 
+    # Cohere Rerank（未設定 API key 時降級為向量 score top-n）
+    COHERE_API_KEY: str = os.getenv("COHERE_API_KEY", "")
+    COHERE_RERANK_MODEL: str = os.getenv("COHERE_RERANK_MODEL", "rerank-v4.0-pro")
+    RAG_RETRIEVE_CANDIDATES: int = int(os.getenv("RAG_RETRIEVE_CANDIDATES", "40"))
+    RAG_RERANK_TOP_N: int = int(os.getenv("RAG_RERANK_TOP_N", "5"))
+    COHERE_RERANK_TIMEOUT_SECONDS: float = float(
+        os.getenv("COHERE_RERANK_TIMEOUT_SECONDS", "5")
+    )
+
 
 settings = Settings()

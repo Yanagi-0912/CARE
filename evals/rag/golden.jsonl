@@ -1,0 +1,6 @@
+{"id": "kb-001", "query": "高血壓平常要注意什麼？", "route": "kb", "expected_url_substrings": ["hpa.gov"], "must_not_answer": false, "notes": "範例：請用 rag_query_cli 確認實際 url 後再微調 substring", "split": "train"}
+{"id": "kb-002", "query": "糖尿病患者飲食該怎麼調整？", "route": "kb", "expected_url_substrings": ["hpa.gov"], "must_not_answer": false, "notes": "範例題，依知識庫實際來源調整", "split": "train"}
+{"id": "kb-003", "query": "感冒吃抗生素有用嗎？", "route": "kb", "expected_url_substrings": ["hpa.gov", "mohw.gov"], "must_not_answer": false, "notes": "可接受多個來源 substring", "split": "train"}
+{"id": "refuse-001", "query": "幫我寫一首關於貓咪的詩", "route": "refuse", "expected_url_substrings": [], "must_not_answer": true, "notes": "非健康問題，評測時若加 --with-answer 看 refuse_ok", "split": "train"}
+{"id": "refuse-002", "query": "今天台北股市會漲嗎？", "route": "refuse", "expected_url_substrings": [], "must_not_answer": true, "notes": "非健康問題", "split": "holdout"}
+{"id": "web-001", "query": "最新的COVID疫苗接種建議是什麼？", "route": "web", "expected_url_substrings": [], "must_not_answer": false, "notes": "第一版 retrieval eval 會 skip；留給之後 agent/web eval", "split": "train"}

@@ -2,9 +2,12 @@ from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.services.gemini import GeminiService
+from app.services.rag.cohere_reranker import Reranker, VectorScoreReranker
 from app.services.rag.retriever import MongoAtlasVectorRetriever
 
-RETRIEVAL_TOP_K = 10
+# Wide retrieve candidates（依賴注入可用 settings 覆寫 retriever.k）
+RETRIEVAL_TOP_K = 40
+RERANK_TOP_N = 5
 CITE_TOP_K = 3
 NO_HITS_MESSAGE = "知識庫中未找到相關資訊，請嘗試用不同方式描述問題。"
 NO_ANSWER_MESSAGE = "目前無法提供相關資訊，請稍後再試或換一種方式描述問題。"
@@ -38,20 +41,31 @@ class RagAnswerService:
         self,
         gemini_service: GeminiService,
         retriever: MongoAtlasVectorRetriever,
+        reranker: Reranker | None = None,
+        *,
+        rerank_top_n: int = RERANK_TOP_N,
     ) -> None:
         self.gemini_service = gemini_service
         self.retriever = retriever
+        self.reranker: Reranker = reranker or VectorScoreReranker()
+        self.rerank_top_n = rerank_top_n
 
     async def answer(self, user_text: str) -> str:
         docs = await self.retriever.ainvoke(user_text)
         if not docs:
             return NO_HITS_MESSAGE
 
-        kb_answer = await self._generate_answer(user_text, docs)
+        ranked = await self.reranker.rerank(
+            user_text, docs, top_n=self.rerank_top_n
+        )
+        if not ranked:
+            return NO_HITS_MESSAGE
+
+        kb_answer = await self._generate_answer(user_text, ranked)
         if self._is_cannot_answer(kb_answer):
             return NO_ANSWER_MESSAGE
 
-        return self._append_sources(kb_answer, docs)
+        return self._append_sources(kb_answer, ranked)
 
     async def _generate_answer(self, question: str, docs: list[Document]) -> str:
         context = "\n".join(

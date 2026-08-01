@@ -1,10 +1,13 @@
 from dataclasses import dataclass
+import logging
 
 import jwt  # type: ignore[import-not-found]
 from fastapi import Depends, Header, HTTPException
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 from app.db.mongodb import MongoDBManager
 from app.db.redis import RedisManager
 from app.repositories.chat_history_repository import build_chat_history_repository
@@ -32,7 +35,8 @@ from app.services.line_messaging.reply.tts_service import TTSService
 from app.services.line_messaging.token_manager import LineTokenManager
 from app.services.medical.medical_service import MedicalService, medical_service
 from app.services.line_messaging.handler.facility_detail_handler import LineFacilityDetailHandler
-from app.services.rag import MongoAtlasVectorRetriever, RETRIEVAL_TOP_K, RagAnswerService
+from app.services.rag import MongoAtlasVectorRetriever, RagAnswerService
+from app.services.rag.cohere_reranker import CohereReranker, VectorScoreReranker
 from app.services.rag.firecrawl_client import FirecrawlClient
 from app.services.rag.web_search_service import WebSearchService
 from app.services.users.user_profile_service import UserProfileService
@@ -70,16 +74,30 @@ _rag_retriever = MongoAtlasVectorRetriever(
     vector_field=settings.MONGODB_VECTOR_FIELD,
     text_field=settings.MONGODB_TEXT_FIELD,
     vector_dim=settings.MONGODB_VECTOR_DIM if settings.MONGODB_VECTOR_DIM > 0 else None,
-    k=RETRIEVAL_TOP_K,
+    k=settings.RAG_RETRIEVE_CANDIDATES,
 )
 
 _firecrawl_client = None
 if settings.FIRECRAWL_API_KEY:
     _firecrawl_client = FirecrawlClient(api_key=settings.FIRECRAWL_API_KEY)
 
+if settings.COHERE_API_KEY:
+    _rag_reranker = CohereReranker(
+        api_key=settings.COHERE_API_KEY,
+        model=settings.COHERE_RERANK_MODEL,
+        timeout_seconds=settings.COHERE_RERANK_TIMEOUT_SECONDS,
+    )
+else:
+    logger.warning(
+        "COHERE_API_KEY unset; RAG will use vector-score top-n without Cohere"
+    )
+    _rag_reranker = VectorScoreReranker()
+
 _rag_answer_service = RagAnswerService(
     gemini_service=_gemini_service,
     retriever=_rag_retriever,
+    reranker=_rag_reranker,
+    rerank_top_n=settings.RAG_RERANK_TOP_N,
 )
 
 _web_search_service = WebSearchService(
@@ -236,6 +254,11 @@ def get_query_embeddings() -> GoogleGenerativeAIEmbeddings:
 def get_rag_retriever() -> MongoAtlasVectorRetriever:
     """取得 MongoDB Atlas 向量檢索 retriever"""
     return _rag_retriever
+
+
+def get_rag_answer_service() -> RagAnswerService:
+    """取得 RAG 問答服務（知識庫檢索 + 生成）"""
+    return _rag_answer_service
 
 
 def get_user_profile_service() -> UserProfileService:

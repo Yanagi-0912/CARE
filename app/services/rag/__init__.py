@@ -2,6 +2,7 @@ from app.services.rag.answer_service import (
     CITE_TOP_K,
     NO_ANSWER_MESSAGE,
     NO_HITS_MESSAGE,
+    RERANK_TOP_N,
     RETRIEVAL_TOP_K,
     RagAnswerService,
 )
@@ -12,6 +13,7 @@ __all__ = [
     "DEFAULT_MIN_SCORE",
     "NO_ANSWER_MESSAGE",
     "NO_HITS_MESSAGE",
+    "RERANK_TOP_N",
     "RETRIEVAL_TOP_K",
     "MongoAtlasVectorRetriever",
     "RagAnswerService",

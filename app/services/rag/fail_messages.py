@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from app.core.user_language import get_request_language
+from app.i18n.messages import t
+
 RAG_ERR_PREFIX = "[RAG_ERR:"
 
 
@@ -14,22 +17,18 @@ class RagFailCode:
     MODEL_REFUSE = "MODEL_REFUSE"  # 有文件但模型判定無法回答
 
 
-_MESSAGES: dict[str, str] = {
-    RagFailCode.KB_EMPTY: (
-        "知識庫目前沒有與此問題相符的資料。請換個方式描述，或必要時就醫。"
-    ),
-    RagFailCode.WEB_EMPTY: (
-        "知識庫與官方網站目前都找不到相符說明。請換個方式描述，或必要時就醫。"
-    ),
-    RagFailCode.WEB_ERROR: "查詢官方資料時暫時失敗，請稍後再試。",
-    RagFailCode.MODEL_REFUSE: (
-        "找到的資料不足以安全回答此問題。請換個方式描述，或必要時就醫。"
-    ),
+_FAIL_CODE_TO_KEY: dict[str, str] = {
+    RagFailCode.KB_EMPTY: "rag.fail.KB_EMPTY",
+    RagFailCode.WEB_EMPTY: "rag.fail.WEB_EMPTY",
+    RagFailCode.WEB_ERROR: "rag.fail.WEB_ERROR",
+    RagFailCode.MODEL_REFUSE: "rag.fail.MODEL_REFUSE",
 }
 
 
-def rag_fail(code: str) -> str:
-    message = _MESSAGES.get(code) or _MESSAGES[RagFailCode.MODEL_REFUSE]
+def rag_fail(code: str, language: str | None = None) -> str:
+    key = _FAIL_CODE_TO_KEY.get(code) or _FAIL_CODE_TO_KEY[RagFailCode.MODEL_REFUSE]
+    lang = language if language is not None else get_request_language()
+    message = t(key, lang)
     return f"{RAG_ERR_PREFIX}{code}] {message}"
 
 

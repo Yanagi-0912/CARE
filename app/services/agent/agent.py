@@ -11,6 +11,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from app.core.request_logging import log_stage
 from app.i18n.messages import (
     split_at_sources_heading,
+    strip_sources_section,
     text_contains_sources_heading,
 )
 from app.services.agent.utils.nodes import AgentNodes
@@ -241,14 +242,22 @@ class Agent:
                 break
 
         if rag_tool_content:
-            split = split_at_sources_heading(
+            rag_text = (
                 rag_tool_content
                 if isinstance(rag_tool_content, str)
                 else str(rag_tool_content)
             )
-            if split and not text_contains_sources_heading(response):
-                heading, sources_body = split
-                response = f"{response.strip()}\n\n{heading}{sources_body.strip()}"
+            tool_has_sources = text_contains_sources_heading(rag_text)
+            response_has_sources = text_contains_sources_heading(response)
+
+            if not tool_has_sources and response_has_sources:
+                response = strip_sources_section(response)
+                logger.info("[Agent] stripped_fabricated_sources=True")
+            elif tool_has_sources and not response_has_sources:
+                split = split_at_sources_heading(rag_text)
+                if split:
+                    heading, sources_body = split
+                    response = f"{response.strip()}\n\n{heading}{sources_body.strip()}"
 
         call_request_location = False
         for msg in result.get("messages", []):

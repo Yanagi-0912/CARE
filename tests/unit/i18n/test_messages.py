@@ -1,7 +1,7 @@
 import pytest
 
 from app.core.user_language import SUPPORTED_LANGUAGES, set_request_language
-from app.i18n.messages import t
+from app.i18n.messages import strip_sources_section, t
 
 REQUIRED_KEYS = (
     "rag.fail.KB_EMPTY",
@@ -51,6 +51,27 @@ def test_t_falls_back_to_zh_tw_for_unknown_language():
 
 def test_t_falls_back_to_zh_tw_for_unknown_key():
     assert t("missing.key", "en") == t("missing.key", "zh-TW")
+
+
+def test_strip_sources_section_returns_unchanged_when_no_heading():
+    text = "正文段落。\n\n沒有來源區塊。"
+    assert strip_sources_section(text) == text
+
+
+def test_strip_sources_section_removes_heading_and_list():
+    heading = t("agent.sources_heading", "zh-TW")
+    text = (
+        f"以下為 RAG 回應：\n\n正文內容。\n\n{heading}\n"
+        "[1] 假來源: https://fake.example/a\n"
+        "[2] 假來源: https://fake.example/b"
+    )
+    assert strip_sources_section(text) == "以下為 RAG 回應：\n\n正文內容。"
+
+
+def test_strip_sources_section_strips_trailing_whitespace_before_heading():
+    heading = t("agent.sources_heading", "en")
+    text = f"Answer body.  \n\n{heading}\n[1] CDC: https://cdc.gov"
+    assert strip_sources_section(text) == "Answer body."
 
 
 def test_t_uses_request_language_when_language_is_none():

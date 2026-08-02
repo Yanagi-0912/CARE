@@ -38,6 +38,18 @@ def test_build_system_prompt_zh_tw_requires_traditional_chinese():
     assert t("agent.sources_heading", "zh-TW") in prompt
 
 
+def test_system_prompt_rule_8_preserves_sources_when_present():
+    assert "參考來源網址" in SYSTEM_PROMPT
+    assert "完整保留" in SYSTEM_PROMPT
+    assert "不得修改網址" in SYSTEM_PROMPT
+
+
+def test_system_prompt_rule_8_forbids_fabricated_sources_when_absent():
+    assert "嚴禁" in SYSTEM_PROMPT
+    assert "不含" in SYSTEM_PROMPT
+    assert "自行新增" in SYSTEM_PROMPT or "捏造" in SYSTEM_PROMPT
+
+
 def test_build_system_prompt_unknown_language_falls_back_to_zh_tw():
     prompt = build_system_prompt("fr")
     assert "繁體中文" in prompt

@@ -276,3 +276,12 @@ def split_at_sources_heading(text: str) -> tuple[str, str] | None:
             _, after = text.split(heading, 1)
             return heading, after
     return None
+
+
+def strip_sources_section(text: str) -> str:
+    split = split_at_sources_heading(text)
+    if split is None:
+        return text
+    heading, _ = split
+    before, _ = text.split(heading, 1)
+    return before.rstrip()

@@ -205,6 +205,43 @@ async def test_agent_node_defaults_to_zh_tw_when_profile_has_no_language():
 
 
 @pytest.mark.asyncio
+async def test_agent_strips_fabricated_sources_when_tool_has_none(
+    mock_llm, mock_guardrail_service
+):
+    from app.i18n.messages import t
+    from langchain_core.messages import ToolMessage
+
+    agent = Agent(llm=mock_llm, guardrail_service=mock_guardrail_service)
+    zh_heading = t("agent.sources_heading", "zh-TW")
+    rag_tool_output = "以下參考網路公開資料\n\nRAG 正文，無來源標題。"
+    fabricated_response = (
+        f"以下為 RAG 回應：\n\n根據資料，建議就醫。\n\n{zh_heading}\n"
+        "[1] 假來源: https://fake.example/a\n"
+        "[2] 假來源: https://fake.example/b"
+    )
+    agent._graph = MagicMock()
+    agent._graph.ainvoke = AsyncMock(
+        return_value={
+            "messages": [
+                HumanMessage(content="症狀問題"),
+                ToolMessage(
+                    content=rag_tool_output,
+                    tool_call_id="1",
+                    name="get_rag_answer",
+                ),
+                AIMessage(content=fabricated_response),
+            ]
+        }
+    )
+
+    response = await agent.invoke(user_input="症狀問題", messages=None)
+
+    assert zh_heading not in response["response"]
+    assert "fake.example" not in response["response"]
+    assert "根據資料，建議就醫。" in response["response"]
+
+
+@pytest.mark.asyncio
 async def test_agent_appends_localized_sources_heading_when_missing(mock_llm, mock_guardrail_service):
     from app.core.user_language import reset_request_language, set_request_language
     from app.i18n.messages import t

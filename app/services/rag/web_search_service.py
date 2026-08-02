@@ -3,7 +3,7 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from app.services.gemini import GeminiService
 from app.services.rag.web_client import WebSearchClient
-from app.services.rag.whitelist import is_allowed_url
+from app.services.rag.whitelist import is_allowed_url, with_whitelist_site_filter
 
 CITE_TOP_K = 3
 NO_ANSWER_MESSAGE = "目前無法提供相關資訊，請稍後再試或換一種方式描述問題。"
@@ -71,7 +71,10 @@ class WebSearchService:
         if self.web_client is None:
             return []
         try:
-            hits = await self.web_client.search(query, limit=WEB_SEARCH_LIMIT)
+            hits = await self.web_client.search(
+                with_whitelist_site_filter(query),
+                limit=WEB_SEARCH_LIMIT,
+            )
         except Exception:
             return []
 

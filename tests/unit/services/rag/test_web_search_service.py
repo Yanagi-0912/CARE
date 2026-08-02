@@ -87,8 +87,22 @@ async def test_answer_uses_whitelisted_web_docs():
     assert "根據網路資料，請規律量測血壓。" in result
     assert "[1] 網路：國健署高血壓：https://www.hpa.gov.tw/htn" in result
     assert "forum.example" not in result
-    assert web.search_calls == ["高血壓要注意什麼"]
+    assert web.search_calls == ["高血壓要注意什麼 site:gov.tw"]
     gemini.chat_model.ainvoke.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_answer_does_not_duplicate_existing_site_filter():
+    web = FakeWebClient(
+        hits=[WebSearchHit(title="食藥署", url="https://www.fda.gov.tw/x")],
+        pages={"https://www.fda.gov.tw/x": "內容"},
+    )
+    svc, _ = _make_service(
+        answer_content="根據公開網路資料，有相關說明。",
+        web_client=web,
+    )
+    await svc.answer("胃痛 site:fda.gov.tw")
+    assert web.search_calls == ["胃痛 site:fda.gov.tw"]
 
 
 @pytest.mark.asyncio

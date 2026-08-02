@@ -4,6 +4,10 @@ from langchain_core.documents import Document
 
 from app.services.gemini import GeminiService
 from app.i18n.messages import t
+from app.services.rag.cannot_answer import (
+    answer_preview,
+    matched_cannot_answer_marker,
+)
 from app.services.rag.answer_prompts import build_web_prompt
 from app.services.rag.fail_messages import (
     NO_ANSWER_MESSAGE,
@@ -59,7 +63,14 @@ class WebSearchService:
 
         web_answer = await self._generate_answer(query, web_docs)
         if self._is_cannot_answer(web_answer):
-            logger.info("rag_fail code=%s", RagFailCode.MODEL_REFUSE)
+            marker = matched_cannot_answer_marker(web_answer, CANNOT_ANSWER_MARKERS)
+            preview = answer_preview(web_answer)
+            logger.info(
+                "rag_fail code=%s matched_marker=%s answer_preview=%s",
+                RagFailCode.MODEL_REFUSE,
+                marker,
+                preview,
+            )
             return rag_fail(RagFailCode.MODEL_REFUSE)
 
         annotated = f"{web_answer_prefix()}\n\n{web_answer}"
@@ -122,10 +133,9 @@ class WebSearchService:
 
     @staticmethod
     def _is_cannot_answer(text: str) -> bool:
-        normalized = (text or "").strip()
-        if not normalized:
-            return True
-        return any(marker in normalized for marker in CANNOT_ANSWER_MARKERS)
+        return (
+            matched_cannot_answer_marker(text, CANNOT_ANSWER_MARKERS) != "<none>"
+        )
 
     @staticmethod
     def _append_sources(answer_text: str, docs: list[Document]) -> str:

@@ -181,6 +181,27 @@ async def test_answer_returns_no_answer_when_web_client_missing():
 
 
 @pytest.mark.asyncio
+async def test_answer_logs_model_refuse_diagnostics(caplog):
+    answer_content = "我不知道這個問題的答案。"
+    web = FakeWebClient(
+        hits=[WebSearchHit(title="疾管署", url="https://www.cdc.gov.tw/w")],
+        pages={"https://www.cdc.gov.tw/w": "流感疫苗建議。"},
+    )
+    svc, _ = _make_service(answer_content=answer_content, web_client=web)
+    with caplog.at_level("INFO"):
+        result = await svc.answer("流感疫苗")
+    assert result == NO_ANSWER_MESSAGE
+    refuse_logs = [
+        rec.getMessage()
+        for rec in caplog.records
+        if "rag_fail code=MODEL_REFUSE" in rec.getMessage()
+    ]
+    assert len(refuse_logs) == 1
+    assert "matched_marker=不知道" in refuse_logs[0]
+    assert f"answer_preview={answer_content}" in refuse_logs[0]
+
+
+@pytest.mark.asyncio
 async def test_answer_returns_no_answer_when_model_cannot_answer():
     web = FakeWebClient(
         hits=[WebSearchHit(title="疾管署", url="https://www.cdc.gov.tw/w")],

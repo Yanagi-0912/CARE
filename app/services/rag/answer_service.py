@@ -4,6 +4,10 @@ from langchain_core.documents import Document
 
 from app.services.gemini import GeminiService
 from app.i18n.messages import t
+from app.services.rag.cannot_answer import (
+    answer_preview,
+    matched_cannot_answer_marker,
+)
 from app.services.rag.answer_prompts import build_rag_prompt
 from app.services.rag.cohere_reranker import Reranker, VectorScoreReranker
 from app.services.rag.fail_messages import (
@@ -81,7 +85,15 @@ class RagAnswerService:
 
         kb_answer = await self._generate_answer(user_text, ranked)
         if self._is_cannot_answer(kb_answer):
-            return self._fail(RagFailCode.MODEL_REFUSE)
+            marker = matched_cannot_answer_marker(kb_answer, CANNOT_ANSWER_MARKERS)
+            preview = answer_preview(kb_answer)
+            logger.info(
+                "rag_fail code=%s matched_marker=%s answer_preview=%s",
+                RagFailCode.MODEL_REFUSE,
+                marker,
+                preview,
+            )
+            return rag_fail(RagFailCode.MODEL_REFUSE)
 
         return self._append_sources(kb_answer, ranked)
 
@@ -158,10 +170,9 @@ class RagAnswerService:
 
     @staticmethod
     def _is_cannot_answer(text: str) -> bool:
-        normalized = (text or "").strip()
-        if not normalized:
-            return True
-        return any(marker in normalized for marker in CANNOT_ANSWER_MARKERS)
+        return (
+            matched_cannot_answer_marker(text, CANNOT_ANSWER_MARKERS) != "<none>"
+        )
 
     @staticmethod
     def _append_sources(answer_text: str, docs: list[Document]) -> str:

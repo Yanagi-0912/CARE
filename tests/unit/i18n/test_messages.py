@@ -1,6 +1,6 @@
 import pytest
 
-from app.core.user_language import SUPPORTED_LANGUAGES
+from app.core.user_language import SUPPORTED_LANGUAGES, set_request_language
 from app.i18n.messages import t
 
 REQUIRED_KEYS = (
@@ -48,3 +48,15 @@ def test_t_falls_back_to_zh_tw_for_unknown_language():
 
 def test_t_falls_back_to_zh_tw_for_unknown_key():
     assert t("missing.key", "en") == t("missing.key", "zh-TW")
+
+
+def test_t_uses_request_language_when_language_is_none():
+    token = set_request_language("en")
+    try:
+        message = t("line.fallback_ununderstood")
+        assert "Sorry" in message
+        assert "抱歉" not in message
+    finally:
+        from app.core.user_language import reset_request_language
+
+        reset_request_language(token)

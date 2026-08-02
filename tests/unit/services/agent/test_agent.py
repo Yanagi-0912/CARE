@@ -152,6 +152,59 @@ def test_format_user_profile_prompt_builds_expected_header():
 
 
 @pytest.mark.asyncio
+async def test_agent_node_uses_profile_language_for_system_prompt():
+    from app.i18n.messages import t
+    from app.services.agent.utils.nodes import AgentNodes
+
+    mock_llm = MagicMock()
+    mock_llm.bind_tools.return_value.ainvoke = AsyncMock(
+        return_value=AIMessage(content="Hello")
+    )
+    mock_guardrail = MagicMock()
+
+    nodes = AgentNodes(llm=mock_llm, guardrail_service=mock_guardrail)
+
+    state = {
+        "messages": [HumanMessage(content="hi")],
+        "allow_rag": False,
+        "user_profile": {"settings": {"language": "en"}},
+    }
+
+    await nodes.agent_node(state)
+
+    invoked_messages = mock_llm.bind_tools.return_value.ainvoke.call_args[0][0]
+    system_msg = invoked_messages[0]
+    assert "English" in system_msg.content
+    assert t("agent.rag_prefix", "en") in system_msg.content
+    assert "必須只使用繁體中文" not in system_msg.content
+
+
+@pytest.mark.asyncio
+async def test_agent_node_defaults_to_zh_tw_when_profile_has_no_language():
+    from app.services.agent.utils.nodes import AgentNodes
+
+    mock_llm = MagicMock()
+    mock_llm.bind_tools.return_value.ainvoke = AsyncMock(
+        return_value=AIMessage(content="你好")
+    )
+    mock_guardrail = MagicMock()
+
+    nodes = AgentNodes(llm=mock_llm, guardrail_service=mock_guardrail)
+
+    state = {
+        "messages": [HumanMessage(content="你好")],
+        "allow_rag": False,
+        "user_profile": {"name": "王大明"},
+    }
+
+    await nodes.agent_node(state)
+
+    invoked_messages = mock_llm.bind_tools.return_value.ainvoke.call_args[0][0]
+    system_msg = invoked_messages[0]
+    assert "繁體中文" in system_msg.content
+
+
+@pytest.mark.asyncio
 async def test_agent_node_injects_user_profile_prompt():
     from app.services.agent.utils.nodes import AgentNodes
 
@@ -161,11 +214,7 @@ async def test_agent_node_injects_user_profile_prompt():
     )
     mock_guardrail = MagicMock()
 
-    nodes = AgentNodes(
-        llm=mock_llm,
-        guardrail_service=mock_guardrail,
-        prompt_instruction="System Prompt Instruction",
-    )
+    nodes = AgentNodes(llm=mock_llm, guardrail_service=mock_guardrail)
 
     state = {
         "messages": [HumanMessage(content="你好")],
@@ -178,7 +227,7 @@ async def test_agent_node_injects_user_profile_prompt():
 
     invoked_messages = mock_llm.bind_tools.return_value.ainvoke.call_args[0][0]
     system_msg = invoked_messages[0]
-    assert "System Prompt Instruction" in system_msg.content
+    assert "繁體中文" in system_msg.content
     assert "【對話使用者的個人健康與病史檔案】" in system_msg.content
     assert "王大明" in system_msg.content
     assert "糖尿病" in system_msg.content

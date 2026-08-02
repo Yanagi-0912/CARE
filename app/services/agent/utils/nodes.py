@@ -4,6 +4,8 @@ import time
 from langchain_core.messages import SystemMessage
 
 from app.core.request_logging import log_stage
+from app.core.user_language import normalize_user_language
+from app.services.agent.prompt import build_system_prompt
 from app.services.agent.utils.state import State
 from app.tools.registry import get_all_tools
 
@@ -41,10 +43,15 @@ def format_user_profile_prompt(user_profile: dict | None) -> str:
 
 
 class AgentNodes:
-    def __init__(self, llm, guardrail_service, prompt_instruction: str):
+    def __init__(self, llm, guardrail_service):
         self._llm = llm
         self._guardrail_service = guardrail_service
-        self._prompt = prompt_instruction
+
+    def _resolve_user_language(self, user_profile: dict | None) -> str:
+        if not user_profile:
+            return normalize_user_language(None)
+        settings = user_profile.get("settings") or {}
+        return normalize_user_language(settings.get("language"))
 
     async def guardrail_node(self, state: State) -> dict:
         """Guardrail 判斷：從最新的使用者訊息判斷是否允許 RAG。"""
@@ -66,7 +73,8 @@ class AgentNodes:
         tool_names = [t.name for t in tools]
 
         user_profile_text = format_user_profile_prompt(state.get("user_profile"))
-        full_prompt = self._prompt + user_profile_text
+        language = self._resolve_user_language(state.get("user_profile"))
+        full_prompt = build_system_prompt(language) + user_profile_text
         messages = [SystemMessage(content=full_prompt)] + state["messages"]
 
         t0 = time.perf_counter()

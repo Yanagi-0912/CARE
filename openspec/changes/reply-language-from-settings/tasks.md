@@ -6,8 +6,8 @@
 
 ## 2. Agent prompt
 
-- [ ] 2.1 `prompt.py`：`build_system_prompt(language)`；規則 1／RAG 前綴／來源標題依語言
-- [ ] 2.2 `nodes.py` `agent_node`：自 profile 取語言並組 prompt；單元測試
+- [x] 2.1 `prompt.py`：`build_system_prompt(language)`；規則 1／RAG 前綴／來源標題依語言
+- [x] 2.2 `nodes.py` `agent_node`：自 profile 取語言並組 prompt；單元測試
 
 ## 3. LINE／工具呼叫點
 

@@ -9,7 +9,6 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from app.core.request_logging import log_stage
-from app.services.agent.prompt import SYSTEM_PROMPT
 from app.services.agent.utils.nodes import AgentNodes
 from app.services.agent.utils.state import State
 from app.tools.registry import get_all_tools
@@ -116,7 +115,6 @@ class Agent:
         nodes = AgentNodes(
             llm=self._llm,
             guardrail_service=self._guardrail_service,
-            prompt_instruction=SYSTEM_PROMPT,
         )
 
         all_tools = get_all_tools(include_rag_tool=True)

@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from app.core.user_language import DEFAULT_USER_LANGUAGE, normalize_user_language
+from app.core.user_language import (
+    DEFAULT_USER_LANGUAGE,
+    get_request_language,
+    normalize_user_language,
+)
 
 _MESSAGES: dict[str, dict[str, str]] = {
     "rag.fail.KB_EMPTY": {
@@ -226,7 +230,7 @@ _MESSAGES: dict[str, dict[str, str]] = {
 
 
 def t(key: str, language: str | None = None) -> str:
-    lang = normalize_user_language(language)
+    lang = get_request_language() if language is None else normalize_user_language(language)
     translations = _MESSAGES.get(key)
     if not translations:
         return key

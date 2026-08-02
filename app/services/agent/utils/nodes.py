@@ -18,6 +18,22 @@ def _already_ran_rag(messages) -> bool:
     )
 
 
+_LOCATION_TOOL_NAMES = frozenset(
+    {
+        "request_location_quick_reply",
+        "find_nearby_hospitals",
+        "lookup_medical_facility",
+    }
+)
+
+
+def _already_used_location_tools(messages) -> bool:
+    return any(
+        isinstance(m, ToolMessage) and m.name in _LOCATION_TOOL_NAMES
+        for m in messages
+    )
+
+
 def _latest_human_text(messages) -> str:
     for m in reversed(messages):
         if isinstance(m, HumanMessage):
@@ -100,6 +116,7 @@ class AgentNodes:
             and "get_rag_answer" in tool_names
             and not tool_calls
             and not _already_ran_rag(state["messages"])
+            and not _already_used_location_tools(state["messages"])
         ):
             user_text = _latest_human_text(state["messages"])
             response = AIMessage(

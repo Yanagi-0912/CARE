@@ -102,6 +102,53 @@ async def test_no_force_rag_when_already_ran_rag(mock_llm_no_tool_calls, monkeyp
 
 
 @pytest.mark.asyncio
+async def test_no_force_rag_after_request_location_quick_reply(
+    mock_llm_no_tool_calls, monkeypatch
+):
+    monkeypatch.setattr(
+        "app.services.agent.utils.nodes.get_all_tools",
+        lambda include_rag_tool=False: _mock_tools(include_rag=include_rag_tool),
+    )
+
+    nodes = AgentNodes(
+        llm=mock_llm_no_tool_calls,
+        guardrail_service=MagicMock(),
+    )
+    state = {
+        "messages": [
+            HumanMessage(content="我要看醫院"),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "request_location_quick_reply",
+                        "args": {},
+                        "id": "1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            ToolMessage(
+                content="已請求位置",
+                name="request_location_quick_reply",
+                tool_call_id="1",
+            ),
+        ],
+        "allow_rag": True,
+    }
+
+    with patch("app.services.agent.utils.nodes.log_stage") as mock_log:
+        res = await nodes.agent_node(state)
+
+    response = res["messages"][0]
+    assert response.content == "腦補"
+    assert not response.tool_calls
+
+    mock_log.assert_called_once()
+    assert mock_log.call_args[1].get("force_rag") is None
+
+
+@pytest.mark.asyncio
 async def test_no_force_rag_when_allow_rag_false(mock_llm_no_tool_calls, monkeypatch):
     monkeypatch.setattr(
         "app.services.agent.utils.nodes.get_all_tools",

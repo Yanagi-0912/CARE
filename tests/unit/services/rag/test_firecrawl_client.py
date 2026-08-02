@@ -90,3 +90,23 @@ async def test_scrape_returns_empty_on_http_error():
     http_client.post = AsyncMock(side_effect=httpx.ConnectError("down"))
     client = FirecrawlClient(api_key="fc-test", http_client=http_client)
     assert await client.scrape("https://www.hpa.gov.tw/a") == ""
+
+
+@pytest.mark.asyncio
+async def test_scrape_uses_longer_timeout_than_search():
+    http_client = AsyncMock()
+    http_client.post = AsyncMock(
+        return_value=_mock_response({"success": True, "data": {"markdown": "ok"}})
+    )
+    client = FirecrawlClient(api_key="fc-test", http_client=http_client)
+    await client.scrape("https://www.hpa.gov.tw/a")
+    _args, kwargs = http_client.post.await_args
+    assert kwargs["timeout"] == 45.0
+
+
+@pytest.mark.asyncio
+async def test_scrape_timeout_returns_empty_without_raising():
+    http_client = AsyncMock()
+    http_client.post = AsyncMock(side_effect=httpx.ReadTimeout("slow"))
+    client = FirecrawlClient(api_key="fc-test", http_client=http_client)
+    assert await client.scrape("https://www.hpa.gov.tw/a") == ""

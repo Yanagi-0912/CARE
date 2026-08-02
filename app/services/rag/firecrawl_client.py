@@ -16,11 +16,18 @@ class FirecrawlClient:
         *,
         base_url: str = "https://api.firecrawl.dev/v1",
         timeout_seconds: float = 15.0,
+        scrape_timeout_seconds: float | None = None,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self._api_key = (api_key or "").strip()
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
+        # scrape 常比 search 慢；預設加長，避免 15s ReadTimeout 連續失敗
+        self._scrape_timeout_seconds = (
+            scrape_timeout_seconds
+            if scrape_timeout_seconds is not None
+            else max(timeout_seconds, 45.0)
+        )
         self._http_client = http_client
 
     def _headers(self) -> dict[str, str]:
@@ -72,19 +79,27 @@ class FirecrawlClient:
     async def scrape(self, url: str) -> str:
         if not self._api_key:
             return ""
-        client = self._http_client or httpx.AsyncClient(timeout=self._timeout_seconds)
+        timeout = self._scrape_timeout_seconds
+        client = self._http_client or httpx.AsyncClient(timeout=timeout)
         owns_client = self._http_client is None
         try:
             response = await client.post(
                 f"{self._base_url}/scrape",
                 headers=self._headers(),
                 json={"url": url, "formats": ["markdown"]},
-                timeout=self._timeout_seconds,
+                timeout=timeout,
             )
             response.raise_for_status()
             payload = response.json()
+        except httpx.TimeoutException:
+            logger.warning(
+                "Firecrawl scrape timeout url=%s timeout_s=%s",
+                url,
+                timeout,
+            )
+            return ""
         except Exception:
-            logger.exception("Firecrawl scrape failed")
+            logger.exception("Firecrawl scrape failed url=%s", url)
             return ""
         finally:
             if owns_client:

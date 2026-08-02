@@ -24,6 +24,8 @@ CANNOT_ANSWER_MARKERS: tuple[str, ...] = (
 WEB_ANSWER_PREFIX = "以下參考網路公開資料"
 WEB_SEARCH_LIMIT = 8
 WEB_PAGE_CHAR_LIMIT = 8000
+# search snippet 達此長度就不打 scrape（避免 gov.tw 頁面常逾時）
+WEB_SNIPPET_MIN_CHARS = 20
 
 WEB_PROMPT = ChatPromptTemplate.from_messages(
     [
@@ -94,11 +96,15 @@ class WebSearchService:
             url = (hit.url or "").strip()
             if not url or url in seen or not is_allowed_url(url):
                 continue
-            try:
-                text = await self.web_client.scrape(url)
-            except Exception:
-                continue
-            text = (text or "").strip()
+            # 優先用 search snippet，避免 Firecrawl scrape 15–45s 連逾時拖死整輪
+            text = (hit.description or "").strip()
+            if len(text) < WEB_SNIPPET_MIN_CHARS:
+                try:
+                    scraped = (await self.web_client.scrape(url) or "").strip()
+                except Exception:
+                    scraped = ""
+                if scraped:
+                    text = scraped
             if not text:
                 continue
             seen.add(url)

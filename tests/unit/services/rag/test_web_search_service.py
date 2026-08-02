@@ -93,6 +93,51 @@ async def test_answer_uses_whitelisted_web_docs():
 
 
 @pytest.mark.asyncio
+async def test_answer_prefers_search_description_without_scrape():
+    web = FakeWebClient(
+        hits=[
+            WebSearchHit(
+                title="不要用牙籤剔牙",
+                url="https://www.mohw.gov.tw/toothpick",
+                description="牙籤可能傷害牙齦與牙周組織，建議改用牙線清潔牙縫。",
+            )
+        ],
+        pages={"https://www.mohw.gov.tw/toothpick": "完整內文不會被用到"},
+    )
+    svc, _ = _make_service(
+        answer_content="根據公開網路資料，牙籤可能傷害牙齦。",
+        web_client=web,
+    )
+    result = await svc.answer("牙籤會傷牙齒嗎")
+    assert WEB_ANSWER_PREFIX in result
+    assert "牙籤可能傷害牙齦" in result
+    assert "https://www.mohw.gov.tw/toothpick" in result
+    assert web.scrape_calls == []  # snippet 夠長就不 scrape
+
+
+@pytest.mark.asyncio
+async def test_answer_scrapes_when_description_too_short():
+    web = FakeWebClient(
+        hits=[
+            WebSearchHit(
+                title="牙痛",
+                url="https://www.hpa.gov.tw/tooth",
+                description="短",
+            )
+        ],
+        pages={"https://www.hpa.gov.tw/tooth": "牙痛常見原因包含蛀牙與牙周病，建議盡快就醫。"},
+    )
+    svc, _ = _make_service(
+        answer_content="根據公開網路資料，牙痛可能與蛀牙有關。",
+        web_client=web,
+    )
+    result = await svc.answer("我有牙痛")
+    assert WEB_ANSWER_PREFIX in result
+    assert web.scrape_calls == ["https://www.hpa.gov.tw/tooth"]
+    assert "https://www.hpa.gov.tw/tooth" in result
+
+
+@pytest.mark.asyncio
 async def test_answer_does_not_duplicate_existing_site_filter():
     web = FakeWebClient(
         hits=[WebSearchHit(title="食藥署", url="https://www.fda.gov.tw/x")],

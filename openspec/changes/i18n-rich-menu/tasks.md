@@ -20,4 +20,4 @@
 
 ## 5. Verify
 
-- [ ] 5.1 跑相關 pytest 全綠
+- [x] 5.1 跑相關 pytest 全綠

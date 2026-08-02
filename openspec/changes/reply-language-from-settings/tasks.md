@@ -11,13 +11,13 @@
 
 ## 3. LINE／工具呼叫點
 
-- [ ] 3.1 `message_handler`：處理時 set_request_language；fallback 字串用 `t`；把 language 傳給 `reply`
-- [ ] 3.2 `reply.py`：Quick Reply label 依 language
-- [ ] 3.3 `medical_tools`／`medical_service`：分享位置／無院所字串用 `t`
-- [ ] 3.4 `dispatcher`：錯誤與 postback 使用者可見字串用 `t`（從 profile 取語言）
-- [ ] 3.5 Agent 最終回覆補來源段落：比對本地化 sources heading（勿只認繁中）
+- [x] 3.1 `message_handler`：處理時 set_request_language；fallback 字串用 `t`；把 language 傳給 `reply`
+- [x] 3.2 `reply.py`：Quick Reply label 依 language
+- [x] 3.3 `medical_tools`／`medical_service`：分享位置／無院所字串用 `t`
+- [x] 3.4 `dispatcher`：錯誤與 postback 使用者可見字串用 `t`（從 profile 取語言）
+- [x] 3.5 Agent 最終回覆補來源段落：比對本地化 sources heading（勿只認繁中）
 
 ## 4. 驗證
 
-- [ ] 4.1 跑相關單元測試全綠
-- [ ] 4.2 勾選本 tasks；必要時同步 superpowers plan checkboxes
+- [x] 4.1 跑相關單元測試全綠
+- [x] 4.2 勾選本 tasks；必要時同步 superpowers plan checkboxes

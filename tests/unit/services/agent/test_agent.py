@@ -205,6 +205,42 @@ async def test_agent_node_defaults_to_zh_tw_when_profile_has_no_language():
 
 
 @pytest.mark.asyncio
+async def test_agent_appends_localized_sources_heading_when_missing(mock_llm, mock_guardrail_service):
+    from app.core.user_language import reset_request_language, set_request_language
+    from app.i18n.messages import t
+    from langchain_core.messages import ToolMessage
+
+    agent = Agent(llm=mock_llm, guardrail_service=mock_guardrail_service)
+    en_heading = t("agent.sources_heading", "en")
+    rag_tool_output = (
+        f"RAG body.\n\n{en_heading}\n[1] CDC: https://www.cdc.gov.tw/x"
+    )
+    agent._graph = MagicMock()
+    agent._graph.ainvoke = AsyncMock(
+        return_value={
+            "messages": [
+                HumanMessage(content="question"),
+                ToolMessage(
+                    content=rag_tool_output,
+                    tool_call_id="1",
+                    name="get_rag_answer",
+                ),
+                AIMessage(content="Short answer without sources."),
+            ]
+        }
+    )
+
+    token = set_request_language("en")
+    try:
+        response = await agent.invoke(user_input="question", messages=None)
+    finally:
+        reset_request_language(token)
+
+    assert en_heading in response["response"]
+    assert "[1] CDC: https://www.cdc.gov.tw/x" in response["response"]
+
+
+@pytest.mark.asyncio
 async def test_agent_node_injects_user_profile_prompt():
     from app.services.agent.utils.nodes import AgentNodes
 

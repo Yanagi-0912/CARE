@@ -4,6 +4,7 @@ from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.services.gemini import GeminiService
+from app.i18n.messages import t
 from app.services.rag.fail_messages import (
     NO_ANSWER_MESSAGE,
     RagFailCode,
@@ -147,4 +148,5 @@ class WebSearchService:
 
         if not source_lines:
             return answer_text
-        return f"{answer_text}\n\n參考資料來源：\n" + "\n".join(source_lines)
+        heading = t("agent.sources_heading")
+        return f"{answer_text}\n\n{heading}\n" + "\n".join(source_lines)

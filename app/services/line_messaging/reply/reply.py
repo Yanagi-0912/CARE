@@ -29,6 +29,7 @@ from linebot.v3.messaging import (
 )
 
 from app.core.config import settings
+from app.i18n.messages import t
 from app.services.line_messaging.token_manager import LineTokenManager
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ class LineReplier:
         user_id: str,
         request_location: bool = False,
         voice_reply_enabled: bool = True,
+        language: str | None = None,
     ) -> bool:
         """發送 LINE 訊息（包含文字訊息、Flex Message 與選填的 TTS 語音訊息）"""
         try:
@@ -88,9 +90,10 @@ class LineReplier:
             # quickReply 只會顯示在陣列最後一則訊息上，因此統一在此處掛到最後一則，
             # 避免 TTS 語音訊息排在文字訊息之後時，導致 Quick Reply 被 LINE 忽略。
             if request_location and messages:
+                qr_label = t("location.share_qr_label", language=language)
                 messages[-1].quick_reply = QuickReply(
                     items=[
-                        QuickReplyItem(action=LocationAction(label="分享位置資訊")),
+                        QuickReplyItem(action=LocationAction(label=qr_label)),
                     ]
                 )
 

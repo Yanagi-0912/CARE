@@ -17,7 +17,9 @@ from app.core.request_context import (
     reset_request_id,
     set_request_id,
 )
+from app.core.user_language import DEFAULT_USER_LANGUAGE, normalize_user_language
 from app.core.request_logging import log_done, log_start
+from app.i18n.messages import t
 from app.services.line_messaging.flex.medication_flex import build_patient_medication_flex
 from app.services.line_messaging.handler.message_handler import (
     LineMessageHandler,
@@ -97,20 +99,24 @@ class LineEventDispatcher:
             await handler(event)
         except LineValidationError as e:
             status = "validation_error"
+            user_language = await self._resolve_user_language(user_id)
             await self._replier.reply(
                 reply_token=reply_token,
                 message_text=str(e),
                 user_id=user_id,
                 voice_reply_enabled=False,
+                language=user_language,
             )
         except Exception:
             status = "error"
             logger.exception("Error in event dispatcher handling event %s", event_type)
+            user_language = await self._resolve_user_language(user_id)
             await self._replier.reply(
                 reply_token=reply_token,
-                message_text="抱歉，處理您的事件時發生錯誤，請稍後再試",
+                message_text=t("line.fallback_process_error", language=user_language),
                 user_id=user_id,
                 voice_reply_enabled=False,
+                language=user_language,
             )
         finally:
             total_ms = int((time.perf_counter() - started) * 1000)
@@ -141,6 +147,10 @@ class LineEventDispatcher:
         user_id = getattr(event.source, "user_id", "")
         reply_token = getattr(event, "reply_token", "")
         postback_data = getattr(getattr(event, "postback", None), "data", "")
+        user_profile = None
+        if self._user_profile_service:
+            user_profile = await self._user_profile_service.get_user_profile(user_id)
+        user_language = self._language_from_profile(user_profile)
 
         params = parse_qs(postback_data)
         action = params.get("action", [""])[0]
@@ -173,25 +183,24 @@ class LineEventDispatcher:
             else:
                 await self._replier.reply(
                     reply_token=reply_token,
-                    message_text="已記錄您的服藥狀態！",
+                    message_text=t("meds.recorded", language=user_language),
                     user_id=user_id,
                     voice_reply_enabled=False,
+                    language=user_language,
                 )
         elif action == "already_done":
             await self._replier.reply(
                 reply_token=reply_token,
-                message_text="此服藥提醒先前已完成紀錄囉！祝您身體健康！",
+                message_text=t("meds.already_recorded", language=user_language),
                 user_id=user_id,
                 voice_reply_enabled=False,
+                language=user_language,
             )
         elif action == "toggle_voice_reply":
             if "enabled" in params:
                 enabled = params.get("enabled", ["false"])[0].lower() == "true"
             else:
-                current = False
-                if self._user_profile_service:
-                    profile = await self._user_profile_service.get_user_profile(user_id)
-                    current = self._parse_voice_reply_enabled(profile)
+                current = self._parse_voice_reply_enabled(user_profile)
                 enabled = not current
             updated = False
             if self._user_profile_service:
@@ -200,14 +209,19 @@ class LineEventDispatcher:
                 )
 
             if updated:
-                status_msg = "已開啟語音回覆" if enabled else "已關閉語音回覆"
+                status_msg = (
+                    t("voice.enabled", language=user_language)
+                    if enabled
+                    else t("voice.disabled", language=user_language)
+                )
             else:
-                status_msg = "請先開啟「家庭中心」完成登入後再設定語音回覆"
+                status_msg = t("voice.need_login", language=user_language)
             await self._replier.reply(
                 reply_token=reply_token,
                 message_text=status_msg,
                 user_id=user_id,
                 voice_reply_enabled=False,
+                language=user_language,
             )
         #點擊"查看院所詳細資訊"按鈕時，回應該診所的詳細資料
         elif action == "view_facility_detail":
@@ -223,6 +237,19 @@ class LineEventDispatcher:
 
     async def _handle_unsupported_event(self, event) -> None:
         logger.warning("Unsupported LINE event type: %s", type(event).__name__)
+
+    async def _resolve_user_language(self, user_id: str) -> str:
+        if not self._user_profile_service:
+            return DEFAULT_USER_LANGUAGE
+        profile = await self._user_profile_service.get_user_profile(user_id)
+        return self._language_from_profile(profile)
+
+    @staticmethod
+    def _language_from_profile(user_profile) -> str:
+        if not user_profile:
+            return DEFAULT_USER_LANGUAGE
+        settings = user_profile.get("settings") or {}
+        return normalize_user_language(settings.get("language"))
 
     @staticmethod
     def _parse_voice_reply_enabled(user_profile) -> bool:

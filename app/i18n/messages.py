@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.core.user_language import (
     DEFAULT_USER_LANGUAGE,
+    SUPPORTED_LANGUAGES,
     get_request_language,
     normalize_user_language,
 )
@@ -235,3 +236,19 @@ def t(key: str, language: str | None = None) -> str:
     if not translations:
         return key
     return translations.get(lang) or translations[DEFAULT_USER_LANGUAGE]
+
+
+def all_sources_headings() -> frozenset[str]:
+    return frozenset(t("agent.sources_heading", lang) for lang in SUPPORTED_LANGUAGES)
+
+
+def text_contains_sources_heading(text: str) -> bool:
+    return any(heading in text for heading in all_sources_headings())
+
+
+def split_at_sources_heading(text: str) -> tuple[str, str] | None:
+    for heading in all_sources_headings():
+        if heading in text:
+            _, after = text.split(heading, 1)
+            return heading, after
+    return None

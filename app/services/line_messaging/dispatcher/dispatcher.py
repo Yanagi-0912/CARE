@@ -185,8 +185,14 @@ class LineEventDispatcher:
                 voice_reply_enabled=False,
             )
         elif action == "toggle_voice_reply":
-            enabled_str = params.get("enabled", ["false"])[0]
-            enabled = enabled_str.lower() == "true"
+            if "enabled" in params:
+                enabled = params.get("enabled", ["false"])[0].lower() == "true"
+            else:
+                current = False
+                if self._user_profile_service:
+                    profile = await self._user_profile_service.get_user_profile(user_id)
+                    current = self._parse_voice_reply_enabled(profile)
+                enabled = not current
             if self._user_profile_service:
                 await self._user_profile_service.update_voice_reply_enabled(user_id, enabled)
 
@@ -211,6 +217,16 @@ class LineEventDispatcher:
 
     async def _handle_unsupported_event(self, event) -> None:
         logger.warning("Unsupported LINE event type: %s", type(event).__name__)
+
+    @staticmethod
+    def _parse_voice_reply_enabled(user_profile) -> bool:
+        """解析 profile 的語音回覆開關；缺省為 False（與 UserSettings 一致）。"""
+        if not user_profile:
+            return False
+        settings = user_profile.get("settings") or {}
+        if isinstance(settings, dict) and "voice_reply_enabled" in settings:
+            return bool(settings["voice_reply_enabled"])
+        return bool(user_profile.get("voice_reply_enabled", False))
 
     # --- 以下屬性為回溯相容與測試相容所設 ---
 

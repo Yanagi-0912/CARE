@@ -11,7 +11,7 @@ def configure_rag_tool(rag_answer_service) -> None:
 
 @tool
 async def get_rag_answer(query: str) -> str:
-    """當問題需要引用內部醫療知識庫內容時呼叫。
+    """當問題需要引用醫療知識庫（必要時會補充允許網域的公開網路資料）時呼叫。
     例如疾病照護建議、症狀處置原則、慢病管理等。
     """
     if _rag_answer_service is None:

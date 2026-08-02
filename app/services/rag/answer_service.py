@@ -1,9 +1,16 @@
+import logging
+
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.services.gemini import GeminiService
 from app.services.rag.cohere_reranker import Reranker, VectorScoreReranker
+from app.services.rag.query_rewriter import QueryRewriter
+from app.services.rag.retrieval_grader import Grade, RetrievalGrader
 from app.services.rag.retriever import MongoAtlasVectorRetriever
+from app.services.rag.web_search_service import WebSearchService
+
+logger = logging.getLogger(__name__)
 
 # Wide retrieve candidates（依賴注入可用 settings 覆寫 retriever.k）
 RETRIEVAL_TOP_K = 40
@@ -44,28 +51,96 @@ class RagAnswerService:
         reranker: Reranker | None = None,
         *,
         rerank_top_n: int = RERANK_TOP_N,
+        grader: RetrievalGrader | None = None,
+        rewriter: QueryRewriter | None = None,
+        crag_enabled: bool = False,
+        web_search: WebSearchService | None = None,
+        web_fallback_enabled: bool = False,
     ) -> None:
         self.gemini_service = gemini_service
         self.retriever = retriever
         self.reranker: Reranker = reranker or VectorScoreReranker()
         self.rerank_top_n = rerank_top_n
+        self.grader = grader
+        self.rewriter = rewriter
+        self.crag_enabled = crag_enabled and grader is not None
+        self.web_search = web_search
+        self.web_fallback_enabled = bool(web_fallback_enabled and web_search is not None)
 
     async def answer(self, user_text: str) -> str:
-        docs = await self.retriever.ainvoke(user_text)
-        if not docs:
-            return NO_HITS_MESSAGE
-
-        ranked = await self.reranker.rerank(
-            user_text, docs, top_n=self.rerank_top_n
-        )
+        ranked = await self._retrieve_and_rerank(user_text)
         if not ranked:
-            return NO_HITS_MESSAGE
+            return await self._web_or_no_hits(user_text)
+
+        if self.crag_enabled:
+            try:
+                ranked = await self._apply_crag(user_text, ranked)
+            except Exception:
+                logger.exception(
+                    "CRAG failed; degrading to generate without grade crag_grade=degraded"
+                )
+            else:
+                if ranked is None:
+                    return await self._web_or_no_hits(user_text)
 
         kb_answer = await self._generate_answer(user_text, ranked)
         if self._is_cannot_answer(kb_answer):
             return NO_ANSWER_MESSAGE
 
         return self._append_sources(kb_answer, ranked)
+
+    async def _web_or_no_hits(self, query: str) -> str:
+        if not self.web_fallback_enabled or self.web_search is None:
+            return NO_HITS_MESSAGE
+        try:
+            return await self.web_search.answer(query)
+        except Exception:
+            logger.exception("web fallback failed")
+            return NO_ANSWER_MESSAGE
+
+    async def _retrieve_and_rerank(self, query: str) -> list[Document]:
+        docs = await self.retriever.ainvoke(query)
+        if not docs:
+            return []
+        return await self.reranker.rerank(query, docs, top_n=self.rerank_top_n)
+
+    async def _apply_crag(
+        self, user_text: str, ranked: list[Document]
+    ) -> list[Document] | None:
+        """回傳可用於生成的 docs；None 表示知識庫不足。"""
+        assert self.grader is not None
+        grade = await self.grader.grade(user_text, ranked)
+        logger.info("crag_grade=%s", grade.value)
+
+        if grade is Grade.CORRECT:
+            return ranked
+
+        if grade is Grade.INCORRECT:
+            return None
+
+        # ambiguous
+        if self.rewriter is None:
+            logger.info("crag_grade=ambiguous_no_rewriter")
+            return None
+
+        try:
+            rewritten = await self.rewriter.rewrite(user_text, ranked)
+        except Exception:
+            logger.exception(
+                "CRAG rewrite failed; degrading to generate crag_grade=rewrite_degraded"
+            )
+            return ranked
+
+        second = await self._retrieve_and_rerank(rewritten)
+        if not second:
+            logger.info("crag_grade=ambiguous_exhausted empty_retry")
+            return None
+
+        grade2 = await self.grader.grade(rewritten, second)
+        logger.info("crag_grade=%s after_rewrite", grade2.value)
+        if grade2 is Grade.CORRECT:
+            return second
+        return None
 
     async def _generate_answer(self, question: str, docs: list[Document]) -> str:
         context = "\n".join(

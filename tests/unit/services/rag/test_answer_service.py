@@ -35,9 +35,21 @@ from app.services.rag import (
     RagAnswerService,
 )
 from app.services.rag.cohere_reranker import VectorScoreReranker
+from app.services.rag.retrieval_grader import Grade
 
 
-def _make_service(*, docs, answer_content="RAG 回覆", reranker=None, rerank_top_n=RERANK_TOP_N):
+def _make_service(
+    *,
+    docs,
+    answer_content="RAG 回覆",
+    reranker=None,
+    rerank_top_n=RERANK_TOP_N,
+    grader=None,
+    rewriter=None,
+    crag_enabled=False,
+    web_search=None,
+    web_fallback_enabled=True,
+):
     gemini_service = MagicMock()
     gemini_service.chat_model = MagicMock()
     gemini_service.chat_model.ainvoke = AsyncMock(
@@ -53,6 +65,11 @@ def _make_service(*, docs, answer_content="RAG 回覆", reranker=None, rerank_to
             retriever=retriever,
             reranker=reranker or VectorScoreReranker(),
             rerank_top_n=rerank_top_n,
+            grader=grader,
+            rewriter=rewriter,
+            crag_enabled=crag_enabled,
+            web_search=web_search,
+            web_fallback_enabled=web_fallback_enabled,
         ),
         gemini_service,
         retriever,
@@ -171,6 +188,17 @@ async def test_answer_skips_reranker_when_no_docs():
     reranker.rerank.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_empty_retrieve_calls_web_when_enabled():
+    web_search = MagicMock()
+    web_search.answer = AsyncMock(return_value="以下參考網路公開資料\n\n網路答案")
+    svc, gemini_service, _retriever = _make_service(docs=[], web_search=web_search)
+    result = await svc.answer("我有高血壓要注意什麼")
+    assert result == "以下參考網路公開資料\n\n網路答案"
+    web_search.answer.assert_awaited_once_with("我有高血壓要注意什麼")
+    gemini_service.chat_model.ainvoke.assert_not_awaited()
+
+
 @pytest.mark.parametrize("model_text", [""], ids=["empty_str"])
 @pytest.mark.asyncio
 async def test_answer_uses_default_message_when_model_returns_empty_text(model_text):
@@ -191,6 +219,21 @@ async def test_answer_returns_hits_message_when_no_docs():
     svc, gemini_service, _retriever = _make_service(docs=[])
     result = await svc.answer("我有高血壓要注意什麼")
     assert result == NO_HITS_MESSAGE
+    gemini_service.chat_model.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_web_fallback_disabled_keeps_no_hits():
+    web_search = MagicMock()
+    web_search.answer = AsyncMock(return_value="不該出現")
+    svc, gemini_service, _retriever = _make_service(
+        docs=[],
+        web_search=web_search,
+        web_fallback_enabled=False,
+    )
+    result = await svc.answer("我有高血壓要注意什麼")
+    assert result == NO_HITS_MESSAGE
+    web_search.answer.assert_not_awaited()
     gemini_service.chat_model.ainvoke.assert_not_awaited()
 
 
@@ -281,3 +324,167 @@ async def test_answer_raises_when_retriever_fails():
     svc = RagAnswerService(gemini_service=gemini_service, retriever=retriever)
     with pytest.raises(RuntimeError, match="search failed"):
         await svc.answer("我有高血壓要注意什麼")
+
+
+def _kb_doc(text="高血壓建議低鈉飲食", url="https://www.hpa.gov.tw/a"):
+    return Document(
+        page_content=text,
+        metadata={
+            "id": "1",
+            "score": 0.9,
+            "source_name": "衛福部",
+            "url": url,
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_crag_correct_generates_answer():
+    grader = MagicMock()
+    grader.grade = AsyncMock(return_value=Grade.CORRECT)
+    svc, gemini, _ret = _make_service(
+        docs=[_kb_doc()], grader=grader, crag_enabled=True
+    )
+    result = await svc.answer("高血壓要注意什麼")
+    assert "RAG 回覆" in result
+    assert "參考資料來源" in result
+    grader.grade.assert_awaited_once()
+    gemini.chat_model.ainvoke.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_crag_incorrect_returns_no_hits_without_sources():
+    grader = MagicMock()
+    grader.grade = AsyncMock(return_value=Grade.INCORRECT)
+    svc, gemini, _ret = _make_service(
+        docs=[_kb_doc()], grader=grader, crag_enabled=True
+    )
+    result = await svc.answer("高血壓要注意什麼")
+    assert result == NO_HITS_MESSAGE
+    assert "參考資料來源" not in result
+    gemini.chat_model.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_crag_incorrect_calls_web():
+    grader = MagicMock()
+    grader.grade = AsyncMock(return_value=Grade.INCORRECT)
+    web_search = MagicMock()
+    web_search.answer = AsyncMock(return_value="以下參考網路公開資料\n\n網路補充答案")
+    svc, gemini, _ret = _make_service(
+        docs=[_kb_doc()],
+        grader=grader,
+        crag_enabled=True,
+        web_search=web_search,
+    )
+    result = await svc.answer("高血壓要注意什麼")
+    assert result == "以下參考網路公開資料\n\n網路補充答案"
+    web_search.answer.assert_awaited_once_with("高血壓要注意什麼")
+    gemini.chat_model.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_crag_ambiguous_rewrite_then_correct():
+    first_docs = [_kb_doc("模糊內容")]
+    second_docs = [_kb_doc("精準內容", url="https://www.hpa.gov.tw/b")]
+
+    grader = MagicMock()
+    grader.grade = AsyncMock(side_effect=[Grade.AMBIGUOUS, Grade.CORRECT])
+    rewriter = MagicMock()
+    rewriter.rewrite = AsyncMock(return_value="改寫後的高血壓問題")
+
+    gemini_service = MagicMock()
+    gemini_service.chat_model = MagicMock()
+    gemini_service.chat_model.ainvoke = AsyncMock(
+        return_value=AIMessage(content="改寫後回答")
+    )
+    retriever = MagicMock()
+    retriever.ainvoke = AsyncMock(side_effect=[first_docs, second_docs])
+
+    svc = RagAnswerService(
+        gemini_service=gemini_service,
+        retriever=retriever,
+        reranker=VectorScoreReranker(),
+        grader=grader,
+        rewriter=rewriter,
+        crag_enabled=True,
+    )
+    result = await svc.answer("高血壓？")
+    assert "改寫後回答" in result
+    assert "https://www.hpa.gov.tw/b" in result
+    assert rewriter.rewrite.await_count == 1
+    assert grader.grade.await_count == 2
+    assert retriever.ainvoke.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_crag_ambiguous_exhausted_calls_web():
+    grader = MagicMock()
+    grader.grade = AsyncMock(side_effect=[Grade.AMBIGUOUS, Grade.INCORRECT])
+    rewriter = MagicMock()
+    rewriter.rewrite = AsyncMock(return_value="改寫問句")
+    docs = [_kb_doc()]
+    web_search = MagicMock()
+    web_search.answer = AsyncMock(return_value="以下參考網路公開資料\n\n網路補充答案")
+    gemini_service = MagicMock()
+    gemini_service.chat_model = MagicMock()
+    gemini_service.chat_model.ainvoke = AsyncMock(
+        return_value=AIMessage(content="不該出現")
+    )
+    retriever = MagicMock()
+    retriever.ainvoke = AsyncMock(return_value=docs)
+
+    svc = RagAnswerService(
+        gemini_service=gemini_service,
+        retriever=retriever,
+        reranker=VectorScoreReranker(),
+        grader=grader,
+        rewriter=rewriter,
+        crag_enabled=True,
+        web_search=web_search,
+        web_fallback_enabled=True,
+    )
+    result = await svc.answer("高血壓？")
+    assert result == "以下參考網路公開資料\n\n網路補充答案"
+    web_search.answer.assert_awaited_once_with("高血壓？")
+    gemini_service.chat_model.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_crag_ambiguous_rewrite_still_insufficient():
+    grader = MagicMock()
+    grader.grade = AsyncMock(side_effect=[Grade.AMBIGUOUS, Grade.INCORRECT])
+    rewriter = MagicMock()
+    rewriter.rewrite = AsyncMock(return_value="改寫問句")
+    docs = [_kb_doc()]
+    gemini_service = MagicMock()
+    gemini_service.chat_model = MagicMock()
+    gemini_service.chat_model.ainvoke = AsyncMock(
+        return_value=AIMessage(content="不該出現")
+    )
+    retriever = MagicMock()
+    retriever.ainvoke = AsyncMock(return_value=docs)
+
+    svc = RagAnswerService(
+        gemini_service=gemini_service,
+        retriever=retriever,
+        reranker=VectorScoreReranker(),
+        grader=grader,
+        rewriter=rewriter,
+        crag_enabled=True,
+    )
+    result = await svc.answer("高血壓？")
+    assert result == NO_HITS_MESSAGE
+    gemini_service.chat_model.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_crag_grader_exception_degrades_to_generate():
+    grader = MagicMock()
+    grader.grade = AsyncMock(side_effect=RuntimeError("grader down"))
+    svc, gemini, _ret = _make_service(
+        docs=[_kb_doc()], grader=grader, crag_enabled=True
+    )
+    result = await svc.answer("高血壓要注意什麼")
+    assert "RAG 回覆" in result
+    gemini.chat_model.ainvoke.assert_awaited()

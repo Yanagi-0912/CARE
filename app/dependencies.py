@@ -38,6 +38,8 @@ from app.services.line_messaging.handler.facility_detail_handler import LineFaci
 from app.services.rag import MongoAtlasVectorRetriever, RagAnswerService
 from app.services.rag.cohere_reranker import CohereReranker, VectorScoreReranker
 from app.services.rag.firecrawl_client import FirecrawlClient
+from app.services.rag.query_rewriter import GeminiQueryRewriter
+from app.services.rag.retrieval_grader import GeminiRetrievalGrader
 from app.services.rag.web_search_service import WebSearchService
 from app.services.users.user_profile_service import UserProfileService
 from app.tools.medical_tools import configure_medical_tools
@@ -93,16 +95,29 @@ else:
     )
     _rag_reranker = VectorScoreReranker()
 
+_rag_grader = None
+_rag_rewriter = None
+if settings.RAG_CRAG_ENABLED:
+    _rag_grader = GeminiRetrievalGrader(gemini_service=_gemini_service)
+    _rag_rewriter = GeminiQueryRewriter(gemini_service=_gemini_service)
+else:
+    logger.info("RAG_CRAG_ENABLED=false; skipping retrieval grader")
+
+_web_search_service = WebSearchService(
+    gemini_service=_gemini_service,
+    web_client=_firecrawl_client,
+)
+
 _rag_answer_service = RagAnswerService(
     gemini_service=_gemini_service,
     retriever=_rag_retriever,
     reranker=_rag_reranker,
     rerank_top_n=settings.RAG_RERANK_TOP_N,
-)
-
-_web_search_service = WebSearchService(
-    gemini_service=_gemini_service,
-    web_client=_firecrawl_client,
+    grader=_rag_grader,
+    rewriter=_rag_rewriter,
+    crag_enabled=settings.RAG_CRAG_ENABLED,
+    web_search=_web_search_service,
+    web_fallback_enabled=settings.RAG_WEB_FALLBACK_ENABLED,
 )
 
 _chat_history_repository = build_chat_history_repository()

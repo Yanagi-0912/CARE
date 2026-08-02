@@ -56,7 +56,7 @@ class Settings:
         "CONSULTATION_DAILY_SUMMARY_TIME", "02:00"
     )
 
-    # Firecrawl（search_public_web / WebSearchService）
+    # Firecrawl（WebSearchService／RAG web fallback）
     FIRECRAWL_API_KEY: str = os.getenv("FIRECRAWL_API_KEY", "")
 
     # Cohere Rerank（未設定 API key 時降級為向量 score top-n）
@@ -67,6 +67,17 @@ class Settings:
     COHERE_RERANK_TIMEOUT_SECONDS: float = float(
         os.getenv("COHERE_RERANK_TIMEOUT_SECONDS", "5")
     )
+
+    # Light CRAG（檢索充足性分級；關閉則等同舊行為）
+    RAG_CRAG_ENABLED: bool = os.getenv("RAG_CRAG_ENABLED", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    RAG_WEB_FALLBACK_ENABLED: bool = os.getenv(
+        "RAG_WEB_FALLBACK_ENABLED", "true"
+    ).lower() in ("1", "true", "yes", "on")
 
 
 settings = Settings()

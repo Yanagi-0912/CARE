@@ -16,7 +16,7 @@
 
 ## 4. Setup script
 
-- [ ] 4.1 改寫 `setup_rich_menu.py` 迴圈六語上傳並寫 `rich_menu_ids.json`；預設 zh-TW
+- [x] 4.1 改寫 `setup_rich_menu.py` 迴圈六語上傳並寫 `rich_menu_ids.json`；預設 zh-TW
 
 ## 5. Verify
 

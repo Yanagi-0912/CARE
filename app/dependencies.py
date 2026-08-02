@@ -137,7 +137,10 @@ _rich_menu_service = RichMenuService(
 )
 
 _user_profile_repository = UserProfileRepository()
-_user_profile_service = UserProfileService(repo=_user_profile_repository)
+_user_profile_service = UserProfileService(
+    repo=_user_profile_repository,
+    rich_menu_service=_rich_menu_service,
+)
 _tts_service = TTSService()
 
 _line_replier = LineReplier(

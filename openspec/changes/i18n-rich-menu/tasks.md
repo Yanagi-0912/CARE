@@ -11,8 +11,8 @@
 
 ## 3. Settings hook
 
-- [ ] 3.1 `UserProfileService.update_user_settings` 在 language 變更時呼叫 link
-- [ ] 3.2 測試：language 變更觸發 link；link 失敗仍回傳 settings
+- [x] 3.1 `UserProfileService.update_user_settings` 在 language 變更時呼叫 link
+- [x] 3.2 測試：language 變更觸發 link；link 失敗仍回傳 settings
 
 ## 4. Setup script
 

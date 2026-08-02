@@ -1,7 +1,7 @@
 import pytest
 
-from app.services.rag.answer_service import CANNOT_ANSWER_MARKERS
 from app.services.rag.cannot_answer import (
+    CANNOT_ANSWER_MARKERS,
     answer_preview,
     matched_cannot_answer_marker,
 )
@@ -13,7 +13,12 @@ from app.services.rag.cannot_answer import (
         ("", "<empty>"),
         ("   ", "<empty>"),
         (None, "<empty>"),
-        ("根據現有資料無法提供建議。", "無法"),
+        ("根據現有資料無法提供建議。", "無法提供"),
+        ("我不知道", "不知道"),
+        (
+            "河魨毒素結構穩定，無法透過加熱破壞，請勿自行處理。",
+            "<none>",
+        ),
         ("正常可回答的衛教內容", "<none>"),
         ("I don't know the answer.", "don't know"),
     ],

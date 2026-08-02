@@ -5,6 +5,7 @@ from langchain_core.documents import Document
 from app.services.gemini import GeminiService
 from app.i18n.messages import t
 from app.services.rag.cannot_answer import (
+    CANNOT_ANSWER_MARKERS,
     answer_preview,
     matched_cannot_answer_marker,
 )
@@ -20,20 +21,6 @@ from app.services.rag.whitelist import is_allowed_url, with_whitelist_site_filte
 logger = logging.getLogger(__name__)
 
 CITE_TOP_K = 3
-CANNOT_ANSWER_MARKERS: tuple[str, ...] = (
-    "不知道",
-    "無法",
-    "未找到",
-    "找不到相關",
-    "don't know",
-    "do not know",
-    "cannot answer",
-    "unable to answer",
-    "not enough information",
-    "no matching",
-    "わかりません",
-    "答えられません",
-)
 # 相容舊測試／匯入：預設繁中文案
 WEB_ANSWER_PREFIX = "以下參考網路公開資料"
 WEB_SEARCH_LIMIT = 8

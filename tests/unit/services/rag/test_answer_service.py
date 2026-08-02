@@ -294,7 +294,7 @@ async def test_answer_logs_model_refuse_diagnostics(caplog):
         if "rag_fail code=MODEL_REFUSE" in rec.getMessage()
     ]
     assert len(refuse_logs) == 1
-    assert "matched_marker=無法" in refuse_logs[0]
+    assert "matched_marker=無法提供" in refuse_logs[0]
     assert f"answer_preview={answer_content}" in refuse_logs[0]
 
 
@@ -331,6 +331,10 @@ async def test_answer_returns_no_answer_when_model_cannot_answer(answer_content)
     ("text", "expected"),
     [
         ("正常可回答的衛教內容", False),
+        (
+            "河魨毒素結構穩定，無法透過加熱破壞，請勿自行處理。",
+            False,
+        ),
         ("我不知道", True),
         ("無法提供相關資訊", True),
         ("", True),

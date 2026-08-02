@@ -18,3 +18,5 @@ def test_system_prompt_bans_markdown_and_routes_tools():
     assert "我有孕痛" in SYSTEM_PROMPT
     assert "附近有哪些醫院" in SYSTEM_PROMPT
     assert "禁止呼叫 `get_rag_answer`" in SYSTEM_PROMPT or "禁止 `get_rag_answer`" in SYSTEM_PROMPT
+    assert "[RAG_ERR:" in SYSTEM_PROMPT
+    assert "WEB_EMPTY" in SYSTEM_PROMPT

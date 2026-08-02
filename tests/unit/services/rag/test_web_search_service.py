@@ -26,6 +26,7 @@ if "motor.motor_asyncio" not in sys.modules:
 from langchain_core.messages import AIMessage
 
 from app.services.rag.web_client import WebSearchHit
+from app.services.rag.fail_messages import RagFailCode, rag_fail
 from app.services.rag.web_search_service import (
     NO_ANSWER_MESSAGE,
     WEB_ANSWER_PREFIX,
@@ -110,7 +111,7 @@ async def test_answer_returns_no_answer_when_web_empty():
     web = FakeWebClient(hits=[], pages={})
     svc, gemini = _make_service(web_client=web)
     result = await svc.answer("完全查不到的問題")
-    assert result == NO_ANSWER_MESSAGE
+    assert result == rag_fail(RagFailCode.WEB_EMPTY)
     assert "參考資料來源" not in result
     gemini.chat_model.ainvoke.assert_not_awaited()
 
@@ -120,14 +121,14 @@ async def test_answer_degrades_when_web_client_raises():
     web = FakeWebClient(search_error=RuntimeError("boom"))
     svc, _ = _make_service(web_client=web)
     result = await svc.answer("問題")
-    assert result == NO_ANSWER_MESSAGE
+    assert result == rag_fail(RagFailCode.WEB_EMPTY)
 
 
 @pytest.mark.asyncio
 async def test_answer_returns_no_answer_when_web_client_missing():
     svc, gemini = _make_service(web_client=None)
     result = await svc.answer("問題")
-    assert result == NO_ANSWER_MESSAGE
+    assert result == rag_fail(RagFailCode.WEB_EMPTY)
     gemini.chat_model.ainvoke.assert_not_awaited()
 
 
@@ -140,4 +141,5 @@ async def test_answer_returns_no_answer_when_model_cannot_answer():
     svc, _ = _make_service(answer_content="我不知道這個問題的答案。", web_client=web)
     result = await svc.answer("流感疫苗")
     assert result == NO_ANSWER_MESSAGE
+    assert result == rag_fail(RagFailCode.MODEL_REFUSE)
     assert "參考資料來源" not in result

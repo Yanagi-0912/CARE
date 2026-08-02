@@ -1,12 +1,20 @@
+import logging
+
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.services.gemini import GeminiService
+from app.services.rag.fail_messages import (
+    NO_ANSWER_MESSAGE,
+    RagFailCode,
+    rag_fail,
+)
 from app.services.rag.web_client import WebSearchClient
 from app.services.rag.whitelist import is_allowed_url, with_whitelist_site_filter
 
+logger = logging.getLogger(__name__)
+
 CITE_TOP_K = 3
-NO_ANSWER_MESSAGE = "目前無法提供相關資訊，請稍後再試或換一種方式描述問題。"
 CANNOT_ANSWER_MARKERS: tuple[str, ...] = (
     "不知道",
     "無法",
@@ -47,11 +55,13 @@ class WebSearchService:
     async def answer(self, query: str) -> str:
         web_docs = await self._fetch_web_docs(query)
         if not web_docs:
-            return NO_ANSWER_MESSAGE
+            logger.info("rag_fail code=%s", RagFailCode.WEB_EMPTY)
+            return rag_fail(RagFailCode.WEB_EMPTY)
 
         web_answer = await self._generate_answer(query, web_docs)
         if self._is_cannot_answer(web_answer):
-            return NO_ANSWER_MESSAGE
+            logger.info("rag_fail code=%s", RagFailCode.MODEL_REFUSE)
+            return rag_fail(RagFailCode.MODEL_REFUSE)
 
         annotated = f"{WEB_ANSWER_PREFIX}\n\n{web_answer}"
         return self._append_sources(annotated, web_docs)

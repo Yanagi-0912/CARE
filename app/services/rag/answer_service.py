@@ -5,6 +5,12 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from app.services.gemini import GeminiService
 from app.services.rag.cohere_reranker import Reranker, VectorScoreReranker
+from app.services.rag.fail_messages import (
+    NO_ANSWER_MESSAGE,
+    NO_HITS_MESSAGE,
+    RagFailCode,
+    rag_fail,
+)
 from app.services.rag.query_rewriter import QueryRewriter
 from app.services.rag.retrieval_grader import Grade, RetrievalGrader
 from app.services.rag.retriever import MongoAtlasVectorRetriever
@@ -16,8 +22,6 @@ logger = logging.getLogger(__name__)
 RETRIEVAL_TOP_K = 40
 RERANK_TOP_N = 5
 CITE_TOP_K = 3
-NO_HITS_MESSAGE = "知識庫中未找到相關資訊，請嘗試用不同方式描述問題。"
-NO_ANSWER_MESSAGE = "目前無法提供相關資訊，請稍後再試或換一種方式描述問題。"
 CANNOT_ANSWER_MARKERS: tuple[str, ...] = (
     "不知道",
     "無法",
@@ -85,18 +89,23 @@ class RagAnswerService:
 
         kb_answer = await self._generate_answer(user_text, ranked)
         if self._is_cannot_answer(kb_answer):
-            return NO_ANSWER_MESSAGE
+            return self._fail(RagFailCode.MODEL_REFUSE)
 
         return self._append_sources(kb_answer, ranked)
 
     async def _web_or_no_hits(self, query: str) -> str:
         if not self.web_fallback_enabled or self.web_search is None:
-            return NO_HITS_MESSAGE
+            return self._fail(RagFailCode.KB_EMPTY)
         try:
             return await self.web_search.answer(query)
         except Exception:
             logger.exception("web fallback failed")
-            return NO_ANSWER_MESSAGE
+            return self._fail(RagFailCode.WEB_ERROR)
+
+    @staticmethod
+    def _fail(code: str) -> str:
+        logger.info("rag_fail code=%s", code)
+        return rag_fail(code)
 
     async def _retrieve_and_rerank(self, query: str) -> list[Document]:
         docs = await self.retriever.ainvoke(query)

@@ -34,6 +34,8 @@ SYSTEM_PROMPT = (
     "「參考資料來源」標題與清單（含編號與網址），不得修改網址，不得改成 Markdown 連結。\n"
     "9. Flex Message：呼叫 `find_nearby_hospitals` 或 `lookup_medical_facility` 且工具回傳"
     "LINE Flex Message JSON 時，必須原樣輸出，嚴禁修改、重寫、摘要或加問候語。\n"
-    "10. 若 `get_rag_answer` 表示無法提供資訊，可簡短說明知識庫暫無，提醒必要時就醫或向官方管道查證。"
+    "10. 若 `get_rag_answer` 以 `[RAG_ERR:` 開頭（例如 KB_EMPTY／WEB_EMPTY／WEB_ERROR／MODEL_REFUSE），"
+    "請用白話簡短告訴使用者暫無相符資料，提醒必要時就醫或向官方管道查證；"
+    "不要把錯誤代碼原樣唸給使用者聽。"
     "若使用者正要依可疑醫療訊息匯款或點不明連結，必須強烈勸阻，並提示可向 165 反詐騙諮詢專線查證。\n"
 )

@@ -142,16 +142,13 @@ def is_source_hit(answer_text: str, expected_substrings: list[str]) -> bool:
 
 
 def is_refuse_ok(answer_text: str) -> bool:
-    from app.services.rag.answer_service import (
-        CANNOT_ANSWER_MARKERS,
-        NO_ANSWER_MESSAGE,
-        NO_HITS_MESSAGE,
-    )
+    from app.services.rag.answer_service import CANNOT_ANSWER_MARKERS
+    from app.services.rag.fail_messages import is_rag_fail
 
     text = (answer_text or "").strip()
     if not text:
         return True
-    if text in (NO_HITS_MESSAGE, NO_ANSWER_MESSAGE):
+    if is_rag_fail(text):
         return True
     return any(marker in text for marker in CANNOT_ANSWER_MARKERS)
 

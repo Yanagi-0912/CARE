@@ -593,6 +593,33 @@ async def test_handle_postback_event_toggle_voice_reply_omitted_enabled_flips_of
     assert reply_req.messages[0].text == "已關閉語音回覆"
 
 
+VOICE_REPLY_PROFILE_REQUIRED_MSG = (
+    "請先開啟「家庭中心」完成登入後再設定語音回覆"
+)
+
+
+@pytest.mark.asyncio
+async def test_handle_postback_event_toggle_voice_reply_update_fails(
+    handler,
+    mock_user_profile_service,
+    mock_line_api,
+):
+    mock_user_profile_service.get_user_profile = AsyncMock(
+        return_value={"settings": {"voice_reply_enabled": False}}
+    )
+    mock_user_profile_service.update_voice_reply_enabled = AsyncMock(return_value=False)
+    event = _postback_event("action=toggle_voice_reply", user_id="U12345")
+
+    await handler.handle(event)
+
+    mock_user_profile_service.update_voice_reply_enabled.assert_called_once_with(
+        "U12345", True
+    )
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert reply_req.messages[0].text == VOICE_REPLY_PROFILE_REQUIRED_MSG
+    assert reply_req.messages[0].text != "已開啟語音回覆"
+
+
 #測試點擊醫療院所查看詳情的 postback 事件，應該呼叫 LineFacilityDetailHandler 並回覆 Flex Message
 @pytest.mark.asyncio
 async def test_handle_postback_event_view_facility_detail(

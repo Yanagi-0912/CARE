@@ -193,10 +193,16 @@ class LineEventDispatcher:
                     profile = await self._user_profile_service.get_user_profile(user_id)
                     current = self._parse_voice_reply_enabled(profile)
                 enabled = not current
+            updated = False
             if self._user_profile_service:
-                await self._user_profile_service.update_voice_reply_enabled(user_id, enabled)
+                updated = await self._user_profile_service.update_voice_reply_enabled(
+                    user_id, enabled
+                )
 
-            status_msg = "已開啟語音回覆" if enabled else "已關閉語音回覆"
+            if updated:
+                status_msg = "已開啟語音回覆" if enabled else "已關閉語音回覆"
+            else:
+                status_msg = "請先開啟「家庭中心」完成登入後再設定語音回覆"
             await self._replier.reply(
                 reply_token=reply_token,
                 message_text=status_msg,

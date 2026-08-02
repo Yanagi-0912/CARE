@@ -17,5 +17,5 @@
 
 ## 4. 收尾
 
-- [ ] 4.1 跑 CARE／LIFF 相關測試
-- [ ] 4.2 勾選 tasks；commit＋push CARE `jamesbranch`（LIFF 若可則推對應 branch）
+- [x] 4.1 跑 CARE／LIFF 相關測試
+- [x] 4.2 勾選 tasks；commit＋push CARE `jamesbranch`（LIFF 若可則推對應 branch）

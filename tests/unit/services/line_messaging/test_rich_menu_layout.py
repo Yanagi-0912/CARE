@@ -5,6 +5,7 @@ from app.services.line_messaging.rich_menu_layout import (
     RICH_MENU_HEIGHT,
     RICH_MENU_WIDTH,
     build_rich_menu_areas,
+    image_path_for_language,
     liff_uri,
 )
 
@@ -54,3 +55,19 @@ def test_build_rich_menu_areas_six_cells_and_actions():
     }
     assert "enabled" not in areas[4]["action"]["data"]
     assert areas[5]["action"]["uri"] == "https://liff.line.me/abc/settings"
+
+
+def test_build_rich_menu_areas_english_labels():
+    areas = build_rich_menu_areas("https://liff.line.me/abc", language="en")
+    labels = [a["action"]["label"] for a in areas]
+    assert labels == ["Family", "Meds", "Hospitals", "Relatives", "Voice", "Settings"]
+
+
+def test_build_rich_menu_areas_unknown_language_falls_back_to_zh_tw():
+    areas = build_rich_menu_areas("https://liff.line.me/abc", language="xx")
+    labels = [a["action"]["label"] for a in areas]
+    assert labels == ["家庭中心", "用藥提醒", "附近醫院", "我的家人", "語音回覆", "設定"]
+
+
+def test_image_path_for_language():
+    assert image_path_for_language("en") == "resources/rich_menu_en.png"

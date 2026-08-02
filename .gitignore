@@ -221,8 +221,6 @@ app_data/tmp/*
 # Firecrawl outputs
 .firecrawl/
 
-# Local working notes（不上 Git）
-doc/
 
 # Cursor local skills & commands
 .cursor/

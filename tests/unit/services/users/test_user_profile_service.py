@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -6,11 +6,18 @@ from app.models.user import UserSettingsUpdate
 from app.services.users.user_profile_service import UserProfileService
 
 
-def _build_service(get_user_profile_return=None, update_user_settings_return=True):
+def _build_service(
+    get_user_profile_return=None,
+    update_user_settings_return=True,
+    rich_menu_service=None,
+):
     repo = AsyncMock()
     repo.get_user_profile.return_value = get_user_profile_return
     repo.update_user_settings.return_value = update_user_settings_return
-    return UserProfileService(repo=repo), repo
+    return (
+        UserProfileService(repo=repo, rich_menu_service=rich_menu_service),
+        repo,
+    )
 
 
 @pytest.mark.asyncio
@@ -112,6 +119,87 @@ async def test_create_default_user_profile_includes_default_settings():
         "notify_family": True,
         "voice_reply_enabled": False,
     }
+
+
+@pytest.mark.asyncio
+async def test_update_user_settings_language_change_links_rich_menu():
+    stored_profile = {
+        "line_id": "U123",
+        "settings": {"language": "zh-TW"},
+    }
+    rich_menu_service = MagicMock()
+    rich_menu_service.link_user_menu.return_value = True
+    service, repo = _build_service(
+        rich_menu_service=rich_menu_service,
+    )
+    repo.get_user_profile.side_effect = lambda _line_id: stored_profile
+
+    async def _fake_update_user_settings(_line_id, changed_fields):
+        stored_profile["settings"].update(changed_fields)
+        return True
+
+    repo.update_user_settings.side_effect = _fake_update_user_settings
+
+    result = await service.update_user_settings(
+        "U123", UserSettingsUpdate(language="en")
+    )
+
+    rich_menu_service.link_user_menu.assert_called_once_with("U123", "en")
+    assert result["language"] == "en"
+
+
+@pytest.mark.asyncio
+async def test_update_user_settings_language_change_link_failure_still_returns_settings():
+    stored_profile = {
+        "line_id": "U123",
+        "settings": {"language": "zh-TW"},
+    }
+    rich_menu_service = MagicMock()
+    rich_menu_service.link_user_menu.side_effect = RuntimeError("LINE down")
+    service, repo = _build_service(
+        rich_menu_service=rich_menu_service,
+    )
+    repo.get_user_profile.side_effect = lambda _line_id: stored_profile
+
+    async def _fake_update_user_settings(_line_id, changed_fields):
+        stored_profile["settings"].update(changed_fields)
+        return True
+
+    repo.update_user_settings.side_effect = _fake_update_user_settings
+
+    result = await service.update_user_settings(
+        "U123", UserSettingsUpdate(language="ja")
+    )
+
+    rich_menu_service.link_user_menu.assert_called_once_with("U123", "ja")
+    assert result["language"] == "ja"
+
+
+@pytest.mark.asyncio
+async def test_update_user_settings_non_language_change_does_not_link_rich_menu():
+    rich_menu_service = MagicMock()
+    service, repo = _build_service(
+        get_user_profile_return={"line_id": "U123", "settings": {}},
+        rich_menu_service=rich_menu_service,
+    )
+
+    await service.update_user_settings("U123", UserSettingsUpdate(font_size="xlarge"))
+
+    rich_menu_service.link_user_menu.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_user_settings_skips_link_when_repo_update_fails():
+    rich_menu_service = MagicMock()
+    service, repo = _build_service(
+        get_user_profile_return={"line_id": "U123", "settings": {"language": "zh-TW"}},
+        update_user_settings_return=False,
+        rich_menu_service=rich_menu_service,
+    )
+
+    await service.update_user_settings("U123", UserSettingsUpdate(language="en"))
+
+    rich_menu_service.link_user_menu.assert_not_called()
 
 
 @pytest.mark.asyncio

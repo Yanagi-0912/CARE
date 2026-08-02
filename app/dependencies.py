@@ -363,18 +363,6 @@ def get_knowledge_report_service() -> KnowledgeReportService:
     return _knowledge_report_service
 
 
-def verify_knowledge_reports_admin_key(
-    x_admin_key: str | None = Header(default=None, alias="X-Admin-Key"),
-) -> None:
-    if not settings.KNOWLEDGE_REPORTS_ADMIN_API_KEY:
-        raise HTTPException(
-            status_code=503,
-            detail="Knowledge reports admin API is not configured",
-        )
-    if not x_admin_key or x_admin_key != settings.KNOWLEDGE_REPORTS_ADMIN_API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid admin key")
-
-
 @dataclass
 class CurrentUser:
     line_user_id: str
@@ -404,3 +392,14 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="Invalid token payload")
 
     return CurrentUser(line_user_id=line_user_id)
+
+
+async def require_admin_user(
+    current_user: CurrentUser = Depends(get_current_user),
+    user_profile_service: UserProfileService = Depends(get_user_profile_service),
+) -> CurrentUser:
+    profile = await user_profile_service.get_user_profile(current_user.line_user_id)
+    role = (profile or {}).get("role", "user")
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user

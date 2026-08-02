@@ -2,10 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from app.dependencies import (
-    get_knowledge_report_service,
-    verify_knowledge_reports_admin_key,
-)
+from app.dependencies import get_knowledge_report_service, require_admin_user
 from app.models.knowledge_report import (
     ApproveKnowledgeReportRequest,
     KnowledgeReport,
@@ -13,7 +10,7 @@ from app.models.knowledge_report import (
 )
 from app.services.knowledge_reports.service import KnowledgeReportService
 
-router = APIRouter(dependencies=[Depends(verify_knowledge_reports_admin_key)])
+router = APIRouter(dependencies=[Depends(require_admin_user)])
 
 
 @router.post(

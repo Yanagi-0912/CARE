@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,6 +10,8 @@ from app.dependencies import (
     CurrentUser,
     get_current_user,
     get_knowledge_report_service,
+    get_user_profile_service,
+    require_admin_user,
 )
 from app.main import app
 from app.models.knowledge_report import KnowledgeReport
@@ -49,6 +51,19 @@ def override_current_user():
 
 
 @pytest.fixture
+def override_admin_user():
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        line_user_id="U_ADMIN"
+    )
+    app.dependency_overrides[require_admin_user] = lambda: CurrentUser(
+        line_user_id="U_ADMIN"
+    )
+    yield
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(require_admin_user, None)
+
+
+@pytest.fixture
 def mock_service():
     service = MagicMock()
     service.create = AsyncMock(return_value=_sample_report())
@@ -78,39 +93,38 @@ def test_list_knowledge_reports(override_current_user, mock_service):
     assert data["reports"][0]["status"] == "pending"
 
 
-def test_admin_approve_requires_key(mock_service):
-    with patch("app.dependencies.settings.KNOWLEDGE_REPORTS_ADMIN_API_KEY", "secret-key"):
-        response = client.post(
-            "/api/admin/knowledge-reports/KR-20260802-AB12/approve",
-            json={"selected_urls": [ALLOWED_URL]},
-        )
-        assert response.status_code == 401
+def test_admin_approve_requires_admin_role(mock_service):
+    profile_service = MagicMock()
+    profile_service.get_user_profile = AsyncMock(return_value={"role": "user"})
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        line_user_id="U_USER"
+    )
+    app.dependency_overrides[get_user_profile_service] = lambda: profile_service
 
-        response = client.post(
-            "/api/admin/knowledge-reports/KR-20260802-AB12/approve",
-            json={"selected_urls": [ALLOWED_URL]},
-            headers={"X-Admin-Key": "secret-key"},
-        )
-        assert response.status_code == 200
-        assert response.json()["status"] == "resolved"
+    response = client.post(
+        "/api/admin/knowledge-reports/KR-20260802-AB12/approve",
+        json={"selected_urls": [ALLOWED_URL]},
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert response.status_code == 403
 
-
-def test_admin_reject(mock_service):
-    with patch("app.dependencies.settings.KNOWLEDGE_REPORTS_ADMIN_API_KEY", "secret-key"):
-        response = client.post(
-            "/api/admin/knowledge-reports/KR-20260802-AB12/reject",
-            json={"reviewer_note": "no"},
-            headers={"X-Admin-Key": "secret-key"},
-        )
-        assert response.status_code == 200
-        assert response.json()["status"] == "rejected"
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_user_profile_service, None)
 
 
-def test_admin_key_not_configured_returns_503(mock_service):
-    with patch("app.dependencies.settings.KNOWLEDGE_REPORTS_ADMIN_API_KEY", ""):
-        response = client.post(
-            "/api/admin/knowledge-reports/KR-20260802-AB12/reject",
-            json={},
-            headers={"X-Admin-Key": "anything"},
-        )
-        assert response.status_code == 503
+def test_admin_approve_success_for_admin(mock_service, override_admin_user):
+    response = client.post(
+        "/api/admin/knowledge-reports/KR-20260802-AB12/approve",
+        json={"selected_urls": [ALLOWED_URL]},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "resolved"
+
+
+def test_admin_reject_success_for_admin(mock_service, override_admin_user):
+    response = client.post(
+        "/api/admin/knowledge-reports/KR-20260802-AB12/reject",
+        json={"reviewer_note": "no"},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "rejected"

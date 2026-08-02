@@ -82,10 +82,5 @@ class Settings:
         "RAG_WEB_FALLBACK_ENABLED", "true"
     ).lower() in ("1", "true", "yes", "on")
 
-    # Knowledge Reports admin API
-    KNOWLEDGE_REPORTS_ADMIN_API_KEY: str = os.getenv(
-        "KNOWLEDGE_REPORTS_ADMIN_API_KEY", ""
-    )
-
 
 settings = Settings()

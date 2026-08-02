@@ -68,6 +68,7 @@ class UserProfile(UserProfileData):
     """資料庫中的 user profile 文件模型。"""
 
     line_id: str = Field(..., min_length=1, description="LINE 使用者 ID")
+    role: Literal["admin", "user"] = Field(default="user", description="使用者角色")
     picture_url: Optional[str] = Field(default=None, description="LINE 使用者頭像網址")
     settings: UserSettings = Field(
         default_factory=UserSettings,

@@ -91,7 +91,9 @@ async def test_upsert_user_profile_builds_expected_update_query(
     assert update_doc["$set"]["name"] == "Amy"
     assert update_doc["$set"]["age"] == 30
     assert "updated_at" in update_doc["$set"]
-    assert "created_at" in update_doc["$setOnInsert"]
+    assert "role" not in update_doc["$set"]
+    assert update_doc["$setOnInsert"]["created_at"] is not None
+    assert update_doc["$setOnInsert"]["role"] == "user"
 
 
 @pytest.mark.asyncio

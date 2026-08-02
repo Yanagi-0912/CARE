@@ -16,11 +16,14 @@ class UserProfileRepository:
     async def upsert_user_profile(line_id: str, payload: Dict[str, Any]) -> bool:
         col = MongoDBManager.get_users_collection()
         now = datetime.now(tz=timezone.utc)
+        set_fields = {**payload, "line_id": line_id, "updated_at": now}
+        # role 僅在首次插入時設定，避免登入 upsert 覆寫 admin
+        set_fields.pop("role", None)
         result = await col.update_one(
             {"line_id": line_id},
             {
-                "$set": {**payload, "line_id": line_id, "updated_at": now},
-                "$setOnInsert": {"created_at": now},
+                "$set": set_fields,
+                "$setOnInsert": {"created_at": now, "role": "user"},
             },
             upsert=True,
         )

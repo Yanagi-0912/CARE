@@ -1,10 +1,10 @@
 import logging
 
 from langchain_core.documents import Document
-from langchain_core.prompts import ChatPromptTemplate
 
 from app.services.gemini import GeminiService
 from app.i18n.messages import t
+from app.services.rag.answer_prompts import build_web_prompt
 from app.services.rag.fail_messages import (
     NO_ANSWER_MESSAGE,
     RagFailCode,
@@ -21,29 +21,25 @@ CANNOT_ANSWER_MARKERS: tuple[str, ...] = (
     "無法",
     "未找到",
     "找不到相關",
+    "don't know",
+    "do not know",
+    "cannot answer",
+    "unable to answer",
+    "not enough information",
+    "no matching",
+    "わかりません",
+    "答えられません",
 )
+# 相容舊測試／匯入：預設繁中文案
 WEB_ANSWER_PREFIX = "以下參考網路公開資料"
 WEB_SEARCH_LIMIT = 8
 WEB_PAGE_CHAR_LIMIT = 8000
 # search snippet 達此長度就不打 scrape（避免 gov.tw 頁面常逾時）
 WEB_SNIPPET_MIN_CHARS = 20
 
-WEB_PROMPT = ChatPromptTemplate.from_messages(
-    [
-        (
-            "human",
-            "請根據以下提供的醫療知識內容回答問題。\n\n"
-            "規則：\n"
-            "1. 請在回答中適當引用內容來源的編號，例如：『...這是常見的症狀 [1]。』\n"
-            "2. 回覆中不要使用「根據檢索內容」這類字眼，改用「根據公開網路資料」等說法。\n"
-            "3. 請使用一般純文字，不要使用 Markdown 格式符號。\n"
-            "4. 若內容不足，請明確說明不知道，勿捏造。\n\n"
-            "使用者問題：{question}\n\n"
-            "網路內容：\n"
-            "{context}",
-        )
-    ]
-)
+
+def web_answer_prefix(language: str | None = None) -> str:
+    return t("rag.web_answer_prefix", language=language)
 
 
 class WebSearchService:
@@ -66,16 +62,18 @@ class WebSearchService:
             logger.info("rag_fail code=%s", RagFailCode.MODEL_REFUSE)
             return rag_fail(RagFailCode.MODEL_REFUSE)
 
-        annotated = f"{WEB_ANSWER_PREFIX}\n\n{web_answer}"
+        annotated = f"{web_answer_prefix()}\n\n{web_answer}"
         return self._append_sources(annotated, web_docs)
 
     async def _generate_answer(self, question: str, docs: list[Document]) -> str:
         context = "\n".join(
             f"{idx}. {doc.page_content}" for idx, doc in enumerate(docs, start=1)
         )
-        messages = WEB_PROMPT.format_messages(question=question, context=context)
+        messages = build_web_prompt().format_messages(
+            question=question, context=context
+        )
         result = await self.gemini_service.chat_model.ainvoke(messages)
-        answer_text = result.content or "抱歉，我目前找不到相關資料，請稍後再試。"
+        answer_text = result.content or t("rag.generate_fallback")
         if not isinstance(answer_text, str):
             answer_text = str(answer_text)
         return answer_text
@@ -144,7 +142,8 @@ class WebSearchService:
             seen_urls.add(url)
             display_idx = len(source_lines) + 1
             label = source_name if source_name else url
-            source_lines.append(f"[{display_idx}] 網路：{label}：{url}")
+            web_label = t("rag.web_source_label")
+            source_lines.append(f"[{display_idx}] {web_label}：{label}：{url}")
 
         if not source_lines:
             return answer_text

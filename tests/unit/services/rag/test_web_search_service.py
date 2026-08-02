@@ -25,12 +25,15 @@ if "motor.motor_asyncio" not in sys.modules:
 
 from langchain_core.messages import AIMessage
 
+from app.core.user_language import reset_request_language, set_request_language
+from app.i18n.messages import t
 from app.services.rag.web_client import WebSearchHit
 from app.services.rag.fail_messages import RagFailCode, rag_fail
 from app.services.rag.web_search_service import (
     NO_ANSWER_MESSAGE,
     WEB_ANSWER_PREFIX,
     WebSearchService,
+    web_answer_prefix,
 )
 
 
@@ -188,3 +191,29 @@ async def test_answer_returns_no_answer_when_model_cannot_answer():
     assert result == NO_ANSWER_MESSAGE
     assert result == rag_fail(RagFailCode.MODEL_REFUSE)
     assert "參考資料來源" not in result
+
+
+@pytest.mark.asyncio
+async def test_answer_localizes_web_source_label_and_prefix():
+    web = FakeWebClient(
+        hits=[
+            WebSearchHit(title="HPA hypertension", url="https://www.hpa.gov.tw/htn"),
+        ],
+        pages={"https://www.hpa.gov.tw/htn": "Monitor blood pressure regularly."},
+    )
+    svc, _ = _make_service(
+        answer_content="Based on public web sources, monitor BP regularly.",
+        web_client=web,
+    )
+    token = set_request_language("en")
+    try:
+        result = await svc.answer("hypertension tips")
+    finally:
+        reset_request_language(token)
+
+    assert web_answer_prefix("en") in result
+    assert t("rag.web_source_label", "en") == "Web"
+    assert "[1] Web：HPA hypertension：https://www.hpa.gov.tw/htn" in result
+    assert t("agent.sources_heading", "en") in result
+    assert "網路：" not in result
+    assert WEB_ANSWER_PREFIX not in result  # 英文請求不應出現繁中前綴

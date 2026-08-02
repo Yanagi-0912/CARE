@@ -95,3 +95,10 @@ class MongoDBManager:
         """
         return cls.get_database()["medication_logs"]
 
+    @classmethod
+    def get_knowledge_reports_collection(cls):
+        """
+        取得 knowledge_reports collection
+        """
+        return cls.get_database()["knowledge_reports"]
+

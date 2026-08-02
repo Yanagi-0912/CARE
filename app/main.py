@@ -17,12 +17,15 @@ from app.dependencies import (
     start_medication_scheduler,
 )
 from app.repositories.consultation_repository import ConsultationRepository
+from app.repositories.knowledge_report_repository import KnowledgeReportRepository
 from app.services.consultation.scheduler import (
     start_consultation_daily_summary_scheduler,
 )
 
 from app.routers.users.family_tree import router as family_tree_router
+from app.routers.users.knowledge_reports import router as knowledge_reports_router
 from app.routers.users.medications import router as medications_router
+from app.routers.admin.knowledge_reports import router as admin_knowledge_reports_router
 from app.routers.tts.tts import router as tts_router
 
 configure_logging()
@@ -33,6 +36,7 @@ async def lifespan(app: FastAPI):
     # FastAPI lifespan 會在 yield 前執行 startup 邏輯。
     # 先確認 MongoDB 摘要 collection 有 TTL index，讓摘要只保留 7 天。
     await ConsultationRepository.ensure_indexes()
+    await KnowledgeReportRepository.ensure_indexes()
 
     # 啟動每日諮詢摘要排程
     scheduler = start_consultation_daily_summary_scheduler(
@@ -80,4 +84,14 @@ app.include_router(
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(family_tree_router, prefix="/api/family", tags=["Family Tree"])
 app.include_router(medications_router, prefix="/api/medications", tags=["Medications"])
+app.include_router(
+    knowledge_reports_router,
+    prefix="/api/knowledge-reports",
+    tags=["Knowledge Reports"],
+)
+app.include_router(
+    admin_knowledge_reports_router,
+    prefix="/api/admin/knowledge-reports",
+    tags=["Knowledge Reports Admin"],
+)
 app.include_router(tts_router, prefix="/tts")

@@ -7,6 +7,7 @@ from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
 from app.core.request_logging import log_stage
 from app.services.line_messaging.reply.reply import LineReplier
+from app.tools.knowledge_report_tools import reset_line_user_id, set_line_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -75,11 +76,15 @@ class BaseLineMessageHandler:
                 await self._loading_animation_service.start(user_id)
 
             t1 = time.perf_counter()
-            agent_response = await self._agent.invoke(
-                user_input=user_text,
-                messages=chat_history,
-                user_profile=user_profile,
-            )
+            line_user_token = set_line_user_id(user_id)
+            try:
+                agent_response = await self._agent.invoke(
+                    user_input=user_text,
+                    messages=chat_history,
+                    user_profile=user_profile,
+                )
+            finally:
+                reset_line_user_id(line_user_token)
             log_stage(
                 logger,
                 "agent_done",

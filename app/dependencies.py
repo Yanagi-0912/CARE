@@ -12,6 +12,7 @@ from app.db.mongodb import MongoDBManager
 from app.db.redis import RedisManager
 from app.repositories.chat_history_repository import build_chat_history_repository
 from app.repositories.consultation_repository import ConsultationRepository
+from app.repositories.knowledge_report_repository import KnowledgeReportRepository
 from app.repositories.user_profile_repository import UserProfileRepository
 from app.services.agent.agent import Agent
 from app.services.consultation.consultation_service import ConsultationService
@@ -21,6 +22,7 @@ from app.services.medication.medication_scheduler import start_medication_schedu
 from app.services.gemini import GeminiService
 from app.services.guardrail import GuardrailService
 from app.services.history.history_service import LineMessageHistoryService
+from app.services.knowledge_reports.service import KnowledgeReportService
 from app.services.liff.auth_service import LiffAuthApplicationService
 from app.services.liff.jwt_service import AppJwtService
 from app.services.liff.line_id_token_service import LineIdTokenService
@@ -39,10 +41,12 @@ from app.services.line_messaging.handler.facility_detail_handler import LineFaci
 from app.services.rag import MongoAtlasVectorRetriever, RagAnswerService
 from app.services.rag.cohere_reranker import CohereReranker, VectorScoreReranker
 from app.services.rag.firecrawl_client import FirecrawlClient
+from app.services.rag.ingest_service import IngestService
 from app.services.rag.query_rewriter import GeminiQueryRewriter
 from app.services.rag.retrieval_grader import GeminiRetrievalGrader
 from app.services.rag.web_search_service import WebSearchService
 from app.services.users.user_profile_service import UserProfileService
+from app.tools.knowledge_report_tools import configure_knowledge_report_tool
 from app.tools.medical_tools import configure_medical_tools
 from app.tools.rag_tools import configure_rag_tool
 from app.tools.web_tools import configure_web_tool
@@ -67,6 +71,15 @@ _query_embeddings_kwargs: dict = {
 if settings.MONGODB_VECTOR_DIM > 0:
     _query_embeddings_kwargs["output_dimensionality"] = settings.MONGODB_VECTOR_DIM
 _query_embeddings = GoogleGenerativeAIEmbeddings(**_query_embeddings_kwargs)
+
+_ingest_embeddings_kwargs: dict = {
+    "model": settings.EMBEDDING_MODEL,
+    "google_api_key": settings.GEMINI_API_KEY,
+    "task_type": "RETRIEVAL_DOCUMENT",
+}
+if settings.MONGODB_VECTOR_DIM > 0:
+    _ingest_embeddings_kwargs["output_dimensionality"] = settings.MONGODB_VECTOR_DIM
+_ingest_embeddings = GoogleGenerativeAIEmbeddings(**_ingest_embeddings_kwargs)
 
 _rag_retriever = MongoAtlasVectorRetriever(
     embeddings=_query_embeddings,
@@ -132,6 +145,26 @@ _consultation_service = ConsultationService(
 configure_rag_tool(_rag_answer_service)
 configure_web_tool(_web_search_service)
 configure_medical_tools(medical_service)
+
+_ingest_service = None
+if _firecrawl_client is not None and settings.MONGODB_URI and settings.MONGODB_COLLECTION:
+    _ingest_service = IngestService(
+        web_client=_firecrawl_client,
+        embeddings=_ingest_embeddings,
+        collection=MongoDBManager.get_database()[settings.MONGODB_COLLECTION],
+        text_field=settings.MONGODB_TEXT_FIELD,
+        vector_field=settings.MONGODB_VECTOR_FIELD,
+        vector_dim=(
+            settings.MONGODB_VECTOR_DIM if settings.MONGODB_VECTOR_DIM > 0 else None
+        ),
+    )
+
+_knowledge_report_repository = KnowledgeReportRepository()
+_knowledge_report_service = KnowledgeReportService(
+    repository=_knowledge_report_repository,
+    ingest_service=_ingest_service,
+)
+configure_knowledge_report_tool(_knowledge_report_service)
 
 _care_agent = Agent(
     llm=_gemini_service.chat_model,
@@ -324,6 +357,22 @@ def get_consultation_download_token_service() -> AppJwtService:
 
 def get_jwt_service() -> AppJwtService:
     return _app_jwt_service
+
+
+def get_knowledge_report_service() -> KnowledgeReportService:
+    return _knowledge_report_service
+
+
+def verify_knowledge_reports_admin_key(
+    x_admin_key: str | None = Header(default=None, alias="X-Admin-Key"),
+) -> None:
+    if not settings.KNOWLEDGE_REPORTS_ADMIN_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Knowledge reports admin API is not configured",
+        )
+    if not x_admin_key or x_admin_key != settings.KNOWLEDGE_REPORTS_ADMIN_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid admin key")
 
 
 @dataclass

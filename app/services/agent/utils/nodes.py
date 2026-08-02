@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -39,6 +40,29 @@ def _latest_human_text(messages) -> str:
         if isinstance(m, HumanMessage):
             return m.content
     return ""
+
+
+_FACILITY_SEARCH_RE = re.compile(
+    r"醫院|診所|藥局|看醫生|就醫|急診|附近院所|找醫院|找診所|看診|"
+    r"hospital|clinic|pharmacy",
+    re.IGNORECASE,
+)
+_NAMED_LOOKUP_RE = re.compile(r"在哪|地址|電話|怎麼去")
+_FACILITY_TERM_RE = re.compile(
+    r"醫院|診所|藥局|hospital|clinic|pharmacy", re.IGNORECASE
+)
+
+
+def _is_nearby_facility_intent(text: str) -> bool:
+    if not text or _NAMED_LOOKUP_RE.search(text):
+        return False
+    return bool(_FACILITY_SEARCH_RE.search(text))
+
+
+def _is_named_facility_lookup(text: str) -> bool:
+    if not text:
+        return False
+    return bool(_NAMED_LOOKUP_RE.search(text) and _FACILITY_TERM_RE.search(text))
 
 
 def format_user_profile_prompt(user_profile: dict | None) -> str:
@@ -110,15 +134,37 @@ class AgentNodes:
         response = await llm_with_tools.ainvoke(messages)
         tool_calls = getattr(response, "tool_calls", None) or []
         force_rag = False
+        force_location = False
+        user_text = _latest_human_text(state["messages"])
 
         if (
+            not tool_calls
+            and not _already_used_location_tools(state["messages"])
+            and _is_nearby_facility_intent(user_text)
+        ):
+            response = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "request_location_quick_reply",
+                        "args": {},
+                        "id": "forced_location_1",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+            tool_calls = response.tool_calls
+            called = ["request_location_quick_reply"]
+            force_location = True
+        elif (
             state.get("allow_rag")
             and "get_rag_answer" in tool_names
             and not tool_calls
             and not _already_ran_rag(state["messages"])
             and not _already_used_location_tools(state["messages"])
+            and not _is_nearby_facility_intent(user_text)
+            and not _is_named_facility_lookup(user_text)
         ):
-            user_text = _latest_human_text(state["messages"])
             response = AIMessage(
                 content="",
                 tool_calls=[
@@ -142,6 +188,7 @@ class AgentNodes:
             tools=tool_names,
             call=called or None,
             force_rag=force_rag or None,
+            force_location=force_location or None,
             ms=int((time.perf_counter() - t0) * 1000),
         )
 

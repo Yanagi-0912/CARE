@@ -1,0 +1,7 @@
+# 醫療打詐／假藥相關官方頁（以 scripts/ingest_url.py 逐筆 ingest）
+# 用法範例：
+#   .venv/bin/python scripts/ingest_url.py --url "<URL>" --source-name "<名稱>"
+https://165.npa.gov.tw/
+https://www.fda.gov.tw/
+https://www.mohw.gov.tw/
+https://www.hpa.gov.tw/

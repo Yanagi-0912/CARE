@@ -136,8 +136,32 @@ def _pick_gold(docs, keywords: list[str]):
     return docs[0], 0, 0
 
 
+def _write_golden_jsonl(path: Path, out_rows: list[dict]) -> None:
+    with path.open("w", encoding="utf-8") as fh:
+        for row in out_rows:
+            # 穩定欄位順序
+            ordered = {
+                "id": row["id"],
+                "query": row["query"],
+                "route": row["route"],
+            }
+            for key in (
+                "expected_url_substrings",
+                "expected_source_substrings",
+                "expected_content_substrings",
+            ):
+                if key in row and row[key]:
+                    ordered[key] = row[key]
+            ordered["must_not_answer"] = bool(row.get("must_not_answer", False))
+            if row.get("notes"):
+                ordered["notes"] = row["notes"]
+            if row.get("split"):
+                ordered["split"] = row["split"]
+            fh.write(json.dumps(ordered, ensure_ascii=False) + "\n")
+
+
 async def tighten(path: Path, *, dry_run: bool) -> None:
-    cases = load_golden_jsonl(path)
+    cases = await asyncio.to_thread(load_golden_jsonl, path)
     retriever = get_rag_retriever()
     out_rows: list[dict] = []
 
@@ -199,27 +223,7 @@ async def tighten(path: Path, *, dry_run: bool) -> None:
         print(f"dry-run: would write {len(out_rows)} rows to {path}")
         return
 
-    with path.open("w", encoding="utf-8") as fh:
-        for row in out_rows:
-            # 穩定欄位順序
-            ordered = {
-                "id": row["id"],
-                "query": row["query"],
-                "route": row["route"],
-            }
-            for key in (
-                "expected_url_substrings",
-                "expected_source_substrings",
-                "expected_content_substrings",
-            ):
-                if key in row and row[key]:
-                    ordered[key] = row[key]
-            ordered["must_not_answer"] = bool(row.get("must_not_answer", False))
-            if row.get("notes"):
-                ordered["notes"] = row["notes"]
-            if row.get("split"):
-                ordered["split"] = row["split"]
-            fh.write(json.dumps(ordered, ensure_ascii=False) + "\n")
+    await asyncio.to_thread(_write_golden_jsonl, path, out_rows)
     print(f"wrote: {path}")
 
 

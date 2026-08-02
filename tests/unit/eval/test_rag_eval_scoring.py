@@ -382,3 +382,34 @@ async def test_compare_rerank_uses_injected_retriever_once(tmp_path: Path):
     )
     assert summary2.hit_rate == 1.0
     assert results2[0].retrieval_hit is True
+
+
+def _load_rag_eval_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "rag_eval_script_path_guard",
+        Path(__file__).resolve().parents[3] / "scripts" / "rag_eval.py",
+    )
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_resolve_cli_paths_accept_project_and_temp():
+    mod = _load_rag_eval_module()
+    golden = mod._resolve_golden_path(mod.DEFAULT_GOLDEN)
+    assert golden == mod.DEFAULT_GOLDEN.resolve()
+
+    out_tmp = mod._resolve_out_path(Path("/tmp") / "rag-report.json")
+    assert out_tmp.name == "rag-report.json"
+    assert any(out_tmp.is_relative_to(root) for root in mod._OUT_ALLOWED_ROOTS)
+
+
+def test_resolve_cli_paths_reject_escape():
+    mod = _load_rag_eval_module()
+    with pytest.raises(ValueError, match="escapes allowed roots"):
+        mod._resolve_golden_path(Path("/etc/passwd"))
+    with pytest.raises(ValueError, match="escapes allowed roots"):
+        mod._resolve_out_path(Path("/etc/passwd"))

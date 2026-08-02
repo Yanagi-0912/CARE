@@ -15,8 +15,9 @@ import argparse
 import asyncio
 import json
 import sys
+import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(_PROJECT_ROOT) not in sys.path:
@@ -41,6 +42,37 @@ from app.services.rag.eval_scoring import (
 
 
 DEFAULT_GOLDEN = _PROJECT_ROOT / "evals" / "rag" / "golden.jsonl"
+_OUT_ALLOWED_ROOTS = (
+    _PROJECT_ROOT,
+    Path(tempfile.gettempdir()).resolve(),
+    Path("/tmp").resolve(),
+)
+
+
+def _resolve_under_allowed_roots(
+    path: Path,
+    allowed_roots: Sequence[Path],
+) -> Path:
+    """Resolve *path* and ensure it stays under one of *allowed_roots*.
+
+    Prevents CLI path arguments (e.g. ``../../etc/passwd``) from escaping
+    the intended filesystem sandbox before any read/write.
+    """
+    resolved = path.expanduser().resolve()
+    for root in allowed_roots:
+        root_resolved = root.resolve()
+        if resolved == root_resolved or resolved.is_relative_to(root_resolved):
+            return resolved
+    roots = ", ".join(str(r.resolve()) for r in allowed_roots)
+    raise ValueError(f"path escapes allowed roots ({roots}): {path}")
+
+
+def _resolve_golden_path(path: Path) -> Path:
+    return _resolve_under_allowed_roots(path, (_PROJECT_ROOT,))
+
+
+def _resolve_out_path(path: Path) -> Path:
+    return _resolve_under_allowed_roots(path, _OUT_ALLOWED_ROOTS)
 
 
 def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
@@ -319,10 +351,17 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = _parse_args(argv)
     top_n = args.top_n
 
+    try:
+        golden = _resolve_golden_path(args.golden)
+        out_path = _resolve_out_path(args.out) if args.out is not None else None
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
     if args.compare_rerank:
         compare = asyncio.run(
             run_compare_rerank(
-                args.golden,
+                golden,
                 split=args.split.strip(),
                 top_n=top_n,
             )
@@ -331,7 +370,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         c_sum = compare["cohere"]["summary"]
         _print_summary(
             f"vector top-{compare['top_n']}",
-            args.golden,
+            golden,
             v_sum,
             compare["vector"]["results"],
             with_answer=False,
@@ -339,7 +378,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         print()
         _print_summary(
             f"cohere top-{compare['top_n']}",
-            args.golden,
+            golden,
             c_sum,
             compare["cohere"]["results"],
             with_answer=False,
@@ -356,7 +395,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         else:
             print("hit_rate_delta: n/a")
 
-        if args.out:
+        if out_path is not None:
             payload = {
                 "top_n": compare["top_n"],
                 "vector": {
@@ -368,12 +407,12 @@ def main(argv: Optional[list[str]] = None) -> int:
                     "results": [r.to_dict() for r in compare["cohere"]["results"]],
                 },
             }
-            args.out.parent.mkdir(parents=True, exist_ok=True)
-            args.out.write_text(
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(
                 json.dumps(payload, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            print(f"wrote: {args.out}")
+            print(f"wrote: {out_path}")
 
         if args.fail_under is not None:
             rate = c_sum.hit_rate
@@ -383,7 +422,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     results, summary = asyncio.run(
         run_eval(
-            args.golden,
+            golden,
             with_answer=args.with_answer,
             split=args.split.strip(),
             rank_mode=args.rank_mode,
@@ -393,24 +432,24 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     _print_summary(
         args.rank_mode,
-        args.golden,
+        golden,
         summary,
         results,
         with_answer=args.with_answer,
     )
 
-    if args.out:
+    if out_path is not None:
         payload = {
             "summary": summary.to_dict(),
             "rank_mode": args.rank_mode,
             "results": [r.to_dict() for r in results],
         }
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        print(f"wrote: {args.out}")
+        print(f"wrote: {out_path}")
 
     if args.fail_under is not None:
         if summary.hit_rate is None:

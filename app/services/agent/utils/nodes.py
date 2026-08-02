@@ -1,7 +1,7 @@
 import logging
 import time
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from app.core.request_logging import log_stage
 from app.core.user_language import normalize_user_language
@@ -10,6 +10,19 @@ from app.services.agent.utils.state import State
 from app.tools.registry import get_all_tools
 
 logger = logging.getLogger(__name__)
+
+
+def _already_ran_rag(messages) -> bool:
+    return any(
+        isinstance(m, ToolMessage) and m.name == "get_rag_answer" for m in messages
+    )
+
+
+def _latest_human_text(messages) -> str:
+    for m in reversed(messages):
+        if isinstance(m, HumanMessage):
+            return m.content
+    return ""
 
 
 def format_user_profile_prompt(user_profile: dict | None) -> str:
@@ -80,12 +93,38 @@ class AgentNodes:
         t0 = time.perf_counter()
         response = await llm_with_tools.ainvoke(messages)
         tool_calls = getattr(response, "tool_calls", None) or []
-        called = [tc.get("name") for tc in tool_calls if isinstance(tc, dict)]
+        force_rag = False
+
+        if (
+            state.get("allow_rag")
+            and "get_rag_answer" in tool_names
+            and not tool_calls
+            and not _already_ran_rag(state["messages"])
+        ):
+            user_text = _latest_human_text(state["messages"])
+            response = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "get_rag_answer",
+                        "args": {"query": user_text},
+                        "id": "forced_rag_1",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+            tool_calls = response.tool_calls
+            called = ["get_rag_answer"]
+            force_rag = True
+        else:
+            called = [tc.get("name") for tc in tool_calls if isinstance(tc, dict)]
+
         log_stage(
             logger,
             "agent_decide",
             tools=tool_names,
             call=called or None,
+            force_rag=force_rag or None,
             ms=int((time.perf_counter() - t0) * 1000),
         )
 

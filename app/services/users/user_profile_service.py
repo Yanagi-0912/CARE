@@ -53,8 +53,12 @@ class UserProfileService:
     ) -> dict:
         changed_fields = update.model_dump(exclude_unset=True, exclude_none=True)
         if changed_fields:
-            await self._repo.update_user_settings(line_id, changed_fields)
-            if "language" in changed_fields and self._rich_menu_service is not None:
+            updated = await self._repo.update_user_settings(line_id, changed_fields)
+            if (
+                updated
+                and "language" in changed_fields
+                and self._rich_menu_service is not None
+            ):
                 try:
                     self._rich_menu_service.link_user_menu(
                         line_id, changed_fields["language"]

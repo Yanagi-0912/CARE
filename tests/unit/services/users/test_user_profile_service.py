@@ -189,6 +189,20 @@ async def test_update_user_settings_non_language_change_does_not_link_rich_menu(
 
 
 @pytest.mark.asyncio
+async def test_update_user_settings_skips_link_when_repo_update_fails():
+    rich_menu_service = MagicMock()
+    service, repo = _build_service(
+        get_user_profile_return={"line_id": "U123", "settings": {"language": "zh-TW"}},
+        update_user_settings_return=False,
+        rich_menu_service=rich_menu_service,
+    )
+
+    await service.update_user_settings("U123", UserSettingsUpdate(language="en"))
+
+    rich_menu_service.link_user_menu.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_update_voice_reply_enabled_calls_repo_once():
     service, repo = _build_service()
     repo.update_voice_reply_enabled.return_value = True

@@ -5,9 +5,9 @@
 
 ## 2. Rich menu ID config + service
 
-- [ ] 2.1 `config`／`.env.example`：`RICH_MENU_IDS_JSON`；loader 讀 env 或 `resources/rich_menu_ids.json`
-- [ ] 2.2 新增 `RichMenuService`（resolve + link）；DI 於 `dependencies.py`
-- [ ] 2.3 單元測試：resolve／link 成功與缺 ID（DI mock，不用 monkey patch）
+- [x] 2.1 `config`／`.env.example`：`RICH_MENU_IDS_JSON`；loader 讀 env 或 `resources/rich_menu_ids.json`
+- [x] 2.2 新增 `RichMenuService`（resolve + link）；DI 於 `dependencies.py`
+- [x] 2.3 單元測試：resolve／link 成功與缺 ID（DI mock，不用 monkey patch）
 
 ## 3. Settings hook
 

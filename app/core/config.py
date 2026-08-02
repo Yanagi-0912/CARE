@@ -34,6 +34,9 @@ class Settings:
     LIFF_URL: str = os.getenv("LIFF_URL", "")
     LIFF_ID: str = os.getenv("LIFF_ID", "")
 
+    # Rich Menu 語系→ID 對照（JSON 字串；未設則讀 resources/rich_menu_ids.json）
+    RICH_MENU_IDS_JSON: str = os.getenv("RICH_MENU_IDS_JSON", "")
+
     # App Auth JWT 配置（LIFF 登入後由後端簽發）
     AUTH_JWT_SECRET: str = os.getenv("AUTH_JWT_SECRET", "dev-only-change-me")
     AUTH_JWT_ALGORITHM: str = os.getenv("AUTH_JWT_ALGORITHM", "HS256")

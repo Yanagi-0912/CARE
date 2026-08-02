@@ -32,6 +32,7 @@ from app.services.line_messaging.handler.message_handler import LineMessageHandl
 from app.services.line_messaging.loading_animation import LineLoadingAnimationService
 from app.services.line_messaging.reply.reply import LineReplier
 from app.services.line_messaging.reply.tts_service import TTSService
+from app.services.line_messaging.rich_menu_service import RichMenuService
 from app.services.line_messaging.token_manager import LineTokenManager
 from app.services.medical.medical_service import MedicalService, medical_service
 from app.services.line_messaging.handler.facility_detail_handler import LineFacilityDetailHandler
@@ -130,6 +131,10 @@ _line_token_manager = LineTokenManager(
 )
 
 _line_loading_animation_service = LineLoadingAnimationService(_line_token_manager)
+
+_rich_menu_service = RichMenuService(
+    get_access_token=_line_token_manager.get_token,
+)
 
 _user_profile_repository = UserProfileRepository()
 _user_profile_service = UserProfileService(repo=_user_profile_repository)
@@ -240,6 +245,10 @@ def get_chat_history_repository():
 
 def get_line_token_manager() -> LineTokenManager:
     return _line_token_manager
+
+
+def get_rich_menu_service() -> RichMenuService:
+    return _rich_menu_service
 
 
 def get_medical_service() -> MedicalService:

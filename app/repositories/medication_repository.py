@@ -13,6 +13,23 @@ def _today_date_str() -> str:
     return datetime.now(TAIPEI_TZ).strftime("%Y-%m-%d")
 
 
+def _active_date_window(date_str: str) -> List[dict]:
+    """
+    日期區間條件：start_date <= date_str <= end_date。
+    欄位不存在、或 end_date 為 null（長期提醒）皆視為不限。
+    """
+    return [
+        {"$or": [{"start_date": {"$exists": False}}, {"start_date": {"$lte": date_str}}]},
+        {
+            "$or": [
+                {"end_date": None},
+                {"end_date": {"$exists": False}},
+                {"end_date": {"$gte": date_str}},
+            ]
+        },
+    ]
+
+
 class MedicationReminderRepository:
     """
     用藥提醒 (medication_reminders) 資料庫操作
@@ -60,28 +77,6 @@ class MedicationReminderRepository:
         return reminders
 
     @staticmethod
-    async def list_active_reminders_by_time(
-        scheduled_time: str, target_date_str: Optional[str] = None
-    ) -> List[MedicationReminder]:
-        col = MongoDBManager.get_medication_reminders_collection()
-        date_str = target_date_str or _today_date_str()
-        query = {
-            "scheduled_time": scheduled_time,
-            "enabled": True,
-            "$and": [
-                {"$or": [{"start_date": {"$exists": False}}, {"start_date": {"$lte": date_str}}]},
-                {"$or": [{"end_date": None}, {"end_date": {"$exists": False}}, {"end_date": {"$gte": date_str}}]},
-            ],
-        }
-        cursor = col.find(query)
-        docs = await cursor.to_list(length=None)
-        reminders = []
-        for doc in docs:
-            doc["_id"] = str(doc["_id"])
-            reminders.append(MedicationReminder(**doc))
-        return reminders
-
-    @staticmethod
     async def list_active_reminders_up_to_time(
         max_scheduled_time: str, target_date_str: Optional[str] = None
     ) -> List[MedicationReminder]:
@@ -93,10 +88,7 @@ class MedicationReminderRepository:
         query = {
             "scheduled_time": {"$lte": max_scheduled_time},
             "enabled": True,
-            "$and": [
-                {"$or": [{"start_date": {"$exists": False}}, {"start_date": {"$lte": date_str}}]},
-                {"$or": [{"end_date": None}, {"end_date": {"$exists": False}}, {"end_date": {"$gte": date_str}}]},
-            ],
+            "$and": _active_date_window(date_str),
         }
         cursor = col.find(query)
         docs = await cursor.to_list(length=None)

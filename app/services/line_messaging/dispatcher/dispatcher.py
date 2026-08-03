@@ -20,6 +20,7 @@ from app.core.request_context import (
 from app.core.user_language import DEFAULT_USER_LANGUAGE, normalize_user_language
 from app.core.request_logging import log_done, log_start
 from app.i18n.messages import t
+from app.models.medication import to_taipei_hm
 from app.services.line_messaging.flex.medication_flex import build_patient_medication_flex
 from app.services.line_messaging.handler.message_handler import (
     LineMessageHandler,
@@ -163,10 +164,8 @@ class LineEventDispatcher:
 
             if self._medication_service:
                 log = await self._medication_service.confirm_medication(log_id, user_id)
-                taken_time_str = log.taken_at.strftime("%H:%M") if log.taken_at else ""
-                scheduled_time_str = (
-                    log.scheduled_at.strftime("%H:%M") if log.scheduled_at else "08:00"
-                )
+                taken_time_str = to_taipei_hm(log.taken_at)
+                scheduled_time_str = to_taipei_hm(log.scheduled_at, default="08:00")
 
                 disabled_flex = build_patient_medication_flex(
                     log_id=log_id,

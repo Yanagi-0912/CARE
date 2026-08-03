@@ -1,10 +1,15 @@
 import asyncio
 import logging
 from contextlib import suppress
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional
 
-from app.models.medication import TAIPEI_TZ, MedicationLog
+from app.models.medication import (
+    TAIPEI_TZ,
+    MedicationLog,
+    ensure_aware_utc,
+    to_taipei_hm,
+)
 from app.repositories.medication_repository import (
     MedicationLogRepository,
     MedicationReminderRepository,
@@ -82,6 +87,12 @@ class MedicationScheduler:
                 ).replace(tzinfo=current_time.tzinfo)
                 timeout_dt = scheduled_dt + timedelta(minutes=30)
 
+                # 不為「提醒建立之前」的時段補建 log。
+                # 否則 20:00 新增一筆早上 08:00 的提醒，會在同一個 tick 內連續
+                # 觸發首刷提醒、T+20 催促、以及 T+30 家屬逾時警報（全是假的）。
+                if scheduled_dt < ensure_aware_utc(reminder.created_at):
+                    continue
+
                 log_data = MedicationLog(
                     reminder_id=reminder.id,
                     user_id=reminder.user_id,
@@ -106,7 +117,7 @@ class MedicationScheduler:
         )
         for log in pending_initial_logs:
             try:
-                scheduled_hm = log.scheduled_at.strftime("%H:%M") if log.scheduled_at else "08:00"
+                scheduled_hm = to_taipei_hm(log.scheduled_at, default="08:00")
                 flex_msg = build_patient_medication_flex(
                     log_id=log.id,
                     slot_type=log.slot_type,
@@ -132,7 +143,7 @@ class MedicationScheduler:
         )
         for log in pending_urgent_logs:
             try:
-                scheduled_hm = log.scheduled_at.strftime("%H:%M") if log.scheduled_at else "08:00"
+                scheduled_hm = to_taipei_hm(log.scheduled_at, default="08:00")
                 urgent_flex = build_patient_urgent_reminder_flex(
                     log_id=log.id,
                     slot_type=log.slot_type,
@@ -163,7 +174,7 @@ class MedicationScheduler:
                     except Exception:
                         pass
 
-                scheduled_hm = log.scheduled_at.strftime("%H:%M") if log.scheduled_at else "08:00"
+                scheduled_hm = to_taipei_hm(log.scheduled_at, default="08:00")
                 alert_flex = build_caregiver_alert_flex(
                     patient_name=patient_name,
                     slot_type=log.slot_type,

@@ -67,6 +67,7 @@ def build_rich_menu_areas(liff_url: str, language: str | None = "zh-TW") -> list
     voice_display = VOICE_DISPLAY_TEXT[lang]
 
     home = liff_uri(liff_url, "/")
+    medications = liff_uri(liff_url, "/medications")
     family = liff_uri(liff_url, "/family")
     settings = liff_uri(liff_url, "/settings")
 
@@ -77,7 +78,7 @@ def build_rich_menu_areas(liff_url: str, language: str | None = "zh-TW") -> list
         },
         {
             "bounds": {"x": CELL_W, "y": 0, "width": CELL_W, "height": CELL_H},
-            "action": {"type": "uri", "label": meds_label, "uri": family},
+            "action": {"type": "uri", "label": meds_label, "uri": medications},
         },
         {
             "bounds": {"x": CELL_W * 2, "y": 0, "width": CELL_W, "height": CELL_H},

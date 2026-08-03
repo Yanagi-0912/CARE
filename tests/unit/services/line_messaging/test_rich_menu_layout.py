@@ -44,7 +44,7 @@ def test_build_rich_menu_areas_six_cells_and_actions():
         "label": "家庭中心",
         "uri": "https://liff.line.me/abc/",
     }
-    assert areas[1]["action"]["uri"] == "https://liff.line.me/abc/family"
+    assert areas[1]["action"]["uri"] == "https://liff.line.me/abc/medications"
     assert areas[2]["action"]["type"] == "location"
     assert areas[3]["action"]["uri"] == "https://liff.line.me/abc/family"
     assert areas[4]["action"] == {

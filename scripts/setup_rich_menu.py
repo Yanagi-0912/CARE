@@ -83,6 +83,70 @@ def upload_image(access_token: str, rich_menu_id: str, image_path: str, language
     print(f"SUCCESS: {language} 圖片上傳完成")
 
 
+def read_existing_menu_ids() -> dict[str, str]:
+    """讀取上一次寫入的 Rich Menu ID，供建立完成後清理舊選單使用。"""
+    if not os.path.exists(RICH_MENU_IDS_PATH):
+        return {}
+    try:
+        with open(RICH_MENU_IDS_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"WARNING: 無法讀取 {RICH_MENU_IDS_PATH}（{exc}），略過舊選單清理")
+        return {}
+    if not isinstance(data, dict):
+        print(f"WARNING: {RICH_MENU_IDS_PATH} 內容不是物件，略過舊選單清理")
+        return {}
+    return {str(lang): str(menu_id) for lang, menu_id in data.items() if menu_id}
+
+
+def stale_menu_ids(old_ids: dict[str, str], new_ids: dict[str, str]) -> list[str]:
+    """算出該刪除的舊 Rich Menu ID（去重、排除本次新建的、排序以求輸出穩定）。"""
+    new_id_set = set(new_ids.values())
+    return sorted({menu_id for menu_id in old_ids.values() if menu_id not in new_id_set})
+
+
+def delete_rich_menu(access_token: str, rich_menu_id: str) -> bool:
+    """刪除單一 Rich Menu。回傳 True 表示 LINE 上已無此選單（含原本就不存在）。"""
+    response = requests.delete(
+        f"https://api.line.me/v2/bot/richmenu/{rich_menu_id}",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    if response.status_code == 200:
+        print(f"  已刪除 {rich_menu_id}")
+        return True
+    if response.status_code == 404:
+        print(f"  {rich_menu_id} 已不存在，略過")
+        return True
+    print(f"  FAILED: {rich_menu_id} 刪除失敗 (HTTP {response.status_code}) {response.text}")
+    return False
+
+
+def cleanup_old_rich_menus(
+    access_token: str, old_ids: dict[str, str], new_ids: dict[str, str]
+) -> None:
+    """
+    刪除上一輪留下的 Rich Menu。
+
+    刻意安排在新選單建立並設為預設之後才執行：若前面任何一步失敗，
+    腳本已經 exit，舊選單仍完好地服務中，不會出現沒有選單可用的空窗。
+    清理失敗只警示不中斷 —— 此時新選單已經正常上線。
+    """
+    stale = stale_menu_ids(old_ids, new_ids)
+    if not stale:
+        print("沒有需要清理的舊 Rich Menu")
+        return
+
+    leftovers = [
+        menu_id for menu_id in stale if not delete_rich_menu(access_token, menu_id)
+    ]
+    if leftovers:
+        print("WARNING: 下列舊 Rich Menu 未能刪除，請至 LINE Developers 手動確認：")
+        for menu_id in leftovers:
+            print(f"  {menu_id}")
+    else:
+        print(f"SUCCESS: 已清理 {len(stale)} 個舊 Rich Menu")
+
+
 def write_menu_ids(menu_ids: dict[str, str]) -> None:
     os.makedirs(os.path.dirname(RICH_MENU_IDS_PATH), exist_ok=True)
     with open(RICH_MENU_IDS_PATH, "w", encoding="utf-8") as f:
@@ -115,6 +179,9 @@ def main() -> None:
 
     image_paths = validate_images()
 
+    # 必須在 write_menu_ids 覆寫檔案之前讀取
+    old_menu_ids = read_existing_menu_ids()
+
     print("正在取得 LINE Access Token...")
     token_manager = LineTokenManager(channel_id, channel_secret)
     access_token = token_manager.get_token()
@@ -138,8 +205,11 @@ def main() -> None:
     write_menu_ids(menu_ids)
 
     default_id = menu_ids[DEFAULT_RICH_MENU_LANGUAGE]
-    print(f"\n[{total + 1}/{total + 1}] 設定預設 Rich Menu ({DEFAULT_RICH_MENU_LANGUAGE})...")
+    print(f"\n[{total + 1}/{total + 2}] 設定預設 Rich Menu ({DEFAULT_RICH_MENU_LANGUAGE})...")
     set_default_rich_menu(access_token, default_id)
+
+    print(f"\n[{total + 2}/{total + 2}] 清理舊 Rich Menu...")
+    cleanup_old_rich_menus(access_token, old_menu_ids, menu_ids)
 
     ids_json = json.dumps(menu_ids, ensure_ascii=False, indent=2)
     print("\n--- rich_menu_ids.json ---")

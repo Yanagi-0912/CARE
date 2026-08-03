@@ -53,13 +53,17 @@ async def test_process_ticks_t0_initial_reminder(scheduler, mock_replier):
     )
 
     with patch(
-        "app.services.medication.medication_scheduler.MedicationReminderRepository.list_active_reminders_by_time",
+        "app.services.medication.medication_scheduler.MedicationReminderRepository.list_active_reminders_up_to_time",
         new_callable=AsyncMock,
         return_value=[fake_reminder],
     ), patch(
         "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
         new_callable=AsyncMock,
         return_value=fake_log,
+    ), patch(
+        "app.services.medication.medication_scheduler.MedicationLogRepository.list_pending_patient_reminders",
+        new_callable=AsyncMock,
+        return_value=[fake_log],
     ), patch(
         "app.services.medication.medication_scheduler.MedicationLogRepository.mark_patient_reminder_sent",
         new_callable=AsyncMock,
@@ -100,7 +104,11 @@ async def test_process_ticks_t20_urgent_reminder(scheduler, mock_replier):
     )
 
     with patch(
-        "app.services.medication.medication_scheduler.MedicationReminderRepository.list_active_reminders_by_time",
+        "app.services.medication.medication_scheduler.MedicationReminderRepository.list_active_reminders_up_to_time",
+        new_callable=AsyncMock,
+        return_value=[],
+    ), patch(
+        "app.services.medication.medication_scheduler.MedicationLogRepository.list_pending_patient_reminders",
         new_callable=AsyncMock,
         return_value=[],
     ), patch(
@@ -144,7 +152,11 @@ async def test_process_ticks_t30_caregiver_alert(scheduler, mock_replier):
     )
 
     with patch(
-        "app.services.medication.medication_scheduler.MedicationReminderRepository.list_active_reminders_by_time",
+        "app.services.medication.medication_scheduler.MedicationReminderRepository.list_active_reminders_up_to_time",
+        new_callable=AsyncMock,
+        return_value=[],
+    ), patch(
+        "app.services.medication.medication_scheduler.MedicationLogRepository.list_pending_patient_reminders",
         new_callable=AsyncMock,
         return_value=[],
     ), patch(
@@ -166,3 +178,4 @@ async def test_process_ticks_t30_caregiver_alert(scheduler, mock_replier):
         call_args = mock_replier.push_flex.call_args[0]
         assert call_args[0] == "U_CARE"  # Sent to caregiver
         mock_mark.assert_awaited_once_with("LOG_1")
+

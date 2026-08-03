@@ -1,6 +1,9 @@
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import List, Literal, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 
 MedicationSlotType = Literal["morning", "noon", "evening", "bedtime"]
 MedicationLogStatus = Literal["pending", "taken", "missed"]
@@ -21,10 +24,7 @@ SLOT_DISPLAY_NAMES: dict[str, str] = {
 
 
 def _today_date_str() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
-
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+    return datetime.now(TAIPEI_TZ).strftime("%Y-%m-%d")
 
 
 class MedicationReminder(BaseModel):
@@ -53,7 +53,6 @@ class MedicationLog(BaseModel):
 
     id: Optional[str] = Field(default=None, alias="_id")
 
-
     reminder_id: str
     user_id: str                           # 服用藥物的使用者 LINE userId
     alert_notify_user_id: str              # 逾時未用藥通報對象 (家屬) LINE userId
@@ -68,10 +67,10 @@ class MedicationLog(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-
 class CreateMedicationReminderRequest(BaseModel):
     user_id: str                           # 服用藥物的使用者 LINE userId
     slots: List[MedicationSlotType]
+    slot_times: Optional[dict[str, str]] = None # 各時段的自訂提醒時間（例如 {"morning": "08:30"}）
     start_date: Optional[str] = None
     end_date: Optional[str] = None
 
@@ -81,6 +80,7 @@ class UpdateMedicationReminderRequest(BaseModel):
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     enabled: Optional[bool] = None
+
 
 
 class MedicationReminderResponse(BaseModel):

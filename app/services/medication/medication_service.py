@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from app.models.family_tree import FamilyTree
 from app.models.medication import (
     DEFAULT_SLOT_TIMES,
+    TAIPEI_TZ,
     CreateMedicationReminderRequest,
     MedicationLog,
     MedicationReminder,
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def _today_date_str() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return datetime.now(TAIPEI_TZ).strftime("%Y-%m-%d")
 
 
 class MedicationService:
@@ -47,7 +48,11 @@ class MedicationService:
         created_reminders: List[MedicationReminder] = []
 
         for slot in request.slots:
-            scheduled_time = DEFAULT_SLOT_TIMES.get(slot, "08:00")
+            scheduled_time = (
+                request.slot_times.get(slot)
+                if request.slot_times and slot in request.slot_times
+                else DEFAULT_SLOT_TIMES.get(slot, "08:00")
+            )
             reminder = MedicationReminder(
                 creator_user_id=creator_user_id,
                 user_id=target_user_id,
@@ -65,8 +70,14 @@ class MedicationService:
         )
         return created_reminders
 
-    async def get_user_reminders(self, user_id: str) -> List[MedicationReminder]:
+    async def get_user_reminders(
+        self, user_id: str, requester_user_id: Optional[str] = None
+    ) -> List[MedicationReminder]:
         """取得特定使用者的所有用藥提醒"""
+        if requester_user_id and requester_user_id != user_id:
+            tree = await FamilyTreeRepository.get_by_user_id(requester_user_id)
+            if not tree or not any(m.user_id == user_id for m in tree.family_members):
+                raise HTTPException(status_code=400, detail="對象必須是您的家庭成員")
         return await MedicationReminderRepository.list_reminders_by_user(user_id)
 
     async def get_creator_reminders(self, creator_user_id: str) -> List[MedicationReminder]:
@@ -112,5 +123,6 @@ class MedicationService:
 
         updated_log = await MedicationLogRepository.mark_as_taken(log_id)
         if not updated_log:
-            raise HTTPException(status_code=500, detail="更新用藥狀態失敗")
+            raise HTTPException(status_code=400, detail="更新用藥狀態失敗或該紀錄已完成")
         return updated_log
+

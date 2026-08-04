@@ -21,6 +21,7 @@ from app.repositories.knowledge_report_repository import KnowledgeReportReposito
 from app.services.consultation.scheduler import (
     start_consultation_daily_summary_scheduler,
 )
+from app.services.rag.user_document_store import ensure_user_docs_indexes_on_startup
 
 from app.routers.users.family_tree import router as family_tree_router
 from app.routers.users.knowledge_reports import router as knowledge_reports_router
@@ -37,6 +38,7 @@ async def lifespan(app: FastAPI):
     # 先確認 MongoDB 摘要 collection 有 TTL index，讓摘要只保留 7 天。
     await ConsultationRepository.ensure_indexes()
     await KnowledgeReportRepository.ensure_indexes()
+    await ensure_user_docs_indexes_on_startup()
 
     # 啟動每日諮詢摘要排程
     scheduler = start_consultation_daily_summary_scheduler(

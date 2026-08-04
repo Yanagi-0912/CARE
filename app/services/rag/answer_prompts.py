@@ -45,6 +45,26 @@ def build_rag_prompt(language: str | None = None) -> ChatPromptTemplate:
     )
 
 
+def build_user_document_prompt(language: str | None = None) -> ChatPromptTemplate:
+    lang_name = language_name(language)
+    return ChatPromptTemplate.from_messages(
+        [
+            (
+                "human",
+                "請根據以下使用者上傳的文件內容回答問題。\n\n"
+                "規則：\n"
+                f"0. 你必須使用{lang_name}撰寫整段回答。\n"
+                "1. 請在回答中適當引用內容來源的編號，例如：『...如上傳文件所述 [1]。』\n"
+                "2. 請使用一般純文字，不要使用 Markdown 格式符號。\n"
+                "3. 若內容不足，請明確說明不知道，勿捏造。\n\n"
+                "使用者問題：{question}\n\n"
+                "上傳文件內容：\n"
+                "{context}",
+            )
+        ]
+    )
+
+
 def build_web_prompt(language: str | None = None) -> ChatPromptTemplate:
     lang_name = language_name(language)
     return ChatPromptTemplate.from_messages(

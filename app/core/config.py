@@ -53,6 +53,13 @@ class Settings:
     # Atlas Search index（BM25 用；與 MONGODB_VECTOR_INDEX 是兩個不同的索引）
     MONGODB_TEXT_INDEX: str = os.getenv("MONGODB_TEXT_INDEX", "")
 
+    # 使用者上傳文件暫存向量庫（與官方 MONGODB_COLLECTION 分離）
+    MONGODB_USER_DOCS_COLLECTION: str = os.getenv("MONGODB_USER_DOCS_COLLECTION", "")
+    MONGODB_USER_DOCS_VECTOR_INDEX: str = os.getenv(
+        "MONGODB_USER_DOCS_VECTOR_INDEX", ""
+    )
+    USER_DOCS_TTL_SECONDS: int = int(os.getenv("USER_DOCS_TTL_SECONDS", "86400"))
+
     # Consultation / Redis 配置
     REDIS_URL: str = os.getenv("REDIS_URL", "")
 

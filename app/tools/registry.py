@@ -5,6 +5,7 @@ from app.tools.medical_tools import (
     request_location_quick_reply,
 )
 from app.tools.rag_tools import get_rag_answer
+from app.tools.user_document_tools import answer_from_uploaded_document
 
 
 def get_all_tools(include_rag_tool: bool = True) -> list:
@@ -16,6 +17,6 @@ def get_all_tools(include_rag_tool: bool = True) -> list:
         submit_knowledge_report,
     ]
     if include_rag_tool:
-        tools.append(get_rag_answer)
+        tools.extend([get_rag_answer, answer_from_uploaded_document])
 
     return tools

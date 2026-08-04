@@ -47,6 +47,9 @@ from app.services.rag import (
 from app.services.rag.cohere_reranker import CohereReranker, VectorScoreReranker
 from app.services.rag.firecrawl_client import FirecrawlClient
 from app.services.rag.ingest_service import IngestService
+from app.services.rag.user_document_answer_service import UserDocumentAnswerService
+from app.services.rag.user_document_ingest_service import UserDocumentIngestService
+from app.services.rag.user_document_retriever import UserDocumentVectorRetriever
 from app.services.rag.query_rewriter import GeminiQueryRewriter
 from app.services.rag.retrieval_grader import GeminiRetrievalGrader
 from app.services.rag.web_search_service import WebSearchService
@@ -54,6 +57,7 @@ from app.services.users.user_profile_service import UserProfileService
 from app.tools.knowledge_report_tools import configure_knowledge_report_tool
 from app.tools.medical_tools import configure_medical_tools
 from app.tools.rag_tools import configure_rag_tool
+from app.tools.user_document_tools import configure_user_document_tool
 from app.tools.web_tools import configure_web_tool
 
 MongoDBManager.configure(settings.MONGODB_URI)
@@ -193,6 +197,47 @@ if _firecrawl_client is not None and settings.MONGODB_URI and settings.MONGODB_C
         ),
     )
 
+_user_document_ingest_service: UserDocumentIngestService | None = None
+_user_document_answer_service: UserDocumentAnswerService | None = None
+if (
+    settings.MONGODB_URI
+    and settings.MONGODB_DB
+    and settings.MONGODB_USER_DOCS_COLLECTION
+):
+    _user_document_ingest_service = UserDocumentIngestService(
+        embeddings=_ingest_embeddings,
+        collection=MongoDBManager.get_database()[settings.MONGODB_USER_DOCS_COLLECTION],
+        text_field=settings.MONGODB_TEXT_FIELD,
+        vector_field=settings.MONGODB_VECTOR_FIELD,
+        vector_dim=(
+            settings.MONGODB_VECTOR_DIM if settings.MONGODB_VECTOR_DIM > 0 else None
+        ),
+        ttl_seconds=settings.USER_DOCS_TTL_SECONDS,
+    )
+
+if (
+    settings.MONGODB_URI
+    and settings.MONGODB_DB
+    and settings.MONGODB_USER_DOCS_COLLECTION
+    and settings.MONGODB_USER_DOCS_VECTOR_INDEX
+):
+    _user_document_retriever = UserDocumentVectorRetriever(
+        embeddings=_query_embeddings,
+        mongo_uri=settings.MONGODB_URI,
+        db_name=settings.MONGODB_DB,
+        collection_name=settings.MONGODB_USER_DOCS_COLLECTION,
+        index_name=settings.MONGODB_USER_DOCS_VECTOR_INDEX,
+        vector_field=settings.MONGODB_VECTOR_FIELD,
+        text_field=settings.MONGODB_TEXT_FIELD,
+        vector_dim=settings.MONGODB_VECTOR_DIM if settings.MONGODB_VECTOR_DIM > 0 else None,
+    )
+    _user_document_answer_service = UserDocumentAnswerService(
+        gemini_service=_gemini_service,
+        retriever=_user_document_retriever,
+    )
+
+configure_user_document_tool(_user_document_answer_service)
+
 _knowledge_report_repository = KnowledgeReportRepository()
 _knowledge_report_service = KnowledgeReportService(
     repository=_knowledge_report_repository,
@@ -246,6 +291,7 @@ _media_handler = LineMediaHandler(
     user_profile_service=_user_profile_service,
     replier=_line_replier,
     loading_animation_service=_line_loading_animation_service,
+    user_document_ingest_service=_user_document_ingest_service,
 )
 _location_handler = LineLocationHandler(
     agent=_care_agent,
@@ -395,6 +441,16 @@ def get_jwt_service() -> AppJwtService:
 
 def get_knowledge_report_service() -> KnowledgeReportService:
     return _knowledge_report_service
+
+
+def get_user_document_ingest_service() -> UserDocumentIngestService | None:
+    """取得使用者上傳文件 ingest 服務；未設定 collection 時回傳 None。"""
+    return _user_document_ingest_service
+
+
+def get_user_document_answer_service() -> UserDocumentAnswerService | None:
+    """取得使用者上傳文件問答服務；未設定 vector index 時回傳 None。"""
+    return _user_document_answer_service
 
 
 @dataclass

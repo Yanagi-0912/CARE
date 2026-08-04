@@ -19,6 +19,24 @@ def _already_ran_rag(messages) -> bool:
     )
 
 
+def _already_ran_upload_document(messages) -> bool:
+    return any(
+        isinstance(m, ToolMessage) and m.name == "answer_from_uploaded_document"
+        for m in messages
+    )
+
+
+_UPLOADED_DOCUMENT_RE = re.compile(
+    r"上傳|剛傳|這份(?:PDF|檔|文件|報告)|我傳的|文件裡|PDF裡|報告裡",
+    re.IGNORECASE,
+)
+
+
+def _is_uploaded_document_question(text: str) -> bool:
+    """使用者追問已上傳文件內容；勿與一般衛教問題混淆。"""
+    return bool(text and _UPLOADED_DOCUMENT_RE.search(text))
+
+
 _LOCATION_TOOL_NAMES = frozenset(
     {
         "request_location_quick_reply",
@@ -166,6 +184,7 @@ class AgentNodes:
         response = await llm_with_tools.ainvoke(messages)
         tool_calls = getattr(response, "tool_calls", None) or []
         force_rag = False
+        force_upload = False
         force_location = False
         force_nearby = False
         user_text = _latest_human_text(state["messages"])
@@ -215,6 +234,26 @@ class AgentNodes:
             called = ["request_location_quick_reply"]
             force_location = True
         elif (
+            not tool_calls
+            and _is_uploaded_document_question(user_text)
+            and "answer_from_uploaded_document" in tool_names
+            and not _already_ran_upload_document(state["messages"])
+        ):
+            response = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "answer_from_uploaded_document",
+                        "args": {"query": user_text},
+                        "id": "forced_upload_1",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+            tool_calls = response.tool_calls
+            called = ["answer_from_uploaded_document"]
+            force_upload = True
+        elif (
             state.get("allow_rag")
             and "get_rag_answer" in tool_names
             and not tool_calls
@@ -223,6 +262,7 @@ class AgentNodes:
             and not _is_nearby_facility_intent(user_text)
             and not _is_named_facility_lookup(user_text)
             and not _is_media_extracted_content(user_text)
+            and not _is_uploaded_document_question(user_text)
         ):
             response = AIMessage(
                 content="",
@@ -247,6 +287,7 @@ class AgentNodes:
             tools=tool_names,
             call=called or None,
             force_rag=force_rag or None,
+            force_upload=force_upload or None,
             force_location=force_location or None,
             force_nearby=force_nearby or None,
             ms=int((time.perf_counter() - t0) * 1000),

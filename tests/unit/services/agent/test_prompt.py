@@ -4,6 +4,7 @@ from app.services.agent.prompt import SYSTEM_PROMPT, build_system_prompt
 
 def test_system_prompt_requires_rag_for_health_and_medical_fraud():
     assert "get_rag_answer" in SYSTEM_PROMPT
+    assert "answer_from_uploaded_document" in SYSTEM_PROMPT
     assert "詐騙" in SYSTEM_PROMPT or "識詐" in SYSTEM_PROMPT
     assert "165" in SYSTEM_PROMPT
     assert "必須" in SYSTEM_PROMPT and "get_rag_answer" in SYSTEM_PROMPT
@@ -19,6 +20,8 @@ def test_system_prompt_bans_markdown_and_routes_tools():
     assert "我有孕痛" in SYSTEM_PROMPT
     assert "附近有哪些醫院" in SYSTEM_PROMPT
     assert "禁止呼叫 `get_rag_answer`" in SYSTEM_PROMPT or "禁止 `get_rag_answer`" in SYSTEM_PROMPT
+    assert "answer_from_uploaded_document" in SYSTEM_PROMPT
+    assert "我剛上傳的報告" in SYSTEM_PROMPT
     assert "[RAG_ERR:" in SYSTEM_PROMPT
     assert "WEB_EMPTY" in SYSTEM_PROMPT
 

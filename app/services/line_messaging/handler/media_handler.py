@@ -24,6 +24,24 @@ AUDIO_FILE_EXTENSIONS = {".mp3", ".wav", ".m4a", ".flac", ".ogg", ".opus", ".aac
 class LineMediaHandler(BaseLineMessageHandler):
     """處理多媒體訊息事件（圖片、影片、語音、檔案）。"""
 
+    def __init__(
+        self,
+        agent,
+        history_service,
+        user_profile_service,
+        replier,
+        loading_animation_service=None,
+        user_document_ingest_service=None,
+    ):
+        super().__init__(
+            agent,
+            history_service,
+            user_profile_service,
+            replier,
+            loading_animation_service,
+        )
+        self._user_document_ingest_service = user_document_ingest_service
+
     async def handle(self, event: MessageEvent) -> None:
         message = event.message
         if not isinstance(
@@ -80,5 +98,24 @@ class LineMediaHandler(BaseLineMessageHandler):
             raise LineValidationError(
                 f"無法從您傳送的{media_type}中辨識出任何文字，請確認內容清晰並重新傳送。"
             )
+
+        if (
+            media_type == "file"
+            and user_id
+            and self._user_document_ingest_service is not None
+        ):
+            try:
+                await self._user_document_ingest_service.ingest_text(
+                    user_id,
+                    media_content,
+                    source_name=file_name or "upload",
+                    media_type=media_type,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to ingest user document for user_id=%s source=%s",
+                    user_id,
+                    file_name or "upload",
+                )
 
         return f"以下為使用者傳送的{media_type}媒體內容：\n{media_content}", media_type

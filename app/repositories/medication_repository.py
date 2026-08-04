@@ -4,13 +4,30 @@ from typing import List, Optional
 from bson import ObjectId
 
 from app.db.mongodb import MongoDBManager
-from app.models.medication import MedicationLog, MedicationReminder
+from app.models.medication import TAIPEI_TZ, MedicationLog, MedicationReminder
 
 logger = logging.getLogger(__name__)
 
 
 def _today_date_str() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return datetime.now(TAIPEI_TZ).strftime("%Y-%m-%d")
+
+
+def _active_date_window(date_str: str) -> List[dict]:
+    """
+    日期區間條件：start_date <= date_str <= end_date。
+    欄位不存在、或 end_date 為 null（長期提醒）皆視為不限。
+    """
+    return [
+        {"$or": [{"start_date": {"$exists": False}}, {"start_date": {"$lte": date_str}}]},
+        {
+            "$or": [
+                {"end_date": None},
+                {"end_date": {"$exists": False}},
+                {"end_date": {"$gte": date_str}},
+            ]
+        },
+    ]
 
 
 class MedicationReminderRepository:
@@ -60,18 +77,18 @@ class MedicationReminderRepository:
         return reminders
 
     @staticmethod
-    async def list_active_reminders_by_time(
-        scheduled_time: str, target_date_str: Optional[str] = None
+    async def list_active_reminders_up_to_time(
+        max_scheduled_time: str, target_date_str: Optional[str] = None
     ) -> List[MedicationReminder]:
+        """
+        查詢當日已到達排程時間 (scheduled_time <= max_scheduled_time) 且為啟用狀態的提醒規則
+        """
         col = MongoDBManager.get_medication_reminders_collection()
         date_str = target_date_str or _today_date_str()
         query = {
-            "scheduled_time": scheduled_time,
+            "scheduled_time": {"$lte": max_scheduled_time},
             "enabled": True,
-            "$and": [
-                {"$or": [{"start_date": {"$exists": False}}, {"start_date": {"$lte": date_str}}]},
-                {"$or": [{"end_date": None}, {"end_date": {"$exists": False}}, {"end_date": {"$gte": date_str}}]},
-            ],
+            "$and": _active_date_window(date_str),
         }
         cursor = col.find(query)
         docs = await cursor.to_list(length=None)
@@ -141,14 +158,20 @@ class MedicationLogRepository:
 
     @staticmethod
     async def mark_as_taken(log_id: str, taken_at: Optional[datetime] = None) -> Optional[MedicationLog]:
-        """更新單一 Document 狀態為已服藥"""
+        """更新單一 Document 狀態為已服藥 (允許 pending 或 missed 狀態被標記為 taken)"""
         col = MongoDBManager.get_medication_logs_collection()
         now = taken_at or datetime.now(tz=timezone.utc)
-        await col.update_one(
-            {"_id": log_id, "status": "pending"},
+        result = await col.update_one(
+            {"_id": log_id, "status": {"$in": ["pending", "missed"]}},
             {"$set": {"status": "taken", "taken_at": now}},
         )
+        if result.matched_count == 0:
+            log = await MedicationLogRepository.get_log_by_id(log_id)
+            if log and log.status == "taken":
+                return log
+            return None
         return await MedicationLogRepository.get_log_by_id(log_id)
+
 
     @staticmethod
     async def mark_patient_reminder_sent(log_id: str) -> bool:

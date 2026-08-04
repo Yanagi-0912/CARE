@@ -71,7 +71,10 @@ async def test_create_report(mock_repo: MagicMock):
     assert report.reason == "outdated"
     assert report.question == "問題"
     assert report.user_note == "備註"
-    assert report.report_id.startswith("KR-20260802-")
+    # report_id 的日期來自 _generate_report_id 的 datetime.now(UTC)，
+    # 不是 _sample_report 的固定日期，所以要跟當下的 UTC 日期比對
+    today_utc = datetime.now(timezone.utc).strftime("%Y%m%d")
+    assert report.report_id.startswith(f"KR-{today_utc}-")
     assert len(report.report_id.split("-")[-1]) == 4
     mock_repo.insert.assert_awaited_once()
 

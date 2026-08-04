@@ -37,3 +37,8 @@ pydantic==2.12.5
 typing-extensions==4.15.0
 PyJWT==2.10.1
 redis==5.2.1
+# zoneinfo 需要 IANA 時區資料庫。Windows 沒有內建（實測 import 即失敗），
+# 精簡版 Linux 映像（python:*-slim）也不保證含 tzdata 套件。
+# 少了它，app/models/medication.py 的 ZoneInfo("Asia/Taipei") 會在 import
+# 期間直接拋 ZoneInfoNotFoundError，整個服務起不來。
+tzdata==2026.3

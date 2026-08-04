@@ -1,10 +1,19 @@
 from datetime import datetime, timezone
+
+import pytest
+from pydantic import ValidationError
+
 from app.models.family_tree import FamilyMember
 from app.models.medication import (
     DEFAULT_SLOT_TIMES,
     SLOT_DISPLAY_NAMES,
+    TAIPEI_TZ,
+    CreateMedicationReminderRequest,
     MedicationLog,
     MedicationReminder,
+    UpdateMedicationReminderRequest,
+    ensure_aware_utc,
+    to_taipei_hm,
 )
 
 
@@ -64,3 +73,83 @@ def test_medication_log_model_creation():
     assert log.taken_at is None
     assert log.patient_reminder_sent is False
     assert log.caregiver_alert_sent is False
+
+
+# ── 時區轉換 ────────────────────────────────────────────────────────
+
+
+def test_ensure_aware_utc_treats_naive_as_utc():
+    naive = datetime(2026, 7, 29, 0, 0)
+    assert ensure_aware_utc(naive).tzinfo == timezone.utc
+
+
+def test_ensure_aware_utc_keeps_existing_tzinfo():
+    aware = datetime(2026, 7, 29, 8, 0, tzinfo=TAIPEI_TZ)
+    assert ensure_aware_utc(aware) is aware
+
+
+def test_to_taipei_hm_converts_naive_utc_from_database():
+    """
+    Motor client 未啟用 tz_aware，pymongo 讀回來的是 naive UTC。
+    台北 08:00 的提醒在資料庫是 00:00Z，直接 strftime 會顯示 00:00。
+    """
+    from_db = datetime(2026, 7, 29, 0, 0)  # 台北 08:00 存進 Mongo 後讀回的樣子
+    assert to_taipei_hm(from_db) == "08:00"
+
+
+def test_to_taipei_hm_handles_aware_inputs():
+    assert to_taipei_hm(datetime(2026, 7, 29, 0, 0, tzinfo=timezone.utc)) == "08:00"
+    assert to_taipei_hm(datetime(2026, 7, 29, 8, 0, tzinfo=TAIPEI_TZ)) == "08:00"
+
+
+def test_to_taipei_hm_crosses_date_boundary():
+    # UTC 2026-07-28 17:30 = 台北 2026-07-29 01:30
+    assert to_taipei_hm(datetime(2026, 7, 28, 17, 30)) == "01:30"
+
+
+def test_to_taipei_hm_returns_default_for_none():
+    assert to_taipei_hm(None) == ""
+    assert to_taipei_hm(None, default="08:00") == "08:00"
+
+
+# ── slot_times 驗證 ─────────────────────────────────────────────────
+
+
+def test_create_request_accepts_valid_slot_times():
+    req = CreateMedicationReminderRequest(
+        user_id="U_SELF",
+        slots=["morning", "bedtime"],
+        slot_times={"morning": "07:30", "bedtime": "23:59"},
+    )
+    assert req.slot_times == {"morning": "07:30", "bedtime": "23:59"}
+
+
+@pytest.mark.parametrize("bad_time", ["9am", "7:30", "24:00", "08:60", "0730", "", "08:00:00"])
+def test_create_request_rejects_malformed_slot_time(bad_time):
+    """
+    格式錯誤若寫進資料庫，排程器的 strptime 會拋錯並被 except 吞掉 ——
+    該筆提醒永遠不會觸發，也不會有任何錯誤回饋。必須在入口擋掉。
+    """
+    with pytest.raises(ValidationError):
+        CreateMedicationReminderRequest(
+            user_id="U_SELF",
+            slots=["morning"],
+            slot_times={"morning": bad_time},
+        )
+
+
+def test_create_request_rejects_unknown_slot_key():
+    with pytest.raises(ValidationError):
+        CreateMedicationReminderRequest(
+            user_id="U_SELF",
+            slots=["morning"],
+            slot_times={"moring": "07:30"},  # typo，不擋會被無聲忽略
+        )
+
+
+def test_update_request_rejects_malformed_scheduled_time():
+    with pytest.raises(ValidationError):
+        UpdateMedicationReminderRequest(scheduled_time="8點")
+
+    assert UpdateMedicationReminderRequest(scheduled_time="08:05").scheduled_time == "08:05"
+    assert UpdateMedicationReminderRequest().scheduled_time is None

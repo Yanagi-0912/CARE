@@ -431,10 +431,10 @@ def test_diet_guide_pdf_text_is_not_nearby_facility_intent():
 
 
 @pytest.mark.asyncio
-async def test_diet_guide_pdf_forces_rag_not_location(
+async def test_diet_guide_pdf_does_not_force_rag_or_location(
     mock_llm_no_tool_calls, monkeypatch
 ):
-    """Regression：上傳飲食指南 PDF 應走 RAG，不應強制分享位置找醫院。"""
+    """Regression：上傳文件應依抽出全文直接回答，勿強制查 KB 或分享位置。"""
     monkeypatch.setattr(
         "app.services.agent.utils.nodes.get_all_tools",
         lambda include_rag_tool=False: _mock_tools(include_rag=include_rag_tool),
@@ -453,11 +453,9 @@ async def test_diet_guide_pdf_forces_rag_not_location(
         res = await nodes.agent_node(state)
 
     response = res["messages"][0]
-    assert response.tool_calls
-    assert len(response.tool_calls) == 1
-    assert response.tool_calls[0]["name"] == "get_rag_answer"
+    assert response.content == "腦補"
+    assert not response.tool_calls
 
     mock_log.assert_called_once()
-    assert mock_log.call_args[1]["force_rag"] is True
+    assert mock_log.call_args[1].get("force_rag") is None
     assert mock_log.call_args[1].get("force_location") is None
-    assert mock_log.call_args[1]["call"] == ["get_rag_answer"]

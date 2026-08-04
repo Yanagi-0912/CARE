@@ -222,6 +222,7 @@ class AgentNodes:
             and not _already_used_location_tools(state["messages"])
             and not _is_nearby_facility_intent(user_text)
             and not _is_named_facility_lookup(user_text)
+            and not _is_media_extracted_content(user_text)
         ):
             response = AIMessage(
                 content="",

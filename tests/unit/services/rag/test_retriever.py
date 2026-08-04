@@ -15,7 +15,11 @@ if "motor.motor_asyncio" not in sys.modules:
 
 from langchain_core.documents import Document
 
-from app.services.rag.retriever import MongoAtlasVectorRetriever
+from app.services.rag.retriever import (
+    HybridRetriever,
+    MongoAtlasTextRetriever,
+    MongoAtlasVectorRetriever,
+)
 
 
 def _make_retriever(**overrides):
@@ -120,6 +124,179 @@ async def test_retriever_filters_by_min_score():
     assert len(docs) == 1
     assert docs[0].page_content == "高血壓飲食"
     assert docs[0].metadata["score"] == 0.5
+
+
+# ── MongoAtlasTextRetriever（BM25）─────────────────────────────────
+
+
+def _make_text_retriever(**overrides):
+    kwargs = {
+        "mongo_uri": "mongodb://localhost",
+        "db_name": "db",
+        "collection_name": "coll",
+        "index_name": "text_idx",
+        "text_field": "chunk_text",
+        "k": 4,
+    }
+    kwargs.update(overrides)
+    return MongoAtlasTextRetriever(**kwargs)
+
+
+def _fake_collection(rows):
+    cursor = MagicMock()
+    cursor.to_list = AsyncMock(return_value=rows)
+    collection = MagicMock()
+    collection.aggregate.return_value = cursor
+    return collection
+
+
+@pytest.mark.asyncio
+async def test_text_retriever_builds_search_pipeline():
+    retriever = _make_text_retriever()
+    collection = _fake_collection(
+        [{"_id": 1, "chunk_text": "乙醯胺酚每日上限", "score": 8.4}]
+    )
+    retriever._collection = collection
+
+    docs = await retriever.ainvoke("乙醯胺酚一天最多幾顆")
+
+    assert len(docs) == 1
+    assert docs[0].page_content == "乙醯胺酚每日上限"
+    assert docs[0].metadata == {
+        "id": "1",
+        "score": 8.4,
+        "source_name": None,
+        "url": None,
+    }
+
+    pipeline = collection.aggregate.call_args.args[0]
+    assert pipeline[0]["$search"]["index"] == "text_idx"
+    assert pipeline[0]["$search"]["text"] == {
+        "query": "乙醯胺酚一天最多幾顆",
+        "path": "chunk_text",
+    }
+    assert pipeline[1]["$limit"] == 4
+    assert pipeline[2]["$project"]["score"] == {"$meta": "searchScore"}
+
+
+@pytest.mark.asyncio
+async def test_text_retriever_keeps_low_bm25_scores():
+    """BM25 分數沒有上界也依語料庫而變，不能套用向量那個 0.5 門檻。"""
+    retriever = _make_text_retriever()
+    retriever._collection = _fake_collection(
+        [
+            {"_id": "a", "chunk_text": "低分但相關", "score": 0.12},
+            {"_id": "b", "chunk_text": "沒有分數欄位"},
+        ]
+    )
+
+    docs = await retriever.ainvoke("查詢")
+
+    assert [d.metadata["id"] for d in docs] == ["a", "b"]
+    assert docs[0].metadata["score"] == 0.12
+    assert docs[1].metadata["score"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_text_retriever_skips_blank_text_and_empty_query():
+    retriever = _make_text_retriever()
+    retriever._collection = _fake_collection(
+        [{"_id": "blank", "chunk_text": "   ", "score": 9.9}]
+    )
+
+    assert await retriever.ainvoke("查詢") == []
+    assert await retriever.ainvoke("   ") == []
+
+
+def test_text_retriever_requires_text_index_name():
+    retriever = _make_text_retriever(index_name="")
+    with pytest.raises(ValueError, match="MONGODB_TEXT_INDEX"):
+        retriever._ensure_collection()
+
+
+# ── HybridRetriever ───────────────────────────────────────────────
+
+
+def _stub_retriever(docs=None, error: Exception | None = None):
+    stub = MagicMock()
+    if error is not None:
+        stub.ainvoke = AsyncMock(side_effect=error)
+    else:
+        stub.ainvoke = AsyncMock(return_value=docs or [])
+    return stub
+
+
+def _d(doc_id: str, score: float = 1.0) -> Document:
+    return Document(
+        page_content=f"content-{doc_id}", metadata={"id": doc_id, "score": score}
+    )
+
+
+@pytest.mark.asyncio
+async def test_hybrid_fuses_both_sources():
+    hybrid = HybridRetriever(
+        vector_retriever=_stub_retriever([_d("only-vector"), _d("both")]),
+        text_retriever=_stub_retriever([_d("both"), _d("only-text")]),
+    )
+
+    docs = await hybrid.ainvoke("乙醯胺酚劑量")
+
+    ids = [d.metadata["id"] for d in docs]
+    assert ids[0] == "both"  # 兩邊都命中的浮上來
+    assert set(ids) == {"both", "only-vector", "only-text"}
+    assert docs[0].metadata["retrievers"] == ["vector", "text"]
+
+
+@pytest.mark.asyncio
+async def test_hybrid_degrades_to_vector_when_text_search_fails():
+    """
+    Atlas Search index 還沒建好時 $search 會報錯。
+    此時必須退化為純向量，不能讓整條 RAG 掛掉。
+    """
+    hybrid = HybridRetriever(
+        vector_retriever=_stub_retriever([_d("v1"), _d("v2")]),
+        text_retriever=_stub_retriever(error=RuntimeError("index not found")),
+    )
+
+    docs = await hybrid.ainvoke("查詢")
+
+    assert [d.metadata["id"] for d in docs] == ["v1", "v2"]
+
+
+@pytest.mark.asyncio
+async def test_hybrid_degrades_to_text_when_vector_fails():
+    hybrid = HybridRetriever(
+        vector_retriever=_stub_retriever(error=RuntimeError("embedding down")),
+        text_retriever=_stub_retriever([_d("t1")]),
+    )
+
+    docs = await hybrid.ainvoke("查詢")
+
+    assert [d.metadata["id"] for d in docs] == ["t1"]
+
+
+@pytest.mark.asyncio
+async def test_hybrid_returns_empty_when_both_fail():
+    hybrid = HybridRetriever(
+        vector_retriever=_stub_retriever(error=RuntimeError("a")),
+        text_retriever=_stub_retriever(error=RuntimeError("b")),
+    )
+    assert await hybrid.ainvoke("查詢") == []
+
+
+@pytest.mark.asyncio
+async def test_hybrid_applies_limit_and_passes_query_to_both():
+    vector = _stub_retriever([_d("a"), _d("b"), _d("c")])
+    text = _stub_retriever([_d("c")])
+    hybrid = HybridRetriever(
+        vector_retriever=vector, text_retriever=text, limit=2, rrf_k=60
+    )
+
+    docs = await hybrid.ainvoke("高血壓")
+
+    assert len(docs) == 2
+    vector.ainvoke.assert_awaited_once_with("高血壓")
+    text.ainvoke.assert_awaited_once_with("高血壓")
 
 
 def test_ensure_collection_creates_motor_collection_once():

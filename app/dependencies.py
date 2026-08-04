@@ -38,7 +38,12 @@ from app.services.line_messaging.rich_menu_service import RichMenuService
 from app.services.line_messaging.token_manager import LineTokenManager
 from app.services.medical.medical_service import MedicalService, medical_service
 from app.services.line_messaging.handler.facility_detail_handler import LineFacilityDetailHandler
-from app.services.rag import MongoAtlasVectorRetriever, RagAnswerService
+from app.services.rag import (
+    HybridRetriever,
+    MongoAtlasTextRetriever,
+    MongoAtlasVectorRetriever,
+    RagAnswerService,
+)
 from app.services.rag.cohere_reranker import CohereReranker, VectorScoreReranker
 from app.services.rag.firecrawl_client import FirecrawlClient
 from app.services.rag.ingest_service import IngestService
@@ -81,7 +86,7 @@ if settings.MONGODB_VECTOR_DIM > 0:
     _ingest_embeddings_kwargs["output_dimensionality"] = settings.MONGODB_VECTOR_DIM
 _ingest_embeddings = GoogleGenerativeAIEmbeddings(**_ingest_embeddings_kwargs)
 
-_rag_retriever = MongoAtlasVectorRetriever(
+_rag_vector_retriever = MongoAtlasVectorRetriever(
     embeddings=_query_embeddings,
     mongo_uri=settings.MONGODB_URI,
     db_name=settings.MONGODB_DB,
@@ -92,6 +97,35 @@ _rag_retriever = MongoAtlasVectorRetriever(
     vector_dim=settings.MONGODB_VECTOR_DIM if settings.MONGODB_VECTOR_DIM > 0 else None,
     k=settings.RAG_RETRIEVE_CANDIDATES,
 )
+
+# Hybrid 與純向量共用同一個 ainvoke 介面，所以下游 RagAnswerService 不需要知道差別
+if settings.RAG_HYBRID_ENABLED and settings.MONGODB_TEXT_INDEX:
+    _rag_text_retriever = MongoAtlasTextRetriever(
+        mongo_uri=settings.MONGODB_URI,
+        db_name=settings.MONGODB_DB,
+        collection_name=settings.MONGODB_COLLECTION,
+        index_name=settings.MONGODB_TEXT_INDEX,
+        text_field=settings.MONGODB_TEXT_FIELD,
+        k=settings.RAG_RETRIEVE_CANDIDATES,
+    )
+    _rag_retriever = HybridRetriever(
+        vector_retriever=_rag_vector_retriever,
+        text_retriever=_rag_text_retriever,
+        rrf_k=settings.RAG_RRF_K,
+        limit=settings.RAG_RETRIEVE_CANDIDATES,
+    )
+    logger.info(
+        "RAG hybrid retrieval enabled: vector=%s text=%s rrf_k=%s",
+        settings.MONGODB_VECTOR_INDEX,
+        settings.MONGODB_TEXT_INDEX,
+        settings.RAG_RRF_K,
+    )
+else:
+    _rag_retriever = _rag_vector_retriever
+    if settings.RAG_HYBRID_ENABLED:
+        logger.warning(
+            "RAG_HYBRID_ENABLED=true but MONGODB_TEXT_INDEX unset; using vector-only"
+        )
 
 _firecrawl_client = None
 if settings.FIRECRAWL_API_KEY:

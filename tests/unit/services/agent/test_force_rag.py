@@ -414,3 +414,50 @@ async def test_no_force_rag_when_allow_rag_false(mock_llm_no_tool_calls, monkeyp
 
     mock_log.assert_called_once()
     assert mock_log.call_args[1].get("force_rag") is None
+
+
+# 模擬 LineMediaHandler 抽出的飲食指南 PDF 全文（含衛教用語「就醫」）。
+_DIET_GUIDE_PDF_MEDIA_TEXT = (
+    "以下為使用者傳送的file媒體內容：\n"
+    "新版每日飲食指南\n"
+    "均衡飲食有助維持健康。若有慢性病或特殊狀況，請諮詢醫師後再調整飲食。"
+    "出現不適時再就醫評估。本指南不取代診所或醫院的個別營養建議。"
+)
+
+
+def test_diet_guide_pdf_text_is_not_nearby_facility_intent():
+    """Regression：PDF 全文偶然出現『就醫／診所／醫院』≠ 使用者要找附近院所。"""
+    assert _is_nearby_facility_intent(_DIET_GUIDE_PDF_MEDIA_TEXT) is False
+
+
+@pytest.mark.asyncio
+async def test_diet_guide_pdf_forces_rag_not_location(
+    mock_llm_no_tool_calls, monkeypatch
+):
+    """Regression：上傳飲食指南 PDF 應走 RAG，不應強制分享位置找醫院。"""
+    monkeypatch.setattr(
+        "app.services.agent.utils.nodes.get_all_tools",
+        lambda include_rag_tool=False: _mock_tools(include_rag=include_rag_tool),
+    )
+
+    nodes = AgentNodes(
+        llm=mock_llm_no_tool_calls,
+        guardrail_service=MagicMock(),
+    )
+    state = {
+        "messages": [HumanMessage(content=_DIET_GUIDE_PDF_MEDIA_TEXT)],
+        "allow_rag": True,
+    }
+
+    with patch("app.services.agent.utils.nodes.log_stage") as mock_log:
+        res = await nodes.agent_node(state)
+
+    response = res["messages"][0]
+    assert response.tool_calls
+    assert len(response.tool_calls) == 1
+    assert response.tool_calls[0]["name"] == "get_rag_answer"
+
+    mock_log.assert_called_once()
+    assert mock_log.call_args[1]["force_rag"] is True
+    assert mock_log.call_args[1].get("force_location") is None
+    assert mock_log.call_args[1]["call"] == ["get_rag_answer"]

@@ -72,16 +72,27 @@ _NAMED_LOOKUP_RE = re.compile(r"在哪|地址|電話|怎麼去")
 _FACILITY_TERM_RE = re.compile(
     r"醫院|診所|藥局|hospital|clinic|pharmacy", re.IGNORECASE
 )
+# LineMediaHandler 會把 OCR／抽字結果包成此前綴再送進 agent。
+# 文件全文常含「就醫／診所」等衛教用語，不能當成使用者要找附近院所。
+_MEDIA_EXTRACTED_CONTENT_RE = re.compile(
+    r"^以下為使用者傳送的(?:image|video|audio|file)媒體內容："
+)
+
+
+def _is_media_extracted_content(text: str) -> bool:
+    return bool(text and _MEDIA_EXTRACTED_CONTENT_RE.match(text))
 
 
 def _is_nearby_facility_intent(text: str) -> bool:
     if not text or _NAMED_LOOKUP_RE.search(text):
         return False
+    if _is_media_extracted_content(text):
+        return False
     return bool(_FACILITY_SEARCH_RE.search(text))
 
 
 def _is_named_facility_lookup(text: str) -> bool:
-    if not text:
+    if not text or _is_media_extracted_content(text):
         return False
     return bool(_NAMED_LOOKUP_RE.search(text) and _FACILITY_TERM_RE.search(text))
 

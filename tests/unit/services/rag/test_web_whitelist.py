@@ -1,6 +1,10 @@
 import pytest
 
-from app.services.rag.whitelist import is_allowed_url
+from app.services.rag.whitelist import (
+    WHITELIST_SEARCH_SITE_FILTER,
+    is_allowed_url,
+    with_whitelist_site_filter,
+)
 
 
 @pytest.mark.parametrize(
@@ -32,3 +36,9 @@ def test_is_allowed_url_accepts_whitelist_domains(url):
 )
 def test_is_allowed_url_rejects_non_whitelist(url):
     assert is_allowed_url(url) is False
+
+
+def test_with_whitelist_site_filter_appends_gov_tw():
+    assert with_whitelist_site_filter("我又胃痛") == f"我又胃痛 {WHITELIST_SEARCH_SITE_FILTER}"
+    assert with_whitelist_site_filter("胃痛 site:hpa.gov.tw") == "胃痛 site:hpa.gov.tw"
+    assert with_whitelist_site_filter("  ") == ""

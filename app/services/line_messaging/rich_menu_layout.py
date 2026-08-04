@@ -52,8 +52,13 @@ def chat_bar_text_for_language(language: str | None) -> str:
 
 
 def liff_uri(base: str, path: str) -> str:
-    """組合 LIFF deep link：{LIFF_URL}{path}。"""
+    """組合 LIFF deep link：{LIFF_URL}{path}。
+
+    首頁用裸 LIFF URL（不加尾隨 `/`），避免 `…/{liffId}/` 在部分環境異常。
+    """
     root = (base or "").rstrip("/")
+    if not path or path == "/":
+        return root
     if not path.startswith("/"):
         path = f"/{path}"
     return f"{root}{path}"

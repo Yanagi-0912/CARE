@@ -142,3 +142,81 @@ async def test_confirm_medication_forbidden_for_other_user(medication_service):
                 log_id="L123", user_id="U_OTHER"
             )
         assert excinfo.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_confirm_medication_missed_status_update(medication_service):
+    missed_log = MedicationLog(
+        reminder_id="R123",
+        user_id="U_PATIENT",
+        alert_notify_user_id="U_CARE",
+        slot_type="morning",
+        scheduled_at="2026-07-26T08:00:00Z",
+        timeout_at="2026-07-26T08:30:00Z",
+        status="missed",
+    )
+    taken_log = missed_log.model_copy(update={"status": "taken"})
+    with patch(
+        "app.services.medication.medication_service.MedicationLogRepository.get_log_by_id",
+        new_callable=AsyncMock,
+        return_value=missed_log,
+    ), patch(
+        "app.services.medication.medication_service.MedicationLogRepository.mark_as_taken",
+        new_callable=AsyncMock,
+        return_value=taken_log,
+    ):
+        res = await medication_service.confirm_medication(
+            log_id="L123", user_id="U_PATIENT"
+        )
+        assert res.status == "taken"
+
+
+@pytest.mark.asyncio
+async def test_create_reminders_custom_slot_times(medication_service):
+    req = CreateMedicationReminderRequest(
+        user_id="U_SELF",
+        slots=["morning", "evening"],
+        slot_times={"morning": "07:30", "evening": "19:00"},
+        start_date="2026-07-29",
+    )
+    with patch(
+        "app.services.medication.medication_service.MedicationReminderRepository.create_reminder",
+        new_callable=AsyncMock,
+        side_effect=lambda r: r,
+    ):
+        reminders = await medication_service.create_reminders(
+            creator_user_id="U_SELF", request=req
+        )
+
+        assert len(reminders) == 2
+        assert reminders[0].scheduled_time == "07:30"
+        assert reminders[1].scheduled_time == "19:00"
+
+
+@pytest.mark.asyncio
+async def test_get_user_reminders_family_permission(medication_service):
+    fake_tree = FamilyTree(
+        user_id="U_CARE",
+        family_members=[FamilyMember(user_id="U_MEMBER")],
+        created_at="2026-07-26T00:00:00Z",
+        updated_at="2026-07-26T00:00:00Z",
+    )
+    with patch(
+        "app.services.medication.medication_service.FamilyTreeRepository.get_by_user_id",
+        new_callable=AsyncMock,
+        return_value=fake_tree,
+    ), patch(
+        "app.services.medication.medication_service.MedicationReminderRepository.list_reminders_by_user",
+        new_callable=AsyncMock,
+        return_value=[],
+    ) as mock_list:
+        # Allowed for family member
+        reminders = await medication_service.get_user_reminders("U_MEMBER", requester_user_id="U_CARE")
+        assert reminders == []
+        mock_list.assert_awaited_once_with("U_MEMBER")
+
+        # Rejected for non-family member
+        with pytest.raises(HTTPException) as exc_info:
+            await medication_service.get_user_reminders("U_STRANGER", requester_user_id="U_CARE")
+        assert exc_info.value.status_code == 400
+

@@ -1,10 +1,15 @@
 import asyncio
 import logging
 from contextlib import suppress
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Optional
 
-from app.models.medication import MedicationLog
+from app.models.medication import (
+    TAIPEI_TZ,
+    MedicationLog,
+    ensure_aware_utc,
+    to_taipei_hm,
+)
 from app.repositories.medication_repository import (
     MedicationLogRepository,
     MedicationReminderRepository,
@@ -63,20 +68,30 @@ class MedicationScheduler:
 
     async def process_ticks(self, now: Optional[datetime] = None) -> None:
         """執行一次排程檢查 (可代入特定的 now 時間供單元測試或實機測試)"""
-        current_time = now or datetime.now(timezone.utc)
+        current_time = now or datetime.now(TAIPEI_TZ)
+        if current_time.tzinfo is None:
+            current_time = current_time.replace(tzinfo=TAIPEI_TZ)
+
         today_date_str = current_time.strftime("%Y-%m-%d")
         current_hm_str = current_time.strftime("%H:%M")
 
-        # ── 階段 1：T+0min 提醒發送 ──────────────────────────────────
-        active_reminders = await MedicationReminderRepository.list_active_reminders_by_time(
-            scheduled_time=current_hm_str, target_date_str=today_date_str
+        # ── 階段 1：T+0min 首刷提醒建立與推播 ──────────────────────────
+        # 1. 查詢今日所有已到期 (scheduled_time <= current_hm_str) 的活躍提醒並為其 upsert 當日 log
+        active_reminders = await MedicationReminderRepository.list_active_reminders_up_to_time(
+            max_scheduled_time=current_hm_str, target_date_str=today_date_str
         )
         for reminder in active_reminders:
             try:
                 scheduled_dt = datetime.strptime(
                     f"{today_date_str} {reminder.scheduled_time}", "%Y-%m-%d %H:%M"
-                ).replace(tzinfo=timezone.utc)
+                ).replace(tzinfo=current_time.tzinfo)
                 timeout_dt = scheduled_dt + timedelta(minutes=30)
+
+                # 不為「提醒建立之前」的時段補建 log。
+                # 否則 20:00 新增一筆早上 08:00 的提醒，會在同一個 tick 內連續
+                # 觸發首刷提醒、T+20 催促、以及 T+30 家屬逾時警報（全是假的）。
+                if scheduled_dt < ensure_aware_utc(reminder.created_at):
+                    continue
 
                 log_data = MedicationLog(
                     reminder_id=reminder.id,
@@ -90,22 +105,33 @@ class MedicationScheduler:
                     urgent_reminder_sent=False,
                     caregiver_alert_sent=False,
                 )
-                log = await MedicationLogRepository.upsert_log(log_data)
-
-                if not log.patient_reminder_sent and log.status == "pending":
-                    flex_msg = build_patient_medication_flex(
-                        log_id=log.id,
-                        slot_type=log.slot_type,
-                        scheduled_time=reminder.scheduled_time,
-                        disabled=False,
-                    )
-                    ok = await self._replier.push_flex(log.user_id, flex_msg)
-                    if ok:
-                        await MedicationLogRepository.mark_patient_reminder_sent(log.id)
+                await MedicationLogRepository.upsert_log(log_data)
             except Exception:
                 logger.exception(
-                    f"[MedicationScheduler] Failed to process T+0min reminder for user {reminder.user_id}"
+                    f"[MedicationScheduler] Failed to upsert T+0min log for user {reminder.user_id}"
                 )
+
+        # 2. 使用 list_pending_patient_reminders 查詢已到期 (scheduled_at <= current_time) 且未發送首刷的紀錄推播
+        pending_initial_logs = await MedicationLogRepository.list_pending_patient_reminders(
+            threshold_time=current_time
+        )
+        for log in pending_initial_logs:
+            try:
+                scheduled_hm = to_taipei_hm(log.scheduled_at, default="08:00")
+                flex_msg = build_patient_medication_flex(
+                    log_id=log.id,
+                    slot_type=log.slot_type,
+                    scheduled_time=scheduled_hm,
+                    disabled=False,
+                )
+                ok = await self._replier.push_flex(log.user_id, flex_msg)
+                if ok:
+                    await MedicationLogRepository.mark_patient_reminder_sent(log.id)
+            except Exception:
+                logger.exception(
+                    f"[MedicationScheduler] Failed to process T+0min initial reminder for log {log.id}"
+                )
+
 
         # ── 階段 2：T+20min 第二次溫馨催促 ─────────────────────────────
         # 門檻計算：找出 scheduled_at <= (當前時間 - 20分鐘) 的記錄
@@ -117,7 +143,7 @@ class MedicationScheduler:
         )
         for log in pending_urgent_logs:
             try:
-                scheduled_hm = log.scheduled_at.strftime("%H:%M") if log.scheduled_at else "08:00"
+                scheduled_hm = to_taipei_hm(log.scheduled_at, default="08:00")
                 urgent_flex = build_patient_urgent_reminder_flex(
                     log_id=log.id,
                     slot_type=log.slot_type,
@@ -148,7 +174,7 @@ class MedicationScheduler:
                     except Exception:
                         pass
 
-                scheduled_hm = log.scheduled_at.strftime("%H:%M") if log.scheduled_at else "08:00"
+                scheduled_hm = to_taipei_hm(log.scheduled_at, default="08:00")
                 alert_flex = build_caregiver_alert_flex(
                     patient_name=patient_name,
                     slot_type=log.slot_type,

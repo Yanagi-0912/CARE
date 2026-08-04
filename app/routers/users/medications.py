@@ -41,7 +41,10 @@ async def get_reminders(
     service: MedicationService = Depends(get_medication_service),
 ):
     user_id = target_user_id or current_user.line_user_id
-    return await service.get_user_reminders(user_id=user_id)
+    return await service.get_user_reminders(
+        user_id=user_id, requester_user_id=current_user.line_user_id
+    )
+
 
 
 @router.put(

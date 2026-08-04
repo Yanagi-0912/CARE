@@ -152,6 +152,132 @@ def test_format_user_profile_prompt_builds_expected_header():
 
 
 @pytest.mark.asyncio
+async def test_agent_node_uses_profile_language_for_system_prompt():
+    from app.i18n.messages import t
+    from app.services.agent.utils.nodes import AgentNodes
+
+    mock_llm = MagicMock()
+    mock_llm.bind_tools.return_value.ainvoke = AsyncMock(
+        return_value=AIMessage(content="Hello")
+    )
+    mock_guardrail = MagicMock()
+
+    nodes = AgentNodes(llm=mock_llm, guardrail_service=mock_guardrail)
+
+    state = {
+        "messages": [HumanMessage(content="hi")],
+        "allow_rag": False,
+        "user_profile": {"settings": {"language": "en"}},
+    }
+
+    await nodes.agent_node(state)
+
+    invoked_messages = mock_llm.bind_tools.return_value.ainvoke.call_args[0][0]
+    system_msg = invoked_messages[0]
+    assert "English" in system_msg.content
+    assert t("agent.rag_prefix", "en") in system_msg.content
+    assert "必須只使用繁體中文" not in system_msg.content
+
+
+@pytest.mark.asyncio
+async def test_agent_node_defaults_to_zh_tw_when_profile_has_no_language():
+    from app.services.agent.utils.nodes import AgentNodes
+
+    mock_llm = MagicMock()
+    mock_llm.bind_tools.return_value.ainvoke = AsyncMock(
+        return_value=AIMessage(content="你好")
+    )
+    mock_guardrail = MagicMock()
+
+    nodes = AgentNodes(llm=mock_llm, guardrail_service=mock_guardrail)
+
+    state = {
+        "messages": [HumanMessage(content="你好")],
+        "allow_rag": False,
+        "user_profile": {"name": "王大明"},
+    }
+
+    await nodes.agent_node(state)
+
+    invoked_messages = mock_llm.bind_tools.return_value.ainvoke.call_args[0][0]
+    system_msg = invoked_messages[0]
+    assert "繁體中文" in system_msg.content
+
+
+@pytest.mark.asyncio
+async def test_agent_strips_fabricated_sources_when_tool_has_none(
+    mock_llm, mock_guardrail_service
+):
+    from app.i18n.messages import t
+    from langchain_core.messages import ToolMessage
+
+    agent = Agent(llm=mock_llm, guardrail_service=mock_guardrail_service)
+    zh_heading = t("agent.sources_heading", "zh-TW")
+    rag_tool_output = "以下參考網路公開資料\n\nRAG 正文，無來源標題。"
+    fabricated_response = (
+        f"以下為 RAG 回應：\n\n根據資料，建議就醫。\n\n{zh_heading}\n"
+        "[1] 假來源: https://fake.example/a\n"
+        "[2] 假來源: https://fake.example/b"
+    )
+    agent._graph = MagicMock()
+    agent._graph.ainvoke = AsyncMock(
+        return_value={
+            "messages": [
+                HumanMessage(content="症狀問題"),
+                ToolMessage(
+                    content=rag_tool_output,
+                    tool_call_id="1",
+                    name="get_rag_answer",
+                ),
+                AIMessage(content=fabricated_response),
+            ]
+        }
+    )
+
+    response = await agent.invoke(user_input="症狀問題", messages=None)
+
+    assert zh_heading not in response["response"]
+    assert "fake.example" not in response["response"]
+    assert "根據資料，建議就醫。" in response["response"]
+
+
+@pytest.mark.asyncio
+async def test_agent_appends_localized_sources_heading_when_missing(mock_llm, mock_guardrail_service):
+    from app.core.user_language import reset_request_language, set_request_language
+    from app.i18n.messages import t
+    from langchain_core.messages import ToolMessage
+
+    agent = Agent(llm=mock_llm, guardrail_service=mock_guardrail_service)
+    en_heading = t("agent.sources_heading", "en")
+    rag_tool_output = (
+        f"RAG body.\n\n{en_heading}\n[1] CDC: https://www.cdc.gov.tw/x"
+    )
+    agent._graph = MagicMock()
+    agent._graph.ainvoke = AsyncMock(
+        return_value={
+            "messages": [
+                HumanMessage(content="question"),
+                ToolMessage(
+                    content=rag_tool_output,
+                    tool_call_id="1",
+                    name="get_rag_answer",
+                ),
+                AIMessage(content="Short answer without sources."),
+            ]
+        }
+    )
+
+    token = set_request_language("en")
+    try:
+        response = await agent.invoke(user_input="question", messages=None)
+    finally:
+        reset_request_language(token)
+
+    assert en_heading in response["response"]
+    assert "[1] CDC: https://www.cdc.gov.tw/x" in response["response"]
+
+
+@pytest.mark.asyncio
 async def test_agent_node_injects_user_profile_prompt():
     from app.services.agent.utils.nodes import AgentNodes
 
@@ -161,11 +287,7 @@ async def test_agent_node_injects_user_profile_prompt():
     )
     mock_guardrail = MagicMock()
 
-    nodes = AgentNodes(
-        llm=mock_llm,
-        guardrail_service=mock_guardrail,
-        prompt_instruction="System Prompt Instruction",
-    )
+    nodes = AgentNodes(llm=mock_llm, guardrail_service=mock_guardrail)
 
     state = {
         "messages": [HumanMessage(content="你好")],
@@ -178,7 +300,7 @@ async def test_agent_node_injects_user_profile_prompt():
 
     invoked_messages = mock_llm.bind_tools.return_value.ainvoke.call_args[0][0]
     system_msg = invoked_messages[0]
-    assert "System Prompt Instruction" in system_msg.content
+    assert "繁體中文" in system_msg.content
     assert "【對話使用者的個人健康與病史檔案】" in system_msg.content
     assert "王大明" in system_msg.content
     assert "糖尿病" in system_msg.content

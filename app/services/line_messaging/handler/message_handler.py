@@ -6,6 +6,13 @@ from typing import Optional
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
 from app.core.request_logging import log_stage
+from app.core.user_language import (
+    DEFAULT_USER_LANGUAGE,
+    normalize_user_language,
+    reset_request_language,
+    set_request_language,
+)
+from app.i18n.messages import t
 from app.services.line_messaging.reply.reply import LineReplier
 from app.tools.knowledge_report_tools import reset_line_user_id, set_line_user_id
 
@@ -45,6 +52,9 @@ class BaseLineMessageHandler:
         reply_token = getattr(event, "reply_token", "")
         event_time = datetime.fromtimestamp(event.timestamp / 1000, tz=timezone.utc)
 
+        user_language = DEFAULT_USER_LANGUAGE
+        lang_token = None
+
         try:
             log_stage(
                 logger,
@@ -71,6 +81,9 @@ class BaseLineMessageHandler:
                 user_profile = await self._user_profile_service.get_user_profile(
                     user_id
                 )
+
+            user_language = self._language_from_profile(user_profile)
+            lang_token = set_request_language(user_language)
 
             if self._loading_animation_service is not None:
                 await self._loading_animation_service.start(user_id)
@@ -105,7 +118,9 @@ class BaseLineMessageHandler:
                     type(response_payload).__name__,
                 )
 
-            response_text = response_payload or "抱歉，我無法理解您的問題，請重新輸入。"
+            response_text = response_payload or t(
+                "line.fallback_ununderstood", language=user_language
+            )
             call_request_location = agent_response.get("call_request_location", False)
             voice_reply_enabled = self._parse_voice_reply_enabled(user_profile)
 
@@ -116,6 +131,7 @@ class BaseLineMessageHandler:
                 user_id=user_id,
                 request_location=call_request_location,
                 voice_reply_enabled=voice_reply_enabled,
+                language=user_language,
             )
             log_stage(
                 logger,
@@ -139,10 +155,21 @@ class BaseLineMessageHandler:
             logger.exception("Error in processing Line message event")
             await self._replier.reply(
                 reply_token=reply_token,
-                message_text="抱歉，處理您的訊息時發生錯誤，請稍後再試",
+                message_text=t("line.fallback_process_error", language=user_language),
                 user_id=user_id,
                 voice_reply_enabled=False,
+                language=user_language,
             )
+        finally:
+            if lang_token is not None:
+                reset_request_language(lang_token)
+
+    @staticmethod
+    def _language_from_profile(user_profile: Optional[dict]) -> str:
+        if not user_profile:
+            return DEFAULT_USER_LANGUAGE
+        settings = user_profile.get("settings") or {}
+        return normalize_user_language(settings.get("language"))
 
     def _parse_voice_reply_enabled(self, user_profile: Optional[dict]) -> bool:
         """同步解析使用者個人檔案中的語音回覆設定，預設為 True。"""

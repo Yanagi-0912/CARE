@@ -14,6 +14,7 @@ def test_liff_uri_strips_trailing_slash_and_joins_path():
     assert liff_uri("https://liff.line.me/abc/", "/family") == (
         "https://liff.line.me/abc/family"
     )
+    assert liff_uri("https://liff.line.me/abc/", "/") == "https://liff.line.me/abc"
 
 
 def test_liff_uri_adds_leading_slash_when_missing():
@@ -42,7 +43,7 @@ def test_build_rich_menu_areas_six_cells_and_actions():
     assert areas[0]["action"] == {
         "type": "uri",
         "label": "家庭中心",
-        "uri": "https://liff.line.me/abc/",
+        "uri": "https://liff.line.me/abc",
     }
     assert areas[1]["action"]["uri"] == "https://liff.line.me/abc/medications"
     assert areas[2]["action"]["type"] == "location"

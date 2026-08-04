@@ -270,6 +270,34 @@ def test_append_sources_renumbers_after_skipping_missing_and_duplicate_urls():
     assert "缺網址" not in result
 
 
+@pytest.mark.asyncio
+async def test_answer_logs_model_refuse_diagnostics(caplog):
+    answer_content = "根據現有資料無法提供建議。"
+    docs = [
+        Document(
+            page_content="無關片段",
+            metadata={
+                "source_name": "國健署",
+                "url": "https://www.hpa.gov.tw/x",
+            },
+        )
+    ]
+    svc, _gemini, _retriever = _make_service(
+        docs=docs, answer_content=answer_content
+    )
+    with caplog.at_level("INFO"):
+        result = await svc.answer("某個冷門問題")
+    assert result == NO_ANSWER_MESSAGE
+    refuse_logs = [
+        rec.getMessage()
+        for rec in caplog.records
+        if "rag_fail code=MODEL_REFUSE" in rec.getMessage()
+    ]
+    assert len(refuse_logs) == 1
+    assert "matched_marker=無法提供" in refuse_logs[0]
+    assert f"answer_preview={answer_content}" in refuse_logs[0]
+
+
 @pytest.mark.parametrize(
     "answer_content",
     [
@@ -303,6 +331,10 @@ async def test_answer_returns_no_answer_when_model_cannot_answer(answer_content)
     ("text", "expected"),
     [
         ("正常可回答的衛教內容", False),
+        (
+            "河魨毒素結構穩定，無法透過加熱破壞，請勿自行處理。",
+            False,
+        ),
         ("我不知道", True),
         ("無法提供相關資訊", True),
         ("", True),

@@ -1,13 +1,89 @@
 import logging
+import re
 import time
 
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from app.core.request_logging import log_stage
+from app.core.user_language import normalize_user_language
+from app.services.agent.prompt import build_system_prompt
 from app.services.agent.utils.state import State
 from app.tools.registry import get_all_tools
 
 logger = logging.getLogger(__name__)
+
+
+def _already_ran_rag(messages) -> bool:
+    return any(
+        isinstance(m, ToolMessage) and m.name == "get_rag_answer" for m in messages
+    )
+
+
+_LOCATION_TOOL_NAMES = frozenset(
+    {
+        "request_location_quick_reply",
+        "find_nearby_hospitals",
+        "lookup_medical_facility",
+    }
+)
+
+
+def _already_used_location_tools(messages) -> bool:
+    return any(
+        isinstance(m, ToolMessage) and m.name in _LOCATION_TOOL_NAMES
+        for m in messages
+    )
+
+
+def _latest_human_text(messages) -> str:
+    for m in reversed(messages):
+        if isinstance(m, HumanMessage):
+            return m.content
+    return ""
+
+
+# LineLocationHandler 會把位置訊息轉成「這是我的目前位置：lat=..., lng=...」
+# 這段文字才是 agent 實際看到的輸入。
+_SHARED_LOCATION_RE = re.compile(
+    r"lat\s*=\s*(-?\d+(?:\.\d+)?)\s*,\s*lng\s*=\s*(-?\d+(?:\.\d+)?)",
+    re.IGNORECASE,
+)
+
+
+def _parse_shared_location(text: str) -> tuple[float, float] | None:
+    """從使用者分享位置轉出的文字取出座標，取不到則回 None。"""
+    if not text:
+        return None
+    match = _SHARED_LOCATION_RE.search(text)
+    if not match:
+        return None
+    try:
+        return float(match.group(1)), float(match.group(2))
+    except ValueError:  # pragma: no cover - 正則已限制為數字
+        return None
+
+
+_FACILITY_SEARCH_RE = re.compile(
+    r"醫院|診所|藥局|看醫生|就醫|急診|附近院所|找醫院|找診所|看診|"
+    r"hospital|clinic|pharmacy",
+    re.IGNORECASE,
+)
+_NAMED_LOOKUP_RE = re.compile(r"在哪|地址|電話|怎麼去")
+_FACILITY_TERM_RE = re.compile(
+    r"醫院|診所|藥局|hospital|clinic|pharmacy", re.IGNORECASE
+)
+
+
+def _is_nearby_facility_intent(text: str) -> bool:
+    if not text or _NAMED_LOOKUP_RE.search(text):
+        return False
+    return bool(_FACILITY_SEARCH_RE.search(text))
+
+
+def _is_named_facility_lookup(text: str) -> bool:
+    if not text:
+        return False
+    return bool(_NAMED_LOOKUP_RE.search(text) and _FACILITY_TERM_RE.search(text))
 
 
 def format_user_profile_prompt(user_profile: dict | None) -> str:
@@ -41,10 +117,15 @@ def format_user_profile_prompt(user_profile: dict | None) -> str:
 
 
 class AgentNodes:
-    def __init__(self, llm, guardrail_service, prompt_instruction: str):
+    def __init__(self, llm, guardrail_service):
         self._llm = llm
         self._guardrail_service = guardrail_service
-        self._prompt = prompt_instruction
+
+    def _resolve_user_language(self, user_profile: dict | None) -> str:
+        if not user_profile:
+            return normalize_user_language(None)
+        settings = user_profile.get("settings") or {}
+        return normalize_user_language(settings.get("language"))
 
     async def guardrail_node(self, state: State) -> dict:
         """Guardrail 判斷：從最新的使用者訊息判斷是否允許 RAG。"""
@@ -66,18 +147,96 @@ class AgentNodes:
         tool_names = [t.name for t in tools]
 
         user_profile_text = format_user_profile_prompt(state.get("user_profile"))
-        full_prompt = self._prompt + user_profile_text
+        language = self._resolve_user_language(state.get("user_profile"))
+        full_prompt = build_system_prompt(language) + user_profile_text
         messages = [SystemMessage(content=full_prompt)] + state["messages"]
 
         t0 = time.perf_counter()
         response = await llm_with_tools.ainvoke(messages)
         tool_calls = getattr(response, "tool_calls", None) or []
-        called = [tc.get("name") for tc in tool_calls if isinstance(tc, dict)]
+        force_rag = False
+        force_location = False
+        force_nearby = False
+        user_text = _latest_human_text(state["messages"])
+        shared_location = _parse_shared_location(user_text)
+
+        # 使用者已分享位置（prompt 規則 5(b)）。這裡必須是決定性的：模型若沒有
+        # 主動呼叫 find_nearby_hospitals，agent 會回傳空內容，使用者只看到
+        # 「抱歉，我無法理解您的問題」；allow_rag 為真時更會把座標文字當成
+        # RAG 查詢送出去。順序排在 5(a) 之前 —— 已有座標就不該再要位置。
+        if (
+            not tool_calls
+            and not _already_used_location_tools(state["messages"])
+            and shared_location is not None
+        ):
+            lat, lng = shared_location
+            response = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "find_nearby_hospitals",
+                        "args": {"lat": lat, "lng": lng},
+                        "id": "forced_nearby_1",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+            tool_calls = response.tool_calls
+            called = ["find_nearby_hospitals"]
+            force_nearby = True
+        elif (
+            not tool_calls
+            and not _already_used_location_tools(state["messages"])
+            and _is_nearby_facility_intent(user_text)
+        ):
+            response = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "request_location_quick_reply",
+                        "args": {},
+                        "id": "forced_location_1",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+            tool_calls = response.tool_calls
+            called = ["request_location_quick_reply"]
+            force_location = True
+        elif (
+            state.get("allow_rag")
+            and "get_rag_answer" in tool_names
+            and not tool_calls
+            and not _already_ran_rag(state["messages"])
+            and not _already_used_location_tools(state["messages"])
+            and not _is_nearby_facility_intent(user_text)
+            and not _is_named_facility_lookup(user_text)
+        ):
+            response = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "get_rag_answer",
+                        "args": {"query": user_text},
+                        "id": "forced_rag_1",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+            tool_calls = response.tool_calls
+            called = ["get_rag_answer"]
+            force_rag = True
+        else:
+            called = [tc.get("name") for tc in tool_calls if isinstance(tc, dict)]
+
         log_stage(
             logger,
             "agent_decide",
             tools=tool_names,
             call=called or None,
+            force_rag=force_rag or None,
+            force_location=force_location or None,
+            force_nearby=force_nearby or None,
             ms=int((time.perf_counter() - t0) * 1000),
         )
 

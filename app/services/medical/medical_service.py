@@ -4,6 +4,7 @@ from typing import Any
 
 from app.repositories.medical_facility_repository import MedicalFacilityRepository
 from app.schemas import MedicalFacility
+from app.i18n.messages import t
 from app.services.medical.medical_facility_matcher import (
     build_facility_query,
     similarity_rank,
@@ -11,7 +12,7 @@ from app.services.medical.medical_facility_matcher import (
 
 logger = logging.getLogger(__name__)
 
-NO_FACILITY_MESSAGE = "抱歉，您附近 5 公里內暫時找不到醫療院所資料。\n功能仍在建置中，敬請期待！"
+NO_FACILITY_MESSAGE = t("location.no_facility")
 NO_NAMED_FACILITY_MESSAGE = "查無此院所資料。請提供更明確的院所名稱或地區關鍵字，我再幫您查詢。"
 
 LOGGER_HEADER_TEXT = "[Services:MedicalService]"

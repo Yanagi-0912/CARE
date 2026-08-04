@@ -15,7 +15,8 @@ from app.services.line_messaging.token_manager import LineTokenManager
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_LOADING_SECONDS = 10
+# LINE API：5–60 秒（須為 5 的倍數）；RAG／web fallback 常超過 10s
+DEFAULT_LOADING_SECONDS = 60
 
 
 class LineLoadingAnimationService:

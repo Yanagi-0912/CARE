@@ -9,7 +9,11 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from app.core.request_logging import log_stage
-from app.services.agent.prompt import SYSTEM_PROMPT
+from app.i18n.messages import (
+    split_at_sources_heading,
+    strip_sources_section,
+    text_contains_sources_heading,
+)
 from app.services.agent.utils.nodes import AgentNodes
 from app.services.agent.utils.state import State
 from app.tools.registry import get_all_tools
@@ -81,7 +85,7 @@ def summarize_tool_messages(
             {
                 "name": getattr(msg, "name", None) or "tool",
                 "preview": preview,
-                "has_sources": "參考資料來源" in text,
+                "has_sources": text_contains_sources_heading(text),
             }
         )
     return summaries
@@ -116,7 +120,6 @@ class Agent:
         nodes = AgentNodes(
             llm=self._llm,
             guardrail_service=self._guardrail_service,
-            prompt_instruction=SYSTEM_PROMPT,
         )
 
         all_tools = get_all_tools(include_rag_tool=True)
@@ -238,12 +241,23 @@ class Agent:
                 rag_tool_content = msg.content
                 break
 
-        if rag_tool_content and "參考資料來源：" in rag_tool_content:
-            if "參考資料來源：" not in response:
-                parts = rag_tool_content.split("參考資料來源：")
-                if len(parts) > 1:
-                    sources_part = "參考資料來源：" + parts[1]
-                    response = f"{response.strip()}\n\n{sources_part.strip()}"
+        if rag_tool_content:
+            rag_text = (
+                rag_tool_content
+                if isinstance(rag_tool_content, str)
+                else str(rag_tool_content)
+            )
+            tool_has_sources = text_contains_sources_heading(rag_text)
+            response_has_sources = text_contains_sources_heading(response)
+
+            if not tool_has_sources and response_has_sources:
+                response = strip_sources_section(response)
+                logger.info("[Agent] stripped_fabricated_sources=True")
+            elif tool_has_sources and not response_has_sources:
+                split = split_at_sources_heading(rag_text)
+                if split:
+                    heading, sources_body = split
+                    response = f"{response.strip()}\n\n{heading}{sources_body.strip()}"
 
         call_request_location = False
         for msg in result.get("messages", []):

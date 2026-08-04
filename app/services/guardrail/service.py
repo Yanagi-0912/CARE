@@ -1,4 +1,4 @@
-"""Guardrail：判斷使用者訊息是否與健康相關，決定是否啟用 RAG。"""
+"""Guardrail：判斷使用者訊息是否與健康或醫療識詐相關，決定是否啟用 RAG。"""
 
 from __future__ import annotations
 
@@ -8,7 +8,10 @@ from collections.abc import Awaitable, Callable
 logger = logging.getLogger(__name__)
 
 _CLASSIFICATION_PROMPT = (
-    "你是一個訊息分類器。請判斷以下使用者訊息是否與「健康、醫療、身體狀況、疾病、藥物、營養、運動健身、心理健康」相關。\n\n"
+    "你是一個訊息分類器。請判斷以下使用者訊息是否與下列主題相關：\n"
+    "健康、醫療、身體狀況、疾病、藥物、營養、運動健身、心理健康；\n"
+    "或醫療場景詐騙／識詐（例如假藥、假醫師、假醫院或健保相關簡訊、"
+    "保證療效的可疑保健話術、因醫療／檢驗／健保／保險理賠名義要求匯款或點擊不明連結）。\n\n"
     "使用者訊息：\n"
 )
 

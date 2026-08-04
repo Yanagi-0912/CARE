@@ -3,9 +3,9 @@ import logging
 from typing import Any
 
 from langchain_core.tools import tool
+from app.i18n.messages import t
 from app.services.medical.medical_service import (
     MedicalService,
-    NO_FACILITY_MESSAGE,
     NO_NAMED_FACILITY_MESSAGE,
 )
 from resources.flex_messages.medical_messages.facility_brief_flex_message import (
@@ -35,7 +35,8 @@ def configure_medical_tools(medical_service: MedicalService) -> None:
 async def find_nearby_hospitals(lat: float, lng: float) -> str:
     """
     當已取得用戶的 GPS 座標後，呼叫此工具搜尋附近的醫療院所。
-    通常由系統在收到用戶的位置訊息後自動呼叫，不由用戶文字觸發。
+    使用者分享位置後，該訊息會以「這是我的目前位置：lat=..., lng=...」的文字進入對話，
+    此時必須從該文字取出 lat/lng 並呼叫本工具。
     """
     if _medical_service is None:
         return "醫療服務未初始化，請稍後再試。"
@@ -48,7 +49,7 @@ async def find_nearby_hospitals(lat: float, lng: float) -> str:
     facilities = await _medical_service.find_nearby_hospitals(lat, lng)
     if not facilities:
         logger.info(f"{LOGGER_HEADER_TEXT} 查無附近醫療院所")
-        return NO_FACILITY_MESSAGE
+        return t("location.no_facility")
 
     logger.info(
         f"{LOGGER_HEADER_TEXT} 查詢完成，回傳筆數=%s",
@@ -108,6 +109,4 @@ async def request_location_quick_reply() -> str:
     當使用者想要尋找、前往、或詢問醫療院所/醫院/診所/藥局的位置，
     且我們尚未取得其經緯度座標時，呼叫此工具以引導使用者傳送其當前位置。
     """
-    return (
-        "請點擊下方的『分享位置資訊』按鈕傳送您的位置，我馬上為您尋找附近的醫療院所！"
-    )
+    return t("location.share_prompt")

@@ -35,7 +35,8 @@ def configure_medical_tools(medical_service: MedicalService) -> None:
 async def find_nearby_hospitals(lat: float, lng: float) -> str:
     """
     當已取得用戶的 GPS 座標後，呼叫此工具搜尋附近的醫療院所。
-    通常由系統在收到用戶的位置訊息後自動呼叫，不由用戶文字觸發。
+    使用者分享位置後，該訊息會以「這是我的目前位置：lat=..., lng=...」的文字進入對話，
+    此時必須從該文字取出 lat/lng 並呼叫本工具。
     """
     if _medical_service is None:
         return "醫療服務未初始化，請稍後再試。"

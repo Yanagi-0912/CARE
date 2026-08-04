@@ -345,8 +345,8 @@ def get_query_embeddings() -> GoogleGenerativeAIEmbeddings:
     return _query_embeddings
 
 
-def get_rag_retriever() -> MongoAtlasVectorRetriever:
-    """取得 MongoDB Atlas 向量檢索 retriever"""
+def get_rag_retriever() -> MongoAtlasVectorRetriever | HybridRetriever:
+    """取得 RAG retriever：依 RAG_HYBRID_ENABLED 為純向量或 hybrid（兩者介面相同）"""
     return _rag_retriever
 
 

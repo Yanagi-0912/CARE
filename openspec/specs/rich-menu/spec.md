@@ -28,9 +28,9 @@ Each of the six areas SHALL trigger the corresponding action below (labels are f
 - **WHEN** the user taps the top-left area
 - **THEN** the action MUST be a URI to `{LIFF_URL}/` (or equivalent home path under `LIFF_URL`)
 
-#### Scenario: Medication reminder opens family LIFF page as interim target
+#### Scenario: Medication reminder opens the medications LIFF page
 - **WHEN** the user taps the top-middle area
-- **THEN** the action MUST be a URI to `{LIFF_URL}/family`
+- **THEN** the action MUST be a URI to `{LIFF_URL}/medications`
 
 #### Scenario: Nearby hospitals requests location
 - **WHEN** the user taps the top-right area
@@ -83,6 +83,27 @@ The setup script SHALL create and upload one Rich Menu per supported language us
 #### Scenario: Setup writes id map for all languages
 - **WHEN** setup completes successfully for all languages
 - **THEN** `resources/rich_menu_ids.json` MUST contain keys for zh-TW, en, id, vi, th, ja with non-empty richMenuId values
+
+### Requirement: Setup removes the Rich Menus it superseded
+
+The setup script SHALL delete the Rich Menus recorded by its previous run, so repeated runs do not accumulate orphaned menus on the LINE channel. Deletion SHALL happen only after the new menus are created, uploaded, and the default is set, so a failure mid-run never leaves users without a menu. Deletion SHALL be limited to ids read from `resources/rich_menu_ids.json` — menus the script did not create MUST NOT be touched.
+
+#### Scenario: Previous run's menus are deleted
+- **WHEN** setup completes and `resources/rich_menu_ids.json` held ids from an earlier run
+- **THEN** each of those richMenuIds MUST be deleted via `DELETE /v2/bot/richmenu/{richMenuId}`
+
+#### Scenario: Ids reused by the current run are never deleted
+- **WHEN** an id present in the previous map is also among the newly created menus
+- **THEN** that id MUST NOT be deleted
+
+#### Scenario: Missing or unreadable id map skips cleanup
+- **WHEN** `resources/rich_menu_ids.json` is absent, is not a JSON object, or cannot be parsed
+- **THEN** setup MUST warn and continue without deleting anything
+
+#### Scenario: Cleanup failure does not fail the run
+- **WHEN** a delete call returns a non-200, non-404 status
+- **THEN** setup MUST report the leftover richMenuId and still exit successfully, because the new menus are already live
+- **AND** a 404 MUST be treated as already deleted
 
 ### Requirement: Link Rich Menu when user language changes
 

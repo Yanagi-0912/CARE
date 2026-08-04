@@ -50,6 +50,8 @@ class Settings:
     MONGODB_VECTOR_FIELD: str = os.getenv("MONGODB_VECTOR_FIELD", "embedding")
     MONGODB_TEXT_FIELD: str = os.getenv("MONGODB_TEXT_FIELD", "text")
     MONGODB_VECTOR_DIM: int = int(os.getenv("MONGODB_VECTOR_DIM", "0"))
+    # Atlas Search index（BM25 用；與 MONGODB_VECTOR_INDEX 是兩個不同的索引）
+    MONGODB_TEXT_INDEX: str = os.getenv("MONGODB_TEXT_INDEX", "")
 
     # Consultation / Redis 配置
     REDIS_URL: str = os.getenv("REDIS_URL", "")
@@ -70,6 +72,15 @@ class Settings:
     COHERE_RERANK_TIMEOUT_SECONDS: float = float(
         os.getenv("COHERE_RERANK_TIMEOUT_SECONDS", "5")
     )
+
+    # Hybrid retrieval（向量 + BM25 以 RRF 融合）
+    # 預設關閉：需先在 Atlas 建好 MONGODB_TEXT_INDEX（analyzer 用 lucene.cjk）
+    RAG_HYBRID_ENABLED: bool = os.getenv("RAG_HYBRID_ENABLED", "false").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    RAG_RRF_K: int = int(os.getenv("RAG_RRF_K", "60"))
 
     # Light CRAG（檢索充足性分級；關閉則等同舊行為）
     RAG_CRAG_ENABLED: bool = os.getenv("RAG_CRAG_ENABLED", "true").lower() in (

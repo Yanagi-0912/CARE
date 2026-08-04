@@ -1,0 +1,35 @@
+{
+  "_comment": [
+    "Atlas Search index 定義（BM25 用），供 hybrid retrieval 的 $search 階段使用。",
+    "這與 MONGODB_VECTOR_INDEX 是兩個不同的索引，需各自建立。",
+    "",
+    "建立方式：Atlas UI 左側 Search & Vector Search -> Create Search Index",
+    "  -> 選 'Atlas Search'（不是 Vector Search）-> JSON Editor -> 貼上下方 mappings",
+    "  -> 索引名稱請與 .env 的 MONGODB_TEXT_INDEX 一致（建議 care_text_index）",
+    "",
+    "analyzer 為什麼一定要 lucene.cjk：中文沒有空白分詞，預設的英文 analyzer",
+    "會把整句中文當成單一 token，BM25 因此完全失效（看起來有跑但撈不到東西）。",
+    "lucene.cjk 做字元 bigram 切分（乙醯胺酚 -> 乙醯/醯胺/胺酚），中文可用。",
+    "",
+    "若 MONGODB_TEXT_FIELD 不是 'text'，下方 fields 的鍵名要一併改掉。"
+  ],
+  "name": "care_text_index",
+  "mappings": {
+    "dynamic": false,
+    "fields": {
+      "text": {
+        "type": "string",
+        "analyzer": "lucene.cjk",
+        "searchAnalyzer": "lucene.cjk"
+      },
+      "source_name": {
+        "type": "string",
+        "analyzer": "lucene.cjk"
+      },
+      "url": {
+        "type": "string",
+        "analyzer": "lucene.keyword"
+      }
+    }
+  }
+}

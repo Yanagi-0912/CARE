@@ -42,6 +42,27 @@ def _latest_human_text(messages) -> str:
     return ""
 
 
+# LineLocationHandler 會把位置訊息轉成「這是我的目前位置：lat=..., lng=...」
+# 這段文字才是 agent 實際看到的輸入。
+_SHARED_LOCATION_RE = re.compile(
+    r"lat\s*=\s*(-?\d+(?:\.\d+)?)\s*,\s*lng\s*=\s*(-?\d+(?:\.\d+)?)",
+    re.IGNORECASE,
+)
+
+
+def _parse_shared_location(text: str) -> tuple[float, float] | None:
+    """從使用者分享位置轉出的文字取出座標，取不到則回 None。"""
+    if not text:
+        return None
+    match = _SHARED_LOCATION_RE.search(text)
+    if not match:
+        return None
+    try:
+        return float(match.group(1)), float(match.group(2))
+    except ValueError:  # pragma: no cover - 正則已限制為數字
+        return None
+
+
 _FACILITY_SEARCH_RE = re.compile(
     r"醫院|診所|藥局|看醫生|就醫|急診|附近院所|找醫院|找診所|看診|"
     r"hospital|clinic|pharmacy",
@@ -135,9 +156,35 @@ class AgentNodes:
         tool_calls = getattr(response, "tool_calls", None) or []
         force_rag = False
         force_location = False
+        force_nearby = False
         user_text = _latest_human_text(state["messages"])
+        shared_location = _parse_shared_location(user_text)
 
+        # 使用者已分享位置（prompt 規則 5(b)）。這裡必須是決定性的：模型若沒有
+        # 主動呼叫 find_nearby_hospitals，agent 會回傳空內容，使用者只看到
+        # 「抱歉，我無法理解您的問題」；allow_rag 為真時更會把座標文字當成
+        # RAG 查詢送出去。順序排在 5(a) 之前 —— 已有座標就不該再要位置。
         if (
+            not tool_calls
+            and not _already_used_location_tools(state["messages"])
+            and shared_location is not None
+        ):
+            lat, lng = shared_location
+            response = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "find_nearby_hospitals",
+                        "args": {"lat": lat, "lng": lng},
+                        "id": "forced_nearby_1",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+            tool_calls = response.tool_calls
+            called = ["find_nearby_hospitals"]
+            force_nearby = True
+        elif (
             not tool_calls
             and not _already_used_location_tools(state["messages"])
             and _is_nearby_facility_intent(user_text)
@@ -189,6 +236,7 @@ class AgentNodes:
             call=called or None,
             force_rag=force_rag or None,
             force_location=force_location or None,
+            force_nearby=force_nearby or None,
             ms=int((time.perf_counter() - t0) * 1000),
         )
 

@@ -62,6 +62,7 @@ async def test_upsert_summary_limit_capping_removes_oldest():
         line_id="U123",
         summary_date=date(2026, 5, 26),
         summary="測試摘要",
+        language="zh-TW",
         created_at=datetime.now(timezone.utc),
     )
 
@@ -148,6 +149,7 @@ async def test_upsert_summary_builds_expected_update_query():
         line_id="U123",
         summary_date=date(2026, 5, 26),
         summary="測試摘要內容",
+        language="zh-TW",
         created_at=fixed_now,
     )
 
@@ -164,6 +166,7 @@ async def test_upsert_summary_builds_expected_update_query():
                 "line_id": "U123",
                 "summary_date": "2026-05-26",
                 "summary": "測試摘要內容",
+                "language": "zh-TW",
                 "created_at": fixed_now,
             }
         },

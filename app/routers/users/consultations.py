@@ -62,6 +62,7 @@ async def get_my_consultations(
             line_id=current_user.line_user_id,
             view_type="summary",
             summary=summary.summary if summary else None,
+            language=summary.language if summary else None,
         )
     except (RedisError, PyMongoError):
         raise HTTPException(status_code=503, detail=DB_ERROR_DETAIL)
@@ -146,7 +147,9 @@ async def download_my_summary_history(
     try:
         current_user_id = download_token_service.decode_user_id(download_token)
         summaries = await consultation_service.get_all_summaries(current_user_id)
-        payload = [summary.model_dump(mode="json") for summary in summaries]
+        payload = [
+            summary.model_dump(mode="json", exclude_none=True) for summary in summaries
+        ]
         return _build_download_response(payload)
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="downloadToken expired")

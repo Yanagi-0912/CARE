@@ -156,7 +156,7 @@ class ConsultationService:
             請根據對話輸出 JSON。
             使用者資料庫語言：{language}（{language_name}）
             請以該語言撰寫各欄位內容。
-            JSON 欄位 key 請維持 schema 中的中文名稱，不要翻譯成其他語言。
+            JSON 欄位 key 請依照{language_name}翻譯成對應語言。
 
             規則：
             - 僅輸出 JSON

@@ -52,15 +52,25 @@ class FakeRepository:
         return [summary for summary in self.summaries if summary.line_id == line_id]
 
 
+class FakeUserProfileService:
+    def __init__(self, language: str | None = "zh-TW") -> None:
+        self.language = language
+
+    async def get_user_settings(self, line_id: str) -> dict:
+        return {"language": self.language}
+
+
 @pytest.fixture
 def consultation_service() -> ConsultationService:
     fake_store = FakeChatHistoryRepository()
     fake_repo = FakeRepository()
+    fake_user_profile_service = FakeUserProfileService()
     fake_gemini = SimpleNamespace(chat_model=SimpleNamespace(ainvoke=AsyncMock()))
     return ConsultationService(
         chat_history_repository=fake_store,
         repository=fake_repo,
         gemini_service=fake_gemini,
+        user_profile_service=fake_user_profile_service,
     )
 
 
@@ -73,6 +83,7 @@ async def test_get_view_prefers_summary(
         line_id="U123",
         summary_date=date(2026, 5, 17),
         summary="今天主要是腸胃不適",
+        language="zh-TW",
         created_at=datetime.now(timezone.utc),
     )
     consultation_service._repository.summary = summary
@@ -103,12 +114,14 @@ async def test_list_summary_history_returns_repository_data(
             line_id="U123",
             summary_date=date(2026, 5, 26),
             summary="5/26 摘要",
+            language="zh-TW",
             created_at=datetime.now(timezone.utc),
         ),
         ConsultationSummary(
             line_id="U999",
             summary_date=date(2026, 5, 26),
             summary="別人摘要",
+            language="en",
             created_at=datetime.now(timezone.utc),
         ),
     ]
@@ -163,5 +176,36 @@ async def test_summarize_uses_generated_text(
         )
 
     assert summary.summary == "摘要完成"
+    assert summary.language == "zh-TW"
     assert consultation_service._repository.summary is not None
     assert consultation_service._repository.summary.summary_date == date(2026, 5, 17)
+
+
+@pytest.mark.asyncio
+async def test_summarize_passes_user_language_into_prompt(
+    consultation_service: ConsultationService,
+):
+    msg = ChatMessage(
+        line_id="U123",
+        message_type="text",
+        content="我今天頭痛",
+        timestamp=datetime(2026, 5, 17, 8, 0, tzinfo=timezone.utc),
+    )
+    await consultation_service._chat_history_repository.append_message("U123", msg)
+
+    consultation_service._gemini_service.chat_model.ainvoke = AsyncMock(
+        return_value=SimpleNamespace(content='{"主訴":"頭痛"}')
+    )
+    consultation_service._user_profile_service.language = "en"
+
+    summary = await consultation_service.summarize(
+        "U123", ConsultationSummarizeRequest(target_date=date.today(), force=True)
+    )
+
+    assert summary.language == "en"
+    consultation_service._gemini_service.chat_model.ainvoke.assert_awaited_once()
+    prompt = consultation_service._gemini_service.chat_model.ainvoke.call_args.args[0][
+        0
+    ].content
+    assert "使用者資料庫語言：en（英文）" in prompt
+    assert "請以該語言撰寫各欄位內容。" in prompt

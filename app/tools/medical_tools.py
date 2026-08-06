@@ -14,7 +14,8 @@ from resources.flex_messages.medical_messages.facility_brief_flex_message import
 from resources.flex_messages.medical_messages.facility_detail_flex_message import (
     generate_facility_detail_flex_message,
 )
-
+from app.core.request_context import get_line_user_id
+from app.repositories.user_location_repository import UserLocationRepository
 _medical_service: MedicalService | None = None
 logger = logging.getLogger(__name__)
 
@@ -68,8 +69,16 @@ async def lookup_medical_facility(
     若已知使用者座標可傳入 lat/lng 以便多筆候選依距離排序。
     """
     medical_facility_limit = 3
+
     if _medical_service is None:
         return "醫療服務未初始化，請稍後再試。"
+    # 補齊 fallback 邏輯：若 agent 呼叫時未傳 lat/lng，嘗試從 UserLocationRepository 讀取
+    if lat is None or lng is None:
+        user_id = get_line_user_id()
+        if user_id:
+            cached_location = await UserLocationRepository.get_last_location(user_id)
+            if cached_location:
+                lat, lng = cached_location
 
     logger.info(
         f"{LOGGER_HEADER_TEXT} 開始查詢醫療院所，keyword=%r, lat=%s, lng=%s",

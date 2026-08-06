@@ -103,12 +103,14 @@ def test_download_my_summary_history_returns_json_attachment(
             line_id="U123",
             summary_date=date(2026, 5, 26),
             summary="5/26 摘要",
+            language="zh-TW",
             created_at=datetime(2026, 5, 26, 10, 11, 12),
         ),
         ConsultationSummary(
             line_id="U123",
             summary_date=date(2026, 5, 27),
             summary="5/27 摘要",
+            language="en",
             created_at=datetime(2026, 5, 27, 13, 14, 15),
         ),
     ]
@@ -134,12 +136,14 @@ def test_download_my_summary_history_returns_json_attachment(
             "line_id": "U123",
             "summary_date": "2026-05-26",
             "summary": "5/26 摘要",
+            "language": "zh-TW",
             "created_at": "2026-05-26T10:11:12",
         },
         {
             "line_id": "U123",
             "summary_date": "2026-05-27",
             "summary": "5/27 摘要",
+            "language": "en",
             "created_at": "2026-05-27T13:14:15",
         },
     ]

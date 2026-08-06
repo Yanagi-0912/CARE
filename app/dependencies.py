@@ -37,7 +37,9 @@ from app.services.line_messaging.reply.tts_service import TTSService
 from app.services.line_messaging.rich_menu_service import RichMenuService
 from app.services.line_messaging.token_manager import LineTokenManager
 from app.services.medical.medical_service import MedicalService, medical_service
-from app.services.line_messaging.handler.facility_detail_handler import LineFacilityDetailHandler
+from app.services.line_messaging.handler.facility_detail_handler import (
+    LineFacilityDetailHandler,
+)
 from app.services.rag import (
     HybridRetriever,
     MongoAtlasTextRetriever,
@@ -174,12 +176,6 @@ _rag_answer_service = RagAnswerService(
 
 _chat_history_repository = build_chat_history_repository()
 _consultation_repository = ConsultationRepository()
-_consultation_service = ConsultationService(
-    chat_history_repository=_chat_history_repository,
-    repository=_consultation_repository,
-    gemini_service=_gemini_service,
-)
-
 configure_rag_tool(_rag_answer_service)
 configure_web_tool(_web_search_service)
 configure_medical_tools(medical_service)
@@ -265,9 +261,17 @@ _rich_menu_service = RichMenuService(
 
 _user_profile_repository = UserProfileRepository()
 _user_profile_service = UserProfileService(
-    repo=_user_profile_repository,
-    rich_menu_service=_rich_menu_service,
+    repo=_user_profile_repository, 
+    rich_menu_service=_rich_menu_service
 )
+
+_consultation_service = ConsultationService(
+    chat_history_repository=_chat_history_repository,
+    repository=_consultation_repository,
+    gemini_service=_gemini_service,
+    user_profile_service=_user_profile_service,
+)
+
 _tts_service = TTSService()
 
 _line_replier = LineReplier(
@@ -423,8 +427,6 @@ def get_line_replier() -> LineReplier:
 
 def get_user_profile_service() -> UserProfileService:
     return _user_profile_service
-
-
 
 
 def get_liff_auth_application_service() -> LiffAuthApplicationService:

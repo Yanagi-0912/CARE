@@ -24,12 +24,15 @@ def test_dependency_wiring_is_correct():
     assert handler._message_handler._agent is dependencies._care_agent
     assert handler._media_handler._agent is dependencies._care_agent
     assert handler._location_handler._agent is dependencies._care_agent
-    assert handler._message_handler._history_service is dependencies._line_history_service
+    assert (
+        handler._message_handler._history_service is dependencies._line_history_service
+    )
     assert (
         handler._message_handler._history_service._repo
         is dependencies.get_chat_history_repository()
     )
     assert handler._message_handler._user_profile_service is profile_service
+    assert dependencies._consultation_service._user_profile_service is profile_service
     assert handler._replier._token_manager is token_manager
     assert handler._replier._tts_service is dependencies._tts_service
     assert (

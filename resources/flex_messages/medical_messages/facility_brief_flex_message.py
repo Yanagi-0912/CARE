@@ -108,11 +108,14 @@ def _build_status_indicator(is_open: bool | None) -> dict[str, Any]:
     
 def create_facility_item_box(facility: MedicalFacility) -> dict[str, Any]:
     """建立單一醫療院所的 Flex Message Box 結構"""
-    dist_text = (
-        f"距離 {facility.distance_meters:.0f} 公尺"
-        if facility.distance_meters is not None
-        else "距離未知"
-    )
+    if facility.distance_meters is not None:
+        if facility.distance_meters >= 1000:
+            dist_text = (f"距離 {facility.distance_meters/1000:.1f} 公里")
+        else:
+            dist_text = (f"距離 {facility.distance_meters:.0f} 公尺")
+    else:
+        dist_text = ("距離未知")
+    
 
     # 呼叫自己內部定義的 UI 專用 URL 函數
     map_uri = _build_flex_map_uri(facility)

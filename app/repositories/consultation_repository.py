@@ -29,7 +29,7 @@ class ConsultationRepository:
         if collection is None:
             collection = MongoDBManager.get_consultation_summaries_collection()
 
-        payload = summary.model_dump(mode="json")
+        payload = summary.model_dump(mode="json", exclude_none=True)
         payload["created_at"] = summary.created_at
 
         # 更新或插入最新的摘要

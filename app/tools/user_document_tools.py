@@ -1,6 +1,6 @@
 from langchain_core.tools import tool
 
-from app.tools.knowledge_report_tools import get_line_user_id
+from app.core.request_context import get_line_user_id
 
 _user_document_answer_service = None
 

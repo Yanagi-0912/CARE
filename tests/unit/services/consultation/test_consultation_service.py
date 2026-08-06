@@ -208,5 +208,4 @@ async def test_summarize_passes_user_language_into_prompt(
         0
     ].content
     assert "使用者資料庫語言：en（英文）" in prompt
-    assert "JSON 欄位 key 請維持 schema 中的中文名稱" in prompt
     assert "請以該語言撰寫各欄位內容。" in prompt

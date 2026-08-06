@@ -5,7 +5,9 @@ import time
 from typing import Any, Optional
 
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
+
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from app.core.request_logging import log_stage
@@ -125,12 +127,14 @@ class Agent:
         all_tools = get_all_tools(include_rag_tool=True)
         tool_executor = ToolNode(all_tools)
 
-        async def tools_node(state: State) -> dict:
+        async def tools_node(state: State, config: RunnableConfig) -> dict:
+
             names = _tool_names_from_state(state)
             t0 = time.perf_counter()
             log_stage(logger, "tools_start", names=names)
             try:
-                result = await tool_executor.ainvoke(state)
+                result = await tool_executor.ainvoke(state, config=config)
+
                 elapsed_ms = int((time.perf_counter() - t0) * 1000)
                 result_messages = []
                 if isinstance(result, dict):

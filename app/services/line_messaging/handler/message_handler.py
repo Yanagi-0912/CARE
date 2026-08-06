@@ -14,7 +14,7 @@ from app.core.user_language import (
 )
 from app.i18n.messages import t
 from app.services.line_messaging.reply.reply import LineReplier
-from app.tools.knowledge_report_tools import reset_line_user_id, set_line_user_id
+from app.core.request_context import reset_line_user_id, set_line_user_id
 
 logger = logging.getLogger(__name__)
 

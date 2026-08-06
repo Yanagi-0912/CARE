@@ -4,23 +4,15 @@ from contextvars import ContextVar, Token
 
 from langchain_core.tools import tool
 
+from app.core.request_context import (
+    get_line_user_id,
+    reset_line_user_id,
+    set_line_user_id,
+)
 from app.services.knowledge_reports.service import KnowledgeReportService
-
-line_user_id_var: ContextVar[str | None] = ContextVar("line_user_id", default=None)
 
 _knowledge_report_service: KnowledgeReportService | None = None
 
-
-def set_line_user_id(user_id: str) -> Token:
-    return line_user_id_var.set(user_id)
-
-
-def reset_line_user_id(token: Token) -> None:
-    line_user_id_var.reset(token)
-
-
-def get_line_user_id() -> str | None:
-    return line_user_id_var.get()
 
 
 def configure_knowledge_report_tool(service: KnowledgeReportService) -> None:

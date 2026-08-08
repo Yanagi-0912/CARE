@@ -20,6 +20,10 @@ CARE 的 RAG 知識庫問答目前 top-5 hit_rate 偏低（實測 vector 0.29 / 
 
 ## Capabilities
 
+### New Capabilities
+
+- （無）
+
 ### Modified Capabilities
 
 - `rag-responses`：「檢索上下文與參考來源上限」由「SHALL 只列出最多 3 筆關聯度最高的網址」改為「SHALL 只列出實際被引用的來源，最多 3 筆，依首次引用順序連續編號；當來源缺少 `url` 時，SHALL 以 `來源名｜標題` 呈現，不得靜默丟棄」。

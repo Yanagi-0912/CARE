@@ -22,7 +22,7 @@
 
 ## 4. 只列實際引用的來源
 
-- [ ] 4.1 新增 `cited_indices` 模組函式：自模型回覆文字中解析出實際出現過的 `[n]` 引用編號
+- [ ] 4.1 於 `app/services/rag/answer_service.py` 新增 `cited_indices` 模組層級函式：自模型回覆文字中解析出實際出現過的 `[n]` 引用編號
 - [ ] 4.2 `_append_sources` 改為只列 `cited_indices` 命中的來源，依首次引用順序連續重編號（不再依檢索分數排序）
 - [ ] 4.3 無 `url` 的來源改以「來源名｜標題」呈現，移除 `if not url: continue` 的靜默丟棄
 - [ ] 4.4 模型回覆中未偵測到任何 `[n]` 時，不附加「參考資料來源」區塊，並記錄 `citation_missing` log（`design.md` D3）
@@ -34,3 +34,4 @@
 - [ ] 5.2 `CaseResult` 新增 `.citation_count`；`EvalSummary` 新增 `.citation_coverage`（有引用的案例佔比）
 - [ ] 5.3 `scripts/rag_eval.py` 的 `--with-answer` 路徑填入 `citation_count`／`citation_coverage` 並輸出
 - [ ] 5.4 測試：`tests/unit/services/rag/test_eval_scoring.py`
+- [ ] 5.5 Definition of Done：`./init.sh` 全綠（所有 pytest 通過）

@@ -1266,16 +1266,28 @@ created: 2026-08-08
 `## Capabilities` — `### Modified Capabilities`：
 `rag-responses` 的檢索行為（移除向量分數硬門檻，過濾職責移交 reranker）。
 
-`## Impact` — 程式：`retriever.py`、`config.py`、`cohere_reranker.py`、
-`resources/atlas_text_search_index.json`、`scripts/` 新增一支；
-`.env.example` 新增 `RAG_VECTOR_MIN_SCORE`；無新相依套件。
+`## Impact` — 程式：`retriever.py`、`user_document_retriever.py`、`config.py`、
+`dependencies.py`、`cohere_reranker.py`、`resources/atlas_text_search_index.json`、
+`scripts/` 新增一支；`.env.example` 新增 `RAG_VECTOR_MIN_SCORE`；無新相依套件。
+須明確記載：本變更**不改變**使用者上傳文件問答（`rag-user-docs`）的檢索行為，
+該路徑的門檻維持 0.5。
 
 - [ ] **Step 3: 撰寫 `design.md`**
 
 `## Decisions` 需涵蓋：
-- **D1 為何移除 min_score 而非調低**：絕對門檻對 cosine 才成立，
-  且 RRF 融合後 `metadata["score"]` 已被覆寫為融合分數，
-  對 hybrid 路徑套用 0.5 門檻在語意上是錯的。保留參數但預設 0.0。
+- **D1 為何移除 min_score 而非調低**：在 wide retrieve → rerank 架構下，
+  第一階段的職責是最大化召回，過濾與排序是精排階段的工作；
+  0.5 這個絕對門檻在候選進 reranker 之前就先砍掉一批，與架構意圖相反。
+  保留參數但預設 0.0。
+  **不要**寫「RRF 融合後對融合分數套門檻所以語意錯誤」這類理由 ——
+  實際上 `min_score` 過濾發生在 `MongoAtlasVectorRetriever.ainvoke` 內部
+  （`retriever.py:122-124`），早於 `HybridRetriever` 呼叫 `reciprocal_rank_fusion`，
+  融合分數覆寫只發生在回傳值上，其後沒有任何 min_score 檢查。
+- **D1b 使用者文件路徑不同步放寬**：`user_document_retriever.py` 目前
+  `from app.services.rag.retriever import DEFAULT_MIN_SCORE` 並用作預設，
+  且 `dependencies.py` 未覆寫。但 `UserDocumentAnswerService` **沒有 reranker**，
+  檢索結果直接進 prompt —— 「過濾交給 reranker」的前提在該路徑不成立。
+  故兩條路徑各自持有明確的預設值，見 Task 8。
 - **D2 reranker 文本格式對齊 embedding**：格式刻意與上游
   `main_pipeline.get_embedding` 的 `f"主題：{title}\n內容：{chunk}"` 完全一致，
   使三個階段（向量／BM25／rerank）看到的語境盡量收斂。
@@ -1288,10 +1300,17 @@ created: 2026-08-08
 - [ ] **Step 5: 建立 spec delta `specs/rag-responses/spec.md`**
 
 同 Task 1 Step 5 的理由：`openspec archive` 靠這個檔案併回 `openspec/specs/`。
+
+**必須用 `## ADDED Requirements` 而非 `MODIFIED`** ——「向量檢索候選過濾」是一條
+全新的 requirement，`openspec/specs/rag-responses/spec.md` 裡並不存在同名項目。
+openspec CLI 的合併邏輯在 MODIFIED 找不到對應 header 時會直接拋錯
+（`specs-apply.js`：`MODIFIED failed for header ... - not found`），
+屆時 `openspec archive rag-retrieval-tuning` 會整個失敗。
+
 建立 `openspec/changes/rag-retrieval-tuning/specs/rag-responses/spec.md`：
 
 ```markdown
-## MODIFIED Requirements
+## ADDED Requirements
 
 ### Requirement: 向量檢索候選過濾
 
@@ -1323,14 +1342,36 @@ git commit -m "docs(openspec): 新增 rag-retrieval-tuning change 提案"
 
 **Files:**
 - Modify: `app/services/rag/retriever.py:26`（`DEFAULT_MIN_SCORE`）
+- Modify: `app/services/rag/user_document_retriever.py`（改為自有常數，見 Step 3b）
 - Modify: `app/core/config.py`
 - Modify: `app/dependencies.py`
 - Modify: `.env.example`
 - Test: `tests/unit/services/rag/test_retriever.py`
+- Test: `tests/unit/services/rag/test_user_document_retriever.py`
 
 **Interfaces:**
 - Consumes: 無
-- Produces: `settings.RAG_VECTOR_MIN_SCORE: float`（預設 `0.0`）
+- Produces:
+  - `settings.RAG_VECTOR_MIN_SCORE: float`（預設 `0.0`）
+  - `user_document_retriever.DEFAULT_USER_DOC_MIN_SCORE: float`（值 `0.5`）
+
+**⚠️ 這個 Task 有一個不明顯的連帶影響，務必先讀完再動手**
+
+`app/services/rag/user_document_retriever.py:11` 目前是：
+
+```python
+from app.services.rag.retriever import DEFAULT_MIN_SCORE, _NUM_CANDIDATES_MULTIPLIER
+```
+
+並在第 31 行用作 `min_score` 的預設值。`app/dependencies.py` 建構
+`UserDocumentVectorRetriever` 時**沒有**覆寫 `min_score`。
+
+關鍵差異：**`UserDocumentAnswerService` 沒有 reranker** —— 檢索結果直接進 prompt
+（見 `user_document_answer_service.py`）。所以「把過濾交給 reranker」這個理由
+在使用者文件路徑上不成立。若只改共用常數，等於在沒有任何補償機制的情況下
+拆掉該功能的品質底線。
+
+處置：兩條路徑各自持有明確的預設值，並在註解寫明理由。
 
 - [ ] **Step 1: 寫失敗測試**
 
@@ -1386,15 +1427,52 @@ async def test_retriever_still_honours_explicit_min_score():
 Run: `.venv/bin/python -m pytest tests/unit/services/rag/test_retriever.py -v -k min_score`
 Expected: 第一個測試 FAIL（低分被 0.5 門檻濾掉），第二個 PASS
 
-- [ ] **Step 3: 改預設值**
+- [ ] **Step 3: 改 KB 路徑的預設值**
 
 `app/services/rag/retriever.py`：
 
 ```python
 # 第一階段負責衝 recall，過濾交給 reranker（見 openspec/changes/rag-retrieval-tuning）。
 # 保留參數以便需要時由 env 調回。
+# 注意：使用者上傳文件的檢索路徑沒有 reranker，因此不共用這個值，
+# 見 user_document_retriever.DEFAULT_USER_DOC_MIN_SCORE。
 DEFAULT_MIN_SCORE = 0.0
 ```
+
+- [ ] **Step 3b: 讓使用者文件路徑持有自己的門檻**
+
+先寫測試，確認使用者文件檢索**仍然**過濾低分文件
+（加到 `tests/unit/services/rag/test_user_document_retriever.py`，
+沿用該檔既有的假件風格）：
+
+```python
+@pytest.mark.asyncio
+async def test_user_document_retriever_still_filters_low_score_by_default():
+    """使用者文件路徑沒有 reranker，必須保留 0.5 門檻。
+
+    這個測試守的是「KB 路徑放寬門檻時不會連帶把這裡也放寬」。
+    """
+    retriever = _make_user_doc_retriever(vector_dim=2)
+    ...  # 注入含 score 0.9 與 score 0.12 兩筆的假 collection
+    docs = await retriever.ainvoke("q", user_id="u1")
+    assert [d.page_content for d in docs] == ["高分"]
+```
+
+（假件與建構細節請對齊該測試檔既有寫法；`ainvoke` 的簽名以實際程式碼為準。）
+
+然後修改 `app/services/rag/user_document_retriever.py`：把第 11 行的 import 改為
+只取 `_NUM_CANDIDATES_MULTIPLIER`，並新增自有常數：
+
+```python
+from app.services.rag.retriever import _NUM_CANDIDATES_MULTIPLIER
+
+# 這條路徑沒有 reranker——檢索結果直接進 prompt（見 UserDocumentAnswerService）。
+# 因此不能沿用 KB 路徑「過濾交給 reranker」的放寬，必須自己保留品質門檻。
+DEFAULT_USER_DOC_MIN_SCORE = 0.5
+```
+
+並把 `__init__` 的 `min_score: float = DEFAULT_MIN_SCORE` 改為
+`min_score: float = DEFAULT_USER_DOC_MIN_SCORE`。
 
 - [ ] **Step 4: 新增設定並接線**
 

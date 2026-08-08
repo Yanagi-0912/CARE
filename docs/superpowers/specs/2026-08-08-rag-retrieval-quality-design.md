@@ -170,7 +170,7 @@ B3 細節：
 
 | 項 | 內容 | 檔案 |
 | --- | --- | --- |
-| C1 | 移除 `min_score` 預設 0.5（改 0.0，參數保留），過濾交給 reranker | `retriever.py`、`config.py` |
+| C1 | 移除 KB 路徑的 `min_score` 預設 0.5（改 0.0，參數保留），過濾交給 reranker；**使用者文件路徑維持 0.5** | `retriever.py`、`user_document_retriever.py`、`config.py` |
 | C2 | rerank 輸入補回標題，格式對齊 embedding 時的 `主題：{title}\n內容：{chunk}` | `cohere_reranker.py`、`answer_service.py` |
 | C3 | 清除 266 筆 Firecrawl 導覽列噪音，腳本須支援 dry-run | `scripts/` 新增 |
 | C4 | 修正 Atlas Search index 範本欄位名 `text` → `chunk_content` | `resources/atlas_text_search_index.json` |
@@ -178,6 +178,25 @@ B3 細節：
 C1 理由：在 wide retrieve → rerank 架構下，第一階段職責是衝 recall，
 過濾是 reranker 的工作。0.5 是針對 cosine 的絕對門檻，
 在候選進 reranker 前就先砍掉一批，與架構意圖相反。
+
+**C1 的連帶影響（Task 7 review 發現）**：`user_document_retriever.py` 直接
+`from app.services.rag.retriever import DEFAULT_MIN_SCORE` 並用作自己的預設，
+而 `dependencies.py` 建構 `UserDocumentVectorRetriever` 時沒有覆寫它。
+關鍵差異是 **`UserDocumentAnswerService` 沒有 reranker** —— 檢索結果直接進 prompt。
+因此「把過濾交給 reranker」的理由在該路徑不成立，若共用常數一起改為 0.0，
+等於在沒有補償機制的情況下拆掉品質底線。
+
+處置：兩條路徑各自擁有明確的預設值。`retriever.DEFAULT_MIN_SCORE` 改為 `0.0`
+（KB 路徑，後面有 reranker）；`user_document_retriever.py` 改為定義自己的
+`DEFAULT_USER_DOC_MIN_SCORE = 0.5` 並註明「此路徑無 reranker，故保留門檻」，
+不再 import KB 的常數。
+
+**更正**：本文件先前在 C1 主張「hybrid 路徑經 RRF 融合後 `metadata["score"]`
+已被覆寫為融合分數，對它套用 0.5 門檻語意上是錯的」。**該敘述不成立** ——
+`min_score` 過濾發生在 `MongoAtlasVectorRetriever.ainvoke` 內部
+（`retriever.py:122-124`），早於 `HybridRetriever` 呼叫
+`reciprocal_rank_fusion`；融合分數覆寫只發生在回傳值上，其後沒有任何
+min_score 檢查。移除門檻的決定仍然成立，但理由只有「第一階段應衝 recall」這一條。
 
 C2 理由：見 2.4。這是不需重建知識庫就能取得的增益。
 

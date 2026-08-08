@@ -2,9 +2,10 @@
 
 - [ ] 1.1 `app/services/rag/retriever.py`：`DEFAULT_MIN_SCORE` 由 `0.5` 改為 `0.0`
 - [ ] 1.2 `app/core/config.py`：新增 `RAG_VECTOR_MIN_SCORE`（`float`，預設 `0.0`）
-- [ ] 1.3 `app/dependencies.py`：組裝 retriever 時改由 `settings.RAG_VECTOR_MIN_SCORE` 注入 `min_score`（不再吃 `DEFAULT_MIN_SCORE` 常數的隱性預設）
+- [ ] 1.3 `app/dependencies.py`：組裝知識庫檢索 retriever 時改由 `settings.RAG_VECTOR_MIN_SCORE` 注入 `min_score`（不再吃 `DEFAULT_MIN_SCORE` 常數的隱性預設）
 - [ ] 1.4 `.env.example`：新增 `RAG_VECTOR_MIN_SCORE=0.0` 並附註說明（見 `design.md` D1）
-- [ ] 1.5 測試：`tests/unit/services/rag/test_retriever.py`
+- [ ] 1.5 `app/services/rag/user_document_retriever.py`：新增獨立的 `DEFAULT_USER_DOC_MIN_SCORE = 0.5` 常數並改用它作為 `UserDocumentVectorRetriever` 的 `min_score` 預設，不再 import `retriever.py` 的 `DEFAULT_MIN_SCORE`；確保 `app/dependencies.py` 組裝 `UserDocumentVectorRetriever` 時行為不變（門檻維持 0.5，見 `design.md` D1b）
+- [ ] 1.6 測試：`tests/unit/services/rag/test_retriever.py`、`tests/unit/services/rag/test_user_document_retriever.py`
 
 ## 2. reranker 輸入補回標題
 

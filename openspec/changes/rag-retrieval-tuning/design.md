@@ -32,9 +32,17 @@
 
 ### D1. 為何移除 min_score 而非調低
 
-絕對相似度門檻只在「分數是 cosine 相似度」的前提下才有意義；`0.5` 是針對 cosine 訂的經驗值。但在 hybrid 檢索路徑下，`app/services/rag/retriever.py` 的 RRF 融合會把 `metadata["score"]` 覆寫為融合後的分數（見 `retriever.py:218` 附近註解：BM25 分數沒有上界、也依語料庫統計而變，刻意不做 min_score 過濾），此時再對它套用 0.5 門檻在語意上是錯的——融合分數的尺度與 cosine 相似度完全不同。
+在 wide retrieve → rerank 架構下，第一階段的職責是最大化召回，過濾與排序是精排階段的工作；`0.5` 這個絕對門檻在候選送進 reranker 之前就先砍掉一批，與這個架構意圖相反。因此不是把 0.5 調低成另一個猜測值，而是移除硬門檻本身，讓候選盡量完整地交給精排去判斷去留。設定項 `RAG_VECTOR_MIN_SCORE` 保留（預設 `0.0`），使未來如果真的需要在向量階段做門檻過濾，仍可由環境變數調回非零值，而不必改程式碼。
 
-因此不是把 0.5 調低成另一個猜測值，而是移除硬門檻本身：在 wide retrieve → rerank 架構下，第一階段的職責是最大化召回，過濾與排序交給精排階段負責。設定項 `RAG_VECTOR_MIN_SCORE` 保留（預設 `0.0`），使未來如果真的需要在向量階段做門檻過濾，仍可由環境變數調回非零值，而不必改程式碼。
+（曾考慮以「hybrid 路徑經 RRF 融合後 `metadata["score"]` 已被覆寫為融合分數，對融合分數套用針對 cosine 設計的門檻語意錯誤」作為額外理由，但查證程式碼後該敘述不成立：`min_score` 過濾發生在 `MongoAtlasVectorRetriever.ainvoke` 內部（`retriever.py:122-124`），早於 `HybridRetriever` 呼叫 `reciprocal_rank_fusion`；RRF 融合分數覆寫只發生在回傳值上，其後沒有任何 min_score 檢查。故不採用這條理由。）
+
+### D1b. 使用者上傳文件路徑不同步放寬
+
+`app/services/rag/user_document_retriever.py` 目前 `from app.services.rag.retriever import DEFAULT_MIN_SCORE` 並直接用作 `UserDocumentVectorRetriever` 的預設 `min_score`，`app/dependencies.py` 組裝時也未覆寫。若本 change 只改共用的 `retriever.py` 常數，`user_document_retriever.py` 會跟著靜默把門檻改成 0.0。
+
+但 D1 的前提「過濾交給精排」在使用者上傳文件這條路徑上不成立：`UserDocumentAnswerService` 沒有 reranker，`UserDocumentVectorRetriever` 的檢索結果直接進 prompt。拿掉門檻卻沒有任何機制補償，等於靜默拆掉這個功能既有的品質底線。
+
+因此決定：兩條路徑各自持有明確、獨立的預設值，不再共用同一個常數。`app/services/rag/retriever.py` 的 `DEFAULT_MIN_SCORE` 改為 `0.0`（供有 reranker 把關的知識庫檢索路徑使用），`user_document_retriever.py` 新增自有的 `DEFAULT_USER_DOC_MIN_SCORE = 0.5` 並改用它作預設，不再 import 前者的常數。此變更範圍屬 Task 8。
 
 ### D2. reranker 文本格式對齊 embedding
 

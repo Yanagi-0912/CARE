@@ -25,8 +25,9 @@
 
 ## Impact
 
-- **程式**：`app/services/rag/retriever.py`（`DEFAULT_MIN_SCORE`）、`app/core/config.py`（新增 `RAG_VECTOR_MIN_SCORE`）、`app/dependencies.py`（注入新設定）、`app/services/rag/cohere_reranker.py`（新增 `rerank_document_text`）、`resources/atlas_text_search_index.json`、`scripts/` 新增 `purge_navigation_chunks.py`
+- **程式**：`app/services/rag/retriever.py`（`DEFAULT_MIN_SCORE`）、`app/services/rag/user_document_retriever.py`（新增獨立的 `DEFAULT_USER_DOC_MIN_SCORE = 0.5`，見 `design.md` D1b）、`app/core/config.py`（新增 `RAG_VECTOR_MIN_SCORE`）、`app/dependencies.py`（注入新設定）、`app/services/rag/cohere_reranker.py`（新增 `rerank_document_text`）、`resources/atlas_text_search_index.json`、`scripts/` 新增 `purge_navigation_chunks.py`
 - **設定**：`.env.example` 新增 `RAG_VECTOR_MIN_SCORE=0.0`
 - **API／route**：無新 HTTP route；僅影響 `get_rag_answer` tool 內部檢索候選數量與精排輸入品質，對外回覆格式不變
-- **測試**：`tests/unit/services/rag/test_retriever.py`、`tests/unit/services/rag/test_cohere_reranker.py`、`tests/unit/scripts/test_purge_navigation_chunks.py` 新增／更新；`./init.sh`（或 pytest）全綠才算完成
+- **不變範圍**：本變更**不改變**使用者上傳文件問答（`rag-user-docs`）的檢索行為，該路徑（`UserDocumentVectorRetriever`，無 reranker、檢索結果直接進 prompt）門檻維持 `0.5`，見 `design.md` D1b
+- **測試**：`tests/unit/services/rag/test_retriever.py`、`tests/unit/services/rag/test_user_document_retriever.py`、`tests/unit/services/rag/test_cohere_reranker.py`、`tests/unit/scripts/test_purge_navigation_chunks.py` 新增／更新；`./init.sh`（或 pytest）全綠才算完成
 - **相依**：無新增套件

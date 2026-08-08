@@ -232,10 +232,8 @@ def _print_summary(label: str, golden: Path, summary, results, *, with_answer: b
         if source_cases:
             ok = sum(1 for r in source_cases if r.source_hit)
             print(f"source_hit: {ok}/{len(source_cases)}")
-        cited_cases = [r for r in results if r.citation_count is not None]
-        if cited_cases:
-            ok = sum(1 for r in cited_cases if r.citation_count > 0)
-            print(f"citation_coverage: {ok}/{len(cited_cases)}")
+        if summary.citation_coverage is not None:
+            print(f"citation_coverage: {_fmt(summary.citation_coverage)}")
 
 
 async def run_eval(

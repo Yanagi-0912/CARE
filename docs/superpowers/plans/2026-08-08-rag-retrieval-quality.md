@@ -939,6 +939,14 @@ def test_append_sources_caps_at_three_and_drops_overflow_markers():
     out = RagAnswerService._append_sources("a[1]b[2]c[3]d[4]", docs)
     assert "[4]" not in out.split("參考")[0]  # 超出上限的標記被移除
     assert out.count("https://e.example/") == 3
+
+
+def test_append_sources_strips_markers_when_none_resolve():
+    """全部引用都解析不到時，仍要移除標記，只是不附來源清單。"""
+    docs = [_doc(source="A", url="https://a.example/1")]
+    out = RagAnswerService._append_sources("內容 [9]。", docs)
+    assert out == "內容 。"
+    assert "參考" not in out
 ```
 
 - [ ] **Step 2: 執行測試確認失敗**
@@ -1027,21 +1035,27 @@ def cited_indices(answer_text: str) -> list[int]:
             renumber[old_idx] = new_idx
             source_lines.append(f"[{new_idx}] {label}")
 
-        if not source_lines:
-            logger.info("citation_unresolved cited=%s docs=%d", cited, len(docs))
-            return answer_text
-
         def _replace(match: re.Match[str]) -> str:
             mapped = renumber.get(int(match.group(1)))
             return f"[{mapped}]" if mapped is not None else ""
 
+        # 先改寫內文再決定要不要附清單：即使一筆來源都解析不出來，
+        # 那些指向不存在來源的標記仍必須從答案中移除。
         body = _CITATION_RE.sub(_replace, answer_text)
+
+        if not source_lines:
+            logger.info("citation_unresolved cited=%s docs=%d", cited, len(docs))
+            return body
+
         heading = t("agent.sources_heading")
         return f"{body}\n\n{heading}\n" + "\n".join(source_lines)
 ```
 
 註記：對應不到來源的 `[n]`（超出 `CITE_TOP_K` 上限、索引越界、或該篇
 url 與 title 皆缺）會被整個移除，而非留下指向不存在來源的編號。
+**這包含「全部引用都解析不到」的情況** —— 該情況下答案照樣要去掉標記，
+只是不附來源清單。（`cited` 為空、亦即模型完全沒標 `[n]` 時仍是提早回傳原文，
+因為沒有東西要移除。）
 
 - [ ] **Step 5: 執行測試確認通過**
 

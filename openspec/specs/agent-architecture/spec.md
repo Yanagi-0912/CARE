@@ -3,9 +3,7 @@
 ## Purpose
 
 定義 CARE 對話代理的編排方式：以 LangGraph 的原子化節點模式（atomic node pattern）串接 guardrail、agent 決策與工具執行，並定義代理可用的工具集合與最終回覆的組裝方式。實作位於 `app/services/agent/`（`agent.py`、`utils/nodes.py`、`utils/state.py`、`prompt.py`）與 `app/tools/`。
-
 ## Requirements
-
 ### Requirement: LangGraph 決策流程
 
 系統 SHALL 以 LangGraph `StateGraph` 編排一次對話，節點固定為 `guardrail`、`agent`、`tools`，流程為 `START → guardrail → agent`，並在 `agent` 之後依 `tools_condition` 分派；當代理不需工具時 SHALL 直接進入 `END`。共享狀態（State）SHALL 至少包含 `messages` 與 `allow_rag`，且每次 `invoke` 的 `allow_rag` 初始值為 `False`。
@@ -47,12 +45,26 @@
 注入哪一個工具 SHALL 依對話歷史中是否存在科別需求決定：有科別則注入
 `find_nearby_facilities_by_department`（並帶入使用者的原始說法），否則注入 `find_nearby_hospitals`。
 
+若歷史中存在院所類型需求（大醫院、診所、藥局），SHALL 一併帶入 `facility_type` 參數，
+與科別獨立判斷 —— 兩者可同時存在，亦可只有其中之一。
+
 #### Scenario: 歷史中有科別需求
 
 - **WHEN** 使用者先傳「附近有腸胃科嗎」，本輪傳送座標，且模型未產生 tool_calls
 - **THEN** 系統注入 `find_nearby_facilities_by_department`，`args` 含 `lat`、`lng` 與 `department="腸胃科"`
 
-#### Scenario: 歷史中無科別需求
+#### Scenario: 歷史中僅有類型需求
+
+- **WHEN** 使用者先傳「附近有大醫院嗎」，本輪傳送座標，且模型未產生 tool_calls
+- **THEN** 系統注入 `find_nearby_hospitals`，`args` 含 `lat`、`lng` 與 `facility_type="大醫院"`
+
+#### Scenario: 歷史中同時有科別與類型需求
+
+- **WHEN** 使用者先傳「附近大醫院的腸胃科」，本輪傳送座標，且模型未產生 tool_calls
+- **THEN** 系統注入 `find_nearby_facilities_by_department`，`args` 同時含
+  `department="腸胃科"` 與 `facility_type="大醫院"`
+
+#### Scenario: 歷史中無科別與類型需求
 
 - **WHEN** 使用者先傳「附近有醫院嗎」，本輪傳送座標，且模型未產生 tool_calls
 - **THEN** 系統注入 `find_nearby_hospitals`，`args` 僅含 `lat` 與 `lng`
@@ -70,7 +82,6 @@
 
 - **WHEN** 呼叫 `get_all_tools(include_rag_tool=False)`
 - **THEN** 回傳的工具集不含 `get_rag_answer` 與 `answer_from_uploaded_document`，但仍包含 `find_nearby_hospitals`、`find_nearby_facilities_by_department`、`lookup_medical_facility`、`request_location_quick_reply`
-
 
 ### Requirement: 最終回覆組裝
 

@@ -23,7 +23,17 @@ REQUIRED_KEYS = (
     "voice.enabled",
     "voice.disabled",
     "voice.need_login",
+    "location.type.title",
+    "location.type.unknown",
+    "location.type.pharmacy_none",
 )
+
+# 新增三個院所類型篩選 key 的 placeholder 對照，供格式化測試沿用。
+FACILITY_TYPE_KEY_PLACEHOLDERS = {
+    "location.type.title": "type",
+    "location.type.unknown": "facility_type",
+    "location.type.pharmacy_none": "radius_km",
+}
 
 
 @pytest.mark.parametrize("key", REQUIRED_KEYS)
@@ -38,6 +48,32 @@ def test_t_rag_fail_kb_empty_en_is_not_traditional_chinese():
     message = t("rag.fail.KB_EMPTY", "en")
     assert "knowledge base" in message.lower()
     assert "知識庫" not in message
+
+
+@pytest.mark.parametrize("key,placeholder", FACILITY_TYPE_KEY_PLACEHOLDERS.items())
+@pytest.mark.parametrize("language", SUPPORTED_LANGUAGES)
+def test_t_facility_type_keys_have_placeholder_and_format_correctly(key, placeholder, language):
+    template = t(key, language)
+    assert "{" + placeholder + "}" in template
+    formatted = template.format(**{placeholder: "PLACEHOLDER_VALUE"})
+    assert "PLACEHOLDER_VALUE" in formatted
+
+
+@pytest.mark.parametrize("key", FACILITY_TYPE_KEY_PLACEHOLDERS)
+def test_t_facility_type_keys_en_is_not_traditional_chinese(key):
+    message = t(key, "en")
+    assert not any("一" <= ch <= "鿿" for ch in message)
+
+
+def test_t_location_type_pharmacy_none_does_not_imply_no_pharmacy_nearby():
+    """藥局資料只有 116 家，遠低於實際數量；文案不得暗示「附近真的沒有藥局」，
+    且必須提供「改用藥局名稱查詢」的替代做法（Task 5 brief 的核心要求）。"""
+    zh = t("location.type.pharmacy_none", "zh-TW")
+    assert "藥局名稱" in zh
+    assert zh != t("location.department.none", "zh-TW").replace("{department}", "藥局")
+
+    en = t("location.type.pharmacy_none", "en")
+    assert "name" in en.lower()
 
 
 def test_t_agent_sources_heading_zh_tw_includes_colon():

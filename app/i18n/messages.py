@@ -321,6 +321,81 @@ _MESSAGES: dict[str, dict[str, str]] = {
             "内科・外科・小児科・歯科・耳鼻咽喉科・整形外科・皮膚科・眼科・産婦人科・漢方など、一般的な診療科でお試しください。"
         ),
     },
+    "location.type.title": {
+        "zh-TW": "附近的{type}",
+        "en": "Nearby {type}",
+        "id": "{type} terdekat",
+        "vi": "{type} gần đây",
+        "th": "{type} ใกล้เคียง",
+        "ja": "近くの{type}",
+    },
+    # 解析不出院所類型時不要退化成「搜全部」，否則使用者會誤以為系統聽懂了他要的類型。
+    "location.type.unknown": {
+        "zh-TW": (
+            "抱歉，我不確定「{facility_type}」對應到哪一種院所類型。\n"
+            "您可以改說：醫院、診所、藥局。"
+        ),
+        "en": (
+            'Sorry, I am not sure what kind of facility "{facility_type}" refers to.\n'
+            "Try one of: hospital, clinic, or pharmacy."
+        ),
+        "id": (
+            'Maaf, saya tidak yakin jenis fasilitas apa yang dimaksud dengan "{facility_type}".\n'
+            "Coba salah satu dari: rumah sakit, klinik, atau apotek."
+        ),
+        "vi": (
+            'Xin lỗi, tôi không chắc "{facility_type}" thuộc loại cơ sở y tế nào.\n'
+            "Hãy thử một trong các loại: bệnh viện, phòng khám hoặc nhà thuốc."
+        ),
+        "th": (
+            "ขออภัย ฉันไม่แน่ใจว่า \"{facility_type}\" ตรงกับประเภทสถานพยาบาลใด\n"
+            "ลองระบุประเภทใดประเภทหนึ่ง เช่น โรงพยาบาล คลินิก หรือร้านขายยา"
+        ),
+        "ja": (
+            "申し訳ありません。「{facility_type}」がどの院所種別に該当するか判断できませんでした。\n"
+            "病院・診療所・薬局のいずれかでお試しください。"
+        ),
+    },
+    # 資料庫僅收錄 116 家藥局（藥師自營 92 + 藥劑生自營 24），遠低於全台實際數千家健保特約藥局，
+    # 因此搜尋藥局幾乎必然「查無結果」。若沿用通用的查無院所訊息，會讓使用者誤以為附近真的沒有
+    # 藥局；這則訊息必須誠實把原因歸給「本系統資料覆蓋率有限」而非地理位置，並提供改用藥局
+    # 名稱查詢的替代做法，因此獨立成專屬 key，不與 location.department.none 共用文案。
+    "location.type.pharmacy_none": {
+        "zh-TW": (
+            "抱歉，本系統目前收錄的藥局資料有限，您附近 {radius_km} 公里內暫時查無登記中的藥局，"
+            "這並不代表附近真的沒有藥局。\n"
+            "建議您改以藥局名稱查詢（例如「OO藥局」），會更容易找到您要的藥局。"
+        ),
+        "en": (
+            "Sorry, our pharmacy data is currently limited, so no registered pharmacy was found "
+            "within {radius_km} km of you — this does not mean there are no pharmacies nearby.\n"
+            "Try searching by the pharmacy's name (e.g. \"XX Pharmacy\") instead, which is more "
+            "likely to find a match."
+        ),
+        "id": (
+            "Maaf, data apotek dalam sistem kami masih terbatas, sehingga tidak ditemukan apotek "
+            "terdaftar dalam radius {radius_km} km dari Anda — ini bukan berarti tidak ada apotek "
+            "di sekitar Anda.\n"
+            "Coba cari dengan nama apotek (misalnya \"Apotek XX\"), yang lebih mungkin ditemukan."
+        ),
+        "vi": (
+            "Xin lỗi, dữ liệu nhà thuốc trong hệ thống của chúng tôi vẫn còn hạn chế, nên không "
+            "tìm thấy nhà thuốc nào được đăng ký trong bán kính {radius_km} km quanh bạn — điều "
+            "này không có nghĩa là gần bạn không có nhà thuốc.\n"
+            "Hãy thử tìm theo tên nhà thuốc (ví dụ: \"Nhà thuốc XX\"), khả năng tìm thấy sẽ cao hơn."
+        ),
+        "th": (
+            "ขออภัย ข้อมูลร้านขายยาในระบบของเรายังมีจำกัด จึงไม่พบร้านขายยาที่ลงทะเบียนไว้ในรัศมี "
+            "{radius_km} กม. จากคุณ ซึ่งไม่ได้หมายความว่าแถวนั้นไม่มีร้านขายยาจริง ๆ\n"
+            "ลองค้นหาด้วยชื่อร้านขายยาโดยตรง (เช่น \"ร้านขายยา XX\") จะมีโอกาสพบมากกว่า"
+        ),
+        "ja": (
+            "申し訳ありません。本システムに登録されている薬局データはまだ限られており、"
+            "{radius_km} km 以内に登録済みの薬局が見つかりませんでした。これは近くに薬局が"
+            "実際にないという意味ではありません。\n"
+            "薬局名で直接検索（例：「〇〇薬局」）していただくと見つかりやすくなります。"
+        ),
+    },
     "meds.recorded": {
         "zh-TW": "已記錄您的服藥狀態！",
         "en": "Your medication status has been recorded!",

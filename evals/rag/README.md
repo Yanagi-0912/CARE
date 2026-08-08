@@ -88,5 +88,8 @@ python scripts/rag_eval.py --split train
 - **hit_rate**：在「有計分」的 kb 題中，檢索（或精排後）結果的 url **或** source_name 命中期望 substring 的比例  
 - **miss_ids**：沒命中的題，優先人工檢查 substring 是否標錯、或檢索真的失敗  
 - `web`／無期望來源的題會 **skip**，不計入 hit_rate  
-- `--compare-rerank`：看 `hit_rate_delta`、`fixed_by_cohere`、`regressed_by_cohere`
+- **mean_mrr**：有計分題目的 MRR（第一筆命中文件排名的倒數，全無命中則該題為 0）平均值 —— 反映命中文件排得多前面
+- **mean_ndcg_at_5**：有計分題目的 nDCG@5（二元 gain、依位置加權）平均值 —— 命中排第 1 名與排第 5 名的貢獻不同
+- nDCG 的 IDCG（理想 DCG）以「取回清單自身的 relevance 重排後」計算，**不是**語料庫全體的理想排序 —— golden set 每題只標一個正解來源，沒有窮盡的相關性判準（exhaustive relevance judgments），算不出「全庫理想排序」；同理，本專案**刻意不提供 recall@k**，因為 recall 需要「該題在語料庫中共有幾筆相關文件」這個分母，硬湊出來的分母是假的、會誤導調參方向
+- `--compare-rerank`：看 `hit_rate_delta`、`ndcg@5_delta`、`fixed_by_cohere`、`regressed_by_cohere`
 - 細標後範例（本機 2026-08-01）：top-5 vector **0.29** → cohere **0.44**（delta **+0.15**）

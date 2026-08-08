@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -54,6 +55,8 @@ class CaseResult:
     refuse_ok: Optional[bool] = None
     answer_preview: Optional[str] = None
     error: Optional[str] = None
+    mrr: Optional[float] = None
+    ndcg_at_5: Optional[float] = None
     rank_mode: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -66,6 +69,8 @@ class EvalSummary:
     scored_cases: int
     hits: int
     hit_rate: Optional[float]
+    mean_mrr: Optional[float]
+    mean_ndcg_at_5: Optional[float]
     miss_ids: list[str]
     skipped_ids: list[str]
     error_ids: list[str]
@@ -136,6 +141,55 @@ def is_doc_retrieval_hit(
     return is_substring_hit(
         contents_from_docs(docs), expected_content_substrings or []
     )
+
+
+def doc_relevances(case: EvalCase, docs: list[Document]) -> list[int]:
+    """逐篇判定二元 relevance（1 = 命中任一期望 substring）。
+
+    以單篇為單位重用 `is_doc_retrieval_hit`，因此 url／title／source／content
+    的判準與 hit_rate 完全一致，指標之間不會互相矛盾。
+    """
+    return [
+        1
+        if is_doc_retrieval_hit(
+            [doc],
+            expected_url_substrings=case.expected_url_substrings,
+            expected_source_substrings=case.expected_source_substrings,
+            expected_content_substrings=case.expected_content_substrings,
+            expected_title_substrings=case.expected_title_substrings,
+        )
+        else 0
+        for doc in docs
+    ]
+
+
+def mrr(relevances: list[int]) -> float:
+    """第一筆命中的排名倒數；全無命中回傳 0.0。"""
+    for rank, rel in enumerate(relevances, start=1):
+        if rel:
+            return 1.0 / rank
+    return 0.0
+
+
+def _dcg(gains: list[int]) -> float:
+    return sum(g / math.log2(i + 1) for i, g in enumerate(gains, start=1) if g)
+
+
+def ndcg_at_k(relevances: list[int], k: int) -> float:
+    """二元 gain 的 nDCG@k。
+
+    IDCG 以「取回清單自身的 relevance 重排後」計算，而非語料庫全體的理想排序 ——
+    golden set 沒有窮盡的相關性判準，無法得知語料庫中共有幾篇相關文件。
+    此為缺完整判準時的標準做法，口徑已記於 evals/rag/README.md。
+    """
+    if k <= 0:
+        return 0.0
+    gains = relevances[:k]
+    ideal = sorted(relevances, reverse=True)[:k]
+    idcg = _dcg(ideal)
+    if not idcg:
+        return 0.0
+    return _dcg(gains) / idcg
 
 
 def urls_from_answer_sources(answer_text: str) -> list[str]:
@@ -252,6 +306,7 @@ def score_case_retrieval(case: EvalCase, docs: list[Document]) -> CaseResult:
             retrieved_sources=sources,
             retrieved_titles=titles,
         )
+    relevances = doc_relevances(case, docs)
     return CaseResult(
         id=case.id,
         query=case.query,
@@ -267,6 +322,8 @@ def score_case_retrieval(case: EvalCase, docs: list[Document]) -> CaseResult:
         retrieved_urls=urls,
         retrieved_sources=sources,
         retrieved_titles=titles,
+        mrr=mrr(relevances),
+        ndcg_at_5=ndcg_at_k(relevances, 5),
     )
 
 
@@ -275,11 +332,17 @@ def summarize_results(results: list[CaseResult]) -> EvalSummary:
     hits = sum(1 for r in scored if r.retrieval_hit is True)
     scored_n = len(scored)
     hit_rate = (hits / scored_n) if scored_n else None
+    mrr_values = [r.mrr for r in scored if r.mrr is not None]
+    ndcg_values = [r.ndcg_at_5 for r in scored if r.ndcg_at_5 is not None]
     return EvalSummary(
         total_cases=len(results),
         scored_cases=scored_n,
         hits=hits,
         hit_rate=hit_rate,
+        mean_mrr=(sum(mrr_values) / len(mrr_values)) if mrr_values else None,
+        mean_ndcg_at_5=(
+            (sum(ndcg_values) / len(ndcg_values)) if ndcg_values else None
+        ),
         miss_ids=[r.id for r in scored if r.retrieval_hit is False],
         skipped_ids=[r.id for r in results if r.skipped],
         error_ids=[r.id for r in results if r.error],

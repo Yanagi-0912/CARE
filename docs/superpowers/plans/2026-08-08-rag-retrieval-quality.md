@@ -1185,16 +1185,20 @@ Expected: PASS
 並在檔頭既有的 `from app.services.rag.eval_scoring import (...)` 匯入區塊中
 加入 `answer_citation_count,`。
 
-`_print_summary` 的 `if with_answer:` 區塊末尾補上輸出：
+`_print_summary` 的 `if with_answer:` 區塊末尾補上輸出。**直接印 summary 的值，
+不要在 CLI 重算** —— 重算會用 `results`（含 skipped 的 refuse／web 題）當分母，
+而 `EvalSummary.citation_coverage` 用的是 `scored`（只含有計分的 kb 題），
+兩個同名數字會有不同定義：
 
 ```python
-        cited_cases = [r for r in results if r.citation_count is not None]
-        if cited_cases:
-            ok = sum(1 for r in cited_cases if r.citation_count > 0)
-            print(f"citation_coverage: {ok}/{len(cited_cases)}")
+        if summary.citation_coverage is not None:
+            print(f"citation_coverage: {_fmt(summary.citation_coverage)}")
 ```
 
-未使用 `--with-answer` 時 `citation_count` 維持 `None`，不計入分母。
+為什麼分母要用 `scored` 而非全部 results：`route=refuse` 的題目**正確拒答時本來就
+不該有引用**，把它算進分母會讓「拒答成功」反而拉低 citation coverage，指標方向就反了。
+
+未使用 `--with-answer` 時 `citation_count` 維持 `None`，`citation_coverage` 為 `None`，不印。
 
 - [ ] **Step 6: 實跑驗證**
 

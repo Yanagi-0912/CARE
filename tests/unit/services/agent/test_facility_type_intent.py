@@ -142,6 +142,60 @@ def test_facility_type_intent_still_triggers_for_generic_terms(text, expected):
     assert _facility_type_intent(text) == expected
 
 
+# ---------------------------------------------------------------------------
+# _facility_type_intent：修正迴圈第 2 輪 code review 的兩組對照清單
+#
+# 第 1 輪的邊界檢查（要求整段前綴被連接詞白名單「挖乾淨」）矯枉過正，
+# 擋掉了「評價不錯的診所」這類合法泛稱——自然語言修飾語是開放集合，列不完。
+# 改用「只看類型詞前面緊鄰的語法標記」後，這兩組清單分別驗證具名院所仍被
+# 擋下、且開放式泛稱修飾語不再被誤傷。
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "台大醫院在哪",
+        "杏一診所在哪裡",
+        "康是美藥局在哪",
+        "長庚醫院在哪",
+        "聯合診所怎麼走",
+        "屈臣氏藥局",
+        "馬偕紀念醫院在哪",
+        "亞東醫院怎麼去",
+        "我要去馬偕醫院",
+        "附近有醫院嗎",
+        "我要去醫院",
+        "送去醫院",
+        "哪間醫院比較好",
+    ],
+)
+def test_facility_type_intent_must_return_none(text):
+    assert _facility_type_intent(text) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "附近有大醫院嗎",
+        "哪裡有藥局",
+        "附近有診所嗎",
+        "我想去大醫院看病",
+        "要住院的話去哪",
+        "附近有藥房嗎",
+        "評價不錯的診所",
+        "24小時營業的藥局",
+        "剛開幕的藥局",
+        "新開的診所",
+        "巷口的診所",
+        "住家附近的診所",
+        "比較推薦的診所",
+    ],
+)
+def test_facility_type_intent_must_trigger(text):
+    assert _facility_type_intent(text) is not None
+
+
 def test_extract_facility_type_from_history_rejects_named_facility_from_earlier_turn():
     """
     修正迴圈第 1 輪 code review 回報的跨輪誤判：使用者先查了一間具名診所

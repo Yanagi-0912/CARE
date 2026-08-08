@@ -53,6 +53,7 @@ class LineReplier:
         request_location: bool = False,
         voice_reply_enabled: bool = True,
         language: str | None = None,
+        voice_rate: str = "normal",
     ) -> bool:
         """發送 LINE 訊息（包含文字訊息、Flex Message 與選填的 TTS 語音訊息）"""
         try:
@@ -81,10 +82,12 @@ class LineReplier:
                 )
                 text_message = TextMessage(text=message_text)
                 messages = [text_message]
-                self._append_tts_audio_message(
+                await self._append_tts_audio_message(
                     messages,
                     message_text,
                     voice_reply_enabled=voice_reply_enabled,
+                    language=language,
+                    voice_rate=voice_rate,
                 )
 
             # quickReply 只會顯示在陣列最後一則訊息上，因此統一在此處掛到最後一則，
@@ -207,20 +210,23 @@ class LineReplier:
         return str(message_text)
 
 
-    def _append_tts_audio_message(
+    async def _append_tts_audio_message(
         self,
         messages: list,
         message_text: str,
         *,
         voice_reply_enabled: bool,
+        language: str | None = None,
+        voice_rate: str = "normal",
     ) -> None:
         if not voice_reply_enabled or self._tts_service is None:
             return
 
         try:
-            _audio_bytes, output, duration_ms = self._tts_service.synthesize(
+            _audio_bytes, output, duration_ms = await self._tts_service.synthesize(
                 message_text,
-                locale="zh-TW",
+                language=language or "zh-TW",
+                voice_rate=voice_rate,
             )
             audio_url = self._resolve_audio_url(output)
         except Exception:

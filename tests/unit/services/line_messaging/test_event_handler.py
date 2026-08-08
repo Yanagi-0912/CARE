@@ -113,7 +113,9 @@ def mock_user_profile_service():
 @pytest.fixture
 def mock_tts_service():
     svc = MagicMock()
-    svc.synthesize.return_value = (b"", "https://cdn.example/tts/test.mp3", 1234)
+    svc.synthesize = AsyncMock(
+        return_value=(b"", "https://cdn.example/tts/test.mp3", 1234)
+    )
     return svc
 
 

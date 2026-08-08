@@ -9,13 +9,18 @@ if "motor.motor_asyncio" not in sys.modules:
     motor_asyncio_module = types.ModuleType("motor.motor_asyncio")
 
     class _DummyMotorClient:
-        pass
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __getitem__(self, name):
+            return _DummyMotorDatabase()
 
     class _DummyMotorCollection:
         pass
 
     class _DummyMotorDatabase:
-        pass
+        def __getitem__(self, name):
+            return _DummyMotorCollection()
 
     motor_asyncio_module.AsyncIOMotorClient = _DummyMotorClient
     motor_asyncio_module.AsyncIOMotorCollection = _DummyMotorCollection
@@ -25,6 +30,7 @@ if "motor.motor_asyncio" not in sys.modules:
 
 from langchain_core.messages import AIMessage
 
+from app.core.request_context import reset_line_user_id, set_line_user_id
 from app.core.user_language import reset_request_language, set_request_language
 from app.i18n.messages import t
 from app.services.rag.web_client import WebSearchHit
@@ -59,14 +65,23 @@ class FakeWebClient:
         return self.pages.get(url, "")
 
 
-def _make_service(*, answer_content="網路回覆", web_client=None):
+def _make_service(
+    *,
+    answer_content="網路回覆",
+    web_client=None,
+    on_web_fallback_success=None,
+):
     gemini_service = MagicMock()
     gemini_service.chat_model = MagicMock()
     gemini_service.chat_model.ainvoke = AsyncMock(
         return_value=AIMessage(content=answer_content)
     )
     return (
-        WebSearchService(gemini_service=gemini_service, web_client=web_client),
+        WebSearchService(
+            gemini_service=gemini_service,
+            web_client=web_client,
+            on_web_fallback_success=on_web_fallback_success,
+        ),
         gemini_service,
     )
 
@@ -238,3 +253,121 @@ async def test_answer_localizes_web_source_label_and_prefix():
     assert t("agent.sources_heading", "en") in result
     assert "網路：" not in result
     assert WEB_ANSWER_PREFIX not in result  # 英文請求不應出現繁中前綴
+
+
+@pytest.mark.asyncio
+async def test_answer_success_calls_create_from_web_fallback():
+    web = FakeWebClient(
+        hits=[
+            WebSearchHit(title="國健署高血壓", url="https://www.hpa.gov.tw/htn"),
+            WebSearchHit(title="論壇", url="https://forum.example/htn"),
+        ],
+        pages={
+            "https://www.hpa.gov.tw/htn": "控制血壓要規律量測與低鈉飲食。"
+        },
+    )
+    on_success = AsyncMock()
+    svc, _ = _make_service(
+        answer_content="根據網路資料，請規律量測血壓。",
+        web_client=web,
+        on_web_fallback_success=on_success,
+    )
+    token = set_line_user_id("U_LINE")
+    try:
+        result = await svc.answer("高血壓要注意什麼")
+    finally:
+        reset_line_user_id(token)
+
+    assert WEB_ANSWER_PREFIX in result
+    on_success.assert_awaited_once_with(
+        question="高血壓要注意什麼",
+        urls=["https://www.hpa.gov.tw/htn"],
+        line_user_id="U_LINE",
+    )
+
+
+@pytest.mark.asyncio
+async def test_answer_web_empty_does_not_create_knowledge_report():
+    web = FakeWebClient(hits=[], pages={})
+    on_success = AsyncMock()
+    svc, _ = _make_service(web_client=web, on_web_fallback_success=on_success)
+    token = set_line_user_id("U_LINE")
+    try:
+        result = await svc.answer("完全查不到的問題")
+    finally:
+        reset_line_user_id(token)
+
+    assert result == rag_fail(RagFailCode.WEB_EMPTY)
+    on_success.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_answer_model_refuse_does_not_create_knowledge_report():
+    web = FakeWebClient(
+        hits=[WebSearchHit(title="疾管署", url="https://www.cdc.gov.tw/w")],
+        pages={"https://www.cdc.gov.tw/w": "流感疫苗建議。"},
+    )
+    on_success = AsyncMock()
+    svc, _ = _make_service(
+        answer_content="我不知道這個問題的答案。",
+        web_client=web,
+        on_web_fallback_success=on_success,
+    )
+    token = set_line_user_id("U_LINE")
+    try:
+        result = await svc.answer("流感疫苗")
+    finally:
+        reset_line_user_id(token)
+
+    assert result == rag_fail(RagFailCode.MODEL_REFUSE)
+    on_success.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_answer_missing_line_user_id_skips_create_but_returns_answer():
+    web = FakeWebClient(
+        hits=[
+            WebSearchHit(title="國健署高血壓", url="https://www.hpa.gov.tw/htn"),
+        ],
+        pages={
+            "https://www.hpa.gov.tw/htn": "控制血壓要規律量測與低鈉飲食。"
+        },
+    )
+    on_success = AsyncMock()
+    svc, _ = _make_service(
+        answer_content="根據網路資料，請規律量測血壓。",
+        web_client=web,
+        on_web_fallback_success=on_success,
+    )
+    result = await svc.answer("高血壓要注意什麼")
+
+    assert WEB_ANSWER_PREFIX in result
+    assert "https://www.hpa.gov.tw/htn" in result
+    on_success.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_answer_create_failure_still_returns_answer():
+    web = FakeWebClient(
+        hits=[
+            WebSearchHit(title="國健署高血壓", url="https://www.hpa.gov.tw/htn"),
+        ],
+        pages={
+            "https://www.hpa.gov.tw/htn": "控制血壓要規律量測與低鈉飲食。"
+        },
+    )
+    on_success = AsyncMock(side_effect=RuntimeError("mongo down"))
+    svc, _ = _make_service(
+        answer_content="根據網路資料，請規律量測血壓。",
+        web_client=web,
+        on_web_fallback_success=on_success,
+    )
+    token = set_line_user_id("U_LINE")
+    try:
+        result = await svc.answer("高血壓要注意什麼")
+    finally:
+        reset_line_user_id(token)
+
+    assert WEB_ANSWER_PREFIX in result
+    assert "https://www.hpa.gov.tw/htn" in result
+    on_success.assert_awaited_once()

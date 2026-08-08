@@ -32,7 +32,8 @@ def _uri_actions(payload: dict) -> list[dict]:
 
 
 @pytest.mark.asyncio
-async def test_open_official_site_returns_flex_json_when_both_urls_set():
+async def test_open_official_site_prefers_liff_when_both_urls_set():
+    # LIFF 與官網對使用者是同一個目的地，卡片只出一顆按鈕並優先採用 LIFF
     tools.configure_official_site_tool(
         liff_url="https://liff.line.me/abc",
         public_base_url="https://care.example.com",
@@ -42,9 +43,8 @@ async def test_open_official_site_returns_flex_json_when_both_urls_set():
     payload = json.loads(result)
     assert payload["type"] == "flex"
     actions = _uri_actions(payload)
-    assert len(actions) == 2
+    assert len(actions) == 1
     assert actions[0]["uri"] == "https://liff.line.me/abc"
-    assert actions[1]["uri"] == "https://care.example.com"
 
 
 @pytest.mark.asyncio
@@ -57,11 +57,11 @@ async def test_open_official_site_returns_flex_json_when_only_liff_set():
     payload = json.loads(result)
     actions = _uri_actions(payload)
     assert len(actions) == 1
-    assert actions[0]["label"] == "開啟 LIFF"
+    assert actions[0]["uri"] == "https://liff.line.me/abc"
 
 
 @pytest.mark.asyncio
-async def test_open_official_site_returns_flex_json_when_only_public_set():
+async def test_open_official_site_falls_back_to_public_url():
     tools.configure_official_site_tool(
         liff_url="",
         public_base_url="https://care.example.com",
@@ -70,7 +70,7 @@ async def test_open_official_site_returns_flex_json_when_only_public_set():
     payload = json.loads(result)
     actions = _uri_actions(payload)
     assert len(actions) == 1
-    assert actions[0]["label"] == "開啟官網"
+    assert actions[0]["uri"] == "https://care.example.com"
 
 
 @pytest.mark.asyncio

@@ -17,7 +17,17 @@ from app.core.request_context import (
     reset_request_id,
     set_request_id,
 )
-from app.core.user_language import DEFAULT_USER_LANGUAGE, normalize_user_language
+from app.core.user_font_size import (
+    normalize_user_font_size,
+    reset_request_font_size,
+    set_request_font_size,
+)
+from app.core.user_language import (
+    DEFAULT_USER_LANGUAGE,
+    normalize_user_language,
+    reset_request_language,
+    set_request_language,
+)
 from app.core.request_logging import log_done, log_start
 from app.i18n.messages import t
 from app.models.medication import to_taipei_hm
@@ -146,11 +156,24 @@ class LineEventDispatcher:
 
     async def _handle_PostbackEvent(self, event: PostbackEvent) -> None:
         user_id = getattr(event.source, "user_id", "")
-        reply_token = getattr(event, "reply_token", "")
-        postback_data = getattr(getattr(event, "postback", None), "data", "")
         user_profile = None
         if self._user_profile_service:
             user_profile = await self._user_profile_service.get_user_profile(user_id)
+
+        # 下游 handler 只拿得到 user_id，語言與字級改由 ContextVar 傳遞
+        lang_token = set_request_language(self._language_from_profile(user_profile))
+        font_token = set_request_font_size(self._font_size_from_profile(user_profile))
+        try:
+            await self._dispatch_postback(event, user_id, user_profile)
+        finally:
+            reset_request_language(lang_token)
+            reset_request_font_size(font_token)
+
+    async def _dispatch_postback(
+        self, event: PostbackEvent, user_id: str, user_profile
+    ) -> None:
+        reply_token = getattr(event, "reply_token", "")
+        postback_data = getattr(getattr(event, "postback", None), "data", "")
         user_language = self._language_from_profile(user_profile)
 
         params = parse_qs(postback_data)
@@ -173,6 +196,8 @@ class LineEventDispatcher:
                     scheduled_time=scheduled_time_str,
                     disabled=True,
                     taken_at_str=taken_time_str,
+                    language=user_language,
+                    font_size=self._font_size_from_profile(user_profile),
                 )
                 await self._replier.reply_flex(
                     reply_token=reply_token,
@@ -249,6 +274,11 @@ class LineEventDispatcher:
             return DEFAULT_USER_LANGUAGE
         settings = user_profile.get("settings") or {}
         return normalize_user_language(settings.get("language"))
+
+    @staticmethod
+    def _font_size_from_profile(user_profile) -> str:
+        settings = (user_profile or {}).get("settings") or {}
+        return normalize_user_font_size(settings.get("font_size"))
 
     @staticmethod
     def _parse_voice_reply_enabled(user_profile) -> bool:

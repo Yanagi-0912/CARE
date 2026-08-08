@@ -57,7 +57,10 @@ class KnowledgeReportListResponse(BaseModel):
 
 
 class ApproveKnowledgeReportRequest(BaseModel):
-    selected_urls: list[str] = Field(..., min_length=1, description="核准後要 ingest 的 URL")
+    selected_urls: list[str] = Field(
+        default_factory=list,
+        description="核准後要 ingest 的 URL；省略或空則使用報告的 user_source_urls",
+    )
     resolution: Optional[str] = Field(default=None, description="審核結論")
     reviewer_note: Optional[str] = Field(default=None, description="審核者備註")
 

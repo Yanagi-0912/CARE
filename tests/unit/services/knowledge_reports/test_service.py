@@ -42,6 +42,7 @@ def mock_repo() -> MagicMock:
     repo.update = AsyncMock(side_effect=lambda report: report)
     repo.find_by_report_id = AsyncMock(return_value=None)
     repo.list_by_line_user_id = AsyncMock(return_value=[])
+    repo.delete_pending_or_reviewing_by_urls = AsyncMock(return_value=0)
     return repo
 
 
@@ -180,3 +181,75 @@ async def test_reject_report(mock_repo: MagicMock):
     assert result.reviewer_note == "不符合"
     assert result.resolution == "duplicate"
     mock_repo.update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_from_web_fallback(mock_repo: MagicMock):
+    service = KnowledgeReportService(repository=mock_repo)
+
+    report = await service.create_from_web_fallback(
+        question="  高血壓飲食？  ",
+        urls=["  " + ALLOWED_URL + "  ", "", "  "],
+        line_user_id="U_TEST",
+    )
+
+    assert report is not None
+    assert report.status == "pending"
+    assert report.reason == "missing"
+    assert report.question == "高血壓飲食？"
+    assert report.user_note == "auto:web-fallback"
+    assert report.user_source_urls == [ALLOWED_URL]
+    mock_repo.delete_pending_or_reviewing_by_urls.assert_awaited_once_with(
+        [ALLOWED_URL]
+    )
+    mock_repo.insert.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_from_web_fallback_empty_urls_returns_none(mock_repo: MagicMock):
+    service = KnowledgeReportService(repository=mock_repo)
+
+    report = await service.create_from_web_fallback(
+        question="問題",
+        urls=["", "  "],
+        line_user_id="U_TEST",
+    )
+
+    assert report is None
+    mock_repo.delete_pending_or_reviewing_by_urls.assert_not_awaited()
+    mock_repo.insert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_approve_falls_back_to_user_source_urls(
+    mock_repo: MagicMock, mock_ingest: AsyncMock
+):
+    mock_repo.find_by_report_id.return_value = _sample_report(
+        user_source_urls=[ALLOWED_URL]
+    )
+    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+
+    result = await service.approve(
+        report_id="KR-20260802-AB12",
+        selected_urls=[],
+    )
+
+    assert result.status == "resolved"
+    mock_ingest.ingest_url.assert_awaited_once_with(ALLOWED_URL)
+
+
+@pytest.mark.asyncio
+async def test_approve_empty_selected_and_user_urls_returns_400(
+    mock_repo: MagicMock, mock_ingest: AsyncMock
+):
+    mock_repo.find_by_report_id.return_value = _sample_report(user_source_urls=[])
+    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+
+    with pytest.raises(HTTPException) as exc:
+        await service.approve(
+            report_id="KR-20260802-AB12",
+            selected_urls=[],
+        )
+
+    assert exc.value.status_code == 400
+    mock_ingest.ingest_url.assert_not_awaited()

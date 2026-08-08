@@ -1,14 +1,103 @@
 import logging
-from typing import Optional
+from typing import Any, Optional
+
 from linebot.v3.messaging import FlexContainer, FlexMessage
 
+from app.i18n import t
 from app.models.medication import SLOT_DISPLAY_NAMES
+from resources.flex_messages import theme
 
 logger = logging.getLogger(__name__)
 
 
-def get_slot_display_name(slot_type: str) -> str:
-    return SLOT_DISPLAY_NAMES.get(slot_type, slot_type)
+def get_slot_display_name(slot_type: str, language: str | None = None) -> str:
+    """取得時段的在地化名稱；未知時段回退為原始值。"""
+    if slot_type not in SLOT_DISPLAY_NAMES:
+        return slot_type
+    return t(f"slot.{slot_type}", language)
+
+
+def _header(label: str, ft: theme.FlexTheme, background: str = theme.BRAND) -> dict[str, Any]:
+    return {
+        "type": "box",
+        "layout": "vertical",
+        "backgroundColor": background,
+        "paddingAll": "lg",
+        "contents": [
+            {
+                "type": "text",
+                "text": label,
+                "color": theme.TEXT_ON_BRAND,
+                "weight": "bold",
+                "size": ft.heading,
+                "wrap": True,
+            }
+        ],
+    }
+
+
+def _slot_block(
+    slot_name: str, scheduled_time: str, ft: theme.FlexTheme, language: str | None
+) -> dict[str, Any]:
+    """時段與時間的重點區塊，是使用者最需要一眼看到的資訊。"""
+    return {
+        "type": "box",
+        "layout": "vertical",
+        "backgroundColor": theme.BRAND_TINT,
+        "cornerRadius": "md",
+        "paddingAll": "lg",
+        "spacing": "xs",
+        "contents": [
+            {
+                "type": "text",
+                "text": slot_name,
+                "weight": "bold",
+                "size": ft.title,
+                "color": theme.BRAND_DARK,
+                "wrap": True,
+            },
+            {
+                "type": "text",
+                "text": t("flex.med.scheduled_at", language).format(
+                    time=scheduled_time
+                ),
+                "size": ft.body,
+                "color": theme.BRAND_DARK,
+                "wrap": True,
+            },
+        ],
+    }
+
+
+def _body(contents: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "type": "box",
+        "layout": "vertical",
+        "paddingAll": "xl",
+        "backgroundColor": theme.SURFACE,
+        "spacing": "md",
+        "contents": contents,
+    }
+
+
+def _footer(button: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "type": "box",
+        "layout": "vertical",
+        "paddingAll": "lg",
+        "contents": [button],
+    }
+
+
+def _paragraph(text: str, ft: theme.FlexTheme, color: str = theme.TEXT_MUTED, **extra) -> dict[str, Any]:
+    return {
+        "type": "text",
+        "text": text,
+        "size": ft.body,
+        "color": color,
+        "wrap": True,
+        **extra,
+    }
 
 
 def build_patient_medication_flex(
@@ -17,214 +106,185 @@ def build_patient_medication_flex(
     scheduled_time: str,
     disabled: bool = False,
     taken_at_str: Optional[str] = None,
+    language: str | None = None,
+    font_size: str | None = None,
 ) -> FlexMessage:
     """
     建立傳送給用藥者的服藥提醒 Flex Message。
     - disabled=False: 顯示【我已用藥】可點擊按鈕
-    - disabled=True: 顯示【已完成用藥】灰色停用按鈕 (點擊後動態替換)
+    - disabled=True: 顯示已完成的停用狀態 (點擊後動態替換)
     """
-    slot_name = get_slot_display_name(slot_type)
+    ft = theme.resolve_theme(font_size)
+    slot_name = get_slot_display_name(slot_type, language)
 
     if not disabled:
-        alt_text = f"CARE 用藥提醒：【{slot_name}】服藥時間到了"
-        header_color = "#1DB446"
-        header_title = "CARE 用藥提醒"
-        body_text = f"時段：【{slot_name}】服藥時間 ({scheduled_time})"
-        sub_text = "請於 30 分鐘內服藥並點擊下方按鈕確認。"
-        footer_button = {
-            "type": "button",
-            "action": {
-                "type": "postback",
-                "label": "我已用藥",
-                "data": f"action=confirm_medication&log_id={log_id}",
-                "displayText": "我已經完成用藥了",
-            },
-            "style": "primary",
-            "color": "#1DB446",
+        alt_text = t("flex.med.alt.reminder", language).format(slot=slot_name)
+        taken_label = t("flex.med.button.taken", language)
+        bubble_dict = {
+            "type": "bubble",
+            "header": _header(t("flex.med.header.reminder", language), ft),
+            "body": _body(
+                [
+                    _slot_block(slot_name, scheduled_time, ft, language),
+                    _paragraph(
+                        t("flex.med.instruction", language), ft, margin="md"
+                    ),
+                ]
+            ),
+            "footer": _footer(
+                ft.primary_button(
+                    taken_label,
+                    {
+                        "type": "postback",
+                        "label": taken_label,
+                        "data": f"action=confirm_medication&log_id={log_id}",
+                        "displayText": t("flex.med.display.taken", language),
+                    },
+                )
+            ),
         }
     else:
-        time_display = f"於 {taken_at_str} " if taken_at_str else ""
-        alt_text = f"已完成【{slot_name}】用藥"
-        header_color = "#757575"
-        header_title = "用藥已完成紀錄"
-        body_text = f"時段：【{slot_name}】服藥時間 ({scheduled_time})"
-        sub_text = f"感謝您的紀錄，服藥紀錄已成功登錄！"
-        footer_button = {
-            "type": "button",
-            "action": {
-                "type": "postback",
-                "label": f"已{time_display}完成用藥",
-                "data": "action=already_done",
-            },
-            "style": "secondary",
-            "color": "#CCCCCC",
-            "disabled": True,
-        }
-
-    bubble_dict = {
-        "type": "bubble",
-        "header": {
-            "type": "box",
-            "layout": "vertical",
-            "backgroundColor": header_color,
-            "contents": [
+        alt_text = t("flex.med.alt.done", language).format(slot=slot_name)
+        completion_text = (
+            t("flex.med.done_at", language).format(time=taken_at_str)
+            if taken_at_str
+            else t("flex.med.done", language)
+        )
+        bubble_dict = {
+            "type": "bubble",
+            "header": _header(
+                t("flex.med.header.done", language), ft, background=theme.STATUS_UNKNOWN
+            ),
+            "body": _body(
+                [
+                    _slot_block(slot_name, scheduled_time, ft, language),
+                    _paragraph(t("flex.med.thanks", language), ft, margin="md"),
+                ]
+            ),
+            "footer": _footer(
                 {
-                    "type": "text",
-                    "text": header_title,
-                    "color": "#FFFFFF",
-                    "weight": "bold",
-                    "size": "md",
+                    "type": "box",
+                    "layout": "vertical",
+                    "backgroundColor": theme.NEUTRAL_BG,
+                    "cornerRadius": "md",
+                    "paddingAll": "lg",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": completion_text,
+                            "color": theme.TEXT_FAINT,
+                            "weight": "bold",
+                            "size": ft.button,
+                            "align": "center",
+                            "wrap": True,
+                        }
+                    ],
                 }
-            ],
-        },
-        "body": {
-            "type": "box",
-            "layout": "vertical",
-            "contents": [
-                {
-                    "type": "text",
-                    "text": body_text,
-                    "weight": "bold",
-                    "size": "lg",
-                    "color": "#111111",
-                },
-                {
-                    "type": "text",
-                    "text": sub_text,
-                    "size": "sm",
-                    "color": "#666666",
-                    "margin": "xs",
-                },
-            ],
-        },
-        "footer": {
-            "type": "box",
-            "layout": "vertical",
-            "contents": [footer_button],
-        },
-    }
+            ),
+        }
 
     container = FlexContainer.from_dict(bubble_dict)
     return FlexMessage(altText=alt_text, contents=container)
 
 
 def build_patient_urgent_reminder_flex(
-    log_id: str, slot_type: str, scheduled_time: str
+    log_id: str,
+    slot_type: str,
+    scheduled_time: str,
+    language: str | None = None,
+    font_size: str | None = None,
 ) -> FlexMessage:
-    """
-    T+20min 傳送給用藥者的二次溫馨催促 Flex Message 
-    """
-    slot_name = get_slot_display_name(slot_type)
-    alt_text = f"CARE 溫馨催促：您尚未完成【{slot_name}】服藥點擊！"
+    """T+20min 傳送給用藥者的二次催促 Flex Message"""
+    ft = theme.resolve_theme(font_size)
+    slot_name = get_slot_display_name(slot_type, language)
+    taken_label = t("flex.med.button.taken", language)
 
     bubble_dict = {
         "type": "bubble",
-        "header": {
-            "type": "box",
-            "layout": "vertical",
-            "backgroundColor": "#1DB446",
-            "contents": [
+        "header": _header(
+            t("flex.med.header.urgent", language), ft, background=theme.STATUS_CLOSED
+        ),
+        "body": _body(
+            [
+                _slot_block(slot_name, scheduled_time, ft, language),
+                _paragraph(t("flex.med.urgent_body", language), ft, margin="md"),
+            ]
+        ),
+        "footer": _footer(
+            ft.primary_button(
+                taken_label,
                 {
-                    "type": "text",
-                    "text": "CARE 溫馨催促提醒",
-                    "color": "#FFFFFF",
-                    "weight": "bold",
-                    "size": "md",
-                }
-            ],
-        },
-        "body": {
-            "type": "box",
-            "layout": "vertical",
-            "contents": [
-                {
-                    "type": "text",
-                    "text": f"【{slot_name}】服藥時間 ({scheduled_time})",
-                    "weight": "bold",
-                    "size": "lg",
-                    "color": "#111111",
+                    "type": "postback",
+                    "label": taken_label,
+                    "data": f"action=confirm_medication&log_id={log_id}",
+                    "displayText": t("flex.med.display.taken", language),
                 },
-                {
-                    "type": "text",
-                    "text": "您尚未點擊【我已用藥】按鈕。請即刻服藥並點擊下方按鈕確認喔！",
-                    "size": "sm",
-                    "color": "#666666",
-                    "wrap": True,
-                    "margin": "xs",
-                },
-            ],
-        },
-        "footer": {
-            "type": "box",
-            "layout": "vertical",
-            "contents": [
-                {
-                    "type": "button",
-                    "action": {
-                        "type": "postback",
-                        "label": "我已用藥",
-                        "data": f"action=confirm_medication&log_id={log_id}",
-                        "displayText": "我已經完成用藥了",
-                    },
-                    "style": "primary",
-                    "color": "#1DB446",
-                }
-            ],
-        },
+            )
+        ),
     }
 
     container = FlexContainer.from_dict(bubble_dict)
-    return FlexMessage(altText=alt_text, contents=container)
+    return FlexMessage(
+        altText=t("flex.med.alt.urgent", language).format(slot=slot_name),
+        contents=container,
+    )
 
 
 def build_caregiver_alert_flex(
-    patient_name: str, slot_type: str, scheduled_time: str
+    patient_name: str,
+    slot_type: str,
+    scheduled_time: str,
+    language: str | None = None,
+    font_size: str | None = None,
 ) -> FlexMessage:
-    """
-    T+30min 傳送給通報對象家屬的逾時未用藥關心 Flex Message (保持統一綠色主題 #1DB446)
-    """
-    slot_name = get_slot_display_name(slot_type)
-    alt_text = f"關心提醒：成員【{patient_name}】逾時未服藥"
+    """T+30min 傳送給通報對象家屬的逾時未用藥關心 Flex Message"""
+    ft = theme.resolve_theme(font_size)
+    slot_name = get_slot_display_name(slot_type, language)
 
     bubble_dict = {
         "type": "bubble",
-        "header": {
-            "type": "box",
-            "layout": "vertical",
-            "backgroundColor": "#1DB446",
-            "contents": [
+        "header": _header(t("flex.med.header.caregiver", language), ft),
+        "body": _body(
+            [
                 {
-                    "type": "text",
-                    "text": "關心提醒：成員逾時未服藥",
-                    "color": "#FFFFFF",
-                    "weight": "bold",
-                    "size": "md",
-                }
-            ],
-        },
-        "body": {
-            "type": "box",
-            "layout": "vertical",
-            "contents": [
-                {
-                    "type": "text",
-                    "text": f"成員 【{patient_name}】 預定於 {scheduled_time} 服用【{slot_name}】藥物，截至目前（逾時 30 分鐘）仍未點擊完成用藥。",
-                    "size": "sm",
-                    "wrap": True,
-                    "color": "#333333",
+                    "type": "box",
+                    "layout": "vertical",
+                    "backgroundColor": theme.SURFACE_ALT,
+                    "cornerRadius": "md",
+                    "paddingAll": "lg",
+                    "spacing": "xs",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": patient_name,
+                            "weight": "bold",
+                            "size": ft.title,
+                            "color": theme.TEXT,
+                            "wrap": True,
+                        },
+                        {
+                            "type": "text",
+                            "text": f"{slot_name}　{scheduled_time}",
+                            "size": ft.body,
+                            "color": theme.TEXT_MUTED,
+                            "wrap": True,
+                        },
+                    ],
                 },
-                {
-                    "type": "text",
-                    "text": "請您抽空給予關心或撥打電話關懷家庭成員！",
-                    "size": "sm",
-                    "color": "#333333",
-                    "weight": "bold",
-                    "margin": "md",
-                    "wrap": True,
-                },
-            ],
-        },
+                _paragraph(
+                    t("flex.med.overdue", language),
+                    ft,
+                    color=theme.STATUS_CLOSED,
+                    weight="bold",
+                    margin="md",
+                ),
+                _paragraph(t("flex.med.please_care", language), ft),
+            ]
+        ),
     }
 
     container = FlexContainer.from_dict(bubble_dict)
-    return FlexMessage(altText=alt_text, contents=container)
+    return FlexMessage(
+        altText=t("flex.med.alt.caregiver", language).format(name=patient_name),
+        contents=container,
+    )

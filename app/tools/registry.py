@@ -1,5 +1,6 @@
 from app.tools.knowledge_report_tools import submit_knowledge_report
 from app.tools.medical_tools import (
+    find_nearby_facilities_by_department,
     find_nearby_hospitals,
     lookup_medical_facility,
     request_location_quick_reply,
@@ -13,6 +14,7 @@ def get_all_tools(include_rag_tool: bool = True) -> list:
     """回傳 Langchain Tool。"""
     tools = [
         find_nearby_hospitals,
+        find_nearby_facilities_by_department,
         lookup_medical_facility,
         request_location_quick_reply,
         submit_knowledge_report,

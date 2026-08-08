@@ -211,6 +211,7 @@ class Agent:
         # 醫療工具會直接產出要送給 LINE 的內容，避免讓模型重新改寫 Flex JSON。
         medical_tool_names = {
             "find_nearby_hospitals",  # 搜尋附近醫療院所
+            "find_nearby_facilities_by_department",  # 搜尋附近特定科別院所
             "lookup_medical_facility",  # 尋找特定醫療院所
             "request_location_quick_reply",  # 分享位置
             "open_official_site",  # 官網／LIFF 入口 Flex

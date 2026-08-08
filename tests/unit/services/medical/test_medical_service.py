@@ -8,6 +8,7 @@ class FakeMedicalFacilityRepository:
     def __init__(self) -> None:
         self.queries: list[dict] = []
         self.near_queries: list[tuple[dict, float, float, int]] = []
+        self.near_max_distances: list[int | None] = []
 
     async def find_by_query(self, query: dict, limit: int) -> list[MedicalFacility]:
         self.queries.append({"query": query, "limit": limit})
@@ -24,9 +25,15 @@ class FakeMedicalFacilityRepository:
         ]
 
     async def find_by_query_near(
-        self, query: dict, lat: float, lng: float, limit: int
+        self,
+        query: dict,
+        lat: float,
+        lng: float,
+        limit: int,
+        max_distance_meters: int | None = None,
     ) -> list[MedicalFacility]:
         self.near_queries.append((query, lat, lng, limit))
+        self.near_max_distances.append(max_distance_meters)
         return []
 
 

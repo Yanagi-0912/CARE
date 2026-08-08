@@ -1,7 +1,10 @@
 import logging
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from langchain_core.documents import Document
 
+from app.core.request_context import get_line_user_id
 from app.services.gemini import GeminiService
 from app.i18n.messages import t
 from app.services.rag.cannot_answer import (
@@ -28,6 +31,8 @@ WEB_PAGE_CHAR_LIMIT = 8000
 # search snippet 達此長度就不打 scrape（避免 gov.tw 頁面常逾時）
 WEB_SNIPPET_MIN_CHARS = 20
 
+OnWebFallbackSuccess = Callable[..., Awaitable[Any]]
+
 
 def web_answer_prefix(language: str | None = None) -> str:
     return t("rag.web_answer_prefix", language=language)
@@ -38,9 +43,11 @@ class WebSearchService:
         self,
         gemini_service: GeminiService,
         web_client: WebSearchClient | None = None,
+        on_web_fallback_success: OnWebFallbackSuccess | None = None,
     ) -> None:
         self.gemini_service = gemini_service
         self.web_client = web_client
+        self._on_web_fallback_success = on_web_fallback_success
 
     async def answer(self, query: str) -> str:
         web_docs = await self._fetch_web_docs(query)
@@ -61,7 +68,49 @@ class WebSearchService:
             return rag_fail(RagFailCode.MODEL_REFUSE)
 
         annotated = f"{web_answer_prefix()}\n\n{web_answer}"
-        return self._append_sources(annotated, web_docs)
+        result = self._append_sources(annotated, web_docs)
+        await self._maybe_create_knowledge_report(query, web_docs)
+        return result
+
+    async def _maybe_create_knowledge_report(
+        self, query: str, web_docs: list[Document]
+    ) -> None:
+        if self._on_web_fallback_success is None:
+            return
+
+        urls = self._extract_source_urls(web_docs)
+        if not urls:
+            return
+
+        line_user_id = get_line_user_id()
+        if not line_user_id:
+            logger.info(
+                "web_fallback_skip_knowledge_report reason=missing_line_user_id"
+            )
+            return
+
+        try:
+            await self._on_web_fallback_success(
+                question=query,
+                urls=urls,
+                line_user_id=line_user_id,
+            )
+        except Exception:
+            logger.exception("web_fallback_knowledge_report_failed")
+
+    @staticmethod
+    def _extract_source_urls(docs: list[Document]) -> list[str]:
+        urls: list[str] = []
+        seen: set[str] = set()
+        for doc in docs:
+            if len(urls) >= CITE_TOP_K:
+                break
+            url = str(doc.metadata.get("url") or "").strip()
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            urls.append(url)
+        return urls
 
     async def _generate_answer(self, question: str, docs: list[Document]) -> str:
         context = "\n".join(

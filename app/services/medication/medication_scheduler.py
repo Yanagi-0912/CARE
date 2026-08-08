@@ -4,6 +4,11 @@ from contextlib import suppress
 from datetime import datetime, timedelta
 from typing import Optional
 
+from app.core.user_font_size import (
+    DEFAULT_USER_FONT_SIZE,
+    normalize_user_font_size,
+)
+from app.core.user_language import DEFAULT_USER_LANGUAGE, normalize_user_language
 from app.models.medication import (
     TAIPEI_TZ,
     MedicationLog,
@@ -43,6 +48,27 @@ class MedicationScheduler:
         self._user_profile_service = user_profile_service
         self._check_interval_seconds = check_interval_seconds
         self._task: Optional[asyncio.Task] = None
+
+    async def _resolve_display_prefs(self, user_id: str) -> tuple[str, str]:
+        """
+        取得收件人的語言與字級設定。
+        排程是背景工作，沒有 request context，因此每則推播都需按收件人各自解析。
+        """
+        if not self._user_profile_service or not user_id:
+            return DEFAULT_USER_LANGUAGE, DEFAULT_USER_FONT_SIZE
+        try:
+            profile = await self._user_profile_service.get_user_profile(user_id)
+        except Exception:
+            logger.exception(
+                "[MedicationScheduler] Failed to load display prefs for user %s", user_id
+            )
+            return DEFAULT_USER_LANGUAGE, DEFAULT_USER_FONT_SIZE
+
+        settings = (profile or {}).get("settings") or {}
+        return (
+            normalize_user_language(settings.get("language")),
+            normalize_user_font_size(settings.get("font_size")),
+        )
 
     def start(self) -> None:
         if self._task is not None and not self._task.done():
@@ -118,11 +144,14 @@ class MedicationScheduler:
         for log in pending_initial_logs:
             try:
                 scheduled_hm = to_taipei_hm(log.scheduled_at, default="08:00")
+                language, font_size = await self._resolve_display_prefs(log.user_id)
                 flex_msg = build_patient_medication_flex(
                     log_id=log.id,
                     slot_type=log.slot_type,
                     scheduled_time=scheduled_hm,
                     disabled=False,
+                    language=language,
+                    font_size=font_size,
                 )
                 ok = await self._replier.push_flex(log.user_id, flex_msg)
                 if ok:
@@ -144,10 +173,13 @@ class MedicationScheduler:
         for log in pending_urgent_logs:
             try:
                 scheduled_hm = to_taipei_hm(log.scheduled_at, default="08:00")
+                language, font_size = await self._resolve_display_prefs(log.user_id)
                 urgent_flex = build_patient_urgent_reminder_flex(
                     log_id=log.id,
                     slot_type=log.slot_type,
                     scheduled_time=scheduled_hm,
+                    language=language,
+                    font_size=font_size,
                 )
                 ok = await self._replier.push_flex(log.user_id, urgent_flex)
                 if ok:
@@ -175,10 +207,16 @@ class MedicationScheduler:
                         pass
 
                 scheduled_hm = to_taipei_hm(log.scheduled_at, default="08:00")
+                # 這則推播的收件人是家屬，語言與字級需取家屬本人的設定
+                language, font_size = await self._resolve_display_prefs(
+                    log.alert_notify_user_id
+                )
                 alert_flex = build_caregiver_alert_flex(
                     patient_name=patient_name,
                     slot_type=log.slot_type,
                     scheduled_time=scheduled_hm,
+                    language=language,
+                    font_size=font_size,
                 )
                 ok = await self._replier.push_flex(log.alert_notify_user_id, alert_flex)
                 if ok:

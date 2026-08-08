@@ -6,46 +6,48 @@
 from __future__ import annotations
 
 from typing import Any
+from app.i18n import t
 from app.schemas import MedicalFacility
 from app.services.medical.medical_facility_matcher import WEEKDAY_LABELS
+from resources.flex_messages import theme
+from app.services.medical.business_hours import resolve_business_hours
 from resources.flex_messages.medical_messages.facility_brief_flex_message import (
     _build_flex_map_uri,
     _build_flex_tel_uri,
     _build_status_indicator,
-    _get_business_status,
 )
 
 # 診療科別網格每列顯示筆數
 DEPARTMENTS_PER_ROW = 3
 
 
-def _build_clinic_time_rows(clinic_time: dict[str, Any] | None) -> list[dict[str, Any]]:
-    """依 WEEKDAY_LABELS 順序，組出營業時間表格的每一列（含分隔線與斑馬紋底色）"""
+def _build_clinic_time_rows(
+    clinic_time: dict[str, Any] | None,
+    ft: theme.FlexTheme,
+    language: str | None = None,
+) -> list[dict[str, Any]]:
+    """依 WEEKDAY_LABELS 順序，組出營業時間表格的每一列（含斑馬紋底色）"""
     rows: list[dict[str, Any]] = []
     if not clinic_time:
         return rows
 
-    weekday_keys = list(WEEKDAY_LABELS.items())
-    for idx, (day_key, label) in enumerate(weekday_keys):
+    for idx, day_key in enumerate(WEEKDAY_LABELS):
         day = clinic_time.get(day_key)
         if day is None:
             continue
 
         if day.isClosed:
-            time_text = "休診"
+            time_text = t("flex.detail.day_closed", language)
         else:
             ranges = [
                 f"{slot.open}-{slot.close}"
                 for slot in day.slots
                 if slot.open and slot.close
             ]
-            time_text = "、".join(ranges) if ranges else "無資料"
+            time_text = "、".join(ranges) if ranges else t("flex.detail.no_data", language)
 
         # 斑馬紋底色，單雙數列交替
-        bg_color = "#E8F5E9" if idx % 2 == 0 else "#FFFFFF"
-
-        if rows:
-            rows.append({"type": "separator", "color": "#DDDDDD"})
+        bg_color = theme.BRAND_TINT if idx % 2 == 0 else theme.SURFACE
 
         rows.append(
             {
@@ -57,18 +59,18 @@ def _build_clinic_time_rows(clinic_time: dict[str, Any] | None) -> list[dict[str
                 "contents": [
                     {
                         "type": "text",
-                        "text": label,
-                        "size": "lg",
+                        "text": t(f"weekday.{day_key}", language),
+                        "size": ft.body,
                         "weight": "bold",
-                        "color": "#1B5E20",
+                        "color": theme.BRAND_DARK,
                         "flex": 1,
+                        "wrap": True,
                     },
                     {
                         "type": "text",
                         "text": time_text,
-                        "weight": "bold",
-                        "size": "lg",
-                        "color": "#231818",
+                        "size": ft.body,
+                        "color": theme.TEXT,
                         "flex": 3,  # flex 3不會overflow
                         "wrap": True,  # 允許自動折行，避免三段時間導致 overflow
                     },
@@ -78,20 +80,20 @@ def _build_clinic_time_rows(clinic_time: dict[str, Any] | None) -> list[dict[str
     return rows
 
 
-def _department_chip(name: str, bg_color: str) -> dict[str, Any]:
+def _department_chip(name: str, ft: theme.FlexTheme) -> dict[str, Any]:
     return {
         "type": "box",
         "layout": "vertical",
-        "backgroundColor": bg_color,  # 由該列決定卡片的填色
+        "backgroundColor": theme.BRAND_TINT,
         "cornerRadius": "md",
-        "paddingAll": "lg",  # 加大內距，使不可點擊的科別標籤上下高度更厚實易讀
+        "paddingAll": "md",  # 內距足夠，讓不可點擊的科別標籤仍厚實易讀
         "flex": 1,
         "contents": [
             {
                 "type": "text",
                 "text": name,
-                "size": "lg",  # 字級保持 lg
-                "color": "#111111",  # 文字顏色加深
+                "size": ft.caption,
+                "color": theme.BRAND_DARK,
                 "align": "center",
                 "weight": "bold",
                 "wrap": True,
@@ -100,16 +102,20 @@ def _department_chip(name: str, bg_color: str) -> dict[str, Any]:
     }
 
 
-def _build_department_grid(departments: list[str] | None) -> list[dict[str, Any]]:
+def _build_department_grid(
+    departments: list[str] | None,
+    ft: theme.FlexTheme,
+    language: str | None = None,
+) -> list[dict[str, Any]]:
     """組出完整診療科別網格"""
 
     if not departments:
         return [
             {
                 "type": "text",
-                "text": "無資料",
-                "size": "lg",
-                "color": "#111111",
+                "text": t("flex.detail.no_data", language),
+                "size": ft.body,
+                "color": theme.TEXT_MUTED,
             }
         ]
 
@@ -119,15 +125,8 @@ def _build_department_grid(departments: list[str] | None) -> list[dict[str, Any]
     for row_index in range(0, len(departments), DEPARTMENTS_PER_ROW):
         row_departments = departments[row_index : row_index + DEPARTMENTS_PER_ROW]
 
-        # 計算當前是第幾列
-        row_number = row_index // DEPARTMENTS_PER_ROW
-
-        # 以「列」為單位交替卡片顏色：一列淺灰色，一列米黃色
-        current_row_bg = "#EEEEEE" if row_number % 2 == 0 else "#FFFDE7"
-
-        # 生成當前列的所有卡片
         row_chips: list[dict[str, Any]] = [
-            _department_chip(name, bg_color=current_row_bg) for name in row_departments
+            _department_chip(name, ft) for name in row_departments
         ]
 
         # 若不滿一列，補上 filler 填滿空間
@@ -138,8 +137,8 @@ def _build_department_grid(departments: list[str] | None) -> list[dict[str, Any]
             {
                 "type": "box",
                 "layout": "horizontal",
-                "spacing": "md",  # 加大方塊左右間隔
-                "margin": "md",  # 增加上下列之間的行距
+                "spacing": "sm",
+                "margin": "sm",
                 "contents": row_chips,
             }
         )
@@ -147,9 +146,16 @@ def _build_department_grid(departments: list[str] | None) -> list[dict[str, Any]
     return rows
 
 
-def generate_facility_detail_flex_message(facility: MedicalFacility) -> dict[str, Any]:
+def generate_facility_detail_flex_message(
+    facility: MedicalFacility,
+    language: str | None = None,
+    font_size: str | None = None,
+) -> dict[str, Any]:
     """根據單一醫療院所完整資料，動態渲染詳情版 Flex Message"""
+    ft = theme.resolve_theme(font_size)
     map_uri = _build_flex_map_uri(facility)
+    call_label = t("flex.button.call", language)
+    map_label = t("flex.button.map", language)
 
     header_contents: list[dict[str, Any]] = []
     if facility.type:
@@ -157,22 +163,26 @@ def generate_facility_detail_flex_message(facility: MedicalFacility) -> dict[str
             {
                 "type": "text",
                 "text": facility.type,
-                "size": "lg",
+                "size": ft.caption,
                 "weight": "bold",
-                "color": "#2E7D32",
+                "color": theme.BRAND,
             }
         )
     header_contents.append(
         {
             "type": "text",
-            "text": facility.name or "未知名稱",
+            "text": facility.name or t("flex.facility.unknown_name", language),
             "weight": "bold",
             "wrap": True,
-            "size": "3xl",
-            "color": "#111111",
+            "size": ft.title,
+            "color": theme.TEXT,
+            "margin": "xs",
         }
     )
-    header_contents.append(_build_status_indicator(_get_business_status(facility.clinic_time)))
+    header_contents.append(
+        _build_status_indicator(resolve_business_hours(facility), ft, language)
+    )
+
     body_contents: list[dict[str, Any]] = [
         {
             "type": "box",
@@ -182,51 +192,46 @@ def generate_facility_detail_flex_message(facility: MedicalFacility) -> dict[str
         },
         {
             "type": "text",
-            "text": facility.address or "暫無地址資訊",
+            "text": facility.address or t("flex.facility.no_address", language),
             "wrap": True,
-            "size": "xl",
-            "color": "#555555",
-            "margin": "sm",
+            "size": ft.body,
+            "color": theme.TEXT_MUTED,
+            "margin": "md",
         },
     ]
 
     # 電話號碼可點擊撥號；無有效電話時僅顯示純文字，不加 action
     phone_text_block: dict[str, Any] = {
         "type": "text",
-        "text": facility.phone or "無資料",
-        "size": "xl",
+        "text": facility.phone or t("flex.detail.no_data", language),
+        "size": ft.body,
         "margin": "xs",
+        "wrap": True,
     }
     tel_uri = _build_flex_tel_uri(facility.phone)
     if tel_uri != "tel:":
         phone_text_block.update(
             {
-                "color": "#1B5E20",
+                "color": theme.BRAND_DARK,
                 "weight": "bold",
                 "decoration": "underline",
-                "action": {"type": "uri", "label": "撥打電話", "uri": tel_uri},
+                "action": {"type": "uri", "label": call_label, "uri": tel_uri},
             }
         )
     else:
-        phone_text_block["color"] = "#555555"
+        phone_text_block["color"] = theme.TEXT_MUTED
     body_contents.append(phone_text_block)
 
-    body_contents.append({"type": "separator", "margin": "lg", "color": "#CCCCCC"})
+    body_contents.append(theme.divider("xl"))
 
-    clinic_time_rows = _build_clinic_time_rows(facility.clinic_time)
+    clinic_time_rows = _build_clinic_time_rows(facility.clinic_time, ft, language)
     body_contents.append(
         {
             "type": "box",
             "layout": "vertical",
-            "margin": "lg",
+            "margin": "xl",
             "contents": [
-                {
-                    "type": "text",
-                    "text": "營業時間",
-                    "weight": "bold",
-                    "size": "xl",
-                    "color": "#111111",
-                },
+                ft.section_title(t("flex.detail.hours", language)),
                 {
                     "type": "box",
                     "layout": "vertical",
@@ -236,10 +241,9 @@ def generate_facility_detail_flex_message(facility: MedicalFacility) -> dict[str
                     or [
                         {
                             "type": "text",
-                            "text": "無資料",
-                            "weight": "bold",
-                            "size": "lg",
-                            "color": "#333333",
+                            "text": t("flex.detail.no_data", language),
+                            "size": ft.body,
+                            "color": theme.TEXT_MUTED,
                         }
                     ],
                 },
@@ -247,26 +251,22 @@ def generate_facility_detail_flex_message(facility: MedicalFacility) -> dict[str
         }
     )
 
-    body_contents.append({"type": "separator", "margin": "lg", "color": "#CCCCCC"})
+    body_contents.append(theme.divider("xl"))
 
     department_count = len(facility.departments) if facility.departments else 0
     body_contents.append(
         {
             "type": "box",
             "layout": "vertical",
-            "margin": "lg",
+            "margin": "xl",
             "spacing": "sm",
             "contents": [
-                {
-                    "type": "text",
-                    "text": f"診療科別（共 {department_count} 項）",
-                    "weight": "bold",
-                    "size": "xl",
-                    "color": "#111111",
-                },
-                *_build_department_grid(
-                    facility.departments
+                ft.section_title(
+                    t("flex.detail.departments", language).format(
+                        count=department_count
+                    )
                 ),
+                *_build_department_grid(facility.departments, ft, language),
             ],
         }
     )
@@ -274,64 +274,38 @@ def generate_facility_detail_flex_message(facility: MedicalFacility) -> dict[str
     footer_contents: list[dict[str, Any]] = []
     if tel_uri != "tel:":
         footer_contents.append(
-            {
-                "type": "box",
-                "layout": "vertical",
-                "backgroundColor": "#2E7D32",
-                "cornerRadius": "md",
-                "paddingAll": "lg",  # 按鈕內距加大，擴大長輩點擊判定面積
-                "flex": 1,
-                "action": {"type": "uri", "label": "撥打電話", "uri": tel_uri},
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": "📞撥打電話",
-                        "color": "#FFFFFF",
-                        "weight": "bold",
-                        "size": "xl",
-                        "align": "center",
-                    }
-                ],
-            }
+            ft.primary_button(
+                call_label,
+                {"type": "uri", "label": call_label, "uri": tel_uri},
+            )
         )
     footer_contents.append(
-        {
-            "type": "box",
-            "layout": "vertical",
-            "backgroundColor": "#E0E0E0",
-            "cornerRadius": "md",
-            "paddingAll": "lg",  # 按鈕內距加大，擴大長輩點擊判定面積
-            "flex": 1,
-            "action": {"type": "uri", "label": "前往地圖", "uri": map_uri},
-            "contents": [
-                {
-                    "type": "text",
-                    "text": "前往地圖",
-                    "color": "#111111",
-                    "weight": "bold",
-                    "size": "xl",
-                    "align": "center",
-                }
-            ],
-        }
+        ft.secondary_button(
+            map_label,
+            {"type": "uri", "label": map_label, "uri": map_uri},
+        )
     )
 
     return {
         "type": "flex",
-        "altText": f"{facility.name or '醫療院所'}詳細資訊",
+        "altText": t("flex.detail.alt", language).format(
+            name=facility.name or t("flex.facility.eyebrow", language)
+        ),
         "contents": {
             "type": "bubble",
             "size": "giga",
             "body": {
                 "type": "box",
                 "layout": "vertical",
-                "spacing": "md",
+                "paddingAll": "xl",
+                "backgroundColor": theme.SURFACE,
                 "contents": body_contents,
             },
             "footer": {
                 "type": "box",
                 "layout": "horizontal",
-                "spacing": "md",
+                "spacing": "sm",
+                "paddingAll": "lg",
                 "contents": footer_contents,
             },
         },

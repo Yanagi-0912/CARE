@@ -8,6 +8,7 @@ from app.core.request_logging import log_stage
 from app.core.user_language import normalize_user_language
 from app.services.agent.prompt import build_system_prompt
 from app.services.agent.utils.state import State
+from app.services.medical.department_matcher import extract_department_intent
 from app.tools.registry import get_all_tools
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ _LOCATION_TOOL_NAMES = frozenset(
     {
         "request_location_quick_reply",
         "find_nearby_hospitals",
+        "find_nearby_facilities_by_department",
         "lookup_medical_facility",
     }
 )
@@ -81,6 +83,82 @@ def _parse_shared_location(text: str) -> tuple[float, float] | None:
         return None
 
 
+# 使用者提到科別的那一輪通常還沒有座標（「附近有腸胃科嗎」→ 請他分享位置），
+# 等座標進來時，最新的一則 HumanMessage 已經是「這是我的目前位置：lat=…」，
+# 科別資訊落在更早的訊息裡。只看最後一則會把科別整個弄丟，因此往回掃歷史。
+_DEPARTMENT_INTENT_LOOKBACK = 4
+
+
+def _extract_department_from_history(messages) -> str | None:
+    """
+    由新到舊掃描使用者訊息，找出最近一次提到的科別（回傳使用者的原始說法）。
+
+    只掃最近幾則，避免把很久以前、已經聊完的科別誤套到這次搜尋上。
+    """
+    scanned = 0
+    for message in reversed(messages):
+        if not isinstance(message, HumanMessage):
+            continue
+
+        text = message.content if isinstance(message.content, str) else ""
+        # 位置訊息是系統轉出來的文字，不是使用者在描述需求，跳過但不計入回溯長度。
+        if _parse_shared_location(text) is not None:
+            continue
+
+        scanned += 1
+        if scanned > _DEPARTMENT_INTENT_LOOKBACK:
+            return None
+
+        match = extract_department_intent(text)
+        if match is not None:
+            return match.requested
+
+    return None
+
+
+# 「現在有開的」是使用者主動加上的限定，不能從「附近有診所嗎」推論出來 ——
+# 午休時段只有 11.5% 的院所營業，預設篩選會刪掉大量其實稍後就開診的院所。
+_OPEN_NOW_RE = re.compile(
+    r"現在(?:有|還)?(?:開|營業|看診|門診)|還在(?:看診|營業|開)|"
+    r"有開的|開著的|營業中|正在營業|還沒關|來得及|"
+    r"open\s*now|still\s*open|open\s*right\s*now",
+    re.IGNORECASE,
+)
+
+
+def _is_open_now_intent(text: str) -> bool:
+    """使用者是否明確要求只看現在營業中的院所。"""
+    if not text or _is_media_extracted_content(text):
+        return False
+    return bool(_OPEN_NOW_RE.search(text))
+
+
+def _wants_open_now_from_history(messages) -> bool:
+    """
+    回溯使用者訊息，判斷是否曾要求「現在有開的」。
+
+    與科別意圖同理：提出需求的那一輪通常還沒有座標，等座標進來時最新訊息已是
+    系統轉出的座標文字。
+    """
+    scanned = 0
+    for message in reversed(messages):
+        if not isinstance(message, HumanMessage):
+            continue
+
+        text = message.content if isinstance(message.content, str) else ""
+        if _parse_shared_location(text) is not None:
+            continue
+
+        scanned += 1
+        if scanned > _DEPARTMENT_INTENT_LOOKBACK:
+            return False
+
+        if _is_open_now_intent(text):
+            return True
+
+    return False
+
+
 _FACILITY_SEARCH_RE = re.compile(
     r"醫院|診所|藥局|看醫生|就醫|急診|附近院所|找醫院|找診所|看診|"
     r"hospital|clinic|pharmacy",
@@ -101,12 +179,36 @@ def _is_media_extracted_content(text: str) -> bool:
     return bool(text and _MEDIA_EXTRACTED_CONTENT_RE.match(text))
 
 
+# 「附近有腸胃科嗎」不含醫院／診所等字眼，_FACILITY_SEARCH_RE 抓不到，
+# 但它確實是在找附近院所。改以「鄰近詞 + 科別」的組合另行判定。
+# 之所以要求同時出現鄰近詞，是為了把「我牙齒痛」這類純症狀敘述排除在外 ——
+# 那種情況使用者多半想問衛教，不該直接跳出要位置的按鈕。
+_PROXIMITY_RE = re.compile(
+    r"附近|最近|周邊|週邊|周圍|鄰近|哪裡有|哪裡可以|哪一家|哪家|推薦|"
+    r"nearby|near\s*me|closest|around",
+    re.IGNORECASE,
+)
+
+
+def _is_nearby_department_intent(text: str) -> bool:
+    """使用者在找「附近的某一科」，例如「附近有腸胃科嗎」。"""
+    if not text or _is_media_extracted_content(text):
+        return False
+    if _NAMED_LOOKUP_RE.search(text):
+        return False
+    if not _PROXIMITY_RE.search(text):
+        return False
+    return extract_department_intent(text) is not None
+
+
 def _is_nearby_facility_intent(text: str) -> bool:
     if not text or _NAMED_LOOKUP_RE.search(text):
         return False
     if _is_media_extracted_content(text):
         return False
-    return bool(_FACILITY_SEARCH_RE.search(text))
+    if _FACILITY_SEARCH_RE.search(text):
+        return True
+    return _is_nearby_department_intent(text)
 
 
 def _is_named_facility_lookup(text: str) -> bool:
@@ -237,19 +339,31 @@ class AgentNodes:
             and shared_location is not None
         ):
             lat, lng = shared_location
+            # 使用者稍早若指定過科別（「附近有腸胃科嗎」），座標進來時必須沿用，
+            # 否則會退化成搜尋所有科別，回傳一堆牙科、婦產科。
+            department = _extract_department_from_history(state["messages"])
+            if department:
+                forced_tool_name = "find_nearby_facilities_by_department"
+                forced_args = {"lat": lat, "lng": lng, "department": department}
+            else:
+                forced_tool_name = "find_nearby_hospitals"
+                forced_args = {"lat": lat, "lng": lng}
+            # 「現在有開的」與科別各自獨立，可單獨成立也可同時成立。
+            if _wants_open_now_from_history(state["messages"]):
+                forced_args["open_now"] = True
             response = AIMessage(
                 content="",
                 tool_calls=[
                     {
-                        "name": "find_nearby_hospitals",
-                        "args": {"lat": lat, "lng": lng},
+                        "name": forced_tool_name,
+                        "args": forced_args,
                         "id": "forced_nearby_1",
                         "type": "tool_call",
                     }
                 ],
             )
             tool_calls = response.tool_calls
-            called = ["find_nearby_hospitals"]
+            called = [forced_tool_name]
             force_nearby = True
         elif (
             not tool_calls

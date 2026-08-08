@@ -117,6 +117,14 @@ class MedicalFacility(BaseModel):
     departments: Optional[list[str]] = Field(
         None, description="院所診療科別，對應資料庫 departments 欄位"
     )
+    notes: Optional[str] = Field(
+        None,
+        description=(
+            "院所補充註記，對應資料庫 notes 欄位。內容為自由文字且格式不規則，"
+            "常見為節慶特殊開診資訊（如「春節假期2／17~2／22休診」）或"
+            "長期性提醒（如「如需看診請先電話洽詢」）。"
+        ),
+    )
     distance_meters: Optional[float] = Field(
         None, description="距離用戶的直線距離（公尺），由 PostGIS 計算填入"
     )

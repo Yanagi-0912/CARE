@@ -120,8 +120,9 @@ def test_generate_facility_list_flex_message():
     body_contents = bubble["body"]["contents"]
 
     # 驗證上方標題與總數文字
-    assert body_contents[0]["text"] == "附近醫療院所"
-    assert body_contents[1]["text"] == "為您找到附近 2 間醫療院所，點擊查看詳細資訊"
+    assert body_contents[0]["text"] == "醫療院所"
+    assert body_contents[1]["text"] == "附近醫療院所"
+    assert body_contents[2]["text"] == "為您找到附近 2 間醫療院所，點擊查看詳細資訊"
 
     # 分離出兩間診所的 Box 結構進行精準驗證
     # 只拿 type == "box" 的元素，剛好會對應到兩間診所
@@ -134,7 +135,7 @@ def test_generate_facility_list_flex_message():
     # 第一間診所斷言（正常資料）
     assert "健康第一診所" in first_facility_str
     assert "250" in first_facility_str
-    assert "📞 撥打電話" in first_facility_str
+    assert "撥打電話" in first_facility_str
     assert "前往地圖" in first_facility_str
 
     # 第二間診所斷言（資料缺失）
@@ -142,7 +143,7 @@ def test_generate_facility_list_flex_message():
     assert "距離未知" in second_facility_str
     assert "暫無地址資訊" in second_facility_str
     assert "前往地圖" in second_facility_str
-    assert "📞 撥打電話" not in second_facility_str  # 確保沒電話時，按鈕被徹底隱藏了
+    assert "撥打電話" not in second_facility_str  # 確保沒電話時，按鈕被徹底隱藏了
 
 
 def test_generate_facility_list_flex_message_candidate_list():
@@ -160,8 +161,8 @@ def test_generate_facility_list_flex_message_candidate_list():
     body_contents = flex_result["contents"]["body"]["contents"]
 
     # 候選清單情境下標題與副標應切換
-    assert body_contents[0]["text"] == "找到多筆相似院所"
-    assert body_contents[1]["text"] == "為您找到 1 間相似院所，點擊查看詳細資訊"
+    assert body_contents[1]["text"] == "找到多筆相似院所"
+    assert body_contents[2]["text"] == "為您找到 1 間相似院所，點擊查看詳細資訊"
 
     # total_count(5) > 實際顯示筆數(1)，應附加提示文字
     full_str = str(body_contents)
@@ -189,8 +190,8 @@ def test_generate_facility_list_flex_message_realistic_multi_candidates():
     flex_result = generate_facility_list_flex_message(mock_facilities, total_count=2)
     body_contents = flex_result["contents"]["body"]["contents"]
 
-    assert body_contents[0]["text"] == "找到多筆相似院所"
-    assert body_contents[1]["text"] == "為您找到 2 間相似院所，點擊查看詳細資訊"
+    assert body_contents[1]["text"] == "找到多筆相似院所"
+    assert body_contents[2]["text"] == "為您找到 2 間相似院所，點擊查看詳細資訊"
 
 
 def test_generate_facility_list_flex_message_candidate_list_no_hint_when_full():

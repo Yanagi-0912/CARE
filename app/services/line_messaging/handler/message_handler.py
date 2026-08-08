@@ -6,6 +6,11 @@ from typing import Optional
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
 from app.core.request_logging import log_stage
+from app.core.user_font_size import (
+    normalize_user_font_size,
+    reset_request_font_size,
+    set_request_font_size,
+)
 from app.core.user_language import (
     DEFAULT_USER_LANGUAGE,
     normalize_user_language,
@@ -54,6 +59,7 @@ class BaseLineMessageHandler:
 
         user_language = DEFAULT_USER_LANGUAGE
         lang_token = None
+        font_token = None
 
         try:
             log_stage(
@@ -84,6 +90,11 @@ class BaseLineMessageHandler:
 
             user_language = self._language_from_profile(user_profile)
             lang_token = set_request_language(user_language)
+            # Agent 產生的 Flex Message 走 LangChain tool，拿不到 user_profile，
+            # 因此字級也比照語言存進 request-scoped ContextVar
+            font_token = set_request_font_size(
+                self._font_size_from_profile(user_profile)
+            )
 
             if self._loading_animation_service is not None:
                 await self._loading_animation_service.start(user_id)
@@ -163,6 +174,8 @@ class BaseLineMessageHandler:
         finally:
             if lang_token is not None:
                 reset_request_language(lang_token)
+            if font_token is not None:
+                reset_request_font_size(font_token)
 
     @staticmethod
     def _language_from_profile(user_profile: Optional[dict]) -> str:
@@ -170,6 +183,11 @@ class BaseLineMessageHandler:
             return DEFAULT_USER_LANGUAGE
         settings = user_profile.get("settings") or {}
         return normalize_user_language(settings.get("language"))
+
+    @staticmethod
+    def _font_size_from_profile(user_profile: Optional[dict]) -> str:
+        settings = (user_profile or {}).get("settings") or {}
+        return normalize_user_font_size(settings.get("font_size"))
 
     def _parse_voice_reply_enabled(self, user_profile: Optional[dict]) -> bool:
         """同步解析使用者個人檔案中的語音回覆設定，預設為 True。"""

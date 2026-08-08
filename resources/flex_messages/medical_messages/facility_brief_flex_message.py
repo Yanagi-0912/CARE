@@ -8,11 +8,15 @@ import re
 import urllib.parse
 from typing import Any
 from app.schemas import MedicalFacility
-from datetime import datetime, timedelta, timezone
 
-from app.services.medical.medical_facility_matcher import WEEKDAY_LABELS
-
-_TAIPEI_TZ = timezone(timedelta(hours=8))
+from app.i18n import t
+from app.services.medical.business_hours import (
+    BusinessHoursResult,
+    BusinessStatus,
+    NextOpen,
+    resolve_business_hours,
+)
+from resources.flex_messages import theme
 
 def _build_flex_map_uri(facility: MedicalFacility) -> str:
     """生成最符合 LINE 導航按鈕規格的 Google Map 連結"""
@@ -38,195 +42,228 @@ def _build_flex_tel_uri(phone: str | None) -> str:
     digits = re.sub(r"\D", "", phone)
     return f"tel:{digits}" if len(digits) >= 6 else "tel:"
 
-def _get_business_status(clinic_time: dict[str, Any] | None) -> bool | None:
+# 狀態 → (色彩, i18n key)。午休與請電洽用琥珀色，與紅色的休診區隔；
+# 急診用藍色，避免與綠色的「營業中」混淆——那是能力標示，不是營業狀態。
+_STATUS_PRESENTATION: dict[BusinessStatus, tuple[str, str]] = {
+    BusinessStatus.OPEN: (theme.STATUS_OPEN, "flex.status.open"),
+    BusinessStatus.BEFORE_OPEN: (theme.STATUS_PENDING, "flex.status.before_open"),
+    BusinessStatus.BREAK: (theme.STATUS_PENDING, "flex.status.break"),
+    BusinessStatus.CLOSED_TODAY: (theme.STATUS_CLOSED, "flex.status.closed_today"),
+    BusinessStatus.CLOSED_DAY: (theme.STATUS_CLOSED, "flex.status.closed_day"),
+    BusinessStatus.EMERGENCY: (theme.STATUS_EMERGENCY, "flex.status.emergency"),
+    BusinessStatus.CALL_AHEAD: (theme.STATUS_PENDING, "flex.status.call_ahead"),
+    BusinessStatus.UNKNOWN: (theme.STATUS_UNKNOWN, "flex.status.unknown"),
+}
+
+# 只有這些狀態顯示下次開診時間。營業中不需要；請電洽與無資料本就無可靠時段可講；
+# 急診刻意不顯示——在「設有急診」旁邊放門診時間，會被誤讀成急診那時才開。
+_STATUSES_WITH_NEXT_OPEN = frozenset(
+    {
+        BusinessStatus.BEFORE_OPEN,
+        BusinessStatus.BREAK,
+        BusinessStatus.CLOSED_TODAY,
+        BusinessStatus.CLOSED_DAY,
+    }
+)
+
+
+def _format_next_open(next_open: NextOpen, language: str | None = None) -> str:
+    """組出「今日 14:00 開診」或「週四 08:00 開診」。"""
+    if next_open.is_today:
+        return t("flex.status.next_open_today", language).format(
+            time=next_open.time_text
+        )
+    return t("flex.status.next_open_day", language).format(
+        day=t(f"weekday.{next_open.weekday_key}", language),
+        time=next_open.time_text,
+    )
+
+
+def _build_status_indicator(
+    hours: BusinessHoursResult,
+    ft: theme.FlexTheme,
+    language: str | None = None,
+) -> dict[str, Any]:
     """
-    根據目前台灣時間，比對營業時間資料判斷該院所目前是否營業中。
-    回傳 True 表示營業中，False 表示休診中，None 表示無營業時間資料可供判斷。
+    組出營業狀態標籤，供簡略卡片與詳情頁共用。
+
+    休診時附上下次開診時間——使用者真正在問的是「我什麼時候能去」，
+    只說「休診中」等於沒回答。
     """
-    if not clinic_time:
-        return None
+    accent, status_key = _STATUS_PRESENTATION[hours.status]
+    status_text = t(status_key, language)
 
-    now = datetime.now(_TAIPEI_TZ)
-    weekday_keys = list(WEEKDAY_LABELS.keys())
-    today_key = weekday_keys[now.weekday()]  # weekday(): 星期一為0，需與 WEEKDAY_LABELS 順序一致
+    rows: list[dict[str, Any]] = [
+        {
+            "type": "box",
+            "layout": "horizontal",
+            "spacing": "sm",
+            "alignItems": "center",
+            "contents": [
+                {
+                    # 細長色條，比圓點更俐落且渲染穩定
+                    "type": "box",
+                    "layout": "vertical",
+                    "width": "6px",
+                    "height": "22px",
+                    "cornerRadius": "3px",
+                    "backgroundColor": accent,
+                    "flex": 0,
+                    "contents": [{"type": "filler"}],
+                },
+                {
+                    "type": "text",
+                    "text": status_text,
+                    "size": ft.body,
+                    "weight": "bold",
+                    "color": accent,
+                    "flex": 0,
+                    "wrap": True,
+                },
+            ],
+        }
+    ]
 
-    today = clinic_time.get(today_key)
-    if today is None:
-        return None
+    if hours.next_open is not None and hours.status in _STATUSES_WITH_NEXT_OPEN:
+        rows.append(
+            {
+                "type": "text",
+                "text": _format_next_open(hours.next_open, language),
+                "size": ft.caption,
+                "color": theme.TEXT_MUTED,
+                "margin": "xs",
+                "wrap": True,
+            }
+        )
 
-    if today.isClosed:
-        return False
+    if hours.note:
+        # clinicTime 不知道春節。註記原文一律顯示，讓使用者自行判斷是否適用今天。
+        rows.append(
+            {
+                "type": "text",
+                "text": t("flex.facility.note", language).format(note=hours.note),
+                "size": ft.caption,
+                "color": theme.TEXT_FAINT,
+                "margin": "xs",
+                "wrap": True,
+            }
+        )
 
-    current_time_text = now.strftime("%H:%M")
-    for slot in today.slots:
-        if slot.open and slot.close and slot.open <= current_time_text <= slot.close:
-            return True
-
-    return False
-
-
-def _build_status_indicator(is_open: bool | None) -> dict[str, Any]:
-    """組出燈號指示 Box，以圓點顏色代表營業狀態，供簡略卡片與詳情頁共用"""
-    if is_open is None:
-        dot_color = "#9E9E9E"
-        status_text = "營業時間未提供"
-    elif is_open:
-        dot_color = "#2E7D32"
-        status_text = "營業中"
-    else:
-        dot_color = "#C62828"
-        status_text = "休診中"
+    if len(rows) == 1:
+        return rows[0]
 
     return {
         "type": "box",
-        "layout": "horizontal",
-        "spacing": "xs",
-        "alignItems": "center",
-        "contents": [
-            {
-                # 模擬圓點
-                "type": "box",
-                "layout": "vertical",
-                "width": "20px",
-                "height": "20px",
-                #borderRadius設為寬高的一半就可以模擬圓形效果
-                "cornerRadius": "10px",
-                "backgroundColor": dot_color,
-                "contents": [{"type": "filler"}],
-            },
-            {
-                "type": "text",
-                #故意留空白比較好閱讀
-                "text": f"  {status_text}",
-                "size": "xxl",
-                "weight": "bold",
-                "color": dot_color,
-                "flex": 0,
-            },
-        ],
-    }
-    
-def create_facility_item_box(facility: MedicalFacility) -> dict[str, Any]:
-    """建立單一醫療院所的 Flex Message Box 結構"""
-    if facility.distance_meters is not None:
-        if facility.distance_meters >= 1000:
-            dist_text = (f"距離 {facility.distance_meters/1000:.1f} 公里")
-        else:
-            dist_text = (f"距離 {facility.distance_meters:.0f} 公尺")
-    else:
-        dist_text = ("距離未知")
-    
-
-    # 呼叫自己內部定義的 UI 專用 URL 函數
-    map_uri = _build_flex_map_uri(facility)
-
-    # 1. 建立必定會顯示的「前往地圖」按鈕 Box
-    map_button_box = {
-        "type": "box",
         "layout": "vertical",
-        "backgroundColor": "#E0E0E0",
-        "cornerRadius": "md",
-        "paddingAll": "md",
-        "flex": 1,
-        "action": {
-            "type": "uri",
-            "label": "前往地圖",
-            "uri": map_uri,
-        },
-        "contents": [
-            {
-                "type": "text",
-                "text": "前往地圖",
-                "color": "#111111",
-                "weight": "bold",
-                "size": "20px",
-                "align": "center",
-            }
-        ],
+        "contents": rows,
     }
 
-    # 2. 宣告一個按鈕列表容器，先把地圖按鈕放進去
-    buttons_contents = [map_button_box]
 
-    # 3.只有當電話存在，且經過清洗後是有效號碼（長度 >= 6）時，才加入電話按鈕
+def create_facility_item_box(
+    facility: MedicalFacility,
+    ft: theme.FlexTheme | None = None,
+    language: str | None = None,
+) -> dict[str, Any]:
+    """建立單一醫療院所的 Flex Message Box 結構"""
+    ft = ft or theme.resolve_theme()
+
+    if facility.distance_meters is None:
+        dist_text = t("flex.facility.distance_unknown", language)
+    elif facility.distance_meters >= 1000:
+        dist_text = t("flex.facility.distance_km", language).format(
+            value=f"{facility.distance_meters / 1000:.1f}"
+        )
+    else:
+        dist_text = t("flex.facility.distance_m", language).format(
+            value=f"{facility.distance_meters:.0f}"
+        )
+
+    map_uri = _build_flex_map_uri(facility)
+    call_label = t("flex.button.call", language)
+    map_label = t("flex.button.map", language)
+
+    buttons_contents: list[dict[str, Any]] = []
+
+    # 電話存在且清洗後為有效號碼（長度 >= 6）時才顯示撥號按鈕
     if facility.phone:
         tel_uri = _build_flex_tel_uri(facility.phone)
         if tel_uri != "tel:":
-            tel_button_box = {
-                "type": "box",
-                "layout": "vertical",
-                "backgroundColor": "#2E7D32",
-                "cornerRadius": "md",
-                "paddingAll": "md",
-                "flex": 1,
-                "action": {
-                    "type": "uri",
-                    "label": "📞 撥打電話",
-                    "uri": tel_uri,
-                },
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": "📞 撥打電話",
-                        "color": "#FFFFFF",
-                        "weight": "bold",
-                        "size": "20px",
-                        "align": "center",
-                    }
-                ],
-            }
-            # 有電話按鈕時，將它放到地圖按鈕的前面（維持你原本電話在左、地圖在右的順序）
-            buttons_contents.insert(0, tel_button_box)
+            buttons_contents.append(
+                ft.primary_button(
+                    call_label,
+                    {"type": "uri", "label": call_label, "uri": tel_uri},
+                )
+            )
+
+    buttons_contents.append(
+        ft.secondary_button(
+            map_label,
+            {"type": "uri", "label": map_label, "uri": map_uri},
+        )
+    )
+
+    display_name = facility.name or t("flex.facility.fallback_name", language)
 
     return {
         "type": "box",
         "layout": "vertical",
-        "margin": "xxl",
-        "spacing": "md",
+        "margin": "lg",
+        "paddingAll": "lg",
+        "backgroundColor": theme.SURFACE_ALT,
+        "cornerRadius": "lg",
+        "spacing": "sm",
         "action": {
-            "type": "postback",  # postback action 會在使用者點擊時，將資料傳回你的 webhook，方便後續回船對應院所的flex message
-            "label": "查看詳情",
+            # postback 會把資料回傳 webhook，用來回覆對應院所的詳情卡
+            "type": "postback",
+            "label": t("flex.action.detail", language),
             "data": f"action=view_facility_detail&facility_id={facility.id}",
-            "displayText": f"查看 {facility.name or '該院所'} 的詳細資訊",
+            "displayText": t("flex.action.detail_display", language).format(
+                name=display_name
+            ),
         },
         "contents": [
             {
                 "type": "text",
-                "text": facility.name or "未知名稱",
+                "text": facility.name or t("flex.facility.unknown_name", language),
                 "weight": "bold",
                 "wrap": True,
-                "size": "xxl",
-                "color": "#111111",
+                "size": ft.heading,
+                "color": theme.TEXT,
             },
-            _build_status_indicator(_get_business_status(facility.clinic_time)),
+            _build_status_indicator(resolve_business_hours(facility), ft, language),
             {
                 "type": "text",
                 "text": dist_text,
-                "size": "20px",
+                "size": ft.body,
                 "weight": "bold",
-                "color": "#1B5E20",
+                "color": theme.BRAND_DARK,
+                "margin": "xs",
             },
             {
                 "type": "text",
-                "text": facility.address or "暫無地址資訊",
+                "text": facility.address or t("flex.facility.no_address", language),
                 "wrap": True,
-                "size": "20px",
-                "color": "#333333",
+                "size": ft.body,
+                "color": theme.TEXT_MUTED,
             },
             {
                 "type": "box",
                 "layout": "horizontal",
-                "spacing": "md",
+                "spacing": "sm",
                 "margin": "lg",
-                "contents": buttons_contents,  # 這裡帶入動態組好的按鈕列表
+                "contents": buttons_contents,
             },
         ],
     }
 
 
-    
 def generate_facility_list_flex_message(
-    facilities: list[MedicalFacility], total_count: int | None = None
+    facilities: list[MedicalFacility],
+    total_count: int | None = None,
+    language: str | None = None,
+    font_size: str | None = None,
+    title_override: str | None = None,
+    subtitle_override: str | None = None,
 ) -> dict[str, Any]:
     """
     根據醫療院所列表，動態渲染完整的 LINE Flex Message 物件結構 (含 Wrapper)。
@@ -234,80 +271,83 @@ def generate_facility_list_flex_message(
     total_count 為 None 時，視為「附近搜尋」情境，標題固定顯示「附近醫療院所」。
     total_count 有值時，視為「名稱查詢候選清單」情境，標題改為「找到多筆相似院所」，
     並在 total_count 大於實際顯示筆數時，於卡片列表末端加入提示文字。
+
+    科別搜尋情境需要說明「查的是哪一科」與「搜到多遠」，這類脈絡無法由筆數推導，
+    因此開放 title_override／subtitle_override 由呼叫端直接指定文案。
     """
+    ft = theme.resolve_theme(font_size)
+
     is_candidate_list = total_count is not None
     # 這裡的 is_candidate_list 變數用來判斷是否為候選清單情境，影響標題與提示文字的顯示
     if is_candidate_list:
-        title_text = "找到多筆相似院所"
-        subtitle_text = f"為您找到 {len(facilities)} 間相似院所，點擊查看詳細資訊"
+        title_text = t("flex.facility.title.candidates", language)
+        subtitle_text = t("flex.facility.subtitle.candidates", language)
     else:
-        title_text = "附近醫療院所"
-        subtitle_text = f"為您找到附近 {len(facilities)} 間醫療院所，點擊查看詳細資訊"
+        title_text = t("flex.facility.title.nearby", language)
+        subtitle_text = t("flex.facility.subtitle.nearby", language)
+    subtitle_text = subtitle_text.format(count=len(facilities))
+
+    if title_override:
+        title_text = title_override
+    if subtitle_override:
+        subtitle_text = subtitle_override
 
     contents: list[dict[str, Any]] = [
         {
             "type": "text",
+            "text": t("flex.facility.eyebrow", language),
+            "weight": "bold",
+            "size": ft.caption,
+            "color": theme.BRAND,
+        },
+        {
+            "type": "text",
             "text": title_text,
             "weight": "bold",
-            "size": "4xl",
+            "size": ft.title,
             "wrap": True,
-            "color": "#111111",
+            "color": theme.TEXT,
+            "margin": "xs",
         },
         {
             "type": "text",
             "wrap": True,
             "text": subtitle_text,
-            "color": "#333333",
-            "size": "24px",
+            "color": theme.TEXT_MUTED,
+            "size": ft.body,
+            "margin": "sm",
         },
-        {
-            "type": "separator",
-            "margin": "md",
-            "color": "#CCCCCC",
-        },
+        theme.divider("lg"),
     ]
 
-    for idx, facility in enumerate(facilities):
-        contents.append(create_facility_item_box(facility))
-        if idx < len(facilities) - 1:
-            contents.append(
-                {
-                    "type": "separator",
-                    "margin": "xxl",
-                    "color": "#DDDDDD",
-                }
-            )
+    # 每張院所卡片自帶底色與圓角，彼此以間距區隔，不再需要分隔線
+    for facility in facilities:
+        contents.append(create_facility_item_box(facility, ft, language))
 
     # 候選清單情境下，若總筆數超過本次顯示筆數，於列表末端補上提示文字
     if is_candidate_list and total_count > len(facilities):
         contents.append(
             {
-                "type": "separator",
-                "margin": "xxl",
-                "color": "#DDDDDD",
-            }
-        )
-        contents.append(
-            {
                 "type": "text",
-                "text": "結果超過顯示上限，您可以提供更明確的地區或完整名稱以縮小範圍。",
+                "text": t("flex.facility.overflow", language),
                 "wrap": True,
-                "size": "20px",
-                "color": "#777777",
-                "margin": "xxl",
+                "size": ft.caption,
+                "color": theme.TEXT_FAINT,
+                "margin": "lg",
             }
         )
 
     return {
         "type": "flex",
-        "altText": "醫療院所查詢結果",
+        "altText": t("flex.facility.alt", language),
         "contents": {
             "type": "bubble",
             "size": "giga",
             "body": {
                 "type": "box",
                 "layout": "vertical",
-                "spacing": "xl",
+                "paddingAll": "xl",
+                "backgroundColor": theme.SURFACE,
                 "contents": contents,
             },
         },

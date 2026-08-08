@@ -25,7 +25,8 @@ def _uri_actions(payload: dict) -> list[dict]:
     return actions
 
 
-def test_flex_structure_dual_urls():
+def test_flex_single_button_prefers_liff():
+    # 兩個 URL 對使用者是同一個目的地，因此卡片只保留一顆按鈕
     payload = generate_official_site_flex_message(
         "https://liff.line.me/abc",
         "https://care.example.com",
@@ -37,11 +38,9 @@ def test_flex_structure_dual_urls():
     assert payload["contents"]["body"]["type"] == "box"
 
     actions = _uri_actions(payload)
-    assert len(actions) == 2
-    assert actions[0]["label"] == "開啟 LIFF"
+    assert len(actions) == 1
+    assert actions[0]["label"] == "開啟 CARE"
     assert actions[0]["uri"] == "https://liff.line.me/abc"
-    assert actions[1]["label"] == "開啟官網"
-    assert actions[1]["uri"] == "https://care.example.com"
 
 
 def test_flex_only_liff_url():
@@ -51,18 +50,16 @@ def test_flex_only_liff_url():
     )
     actions = _uri_actions(payload)
     assert len(actions) == 1
-    assert actions[0]["label"] == "開啟 LIFF"
     assert actions[0]["uri"] == "https://liff.line.me/abc"
 
 
-def test_flex_only_public_base_url():
+def test_flex_falls_back_to_public_base_url():
     payload = generate_official_site_flex_message(
         "",
         "https://care.example.com",
     )
     actions = _uri_actions(payload)
     assert len(actions) == 1
-    assert actions[0]["label"] == "開啟官網"
     assert actions[0]["uri"] == "https://care.example.com"
 
 
@@ -73,7 +70,27 @@ def test_flex_strips_whitespace_urls():
     )
     actions = _uri_actions(payload)
     assert actions[0]["uri"] == "https://liff.line.me/abc"
-    assert actions[1]["uri"] == "https://care.example.com"
+
+
+def test_flex_respects_language_setting():
+    payload = generate_official_site_flex_message(
+        "https://liff.line.me/abc", "", language="en"
+    )
+    actions = _uri_actions(payload)
+    assert actions[0]["label"] == "Open CARE"
+    assert payload["altText"] == "CARE official entry"
+
+
+def test_flex_respects_font_size_setting():
+    normal = generate_official_site_flex_message(
+        "https://liff.line.me/abc", "", font_size="normal"
+    )
+    xlarge = generate_official_site_flex_message(
+        "https://liff.line.me/abc", "", font_size="xlarge"
+    )
+    # body 的第二個元素是標題文字
+    assert normal["contents"]["body"]["contents"][1]["size"] == "xl"
+    assert xlarge["contents"]["body"]["contents"][1]["size"] == "4xl"
 
 
 def test_flex_raises_when_both_urls_empty():

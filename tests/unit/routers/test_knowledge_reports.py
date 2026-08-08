@@ -68,6 +68,7 @@ def mock_service():
     service = MagicMock()
     service.create = AsyncMock(return_value=_sample_report())
     service.list_for_user = AsyncMock(return_value=[_sample_report()])
+    service.list_for_admin = AsyncMock(return_value=[_sample_report()])
     service.approve = AsyncMock(return_value=_sample_report(status="resolved"))
     service.reject = AsyncMock(return_value=_sample_report(status="rejected"))
     app.dependency_overrides[get_knowledge_report_service] = lambda: service
@@ -110,6 +111,39 @@ def test_admin_approve_requires_admin_role(mock_service):
 
     app.dependency_overrides.pop(get_current_user, None)
     app.dependency_overrides.pop(get_user_profile_service, None)
+
+
+def test_admin_list_requires_admin_role(mock_service):
+    profile_service = MagicMock()
+    profile_service.get_user_profile = AsyncMock(return_value={"role": "user"})
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        line_user_id="U_USER"
+    )
+    app.dependency_overrides[get_user_profile_service] = lambda: profile_service
+
+    response = client.get(
+        "/api/admin/knowledge-reports",
+        headers={"Authorization": "Bearer test-token"},
+    )
+    assert response.status_code == 403
+
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_user_profile_service, None)
+
+
+def test_admin_list_success_for_admin(mock_service, override_admin_user):
+    response = client.get("/api/admin/knowledge-reports")
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["reports"]) == 1
+    assert data["reports"][0]["report_id"] == "KR-20260802-AB12"
+    mock_service.list_for_admin.assert_awaited_once_with(status=None)
+
+
+def test_admin_list_with_status_filter(mock_service, override_admin_user):
+    response = client.get("/api/admin/knowledge-reports?status=pending")
+    assert response.status_code == 200
+    mock_service.list_for_admin.assert_awaited_once_with(status="pending")
 
 
 def test_admin_approve_success_for_admin(mock_service, override_admin_user):

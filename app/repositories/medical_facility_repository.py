@@ -13,18 +13,29 @@ logger = logging.getLogger(__name__)
 class MedicalFacilityRepository:
     # 依經緯度搜尋附近醫療院所
     async def find_near(
-        self, lat: float, lng: float, radius_meters: int, limit: int
+        self,
+        lat: float,
+        lng: float,
+        radius_meters: int,
+        limit: int,
+        query: dict[str, Any] | None = None,
     ) -> list[MedicalFacility]:
+        """
+        依距離由近到遠回傳院所。傳入 query 可額外過濾（例如限定科別），
+        過濾條件會併入 $geoNear 內部，讓 Mongo 邊擴張搜尋半徑邊篩選，
+        而不是先取最近 N 筆再過濾（後者會漏掉稍遠但符合條件的院所）。
+        """
         collection = MongoDBManager.get_medical_collection()
+        geo_near: dict[str, Any] = {
+            "near": {"type": "Point", "coordinates": [lng, lat]},
+            "distanceField": "distance_calculated",
+            "maxDistance": radius_meters,
+            "spherical": True,
+        }
+        if query:
+            geo_near["query"] = query
         pipeline = [
-            {
-                "$geoNear": {
-                    "near": {"type": "Point", "coordinates": [lng, lat]},
-                    "distanceField": "distance_calculated",
-                    "maxDistance": radius_meters,
-                    "spherical": True,
-                }
-            },
+            {"$geoNear": geo_near},
             {"$limit": limit},
         ]
         results = []
@@ -49,18 +60,28 @@ class MedicalFacilityRepository:
         return results
     # 依院所名稱或地址關鍵字搜尋醫療院所，並依經緯度排序
     async def find_by_query_near(
-        self, query: dict[str, Any], lat: float, lng: float, limit: int
+        self,
+        query: dict[str, Any],
+        lat: float,
+        lng: float,
+        limit: int,
+        max_distance_meters: int | None = None,
     ) -> list[MedicalFacility]:
+        """
+        依關鍵字搜尋並由近到遠排序。max_distance_meters 為 None 時不限距離
+        （全國搜尋），呼叫端須自行決定是否要限縮。
+        """
         collection = MongoDBManager.get_medical_collection()
+        geo_near: dict[str, Any] = {
+            "near": {"type": "Point", "coordinates": [lng, lat]},
+            "distanceField": "distance_calculated",
+            "spherical": True,
+            "query": query,
+        }
+        if max_distance_meters is not None:
+            geo_near["maxDistance"] = max_distance_meters
         pipeline = [
-            {
-                "$geoNear": {
-                    "near": {"type": "Point", "coordinates": [lng, lat]},
-                    "distanceField": "distance_calculated",
-                    "spherical": True,
-                    "query": query,
-                }
-            },
+            {"$geoNear": geo_near},
             {"$limit": limit},
         ]
         results = []
@@ -108,5 +129,6 @@ class MedicalFacilityRepository:
             type=doc.get("type", "醫療院所"),
             clinic_time=doc.get("clinicTime"),
             departments=doc.get("departments"),
+            notes=doc.get("notes") or None,
             distance_meters=doc.get("distance_calculated"),
         )

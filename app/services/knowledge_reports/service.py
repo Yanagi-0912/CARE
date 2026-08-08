@@ -57,14 +57,43 @@ class KnowledgeReportService:
         )
         return await self._repository.insert(report)
 
+    async def create_from_web_fallback(
+        self,
+        *,
+        question: str,
+        urls: list[str],
+        line_user_id: str,
+    ) -> KnowledgeReport | None:
+        normalized_urls = [url.strip() for url in urls if url and url.strip()]
+        if not normalized_urls:
+            return None
+
+        await self._repository.delete_pending_or_reviewing_by_urls(normalized_urls)
+        return await self.create(
+            line_user_id=line_user_id,
+            question=question,
+            reason="missing",
+            user_note="auto:web-fallback",
+            user_source_urls=normalized_urls,
+        )
+
     async def list_for_user(self, line_user_id: str) -> list[KnowledgeReport]:
         return await self._repository.list_by_line_user_id(line_user_id)
+
+    async def list_for_admin(
+        self, status: str | None = None
+    ) -> list[KnowledgeReport]:
+        if status:
+            statuses = [status]
+        else:
+            statuses = ["pending", "reviewing"]
+        return await self._repository.list_by_statuses(statuses)
 
     async def approve(
         self,
         *,
         report_id: str,
-        selected_urls: list[str],
+        selected_urls: list[str] | None = None,
         resolution: str | None = None,
         reviewer_note: str | None = None,
     ) -> KnowledgeReport:
@@ -78,7 +107,15 @@ class KnowledgeReportService:
                 detail=f"Report already {report.status}",
             )
 
-        normalized_urls = [url.strip() for url in selected_urls if url.strip()]
+        normalized_urls = [
+            url.strip() for url in (selected_urls or []) if url and url.strip()
+        ]
+        if not normalized_urls:
+            normalized_urls = [
+                url.strip()
+                for url in report.user_source_urls
+                if url and url.strip()
+            ]
         if not normalized_urls:
             raise HTTPException(status_code=400, detail="selected_urls cannot be empty")
 

@@ -57,17 +57,21 @@ class TestMedicalServiceIntegration:
         test_lng = 121.710981
 
         # 呼叫已經寫好的 Motor 非同步查詢
-        facilities = await medical_service.find_nearby_hospitals(
+        result = await medical_service.find_nearby_hospitals(
             lat=test_lat,
             lng=test_lng,
-            radius_meters=5000,  # 搜 5 公里內
-            limit=3,  # 取 3 筆
+            target_count=3,  # 取 3 筆
         )
+        facilities = result.facilities
 
         # 斷言 1: 是否有正確回傳資料
-        assert len(facilities) > 0, "在給定座標 5 公里內找不到任何醫院或資料庫連線失敗"
+        assert len(facilities) > 0, "在給定座標附近找不到任何醫院或資料庫連線失敗"
         assert any(f.name == "整合測試醫院" for f in facilities), "找不到預先插入的整合測試醫院"
-        assert len(facilities) <= 3, "回傳筆數不應超過 limit 限制"
+        assert len(facilities) <= 3, "回傳筆數不應超過 target_count 限制"
+
+        # 斷言 1b: 分級資訊要能反映實際搜尋範圍
+        assert result.reached_meters in (5_000, 10_000, 20_000, 50_000)
+        assert result.satisfied is True
 
         # 斷言 2: 資料格式驗證
         first = facilities[0]

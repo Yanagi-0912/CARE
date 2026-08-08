@@ -66,6 +66,26 @@ class KnowledgeReportRepository:
         return reports
 
     @staticmethod
+    async def list_by_statuses(
+        statuses: list[str], collection: Optional[Any] = None
+    ) -> list[KnowledgeReport]:
+        if collection is None:
+            collection = MongoDBManager.get_knowledge_reports_collection()
+
+        if not statuses:
+            return []
+
+        cursor = collection.find({"status": {"$in": statuses}}).sort(
+            "created_at", -1
+        )
+        documents = await cursor.to_list(length=None)
+        reports: list[KnowledgeReport] = []
+        for document in documents:
+            document.pop("_id", None)
+            reports.append(KnowledgeReport.model_validate(document))
+        return reports
+
+    @staticmethod
     async def update(
         report: KnowledgeReport, collection: Optional[Any] = None
     ) -> KnowledgeReport:
@@ -80,3 +100,21 @@ class KnowledgeReportRepository:
             {"$set": payload},
         )
         return report
+
+    @staticmethod
+    async def delete_pending_or_reviewing_by_urls(
+        urls: list[str], collection: Optional[Any] = None
+    ) -> int:
+        if collection is None:
+            collection = MongoDBManager.get_knowledge_reports_collection()
+
+        if not urls:
+            return 0
+
+        result = await collection.delete_many(
+            {
+                "status": {"$in": ["pending", "reviewing"]},
+                "user_source_urls": {"$in": urls},
+            }
+        )
+        return int(getattr(result, "deleted_count", 0) or 0)

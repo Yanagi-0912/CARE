@@ -158,9 +158,30 @@ if settings.RAG_CRAG_ENABLED:
 else:
     logger.info("RAG_CRAG_ENABLED=false; skipping retrieval grader")
 
+_ingest_service = None
+if _firecrawl_client is not None and settings.MONGODB_URI and settings.MONGODB_COLLECTION:
+    _ingest_service = IngestService(
+        web_client=_firecrawl_client,
+        embeddings=_ingest_embeddings,
+        collection=MongoDBManager.get_database()[settings.MONGODB_COLLECTION],
+        text_field=settings.MONGODB_TEXT_FIELD,
+        vector_field=settings.MONGODB_VECTOR_FIELD,
+        vector_dim=(
+            settings.MONGODB_VECTOR_DIM if settings.MONGODB_VECTOR_DIM > 0 else None
+        ),
+    )
+
+_knowledge_report_repository = KnowledgeReportRepository()
+_knowledge_report_service = KnowledgeReportService(
+    repository=_knowledge_report_repository,
+    ingest_service=_ingest_service,
+)
+configure_knowledge_report_tool(_knowledge_report_service)
+
 _web_search_service = WebSearchService(
     gemini_service=_gemini_service,
     web_client=_firecrawl_client,
+    on_web_fallback_success=_knowledge_report_service.create_from_web_fallback,
 )
 
 _rag_answer_service = RagAnswerService(
@@ -184,19 +205,6 @@ configure_official_site_tool(
     liff_url=settings.LIFF_URL,
     public_base_url=settings.PUBLIC_BASE_URL,
 )
-
-_ingest_service = None
-if _firecrawl_client is not None and settings.MONGODB_URI and settings.MONGODB_COLLECTION:
-    _ingest_service = IngestService(
-        web_client=_firecrawl_client,
-        embeddings=_ingest_embeddings,
-        collection=MongoDBManager.get_database()[settings.MONGODB_COLLECTION],
-        text_field=settings.MONGODB_TEXT_FIELD,
-        vector_field=settings.MONGODB_VECTOR_FIELD,
-        vector_dim=(
-            settings.MONGODB_VECTOR_DIM if settings.MONGODB_VECTOR_DIM > 0 else None
-        ),
-    )
 
 _user_document_ingest_service: UserDocumentIngestService | None = None
 _user_document_answer_service: UserDocumentAnswerService | None = None
@@ -238,13 +246,6 @@ if (
     )
 
 configure_user_document_tool(_user_document_answer_service)
-
-_knowledge_report_repository = KnowledgeReportRepository()
-_knowledge_report_service = KnowledgeReportService(
-    repository=_knowledge_report_repository,
-    ingest_service=_ingest_service,
-)
-configure_knowledge_report_tool(_knowledge_report_service)
 
 _care_agent = Agent(
     llm=_gemini_service.chat_model,

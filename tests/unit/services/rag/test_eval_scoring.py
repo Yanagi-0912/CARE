@@ -70,8 +70,31 @@ def test_ndcg_at_k_returns_zero_when_no_relevant():
     assert ndcg_at_k([0, 0, 0], 5) == 0.0
 
 
-def test_ndcg_at_k_ignores_docs_beyond_k():
+def test_ndcg_at_k_numerator_ignores_docs_beyond_k():
+    """gains（分子）只看前 k 篇：全零時分子恆為 0，這裡不足以分辨 IDCG 口徑對錯。"""
     assert ndcg_at_k([0, 0, 0, 0, 0, 1], 5) == 0.0
+
+
+def test_ndcg_at_k_idcg_uses_full_list_order_not_truncated_order():
+    """IDCG 必須用「整份取回清單重排後」取前 k，而非「先截斷成前 k 再排」。
+
+    relevances = [0, 1, 0, 0, 0, 1]，k=5：
+    - gains（分子，前 5 篇）= [0, 1, 0, 0, 0] → DCG = 1/log2(3)（唯一命中在第 2 名）
+    - 正確 IDCG：對「整份 6 篇」重排 = [1, 1, 0, 0, 0, 0]，取前 5 = [1, 1, 0, 0, 0]
+      → IDCG = 1/log2(2) + 1/log2(3)，因為第 6 名那筆命中也被排進理想序的前段
+    - 錯誤 IDCG（先截斷再排，Task 3 review 抓到的 bug 型態）：
+      只重排前 5 篇 [0, 1, 0, 0, 0] → [1, 0, 0, 0, 0] → IDCG = 1/log2(2)
+      算出 ndcg ≈ 0.631，而非正確的 ≈ 0.387 —— 兩者差異明顯，可分辨實作對錯。
+    """
+    relevances = [0, 1, 0, 0, 0, 1]
+    numerator = 1 / math.log2(3)
+    correct_idcg = 1 / math.log2(2) + 1 / math.log2(3)
+    expected = numerator / correct_idcg
+    result = ndcg_at_k(relevances, 5)
+    assert result == pytest.approx(expected)
+    # 確認不是誤把 IDCG 算成「先截斷再排」的錯誤值
+    wrong_idcg = 1 / math.log2(2)
+    assert result != pytest.approx(numerator / wrong_idcg)
 
 
 def test_doc_relevances_marks_each_doc_independently():

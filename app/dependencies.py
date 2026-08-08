@@ -36,6 +36,7 @@ from app.services.line_messaging.reply.reply import LineReplier
 from app.services.line_messaging.reply.tts_service import TTSService
 from app.services.line_messaging.rich_menu_service import RichMenuService
 from app.services.line_messaging.token_manager import LineTokenManager
+from app.services.medical.facility_name_index import configure_facility_names
 from app.services.medical.medical_service import MedicalService, medical_service
 from app.services.line_messaging.handler.facility_detail_handler import (
     LineFacilityDetailHandler,
@@ -201,6 +202,26 @@ _consultation_repository = ConsultationRepository()
 configure_rag_tool(_rag_answer_service)
 configure_web_tool(_web_search_service)
 configure_medical_tools(medical_service)
+
+
+async def preload_facility_name_index() -> None:
+    """
+    啟動時把全部院所名稱載入索引，供意圖判定分辨專名與泛稱。
+
+    失敗不阻擋啟動：索引未載入時判定會退回「視為泛稱」，
+    也就是退回未套類型過濾的現況行為，屬安全的降級方向。
+    """
+    try:
+        names = await medical_service.repository.list_all_names()
+    except Exception:
+        logger.exception("[Startup] 載入院所名稱索引失敗，類型意圖判定將降級")
+        return
+    if not names:
+        logger.warning("[Startup] 院所名稱索引為空，類型意圖判定將降級")
+        return
+    configure_facility_names(names)
+
+
 configure_official_site_tool(
     liff_url=settings.LIFF_URL,
     public_base_url=settings.PUBLIC_BASE_URL,

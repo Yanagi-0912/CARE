@@ -40,6 +40,11 @@ async def lifespan(app: FastAPI):
     await KnowledgeReportRepository.ensure_indexes()
     await ensure_user_docs_indexes_on_startup()
 
+    # 預載院所名稱索引，供判斷使用者說的「診所／醫院／藥局」是專名還是泛稱。
+    # 放在啟動而非對話路徑：名稱集合約 512 KB，載入一次即可，
+    # 且意圖判定是同步函式，不適合在其中做非同步查詢。
+    await preload_facility_name_index()
+
     # 啟動每日諮詢摘要排程
     scheduler = start_consultation_daily_summary_scheduler(
         enabled=True,  # 啟動自動排程

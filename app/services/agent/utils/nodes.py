@@ -9,6 +9,8 @@ from app.core.user_language import normalize_user_language
 from app.services.agent.prompt import build_system_prompt
 from app.services.agent.utils.state import State
 from app.services.medical.department_matcher import extract_department_intent
+from app.services.medical.facility_name_index import covers_known_facility_name
+from app.services.medical.medical_facility_matcher import FACILITY_ALIASES
 from app.services.medical.facility_type_matcher import (
     all_facility_type_terms,
     extract_facility_type_intent,
@@ -185,82 +187,61 @@ _UNAMBIGUOUS_FACILITY_TYPE_TERMS = (
     all_facility_type_terms() - _AMBIGUOUS_FACILITY_TYPE_TERMS
 )
 
-# 修正迴圈第 1 輪原本用「把整段前綴挖乾淨」的封閉連接詞白名單判斷邊界，
-# 結果矯枉過正：自然語言修飾語是開放集合（「評價不錯的」「24小時營業的」
-# 「剛開幕的」「巷口的」……永遠列不完），要求整段前綴都被白名單消耗殆盡，
-# 會連「評價不錯的診所」「24小時營業的藥局」這種明顯泛稱的合法輸入也一併
-# 擋掉（見修正迴圈第 2 輪 code review）。
-#
-# 中文裡「泛稱 vs 專名」有個穩定得多的形態差異：類型詞前面緊鄰的那一兩個字
-# 是不是語法標記。「評價不錯的診所」「附近有診所」「一間診所」的「的／有／
-# 間」都是修飾語結束、存在句或量詞的標記，本身就宣告後面接的是普通名詞；
-# 「杏一診所」「台大醫院」「康是美藥局」的「一」「大」「美」是內容字，直接
-# 接在品牌詞後面組成專有名詞，不會有這種語法標記介入。因此只需要檢查緊鄰
-# 的字尾是否落在這組標記裡，不需要（也不應該）窮舉修飾語可以有哪些內容。
-#
-# 標記分成三層，因為「一個字算不算語法標記」與那個字本身的頻率有關（對真實
-# 資料庫 19,106 筆含類型詞的院所名稱實掃過，見 final-fix-report）：
-#
-# 1. 詞組標記（多字）：「附近」「哪裡」等，本身就是完整的語法／語意單位，
-#    不可能是院所名稱的尾巴，直接採信。
-# 2. 單字標記：「的」「有」「去」等，前面若只剩一個字，那個字必須自己也是
-#    標記，否則多半是二字品牌名的頭（「美的診所」「大有診所」「嗎哪診所」）。
-# 3. 量詞標記：「家」「間」是純量詞，語法上必定跟在數詞或指示詞後面
-#    （一家／幾家／這間／哪間）；「皇家」「全家」「我家」「和睦家」則是品牌
-#    用字。因此這兩個字只有在前面緊鄰數詞／指示詞時才算標記。
-_FACILITY_TYPE_PHRASE_MARKERS: tuple[str, ...] = (
-    "附近", "最近", "周邊", "週邊", "周圍", "鄰近",
-    "哪裡", "哪個", "哪有", "可以", "現在", "那種", "這種",
-)
-_FACILITY_TYPE_SINGLE_MARKERS: tuple[str, ...] = (
-    "的", "有", "去", "要", "找", "想", "還", "看", "到", "些", "哪",
-)
-_FACILITY_TYPE_CLASSIFIER_MARKERS: tuple[str, ...] = ("家", "間")
-# 量詞前合法的數詞與指示詞。是封閉的功能詞類（不像修飾語是開放集合），
-# 列舉不會有「永遠列不完」的問題。
-_FACILITY_TYPE_DETERMINERS = frozenset("一二兩三四五六七八九十幾這那哪某數每各半")
-
-
-def _is_facility_type_boundary_safe(cleaned: str, index: int) -> bool:
+# 判斷「這個類型詞是專名還是泛稱」的做法演進過三輪字元規則，全部失敗：
+#   1. 連接詞白名單（要求整段前綴被消耗殆盡）→ 擋掉「評價不錯的診所」
+#   2. 緊鄰語法標記 → 「皇家」「全家」「我家」的「家」被當成量詞標記
+#   3. 標記分三層 → 35 家誤判降到 2 家，代價是「好的診所」「多家診所」失效
+# 共同的根因是拿字元形態去猜一個事實問題。改用 facility_name_index 直接查
+# 資料庫裡的院所名稱，詳見 _looks_like_named_facility。
+def _looks_like_named_facility(cleaned: str, start: int, end: int) -> bool:
     """
-    比對到的白名單詞彙前面緊鄰的字，是不是已知的語法標記。
+    `cleaned[start:end]` 這個類型詞，是某家院所專名的最後幾個字嗎？
 
-    是 → 使用者在表達類型偏好（例如「評價不錯的診所」的「的」、
-    「附近有大醫院嗎」的「有」）；否 → 前面直接接的是內容字（例如
-    「台大醫院」的「台」、「杏一診所」的「一」、「皇家診所」的「皇」），
-    視為具名院所全名的一部分，不採信。index==0（比對詞就在句首）沒有前面
-    文字可言，直接視為安全。
+    先前用三輪字元規則猜過這件事（連接詞白名單 → 緊鄰語法標記 → 標記分三層），
+    每輪都在新方向開破口：第一輪擋掉「評價不錯的診所」，第二輪把「皇家診所」
+    當成泛稱，第三輪修好 35 家誤判中的 33 家、代價是「好的診所」「多家診所」失效。
+    根本問題是拿字元形態去猜一個**事實**——這串字是不是某家院所的名字。
+    資料庫裡有答案，不需要猜。
 
-    刻意只看緊鄰字尾（不要求整段前綴被標記完全消耗）：修飾語內容本身是開放
-    集合，只要修飾語結尾接語法標記就足以判斷是泛稱。
+    改成兩道事實查核，任一成立即視為專名：
+
+    1. **登記名稱**：`facility_name_index` 收了全部 19,528 筆院所名稱。
+       「皇家診所」「全家診所」「我家診所」「和睦家診所」「美的診所」
+       「一家牙醫診所」都確實登記在案；而「好的診所」「多家診所」
+       「評價不錯的診所」等泛稱片語沒有一個與院所名稱碰撞。
+    2. **口語簡稱**：資料庫存的是正式名稱，使用者說的常是簡稱——
+       「台大醫院」在庫裡叫「國立臺灣大學醫學院附設醫院」，查不到。
+       這類由既有的 `FACILITY_ALIASES`（臺大／成大／馬偕／榮總／長庚…）補上。
+
+    類型詞位於句首（「診所在哪」）時前面沒有文字可疑，不可能是專名尾巴。
+    索引未載入時第 1 道恆為 False，只剩別名表把關——方向是漏判而非誤判，
+    退回的是未套類型過濾的現況行為。
     """
-    if index == 0:
-        return True
-    preceding = cleaned[:index]
+    if start == 0:
+        return False
 
-    if any(preceding.endswith(marker) for marker in _FACILITY_TYPE_PHRASE_MARKERS):
+    if covers_known_facility_name(cleaned, start, end):
         return True
 
-    if any(preceding.endswith(marker) for marker in _FACILITY_TYPE_SINGLE_MARKERS):
-        rest = preceding[:-1]
-        # 標記就在句首（「有診所嗎」「的診所」）：前面沒有內容字可疑，採信。
-        if not rest:
-            return True
-        # 前面還有兩個字以上，代表真的有一段修飾語（「評價不錯的」「巷口的」），
-        # 而不是二字品牌名（「美的」「大有」）。
-        if len(rest) >= 2:
-            return True
-        # 只剩一個字：那個字必須自己也是語法標記（「哪有藥局」的「哪」、
-        # 「想去診所」的「想」），否則就是品牌名的頭（「美的」的「美」）。
-        return rest in _FACILITY_TYPE_SINGLE_MARKERS or rest in _FACILITY_TYPE_DETERMINERS
+    return _has_facility_alias_at(cleaned, start)
 
-    if any(preceding.endswith(marker) for marker in _FACILITY_TYPE_CLASSIFIER_MARKERS):
-        # 量詞不能單獨起頭：「家中醫診所」「間診所」不是中文的說法，句首的
-        # 「家」「間」幾乎必然是院所名稱的第一個字（實測「家中醫診所」確有其店）。
-        # 因此這裡不比照單字標記給句首豁免，一律要求前面緊鄰數詞或指示詞。
-        rest = preceding[:-1]
-        return bool(rest) and rest[-1] in _FACILITY_TYPE_DETERMINERS
 
+def _has_facility_alias_at(cleaned: str, start: int) -> bool:
+    """
+    位置 start 之前是否緊接著一個已知的院所簡稱。
+
+    要處理重疊：「臺大醫院」比對到的類型詞是「大醫院」（start=1），而簡稱
+    「臺大」佔的是 [0, 2)，兩者共用「大」這個字。所以判定條件不是
+    「前綴以簡稱結尾」，而是「簡稱的結束位置抵達或越過 start」——
+    緊鄰（臺大｜醫院）與重疊（臺｜大醫院）兩種情形都涵蓋。
+    """
+    for alias in FACILITY_ALIASES:
+        alias_start = cleaned.find(alias)
+        while alias_start != -1:
+            alias_end = alias_start + len(alias)
+            if alias_start < start <= alias_end:
+                return True
+            alias_start = cleaned.find(alias, alias_start + 1)
     return False
 
 
@@ -273,10 +254,10 @@ def _facility_type_intent(text: str) -> str | None:
     resolve 成 requested="醫院"，必須擋下來。
 
     白名單詞彙有可能是具名院所全名的一部分（「台大醫院」內含「大醫院」，
-    「杏一診所」「康是美藥局」內含「診所」「藥局」），因此比對到之後還要用
-    _is_facility_type_boundary_safe() 確認前面那段文字是已知連接詞，
-    而不是品牌名稱；比對詞若在文字中出現多次，只要有一次落在安全邊界內
-    就採信，全部都疑似具名院所才回 None。
+    「皇家診所」「康是美藥局」內含「診所」「藥局」），因此比對到之後還要用
+    _looks_like_named_facility() 查核那是不是某家院所的名字；
+    比對詞若在文字中出現多次，只要有一次不是專名的一部分就採信，
+    全部都是專名才回 None。
     """
     match = extract_facility_type_intent(text)
     if match is None or match.requested not in _UNAMBIGUOUS_FACILITY_TYPE_TERMS:
@@ -286,7 +267,7 @@ def _facility_type_intent(text: str) -> str | None:
     term = match.requested
     index = cleaned.find(term)
     while index != -1:
-        if _is_facility_type_boundary_safe(cleaned, index):
+        if not _looks_like_named_facility(cleaned, index, index + len(term)):
             return term
         index = cleaned.find(term, index + 1)
 

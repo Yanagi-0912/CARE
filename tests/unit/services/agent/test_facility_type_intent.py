@@ -22,9 +22,35 @@ from app.services.agent.utils.nodes import (
     _is_nearby_facility_intent,
 )
 from app.services.medical.department_matcher import extract_department_intent
+from app.services.medical.facility_name_index import configure_facility_names
 from app.services.medical.facility_type_matcher import all_facility_type_terms
 
 LOCATION_TEXT = "這是我的目前位置：lat=25.033, lng=121.56"
+
+# 專名判定靠的是「這串字是不是登記在案的院所名稱」，答案來自資料庫。
+# 這裡注入一份取自真實資料庫的名稱子集（正式營運時由 app/dependencies.py
+# 在啟動時載入全部 19,528 筆），讓單元測試不必連線也能驗證同一條判定路徑。
+# 之所以要真實名稱而非杜撰名稱：這些院所之所以會被誤判，正是因為它們的名字
+# 以高頻用字（家、的、有）結尾，杜撰的名字驗證不到這個特性。
+REAL_FACILITY_NAMES = frozenset(
+    {
+        "皇家診所", "全家診所", "我家診所", "和睦家診所", "宜家診所",
+        "安家診所", "怡家診所", "德家診所", "保家診所", "大家診所",
+        "家家診所", "林瑞家診所", "優康家診所", "家中醫診所",
+        "美的診所", "固的診所", "我的診所",
+        "大有診所", "嗎哪診所", "汐止有間診所",
+        "一家牙醫診所", "遠東聯想牙醫診所",
+        "杏一診所", "康是美藥局", "聯合診所", "小林診所", "屈臣氏藥局",
+    }
+)
+
+
+@pytest.fixture(autouse=True)
+def facility_name_index():
+    """每個測試都在「索引已載入」的狀態下執行，並於結束後清空避免互相污染。"""
+    configure_facility_names(REAL_FACILITY_NAMES)
+    yield
+    configure_facility_names(frozenset())
 
 
 def _mock_tools(include_rag: bool = True):
@@ -559,3 +585,60 @@ async def test_stale_facility_type_not_carried_over(
     assert call["name"] == "find_nearby_hospitals"
     assert call["args"] == {"lat": 25.033, "lng": 121.56}
     assert "facility_type" not in call["args"]
+
+
+# --- 先前記為 deferred minor、改用名稱索引後一併修好的情境 ---
+#
+# 這些在字元規則的三個版本裡都失效過，記在 ledger 的 parked 清單裡。
+# 改用「查資料庫確認是否為專名」之後全部自動成立，因此補成回歸測試 ——
+# 若哪天有人想回頭加字元規則，這裡會先擋下來。
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # P1：類型詞前綴剛好兩個字。字元規則版本無法分辨這是修飾語還是二字品牌名，
+        # 一律判為專名而失效；名稱索引直接查得到答案（這些都不是院所名稱）。
+        ("好的診所", "診所"),
+        ("新的診所", "診所"),
+        ("舊的診所", "診所"),
+        ("近的藥局", "藥局"),
+        ("小的診所", "診所"),
+        ("多家診所", "診所"),
+        ("多間診所", "診所"),
+        ("另家診所", "診所"),
+        # 疑問詞「什麼」「哪些」不在舊的標記清單裡，同樣失效過
+        ("有什麼診所", "診所"),
+        ("附近有哪些藥局", "藥局"),
+        ("這附近有什麼藥局", "藥局"),
+    ],
+)
+def test_previously_deferred_generic_phrases_now_trigger(text, expected):
+    assert _facility_type_intent(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # P4：字元規則版本殘留的兩筆誤判，都是真實登記院所
+        "一家牙醫診所在哪",
+        "遠東聯想牙醫診所在哪",
+    ],
+)
+def test_previously_residual_named_facilities_now_rejected(text):
+    assert _facility_type_intent(text) is None
+
+
+def test_falls_back_to_generic_when_index_not_loaded():
+    """
+    索引未載入時（啟動失敗、或單元測試未注入）只剩別名表把關。
+
+    方向必須是漏判而非誤判：「皇家診所」會被當成泛稱而觸發類型過濾，
+    退回的是「多套了一個過濾條件」而非給出錯誤結果；而口語簡稱
+    「台大醫院」仍由 FACILITY_ALIASES 擋住，不受索引狀態影響。
+    """
+    configure_facility_names(frozenset())
+
+    assert _facility_type_intent("皇家診所在哪") == "診所"  # 降級：無索引可查
+    assert _facility_type_intent("台大醫院在哪") is None  # 別名表仍生效
+    assert _facility_type_intent("附近有診所嗎") == "診所"  # 泛稱不受影響

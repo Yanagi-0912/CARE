@@ -92,6 +92,24 @@ class MedicalFacilityRepository:
             logger.error(f"MongoDB facility name query failed: {e}", exc_info=True)
         return results
 
+    async def list_all_names(self) -> set[str]:
+        """
+        取出全部院所名稱，供 facility_name_index 判斷「這串字是不是專名」。
+
+        只投影 name 欄位（19,528 筆約 512 KB），啟動時載入一次即可，
+        不在對話路徑上查詢。
+        """
+        collection = MongoDBManager.get_medical_collection()
+        names: set[str] = set()
+        try:
+            async for doc in collection.find({}, {"name": 1}):
+                name = doc.get("name")
+                if name:
+                    names.add(name)
+        except Exception as e:
+            logger.error(f"MongoDB list_all_names failed: {e}", exc_info=True)
+        return names
+
     async def find_by_id(self, facility_id: str) -> MedicalFacility | None:
         logger.info(
             f"[MedicalService] 正在依 _id 查詢院所，facility_id={facility_id!r}"

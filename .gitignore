@@ -224,3 +224,9 @@ app_data/tmp/*
 
 # Cursor local skills & commands
 .cursor/
+
+# Git worktrees（隔離工作區，不進版控）
+.worktrees/
+
+# Subagent-driven development 暫存工作區
+.superpowers/

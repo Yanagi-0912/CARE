@@ -29,13 +29,27 @@ Cohere 能把 0.29 拉到 0.44，代表排序階段是健康的，壞的是第�
 ### 2.2 食藥署 API 沒有文章網址（影響 30% 的 KB）
 
 食藥署 `DataAction` API 欄位僅 `['標題', '內容', '附檔連結', '發布日期']`，
-不提供文章網址（`附檔連結` 是附件，實測值為字串 `'None'`）。後果兩層：
+不提供文章網址（`附檔連結` 是附件，實測值為字串 `'None'`）。
 
-1. **無法被引用**：`answer_service._append_sources` 的 `if not url: continue` 會跳過整批。
-2. **無法被計分**：golden set 以 `expected_url_substrings` 判 hit，這 30% 必然算 miss。
+**確定的後果 —— 無法被引用**：`answer_service._append_sources` 的
+`if not url: continue` 會跳過整批。食藥署內容即使完美命中，使用者也看不到來源；
+`eval_scoring.is_source_hit` 從答案的來源區塊抽 url 比對，同樣驗不到這批。
+citation coverage 因此存在結構性上限。
 
-因此 **0.29 混入了量測假象**，真實檢索品質高於此數，但高多少必須先修計分才知道。
-這使「eval 先行」成為唯一正確的起手順序。
+**檢索計分則未被完全阻斷**（此處修正初判）：`is_doc_retrieval_hit` 除了 url
+也接受 `expected_content_substrings`。實測 golden 38 題中 kb 佔 34 題，
+全部具備 content substring（29 題另有 url，5 題僅有 content），因此都能計分。
+
+但現行 content substring 是 `scripts/rag_tighten_golden.py` 自動截取的
+約 25 字片段，例如 `"用。至於糖尿病患者，劉皓軒說，營養師常常跟患"` —— 起點落在句中。
+這種標籤有兩個弱點：
+
+1. 脆弱：**切片方式一改，全部失效**。若日後推動 ETL 修復（交付 A），
+   所有 content 標籤都要重做。
+2. 無法涵蓋 citation 層的驗證。
+
+因此仍需引入 `expected_title_substrings`（比對 `original_title`）作為**穩定標籤** ——
+標題不隨切片方式改變。
 
 ### 2.3 向量庫編在 query 空間
 
@@ -112,10 +126,22 @@ reranker 收到的是缺語境的斷句碎片。這是 rerank 增益受限的合
 
 | 項 | 內容 | 檔案 |
 | --- | --- | --- |
-| B1 | golden 支援 `expected_title_substrings`，比對 `original_title`，讓無 URL 的 30% 可計分 | `app/services/rag/eval_scoring.py`、`evals/rag/README.md` |
-| B2 | 加 nDCG@5、recall@k、MRR | `eval_scoring.py`、`scripts/rag_eval.py` |
+| B1 | golden 支援 `expected_title_substrings`，比對 `original_title`，提供不隨切片方式失效的穩定標籤 | `app/services/rag/eval_scoring.py`、`evals/rag/README.md` |
+| B2 | 加 nDCG@5、MRR（不做 recall@k，理由見下） | `eval_scoring.py`、`scripts/rag_eval.py` |
 | B3 | 修生成端引用 | `retriever.py`、`answer_service.py`、`answer_prompts.py` |
 | B4 | citation coverage 指標（依賴 B3） | `eval_scoring.py`、`scripts/rag_eval.py` |
+
+B2 為何不做 recall@k：recall@k 需要「該題在整個語料庫中共有幾筆相關文件」
+這個分母，而 golden set 只標了每題一個正解來源，沒有窮盡的相關性判準
+（exhaustive relevance judgments）。硬算出來的分母是假的，指標會失去意義。
+可算且有意義的是：
+
+- `hit_rate@k`：top-k 是否至少命中一筆（沿用既有定義，供新舊口徑對照）
+- `MRR`：第一筆命中的排名倒數，直接反映「有沒有排上去」
+- `nDCG@5`：二元 gain 的位置加權，rerank 前後差異的主要觀測指標
+
+三者以既有的 substring 判準決定單篇 relevance（url／title／source／content
+任一命中即 gain=1）。
 
 B3 細節：
 
@@ -132,7 +158,13 @@ B3 細節：
 - prompt 要求逐句標 `[n]`，`n` 對應上述 context 編號
 - `_append_sources` 只列出**實際被引用**的來源，並從 1 連續重編號
 - 無 URL 的來源以 `來源名｜標題` 呈現，不再被靜默丟棄
+- 模型未輸出任何 `[n]` 時不附來源，並記錄 `citation_missing` log；
+  此行為的發生率由 B4 的 citation coverage 直接量測，作為安全網
 - 受 `openspec/specs/line-reply-rules` 約束：純文字、不得輸出 Markdown、最多 3 筆
+
+**這是 `rag-responses` 的 MODIFIED capability**：現行 spec 規定
+「SHALL 只列出最多 3 筆關聯度最高的網址」，改為「只列出實際被引用的來源，
+最多 3 筆，依首次引用順序連續編號」。openspec change 的 proposal 須明確宣告此變更。
 
 ### 4.3 交付 C — openspec change `rag-retrieval-tuning`
 
@@ -161,9 +193,8 @@ C2 理由：見 2.4。這是不需重建知識庫就能取得的增益。
 ## 5. 執行順序與驗證
 
 ```
-B1 ──► 修好尺（食藥署 30% 可計分）
- │      重跑 rag_eval.py，取得「可信的 baseline」
- ▼
+B1 ──► 加穩定標籤（title），重跑 rag_eval.py 取得 baseline
+ │
 B2 ──► 加 nDCG@5 / recall@k / MRR，解析度足以分辨排序差異
  │
  ▼
@@ -183,7 +214,10 @@ C3, C4 ► 清噪音、修範本
 ```
 
 每一步後執行 `python scripts/rag_eval.py --rank-mode cohere --top-n 5` 並記錄數字。
-B1 完成後的數字才是真正的 baseline；0.29 不是。
+
+**口徑注意**：0.29 / 0.44 是舊 hit_rate（binary、含 content substring）。
+B1 加入 title 標籤後計分口徑改變，數字不可與之直接相比；
+B2 的 nDCG@5 更是全新指標。報告須同時輸出新舊兩種 hit_rate 以便對照。
 
 ## 6. 測試策略
 

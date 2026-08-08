@@ -133,6 +133,14 @@ def test_append_sources_caps_at_three_and_drops_overflow_markers():
     assert out.count("https://e.example/") == 3
 
 
+def test_append_sources_strips_markers_when_none_resolve():
+    """全部引用都解析不到時，仍要移除標記，只是不附來源清單。"""
+    docs = [_doc(source="A", url="https://a.example/1")]
+    out = RagAnswerService._append_sources("內容 [9]。", docs)
+    assert out == "內容 。"
+    assert "參考" not in out
+
+
 def test_build_context_includes_numbered_source_and_title_header():
     docs = [
         Document(

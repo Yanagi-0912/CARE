@@ -247,14 +247,17 @@ class RagAnswerService:
             renumber[old_idx] = new_idx
             source_lines.append(f"[{new_idx}] {label}")
 
-        if not source_lines:
-            logger.info("citation_unresolved cited=%s docs=%d", cited, len(docs))
-            return answer_text
-
         def _replace(match: re.Match[str]) -> str:
             mapped = renumber.get(int(match.group(1)))
             return f"[{mapped}]" if mapped is not None else ""
 
+        # 先改寫內文再決定要不要附清單：即使一筆來源都解析不出來，
+        # 那些指向不存在來源的標記仍必須從答案中移除。
         body = _CITATION_RE.sub(_replace, answer_text)
+
+        if not source_lines:
+            logger.info("citation_unresolved cited=%s docs=%d", cited, len(docs))
+            return body
+
         heading = t("agent.sources_heading")
         return f"{body}\n\n{heading}\n" + "\n".join(source_lines)

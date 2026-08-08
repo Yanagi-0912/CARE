@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -35,6 +34,15 @@ from app.core.config import settings
 
 # 2026-08-08 實測：以下 URL 下的 chunk 全為網站導覽元素，無文章正文。
 # https://www.hpa.gov.tw/... 為格式損毀的 URL（內容是客服電話清單）。
+#
+# pid=19922 例外說明：這個 URL 表面上長得跟正常文章頁一模一樣（golden set 裡
+# pid=16550、pid=17435 都是正常文章頁），但實際查詢其下 37 筆 chunk，內容是
+# 年份導覽清單與頁面骨架，不是該篇文章正文，例如：
+#   '- [115年](https://www.hpa.gov.tw/Pages/TopicList.aspx?nodeid=5020 "115年")...'
+#   '[跳到主要內容區塊](https://www.hpa.gov.tw/Pages/Detail.aspx?nodeid=5020&pid=19922#m'
+#   '## [新聞](https://www.hpa.gov.tw/Pages/List.aspx?nodeid=124 "新聞")'
+#   '[定位點](https://www.hpa.gov.tw/Pages/Detail.aspx?nodeid=5020&pid=19922#main-c'
+# 也就是說 Firecrawl 對這個 Detail.aspx 網址抓到的是導覽骨架，不是文章內文。
 NAVIGATION_URLS: tuple[str, ...] = (
     "https://www.mohw.gov.tw/",
     "https://www.fda.gov.tw/",
@@ -44,16 +52,28 @@ NAVIGATION_URLS: tuple[str, ...] = (
     "https://www.hpa.gov.tw/Pages/Detail.aspx?nodeid=5020&pid=19922",
 )
 
+_SAMPLE_LIMIT = 2
+_SNIPPET_LEN = 60
+
 
 def build_delete_filter(urls: list[str] | tuple[str, ...]) -> dict:
     return {"url": {"$in": list(urls)}}
 
 
-async def purge(collection, urls, *, apply: bool) -> dict[str, int]:
+async def purge(
+    collection, urls, *, apply: bool, text_field: str = "chunk_content"
+) -> dict[str, int]:
     matched = 0
     for url in urls:
         count = await collection.count_documents({"url": url})
         print(f"  {count:>5}  {url}")
+        if count:
+            samples = await collection.find({"url": url}).limit(_SAMPLE_LIMIT).to_list(
+                length=_SAMPLE_LIMIT
+            )
+            for doc in samples:
+                snippet = str(doc.get(text_field) or "").strip()[:_SNIPPET_LEN]
+                print(f"           例：{snippet!r}")
         matched += count
 
     deleted = 0
@@ -78,7 +98,12 @@ async def _main() -> int:
 
     mode = "APPLY" if args.apply else "DRY-RUN"
     print(f"=== 導覽列噪音清理（{mode}）===")
-    report = await purge(collection, NAVIGATION_URLS, apply=args.apply)
+    report = await purge(
+        collection,
+        NAVIGATION_URLS,
+        apply=args.apply,
+        text_field=settings.MONGODB_TEXT_FIELD,
+    )
     print(f"\n符合條件: {report['matched']} 筆")
     if args.apply:
         print(f"已刪除:   {report['deleted']} 筆")

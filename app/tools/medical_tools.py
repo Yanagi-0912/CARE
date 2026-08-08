@@ -53,6 +53,36 @@ def _furthest_km(result: NearbySearchResult) -> str:
     return str(math.ceil(furthest / 1000))
 
 
+# 藥局「查到了、但荒謬地遠」的判定門檻，沿用搜尋階梯的第一級（5 公里）。
+# 為什麼是這個數字：藥局是「順路領藥、臨時買藥」的生活機能，超過 5 公里已不可能
+# 是使用者心中「附近的藥局」；而第一級距內找得到就代表該地區的收錄密度正常，
+# 唯有必須擴大到第一級之外才找得到，才說明結果是資料缺口撐出來的、而非地理事實。
+# 直接綁定 NEARBY_SEARCH_STEPS[0] 而不另外寫死 5000，是為了讓門檻與搜尋階梯
+# 的定義保持同一個來源，日後調整階梯時不會出現兩套互相矛盾的「附近」。
+PHARMACY_DATA_GAP_METERS = NEARBY_SEARCH_STEPS[0]
+
+
+def _pharmacy_data_gap_note(result: NearbySearchResult) -> str | None:
+    """
+    查到藥局、但最近一家遠超出生活圈時，回傳「資料有限」的補充說明。
+
+    為什麼需要：資料庫只收錄 116 家藥局，全台實際有數千家。實測台北車站查藥局
+    會回傳 5 家、全部在 18 公里外，且因為湊滿了 5 筆而 satisfied=True，副標走
+    「已擴大範圍找到 5 家」——使用者站在步行範圍內就有數十家藥局的地方，卻拿到
+    一張看起來完全正常的卡片。既有的 location.type.pharmacy_none 只在 0 筆時
+    觸發，涵蓋不到這個其實更常見的情境，因此另外補這一則說明。
+    """
+    match = result.facility_type_match
+    if match is None or match.category != "藥局" or not result.facilities:
+        return None
+    nearest = min((f.distance_meters or 0) for f in result.facilities)
+    if nearest <= PHARMACY_DATA_GAP_METERS:
+        return None
+    return t("location.type.pharmacy_data_gap").format(
+        radius_km=str(math.ceil(nearest / 1000))
+    )
+
+
 def _build_range_subtitle(result: NearbySearchResult) -> str:
     """依「搜到多遠、湊不湊得滿」組出副標，讓使用者知道結果的實際涵蓋範圍。"""
     count = len(result.facilities)
@@ -83,6 +113,12 @@ def _build_range_subtitle(result: NearbySearchResult) -> str:
             requested=match.requested, canonical=match.canonical
         )
         subtitle = f"{subtitle}\n{note}"
+
+    # 藥局收錄量遠低於實際家數，「查到了但很遠」時必須揭露這層資料缺口，
+    # 否則卡片會讓使用者以為附近真的只有 18 公里外那幾家藥局。
+    gap_note = _pharmacy_data_gap_note(result)
+    if gap_note is not None:
+        subtitle = f"{subtitle}\n{gap_note}"
     return subtitle
 
 
@@ -97,14 +133,31 @@ async def find_nearby_hospitals(
     只有在使用者明確表達「現在有開的／還在看診的／現在營業中」時才把 open_now 設為 true；
     單純問「附近有醫院嗎」不要設，否則會在午休與深夜篩掉大量其實稍後就開診的院所。
 
-    facility_type 為選填的院所類型過濾，只有在使用者明確指出規模／型態時才傳：
-    講「大醫院」「大型醫院」「要住院」等 → 傳「大醫院」；講「診所」「小診所」→ 傳「診所」；
-    講「藥局」「藥房」→ 傳「藥局」。
+    facility_type 為選填的院所類型過濾，只有在使用者明確指出規模／型態時才傳，
+    且一律填使用者的原始說法：講「大醫院」「大型醫院」「要住院」等 → 傳「大醫院」；
+    講「診所」「小診所」→ 傳「診所」；講「藥局」「藥房」→ 傳「藥局」；
+    講健保類別的正式名稱（「綜合醫院」「精神科醫院」「專科診所」「牙醫診所」等）
+    → 原樣傳入，不要自行換算成「醫院」或「診所」。
     使用者只是泛稱「醫院」（例如單純說「我要去醫院」）時**不要傳** facility_type——
     口語中的「醫院」常常只是「醫療院所」的泛稱，若照字面套用類型過濾，會把 18,935 家
     診所全部排除在外，反而讓查詢結果更差。
     「牙醫」「中醫」屬於科別而非類型，遇到這兩個詞請改用
     find_nearby_facilities_by_department 並傳入 department，不要塞進 facility_type。
+    """
+    return await _search_nearby_facilities(
+        lat, lng, open_now=open_now, facility_type=facility_type
+    )
+
+
+async def _search_nearby_facilities(
+    lat: float, lng: float, open_now: bool = False, facility_type: str | None = None
+) -> str:
+    """
+    「不分科別的鄰近院所搜尋」的實作本體，與 @tool 裝飾分離。
+
+    抽出來是為了讓 find_nearby_facilities_by_department 在收到空白 department 時
+    可以直接退回這條路徑（見該工具內的說明），而不必重寫一次查無結果、藥局專屬
+    文案與標題覆寫這些分支——複製一份必然會逐漸走樣。
     """
     if _medical_service is None:
         return "醫療服務未初始化，請稍後再試。"
@@ -189,6 +242,21 @@ async def find_nearby_facilities_by_department(
     """
     if _medical_service is None:
         return "醫療服務未初始化，請稍後再試。"
+
+    # department 雖是必填，但 LLM function calling 對字串參數送空值是實測會發生的
+    # 行為。此時回「我不確定「」對應到哪一個診療科別」等於讓整個找院所的流程斷在
+    # 一個模型端的失誤上；改為退回不分科別的一般搜尋，使用者至少拿得到附近院所，
+    # 而且 facility_type 若有帶仍然沿用。取捨：這會讓「模型漏填科別」變得比較不
+    # 顯眼，但比起把錯誤丟回給使用者，給出可用結果才是正確的降級方向。
+    if not (department or "").strip():
+        logger.info(
+            "[Tool:find_nearby_facilities_by_department] department 為空，"
+            "退回不分科別的一般搜尋，facility_type=%r",
+            facility_type,
+        )
+        return await _search_nearby_facilities(
+            lat, lng, open_now=open_now, facility_type=facility_type
+        )
 
     logger.info(
         "[Tool:find_nearby_facilities_by_department] 開始查詢，"

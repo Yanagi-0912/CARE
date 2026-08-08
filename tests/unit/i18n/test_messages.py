@@ -26,13 +26,15 @@ REQUIRED_KEYS = (
     "location.type.title",
     "location.type.unknown",
     "location.type.pharmacy_none",
+    "location.type.pharmacy_data_gap",
 )
 
-# 新增三個院所類型篩選 key 的 placeholder 對照，供格式化測試沿用。
+# 院所類型篩選各 key 的 placeholder 對照，供格式化測試沿用。
 FACILITY_TYPE_KEY_PLACEHOLDERS = {
     "location.type.title": "type",
     "location.type.unknown": "facility_type",
     "location.type.pharmacy_none": "radius_km",
+    "location.type.pharmacy_data_gap": "radius_km",
 }
 
 
@@ -73,6 +75,22 @@ def test_t_location_type_pharmacy_none_does_not_imply_no_pharmacy_nearby():
     assert zh != t("location.department.none", "zh-TW").replace("{department}", "藥局")
 
     en = t("location.type.pharmacy_none", "en")
+    assert "name" in en.lower()
+
+
+def test_t_location_type_pharmacy_data_gap_blames_coverage_not_geography():
+    """
+    「查得到藥局但最近一家在 18 公里外」的補充說明：必須把原因歸給本系統的
+    收錄範圍，且提供改用名稱查詢的替代做法，語氣比照 pharmacy_none。
+    不得暗示「附近真的沒有更近的藥局」。
+    """
+    zh = t("location.type.pharmacy_data_gap", "zh-TW")
+    assert "藥局名稱" in zh
+    assert "有限" in zh
+    assert zh != t("location.type.pharmacy_none", "zh-TW")
+
+    en = t("location.type.pharmacy_data_gap", "en")
+    assert "limited" in en.lower()
     assert "name" in en.lower()
 
 

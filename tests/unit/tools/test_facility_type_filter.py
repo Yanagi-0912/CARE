@@ -285,3 +285,145 @@ async def test_department_unknown_department_short_circuits_before_facility_type
     )
 
     assert payload == t("location.department.unknown").format(department="神秘科")
+
+
+# --- 最終審查 I4：空白參數不得讓核心流程斷掉 --------------------------------
+
+
+@pytest.mark.asyncio
+async def test_hospitals_blank_facility_type_still_searches(inject_medical_service):
+    """
+    LLM 對選填字串參數送 "" 是常見行為。工具層必須照樣查詢並回卡片，
+    不得回「我不確定「」對應到哪一種院所類型」——service 層已把空字串
+    正規化成「沒有給」，這裡驗證整條路徑的結果。
+    """
+    result = NearbySearchResult(
+        facilities=[_facility()], reached_meters=5_000, satisfied=True
+    )
+    stub = inject_medical_service(_StubMedicalService(hospitals_result=result))
+
+    payload = await medical_tools.find_nearby_hospitals.ainvoke(
+        {"lat": 25.0, "lng": 121.0, "facility_type": ""}
+    )
+
+    assert stub.hospitals_calls == [{"open_now": False, "facility_type": ""}]
+    assert t("location.type.unknown").format(facility_type="") not in payload
+    assert t("flex.facility.title.nearby") in payload
+
+
+@pytest.mark.asyncio
+async def test_department_blank_department_falls_back_to_general_search(
+    inject_medical_service,
+):
+    """
+    department 雖是必填，模型仍可能送 ""。此時不該回「我不確定「」是哪一科」，
+    而應退回不分科別的一般搜尋，讓使用者至少拿得到附近院所。
+    """
+    hospitals = NearbySearchResult(
+        facilities=[_facility()], reached_meters=5_000, satisfied=True
+    )
+    stub = inject_medical_service(_StubMedicalService(hospitals_result=hospitals))
+
+    payload = await medical_tools.find_nearby_facilities_by_department.ainvoke(
+        {"lat": 25.0, "lng": 121.0, "department": "  "}
+    )
+
+    assert stub.department_calls == [], "空白科別不應再送進依科別搜尋"
+    assert stub.hospitals_calls == [{"open_now": False, "facility_type": None}]
+    assert t("location.department.unknown").format(department="  ") not in payload
+    assert t("flex.facility.title.nearby") in payload
+
+
+@pytest.mark.asyncio
+async def test_department_blank_department_keeps_facility_type(inject_medical_service):
+    """退回一般搜尋時，使用者確實表達過的類型需求不能一起被丟掉。"""
+    hospitals = NearbySearchResult(
+        facilities=[_facility()],
+        reached_meters=5_000,
+        satisfied=True,
+        facility_type_match=FacilityTypeMatch(category="醫院", requested="大醫院"),
+    )
+    stub = inject_medical_service(_StubMedicalService(hospitals_result=hospitals))
+
+    payload = await medical_tools.find_nearby_facilities_by_department.ainvoke(
+        {"lat": 25.0, "lng": 121.0, "department": "", "facility_type": "大醫院"}
+    )
+
+    assert stub.hospitals_calls == [{"open_now": False, "facility_type": "大醫院"}]
+    assert t("location.type.title").format(type="醫院") in payload
+
+
+# --- 最終審查 I5：藥局「查到但荒謬地遠」必須揭露資料缺口 --------------------
+
+
+def _pharmacy(name: str, distance_meters: float) -> MedicalFacility:
+    return MedicalFacility(
+        id=f"id-{name}",
+        name=name,
+        latitude=25.0,
+        longitude=121.0,
+        address="測試地址",
+        type="藥師自營",
+        distance_meters=distance_meters,
+    )
+
+
+@pytest.mark.asyncio
+async def test_pharmacy_far_results_disclose_data_gap(inject_medical_service):
+    """
+    實測情境：台北車站查藥局，5 家全部在 18 公里外且 satisfied=True，
+    卡片副標只會說「已擴大範圍找到 5 家」，看起來完全正常。
+    必須額外附上資料有限的說明。
+    """
+    result = NearbySearchResult(
+        facilities=[_pharmacy(f"藥局{i}", 18_400 + i * 100) for i in range(5)],
+        reached_meters=20_000,
+        satisfied=True,
+        facility_type_match=FacilityTypeMatch(category="藥局", requested="藥局"),
+    )
+    inject_medical_service(_StubMedicalService(hospitals_result=result))
+
+    payload = await medical_tools.find_nearby_hospitals.ainvoke(
+        {"lat": 25.0478, "lng": 121.5170, "facility_type": "藥局"}
+    )
+
+    assert t("location.type.pharmacy_data_gap").format(radius_km="19") in payload
+
+
+@pytest.mark.asyncio
+async def test_pharmacy_nearby_results_have_no_data_gap_note(inject_medical_service):
+    """對照組：最近一家在 5 公里門檻內時屬正常覆蓋，不加說明。"""
+    result = NearbySearchResult(
+        facilities=[_pharmacy("藥局", 800)],
+        reached_meters=5_000,
+        satisfied=True,
+        facility_type_match=FacilityTypeMatch(category="藥局", requested="藥局"),
+    )
+    inject_medical_service(_StubMedicalService(hospitals_result=result))
+
+    payload = await medical_tools.find_nearby_hospitals.ainvoke(
+        {"lat": 25.0, "lng": 121.0, "facility_type": "藥局"}
+    )
+
+    assert "pharmacy_data_gap" not in payload
+    assert t("location.type.pharmacy_data_gap").format(radius_km="1") not in payload
+
+
+@pytest.mark.asyncio
+async def test_far_non_pharmacy_results_have_no_data_gap_note(inject_medical_service):
+    """對照組：資料缺口說明只適用藥局，遠處的醫院不得誤加（醫院資料本來就完整）。"""
+    facility = _facility()
+    facility = facility.model_copy(update={"distance_meters": 30_000})
+    result = NearbySearchResult(
+        facilities=[facility],
+        reached_meters=50_000,
+        satisfied=True,
+        facility_type_match=FacilityTypeMatch(category="醫院", requested="大醫院"),
+    )
+    inject_medical_service(_StubMedicalService(hospitals_result=result))
+
+    payload = await medical_tools.find_nearby_hospitals.ainvoke(
+        {"lat": 25.0, "lng": 121.0, "facility_type": "大醫院"}
+    )
+
+    assert t("location.type.pharmacy_data_gap").format(radius_km="30") not in payload

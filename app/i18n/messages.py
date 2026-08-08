@@ -396,6 +396,42 @@ _MESSAGES: dict[str, dict[str, str]] = {
             "薬局名で直接検索（例：「〇〇薬局」）していただくと見つかりやすくなります。"
         ),
     },
+    # 與 pharmacy_none 同源的資料缺口，但情境相反：這則用在「查得到藥局，卻遠到
+    # 不可能是使用者心中的『附近』」（實測台北車站最近一家藥局在 18 公里外）。
+    # 此時卡片本身看起來完全正常，若不加說明，使用者會相信步行範圍內真的沒有藥局。
+    # 語氣比照 pharmacy_none：把原因歸給本系統的收錄範圍，而不是地理事實，
+    # 並同樣給出「改用藥局名稱查詢」這個可行動的替代做法。
+    "location.type.pharmacy_data_gap": {
+        "zh-TW": (
+            "※ 本系統收錄的藥局資料有限，最近一家距離約 {radius_km} 公里，"
+            "您附近很可能還有未被收錄的藥局。建議改以藥局名稱查詢（例如「OO藥局」）。"
+        ),
+        "en": (
+            "※ Our pharmacy data is limited — the nearest listed one is about {radius_km} km away, "
+            "and there are likely unlisted pharmacies much closer to you. "
+            "Try searching by the pharmacy's name (e.g. \"XX Pharmacy\") instead."
+        ),
+        "id": (
+            "※ Data apotek kami terbatas — yang terdekat sekitar {radius_km} km, "
+            "dan kemungkinan besar masih ada apotek lain lebih dekat yang belum terdaftar. "
+            "Coba cari dengan nama apotek (misalnya \"Apotek XX\")."
+        ),
+        "vi": (
+            "※ Dữ liệu nhà thuốc của chúng tôi còn hạn chế — nhà thuốc gần nhất cách khoảng "
+            "{radius_km} km, và rất có thể còn nhà thuốc gần hơn chưa được ghi nhận. "
+            "Hãy thử tìm theo tên nhà thuốc (ví dụ: \"Nhà thuốc XX\")."
+        ),
+        "th": (
+            "※ ข้อมูลร้านขายยาในระบบของเรามีจำกัด ร้านที่ใกล้ที่สุดอยู่ห่างประมาณ {radius_km} กม. "
+            "และน่าจะยังมีร้านขายยาที่ใกล้กว่านี้ซึ่งยังไม่ได้บันทึกไว้ "
+            "ลองค้นหาด้วยชื่อร้านขายยา (เช่น \"ร้านขายยา XX\")"
+        ),
+        "ja": (
+            "※ 本システムの薬局データは限られており、最も近い登録薬局でも約 {radius_km} km 先です。"
+            "実際にはもっと近くに未登録の薬局がある可能性が高いため、"
+            "薬局名での検索（例：「〇〇薬局」）もお試しください。"
+        ),
+    },
     "meds.recorded": {
         "zh-TW": "已記錄您的服藥狀態！",
         "en": "Your medication status has been recorded!",

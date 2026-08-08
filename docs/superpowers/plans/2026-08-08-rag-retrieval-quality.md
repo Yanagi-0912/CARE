@@ -1516,8 +1516,11 @@ time .venv/bin/python scripts/rag_eval.py --rank-mode cohere --top-n 5 --out /tm
 - [ ] **Step 7: Commit**
 
 ```bash
-git add app/services/rag/retriever.py app/core/config.py app/dependencies.py \
-        .env.example tests/unit/services/rag/test_retriever.py
+git add app/services/rag/retriever.py app/services/rag/user_document_retriever.py \
+        app/core/config.py app/dependencies.py .env.example \
+        tests/unit/services/rag/test_retriever.py \
+        tests/unit/services/rag/test_user_document_retriever.py \
+        openspec/changes/rag-retrieval-tuning/design.md
 git commit -m "fix(rag): 移除向量分數硬門檻，過濾職責移交 reranker"
 ```
 
@@ -1951,6 +1954,13 @@ Expected: 全綠。勾選 `openspec/changes/rag-retrieval-tuning/tasks.md` 全�
    建議 payload 加 `"taskType": "RETRIEVAL_DOCUMENT"`。
    須註明：本次僅證實預設值等同 QUERY，**實際排序影響需 A/B 驗證**，
    不宜宣稱必然改善。
+
+   **佐證數據**（Task 8 實測的 `$vectorSearch` top-40 分數分佈）：
+   160 筆全部落在 **0.79–0.90**，且一個**完全不相關**的查詢
+   （「幫我寫一首關於貓咪的詩」）仍拿到 0.79–0.82，與相關查詢的
+   0.83–0.90 幾乎重疊。餘弦相似度在此設定下近乎不具絕對區辨力。
+   query-query 對比在同語言同領域下高度聚集、壓縮動態範圍，
+   與 taskType 未指定的推論一致。這份分佈可作為說服上游修正的實據。
 
 2. **標題只進 embedding、未寫入 `chunk_content`**（`main_pipeline.py:74,80`）
    三階段對照表（向量有標題／BM25 無／rerank 無）。

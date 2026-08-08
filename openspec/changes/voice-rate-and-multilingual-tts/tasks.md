@@ -44,7 +44,7 @@
 ## 6. 驗證
 
 - [x] 6.1 `pytest tests/unit/services/line_messaging/test_tts_service.py tests/unit/services/line_messaging/test_reply.py tests/unit/routers/test_tts.py -q` 全綠
-- [x] 6.2 `./init.sh` 全綠（Definition of Done）
+- [x] 6.2 `./init.sh` 全綠（Definition of Done）（實際執行時 `./init.sh` 因缺可執行位而 shell-level 失敗，改用 `bash init.sh` 執行後全綠；未修改 `init.sh` 本身或 chmod）
 - [ ] 6.3 手動：六種語言各發一則訊息，確認發音語言正確、三檔語速有感差異（待人耳驗收，需真實 LINE 帳號）
 - [ ] 6.4 手動：LIFF 設定頁調整後，下一則 LINE 訊息即生效（待人耳驗收，需真實 LINE 帳號）
 - [x] 6.5 勾選本 tasks 並建立清楚的 git commit／PR（繁體中文描述）

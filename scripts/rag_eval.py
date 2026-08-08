@@ -33,6 +33,7 @@ from app.services.rag.cohere_reranker import CohereReranker, VectorScoreReranker
 from app.services.rag.eval_scoring import (
     CaseResult,
     EvalCase,
+    answer_citation_count,
     load_golden_jsonl,
     score_case_retrieval,
     is_refuse_ok,
@@ -196,6 +197,7 @@ async def _eval_one(
         return result
 
     result.answer_preview = (answer or "")[:240]
+    result.citation_count = answer_citation_count(answer)
     if case.must_not_answer or case.route == "refuse":
         result.refuse_ok = is_refuse_ok(answer)
     if case.route == "kb" and case.expected_url_substrings:
@@ -230,6 +232,10 @@ def _print_summary(label: str, golden: Path, summary, results, *, with_answer: b
         if source_cases:
             ok = sum(1 for r in source_cases if r.source_hit)
             print(f"source_hit: {ok}/{len(source_cases)}")
+        cited_cases = [r for r in results if r.citation_count is not None]
+        if cited_cases:
+            ok = sum(1 for r in cited_cases if r.citation_count > 0)
+            print(f"citation_coverage: {ok}/{len(cited_cases)}")
 
 
 async def run_eval(

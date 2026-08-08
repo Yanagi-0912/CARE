@@ -58,6 +58,7 @@ class CaseResult:
     mrr: Optional[float] = None
     ndcg_at_5: Optional[float] = None
     rank_mode: Optional[str] = None
+    citation_count: Optional[int] = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -71,6 +72,7 @@ class EvalSummary:
     hit_rate: Optional[float]
     mean_mrr: Optional[float]
     mean_ndcg_at_5: Optional[float]
+    citation_coverage: Optional[float]
     miss_ids: list[str]
     skipped_ids: list[str]
     error_ids: list[str]
@@ -210,6 +212,16 @@ def is_source_hit(answer_text: str, expected_substrings: list[str]) -> bool:
     return is_retrieval_hit(urls_from_answer_sources(answer_text), expected_substrings)
 
 
+def answer_citation_count(answer_text: str) -> int:
+    """答案中出現的相異引用編號數量。
+
+    重用 answer_service.cited_indices，確保與線上組裝來源時的判準一致。
+    """
+    from app.services.rag.answer_service import cited_indices
+
+    return len(cited_indices(answer_text or ""))
+
+
 def is_refuse_ok(answer_text: str) -> bool:
     from app.services.rag.answer_service import CANNOT_ANSWER_MARKERS
     from app.services.rag.fail_messages import is_rag_fail
@@ -334,6 +346,10 @@ def summarize_results(results: list[CaseResult]) -> EvalSummary:
     hit_rate = (hits / scored_n) if scored_n else None
     mrr_values = [r.mrr for r in scored if r.mrr is not None]
     ndcg_values = [r.ndcg_at_5 for r in scored if r.ndcg_at_5 is not None]
+    cited = [r for r in scored if r.citation_count is not None]
+    citation_coverage = (
+        sum(1 for r in cited if r.citation_count > 0) / len(cited)
+    ) if cited else None
     return EvalSummary(
         total_cases=len(results),
         scored_cases=scored_n,
@@ -343,6 +359,7 @@ def summarize_results(results: list[CaseResult]) -> EvalSummary:
         mean_ndcg_at_5=(
             (sum(ndcg_values) / len(ndcg_values)) if ndcg_values else None
         ),
+        citation_coverage=citation_coverage,
         miss_ids=[r.id for r in scored if r.retrieval_hit is False],
         skipped_ids=[r.id for r in results if r.skipped],
         error_ids=[r.id for r in results if r.error],

@@ -6,6 +6,7 @@ from langchain_core.documents import Document
 from app.services.rag.eval_scoring import (
     CaseResult,
     EvalCase,
+    answer_citation_count,
     doc_relevances,
     is_doc_retrieval_hit,
     mrr,
@@ -106,6 +107,32 @@ def test_doc_relevances_marks_each_doc_independently():
     )
     docs = [_doc(title="無關文章"), _doc(title="捍「胃」健康 過年聚餐用公筷")]
     assert doc_relevances(case, docs) == [0, 1]
+
+
+def test_answer_citation_count_counts_distinct_markers():
+    assert answer_citation_count("甲 [1]，乙 [2]，丙 [1]。") == 2
+    assert answer_citation_count("沒有引用") == 0
+    assert answer_citation_count("") == 0
+
+
+def test_summarize_results_reports_citation_coverage():
+    results = [
+        CaseResult(
+            id="a", query="q", route="kb", skipped=False, retrieval_hit=True,
+            retrieved_urls=[], citation_count=2,
+        ),
+        CaseResult(
+            id="b", query="q", route="kb", skipped=False, retrieval_hit=True,
+            retrieved_urls=[], citation_count=0,
+        ),
+        CaseResult(
+            id="c", query="q", route="kb", skipped=False, retrieval_hit=True,
+            retrieved_urls=[], citation_count=None,  # 未跑答案層
+        ),
+    ]
+    summary = summarize_results(results)
+    # 只對「有跑答案層」的題目計算（c 不計入分母）
+    assert summary.citation_coverage == 0.5
 
 
 def test_summarize_results_averages_only_scored_cases():

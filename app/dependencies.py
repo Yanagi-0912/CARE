@@ -58,6 +58,7 @@ from app.services.rag.web_search_service import WebSearchService
 from app.services.users.user_profile_service import UserProfileService
 from app.tools.knowledge_report_tools import configure_knowledge_report_tool
 from app.tools.medical_tools import configure_medical_tools
+from app.tools.official_site_tools import configure_official_site_tool
 from app.tools.rag_tools import configure_rag_tool
 from app.tools.user_document_tools import configure_user_document_tool
 from app.tools.web_tools import configure_web_tool
@@ -179,6 +180,10 @@ _consultation_repository = ConsultationRepository()
 configure_rag_tool(_rag_answer_service)
 configure_web_tool(_web_search_service)
 configure_medical_tools(medical_service)
+configure_official_site_tool(
+    liff_url=settings.LIFF_URL,
+    public_base_url=settings.PUBLIC_BASE_URL,
+)
 
 _ingest_service = None
 if _firecrawl_client is not None and settings.MONGODB_URI and settings.MONGODB_COLLECTION:

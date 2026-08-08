@@ -17,6 +17,8 @@ def test_system_prompt_bans_markdown_and_routes_tools():
     assert "[文字](網址)" in SYSTEM_PROMPT
     assert "request_location_quick_reply" in SYSTEM_PROMPT
     assert "lookup_medical_facility" in SYSTEM_PROMPT
+    assert "open_official_site" in SYSTEM_PROMPT
+    assert "打開官網" in SYSTEM_PROMPT
     assert "我有孕痛" in SYSTEM_PROMPT
     assert "附近有哪些醫院" in SYSTEM_PROMPT
     assert "禁止呼叫 `get_rag_answer`" in SYSTEM_PROMPT or "禁止 `get_rag_answer`" in SYSTEM_PROMPT

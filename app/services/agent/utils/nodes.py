@@ -115,6 +115,42 @@ def _is_named_facility_lookup(text: str) -> bool:
     return bool(_NAMED_LOOKUP_RE.search(text) and _FACILITY_TERM_RE.search(text))
 
 
+_OFFICIAL_SITE_ACTION_RE = re.compile(
+    r"打開|開啟|進入|入口|連結|怎麼開|如何開",
+    re.IGNORECASE,
+)
+_OFFICIAL_SITE_TERM_RE = re.compile(
+    r"官網|官方網站|官方入口|網站連結|(?<![a-z])liff(?![a-z])",
+    re.IGNORECASE,
+)
+_OFFICIAL_SITE_DIRECT_RE = re.compile(
+    r"^(?:打開官網|打開網站|官網連結|網站連結|官方網站|打開官方網站|"
+    r"打開\s*liff|liff\s*入口|liff\s*怎麼開|怎麼開\s*liff|"
+    r"官網入口|官方入口)(?:[？?！!。．\s]*)$",
+    re.IGNORECASE,
+)
+
+
+def _is_official_site_intent(text: str) -> bool:
+    """使用者要開啟官網／LIFF 入口；偏短意圖，避免「官網疫苗資訊」等衛教句誤觸。"""
+    if not text or _is_media_extracted_content(text):
+        return False
+    stripped = text.strip()
+    if _OFFICIAL_SITE_DIRECT_RE.match(stripped):
+        return True
+    if _OFFICIAL_SITE_ACTION_RE.search(stripped) and _OFFICIAL_SITE_TERM_RE.search(
+        stripped
+    ):
+        return True
+    return False
+
+
+def _already_ran_official_site(messages) -> bool:
+    return any(
+        isinstance(m, ToolMessage) and m.name == "open_official_site" for m in messages
+    )
+
+
 def format_user_profile_prompt(user_profile: dict | None) -> str:
     if not user_profile:
         return ""
@@ -187,6 +223,7 @@ class AgentNodes:
         force_upload = False
         force_location = False
         force_nearby = False
+        force_official_site = False
         user_text = _latest_human_text(state["messages"])
         shared_location = _parse_shared_location(user_text)
 
@@ -214,6 +251,25 @@ class AgentNodes:
             tool_calls = response.tool_calls
             called = ["find_nearby_hospitals"]
             force_nearby = True
+        elif (
+            not tool_calls
+            and not _already_ran_official_site(state["messages"])
+            and _is_official_site_intent(user_text)
+        ):
+            response = AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "open_official_site",
+                        "args": {},
+                        "id": "forced_official_site_1",
+                        "type": "tool_call",
+                    }
+                ],
+            )
+            tool_calls = response.tool_calls
+            called = ["open_official_site"]
+            force_official_site = True
         elif (
             not tool_calls
             and not _already_used_location_tools(state["messages"])
@@ -261,6 +317,7 @@ class AgentNodes:
             and not _already_used_location_tools(state["messages"])
             and not _is_nearby_facility_intent(user_text)
             and not _is_named_facility_lookup(user_text)
+            and not _is_official_site_intent(user_text)
             and not _is_media_extracted_content(user_text)
             and not _is_uploaded_document_question(user_text)
         ):
@@ -290,6 +347,7 @@ class AgentNodes:
             force_upload=force_upload or None,
             force_location=force_location or None,
             force_nearby=force_nearby or None,
+            force_official_site=force_official_site or None,
             ms=int((time.perf_counter() - t0) * 1000),
         )
 

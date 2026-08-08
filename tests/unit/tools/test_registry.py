@@ -17,6 +17,7 @@ def test_get_all_tools_includes_rag_when_enabled():
     assert "find_nearby_hospitals" in names
     assert "lookup_medical_facility" in names
     assert "request_location_quick_reply" in names
+    assert "open_official_site" in names
 
 
 def test_get_all_tools_excludes_rag_when_disabled():
@@ -29,3 +30,4 @@ def test_get_all_tools_excludes_rag_when_disabled():
     assert "find_nearby_hospitals" in names
     assert "lookup_medical_facility" in names
     assert "request_location_quick_reply" in names
+    assert "open_official_site" in names

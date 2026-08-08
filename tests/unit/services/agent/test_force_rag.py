@@ -6,6 +6,7 @@ from app.services.agent.utils.nodes import (
     AgentNodes,
     _is_named_facility_lookup,
     _is_nearby_facility_intent,
+    _is_official_site_intent,
     _is_uploaded_document_question,
 )
 
@@ -25,6 +26,9 @@ def _mock_tools(include_rag: bool = True):
     hospital_tool = MagicMock()
     hospital_tool.name = "find_nearby_hospitals"
     tools.append(hospital_tool)
+    official_site_tool = MagicMock()
+    official_site_tool.name = "open_official_site"
+    tools.append(official_site_tool)
     return tools
 
 
@@ -68,6 +72,28 @@ def test_is_named_facility_lookup(text, expected):
 )
 def test_is_uploaded_document_question(text, expected):
     assert _is_uploaded_document_question(text) is expected
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("打開官網", True),
+        ("打開網站", True),
+        ("請給我官網連結", True),
+        ("LIFF怎麼開", True),
+        ("怎麼開LIFF", True),
+        ("官方網站入口", True),
+        ("官網疫苗資訊", False),
+        ("高血壓要注意什麼", False),
+        ("我要看醫院", False),
+        (
+            "以下為使用者傳送的file媒體內容：\n官網連結請見內文",
+            False,
+        ),
+    ],
+)
+def test_is_official_site_intent(text, expected):
+    assert _is_official_site_intent(text) is expected
 
 
 @pytest.fixture
@@ -304,6 +330,107 @@ async def test_no_force_location_or_rag_for_named_facility_lookup(
     mock_log.assert_called_once()
     assert mock_log.call_args[1].get("force_rag") is None
     assert mock_log.call_args[1].get("force_location") is None
+
+
+@pytest.mark.asyncio
+async def test_force_official_site_when_open_site_intent(
+    mock_llm_no_tool_calls, monkeypatch
+):
+    """打開官網應強制 open_official_site，而非 get_rag_answer。"""
+    monkeypatch.setattr(
+        "app.services.agent.utils.nodes.get_all_tools",
+        lambda include_rag_tool=False: _mock_tools(include_rag=include_rag_tool),
+    )
+
+    nodes = AgentNodes(
+        llm=mock_llm_no_tool_calls,
+        guardrail_service=MagicMock(),
+    )
+    state = {
+        "messages": [HumanMessage(content="打開官網")],
+        "allow_rag": True,
+    }
+
+    with patch("app.services.agent.utils.nodes.log_stage") as mock_log:
+        res = await nodes.agent_node(state)
+
+    response = res["messages"][0]
+    assert response.tool_calls
+    assert len(response.tool_calls) == 1
+    tc = response.tool_calls[0]
+    assert tc["name"] == "open_official_site"
+    assert tc["args"] == {}
+    assert tc["id"] == "forced_official_site_1"
+    assert tc["type"] == "tool_call"
+
+    mock_log.assert_called_once()
+    assert mock_log.call_args[1]["force_official_site"] is True
+    assert mock_log.call_args[1].get("force_rag") is None
+    assert mock_log.call_args[1]["call"] == ["open_official_site"]
+
+
+@pytest.mark.asyncio
+async def test_media_extracted_content_does_not_force_official_site(
+    mock_llm_no_tool_calls, monkeypatch
+):
+    """媒體前綴全文即使含官網字樣，也不強制 open_official_site。"""
+    monkeypatch.setattr(
+        "app.services.agent.utils.nodes.get_all_tools",
+        lambda include_rag_tool=False: _mock_tools(include_rag=include_rag_tool),
+    )
+
+    nodes = AgentNodes(
+        llm=mock_llm_no_tool_calls,
+        guardrail_service=MagicMock(),
+    )
+    media_text = (
+        "以下為使用者傳送的file媒體內容：\n"
+        "請參考官網連結與衛教說明。"
+    )
+    state = {
+        "messages": [HumanMessage(content=media_text)],
+        "allow_rag": True,
+    }
+
+    with patch("app.services.agent.utils.nodes.log_stage") as mock_log:
+        res = await nodes.agent_node(state)
+
+    response = res["messages"][0]
+    assert response.content == "腦補"
+    assert not response.tool_calls
+
+    mock_log.assert_called_once()
+    assert mock_log.call_args[1].get("force_official_site") is None
+    assert mock_log.call_args[1].get("force_rag") is None
+
+
+@pytest.mark.asyncio
+async def test_health_question_still_forces_rag_after_official_site_rules(
+    mock_llm_no_tool_calls, monkeypatch
+):
+    """一般衛教問題仍應 force get_rag_answer。"""
+    monkeypatch.setattr(
+        "app.services.agent.utils.nodes.get_all_tools",
+        lambda include_rag_tool=False: _mock_tools(include_rag=include_rag_tool),
+    )
+
+    nodes = AgentNodes(
+        llm=mock_llm_no_tool_calls,
+        guardrail_service=MagicMock(),
+    )
+    state = {
+        "messages": [HumanMessage(content="高血壓要注意什麼")],
+        "allow_rag": True,
+    }
+
+    with patch("app.services.agent.utils.nodes.log_stage") as mock_log:
+        res = await nodes.agent_node(state)
+
+    response = res["messages"][0]
+    assert response.tool_calls
+    assert response.tool_calls[0]["name"] == "get_rag_answer"
+    assert mock_log.call_args[1]["force_rag"] is True
+    assert mock_log.call_args[1].get("force_official_site") is None
 
 
 def _location_state(allow_rag: bool = False, extra_messages=None):

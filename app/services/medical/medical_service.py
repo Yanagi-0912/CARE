@@ -12,6 +12,11 @@ from app.services.medical.department_matcher import (
     build_department_query,
     resolve_department,
 )
+from app.services.medical.facility_type_matcher import (
+    FacilityTypeMatch,
+    build_facility_type_query,
+    resolve_facility_type,
+)
 from app.services.medical.medical_facility_matcher import (
     build_facility_query,
     similarity_rank,
@@ -76,6 +81,16 @@ class NearbySearchResult:
     open_now_fallback: bool = False
     """要求營業中但一家都沒開，已退回未過濾結果。呈現層須據此改變文案。"""
 
+    facility_type_match: FacilityTypeMatch | None = None
+    """解析出的院所類型；未要求類型過濾時亦為 None，故不可單獨用來判斷「看不懂」——
+    請改看 facility_type_unresolved。"""
+
+    facility_type_unresolved: bool = False
+    """呼叫端有給 facility_type 但解析不出來。True 時本次未查詢 DB（比照科別解析
+    失敗的處理方式），facilities 必為空清單。與 facility_type_match 皆為 None
+    的情形（未要求類型過濾）區分開來，讓呼叫端能分辨「沒有要濾類型」與
+    「濾了但看不懂」——後者若被誤判成前者，使用者會誤以為系統理解了他的需求。"""
+
     @property
     def expanded(self) -> bool:
         """是否曾放寬到第一級（5 公里）以外。"""
@@ -99,9 +114,14 @@ class MedicalService:
         target_count: int,
         query: dict[str, Any] | None = None,
         open_now: bool = False,
+        facility_type_match: FacilityTypeMatch | None = None,
     ) -> NearbySearchResult:
         """
         逐級放寬 5→10→20→50 公里，直到湊滿目標筆數。
+
+        facility_type_match 純粹是要原樣夾帶進回傳結果，本身不影響查詢邏輯——
+        真正的類型過濾條件已經在呼叫端組進 query 裡了，這裡只是共用建構子的
+        單一出口，避免兩個呼叫端各自手動複製 NearbySearchResult 的欄位。
 
         實作上只打一次 DB：$geoNear 本來就由近到遠回傳，一次抓到 50 公里內最近的
         N 筆，等同於跑完整條階梯，但省下 3 次網路往返。分級只影響「回覆時要告訴
@@ -142,6 +162,7 @@ class MedicalService:
             satisfied=satisfied,
             open_now_requested=open_now,
             open_now_fallback=fell_back_from_open_now,
+            facility_type_match=facility_type_match,
         )
 
     async def find_nearby_hospitals(
@@ -150,16 +171,45 @@ class MedicalService:
         lng: float,
         target_count: int = DEFAULT_TARGET_COUNT,
         open_now: bool = False,
+        facility_type: str | None = None,
     ) -> NearbySearchResult:
-        """找出鄰近的醫療院所（不限科別），湊不滿就逐級放寬到 50 公里。"""
+        """
+        找出鄰近的醫療院所，可選擇只看某一類型（醫院／診所／藥局），
+        湊不滿就逐級放寬到 50 公里。
+
+        facility_type 為 None 代表不限類型（省略時行為與過去完全相同）；
+        給了但解析不出來時比照科別搜尋的處理方式：不查 DB，直接回傳
+        facility_type_unresolved=True，讓呼叫端能明確告知使用者「看不懂」，
+        而不是靜默退化成查全部院所。
+        """
+        type_match: FacilityTypeMatch | None = None
+        type_query: dict[str, Any] | None = None
+        if facility_type is not None:
+            type_match = resolve_facility_type(facility_type)
+            if type_match is None:
+                logger.info(
+                    f"{LOGGER_HEADER_TEXT} 無法解析院所類型，facility_type=%r",
+                    facility_type,
+                )
+                return NearbySearchResult(facility_type_unresolved=True)
+            type_query = build_facility_type_query(type_match.category)
+
         logger.info(
             f"{LOGGER_HEADER_TEXT} 搜尋 ({lat}, {lng}) 附近醫療院所，"
-            f"上限=%s 公尺, target=%s, open_now=%s",
+            f"上限=%s 公尺, target=%s, open_now=%s, facility_type=%s",
             NEARBY_SEARCH_STEPS[-1],
             target_count,
             open_now,
+            type_match.category if type_match else None,
         )
-        result = await self._search_tiered(lat, lng, target_count, open_now=open_now)
+        result = await self._search_tiered(
+            lat,
+            lng,
+            target_count,
+            query=type_query,
+            open_now=open_now,
+            facility_type_match=type_match,
+        )
         logger.info(
             f"{LOGGER_HEADER_TEXT} 搜尋完成，回傳=%s 筆, 涵蓋範圍=%s 公尺, 湊滿目標=%s",
             len(result.facilities),
@@ -175,8 +225,15 @@ class MedicalService:
         department: str,
         target_count: int = DEFAULT_TARGET_COUNT,
         open_now: bool = False,
+        facility_type: str | None = None,
     ) -> DepartmentSearchResult:
-        """找出鄰近、且有指定科別的院所，同樣逐級放寬到 50 公里。"""
+        """
+        找出鄰近、且有指定科別的院所，同樣逐級放寬到 50 公里；
+        facility_type 可再疊加類型過濾（兩個條件以 $and 組合，見 _combine_filters）。
+
+        facility_type 解析失敗時比照科別解析失敗：不查 DB，
+        回傳 facility_type_unresolved=True 讓呼叫端能分辨「看不懂類型」。
+        """
         match = resolve_department(department)
         if match is None:
             logger.info(
@@ -184,20 +241,35 @@ class MedicalService:
             )
             return DepartmentSearchResult(match=None)
 
+        type_match: FacilityTypeMatch | None = None
+        type_query: dict[str, Any] | None = None
+        if facility_type is not None:
+            type_match = resolve_facility_type(facility_type)
+            if type_match is None:
+                logger.info(
+                    f"{LOGGER_HEADER_TEXT} 無法解析院所類型，facility_type=%r",
+                    facility_type,
+                )
+                return DepartmentSearchResult(match=match, facility_type_unresolved=True)
+            type_query = build_facility_type_query(type_match.category)
+
         logger.info(
             f"{LOGGER_HEADER_TEXT} 依科別搜尋 ({lat}, {lng})，"
-            f"requested=%r → canonical=%r, 上限=%s 公尺, target=%s",
+            f"requested=%r → canonical=%r, 上限=%s 公尺, target=%s, facility_type=%s",
             match.requested,
             match.canonical,
             NEARBY_SEARCH_STEPS[-1],
             target_count,
+            type_match.category if type_match else None,
         )
+        query = self._combine_filters(build_department_query(match.canonical), type_query)
         result = await self._search_tiered(
             lat,
             lng,
             target_count,
-            query=build_department_query(match.canonical),
+            query=query,
             open_now=open_now,
+            facility_type_match=type_match,
         )
         logger.info(
             f"{LOGGER_HEADER_TEXT} 科別搜尋完成，canonical=%r, 回傳=%s 筆, "
@@ -214,7 +286,27 @@ class MedicalService:
             satisfied=result.satisfied,
             open_now_requested=result.open_now_requested,
             open_now_fallback=result.open_now_fallback,
+            facility_type_match=result.facility_type_match,
         )
+
+    @staticmethod
+    def _combine_filters(
+        *filters: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """
+        把多個查詢條件以 $and 組合；只有一個條件時不包 $and。
+
+        刻意保留「單一條件不包 $and」這個特例，是為了不動到既有測試對
+        department-only query 的斷言（`{"departments": {...}}`），否則
+        單純新增類型過濾這個維度就會意外改變科別搜尋既有的 query 形狀，
+        破壞向後相容。
+        """
+        active = [f for f in filters if f]
+        if not active:
+            return None
+        if len(active) == 1:
+            return active[0]
+        return {"$and": active}
 
     @staticmethod
     def _resolve_search_tier(

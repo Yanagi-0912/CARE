@@ -174,13 +174,13 @@ class BaseLineMessageHandler:
         return normalize_user_language(settings.get("language"))
 
     def _parse_voice_reply_enabled(self, user_profile: Optional[dict]) -> bool:
-        """同步解析使用者個人檔案中的語音回覆設定，預設為 True。"""
+        """同步解析使用者個人檔案中的語音回覆設定；缺省為 False（與 UserSettings 及 LIFF UI 一致）。"""
         if not user_profile:
-            return True
+            return False
         settings_dict = user_profile.get("settings") or {}
         if "voice_reply_enabled" in settings_dict:
             return bool(settings_dict["voice_reply_enabled"])
-        return bool(user_profile.get("voice_reply_enabled", True))
+        return bool(user_profile.get("voice_reply_enabled", False))
 
     def _parse_voice_rate(self, user_profile: Optional[dict]) -> str:
         """同步解析使用者個人檔案中的語速設定，缺值時預設為 "normal"。"""

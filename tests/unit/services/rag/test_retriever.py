@@ -327,36 +327,17 @@ def test_ensure_collection_creates_motor_collection_once():
 # ── original_title 投影 ───────────────────────────────────────────
 
 
-class _FakeCursor:
-    def __init__(self, docs):
-        self._docs = docs
-
-    async def to_list(self, length=None):
-        return self._docs
-
-
-class _FakeCollection:
-    def __init__(self, docs):
-        self._docs = docs
-        self.last_pipeline = None
-
-    def aggregate(self, pipeline):
-        self.last_pipeline = pipeline
-        return _FakeCursor(self._docs)
-
-
-class _FakeEmbeddings:
-    async def aembed_query(self, query):
-        return [0.1, 0.2, 0.3]
-
-
 @pytest.mark.asyncio
 async def test_vector_retriever_projects_and_exposes_original_title():
-    collection = _FakeCollection(
-        [
+    retriever, emb = _make_retriever(vector_dim=2)
+    emb.aembed_query = AsyncMock(return_value=[0.1, 0.2])
+
+    fake_cursor = MagicMock()
+    fake_cursor.to_list = AsyncMock(
+        return_value=[
             {
                 "_id": "abc",
-                "text": "幽門螺旋桿菌與胃癌風險",
+                "chunk_text": "幽門螺旋桿菌與胃癌風險",
                 "source_name": "食藥署闢謠專區",
                 "url": None,
                 "original_title": "捍「胃」健康 過年聚餐用公筷",
@@ -364,17 +345,38 @@ async def test_vector_retriever_projects_and_exposes_original_title():
             }
         ]
     )
-    retriever = MongoAtlasVectorRetriever(
-        embeddings=_FakeEmbeddings(),
-        mongo_uri="mongodb://x",
-        db_name="db",
-        collection_name="col",
-        index_name="idx",
+    fake_collection = MagicMock()
+    fake_collection.aggregate.return_value = fake_cursor
+    retriever._collection = fake_collection
+
+    docs = await retriever.ainvoke("幽門螺旋桿菌")
+
+    pipeline = fake_collection.aggregate.call_args.args[0]
+    project_stage = next(s for s in pipeline if "$project" in s)
+    assert project_stage["$project"]["original_title"] == 1
+    assert docs[0].metadata["original_title"] == "捍「胃」健康 過年聚餐用公筷"
+
+
+@pytest.mark.asyncio
+async def test_text_retriever_projects_and_exposes_original_title():
+    retriever = _make_text_retriever()
+    collection = _fake_collection(
+        [
+            {
+                "_id": "abc",
+                "chunk_text": "幽門螺旋桿菌與胃癌風險",
+                "source_name": "食藥署闢謠專區",
+                "url": None,
+                "original_title": "捍「胃」健康 過年聚餐用公筷",
+                "score": 8.4,
+            }
+        ]
     )
     retriever._collection = collection
 
     docs = await retriever.ainvoke("幽門螺旋桿菌")
 
-    project_stage = next(s for s in collection.last_pipeline if "$project" in s)
+    pipeline = collection.aggregate.call_args.args[0]
+    project_stage = next(s for s in pipeline if "$project" in s)
     assert project_stage["$project"]["original_title"] == 1
     assert docs[0].metadata["original_title"] == "捍「胃」健康 過年聚餐用公筷"

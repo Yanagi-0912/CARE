@@ -61,5 +61,12 @@
 > Task 4 經兩輪修正迴圈收斂（具名院所誤判 → 閘門矯枉過正 → 改用緊鄰語法標記判別）。
 
 - [x] 7.1 實作完成後 `openspec validate facility-type-filter` 通過
+> 歸檔前置條件（規格符合度稽核發現）：本 change 的 agent-architecture delta 是 MODIFIED，
+> 其標的條文由前置 change `department-aware-nearby-search` 引入。主 spec 已於
+> commit 補齊該條文（含 location-search 漏掉的「科別搜尋意圖觸發位置請求」），
+> 並在沙盒驗證過歸檔順序可行：
+>   1. `openspec archive department-aware-nearby-search --skip-specs`（其內容已手動併入主 spec）
+>   2. `openspec archive facility-type-filter`（+4 added, ~2 modified）
+
 - [ ] 7.2 merge 後 `openspec archive facility-type-filter`（本 change 的 `specs/` 尚未併入主 spec，
       **不加** `--skip-specs`）

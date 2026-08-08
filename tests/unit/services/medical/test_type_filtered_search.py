@@ -272,3 +272,46 @@ async def test_whitespace_padded_facility_type_still_resolves():
     assert repository.calls[0]["query"] == {
         "type": {"$in": ["醫院", "綜合醫院", "精神科醫院", "中醫醫院"]}
     }
+
+
+# --- 「科別＋類型」複合說法的拆解方式（量測後鎖定，勿往錯方向「修正」）---
+#
+# 「中醫診所」「牙醫診所」既是科別也是類型的複合說法，正確拆解是
+# 科別（中醫一般科／牙科）＋ 類型（診所類 10 個 type 值）兩個維度同時成立，
+# 而不是窄化成單一 type 值。
+#
+# 曾有疑慮：這樣會排除設有中醫部／牙科的綜合醫院，與 design.md 決策 2
+# 「科別維度涵蓋較廣」的理由方向相反。以 300 個真實院所座標抽樣量測後確認
+# 差異為零（中醫 300/300 相同、牙醫 300/300 相同）——被排除的 143 家中醫醫院
+# 與 84 家牙醫醫院在任何抽樣點都進不了最近的 5 名。拿掉過濾只會犧牲
+# 「使用者明說了診所」的正確性，換不到結果差異。詳見 design.md。
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("department", "facility_type", "expected_department_pattern"),
+    [
+        ("中醫", "中醫診所", "中醫一般科"),
+        ("牙醫", "牙醫診所", "牙科"),
+    ],
+)
+async def test_specialty_clinic_compound_applies_both_dimensions(
+    department, facility_type, expected_department_pattern
+):
+    repository = FakeRepository([])
+    service = MedicalService(repository=repository)
+
+    await service.find_nearby_facilities_by_department(
+        25.0, 121.0, department, facility_type=facility_type
+    )
+
+    query = repository.calls[0]["query"]
+    assert "$and" in query, "科別與類型必須同時成立，不可只留一個維度"
+
+    conditions = query["$and"]
+    department_condition = next(c for c in conditions if "departments" in c)
+    type_condition = next(c for c in conditions if "type" in c)
+
+    assert department_condition["departments"]["$regex"] == expected_department_pattern
+    # 類型走的是整個「診所」類別（10 個 type 值），不是窄化成單一 type 值
+    assert len(type_condition["type"]["$in"]) == 10

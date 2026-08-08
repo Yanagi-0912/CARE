@@ -1,4 +1,5 @@
 import logging
+import re
 
 from langchain_core.documents import Document
 
@@ -28,6 +29,20 @@ logger = logging.getLogger(__name__)
 RETRIEVAL_TOP_K = 40
 RERANK_TOP_N = 5
 CITE_TOP_K = 3
+
+_CITATION_RE = re.compile(r"\[(\d+)\]")
+
+
+def cited_indices(answer_text: str) -> list[int]:
+    """回傳答案中出現過的引用編號，依首次出現順序、去重。"""
+    seen: set[int] = set()
+    order: list[int] = []
+    for match in _CITATION_RE.finditer(answer_text or ""):
+        idx = int(match.group(1))
+        if idx not in seen:
+            seen.add(idx)
+            order.append(idx)
+    return order
 
 
 class RagAnswerService:
@@ -181,26 +196,65 @@ class RagAnswerService:
         )
 
     @staticmethod
+    def _source_label(doc: Document) -> str | None:
+        """來源顯示字串；無 url 時退回「來源名｜標題」，兩者皆無則回 None。"""
+        source = str(doc.metadata.get("source_name") or "").strip()
+        url = str(doc.metadata.get("url") or "").strip()
+        title = str(doc.metadata.get("original_title") or "").strip()
+        if url:
+            return f"{source}：{url}" if source else url
+        if title:
+            return f"{source}｜{title}" if source else title
+        return None
+
+    @staticmethod
+    def _source_key(doc: Document) -> str:
+        """判定「同一個來源」的鍵；有 url 用 url，否則用來源名＋標題。"""
+        url = str(doc.metadata.get("url") or "").strip()
+        if url:
+            return f"url:{url}"
+        source = str(doc.metadata.get("source_name") or "").strip()
+        title = str(doc.metadata.get("original_title") or "").strip()
+        return f"meta:{source}|{title}"
+
+    @staticmethod
     def _append_sources(answer_text: str, docs: list[Document]) -> str:
+        cited = cited_indices(answer_text)
+        if not cited:
+            logger.info("citation_missing docs=%d", len(docs))
+            return answer_text
+
+        key_to_new: dict[str, int] = {}
+        renumber: dict[int, int] = {}
         source_lines: list[str] = []
-        seen_urls: set[str] = set()
 
-        for doc in docs:
-            if len(source_lines) >= CITE_TOP_K:
-                break
-            source_name = str(doc.metadata.get("source_name") or "").strip()
-            url = str(doc.metadata.get("url") or "").strip()
-            if not url or url in seen_urls:
+        for old_idx in cited:
+            if old_idx < 1 or old_idx > len(docs):
                 continue
-            seen_urls.add(url)
-
-            display_idx = len(source_lines) + 1
-            if source_name:
-                source_lines.append(f"[{display_idx}] {source_name}：{url}")
-            else:
-                source_lines.append(f"[{display_idx}] {url}")
+            doc = docs[old_idx - 1]
+            label = RagAnswerService._source_label(doc)
+            if label is None:
+                continue
+            key = RagAnswerService._source_key(doc)
+            existing = key_to_new.get(key)
+            if existing is not None:
+                renumber[old_idx] = existing
+                continue
+            if len(source_lines) >= CITE_TOP_K:
+                continue
+            new_idx = len(source_lines) + 1
+            key_to_new[key] = new_idx
+            renumber[old_idx] = new_idx
+            source_lines.append(f"[{new_idx}] {label}")
 
         if not source_lines:
+            logger.info("citation_unresolved cited=%s docs=%d", cited, len(docs))
             return answer_text
+
+        def _replace(match: re.Match[str]) -> str:
+            mapped = renumber.get(int(match.group(1)))
+            return f"[{mapped}]" if mapped is not None else ""
+
+        body = _CITATION_RE.sub(_replace, answer_text)
         heading = t("agent.sources_heading")
-        return f"{answer_text}\n\n{heading}\n" + "\n".join(source_lines)
+        return f"{body}\n\n{heading}\n" + "\n".join(source_lines)

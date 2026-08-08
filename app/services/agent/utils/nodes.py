@@ -9,6 +9,7 @@ from app.core.user_language import normalize_user_language
 from app.services.agent.prompt import build_system_prompt
 from app.services.agent.utils.state import State
 from app.services.medical.department_matcher import extract_department_intent
+from app.services.medical.facility_type_matcher import extract_facility_type_intent
 from app.tools.registry import get_all_tools
 
 logger = logging.getLogger(__name__)
@@ -157,6 +158,64 @@ def _wants_open_now_from_history(messages) -> bool:
             return True
 
     return False
+
+
+# 「醫院」在口語中常泛指「醫療院所」——「我要去醫院」「附近有醫院嗎」多半只是
+# 想看病，不代表使用者在意規模／是否要住院。extract_facility_type_intent() 對
+# 裸詞「醫院」一樣會命中（category="醫院", requested="醫院"），若原封不動拿來
+# 當意圖判斷依據，會把這種泛稱套上醫院類過濾，將 18,935 家診所全數排除。
+# 因此這裡另立一份「明確語彙」白名單，只有使用者說出不含糊的字眼才視為類型
+# 意圖；「診所」「藥局」兩個裸詞本身沒有這種歧義，可以直接收在白名單內。
+#
+# 「門診」在 facility_type_matcher 的別名表裡對應到「診所」，但醫院本身也有
+# 門診部，「我要看門診」和裸詞「醫院」一樣是泛稱看病，不足以推論使用者要找
+# 診所而非醫院；因此本白名單刻意不收「門診」（不動 Task 1 的別名表本身，
+# 只是這一關的意圖偵測不把它當觸發詞，交由既有的一般院所搜尋邏輯處理）。
+_UNAMBIGUOUS_FACILITY_TYPE_TERMS = frozenset(
+    {"大醫院", "大型醫院", "住院", "診所", "小診所", "藥局", "藥房", "藥店"}
+)
+
+
+def _facility_type_intent(text: str) -> str | None:
+    """
+    嚴格版的院所類型意圖判定：只有出現明確語彙才回傳使用者的原始說法。
+
+    不能直接回傳 extract_facility_type_intent() 的 match.requested——
+    見上方 _UNAMBIGUOUS_FACILITY_TYPE_TERMS 的說明，裸詞「醫院」會被
+    resolve 成 requested="醫院"，必須擋下來。
+    """
+    match = extract_facility_type_intent(text)
+    if match is None or match.requested not in _UNAMBIGUOUS_FACILITY_TYPE_TERMS:
+        return None
+    return match.requested
+
+
+def _extract_facility_type_from_history(messages) -> str | None:
+    """
+    由新到舊掃描使用者訊息，找出最近一次明確表達的院所類型（原始說法）。
+
+    沿用 _extract_department_from_history 的回溯上限與跳過座標訊息的邏輯：
+    使用者提出類型需求的那一輪通常還沒有座標，等座標進來時最新的 HumanMessage
+    已是系統轉出的座標文字，類型資訊落在更早的訊息裡。
+    """
+    scanned = 0
+    for message in reversed(messages):
+        if not isinstance(message, HumanMessage):
+            continue
+
+        text = message.content if isinstance(message.content, str) else ""
+        if _parse_shared_location(text) is not None:
+            continue
+
+        scanned += 1
+        if scanned > _DEPARTMENT_INTENT_LOOKBACK:
+            return None
+
+        facility_type = _facility_type_intent(text)
+        if facility_type is not None:
+            return facility_type
+
+    return None
 
 
 _FACILITY_SEARCH_RE = re.compile(
@@ -342,13 +401,18 @@ class AgentNodes:
             # 使用者稍早若指定過科別（「附近有腸胃科嗎」），座標進來時必須沿用，
             # 否則會退化成搜尋所有科別，回傳一堆牙科、婦產科。
             department = _extract_department_from_history(state["messages"])
+            # 類型（大醫院／診所／藥局）與科別是各自獨立的維度，需分開判斷，
+            # 兩者可同時帶入同一次工具呼叫（見 _facility_type_intent 的說明）。
+            facility_type = _extract_facility_type_from_history(state["messages"])
             if department:
                 forced_tool_name = "find_nearby_facilities_by_department"
                 forced_args = {"lat": lat, "lng": lng, "department": department}
             else:
                 forced_tool_name = "find_nearby_hospitals"
                 forced_args = {"lat": lat, "lng": lng}
-            # 「現在有開的」與科別各自獨立，可單獨成立也可同時成立。
+            if facility_type:
+                forced_args["facility_type"] = facility_type
+            # 「現在有開的」與科別、類型各自獨立，可單獨成立也可同時成立。
             if _wants_open_now_from_history(state["messages"]):
                 forced_args["open_now"] = True
             response = AIMessage(

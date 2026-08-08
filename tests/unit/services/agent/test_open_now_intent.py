@@ -103,10 +103,15 @@ def test_wants_open_now_ignores_stale_request():
 async def test_shared_location_carries_open_now(
     mock_llm_no_tool_calls, patched_tools
 ):
+    """
+    刻意用裸詞「醫院」而非「診所」：本測試只聚焦 open_now 是否單獨成立，
+    「診所」是 Task 4 新增的明確類型語彙，會多帶出 facility_type，
+    與此處想驗證的行為無關（兩者並存的情境見 test_facility_type_intent.py）。
+    """
     nodes = AgentNodes(llm=mock_llm_no_tool_calls, guardrail_service=MagicMock())
     state = {
         "messages": [
-            HumanMessage(content="附近現在有開的診所嗎"),
+            HumanMessage(content="附近現在有開的醫院嗎"),
             AIMessage(content="請分享您的位置"),
             HumanMessage(content=LOCATION_TEXT),
         ],

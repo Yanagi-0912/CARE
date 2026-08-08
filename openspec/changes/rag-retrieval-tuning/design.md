@@ -74,3 +74,32 @@
 | 新行為（`RAG_VECTOR_MIN_SCORE=0.0`，即本 change 後預設） | `python scripts/rag_eval.py --rank-mode cohere --top-n 5` | 49.699s | ≈1308ms |
 
 新行為反而快了約 64ms/題，在網路呼叫（Gemini embedding + Cohere rerank + MongoDB Atlas）normal jitter 範圍內，判定為雜訊而非退化，未超過 300ms 的風險門檻，因此不需要調降 `RAG_RETRIEVE_CANDIDATES`。
+
+## Task 9 驗證結果：reranker 輸入補回標題後的 eval 對照
+
+實跑指令：`python scripts/rag_eval.py --compare-rerank --top-n 5 --out /tmp/rag-c2.json`（2026-08-08，已套用本 change 目前全部變更：D1 移除 min_score + D2 reranker 文本補回標題）。
+
+與 `rag-eval-metrics` change 記錄的 baseline、Task 8 的 cohere rank-mode 結果並列：
+
+| 指標 | Baseline（cohere rank-mode，`rag-eval-metrics`） | Task 8（移除 min_score，cohere rank-mode） | Task 9 本次（title 補回，`--compare-rerank` 的 cohere 分支） |
+| --- | --- | --- | --- |
+| `hit_rate@5` | 0.412 | 0.4117647058823529 | 0.38235294117647056（13/34） |
+| `mean_mrr` | 0.198 | 0.198 | 0.21666666666666665 |
+| `mean_ndcg@5` | 0.253 | 0.253 | 0.2574747757900341 |
+
+同一次 `--compare-rerank` 執行另有 vector 分支（同一批 wide-retrieve 候選，僅用向量分數排序、不呼叫 Cohere），與 cohere 分支並列：
+
+| 指標 | vector（本次） | cohere（本次） | delta（cohere − vector） |
+| --- | --- | --- | --- |
+| `hit_rate@5` | 0.7058823529411765 | 0.38235294117647056 | -0.324 |
+| `mean_mrr` | 0.35784313725490197 | 0.21666666666666665 | -0.141 |
+| `mean_ndcg@5` | 0.4471086115066822 | 0.2574747757900341 | **-0.190** |
+
+`fixed_by_cohere`（vector 沒中但 cohere 中）：`kb-019`, `kb-026`（2 題）。
+`regressed_by_cohere`（vector 有中但 cohere 沒中）：`kb-002`, `kb-004`, `kb-005`, `kb-006`, `kb-009`, `kb-012`, `kb-013`, `kb-014`, `kb-021`, `kb-024`, `kb-025`, `kb-029`, `kb-033`（13 題）。無 `error_ids`（兩分支皆為空），排除 API 呼叫失敗干擾結果的可能。
+
+**與 Task 3 早先觀察的對照**：Task 3（本 change 任何程式碼變更之前）跑同一指令得到 `hit_rate_delta: -0.294`、`ndcg@5_delta: -0.194`（見 `task-3-report.md`）。本次（D1+D2 都已套用）為 `hit_rate_delta: -0.324`、`ndcg@5_delta: -0.190`。兩次數字幾乎一致，差距落在雜訊範圍內（線上 Gemini embedding／Cohere API／MongoDB Atlas 皆非完全確定性），**cohere 劣於 vector 的方向完全沒有被扭轉**。
+
+**誠實結論：本 Task 的主要假說未被證實。** 若「reranker 因看不到標題語境而排序較差」這個假說成立，補回標題後 cohere 分支應明顯逼近甚至超過 vector 分支；但實測中 cohere 依然大幅劣於 vector（`ndcg@5_delta = -0.190`，幾乎與補標題前的 `-0.194` 相同），且 cohere 單獨對 baseline 相比也只有雜訊等級的變化（`mean_ndcg@5`: 0.253 → 0.257，+0.004；`hit_rate@5`: 0.412 → 0.382，反而略降，但只差 1 題，34 題中 1 題差異落在單次線上呼叫抽樣雜訊範圍內）。
+
+已用單元測試（`test_cohere_reranker_sends_title_prefixed_documents`）確認程式碼確實把 `f"主題：{title}\n內容：{content}"` 送進 Cohere API payload，排除「程式碼沒生效」的可能。這代表 Cohere reranker 排序品質差的根因**不是**（或至少不只是）標題缺失於送出文本——`fixed_by_cohere` 僅 2 題、`regressed_by_cohere` 高達 13 題的懸殊比例指向更根本的原因（例如 Cohere rerank 模型本身在此中文醫療領域語料上的判斷力、wide-retrieve 候選集組成、或 golden set 標準答案的 URL 匹配方式），非本 change 範圍。D2 的程式碼變更本身是正確且必要的（讓三階段語境收斂本身是合理的工程修正），但**未觀測到預期的排序品質提升**，忠實記錄此負面結果，不因此調整任何程式碼或數字。

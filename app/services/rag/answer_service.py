@@ -142,10 +142,29 @@ class RagAnswerService:
             return second
         return None
 
+    @staticmethod
+    def _build_context(docs: list[Document]) -> str:
+        """組出帶編號與出處標頭的 context。
+
+        標頭只放 source_name 與 original_title，**不放 url** —— url 進 context
+        會佔 token，且模型可能改寫或杜撰網址。url 由 `_append_sources`
+        依編號對應回填。
+        """
+        blocks: list[str] = []
+        for idx, doc in enumerate(docs, start=1):
+            parts: list[str] = []
+            source = str(doc.metadata.get("source_name") or "").strip()
+            title = str(doc.metadata.get("original_title") or "").strip()
+            if source:
+                parts.append(f"來源：{source}")
+            if title:
+                parts.append(f"標題：{title}")
+            header = f"[{idx}]" + (f" {'｜'.join(parts)}" if parts else "")
+            blocks.append(f"{header}\n{doc.page_content}")
+        return "\n\n".join(blocks)
+
     async def _generate_answer(self, question: str, docs: list[Document]) -> str:
-        context = "\n".join(
-            f"{idx}. {doc.page_content}" for idx, doc in enumerate(docs, start=1)
-        )
+        context = self._build_context(docs)
         messages = build_rag_prompt().format_messages(
             question=question, context=context
         )

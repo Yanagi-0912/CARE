@@ -76,6 +76,33 @@ def _make_service(
     )
 
 
+def test_build_context_includes_numbered_source_and_title_header():
+    docs = [
+        Document(
+            page_content="幽門螺旋桿菌與胃癌風險有關。",
+            metadata={
+                "source_name": "食藥署闢謠專區",
+                "original_title": "捍「胃」健康 過年聚餐用公筷",
+                "url": None,
+            },
+        ),
+        Document(
+            page_content="定期篩檢可降低大腸癌風險。",
+            metadata={"source_name": "衛福部闢謠網站", "original_title": None},
+        ),
+    ]
+
+    context = RagAnswerService._build_context(docs)
+
+    assert "[1] 來源：食藥署闢謠專區｜標題：捍「胃」健康 過年聚餐用公筷" in context
+    assert "幽門螺旋桿菌與胃癌風險有關。" in context
+    # 缺 title 時只留來源，不留空欄位
+    assert "[2] 來源：衛福部闢謠網站" in context
+    assert "標題：None" not in context
+    # url 不得進 context（避免模型改寫或杜撰網址）
+    assert "http" not in context
+
+
 @pytest.mark.asyncio
 async def test_answer_uses_docs_to_build_rag_prompt():
     docs = [
@@ -130,8 +157,10 @@ async def test_answer_puts_rerank_top_n_in_prompt_but_cites_top_3_only():
 
     prompt = gemini_service.chat_model.ainvoke.await_args.args[0][0].content
     for i in range(1, RERANK_TOP_N + 1):
-        assert f"{i}. 知識內容 {i}" in prompt
-    assert f"{RERANK_TOP_N + 1}. 知識內容" not in prompt
+        assert f"[{i}] 來源：來源 {i}" in prompt
+        assert f"知識內容 {i}" in prompt
+    assert f"[{RERANK_TOP_N + 1}]" not in prompt
+    assert f"知識內容 {RERANK_TOP_N + 1}" not in prompt
 
     for i in range(1, CITE_TOP_K + 1):
         assert f"[{i}] 來源 {i}：https://example.com/{i}" in result

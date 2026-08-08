@@ -1259,7 +1259,7 @@ created: 2026-08-08
 - `DEFAULT_MIN_SCORE` 由 `0.5` 改為 `0.0`，並新增 env `RAG_VECTOR_MIN_SCORE`
 - reranker 送出的 document 文本改為 `主題：{original_title}\n內容：{chunk}`，
   無標題時退回純內容
-- 新增 `scripts/purge_navigation_chunks.py` 清除 229 筆導覽列噪音（預設 dry-run）
+- 新增 `scripts/purge_navigation_chunks.py` 清除 266 筆導覽列噪音（預設 dry-run）
 - 修正 `resources/atlas_text_search_index.json` 欄位名 `text` → `chunk_content`
 - **非 BREAKING**
 

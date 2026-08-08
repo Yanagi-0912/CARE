@@ -163,45 +163,23 @@ git commit -m "docs(openspec): 新增 rag-eval-metrics change 提案"
 
 - [ ] **Step 1: 寫失敗測試 — retriever 投影 `original_title`**
 
-加到 `tests/unit/services/rag/test_retriever.py`。此檔既有測試以假的 collection
-物件注入（依 DI 規則，不得 monkey patch）；沿用同一種假件寫法：
+加到 `tests/unit/services/rag/test_retriever.py`。**沿用該檔既有的
+`_make_retriever()` + `MagicMock` 假件寫法**（全檔 18 個測試都是這個風格；
+依 DI 規則不得 monkey patch，但也不要手刻新的假件類別而讓同一檔案出現兩種風格）。
+注意 `_make_retriever` 的 `text_field` 預設是 `"chunk_text"`：
 
 ```python
-import pytest
-
-from app.services.rag.retriever import MongoAtlasVectorRetriever
-
-
-class _FakeCursor:
-    def __init__(self, docs):
-        self._docs = docs
-
-    async def to_list(self, length=None):
-        return self._docs
-
-
-class _FakeCollection:
-    def __init__(self, docs):
-        self._docs = docs
-        self.last_pipeline = None
-
-    def aggregate(self, pipeline):
-        self.last_pipeline = pipeline
-        return _FakeCursor(self._docs)
-
-
-class _FakeEmbeddings:
-    async def aembed_query(self, query):
-        return [0.1, 0.2, 0.3]
-
-
 @pytest.mark.asyncio
-async def test_vector_retriever_projects_and_exposes_original_title():
-    collection = _FakeCollection(
-        [
+async def test_retriever_projects_and_exposes_original_title():
+    retriever, emb = _make_retriever(vector_dim=2)
+    emb.aembed_query = AsyncMock(return_value=[0.1, 0.2])
+
+    fake_cursor = MagicMock()
+    fake_cursor.to_list = AsyncMock(
+        return_value=[
             {
                 "_id": "abc",
-                "text": "幽門螺旋桿菌與胃癌風險",
+                "chunk_text": "幽門螺旋桿菌與胃癌風險",
                 "source_name": "食藥署闢謠專區",
                 "url": None,
                 "original_title": "捍「胃」健康 過年聚餐用公筷",
@@ -209,21 +187,20 @@ async def test_vector_retriever_projects_and_exposes_original_title():
             }
         ]
     )
-    retriever = MongoAtlasVectorRetriever(
-        embeddings=_FakeEmbeddings(),
-        mongo_uri="mongodb://x",
-        db_name="db",
-        collection_name="col",
-        index_name="idx",
-    )
-    retriever._collection = collection
+    fake_collection = MagicMock()
+    fake_collection.aggregate.return_value = fake_cursor
+    retriever._collection = fake_collection
 
     docs = await retriever.ainvoke("幽門螺旋桿菌")
 
-    project_stage = next(s for s in collection.last_pipeline if "$project" in s)
+    pipeline = fake_collection.aggregate.call_args.args[0]
+    project_stage = next(s for s in pipeline if "$project" in s)
     assert project_stage["$project"]["original_title"] == 1
     assert docs[0].metadata["original_title"] == "捍「胃」健康 過年聚餐用公筷"
 ```
+
+同樣以 `MongoAtlasTextRetriever` 寫一個對應的測試，確認 text retriever 的
+`$project` 與 metadata 也帶出 `original_title`。
 
 - [ ] **Step 2: 執行測試確認失敗**
 
@@ -1339,45 +1316,50 @@ git commit -m "docs(openspec): 新增 rag-retrieval-tuning change 提案"
 
 - [ ] **Step 1: 寫失敗測試**
 
+沿用 `test_retriever.py` 既有的 `_make_retriever()` + `MagicMock` 假件寫法
+（全檔一致，勿手刻假件類別）。注意 `_make_retriever` 的 `text_field` 預設是
+`"chunk_text"`，測資的鍵名要跟著用：
+
 ```python
 @pytest.mark.asyncio
-async def test_vector_retriever_keeps_low_score_docs_by_default():
-    collection = _FakeCollection(
-        [
-            {"_id": "1", "text": "高分", "score": 0.9},
-            {"_id": "2", "text": "低分", "score": 0.12},
+async def test_retriever_keeps_low_score_docs_by_default():
+    retriever, emb = _make_retriever(vector_dim=2)
+    emb.aembed_query = AsyncMock(return_value=[0.1, 0.2])
+
+    fake_cursor = MagicMock()
+    fake_cursor.to_list = AsyncMock(
+        return_value=[
+            {"_id": "1", "chunk_text": "高分", "score": 0.9},
+            {"_id": "2", "chunk_text": "低分", "score": 0.12},
         ]
     )
-    retriever = MongoAtlasVectorRetriever(
-        embeddings=_FakeEmbeddings(),
-        mongo_uri="mongodb://x", db_name="db",
-        collection_name="col", index_name="idx",
-    )
-    retriever._collection = collection
+    fake_collection = MagicMock()
+    fake_collection.aggregate.return_value = fake_cursor
+    retriever._collection = fake_collection
 
-    docs = await retriever.ainvoke("q")
+    docs = await retriever.ainvoke("高血壓")
 
     # 過濾職責移交 reranker，第一階段不再砍低分候選
     assert [d.page_content for d in docs] == ["高分", "低分"]
 
 
 @pytest.mark.asyncio
-async def test_vector_retriever_still_honours_explicit_min_score():
-    collection = _FakeCollection(
-        [
-            {"_id": "1", "text": "高分", "score": 0.9},
-            {"_id": "2", "text": "低分", "score": 0.12},
+async def test_retriever_still_honours_explicit_min_score():
+    retriever, emb = _make_retriever(vector_dim=2, min_score=0.5)
+    emb.aembed_query = AsyncMock(return_value=[0.1, 0.2])
+
+    fake_cursor = MagicMock()
+    fake_cursor.to_list = AsyncMock(
+        return_value=[
+            {"_id": "1", "chunk_text": "高分", "score": 0.9},
+            {"_id": "2", "chunk_text": "低分", "score": 0.12},
         ]
     )
-    retriever = MongoAtlasVectorRetriever(
-        embeddings=_FakeEmbeddings(),
-        mongo_uri="mongodb://x", db_name="db",
-        collection_name="col", index_name="idx",
-        min_score=0.5,
-    )
-    retriever._collection = collection
+    fake_collection = MagicMock()
+    fake_collection.aggregate.return_value = fake_cursor
+    retriever._collection = fake_collection
 
-    docs = await retriever.ainvoke("q")
+    docs = await retriever.ainvoke("高血壓")
     assert [d.page_content for d in docs] == ["高分"]
 ```
 

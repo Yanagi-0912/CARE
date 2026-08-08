@@ -103,8 +103,38 @@ created: 2026-08-08
 
 以 `## 1. …` / `- [ ] 1.1 …` 格式，對應本計畫 Task 2–6 的步驟，
 並依 `openspec/config.yaml` 的 `rules.tasks` 要求引用 `tests/` 下對應的 pytest 路徑。
+最後一節須含 Definition of Done 項目（`./init.sh` 全綠）。
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: 建立 spec delta `specs/rag-responses/spec.md`**
+
+repo 中 19 個 change 有 18 個都有 `specs/<capability>/spec.md` delta ——
+這是 `openspec archive` 併回 `openspec/specs/` 的機制，proposal 的散文不能取代它。
+建立 `openspec/changes/rag-eval-metrics/specs/rag-responses/spec.md`：
+
+```markdown
+## MODIFIED Requirements
+
+### Requirement: 檢索上下文與參考來源上限
+
+RAG 檢索 SHALL 先取回最多 `RAG_RETRIEVE_CANDIDATES` 筆關聯文件作為候選（預設 40），經精排後 SHALL 將最多 `RAG_RERANK_TOP_N` 筆（預設 5）內容放入生成 prompt，且每筆 SHALL 帶有編號與出處標頭（來源名與標題）。回答最下方的「參考資料來源」SHALL 只列出**實際被引用**的來源，最多 3 筆，依首次引用順序連續重編號。當某筆來源缺少 `url` 時，系統 SHALL 以「來源名｜標題」呈現，不得因缺 url 而靜默丟棄。當模型未輸出任何引用編號時，系統 SHALL NOT 附上參考來源清單。
+
+#### Scenario: 只列出實際被引用的來源
+
+- **WHEN** 生成的答案引用了第 3 筆與第 1 筆內容
+- **THEN** 參考來源只列這兩筆，依首次引用順序重編為 [1]、[2]，且答案內文中的編號一併改寫為對應的新編號
+
+#### Scenario: 缺少 url 的來源仍顯示
+
+- **WHEN** 被引用的文件有 `source_name` 與 `original_title` 但 `url` 為空
+- **THEN** 該筆以「來源名｜標題」形式列於參考來源清單中
+
+#### Scenario: 完全沒有引用時不附來源
+
+- **WHEN** 生成的答案不含任何引用編號
+- **THEN** 回覆不附「參考資料來源：」段落，並記錄 `citation_missing` log
+```
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add openspec/changes/rag-eval-metrics
@@ -1257,9 +1287,35 @@ created: 2026-08-08
 - **D3 為何不順手改 BM25 索引**：`chunk_content` 加標題需重寫 4,605 筆文件，
   屬上游 ETL 職責（見 `docs/care-data-issues.md`），本 change 不做。
 
-- [ ] **Step 4: 撰寫 `tasks.md`**（對應 Task 8–11，引用對應 pytest 路徑）
+- [ ] **Step 4: 撰寫 `tasks.md`**（對應 Task 8–11，引用對應 pytest 路徑，
+      最後一節含 Definition of Done：`./init.sh` 全綠）
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: 建立 spec delta `specs/rag-responses/spec.md`**
+
+同 Task 1 Step 5 的理由：`openspec archive` 靠這個檔案併回 `openspec/specs/`。
+建立 `openspec/changes/rag-retrieval-tuning/specs/rag-responses/spec.md`：
+
+```markdown
+## MODIFIED Requirements
+
+### Requirement: 向量檢索候選過濾
+
+向量檢索 SHALL NOT 以固定的相似度門檻過濾候選文件；預設 `RAG_VECTOR_MIN_SCORE` 為 `0.0`，第一階段的職責是最大化召回，過濾與排序 SHALL 由精排階段負責。系統 SHALL 保留該設定項，使需要時可由環境變數調回非零門檻。
+
+送入精排的文件文本 SHALL 與建立 embedding 時的格式一致：當文件具備 `original_title` 時，SHALL 組為「主題：{original_title}\n內容：{chunk}」；缺標題時 SHALL 退回純內容。精排回傳的文件 `page_content` SHALL 維持原始 chunk 內容不變。
+
+#### Scenario: 低分候選仍進入精排
+
+- **WHEN** 向量檢索取回的文件中包含相似度低於 0.5 的候選
+- **THEN** 這些候選仍送入精排階段，由精排決定去留
+
+#### Scenario: 精排輸入帶標題
+
+- **WHEN** 候選文件具備 `original_title`
+- **THEN** 送往精排 API 的文本為「主題：{標題}\n內容：{內容}」，而回傳文件的 `page_content` 仍為原始 chunk 內容
+```
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add openspec/changes/rag-retrieval-tuning

@@ -48,6 +48,12 @@ VOICE_BY_LANGUAGE = {
 RATE_PERCENT = {"slow": -25, "normal": 0, "fast": 25}
 DEFAULT_VOICE_RATE = "normal"
 
+# edge-tts 預設 connect_timeout=10、receive_timeout=60（見 edge_tts.Communicate 簽名）。
+# 合成是在送出任何 LINE 訊息之前被 await 的，reply token 約一分鐘就會過期，
+# 所以主引擎必須能快速失敗並轉往 gTTS 備援，不能沿用預設值。
+EDGE_TTS_CONNECT_TIMEOUT_SECONDS = 5
+EDGE_TTS_RECEIVE_TIMEOUT_SECONDS = 15
+
 
 class SpeechEngine(Protocol):
     """主要合成引擎介面（edge-tts）：以 voice/rate 產生語音位元組。"""
@@ -67,9 +73,20 @@ class EdgeTTSEngine:
     async def synthesize(self, text: str, *, voice: str, rate: str) -> bytes:
         if edge_tts is None:
             raise RuntimeError("edge-tts is not available in the environment")
-        communicate = edge_tts.Communicate(text, voice=voice, rate=rate)
+        communicate = self._build_communicate(text, voice=voice, rate=rate)
         return b"".join(
             [chunk["data"] async for chunk in communicate.stream() if chunk["type"] == "audio"]
+        )
+
+    @staticmethod
+    def _build_communicate(text: str, *, voice: str, rate: str) -> "edge_tts.Communicate":
+        """建立 edge_tts.Communicate，明確帶入短 timeout 以確保能快速轉往 gTTS 備援。"""
+        return edge_tts.Communicate(
+            text,
+            voice=voice,
+            rate=rate,
+            connect_timeout=EDGE_TTS_CONNECT_TIMEOUT_SECONDS,
+            receive_timeout=EDGE_TTS_RECEIVE_TIMEOUT_SECONDS,
         )
 
 

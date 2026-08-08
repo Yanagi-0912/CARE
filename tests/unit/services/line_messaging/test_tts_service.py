@@ -7,7 +7,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.services.line_messaging.reply import tts_service as tts_module
-from app.services.line_messaging.reply.tts_service import TTSService
+from app.services.line_messaging.reply.tts_service import (
+    EDGE_TTS_CONNECT_TIMEOUT_SECONDS,
+    EDGE_TTS_RECEIVE_TIMEOUT_SECONDS,
+    EdgeTTSEngine,
+    TTSService,
+)
 from app.core.config import settings
 
 
@@ -203,6 +208,25 @@ async def test_synthesize_falls_back_to_gtts_when_edge_tts_fails():
         assert fallback.calls[0]["text"] == "hello"
     finally:
         _cleanup(path)
+
+
+def test_edge_tts_engine_builds_communicate_with_short_timeouts():
+    """真正的 EdgeTTSEngine 建立 edge_tts.Communicate 時必須帶上明確的短 timeout，
+    這樣微軟端點卡住時才能快速失敗轉往 gTTS 備援，而不是沿用 edge-tts 預設的
+    connect_timeout=10／receive_timeout=60（合計最壞情況會逼近甚至超過 LINE
+    reply token 的有效期限）。這裡直接使用真實安裝的 edge_tts 套件建構物件並讀取
+    其 aiohttp.ClientTimeout，不需要送出任何網路請求，因此不需要 monkey patch。
+    """
+    communicate = EdgeTTSEngine._build_communicate(
+        "hello", voice="en-US-AriaNeural", rate="+0%"
+    )
+
+    assert communicate.session_timeout.sock_connect == EDGE_TTS_CONNECT_TIMEOUT_SECONDS
+    assert communicate.session_timeout.sock_read == EDGE_TTS_RECEIVE_TIMEOUT_SECONDS
+    # 明確短於 edge-tts 的預設值（connect_timeout=10, receive_timeout=60），
+    # 確保這不是巧合等於預設值。
+    assert EDGE_TTS_CONNECT_TIMEOUT_SECONDS < 10
+    assert EDGE_TTS_RECEIVE_TIMEOUT_SECONDS < 60
 
 
 async def test_synthesize_raises_when_both_engines_fail():

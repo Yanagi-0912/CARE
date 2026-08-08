@@ -34,6 +34,7 @@ async def test_get_user_settings_returns_defaults_when_missing_in_db():
         "notify_reminder": True,
         "notify_family": True,
         "voice_reply_enabled": False,
+        "voice_rate": "normal",
     }
 
 
@@ -64,6 +65,21 @@ async def test_get_user_settings_merges_stored_values_with_defaults():
 
 
 @pytest.mark.asyncio
+async def test_get_user_settings_defaults_voice_rate_to_normal_when_missing():
+    """舊資料的 settings 沒有 voice_rate 欄位時，讀取應補上預設值 normal。"""
+    service, _ = _build_service(
+        get_user_profile_return={
+            "line_id": "U123",
+            "settings": {"font_size": "xlarge"},
+        }
+    )
+
+    settings = await service.get_user_settings("U123")
+
+    assert settings["voice_rate"] == "normal"
+
+
+@pytest.mark.asyncio
 async def test_update_user_settings_only_writes_provided_fields():
     stored_profile = {
         "line_id": "U123",
@@ -85,6 +101,29 @@ async def test_update_user_settings_only_writes_provided_fields():
     repo.update_user_settings.assert_awaited_once_with("U123", {"high_contrast": False})
     assert result["font_size"] == "xlarge"
     assert result["high_contrast"] is False
+
+
+@pytest.mark.asyncio
+async def test_update_user_settings_writes_voice_rate():
+    stored_profile = {
+        "line_id": "U123",
+        "settings": {"voice_rate": "normal"},
+    }
+    service, repo = _build_service()
+    repo.get_user_profile.side_effect = lambda _line_id: stored_profile
+
+    async def _fake_update_user_settings(_line_id, changed_fields):
+        stored_profile["settings"].update(changed_fields)
+        return True
+
+    repo.update_user_settings.side_effect = _fake_update_user_settings
+
+    result = await service.update_user_settings(
+        "U123", UserSettingsUpdate(voice_rate="slow")
+    )
+
+    repo.update_user_settings.assert_awaited_once_with("U123", {"voice_rate": "slow"})
+    assert result["voice_rate"] == "slow"
 
 
 @pytest.mark.asyncio
@@ -118,6 +157,7 @@ async def test_create_default_user_profile_includes_default_settings():
         "notify_reminder": True,
         "notify_family": True,
         "voice_reply_enabled": False,
+        "voice_rate": "normal",
     }
 
 

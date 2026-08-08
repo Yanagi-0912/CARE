@@ -106,6 +106,7 @@ class MongoAtlasVectorRetriever:
                     "_id": 1,
                     "source_name": 1,
                     "url": 1,
+                    "original_title": 1,
                     "score": {"$meta": "vectorSearchScore"},
                 }
             },
@@ -129,6 +130,7 @@ class MongoAtlasVectorRetriever:
                         "score": score,
                         "source_name": doc.get("source_name"),
                         "url": doc.get("url"),
+                        "original_title": doc.get("original_title"),
                     },
                 )
             )
@@ -200,6 +202,7 @@ class MongoAtlasTextRetriever:
                     "_id": 1,
                     "source_name": 1,
                     "url": 1,
+                    "original_title": 1,
                     "score": {"$meta": "searchScore"},
                 }
             },
@@ -223,6 +226,7 @@ class MongoAtlasTextRetriever:
                         "score": float(score) if isinstance(score, (int, float)) else 0.0,
                         "source_name": doc.get("source_name"),
                         "url": doc.get("url"),
+                        "original_title": doc.get("original_title"),
                     },
                 )
             )

@@ -14,6 +14,7 @@
 | `expected_url_substrings` | kb 建議 | 期望來源 URL 片段；**請用細標**（如 `pid=19023`），勿只用 `hpa.gov` |
 | `expected_source_substrings` | 可選 | `source_name` 片段（粗；缺 url 時備用） |
 | `expected_content_substrings` | kb 建議 | chunk 內必須出現的關鍵句（缺 url 時尤其重要） |
+| `expected_title_substrings` | 建議 | 期望 `original_title` 片段。**最穩定的標籤** —— 不隨切片方式改變；`expected_content_substrings` 會在上游改切法時整批失效 |
 | `must_not_answer` | | `true`＝應拒答／無資料 |
 | `notes` | | 備註 |
 | `split` | | 可選 `train` / `holdout` |

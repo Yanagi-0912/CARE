@@ -14,6 +14,10 @@ query → 檢索（vector / hybrid）→ eval_scoring 算 binary hit_rate
 - 食藥署那批 1,367 chunks（佔 KB 30%）`url` 全為 `None`；即使檢索命中，`_append_sources` 的 `if not url: continue` 也會整批跳過，無法被列為參考來源
 - 現行 eval 只有 binary hit_rate，rerank 前後（vector 0.29 → cohere 0.44）的排序品質差異看不出解析度，無法回答「命中的排第幾名」
 - context 只放純文字、不含來源資訊，prompt 未要求逐句標註引用編號；來源清單是事後依檢索分數貼上，與答案正文實際引用了什麼內容脫鉤
+- **baseline（口徑：加入 title 標籤前）**：Task 2 導入 `expected_title_substrings` 前，於本機執行
+  `python scripts/rag_eval.py --rank-mode cohere --top-n 5 --out /tmp/rag-baseline.json`
+  （2026-08-08）：`total_cases=38 / scored_cases=34 / hits=14 / hit_rate=0.4118`（14/34）。
+  此數字取代 README 中舊例的 vector 0.29 / cohere 0.44，作為後續（含 title 標籤上線後）比較基準
 
 約束：
 

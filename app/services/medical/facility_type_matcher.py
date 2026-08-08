@@ -80,6 +80,22 @@ _INTENT_PREFIX_RE = re.compile(
 _INTENT_SUFFIX_RE = re.compile(r"(嗎|呢|在哪裡|在哪)$")
 
 
+def all_facility_type_terms() -> frozenset[str]:
+    """
+    回傳 resolve_facility_type() 認得的全部詞彙：分類名（醫院／診所／藥局）、
+    別名（大醫院、藥房…）與資料庫正式 type 值（綜合醫院、牙醫診所、藥師自營…）。
+
+    存在的理由：呼叫端（agent 的類型意圖閘門）需要判斷「使用者這句話裡的類型詞
+    算不算明確」。若呼叫端自己列一份詞彙清單，就會多出一份必須與本模組手動同步的
+    封閉清單——別名表或資料庫新增類型值時，呼叫端漏改就會靜默失效（正式 type 值
+    解析得出來、卻在閘門被擋掉）。改成由本模組公開全集，呼叫端只要表述
+    「全集扣除哪幾個歧義詞」，兩邊就不可能失去同步。
+    """
+    return frozenset(
+        {*FACILITY_TYPE_CATEGORIES, *FACILITY_TYPE_ALIASES, *_TYPE_VALUE_TO_CATEGORY}
+    )
+
+
 def normalize_facility_type_text(text: str) -> str:
     """去空白、去標點，並統一台→臺（資料庫使用「臺」）。"""
     normalized = re.sub(r"\s+", "", text or "")
@@ -158,11 +174,7 @@ def extract_facility_type_intent(text: str) -> FacilityTypeMatch | None:
 
     # 退而求其次：在句中做子字串掃描。長詞優先，否則「醫院」會比「大型醫院」
     # 先命中，讓使用者更明確的說法被蓋掉。
-    candidates = sorted(
-        (*FACILITY_TYPE_CATEGORIES, *FACILITY_TYPE_ALIASES, *_TYPE_VALUE_TO_CATEGORY),
-        key=len,
-        reverse=True,
-    )
+    candidates = sorted(all_facility_type_terms(), key=len, reverse=True)
     for candidate in candidates:
         if candidate in cleaned:
             return resolve_facility_type(candidate)

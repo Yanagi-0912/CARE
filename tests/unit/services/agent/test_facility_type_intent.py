@@ -14,11 +14,15 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from app.services.agent.utils.nodes import (
+    _AMBIGUOUS_FACILITY_TYPE_TERMS,
+    _UNAMBIGUOUS_FACILITY_TYPE_TERMS,
     AgentNodes,
     _extract_facility_type_from_history,
     _facility_type_intent,
     _is_nearby_facility_intent,
 )
+from app.services.medical.department_matcher import extract_department_intent
+from app.services.medical.facility_type_matcher import all_facility_type_terms
 
 LOCATION_TEXT = "這是我的目前位置：lat=25.033, lng=121.56"
 
@@ -190,10 +194,124 @@ def test_facility_type_intent_must_return_none(text):
         "巷口的診所",
         "住家附近的診所",
         "比較推薦的診所",
+        "口碑好的診所",
+        "24小時營業的藥局",
+        "離我最近的藥局",
     ],
 )
 def test_facility_type_intent_must_trigger(text):
     assert _facility_type_intent(text) is not None
+
+
+# ---------------------------------------------------------------------------
+# 最終審查 I1／I2：白名單只收 8 個俗稱，導致資料庫正式 type 值的句型靜默失效
+#
+# extract_facility_type_intent() 採最長優先掃描，「附近有綜合醫院嗎」會解析出
+# requested="綜合醫院"（資料庫正式 type 值）。舊的手寫俗稱白名單收不到這些值，
+# 整句於是被判定為「沒有類型意圖」，退回不帶 facility_type 的搜尋 —— 也就是
+# 退回本 change 原本要修的那個 bug。
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("附近有綜合醫院嗎", "綜合醫院"),
+        ("附近有專科診所嗎", "專科診所"),
+        ("我要找精神科醫院", "精神科醫院"),
+        ("附近有牙醫診所嗎", "牙醫診所"),
+        ("哪裡有中醫醫院", "中醫醫院"),
+        ("附近有西醫診所嗎", "西醫診所"),
+    ],
+)
+def test_facility_type_intent_accepts_canonical_type_values(text, expected):
+    assert _facility_type_intent(text) == expected
+
+
+def test_unambiguous_terms_are_derived_from_matcher_not_hand_listed():
+    """
+    白名單必須是「matcher 全集扣除歧義詞」，不能是另一份手寫清單——否則
+    matcher 新增別名或資料庫新增 type 值時，兩份清單會再次失去同步。
+    """
+    assert _AMBIGUOUS_FACILITY_TYPE_TERMS <= all_facility_type_terms()
+    assert (
+        _UNAMBIGUOUS_FACILITY_TYPE_TERMS
+        == all_facility_type_terms() - _AMBIGUOUS_FACILITY_TYPE_TERMS
+    )
+    # 只有裸詞「醫院」與「門診」曖昧，其餘一律視為明確表達。
+    assert _AMBIGUOUS_FACILITY_TYPE_TERMS == {"醫院", "門診"}
+
+
+def test_dental_clinic_maps_to_both_department_and_type():
+    """
+    specs/location-search「科別詞隱含的類型詞」scenario：使用者要找「附近的
+    牙醫診所」時，科別（牙科）與類型（診所）兩個維度必須同時成立。
+    這個 scenario 先前完全沒有測試覆蓋。
+    """
+    text = "附近的牙醫診所"
+    department = extract_department_intent(text)
+    assert department is not None and department.canonical == "牙科"
+    assert _facility_type_intent(text) == "牙醫診所"
+
+
+# ---------------------------------------------------------------------------
+# 最終審查 I3：「家」「的」當單字標記，會誤判大量具名院所
+#
+# 對真實資料庫 19,106 筆名稱含類型詞的院所實掃，舊規則有 35 家誤觸類型意圖，
+# 全部集中在「家」（皇家／全家／我家／和睦家…）與「的」（美的／固的／我的）
+# 這兩個高頻命名用字上。以下是實掃結果的完整代表樣本。
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # 「家」：品牌用字，前面是內容字
+        "皇家診所在哪",
+        "全家診所在哪",
+        "我家診所在哪",
+        "和睦家診所在哪",
+        "宜家診所在哪",
+        "安家診所在哪",
+        "怡家診所在哪",
+        "德家診所在哪",
+        "保家診所在哪",
+        "大家診所在哪",
+        "家家診所在哪",
+        "林瑞家診所在哪",
+        "優康家診所在哪",
+        # 「的」：二字品牌名，前面只有一個內容字
+        "美的診所在哪",
+        "固的診所在哪",
+        "我的診所在哪",
+        # 其餘實掃到的單字標記誤判
+        "大有診所在哪",
+        "嗎哪診所在哪",
+        "汐止有間診所在哪",
+        # 量詞單獨起頭不是中文說法，句首的「家」必然是院所名稱的第一個字
+        "家中醫診所在哪",
+    ],
+)
+def test_facility_type_intent_rejects_high_frequency_naming_chars(text):
+    assert _facility_type_intent(text) is None
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # 「家」「間」當量詞：前面必有數詞或指示詞，這些仍須觸發
+        ("附近有一家診所嗎", "診所"),
+        ("這家診所評價如何", "診所"),
+        ("哪家藥局比較近", "藥局"),
+        ("找兩間診所", "診所"),
+        ("幾家大醫院比較好", "大醫院"),
+        # 「的」前面有兩個字以上的修飾語
+        ("口碑好的診所", "診所"),
+        ("離我最近的藥局", "藥局"),
+    ],
+)
+def test_facility_type_intent_keeps_quantifier_and_modifier_forms(text, expected):
+    assert _facility_type_intent(text) == expected
 
 
 def test_extract_facility_type_from_history_rejects_named_facility_from_earlier_turn():

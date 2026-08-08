@@ -214,3 +214,61 @@ async def test_unresolvable_department_short_circuits_before_type_is_checked():
     assert result.match is None
     assert result.facilities == []
     assert repository.calls == []
+
+
+# ---------------------------------------------------------------------------
+# 最終審查 I4：空字串 facility_type 必須等同「沒有給」
+#
+# facility_type 是選填參數，LLM function calling（尤其 Gemini）對選填字串參數
+# 送 "" 是常見行為。舊寫法以 `is not None` 判斷，一個空字串就會走進解析失敗
+# 分支：完全不查 DB、直接回「我不確定「」對應到哪一種院所類型」，讓「找附近
+# 院所」這個核心流程整個壞掉。
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t\n"])
+@pytest.mark.asyncio
+async def test_find_nearby_hospitals_treats_blank_facility_type_as_absent(blank):
+    facilities = [_facility(f"院所{i}", 500 * (i + 1)) for i in range(5)]
+    repository = FakeRepository(facilities)
+    service = MedicalService(repository=repository)
+
+    result = await service.find_nearby_hospitals(25.0, 121.0, facility_type=blank)
+
+    assert repository.calls[0]["query"] is None, "空字串不得產生任何 type 過濾條件"
+    assert result.facility_type_unresolved is False
+    assert result.facility_type_match is None
+    assert len(result.facilities) == 5
+
+
+@pytest.mark.parametrize("blank", ["", "   "])
+@pytest.mark.asyncio
+async def test_department_search_treats_blank_facility_type_as_absent(blank):
+    facilities = [_facility(f"院所{i}", 500 * (i + 1)) for i in range(5)]
+    repository = FakeRepository(facilities)
+    service = MedicalService(repository=repository)
+
+    result = await service.find_nearby_facilities_by_department(
+        25.0, 121.0, "腸胃科", facility_type=blank
+    )
+
+    assert repository.calls[0]["query"] == {
+        "departments": {"$regex": "內科", "$options": "i"}
+    }, "空字串不得讓科別查詢多包一層 $and"
+    assert result.facility_type_unresolved is False
+    assert result.facility_type_match is None
+    assert len(result.facilities) == 5
+
+
+@pytest.mark.asyncio
+async def test_whitespace_padded_facility_type_still_resolves():
+    """順帶確認正規化只吸收空白，不影響有內容的值。"""
+    repository = FakeRepository([_facility("院所", 500)])
+    service = MedicalService(repository=repository)
+
+    result = await service.find_nearby_hospitals(25.0, 121.0, facility_type="  醫院 ")
+
+    assert result.facility_type_match.category == "醫院"
+    assert repository.calls[0]["query"] == {
+        "type": {"$in": ["醫院", "綜合醫院", "精神科醫院", "中醫醫院"]}
+    }

@@ -50,6 +50,24 @@ OPEN_NOW_OVERFETCH_FACTOR = 4
 OPEN_NOW_OVERFETCH_LIMIT = 20
 
 
+def _normalize_optional_arg(value: str | None) -> str | None:
+    """
+    把空字串／純空白的字串參數一律正規化成 None（＝視為「沒有給」）。
+
+    為什麼需要：facility_type 是選填參數，而 LLM function calling（尤其 Gemini）
+    對選填字串參數送 `""` 是實務上很常見的行為。若沿用 `is not None` 判斷，
+    空字串會被當成「使用者說了某個看不懂的類型」而走進解析失敗分支——不查
+    資料庫、直接回「我不確定「」對應到哪一種院所類型」，一個空字串就讓
+    「找附近院所」這個核心流程整個壞掉。空字串在語意上等同未提供，必須在
+    進入解析之前就吸收掉，才能讓兩層（agent 用 truthy、service 用 is not None）
+    對「空值」的定義一致。
+    """
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
 def _is_open_or_emergency(facility: MedicalFacility) -> bool:
     """
     院所是否視為「現在可前往」。
@@ -180,8 +198,10 @@ class MedicalService:
         facility_type 為 None 代表不限類型（省略時行為與過去完全相同）；
         給了但解析不出來時比照科別搜尋的處理方式：不查 DB，直接回傳
         facility_type_unresolved=True，讓呼叫端能明確告知使用者「看不懂」，
-        而不是靜默退化成查全部院所。
+        而不是靜默退化成查全部院所。空字串／純空白視同未提供（見
+        _normalize_optional_arg），不會被誤判成「看不懂的類型」。
         """
+        facility_type = _normalize_optional_arg(facility_type)
         type_match: FacilityTypeMatch | None = None
         type_query: dict[str, Any] | None = None
         if facility_type is not None:
@@ -232,8 +252,10 @@ class MedicalService:
         facility_type 可再疊加類型過濾（兩個條件以 $and 組合，見 _combine_filters）。
 
         facility_type 解析失敗時比照科別解析失敗：不查 DB，
-        回傳 facility_type_unresolved=True 讓呼叫端能分辨「看不懂類型」。
+        回傳 facility_type_unresolved=True 讓呼叫端能分辨「看不懂類型」；
+        但空字串／純空白視同未提供（見 _normalize_optional_arg）。
         """
+        facility_type = _normalize_optional_arg(facility_type)
         match = resolve_department(department)
         if match is None:
             logger.info(

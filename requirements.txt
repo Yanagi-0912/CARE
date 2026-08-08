@@ -7,6 +7,7 @@ starlette==0.52.1
 line-bot-sdk==3.22.0
 
 # Text-to-speech
+edge-tts==7.2.8
 gTTS==2.5.4
 mutagen==1.47.0
 

@@ -1,13 +1,20 @@
+import asyncio
 import io
 import logging
 import time
 import uuid
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Optional, Protocol, Tuple
 
 import requests
 
 from app.core.config import settings
+from app.core.user_language import DEFAULT_USER_LANGUAGE, SUPPORTED_LANGUAGES
+
+try:
+    import edge_tts
+except Exception:  # pragma: no cover - depends on optional runtime package
+    edge_tts = None
 
 try:
     from gtts import gTTS
@@ -27,15 +34,78 @@ TTS_TMP_DIR = Path("app_data") / "tmp"
 DEFAULT_DURATION_MS = 1_000
 DEFAULT_TTS_FILE_TTL_SECONDS = 60 * 60
 
+# 六語系 → edge-tts voice 名稱。未知語言一律 fallback DEFAULT_USER_LANGUAGE。
+VOICE_BY_LANGUAGE = {
+    "zh-TW": "zh-TW-HsiaoChenNeural",
+    "en": "en-US-AriaNeural",
+    "ja": "ja-JP-NanamiNeural",
+    "th": "th-TH-PremwadeeNeural",
+    "vi": "vi-VN-HoaiMyNeural",
+    "id": "id-ID-GadisNeural",
+}
+
+# voice_rate 檔位 → edge-tts rate 百分比（正負號、"+0%" 形式由 f"{percent:+d}%" 產生）。
+RATE_PERCENT = {"slow": -25, "normal": 0, "fast": 25}
+DEFAULT_VOICE_RATE = "normal"
+
+
+class SpeechEngine(Protocol):
+    """主要合成引擎介面（edge-tts）：以 voice/rate 產生語音位元組。"""
+
+    async def synthesize(self, text: str, *, voice: str, rate: str) -> bytes: ...
+
+
+class FallbackSpeechEngine(Protocol):
+    """備援合成引擎介面（gTTS）：以語言代碼產生語音位元組。"""
+
+    async def synthesize(self, text: str, *, language: str) -> bytes: ...
+
+
+class EdgeTTSEngine:
+    """正式 edge-tts 實作。"""
+
+    async def synthesize(self, text: str, *, voice: str, rate: str) -> bytes:
+        if edge_tts is None:
+            raise RuntimeError("edge-tts is not available in the environment")
+        communicate = edge_tts.Communicate(text, voice=voice, rate=rate)
+        return b"".join(
+            [chunk["data"] async for chunk in communicate.stream() if chunk["type"] == "audio"]
+        )
+
+
+class GTTSEngine:
+    """正式 gTTS 實作（fallback）。gTTS 直接吃 SUPPORTED_LANGUAGES 的 code。"""
+
+    async def synthesize(self, text: str, *, language: str) -> bytes:
+        if gTTS is None:
+            raise RuntimeError("gTTS is not available in the environment")
+
+        def _synthesize_sync() -> bytes:
+            tts = gTTS(text=text, lang=language)
+            buf = io.BytesIO()
+            tts.write_to_fp(buf)
+            buf.seek(0)
+            return buf.read()
+
+        return await asyncio.to_thread(_synthesize_sync)
+
 
 class TTSService:
-    """Text-to-speech service backed by gTTS when available.
+    """Text-to-speech service：edge-tts 為主引擎，gTTS 為備援。
 
-    synthesize(text, locale) -> (bytes, filename, duration_ms).
+    synthesize(text, language, voice_rate) -> (bytes, path_or_url, duration_ms)。
     """
 
-    def synthesize(
-        self, text: str, locale: str = "zh-TW"
+    def __init__(
+        self,
+        engine: SpeechEngine = EdgeTTSEngine(),
+        fallback_engine: FallbackSpeechEngine = GTTSEngine(),
+    ) -> None:
+        self._engine = engine
+        self._fallback_engine = fallback_engine
+
+    async def synthesize(
+        self, text: str, language: str = "zh-TW", voice_rate: str = "normal"
     ) -> Tuple[bytes, str, Optional[int]]:
         """Synthesize and return (bytes, path, duration_ms).
 
@@ -43,48 +113,56 @@ class TTSService:
         """
         try:
             if settings.N8N_TTS_WEBHOOK_URL.strip():
-                return self._synthesize_via_n8n(text, locale)
+                return await self._synthesize_via_n8n(text, language)
 
-            # Use gTTS to synthesize (this is synchronous but fine for small payloads)
-            if gTTS is None:
-                raise RuntimeError("gTTS is not available in the environment")
             TTS_TMP_DIR.mkdir(parents=True, exist_ok=True)
             self.cleanup_expired_audio_files()
-            tts = gTTS(text=text, lang=("zh-tw" if locale.startswith("zh") else "en"))
-            buf = io.BytesIO()
-            tts.write_to_fp(buf)
-            buf.seek(0)
-            data = buf.read()
+
+            data = await self._synthesize_bytes(text, language, voice_rate)
             duration_ms = self._get_duration_ms(data, text)
-            # write to temp file and return bytes
             filename = f"tts_{uuid.uuid4().hex}.mp3"
             tmp_path = TTS_TMP_DIR / filename
             with tmp_path.open("wb") as f:
                 f.write(data)
-            logger.debug("TTS synthesized audio (gTTS): %s, saved to %s", filename, tmp_path)
+            logger.debug("TTS synthesized audio: %s, saved to %s", filename, tmp_path)
             return data, str(tmp_path), duration_ms
         except Exception:
             logger.exception("TTS synthesis failed")
             raise
 
-    def available(self) -> bool:
-        return bool(settings.N8N_TTS_WEBHOOK_URL.strip()) or gTTS is not None
+    async def _synthesize_bytes(self, text: str, language: str, voice_rate: str) -> bytes:
+        normalized_language = language if language in SUPPORTED_LANGUAGES else DEFAULT_USER_LANGUAGE
+        voice = VOICE_BY_LANGUAGE.get(normalized_language, VOICE_BY_LANGUAGE[DEFAULT_USER_LANGUAGE])
+        percent = RATE_PERCENT.get(voice_rate, RATE_PERCENT[DEFAULT_VOICE_RATE])
+        rate = f"{percent:+d}%"
+        try:
+            return await self._engine.synthesize(text, voice=voice, rate=rate)
+        except Exception:
+            logger.warning(
+                "edge-tts 合成失敗，改用 gTTS fallback：language=%s", normalized_language,
+                exc_info=True,
+            )
+            return await self._fallback_engine.synthesize(text, language=normalized_language)
 
-    def _synthesize_via_n8n(
-        self, text: str, locale: str = "zh-TW"
+    def available(self) -> bool:
+        return bool(settings.N8N_TTS_WEBHOOK_URL.strip()) or edge_tts is not None or gTTS is not None
+
+    async def _synthesize_via_n8n(
+        self, text: str, language: str = "zh-TW"
     ) -> Tuple[bytes, str, Optional[int]]:
-        language = self._locale_to_language(locale)
+        mapped_language = self._locale_to_language(language)
         payload = {
             "text": text,
-            "locale": locale,
-            "language": language,
+            "locale": language,
+            "language": mapped_language,
             "voice": settings.TTS_DEFAULT_VOICE or None,
         }
         headers = {"Content-Type": "application/json"}
         if settings.N8N_TTS_WEBHOOK_SECRET:
             headers["X-CARE-TTS-SECRET"] = settings.N8N_TTS_WEBHOOK_SECRET
 
-        response = requests.post(
+        response = await asyncio.to_thread(
+            requests.post,
             settings.N8N_TTS_WEBHOOK_URL,
             json=payload,
             headers=headers,
@@ -103,7 +181,7 @@ class TTSService:
 
         logger.debug(
             "TTS synthesized via n8n: language=%s, voice=%s, url=%s",
-            data.get("language") or language,
+            data.get("language") or mapped_language,
             data.get("voice") or settings.TTS_DEFAULT_VOICE or None,
             audio_url,
         )

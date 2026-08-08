@@ -1,11 +1,50 @@
 import os
 import time
 from pathlib import Path
+from typing import Optional
 from unittest.mock import MagicMock
+
+import pytest
 
 from app.services.line_messaging.reply import tts_service as tts_module
 from app.services.line_messaging.reply.tts_service import TTSService
 from app.core.config import settings
+
+
+class FakeSpeechEngine:
+    """DI 用的假主引擎（取代 edge-tts），記錄呼叫參數並可模擬失敗。"""
+
+    def __init__(self, result: bytes = b"edge-audio-bytes", exc: Optional[Exception] = None):
+        self.result = result
+        self.exc = exc
+        self.calls: list[dict] = []
+
+    async def synthesize(self, text: str, *, voice: str, rate: str) -> bytes:
+        self.calls.append({"text": text, "voice": voice, "rate": rate})
+        if self.exc is not None:
+            raise self.exc
+        return self.result
+
+
+class FakeFallbackEngine:
+    """DI 用的假備援引擎（取代 gTTS），記錄呼叫參數並可模擬失敗。"""
+
+    def __init__(self, result: bytes = b"gtts-audio-bytes", exc: Optional[Exception] = None):
+        self.result = result
+        self.exc = exc
+        self.calls: list[dict] = []
+
+    async def synthesize(self, text: str, *, language: str) -> bytes:
+        self.calls.append({"text": text, "language": language})
+        if self.exc is not None:
+            raise self.exc
+        return self.result
+
+
+def _cleanup(path: str) -> None:
+    p = Path(path)
+    if p.exists():
+        p.unlink()
 
 
 def test_cleanup_expired_audio_files_removes_only_old_tts_files(monkeypatch):
@@ -38,7 +77,7 @@ def test_cleanup_expired_audio_files_removes_only_old_tts_files(monkeypatch):
         test_dir.rmdir()
 
 
-def test_synthesize_via_n8n_webhook(monkeypatch):
+async def test_synthesize_via_n8n_webhook(monkeypatch):
     monkeypatch.setattr(settings, "N8N_TTS_WEBHOOK_URL", "https://n8n.example/webhook/tts")
     monkeypatch.setattr(settings, "N8N_TTS_WEBHOOK_SECRET", "secret")
     monkeypatch.setattr(settings, "N8N_TTS_TIMEOUT_SECONDS", 7)
@@ -55,8 +94,8 @@ def test_synthesize_via_n8n_webhook(monkeypatch):
     post = MagicMock(return_value=response)
     monkeypatch.setattr(tts_module.requests, "post", post)
 
-    audio_bytes, audio_url, duration_ms = TTSService().synthesize(
-        "hello", locale="zh-TW"
+    audio_bytes, audio_url, duration_ms = await TTSService().synthesize(
+        "hello", language="zh-TW"
     )
 
     assert audio_bytes == b""
@@ -76,3 +115,100 @@ def test_synthesize_via_n8n_webhook(monkeypatch):
         },
         timeout=7,
     )
+
+
+@pytest.mark.parametrize(
+    "language,expected_voice",
+    [
+        ("zh-TW", "zh-TW-HsiaoChenNeural"),
+        ("en", "en-US-AriaNeural"),
+        ("ja", "ja-JP-NanamiNeural"),
+        ("th", "th-TH-PremwadeeNeural"),
+        ("vi", "vi-VN-HoaiMyNeural"),
+        ("id", "id-ID-GadisNeural"),
+    ],
+)
+async def test_synthesize_maps_language_to_configured_voice(language, expected_voice):
+    engine = FakeSpeechEngine()
+    service = TTSService(engine=engine, fallback_engine=FakeFallbackEngine())
+
+    _, path, _ = await service.synthesize("hello", language=language, voice_rate="normal")
+    try:
+        assert engine.calls[0]["voice"] == expected_voice
+    finally:
+        _cleanup(path)
+
+
+@pytest.mark.parametrize(
+    "voice_rate,expected_rate",
+    [
+        ("slow", "-25%"),
+        ("normal", "+0%"),
+        ("fast", "+25%"),
+    ],
+)
+async def test_synthesize_rate_percent_string_format(voice_rate, expected_rate):
+    engine = FakeSpeechEngine()
+    service = TTSService(engine=engine, fallback_engine=FakeFallbackEngine())
+
+    _, path, _ = await service.synthesize("hello", language="en", voice_rate=voice_rate)
+    try:
+        assert engine.calls[0]["rate"] == expected_rate
+    finally:
+        _cleanup(path)
+
+
+async def test_synthesize_unknown_language_falls_back_to_zh_tw():
+    engine = FakeSpeechEngine()
+    service = TTSService(engine=engine, fallback_engine=FakeFallbackEngine())
+
+    _, path, _ = await service.synthesize("hello", language="fr-FR", voice_rate="normal")
+    try:
+        assert engine.calls[0]["voice"] == "zh-TW-HsiaoChenNeural"
+    finally:
+        _cleanup(path)
+
+
+async def test_synthesize_empty_language_falls_back_to_zh_tw():
+    engine = FakeSpeechEngine()
+    service = TTSService(engine=engine, fallback_engine=FakeFallbackEngine())
+
+    _, path, _ = await service.synthesize("hello", language="", voice_rate="normal")
+    try:
+        assert engine.calls[0]["voice"] == "zh-TW-HsiaoChenNeural"
+    finally:
+        _cleanup(path)
+
+
+async def test_synthesize_unknown_voice_rate_falls_back_to_normal():
+    engine = FakeSpeechEngine()
+    service = TTSService(engine=engine, fallback_engine=FakeFallbackEngine())
+
+    _, path, _ = await service.synthesize("hello", language="en", voice_rate="ludicrous")
+    try:
+        assert engine.calls[0]["rate"] == "+0%"
+    finally:
+        _cleanup(path)
+
+
+async def test_synthesize_falls_back_to_gtts_when_edge_tts_fails():
+    engine = FakeSpeechEngine(exc=RuntimeError("edge-tts unavailable"))
+    fallback = FakeFallbackEngine(result=b"gtts-bytes")
+    service = TTSService(engine=engine, fallback_engine=fallback)
+
+    audio_bytes, path, _ = await service.synthesize("hello", language="ja", voice_rate="normal")
+    try:
+        assert audio_bytes == b"gtts-bytes"
+        assert fallback.calls[0]["language"] == "ja"
+        assert fallback.calls[0]["text"] == "hello"
+    finally:
+        _cleanup(path)
+
+
+async def test_synthesize_raises_when_both_engines_fail():
+    engine = FakeSpeechEngine(exc=RuntimeError("edge-tts unavailable"))
+    fallback = FakeFallbackEngine(exc=RuntimeError("gtts unavailable"))
+    service = TTSService(engine=engine, fallback_engine=fallback)
+
+    with pytest.raises(RuntimeError, match="gtts unavailable"):
+        await service.synthesize("hello", language="en", voice_rate="normal")

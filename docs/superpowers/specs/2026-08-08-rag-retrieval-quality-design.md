@@ -227,6 +227,42 @@ min_score 檢查。移除門檻的決定仍然成立，但理由只有「第一�
 
 C2 理由：見 2.4。這是不需重建知識庫就能取得的增益。
 
+**C2 實測結果（Task 9）—— 主要假設被推翻**
+
+補上標題後：`hit_rate 0.412 → 0.382`、`mean_mrr 0.198 → 0.217`、
+`mean_ndcg@5 0.253 → 0.257`（+0.004，雜訊等級）。
+`--compare-rerank` 的 delta 由 `-0.294 / -0.194` 變為 `-0.324 / -0.190`
+—— **方向未被扭轉**。「reranker 因缺標題而表現不佳」這個假設不成立。
+
+**但這次量測揭露了一個更重要的事實，且先前被指標名稱誤導了。**
+
+`--rank-mode vector` 使用的是 `VectorScoreReranker`，它依 `metadata["score"]` 排序。
+而在 `RAG_HYBRID_ENABLED=true`（現況）之下，`reciprocal_rank_fusion`
+會**把 `metadata["score"]` 覆寫為 RRF 融合分數**（`rank_fusion.py:99`）。
+因此該模式**不是純向量排序，而是「RRF 混合排序（向量 + BM25）」**。
+
+修正後的結論：
+
+> **在目前的資料與設定下，RRF 混合排序明顯優於 Cohere 精排。**
+> `regressed_by_cohere = 13` 對 `fixed_by_cohere = 2` —— Cohere 弄壞的題數
+> 是它修好的 6.5 倍。
+
+這也解釋了為何與 `evals/rag/README.md` 舊記錄（vector 0.29 → cohere 0.44，
+cohere 勝出）方向相反：該記錄的日期為 2026-08-01，當時 `--rank-mode vector`
+比較的很可能是**純向量**；hybrid 啟用後，同一個旗標的語意已經改變。
+
+合理的機制推測（未驗證）：chunk 是 500 字元硬切、常從句中斷開的碎片。
+cross-encoder 評估的是 query 與 passage 的語意相關性，在殘缺片段上表現不佳；
+而 RRF 得益於 BM25 對藥名、劑量、疾病名這類精確詞的字面匹配，
+這類匹配在碎片上依然有效。若此推測成立，真正的修法在上游切片（交付 A），
+而非精排階段。
+
+**衍生行動（超出本計畫範圍，交由使用者決定）**：
+1. 現行設定下 Cohere Rerank 正在**降低**檢索品質，且是付費 API。
+   是否改為預設使用 RRF 融合排序、把 Cohere 設為可選，值得評估。
+2. `--rank-mode vector` 這個名稱在 hybrid 啟用後具誤導性，
+   應更名或在 README 註明其實際語意。
+
 ### 4.4 非範圍
 
 - 不改 CARE-data 程式（僅交付報告）

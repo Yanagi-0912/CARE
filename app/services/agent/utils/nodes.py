@@ -9,7 +9,10 @@ from app.core.user_language import normalize_user_language
 from app.services.agent.prompt import build_system_prompt
 from app.services.agent.utils.state import State
 from app.services.medical.department_matcher import extract_department_intent
-from app.services.medical.facility_type_matcher import extract_facility_type_intent
+from app.services.medical.facility_type_matcher import (
+    extract_facility_type_intent,
+    normalize_facility_type_text,
+)
 from app.tools.registry import get_all_tools
 
 logger = logging.getLogger(__name__)
@@ -175,6 +178,39 @@ _UNAMBIGUOUS_FACILITY_TYPE_TERMS = frozenset(
     {"大醫院", "大型醫院", "住院", "診所", "小診所", "藥局", "藥房", "藥店"}
 )
 
+# 台灣醫療院所命名慣例是「品牌詞＋醫院／診所／藥局」（台大醫院、杏一診所、
+# 康是美藥局……），品牌詞可以是任何內容字，regex 窮舉不完；但反過來，
+# 使用者真的在表達類型偏好時，白名單詞彙前面只會接一組有限的連接詞／量詞
+# （附近有、我要找、可以、還、開的……）。因此改成白名單只認得這些連接詞，
+# 把比對到的詞前面那段文字逐一挖掉，挖乾淨了才視為「使用者在講類型」；
+# 挖不乾淨（還剩下「台大」「杏一」「康是美」這種認不得的字）就當作是具名
+# 院所全名的一部分，不採信——否則「台大醫院在哪」會被「大醫院」這個白名單
+# 詞彙的子字串誤觸發，「杏一診所在哪裡」「康是美藥局在哪」同理。
+_SAFE_FACILITY_TYPE_LEAD_INS: tuple[str, ...] = (
+    "附近有", "哪裡有", "哪有", "有沒有",
+    "我要找", "我想找", "幫我找", "我要去", "我想去", "想去", "要去",
+    "附近", "最近", "周邊", "週邊", "周圍", "鄰近", "哪裡",
+    "可以", "需要", "現在", "那種", "這種", "一間", "一家",
+    "哪", "有", "去", "找", "要", "想", "我", "幫", "還", "的", "開",
+)
+
+
+def _is_facility_type_boundary_safe(cleaned: str, index: int) -> bool:
+    """
+    比對到的白名單詞彙前面那段文字，是否純粹由已知連接詞／量詞組成。
+
+    是 → 使用者在表達類型偏好（例如「附近有大醫院嗎」的「附近有」）；
+    否 → 前面還剩下認不得的內容字（例如「台大醫院」的「台」），
+    視為具名院所全名的一部分，不採信。index==0（比對詞就在句首）
+    沒有前面文字可言，直接視為安全。
+    """
+    if index == 0:
+        return True
+    remaining = cleaned[:index]
+    for lead_in in _SAFE_FACILITY_TYPE_LEAD_INS:
+        remaining = remaining.replace(lead_in, "")
+    return remaining == ""
+
 
 def _facility_type_intent(text: str) -> str | None:
     """
@@ -183,11 +219,26 @@ def _facility_type_intent(text: str) -> str | None:
     不能直接回傳 extract_facility_type_intent() 的 match.requested——
     見上方 _UNAMBIGUOUS_FACILITY_TYPE_TERMS 的說明，裸詞「醫院」會被
     resolve 成 requested="醫院"，必須擋下來。
+
+    白名單詞彙有可能是具名院所全名的一部分（「台大醫院」內含「大醫院」，
+    「杏一診所」「康是美藥局」內含「診所」「藥局」），因此比對到之後還要用
+    _is_facility_type_boundary_safe() 確認前面那段文字是已知連接詞，
+    而不是品牌名稱；比對詞若在文字中出現多次，只要有一次落在安全邊界內
+    就採信，全部都疑似具名院所才回 None。
     """
     match = extract_facility_type_intent(text)
     if match is None or match.requested not in _UNAMBIGUOUS_FACILITY_TYPE_TERMS:
         return None
-    return match.requested
+
+    cleaned = normalize_facility_type_text(text)
+    term = match.requested
+    index = cleaned.find(term)
+    while index != -1:
+        if _is_facility_type_boundary_safe(cleaned, index):
+            return term
+        index = cleaned.find(term, index + 1)
+
+    return None
 
 
 def _extract_facility_type_from_history(messages) -> str | None:

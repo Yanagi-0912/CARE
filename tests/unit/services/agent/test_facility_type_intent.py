@@ -99,6 +99,66 @@ def test_nearby_medium_hospital_still_triggers_location_request():
 
 
 # ---------------------------------------------------------------------------
+# _facility_type_intent：具名院所不得誤觸（修正迴圈第 1 輪 code review）
+#
+# 白名單詞彙可能只是具名院所全名的一部分：「台大醫院」內含白名單詞彙
+# 「大醫院」，「杏一診所」「小林診所」「康是美藥局」內含「診所」「藥局」。
+# 這些情況使用者是在查特定院所（依 prompt 規則應走 lookup_medical_facility），
+# 不是在表達類型偏好，必須回 None，否則會把類型過濾誤套到查特定院所的對話上。
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # review 實跑回報的三個具名院所案例
+        "台大醫院在哪",
+        "杏一診所在哪裡",
+        "康是美藥局在哪",
+        # review 特別點名：沒有「在哪」等查詢語尾，仍須擋下
+        "杏一診所很近",
+        # 品牌詞恰好只有一個字，且不含「在哪」——驗證邊界判定不是只靠 _NAMED_LOOKUP_RE
+        "小林診所很推薦",
+    ],
+)
+def test_facility_type_intent_rejects_named_facility(text):
+    assert _facility_type_intent(text) is None
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # 明確語彙前面接的是連接詞／量詞（附近有、我要找、可以、還、開的……），
+        # 不是品牌名稱，必須維持觸發，不能被上面的具名院所防呆誤傷。
+        ("附近有大醫院嗎", "大醫院"),
+        ("哪裡有藥局", "藥局"),
+        ("我要找大型醫院", "大型醫院"),
+        ("附近有可以住院的地方嗎", "住院"),
+        ("找一間小診所", "小診所"),
+        ("附近現在有開的大醫院嗎", "大醫院"),
+    ],
+)
+def test_facility_type_intent_still_triggers_for_generic_terms(text, expected):
+    assert _facility_type_intent(text) == expected
+
+
+def test_extract_facility_type_from_history_rejects_named_facility_from_earlier_turn():
+    """
+    修正迴圈第 1 輪 code review 回報的跨輪誤判：使用者先查了一間具名診所
+    （「杏一診所在哪裡」），幾輪後改問泛稱「附近有醫院嗎」並分享位置，
+    不該被誤套 facility_type="診所"。
+    """
+    messages = [
+        HumanMessage(content="杏一診所在哪裡"),
+        AIMessage(content="杏一診所地址是..."),
+        HumanMessage(content="附近有醫院嗎"),
+        AIMessage(content="請分享您的位置"),
+        HumanMessage(content=LOCATION_TEXT),
+    ]
+    assert _extract_facility_type_from_history(messages) is None
+
+
+# ---------------------------------------------------------------------------
 # _extract_facility_type_from_history：跨輪保留
 # ---------------------------------------------------------------------------
 
@@ -227,6 +287,37 @@ async def test_shared_location_without_department_or_facility_type(
     nodes = AgentNodes(llm=mock_llm_no_tool_calls, guardrail_service=MagicMock())
     state = {
         "messages": [
+            HumanMessage(content="附近有醫院嗎"),
+            AIMessage(content="請分享您的位置"),
+            HumanMessage(content=LOCATION_TEXT),
+        ],
+        "allow_rag": False,
+    }
+
+    with patch("app.services.agent.utils.nodes.log_stage"):
+        res = await nodes.agent_node(state)
+
+    call = res["messages"][0].tool_calls[0]
+    assert call["name"] == "find_nearby_hospitals"
+    assert call["args"] == {"lat": 25.033, "lng": 121.56}
+    assert "facility_type" not in call["args"]
+
+
+@pytest.mark.asyncio
+async def test_shared_location_ignores_earlier_named_facility_lookup(
+    mock_llm_no_tool_calls, patched_tools
+):
+    """
+    修正迴圈第 1 輪 code review 回報的端到端誤判：使用者先查了一間具名診所
+    （依 prompt 規則 (c) 應走 lookup_medical_facility，非本測試範圍），
+    幾輪後改問泛稱「附近有醫院嗎」並分享位置，不該被誤套
+    facility_type="診所"，搜尋範圍不該被不當窄化。
+    """
+    nodes = AgentNodes(llm=mock_llm_no_tool_calls, guardrail_service=MagicMock())
+    state = {
+        "messages": [
+            HumanMessage(content="杏一診所在哪裡"),
+            AIMessage(content="杏一診所地址是..."),
             HumanMessage(content="附近有醫院嗎"),
             AIMessage(content="請分享您的位置"),
             HumanMessage(content=LOCATION_TEXT),

@@ -127,6 +127,48 @@ async def test_retriever_filters_by_min_score():
     assert docs[0].metadata["score"] == 0.5
 
 
+@pytest.mark.asyncio
+async def test_retriever_keeps_low_score_docs_by_default():
+    retriever, emb = _make_retriever(vector_dim=2)
+    emb.aembed_query = AsyncMock(return_value=[0.1, 0.2])
+
+    fake_cursor = MagicMock()
+    fake_cursor.to_list = AsyncMock(
+        return_value=[
+            {"_id": "1", "chunk_text": "高分", "score": 0.9},
+            {"_id": "2", "chunk_text": "低分", "score": 0.12},
+        ]
+    )
+    fake_collection = MagicMock()
+    fake_collection.aggregate.return_value = fake_cursor
+    retriever._collection = fake_collection
+
+    docs = await retriever.ainvoke("高血壓")
+
+    # 過濾職責移交 reranker，第一階段不再砍低分候選
+    assert [d.page_content for d in docs] == ["高分", "低分"]
+
+
+@pytest.mark.asyncio
+async def test_retriever_still_honours_explicit_min_score():
+    retriever, emb = _make_retriever(vector_dim=2, min_score=0.5)
+    emb.aembed_query = AsyncMock(return_value=[0.1, 0.2])
+
+    fake_cursor = MagicMock()
+    fake_cursor.to_list = AsyncMock(
+        return_value=[
+            {"_id": "1", "chunk_text": "高分", "score": 0.9},
+            {"_id": "2", "chunk_text": "低分", "score": 0.12},
+        ]
+    )
+    fake_collection = MagicMock()
+    fake_collection.aggregate.return_value = fake_cursor
+    retriever._collection = fake_collection
+
+    docs = await retriever.ainvoke("高血壓")
+    assert [d.page_content for d in docs] == ["高分"]
+
+
 # ── MongoAtlasTextRetriever（BM25）─────────────────────────────────
 
 

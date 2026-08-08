@@ -23,7 +23,12 @@ from app.services.rag.rank_fusion import DEFAULT_RRF_K, reciprocal_rank_fusion
 logger = logging.getLogger(__name__)
 
 _NUM_CANDIDATES_MULTIPLIER = 30
-DEFAULT_MIN_SCORE = 0.5
+
+# 第一階段負責衝 recall，過濾交給 reranker（見 openspec/changes/rag-retrieval-tuning）。
+# 保留參數以便需要時由 env 調回。
+# 注意：使用者上傳文件的檢索路徑沒有 reranker，因此不共用這個值，
+# 見 user_document_retriever.DEFAULT_USER_DOC_MIN_SCORE。
+DEFAULT_MIN_SCORE = 0.0
 
 VECTOR_SOURCE_NAME = "vector"
 TEXT_SOURCE_NAME = "text"

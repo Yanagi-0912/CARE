@@ -53,3 +53,24 @@
 ### D3. 為何不順手改 BM25 索引欄位補標題
 
 在 `chunk_content` 補標題（即讓 BM25 索引也吃到 `主題：{title}\n內容：{chunk}` 格式）需要重寫全部 4,605 筆既有文件的內容欄位，這是資料層級的批次遷移，且 `chunk_content` 是外部 ETL repo（`Capoo0618/CARE-data`）每日寫入的欄位，屬上游職責範圍（詳見 `docs/care-data-issues.md`）。本 change 只在應用層（reranker 送出的請求文本）做語境補償，不改動資料庫既有欄位內容，範圍與風險都可控；資料層級的標題回填留待上游 ETL 或另一個 change 處理。
+
+## Task 8 驗證結果：移除 min_score 後的 eval 對照
+
+實跑指令：`python scripts/rag_eval.py --rank-mode cohere --top-n 5 --out /tmp/rag-c1.json`（2026-08-08，`RAG_VECTOR_MIN_SCORE=0.0`，即本 change 改動後的預設值）。
+
+| 指標 | Baseline（`DEFAULT_MIN_SCORE=0.5`，rag-eval-metrics change 記錄） | 本次（`RAG_VECTOR_MIN_SCORE=0.0`） |
+| --- | --- | --- |
+| `hit_rate@5` | 0.412 | 0.4117647058823529（14/34，與 baseline 相同） |
+| `mean_mrr` | 0.198 | 0.198 |
+| `mean_ndcg@5` | 0.253 | 0.253 |
+
+三項指標與 baseline **完全一致**（`miss_ids` 與 `skipped_ids` 清單也逐字相同）。查證：另外用同一版程式碼、同一份 golden set，臨時以環境變數 `RAG_VECTOR_MIN_SCORE=0.5` 還原舊行為重跑一次（見延遲量測），metrics 同樣完全相同。可見 `min_score=0.5` 這個門檻在這份語料 × Gemini embedding 的組合下**幾乎沒有實際過濾到任何候選**——vectorSearchScore 落在 0～0.5 之間的候選在這個資料集中很罕見（若確有存在，也未落在會影響 hit_rate/mrr/ndcg 的排名區間內）。這與 D1 的論證方向一致（移除門檻不會讓不相關的低分噪音大量湧入），但也說明**本 change 對這份 golden set 沒有帶來立即可測得的排序品質提升**；D1 的價值在於移除一個與架構意圖相反、且在其他語料分布或未來索引調整下可能悄悄丟資料的隱性機制，而非本次量到的分數改善。真正改善 ndcg 的手段是 D2（reranker 文本語境對齊），留待該 Task 驗證。
+
+延遲量測：Task 3 Step 10 執行 eval 實跑時**未**用 `time` 記錄總耗時，因此沒有可直接比較的既有基準數字。為求嚴謹，改為在同一台機器、同一版程式碼下做 A/B：
+
+| 情境 | 指令 | 總耗時（`time`，wall clock） | 每題平均（÷38 題） |
+| --- | --- | --- | --- |
+| 舊行為（`RAG_VECTOR_MIN_SCORE=0.5`） | `RAG_VECTOR_MIN_SCORE=0.5 python scripts/rag_eval.py --rank-mode cohere --top-n 5` | 52.122s | ≈1372ms |
+| 新行為（`RAG_VECTOR_MIN_SCORE=0.0`，即本 change 後預設） | `python scripts/rag_eval.py --rank-mode cohere --top-n 5` | 49.699s | ≈1308ms |
+
+新行為反而快了約 64ms/題，在網路呼叫（Gemini embedding + Cohere rerank + MongoDB Atlas）normal jitter 範圍內，判定為雜訊而非退化，未超過 300ms 的風險門檻，因此不需要調降 `RAG_RETRIEVE_CANDIDATES`。

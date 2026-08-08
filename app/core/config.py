@@ -89,6 +89,9 @@ class Settings:
     )
     RAG_RRF_K: int = int(os.getenv("RAG_RRF_K", "60"))
 
+    # 向量檢索最低分門檻。預設 0.0＝不過濾；過濾職責在 reranker。
+    RAG_VECTOR_MIN_SCORE: float = float(os.getenv("RAG_VECTOR_MIN_SCORE", "0.0"))
+
     # Light CRAG（檢索充足性分級；關閉則等同舊行為）
     RAG_CRAG_ENABLED: bool = os.getenv("RAG_CRAG_ENABLED", "true").lower() in (
         "1",

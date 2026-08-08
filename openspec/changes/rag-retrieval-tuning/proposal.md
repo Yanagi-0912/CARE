@@ -2,7 +2,7 @@
 
 `rag-eval-metrics` change 建立的可信量測基準顯示：`hit_rate@5 = 0.412`、`mean_mrr = 0.198`、`mean_ndcg@5 = 0.253`。hit_rate 遠高於 nDCG@5，代表相關文件多半撈得到，只是排不上前面——這是排序問題，不是召回問題。兩個實測根因：
 
-1. 向量檢索的 `min_score=0.5` 硬門檻在候選進 reranker 前就先過濾，與「wide retrieve → rerank」的架構意圖相反（第一階段應衝 recall，過濾與排序是精排的職責）。而且 hybrid 路徑經 RRF 融合後 `metadata["score"]` 已被覆寫為融合分數，對它套用針對 cosine 相似度設計的 0.5 絕對門檻在語意上是錯的。
+1. 向量檢索的 `min_score=0.5` 硬門檻在候選進 reranker 前就先過濾，與「wide retrieve → rerank」的架構意圖相反（第一階段應衝 recall，過濾與排序是精排的職責）。
 2. 上游 ETL（`Capoo0618/CARE-data` 的 `main_pipeline.py`）以 `f"主題：{title}\n內容：{chunk}"` 產生 embedding，但寫入 Mongo 的 `chunk_content` 不含標題，導致 Cohere reranker 收到的是缺語境的斷句碎片，與向量空間所見文本不一致。實測 `--compare-rerank` 顯示 cohere 精排目前反而劣於純向量排序，與此假說一致。
 
 ## What Changes

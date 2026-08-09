@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.models.family_tree import FamilyMember, FamilyTree
+from app.models.medication import MedicationReminder
 from app.models.prescription import (
     CommitDrugItem,
     CommitPrescriptionDraftRequest,
@@ -42,6 +43,11 @@ class FakeDraftRepository:
         self.draft: PrescriptionDraft | None = None
         self.commit_result: tuple[bool, list[str]] | None = None
         self.commit_calls: list[tuple] = []
+        self.release_calls: list[tuple] = []
+        # 模擬真正儲存端「committed_medication_ids 是不是我方才寫入的那組」
+        # 這個條件式狀態，好讓「寫入失敗 → 釋放 → 重試真的能重新取得」這種
+        # 場景可以被完整地測試到，而不只是驗證呼叫過 release_commit。
+        self._committed_medication_ids: list[str] | None = None
 
     async def create(self, draft: PrescriptionDraft):
         self.saved.append(draft)
@@ -58,14 +64,32 @@ class FakeDraftRepository:
         self.commit_calls.append((draft_id, user_id, list(medication_ids)))
         if self.commit_result is not None:
             return self.commit_result
+        if self._committed_medication_ids is not None:
+            return False, list(self._committed_medication_ids)
+        self._committed_medication_ids = list(medication_ids)
         return True, list(medication_ids)
+
+    async def release_commit(self, draft_id, user_id, medication_ids):
+        self.release_calls.append((draft_id, user_id, list(medication_ids)))
+        # 只釋放「呼叫端自己方才取得的那組 id」，呼應真正 repository 的條件式更新。
+        if self._committed_medication_ids == list(medication_ids):
+            self._committed_medication_ids = None
+            return True
+        return False
 
 
 class FakeMedicationRepository:
-    def __init__(self):
+    def __init__(self, fail_times: int = 0):
         self.created = []
+        # 讓測試能模擬「取得提交權之後、寫入時發生暫時性資料庫錯誤」——
+        # 呼叫次數在門檻內就拋錯，之後恢復正常，藉此驗證重試真的能成功。
+        self._fail_times = fail_times
+        self.attempts = 0
 
     async def create_many(self, medications):
+        self.attempts += 1
+        if self.attempts <= self._fail_times:
+            raise RuntimeError("暫時性資料庫錯誤")
         self.created.extend(medications)
         return medications
 
@@ -75,15 +99,29 @@ class FakeReminderRepository:
         self.existing = existing or []
         self.created = []
         self.links: list[tuple[str, list[str]]] = []
+        self.find_or_create_calls: list[tuple] = []
 
-    async def list_reminders_by_user(self, user_id: str):
-        return list(self.existing)
-
-    async def create_reminder(self, reminder):
-        saved = reminder.model_copy(update={"id": f"R_{reminder.slot_type}"})
-        self.created.append(saved)
-        self.existing.append(saved)
-        return saved
+    async def find_or_create_reminder(
+        self, user_id, slot_type, creator_user_id, scheduled_time
+    ):
+        # 以 (user_id, slot_type) 當鍵模擬真正 repository 的原子 upsert：
+        # 命中既有規則就原樣回傳，不新建、不覆寫；沒有才建立一筆新的。
+        self.find_or_create_calls.append(
+            (user_id, slot_type, creator_user_id, scheduled_time)
+        )
+        for reminder in self.existing:
+            if reminder.user_id == user_id and reminder.slot_type == slot_type:
+                return reminder
+        reminder = MedicationReminder(
+            id=f"R_{slot_type}",
+            creator_user_id=creator_user_id,
+            user_id=user_id,
+            slot_type=slot_type,
+            scheduled_time=scheduled_time,
+        )
+        self.created.append(reminder)
+        self.existing.append(reminder)
+        return reminder
 
     async def link_medications_to_reminder(self, reminder_id, medication_ids):
         self.links.append((reminder_id, list(medication_ids)))
@@ -484,8 +522,6 @@ async def test_user_supplied_slots_override_the_frequency_mapping():
 @pytest.mark.asyncio
 async def test_commit_reuses_an_existing_reminder_for_the_slot():
     """一位使用者一個時段只該有一筆規則；重複建立會讓長輩收到兩則提醒。"""
-    from app.models.medication import MedicationReminder
-
     existing = MedicationReminder(
         id="R_EXISTING",
         creator_user_id="U_FAMILY",
@@ -607,3 +643,90 @@ async def test_commit_records_the_ocr_origin_on_created_medications():
     assert created.created_by_user_id == "U_FAMILY"
     assert created.usage_raw == "QD PC"
     assert created.indication == "高血壓"
+
+
+@pytest.mark.asyncio
+async def test_commit_releases_the_token_and_lets_a_retry_actually_create_when_writing_fails():
+    """取得提交權之後、寫入時發生暫時性資料庫錯誤：這次要照樣把例外丟出去，
+    但草稿的提交權必須被釋放，否則之後每次重試都會被 mark_committed 擋下，
+    拿到一組其實從未寫入的 id 當成功回應——處方就這樣憑空消失。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    medications = FakeMedicationRepository(fail_times=1)
+    reminders = FakeReminderRepository()
+    service = _service(
+        drafts=drafts,
+        medications=medications,
+        reminders=reminders,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+    request = _request(CommitDrugItem(name="某藥", frequency_code="QD"))
+
+    with pytest.raises(RuntimeError):
+        await service.commit("D1", "U_FAMILY", request)
+
+    # 第一次失敗：沒有任何藥品被建立，但提交權必須被釋放。
+    assert medications.created == []
+    assert len(drafts.release_calls) == 1
+    assert drafts.release_calls[0][2] == drafts.commit_calls[0][2]
+    assert drafts._committed_medication_ids is None
+
+    # 重試：這次不再失敗，必須真的重新取得提交權並建立藥品與提醒。
+    result = await service.commit("D1", "U_FAMILY", request)
+
+    assert len(medications.created) == 1
+    assert result.medication_ids == [medications.created[0].id]
+    assert len(reminders.created) == 1
+
+
+@pytest.mark.asyncio
+async def test_commit_does_not_release_the_token_when_it_never_acquired_it():
+    """沒有取得提交權時（草稿已被提交過）不該去釋放別人的提交權——
+    這條路徑連寫入都沒有發生，release_commit 不該被呼叫。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    drafts.commit_result = (False, ["M_EXISTING"])
+    service = _service(
+        drafts=drafts,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    await service.commit(
+        "D1", "U_FAMILY", _request(CommitDrugItem(name="某藥", frequency_code="QD"))
+    )
+
+    assert drafts.release_calls == []
+
+
+@pytest.mark.asyncio
+async def test_commit_replay_reports_prn_ids_consistently_with_the_original_commit():
+    """重複 commit（例如使用者連點兩次）且其中一項是 PRN：第二次沒有取得
+    提交權、完全不寫入任何東西，但只要重送的是同一份請求，位置對應仍然
+    成立，回報的 prn_medication_ids 必須和第一次的結果一致，而不是因為
+    『這次沒有機會自己建立』就退化成空陣列。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(
+        RecognizedDrug(name="某藥"), RecognizedDrug(name="止痛藥")
+    )
+    medications = FakeMedicationRepository()
+    reminders = FakeReminderRepository()
+    service = _service(
+        drafts=drafts,
+        medications=medications,
+        reminders=reminders,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+    request = _request(
+        CommitDrugItem(name="某藥", frequency_code="QD"),
+        CommitDrugItem(name="止痛藥", frequency_code="PRN"),
+    )
+
+    first = await service.commit("D1", "U_FAMILY", request)
+    second = await service.commit("D1", "U_FAMILY", request)
+
+    assert second.medication_ids == first.medication_ids
+    assert len(first.prn_medication_ids) == 1
+    assert second.prn_medication_ids == first.prn_medication_ids
+    # 第二次沒有取得提交權：不該再建立藥品，也不該再呼叫提醒關聯。
+    assert len(medications.created) == 2
+    assert len(reminders.find_or_create_calls) == 1

@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 import pytest
+from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from app.models.medication import MedicationLog, MedicationReminder
@@ -53,6 +54,83 @@ async def test_create_reminder(override_medication_reminders_col):
     assert result.user_id == "U_PATIENT"
     assert result.start_date == "2026-07-25"
     col.insert_one.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_find_or_create_reminder_upserts_atomically():
+    """
+    藥袋提交流程靠這個方法避免「查一次缺席才建立」的競態：兩個並行呼叫
+    必須只有一個真的插入。這裡驗證的是查詢條件、upsert 旗標與只在建立時
+    套用的欄位——原子性本身由 MongoDB 的單一 document 更新保證，不是
+    這個測試能驗證的範圍。
+    """
+    from app.repositories.medication_repository import MedicationReminderRepository
+
+    col = MagicMock()
+    col.find_one_and_update = AsyncMock(
+        return_value={
+            "_id": "R_NEW",
+            "creator_user_id": "U_FAMILY",
+            "user_id": "U_PATIENT",
+            "slot_type": "morning",
+            "scheduled_time": "08:00",
+            "start_date": "2026-08-10",
+            "enabled": True,
+            "medication_ids": [],
+        }
+    )
+
+    reminder = await MedicationReminderRepository.find_or_create_reminder(
+        user_id="U_PATIENT",
+        slot_type="morning",
+        creator_user_id="U_FAMILY",
+        scheduled_time="08:00",
+        collection=col,
+    )
+
+    assert reminder.id == "R_NEW"
+    (query, update), kwargs = col.find_one_and_update.call_args
+    assert query == {"user_id": "U_PATIENT", "slot_type": "morning"}
+    set_on_insert = update["$setOnInsert"]
+    assert set_on_insert["creator_user_id"] == "U_FAMILY"
+    assert set_on_insert["scheduled_time"] == "08:00"
+    assert set_on_insert["enabled"] is True
+    assert set_on_insert["medication_ids"] == []
+    assert kwargs.get("upsert") is True
+    assert kwargs.get("return_document") is ReturnDocument.AFTER
+
+
+@pytest.mark.asyncio
+async def test_find_or_create_reminder_returns_existing_without_overwriting():
+    """命中既有規則時只回傳它，$setOnInsert 不該影響既有文件的欄位——
+    這一點由 MongoDB 語意保證，這裡驗證的是回傳值確實是資料庫回來的既有文件。
+    """
+    from app.repositories.medication_repository import MedicationReminderRepository
+
+    col = MagicMock()
+    col.find_one_and_update = AsyncMock(
+        return_value={
+            "_id": "R_EXISTING",
+            "creator_user_id": "U_OTHER_CREATOR",
+            "user_id": "U_PATIENT",
+            "slot_type": "morning",
+            "scheduled_time": "09:15",
+            "enabled": False,
+        }
+    )
+
+    reminder = await MedicationReminderRepository.find_or_create_reminder(
+        user_id="U_PATIENT",
+        slot_type="morning",
+        creator_user_id="U_FAMILY",
+        scheduled_time="08:00",
+        collection=col,
+    )
+
+    assert reminder.id == "R_EXISTING"
+    assert reminder.creator_user_id == "U_OTHER_CREATOR"
+    assert reminder.scheduled_time == "09:15"
+    assert reminder.enabled is False
 
 
 @pytest.mark.asyncio

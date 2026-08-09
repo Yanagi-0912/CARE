@@ -97,3 +97,35 @@ class PrescriptionDraftRepository:
         if not existing:
             return False, []
         return False, list(existing.get("committed_medication_ids") or [])
+
+    @staticmethod
+    async def release_commit(
+        draft_id: str,
+        user_id: str,
+        medication_ids: list[str],
+        collection: Optional[Any] = None,
+    ) -> bool:
+        """取得提交權之後、實際寫入藥品或提醒之前若失敗，把提交權還給草稿。
+
+        取得權與寫入之間沒有原子性：mark_committed 成功之後，建立藥品或
+        連結提醒仍可能因為暫時性資料庫錯誤而拋出例外。若不還原，草稿會
+        永遠停在「已提交」但底下的藥品其實從未寫入，之後每次重試都會拿
+        mark_committed 回傳的舊 id 當成功回應，處方就這樣憑空消失、
+        沒有任何補救路徑。
+
+        比對條件用 committed_medication_ids 是不是「我方才寫入的那組 id」，
+        而不是無條件把 committed_at 設回 None——這樣才是「只釋放自己取得
+        的提交權」，呼應 mark_committed 用「committed_at 仍為 None」表達
+        「只有一次能取得」的同一種寫法。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_prescription_drafts_collection()
+        result = await collection.update_one(
+            {
+                "draft_id": draft_id,
+                "creator_user_id": user_id,
+                "committed_medication_ids": medication_ids,
+            },
+            {"$set": {"committed_at": None, "committed_medication_ids": []}},
+        )
+        return result.modified_count > 0

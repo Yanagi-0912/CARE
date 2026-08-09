@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, List, Optional
 from bson import ObjectId
+from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from app.db.mongodb import MongoDBManager
@@ -50,6 +51,51 @@ class MedicationReminderRepository:
         await col.insert_one(doc)
         doc["_id"] = str(doc["_id"])
         return MedicationReminder(**doc)
+
+    @staticmethod
+    async def find_or_create_reminder(
+        user_id: str,
+        slot_type: str,
+        creator_user_id: str,
+        scheduled_time: str,
+        collection: Optional[Any] = None,
+    ) -> MedicationReminder:
+        """原子地取得或建立某位使用者在某個時段的提醒規則。
+
+        呼叫端（例如藥袋提交流程）常常是「查一次現有規則、缺席才建立」，
+        但兩個並行的提交若都查到缺席，就會各自建立一筆同一時段的規則，
+        使用者因此收到兩則同一時段的推播。改成單一 document 的
+        find_one_and_update + upsert：MongoDB 保證這是原子操作，兩個並行
+        呼叫只有一個真的插入，另一個會讀到剛插入的那筆，不會出現「查詢時
+        都判斷缺席」的競態視窗。
+
+        $setOnInsert 只在真的建立新文件時套用——命中既有規則時完全不動它，
+        沿用它原本的排程時間、啟用狀態等設定，不能因為又有人提交同一個
+        時段的藥就悄悄覆蓋使用者已經調整過的設定。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_medication_reminders_collection()
+        now = datetime.now(timezone.utc)
+        document = await collection.find_one_and_update(
+            {"user_id": user_id, "slot_type": slot_type},
+            {
+                "$setOnInsert": {
+                    "_id": str(ObjectId()),
+                    "creator_user_id": creator_user_id,
+                    "scheduled_time": scheduled_time,
+                    "start_date": _today_date_str(),
+                    "end_date": None,
+                    "enabled": True,
+                    "medication_ids": [],
+                    "created_at": now,
+                    "updated_at": now,
+                }
+            },
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+        document["_id"] = str(document["_id"])
+        return MedicationReminder(**document)
 
     @staticmethod
     async def get_reminder_by_id(reminder_id: str) -> Optional[MedicationReminder]:

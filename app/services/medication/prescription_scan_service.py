@@ -68,15 +68,23 @@ class _DraftRepository(Protocol):
         self, draft_id: str, user_id: str, medication_ids: list[str]
     ) -> tuple[bool, list[str]]: ...
 
+    async def release_commit(
+        self, draft_id: str, user_id: str, medication_ids: list[str]
+    ) -> bool: ...
+
 
 class _MedicationRepository(Protocol):
     async def create_many(self, medications: list[Medication]) -> list[Medication]: ...
 
 
 class _ReminderRepository(Protocol):
-    async def list_reminders_by_user(self, user_id: str) -> list[MedicationReminder]: ...
-
-    async def create_reminder(self, reminder: MedicationReminder) -> MedicationReminder: ...
+    async def find_or_create_reminder(
+        self,
+        user_id: str,
+        slot_type: str,
+        creator_user_id: str,
+        scheduled_time: str,
+    ) -> MedicationReminder: ...
 
     async def link_medications_to_reminder(
         self, reminder_id: str, medication_ids: list[str]
@@ -218,13 +226,23 @@ class PrescriptionScanService:
                 prn_medication_ids=self._prn_ids(resolved, final_medication_ids),
             )
 
-        medications = [
-            self._build_medication(item, medication_id, target_user_id, user_id)
-            for (item, _slots), medication_id in zip(resolved, medication_ids)
-        ]
-        await self._medication_repository.create_many(medications)
+        # 取得提交權與實際寫入之間沒有原子性；建立藥品或連結提醒若因暫時性
+        # 資料庫錯誤而拋出，草稿會停在「已提交」但底下的藥品其實沒有寫入，
+        # 之後每次重試都會被 mark_committed 擋下、拿到一組從未真正建立的
+        # id 當成功回應——處方就這樣憑空消失，沒有任何補救路徑。因此失敗
+        # 時把提交權還給草稿，讓例外照樣往外拋（呼叫端知道這次沒有成功），
+        # 下一次重試才能真的重新取得提交權、重新寫入。
+        try:
+            medications = [
+                self._build_medication(item, medication_id, target_user_id, user_id)
+                for (item, _slots), medication_id in zip(resolved, medication_ids)
+            ]
+            await self._medication_repository.create_many(medications)
 
-        await self._link_reminders(resolved, medication_ids, target_user_id, user_id)
+            await self._link_reminders(resolved, medication_ids, target_user_id, user_id)
+        except Exception:
+            await self._draft_repository.release_commit(draft_id, user_id, medication_ids)
+            raise
 
         return PrescriptionCommitResult(
             medication_ids=medication_ids,
@@ -255,9 +273,22 @@ class PrescriptionScanService:
         resolved: list[tuple[CommitDrugItem, list[MedicationSlotType]]],
         medication_ids: list[str],
     ) -> list[str]:
-        # 冪等回放時 final_medication_ids 理論上與這次的 payload 一一對應
-        # （重送的就是同一份請求）；長度對不上代表拿到的是别次提交的結果，
-        # 這時沒有可靠的方式從位置猜出哪些是 PRN，寧可回空也不要亂猜。
+        """從這次的 payload 推算哪些建立出來的藥品屬於 PRN。
+
+        正常提交時 resolved 與 medication_ids 一定等長、順序一一對應——
+        兩者是同一個 zip 循環的兩端，這裡永遠會走 if 分支。
+
+        冪等回放（mark_committed 回報 acquired=False）時，medication_ids
+        換成了「原本那次提交」留下的 id，如果重送的是同一份請求，長度自然
+        還是對得上；長度對不上，代表這次的 payload 跟真正建立那批藥時的
+        payload 形狀不同（例如兩個分頁對同一份草稿送出了不同的勾選結果，
+        其中一個順利建立、另一個才在這裡讀到贏家的結果）。這時已經沒有
+        任何依據能從位置猜出贏家那批 id 裡哪些是 PRN——這個回放分支只是
+        把既有結果如實回報，並不會再去建立或連結任何提醒，medication_ids
+        本身（呼叫端真正需要拿去做事的那個欄位）不受影響，錯的只會是
+        prn_medication_ids 這個純資訊性欄位；猜錯了會讓呼叫端誤以為某顆
+        藥有／沒有對應提醒，比誠實回報「不知道」更容易誤導，所以刻意回空。
+        """
         if len(medication_ids) != len(resolved):
             return []
         return [
@@ -295,31 +326,26 @@ class PrescriptionScanService:
         target_user_id: str,
         creator_user_id: str,
     ) -> None:
-        """把非 PRN 的藥關聯到對應時段的提醒，沿用既有的建立路徑：
-        同一個 (使用者, 時段) 已有規則就只做關聯，沒有才新建一筆——兩筆規則
-        對應同一個時段會讓長輩收到兩則推播。"""
-        existing_by_slot: dict[str, MedicationReminder] = {
-            reminder.slot_type: reminder
-            for reminder in await self._reminder_repository.list_reminders_by_user(
-                target_user_id
-            )
-        }
+        """把非 PRN 的藥關聯到對應時段的提醒。
 
+        取得（或建立）提醒規則本身走 find_or_create_reminder 的原子 upsert，
+        不是「先查一次現有規則、缺席才建立」——先查後建的模式在兩個並行的
+        提交競爭同一個 (使用者, 時段) 時，會讓兩邊都在查詢當下判斷缺席而
+        各自建立一筆，使用者因此收到兩則同一時段的推播。這個競態不是
+        mark_committed 的 CAS 能擋下的：那個 CAS 只保護「同一份草稿被重複
+        提交」，不同的兩份草稿（例如兩位家屬各自掃描同一位長輩、或同一人
+        連續掃了兩張藥袋）本來就都會走到這裡，各自合法地想要同一個時段。
+        """
         for (item, slots), medication_id in zip(resolved, medication_ids):
             if item.frequency_code == "PRN":
                 continue
             for slot in slots:
-                reminder = existing_by_slot.get(slot)
-                if reminder is None:
-                    reminder = await self._reminder_repository.create_reminder(
-                        MedicationReminder(
-                            creator_user_id=creator_user_id,
-                            user_id=target_user_id,
-                            slot_type=slot,
-                            scheduled_time=DEFAULT_SLOT_TIMES.get(slot, "08:00"),
-                        )
-                    )
-                    existing_by_slot[slot] = reminder
+                reminder = await self._reminder_repository.find_or_create_reminder(
+                    user_id=target_user_id,
+                    slot_type=slot,
+                    creator_user_id=creator_user_id,
+                    scheduled_time=DEFAULT_SLOT_TIMES.get(slot, "08:00"),
+                )
                 await self._reminder_repository.link_medications_to_reminder(
                     reminder.id, [medication_id]
                 )

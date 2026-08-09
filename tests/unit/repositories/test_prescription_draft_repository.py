@@ -156,3 +156,43 @@ async def test_mark_committed_returns_empty_when_draft_is_gone():
 
     assert acquired is False
     assert medication_ids == []
+
+
+@pytest.mark.asyncio
+async def test_release_commit_matches_on_the_ids_it_set():
+    """
+    只釋放「自己取得的那個提交權」：條件比對 committed_medication_ids 是不是
+    呼叫端方才寫入的那組 id，而不是無條件把 committed_at 設回 None。
+    """
+    collection = _collection()
+    collection.update_one = AsyncMock(return_value=MagicMock(modified_count=1))
+
+    released = await PrescriptionDraftRepository.release_commit(
+        "D1", "U_FAMILY", ["M1", "M2"], collection=collection
+    )
+
+    assert released is True
+    (query, update), _ = collection.update_one.call_args
+    assert query == {
+        "draft_id": "D1",
+        "creator_user_id": "U_FAMILY",
+        "committed_medication_ids": ["M1", "M2"],
+    }
+    assert update["$set"]["committed_at"] is None
+    assert update["$set"]["committed_medication_ids"] == []
+
+
+@pytest.mark.asyncio
+async def test_release_commit_returns_false_when_ids_no_longer_match():
+    """
+    委託之間發生了別的事（理論上不該發生，但條件式更新表達的正是這個意圖）——
+    committed_medication_ids 已經不是自己寫入的那組時不釋放。
+    """
+    collection = _collection()
+    collection.update_one = AsyncMock(return_value=MagicMock(modified_count=0))
+
+    released = await PrescriptionDraftRepository.release_commit(
+        "D1", "U_FAMILY", ["M1", "M2"], collection=collection
+    )
+
+    assert released is False

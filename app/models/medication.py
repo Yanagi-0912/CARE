@@ -182,3 +182,13 @@ class MedicationReminderResponse(BaseModel):
 
 class MedicationLogResponse(BaseModel):
     log: MedicationLog
+
+
+class MedicationReminderWithMedications(MedicationReminder):
+    """GET /reminders 的回應形狀：在提醒規則本體之外附上已解析好的藥品清單。
+
+    `medication_ids` 只是關聯 id，LIFF 要顯示藥名（尤其是藥袋辨識建立的藥）
+    不能只靠這個欄位；把解析放在這裡而不是要求前端逐一查詢每個 id，
+    省掉 N 次額外的往返。"""
+
+    medications: List[Medication] = Field(default_factory=list)

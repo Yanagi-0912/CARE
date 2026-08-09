@@ -2,6 +2,8 @@
 fastapi==0.129.0
 uvicorn==0.41.0
 starlette==0.52.1
+# 藥袋掃描端點以 multipart 上傳影像，FastAPI 的 UploadFile／File 依賴此套件解析表單
+python-multipart==0.0.32
 
 # LINE Bot SDK
 line-bot-sdk==3.22.0

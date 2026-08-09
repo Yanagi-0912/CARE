@@ -163,6 +163,17 @@ class PrescriptionScanService:
         )
         return await self._draft_repository.create(draft)
 
+    async def get_draft(self, draft_id: str, user_id: str) -> PrescriptionDraft:
+        """讀回先前掃描產生的草稿，供核對畫面重新載入時使用。
+
+        找不到與「找到但不是這位使用者的」統一回 DraftNotFoundError——
+        由路由層一律轉成 404，不能讓這支端點變成探測他人草稿是否存在的管道。
+        """
+        draft = await self._draft_repository.find_by_id_for_user(draft_id, user_id)
+        if draft is None:
+            raise DraftNotFoundError(draft_id)
+        return draft
+
     async def _suggest_user_id(
         self, patient_name: Optional[str], user_id: str
     ) -> Optional[str]:

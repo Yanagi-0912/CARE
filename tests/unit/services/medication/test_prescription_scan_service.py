@@ -312,9 +312,6 @@ async def test_scan_sets_expiry_from_ttl():
     assert draft.expires_at < before + timedelta(minutes=61)
 
 
-# --- commit --------------------------------------------------------------
-
-
 def _stored_draft(*drugs: RecognizedDrug, expires_in_minutes=60) -> PrescriptionDraft:
     return PrescriptionDraft(
         draft_id="D1",
@@ -328,6 +325,43 @@ def _stored_draft(*drugs: RecognizedDrug, expires_in_minutes=60) -> Prescription
 
 def _request(*items: CommitDrugItem, user_id="U_PATIENT"):
     return CommitPrescriptionDraftRequest(user_id=user_id, drugs=list(items))
+
+
+# --- get_draft -------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_draft_returns_the_stored_draft():
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥", frequency_code="QD"))
+    service = _service(drafts=drafts)
+
+    draft = await service.get_draft("D1", "U_FAMILY")
+
+    assert draft.draft_id == "D1"
+
+
+@pytest.mark.asyncio
+async def test_get_draft_raises_not_found_for_a_missing_draft():
+    service = _service()
+
+    with pytest.raises(DraftNotFoundError):
+        await service.get_draft("D_MISSING", "U_FAMILY")
+
+
+@pytest.mark.asyncio
+async def test_get_draft_raises_not_found_for_another_users_draft():
+    """他人的 draft_id：找不到與不屬於自己統一回同一種例外，不能讓呼叫端
+    藉由回應差異探測出這個 draft_id 是否存在。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥", frequency_code="QD"))
+    service = _service(drafts=drafts)
+
+    with pytest.raises(DraftNotFoundError):
+        await service.get_draft("D1", "U_STRANGER")
+
+
+# --- commit --------------------------------------------------------------
 
 
 @pytest.mark.asyncio

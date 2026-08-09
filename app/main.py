@@ -20,6 +20,7 @@ from app.dependencies import (
 from app.repositories.consultation_repository import ConsultationRepository
 from app.repositories.knowledge_report_repository import KnowledgeReportRepository
 from app.repositories.medication_repository import MedicationLogRepository
+from app.repositories.prescription_draft_repository import PrescriptionDraftRepository
 from app.services.consultation.scheduler import (
     start_consultation_daily_summary_scheduler,
 )
@@ -43,6 +44,9 @@ async def lifespan(app: FastAPI):
     # 用藥 log 的 (reminder_id, scheduled_at) 唯一索引：多實例並存時，
     # 它是「同一個時段只有一份 log」的唯一保證，推播權搶佔才有意義。
     await MedicationLogRepository.ensure_indexes()
+    # 藥袋辨識草稿的 TTL 索引：草稿以 PRESCRIPTION_DRAFT_TTL_MINUTES 為存活
+    # 時間，交由資料庫自動清除，應用端不需要另外排程刪除。
+    await PrescriptionDraftRepository.ensure_indexes()
     await ensure_user_docs_indexes_on_startup()
 
     # 預載院所名稱索引，供判斷使用者說的「診所／醫院／藥局」是專名還是泛稱。

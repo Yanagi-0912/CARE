@@ -59,6 +59,27 @@ def test_get_reminders_router(override_current_user):
         assert data[0]["slot_type"] == "evening"
 
 
+def test_get_created_reminders_router(override_current_user):
+    """/reminders/created 查的是「誰設定的」，帶入的是登入者本人的 id。"""
+    fake_reminder = MedicationReminder(
+        creator_user_id="U_TEST_USER",
+        user_id="U_FAMILY_MEMBER",
+        slot_type="noon",
+        scheduled_time="12:00",
+    )
+    with patch(
+        "app.services.medication.medication_service.MedicationService.get_creator_reminders",
+        new_callable=AsyncMock,
+        return_value=[fake_reminder],
+    ) as mock_service:
+        response = client.get("/api/medications/reminders/created")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["user_id"] == "U_FAMILY_MEMBER"
+        mock_service.assert_awaited_once_with(creator_user_id="U_TEST_USER")
+
+
 def test_confirm_medication_router(override_current_user):
     fake_log = MedicationLog(
         reminder_id="R123",

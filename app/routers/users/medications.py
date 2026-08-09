@@ -47,6 +47,24 @@ async def get_reminders(
 
 
 
+@router.get(
+    "/reminders/created",
+    response_model=List[MedicationReminder],
+    summary="查詢自己開立的用藥提醒",
+    description=(
+        "取得由本人開立的所有用藥提醒，含為自己與為家庭成員設定的。"
+        "與 GET /reminders 的差別：那支查的是「誰要吃藥」，這支查的是「誰設定的」。"
+    ),
+)
+async def get_created_reminders(
+    current_user: CurrentUser = Depends(get_current_user),
+    service: MedicationService = Depends(get_medication_service),
+):
+    return await service.get_creator_reminders(
+        creator_user_id=current_user.line_user_id
+    )
+
+
 @router.put(
     "/reminders/{reminder_id}",
     response_model=MedicationReminder,

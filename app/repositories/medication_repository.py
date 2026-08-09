@@ -98,8 +98,13 @@ class MedicationReminderRepository:
         return MedicationReminder(**document)
 
     @staticmethod
-    async def get_reminder_by_id(reminder_id: str) -> Optional[MedicationReminder]:
-        col = MongoDBManager.get_medication_reminders_collection()
+    async def get_reminder_by_id(
+        reminder_id: str, collection: Optional[Any] = None
+    ) -> Optional[MedicationReminder]:
+        # collection 可注入：推播組裝文案時（見 MedicationScheduler._resolve_medication_names）
+        # 需要在不碰真實資料庫的情況下單元測試藥品名稱解析，不能靠 monkeypatch 整個
+        # MongoDBManager 存取層。
+        col = collection if collection is not None else MongoDBManager.get_medication_reminders_collection()
         doc = await col.find_one({"_id": reminder_id})
         if not doc:
             return None

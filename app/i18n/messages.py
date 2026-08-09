@@ -1032,6 +1032,26 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "…และอีก {count} รายการ",
         "ja": "…ほか {count} 件",
     },
+    # --- Flex：服藥提醒／二次催促的藥品清單區塊 ---
+    # 只出現在給用藥者的提醒卡片上；適應症等其他欄位一律不進入這裡，見 medication_flex.py。
+    "flex.med.medication_list_heading": {
+        "zh-TW": "本次應服藥品",
+        "en": "Medications for this dose",
+        "id": "Obat untuk dosis ini",
+        "vi": "Thuốc cho lần uống này",
+        "th": "ยาสำหรับมื้อนี้",
+        "ja": "今回服用する薬",
+    },
+    # 與 flex.med.missed_summary_more 同一種收斂形狀：超過顯示上限的品項不逐一列出，
+    # 收斂成一行計數，避免藥品數量過多時訊息過長。
+    "flex.med.medication_list_more": {
+        "zh-TW": "…另有 {count} 種藥品",
+        "en": "…and {count} more medication(s)",
+        "id": "…dan {count} obat lainnya",
+        "vi": "…và {count} loại thuốc khác",
+        "th": "…และอีก {count} รายการยา",
+        "ja": "…ほか {count} 件の薬",
+    },
 }
 
 

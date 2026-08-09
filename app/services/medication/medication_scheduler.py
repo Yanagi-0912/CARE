@@ -3,7 +3,7 @@ import logging
 from contextlib import suppress
 from datetime import datetime, timedelta
 from functools import partial
-from typing import Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 from app.core.user_font_size import (
     DEFAULT_USER_FONT_SIZE,
@@ -19,6 +19,7 @@ from app.models.medication import (
 from app.repositories.medication_repository import (
     MedicationLogRepository,
     MedicationReminderRepository,
+    MedicationRepository,
 )
 from app.services.line_messaging.flex.medication_flex import (
     build_caregiver_alert_flex,
@@ -120,13 +121,66 @@ class MedicationScheduler:
             with suppress(Exception):
                 await release(log_id)
 
+    async def _resolve_medication_names(
+        self,
+        reminder_id: str,
+        scheduled_at: datetime,
+        *,
+        reminder_collection: Optional[Any] = None,
+        medication_collection: Optional[Any] = None,
+    ) -> list[str]:
+        """組裝推播文案時才解析藥名，且僅在這裡解析。
+
+        刻意不放進 `process_ticks` 的展開／搶佔路徑：`MedicationLog` 本身不帶
+        `medication_ids`，這裡另外用 `reminder_id` 查一次規則、再用
+        `find_active_by_ids` 濾出當下仍有效的藥品——展開判定完全不會經過這段
+        邏輯，即使查詢失敗也只影響這一則推播的藥品清單，不影響它是否送出。
+
+        `reminder_collection`／`medication_collection` 僅供測試注入假的
+        collection；正式路徑一律傳 None，落回 MongoDBManager 的真實連線。
+        """
+        try:
+            reminder = await MedicationReminderRepository.get_reminder_by_id(
+                reminder_id, collection=reminder_collection
+            )
+        except Exception:
+            logger.exception(
+                "[MedicationScheduler] Failed to load reminder %s for medication list",
+                reminder_id,
+            )
+            return []
+
+        if not reminder or not reminder.medication_ids:
+            return []
+
+        # 「當下有效」用推播當下、而非規則建立當下的台北日期判斷，貼近使用者
+        # 實際看到這則推播時的療程狀態。
+        date_str = ensure_aware_utc(scheduled_at).astimezone(TAIPEI_TZ).strftime(
+            "%Y-%m-%d"
+        )
+        try:
+            medications = await MedicationRepository.find_active_by_ids(
+                reminder.medication_ids, date_str, collection=medication_collection
+            )
+        except Exception:
+            logger.exception(
+                "[MedicationScheduler] Failed to resolve medications for reminder %s",
+                reminder_id,
+            )
+            return []
+        return [medication.name for medication in medications]
+
     async def _send_patient_reminder(self, log: MedicationLog) -> bool:
         language, font_size = await self._resolve_display_prefs(log.user_id)
+        medication_names = await self._resolve_medication_names(
+            log.reminder_id, log.scheduled_at
+        )
         flex_msg = build_patient_medication_flex(
             log_id=log.id,
             slot_type=log.slot_type,
             scheduled_time=to_taipei_hm(log.scheduled_at, default="08:00"),
             disabled=False,
+            medication_names=medication_names,
             language=language,
             font_size=font_size,
         )
@@ -134,10 +188,14 @@ class MedicationScheduler:
 
     async def _send_urgent_reminder(self, log: MedicationLog) -> bool:
         language, font_size = await self._resolve_display_prefs(log.user_id)
+        medication_names = await self._resolve_medication_names(
+            log.reminder_id, log.scheduled_at
+        )
         urgent_flex = build_patient_urgent_reminder_flex(
             log_id=log.id,
             slot_type=log.slot_type,
             scheduled_time=to_taipei_hm(log.scheduled_at, default="08:00"),
+            medication_names=medication_names,
             language=language,
             font_size=font_size,
         )

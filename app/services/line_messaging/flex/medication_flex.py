@@ -69,6 +69,68 @@ def _slot_block(
     }
 
 
+# 藥品清單顯示上限。一次藥袋掃描可能辨識出十幾種藥，Flex 有大小上限，使用者在
+# 推播通知列也不會逐行細讀。超過的部分收斂成一行計數，形狀比照
+# MISSED_SUMMARY_MAX_ROWS 的做法，故意不另創一套截斷邏輯。
+MEDICATION_LIST_MAX_ITEMS = 5
+
+
+def _medication_list_rows(names: list[str], language: str | None) -> list[str]:
+    """把藥品名稱收斂成顯示用的文字列；超過上限時最後一行收斂為單行計數。"""
+    shown = names[:MEDICATION_LIST_MAX_ITEMS]
+    rows = list(shown)
+    remaining = len(names) - len(shown)
+    if remaining > 0:
+        rows.append(
+            t("flex.med.medication_list_more", language).format(count=remaining)
+        )
+    return rows
+
+
+def _medication_list_block(
+    medication_names: Optional[list[str]], ft: theme.FlexTheme, language: str | None
+) -> Optional[dict[str, Any]]:
+    """服藥提醒／二次催促文案的藥品清單區塊。
+
+    `medication_names` 為 None 或空清單時回傳 None，呼叫端據此完全不插入這個
+    區塊——既有規則的 medication_ids 皆為空陣列，版面必須與本變更前逐一致，
+    不能出現空白的藥品區塊或只有標題沒有內容的殘影。
+    只放藥名：適應症等其他欄位由呼叫端在解析階段就已經濾除，這裡不重複把關。
+    """
+    if not medication_names:
+        return None
+    rows = _medication_list_rows(medication_names, language)
+    return {
+        "type": "box",
+        "layout": "vertical",
+        "backgroundColor": theme.SURFACE_ALT,
+        "cornerRadius": "md",
+        "paddingAll": "lg",
+        "spacing": "xs",
+        "margin": "md",
+        "contents": [
+            {
+                "type": "text",
+                "text": t("flex.med.medication_list_heading", language),
+                "weight": "bold",
+                "size": ft.body,
+                "color": theme.TEXT,
+                "wrap": True,
+            },
+            *[
+                {
+                    "type": "text",
+                    "text": row,
+                    "size": ft.body,
+                    "color": theme.TEXT_MUTED,
+                    "wrap": True,
+                }
+                for row in rows
+            ],
+        ],
+    }
+
+
 def _body(contents: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "type": "box",
@@ -106,6 +168,7 @@ def build_patient_medication_flex(
     scheduled_time: str,
     disabled: bool = False,
     taken_at_str: Optional[str] = None,
+    medication_names: Optional[list[str]] = None,
     language: str | None = None,
     font_size: str | None = None,
 ) -> FlexMessage:
@@ -113,6 +176,9 @@ def build_patient_medication_flex(
     建立傳送給用藥者的服藥提醒 Flex Message。
     - disabled=False: 顯示【我已用藥】可點擊按鈕
     - disabled=True: 顯示已完成的停用狀態 (點擊後動態替換)
+
+    `medication_names` 僅在 disabled=False（T+0 首刷提醒）時呈現：規則沒有關聯
+    藥品、或關聯的藥品皆已失效時傳入 None／空清單，版面與本參數新增前完全相同。
     """
     ft = theme.resolve_theme(font_size)
     slot_name = get_slot_display_name(slot_type, language)
@@ -120,17 +186,17 @@ def build_patient_medication_flex(
     if not disabled:
         alt_text = t("flex.med.alt.reminder", language).format(slot=slot_name)
         taken_label = t("flex.med.button.taken", language)
+        body_contents = [_slot_block(slot_name, scheduled_time, ft, language)]
+        med_block = _medication_list_block(medication_names, ft, language)
+        if med_block is not None:
+            body_contents.append(med_block)
+        body_contents.append(
+            _paragraph(t("flex.med.instruction", language), ft, margin="md")
+        )
         bubble_dict = {
             "type": "bubble",
             "header": _header(t("flex.med.header.reminder", language), ft),
-            "body": _body(
-                [
-                    _slot_block(slot_name, scheduled_time, ft, language),
-                    _paragraph(
-                        t("flex.med.instruction", language), ft, margin="md"
-                    ),
-                ]
-            ),
+            "body": _body(body_contents),
             "footer": _footer(
                 ft.primary_button(
                     taken_label,
@@ -191,25 +257,33 @@ def build_patient_urgent_reminder_flex(
     log_id: str,
     slot_type: str,
     scheduled_time: str,
+    medication_names: Optional[list[str]] = None,
     language: str | None = None,
     font_size: str | None = None,
 ) -> FlexMessage:
-    """T+20min 傳送給用藥者的二次催促 Flex Message"""
+    """T+20min 傳送給用藥者的二次催促 Flex Message
+
+    `medication_names` 為 None／空清單時版面與本參數新增前完全相同，見
+    `_medication_list_block`。
+    """
     ft = theme.resolve_theme(font_size)
     slot_name = get_slot_display_name(slot_type, language)
     taken_label = t("flex.med.button.taken", language)
+
+    body_contents = [_slot_block(slot_name, scheduled_time, ft, language)]
+    med_block = _medication_list_block(medication_names, ft, language)
+    if med_block is not None:
+        body_contents.append(med_block)
+    body_contents.append(
+        _paragraph(t("flex.med.urgent_body", language), ft, margin="md")
+    )
 
     bubble_dict = {
         "type": "bubble",
         "header": _header(
             t("flex.med.header.urgent", language), ft, background=theme.STATUS_CLOSED
         ),
-        "body": _body(
-            [
-                _slot_block(slot_name, scheduled_time, ft, language),
-                _paragraph(t("flex.med.urgent_body", language), ft, margin="md"),
-            ]
-        ),
+        "body": _body(body_contents),
         "footer": _footer(
             ft.primary_button(
                 taken_label,

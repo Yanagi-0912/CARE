@@ -607,3 +607,143 @@ async def test_push_exception_releases_claim(scheduler, mock_replier):
 
         mock_release.assert_awaited_once_with("LOG_1")
 
+
+# ── 推播文案的藥品區塊：只在組裝文案時解析，展開路徑不讀 medication_ids ──
+#
+# 這裡刻意不透過 process_ticks 走完整流程來驗證，而是直接呼叫
+# `_resolve_medication_names`：它是新增邏輯唯一讀 medication_ids 的地方，
+# 且用 collection= 注入假的 collection，不需要 monkeypatch 掉
+# MedicationReminderRepository／MedicationRepository 這兩個 static class。
+
+
+def _fake_collection(*, find_one_return=None, find_return=None):
+    """建立一個假的 Motor collection：find_one 回傳單一文件，find(...).to_list(...) 回傳清單。"""
+    col = MagicMock()
+    col.find_one = AsyncMock(return_value=find_one_return)
+    cursor = MagicMock()
+    cursor.to_list = AsyncMock(return_value=find_return or [])
+    col.find = MagicMock(return_value=cursor)
+    return col
+
+
+@pytest.mark.asyncio
+async def test_resolve_medication_names_empty_for_legacy_reminder_without_field(scheduler):
+    """
+    本變更前建立的規則在資料庫中沒有 medication_ids 欄位；讀回後視為空陣列，
+    解析結果應為空清單，且完全不必查詢藥品表。
+    """
+    reminder_doc = {
+        "_id": "REM_1",
+        "creator_user_id": "U_CARE",
+        "user_id": "U_PATIENT",
+        "slot_type": "morning",
+        "scheduled_time": "08:00",
+        "start_date": "2026-07-29",
+        "enabled": True,
+        # 沒有 medication_ids 鍵，模擬既有規則
+    }
+    reminder_col = _fake_collection(find_one_return=reminder_doc)
+    medication_col = _fake_collection(find_return=[])
+
+    names = await scheduler._resolve_medication_names(
+        "REM_1",
+        datetime(2026, 7, 29, 0, 0, tzinfo=timezone.utc),
+        reminder_collection=reminder_col,
+        medication_collection=medication_col,
+    )
+
+    assert names == []
+    medication_col.find.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_resolve_medication_names_lists_active_drugs(scheduler):
+    reminder_doc = {
+        "_id": "REM_1",
+        "creator_user_id": "U_CARE",
+        "user_id": "U_PATIENT",
+        "slot_type": "morning",
+        "scheduled_time": "08:00",
+        "medication_ids": ["M1", "M2"],
+    }
+    medication_docs = [
+        {"_id": "M1", "user_id": "U_PATIENT", "created_by_user_id": "U_CARE", "name": "脈優"},
+        {"_id": "M2", "user_id": "U_PATIENT", "created_by_user_id": "U_CARE", "name": "利尿劑"},
+    ]
+    reminder_col = _fake_collection(find_one_return=reminder_doc)
+    medication_col = _fake_collection(find_return=medication_docs)
+
+    names = await scheduler._resolve_medication_names(
+        "REM_1",
+        datetime(2026, 7, 29, 0, 0, tzinfo=timezone.utc),
+        reminder_collection=reminder_col,
+        medication_collection=medication_col,
+    )
+
+    assert names == ["脈優", "利尿劑"]
+    (query,), _ = medication_col.find.call_args
+    # 委派給 find_active_by_ids 既有的有效性判定（enabled + 療程日期區間），
+    # 不在 scheduler 這一層重做一套過濾邏輯。
+    assert query["_id"] == {"$in": ["M1", "M2"]}
+    assert query["enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_resolve_medication_names_excludes_drug_filtered_out_by_repository(scheduler):
+    """
+    藥品失效（停用或療程已結束）時，find_active_by_ids 就不會把它撈出來；
+    這裡驗證 scheduler 老實把查詢結果轉成名稱清單，失效藥品不會出現。
+    """
+    reminder_doc = {
+        "_id": "REM_1",
+        "creator_user_id": "U_CARE",
+        "user_id": "U_PATIENT",
+        "slot_type": "morning",
+        "scheduled_time": "08:00",
+        "medication_ids": ["M1", "M2"],
+    }
+    # M2 已停用／過期，模擬 find_active_by_ids 在 DB 端就把它濾掉
+    medication_docs = [
+        {"_id": "M1", "user_id": "U_PATIENT", "created_by_user_id": "U_CARE", "name": "脈優"},
+    ]
+    reminder_col = _fake_collection(find_one_return=reminder_doc)
+    medication_col = _fake_collection(find_return=medication_docs)
+
+    names = await scheduler._resolve_medication_names(
+        "REM_1",
+        datetime(2026, 7, 29, 0, 0, tzinfo=timezone.utc),
+        reminder_collection=reminder_col,
+        medication_collection=medication_col,
+    )
+
+    assert names == ["脈優"]
+
+
+@pytest.mark.asyncio
+async def test_resolve_medication_names_missing_reminder_returns_empty(scheduler):
+    reminder_col = _fake_collection(find_one_return=None)
+    medication_col = _fake_collection(find_return=[])
+
+    names = await scheduler._resolve_medication_names(
+        "REM_MISSING",
+        datetime(2026, 7, 29, 0, 0, tzinfo=timezone.utc),
+        reminder_collection=reminder_col,
+        medication_collection=medication_col,
+    )
+
+    assert names == []
+    medication_col.find.assert_not_called()
+
+
+def test_process_ticks_expansion_path_does_not_reference_medication_ids():
+    """
+    展開與搶佔路徑不得讀 medication_ids —— 這是排程器既有併發保證（原子搶佔、
+    唯一索引、停機補償）能夠成立的前提，見 openspec 決策。藥名解析已刻意搬到
+    `_resolve_medication_names`，只在組裝推播文案時才呼叫；這裡用原始碼掃描
+    鎖住 process_ticks 本體不會再讀這個欄位。
+    """
+    import inspect
+
+    source = inspect.getsource(MedicationScheduler.process_ticks)
+    assert "medication_ids" not in source
+

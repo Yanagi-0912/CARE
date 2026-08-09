@@ -189,11 +189,14 @@ async def scan_prescription(
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(status_code=415, detail="僅接受影像檔案")
 
-    # 影像只讀進記憶體這個區域變數；離開這支函式（不論成功或失敗）之後，
-    # 沒有任何地方持有它的參照，也沒有寫入 collection 或檔案系統。
+    # 真正擋住過大請求體的是 app/core/upload_limits.py 掛的 ASGI middleware：
+    # FastAPI 的 UploadFile=File(...) 繫結會在這支函式執行之前就經由
+    # request.form() 把整個 multipart body 讀完，路由層這時候不管怎麼檢查
+    # 都已經太晚，攔不住任何東西（實測驗證過）。這裡的檢查只是最後一道
+    # 防線：萬一走到這裡時 image_bytes 仍然超過上限，還是要在呼叫
+    # service.scan() 之前擋下來，不讓一張過大的影像進到辨識服務。
     image_bytes = await file.read()
     if len(image_bytes) > settings.PRESCRIPTION_SCAN_MAX_IMAGE_BYTES:
-        # 超過上限時 SHALL NOT 呼叫辨識服務——在呼叫 service.scan() 之前就回應。
         raise HTTPException(status_code=413, detail="影像檔案過大，請重新拍攝或壓縮後再試")
 
     try:

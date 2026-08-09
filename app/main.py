@@ -9,6 +9,7 @@ from app.routers.users.consultations import router as consultations_router
 from app.core.cors import add_cors_middleware
 from app.core.config import settings
 from app.core.logging_setup import configure_logging
+from app.core.upload_limits import MaxUploadSizeMiddleware
 from app.dependencies import (
     get_consultation_service,
     get_chat_history_repository,
@@ -88,6 +89,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+# 藥袋影像上傳的大小限制必須在 ASGI 層攔截，路由層檢查太晚——見
+# app/core/upload_limits.py 開頭的說明。放在 add_cors_middleware 之前，
+# 讓 CORS 之後被加入而成為最外層，這樣即使這裡直接短路回應（不經過下游），
+# 回應仍會被 CORS 包住、帶有正確的 CORS 標頭。
+app.add_middleware(
+    MaxUploadSizeMiddleware,
+    path="/api/medications/prescription-scan",
+    method="POST",
+    max_bytes=settings.PRESCRIPTION_SCAN_MAX_IMAGE_BYTES,
+)
 
 # Centralized CORS config
 add_cors_middleware(app)

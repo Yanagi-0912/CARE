@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 from fastapi import HTTPException
 
 from app.models.family_tree import FamilyTree
@@ -79,17 +79,30 @@ class MedicationService:
         return created_reminders
 
     async def get_user_reminders(
-        self, user_id: str, requester_user_id: Optional[str] = None
+        self,
+        user_id: str,
+        requester_user_id: Optional[str] = None,
+        collection: Optional[Any] = None,
     ) -> List[MedicationReminder]:
         """取得特定使用者的所有用藥提醒"""
         if requester_user_id and requester_user_id != user_id:
             tree = await FamilyTreeRepository.get_by_user_id(requester_user_id)
             if not tree or not any(m.user_id == user_id for m in tree.family_members):
                 raise HTTPException(status_code=400, detail="對象必須是您的家庭成員")
+        # 只在真的有人注入 collection 時才多帶這個關鍵字參數：既有呼叫端與既有
+        # 測試（斷言呼叫簽名是 list_reminders_by_user(user_id) 這個既定形狀）
+        # 完全不受影響，只有新加的 get_user_reminders_with_medications 會用到。
+        if collection is not None:
+            return await MedicationReminderRepository.list_reminders_by_user(
+                user_id, collection=collection
+            )
         return await MedicationReminderRepository.list_reminders_by_user(user_id)
 
     async def get_user_reminders_with_medications(
-        self, user_id: str, requester_user_id: Optional[str] = None
+        self,
+        user_id: str,
+        requester_user_id: Optional[str] = None,
+        reminder_collection: Optional[Any] = None,
     ) -> List[MedicationReminderWithMedications]:
         """取得特定使用者的用藥提醒，並把每筆規則的 medication_ids 解析成完整的藥品清單。
 
@@ -100,7 +113,9 @@ class MedicationService:
         用 find_by_ids 而非 find_active_by_ids：這是使用者自己管理藥品的畫面，
         停用或已過療程的藥仍要看得到（才能重新啟用），推播才需要過濾成當下有效。
         """
-        reminders = await self.get_user_reminders(user_id, requester_user_id)
+        reminders = await self.get_user_reminders(
+            user_id, requester_user_id, collection=reminder_collection
+        )
 
         all_medication_ids = sorted(
             {mid for reminder in reminders for mid in reminder.medication_ids}

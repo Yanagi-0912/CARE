@@ -107,8 +107,13 @@ class MedicationReminderRepository:
         return MedicationReminder(**doc)
 
     @staticmethod
-    async def list_reminders_by_user(user_id: str) -> List[MedicationReminder]:
-        col = MongoDBManager.get_medication_reminders_collection()
+    async def list_reminders_by_user(
+        user_id: str, collection: Optional[Any] = None
+    ) -> List[MedicationReminder]:
+        # collection 可注入：沿用本檔案其他新方法（find_or_create_reminder／
+        # link_medications_to_reminder）與 MedicationRepository 一貫的慣例，
+        # 測試才能直接餵假的 collection，不需要 monkeypatch 掉整個 staticmethod。
+        col = collection if collection is not None else MongoDBManager.get_medication_reminders_collection()
         cursor = col.find({"user_id": user_id})
         docs = await cursor.to_list(length=None)
         reminders = []

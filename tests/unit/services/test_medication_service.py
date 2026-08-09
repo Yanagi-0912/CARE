@@ -26,6 +26,27 @@ class FakeMedicationRepository:
         return [m for m in self._medications if m.id in medication_ids]
 
 
+class _FakeReminderCursor:
+    def __init__(self, documents: list[dict]):
+        self._documents = documents
+
+    async def to_list(self, length=None):
+        return [dict(doc) for doc in self._documents]
+
+
+class _FakeReminderCollection:
+    """`list_reminders_by_user` 現在支援 `collection=` 注入（沿用本檔案其他
+    repository 方法一貫的慣例），這裡模擬它唯一用到的 `find(...).to_list(...)`
+    介面，不需要 patch 掉整個 staticmethod。"""
+
+    def __init__(self, documents: list[dict]):
+        self._documents = documents
+
+    def find(self, query: dict):
+        matched = [d for d in self._documents if d.get("user_id") == query.get("user_id")]
+        return _FakeReminderCursor(matched)
+
+
 @pytest.fixture()
 def medication_service():
     return MedicationService()
@@ -254,19 +275,22 @@ async def test_get_user_reminders_with_medications_resolves_medication_ids():
         ]
     )
     service = MedicationService(medication_repository=fake_medications)
-    reminder = MedicationReminder(
-        creator_user_id="U_SELF",
-        user_id="U_SELF",
-        slot_type="morning",
-        scheduled_time="08:00",
-        medication_ids=["M1", "M_MISSING"],
+    fake_collection = _FakeReminderCollection(
+        [
+            {
+                "_id": "R1",
+                "creator_user_id": "U_SELF",
+                "user_id": "U_SELF",
+                "slot_type": "morning",
+                "scheduled_time": "08:00",
+                "medication_ids": ["M1", "M_MISSING"],
+            }
+        ]
     )
-    with patch(
-        "app.services.medication.medication_service.MedicationReminderRepository.list_reminders_by_user",
-        new_callable=AsyncMock,
-        return_value=[reminder],
-    ):
-        result = await service.get_user_reminders_with_medications("U_SELF")
+
+    result = await service.get_user_reminders_with_medications(
+        "U_SELF", reminder_collection=fake_collection
+    )
 
     assert len(result) == 1
     # 缺席的 id（可能是資料不一致或藥品剛好被刪）直接濾掉，不讓呼叫端拿到
@@ -279,18 +303,21 @@ async def test_get_user_reminders_with_medications_resolves_medication_ids():
 async def test_get_user_reminders_with_medications_empty_when_no_medication_ids():
     fake_medications = FakeMedicationRepository()
     service = MedicationService(medication_repository=fake_medications)
-    reminder = MedicationReminder(
-        creator_user_id="U_SELF",
-        user_id="U_SELF",
-        slot_type="evening",
-        scheduled_time="18:00",
+    fake_collection = _FakeReminderCollection(
+        [
+            {
+                "_id": "R1",
+                "creator_user_id": "U_SELF",
+                "user_id": "U_SELF",
+                "slot_type": "evening",
+                "scheduled_time": "18:00",
+            }
+        ]
     )
-    with patch(
-        "app.services.medication.medication_service.MedicationReminderRepository.list_reminders_by_user",
-        new_callable=AsyncMock,
-        return_value=[reminder],
-    ):
-        result = await service.get_user_reminders_with_medications("U_SELF")
+
+    result = await service.get_user_reminders_with_medications(
+        "U_SELF", reminder_collection=fake_collection
+    )
 
     assert result[0].medications == []
     # 沒有任何 medication_ids 時不必查資料庫——find_by_ids 對空清單本來就會

@@ -46,10 +46,6 @@ from app.services.line_messaging.reply.tts_service import TTSService
 from app.services.line_messaging.rich_menu_service import RichMenuService
 from app.services.line_messaging.token_manager import LineTokenManager
 from app.services.medical.facility_name_index import configure_facility_names
-from app.services.medical.llm_term_resolver import (
-    build_department_resolver,
-    build_facility_type_resolver,
-)
 from app.services.medical.medical_service import MedicalService, medical_service
 from app.services.line_messaging.handler.facility_detail_handler import (
     LineFacilityDetailHandler,
@@ -217,14 +213,6 @@ _consultation_repository = ConsultationRepository()
 configure_rag_tool(_rag_answer_service)
 configure_web_tool(_web_search_service)
 configure_medical_tools(medical_service)
-
-# 關鍵字表查不到時的第二層。接上之後，「大腸科」這類表裡沒有的長尾說法不會
-# 直接回「我看不懂」，而是先讓模型從資料庫實際存在的值裡挑一個；判不出來仍
-# 回原本的訊息。詳見 llm_term_resolver 模組註解。
-medical_service.configure_llm_fallbacks(
-    department_resolver=build_department_resolver(gemini_service=_gemini_service),
-    facility_type_resolver=build_facility_type_resolver(gemini_service=_gemini_service),
-)
 
 
 async def preload_facility_name_index() -> None:

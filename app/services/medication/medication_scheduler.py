@@ -38,6 +38,114 @@ logger = logging.getLogger(__name__)
 DEFAULT_MISFIRE_GRACE_MINUTES = 20
 
 
+class _TickMedicationNameCache:
+    """一個 tick 內、同一階段（T+0 或 T+20）所有待推播 log 共用的藥名查表。
+
+    背景：同一時段（例如每天 08:00）常常有多位使用者共用，若每筆 log 各自查一次
+    「規則→藥品」，一個 tick 就會是 2 x（待推播 log 數）次序列往返；改成整批查詢後
+    不論 log 有幾筆，固定只發生「查規則」與「查藥品」各一次（同一批 log 若跨到不同
+    台北日期，藥品查詢會依日期分組各發一次，但這在實務上幾乎不會發生——誤點超過
+    misfire grace 的 log 在建立當下就已被靜默為 missed，不會進到這裡）。
+
+    刻意延遲到第一次真正要組裝文案時（也就是第一筆 log 的 claim 成功之後）才發出
+    查詢：`get()` 只會被 `_send_patient_reminder`／`_send_urgent_reminder` 呼叫，而
+    它們只在 `_dispatch` 搶到推播權之後才會執行。這保證「claim 必須先於任何藥品
+    查詢」永遠成立——查詢的時機不會提前到迴圈裡第一筆 log 的 claim 之前，之後的
+    log 讀的是已經查好的結果，不會再發任何新查詢，也就不會因為查詢延遲或失敗而
+    影響到任何一筆 log 的搶佔時機。
+
+    以 `log.id` 而非 `reminder_id` 當查表的 key：同一個 reminder 理論上可能同時有
+    跨日的兩筆 pending log（例如停機補建），用 reminder_id 當 key 會讓其中一筆的
+    查詢結果覆蓋掉另一筆，用 log.id 可以完全避免這個邊界情況。
+    """
+
+    def __init__(self, logs: list["MedicationLog"]) -> None:
+        self._logs = logs
+        self._names_by_log_id: Optional[dict[str, list[str]]] = None
+
+    async def get(
+        self,
+        log: "MedicationLog",
+        *,
+        reminder_collection: Optional[Any] = None,
+        medication_collection: Optional[Any] = None,
+    ) -> list[str]:
+        """取得指定 log 的藥名清單；第一次呼叫才會真的發出查詢。
+
+        `reminder_collection`／`medication_collection` 僅供測試注入假的
+        collection；正式路徑一律傳 None，落回 MongoDBManager 的真實連線。
+        """
+        if self._names_by_log_id is None:
+            self._names_by_log_id = await self._load(
+                reminder_collection=reminder_collection,
+                medication_collection=medication_collection,
+            )
+        return self._names_by_log_id.get(log.id, [])
+
+    async def _load(
+        self,
+        *,
+        reminder_collection: Optional[Any],
+        medication_collection: Optional[Any],
+    ) -> dict[str, list[str]]:
+        reminder_ids = sorted({log.reminder_id for log in self._logs})
+        if not reminder_ids:
+            return {}
+
+        try:
+            reminders = await MedicationReminderRepository.find_by_ids(
+                reminder_ids, collection=reminder_collection
+            )
+        except Exception:
+            logger.exception(
+                "[MedicationScheduler] Failed to batch-load reminders for medication list"
+            )
+            return {}
+        reminder_by_id = {reminder.id: reminder for reminder in reminders}
+
+        medication_ids = sorted(
+            {mid for reminder in reminders for mid in reminder.medication_ids}
+        )
+        if not medication_ids:
+            return {log.id: [] for log in self._logs}
+
+        # 同一批 log 幾乎都落在同一天，但仍照每筆 log 自己的台北日期分組查詢，
+        # 不用「這次 tick 的日期」概括所有 log，避免日期跨界時算錯藥品有效性
+        # （理由同 class docstring：這種跨日情況雖然罕見，但不能因為批次化就犧牲
+        # 既有的「用推播當下、而非規則建立當下」的有效性判斷）。
+        logs_by_date: dict[str, list["MedicationLog"]] = {}
+        for log in self._logs:
+            date_str = (
+                ensure_aware_utc(log.scheduled_at).astimezone(TAIPEI_TZ).strftime("%Y-%m-%d")
+            )
+            logs_by_date.setdefault(date_str, []).append(log)
+
+        names_by_log_id: dict[str, list[str]] = {}
+        for date_str, logs_on_date in logs_by_date.items():
+            try:
+                medications = await MedicationRepository.find_active_by_ids(
+                    medication_ids, date_str, collection=medication_collection
+                )
+            except Exception:
+                logger.exception(
+                    "[MedicationScheduler] Failed to batch-load medications for medication list"
+                )
+                for log in logs_on_date:
+                    names_by_log_id[log.id] = []
+                continue
+
+            name_by_id = {medication.id: medication.name for medication in medications}
+            for log in logs_on_date:
+                reminder = reminder_by_id.get(log.reminder_id)
+                if not reminder:
+                    names_by_log_id[log.id] = []
+                    continue
+                names_by_log_id[log.id] = [
+                    name_by_id[mid] for mid in reminder.medication_ids if mid in name_by_id
+                ]
+        return names_by_log_id
+
+
 class MedicationScheduler:
     """
     雙階遞進定時排程引擎 (MedicationScheduler)
@@ -121,60 +229,11 @@ class MedicationScheduler:
             with suppress(Exception):
                 await release(log_id)
 
-    async def _resolve_medication_names(
-        self,
-        reminder_id: str,
-        scheduled_at: datetime,
-        *,
-        reminder_collection: Optional[Any] = None,
-        medication_collection: Optional[Any] = None,
-    ) -> list[str]:
-        """組裝推播文案時才解析藥名，且僅在這裡解析。
-
-        刻意不放進 `process_ticks` 的展開／搶佔路徑：`MedicationLog` 本身不帶
-        `medication_ids`，這裡另外用 `reminder_id` 查一次規則、再用
-        `find_active_by_ids` 濾出當下仍有效的藥品——展開判定完全不會經過這段
-        邏輯，即使查詢失敗也只影響這一則推播的藥品清單，不影響它是否送出。
-
-        `reminder_collection`／`medication_collection` 僅供測試注入假的
-        collection；正式路徑一律傳 None，落回 MongoDBManager 的真實連線。
-        """
-        try:
-            reminder = await MedicationReminderRepository.get_reminder_by_id(
-                reminder_id, collection=reminder_collection
-            )
-        except Exception:
-            logger.exception(
-                "[MedicationScheduler] Failed to load reminder %s for medication list",
-                reminder_id,
-            )
-            return []
-
-        if not reminder or not reminder.medication_ids:
-            return []
-
-        # 「當下有效」用推播當下、而非規則建立當下的台北日期判斷，貼近使用者
-        # 實際看到這則推播時的療程狀態。
-        date_str = ensure_aware_utc(scheduled_at).astimezone(TAIPEI_TZ).strftime(
-            "%Y-%m-%d"
-        )
-        try:
-            medications = await MedicationRepository.find_active_by_ids(
-                reminder.medication_ids, date_str, collection=medication_collection
-            )
-        except Exception:
-            logger.exception(
-                "[MedicationScheduler] Failed to resolve medications for reminder %s",
-                reminder_id,
-            )
-            return []
-        return [medication.name for medication in medications]
-
-    async def _send_patient_reminder(self, log: MedicationLog) -> bool:
+    async def _send_patient_reminder(
+        self, log: MedicationLog, medication_cache: _TickMedicationNameCache
+    ) -> bool:
         language, font_size = await self._resolve_display_prefs(log.user_id)
-        medication_names = await self._resolve_medication_names(
-            log.reminder_id, log.scheduled_at
-        )
+        medication_names = await medication_cache.get(log)
         flex_msg = build_patient_medication_flex(
             log_id=log.id,
             slot_type=log.slot_type,
@@ -186,11 +245,11 @@ class MedicationScheduler:
         )
         return await self._replier.push_flex(log.user_id, flex_msg)
 
-    async def _send_urgent_reminder(self, log: MedicationLog) -> bool:
+    async def _send_urgent_reminder(
+        self, log: MedicationLog, medication_cache: _TickMedicationNameCache
+    ) -> bool:
         language, font_size = await self._resolve_display_prefs(log.user_id)
-        medication_names = await self._resolve_medication_names(
-            log.reminder_id, log.scheduled_at
-        )
+        medication_names = await medication_cache.get(log)
         urgent_flex = build_patient_urgent_reminder_flex(
             log_id=log.id,
             slot_type=log.slot_type,
@@ -381,13 +440,17 @@ class MedicationScheduler:
         pending_initial_logs = await MedicationLogRepository.list_pending_patient_reminders(
             threshold_time=current_time
         )
+        # 這批 log 共用同一份藥名查表（見 _TickMedicationNameCache）：許多使用者共用
+        # 同一個時段（例如 08:00）時，藥名查詢不會隨 log 數量線性增加。這裡只是建立
+        # 查表物件本身（不發查詢），迴圈與 _dispatch 的搶佔／推播流程完全不變。
+        initial_medication_cache = _TickMedicationNameCache(pending_initial_logs)
         for log in pending_initial_logs:
             await self._dispatch(
                 stage="T+0min initial reminder",
                 log_id=log.id,
                 claim=MedicationLogRepository.claim_patient_reminder,
                 release=MedicationLogRepository.release_patient_reminder,
-                send=partial(self._send_patient_reminder, log),
+                send=partial(self._send_patient_reminder, log, initial_medication_cache),
             )
 
         # ── 階段 2：T+20min 第二次溫馨催促 ─────────────────────────────
@@ -398,13 +461,14 @@ class MedicationScheduler:
         pending_urgent_logs = await MedicationLogRepository.list_pending_urgent_reminders(
             threshold_time=urgent_threshold
         )
+        urgent_medication_cache = _TickMedicationNameCache(pending_urgent_logs)
         for log in pending_urgent_logs:
             await self._dispatch(
                 stage="T+20min urgent reminder",
                 log_id=log.id,
                 claim=MedicationLogRepository.claim_patient_urgent_reminder,
                 release=MedicationLogRepository.release_patient_urgent_reminder,
-                send=partial(self._send_urgent_reminder, log),
+                send=partial(self._send_urgent_reminder, log, urgent_medication_cache),
             )
 
         # ── 階段 3：T+30min 第三次家屬逾時警報 ─────────────────────────

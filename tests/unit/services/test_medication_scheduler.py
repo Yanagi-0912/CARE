@@ -4,7 +4,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.models.medication import TAIPEI_TZ, MedicationLog, MedicationReminder
-from app.services.medication.medication_scheduler import MedicationScheduler
+from app.services.medication.medication_scheduler import (
+    MedicationScheduler,
+    _TickMedicationNameCache,
+)
 
 
 @pytest.fixture()
@@ -610,46 +613,118 @@ async def test_push_exception_releases_claim(scheduler, mock_replier):
 
 # ── 推播文案的藥品區塊：只在組裝文案時解析，展開路徑不讀 medication_ids ──
 #
-# 這裡刻意不透過 process_ticks 走完整流程來驗證，而是直接呼叫
-# `_resolve_medication_names`：它是新增邏輯唯一讀 medication_ids 的地方，
-# 且用 collection= 注入假的 collection，不需要 monkeypatch 掉
-# MedicationReminderRepository／MedicationRepository 這兩個 static class。
+# 這裡刻意不透過 process_ticks 走完整流程來驗證，而是直接測試
+# `_TickMedicationNameCache`：它是新增邏輯唯一讀 medication_ids、也是唯一發出
+# 「查規則」「查藥品」這兩種查詢的地方，且用 collection= 注入假的 collection，
+# 不需要 monkeypatch 掉 MedicationReminderRepository／MedicationRepository
+# 這兩個 static class。
 
 
-def _fake_collection(*, find_one_return=None, find_return=None):
-    """建立一個假的 Motor collection：find_one 回傳單一文件，find(...).to_list(...) 回傳清單。"""
+def _find_collection(docs=None, *, raise_error: Exception | None = None):
+    """
+    建立一個假的 Motor collection，模擬 `find(...).to_list(...)` 的行為——
+    這是 `MedicationReminderRepository.find_by_ids` 與
+    `MedicationRepository.find_active_by_ids` 共用的查詢形狀。
+    """
     col = MagicMock()
-    col.find_one = AsyncMock(return_value=find_one_return)
     cursor = MagicMock()
-    cursor.to_list = AsyncMock(return_value=find_return or [])
+    if raise_error is not None:
+        cursor.to_list = AsyncMock(side_effect=raise_error)
+    else:
+        cursor.to_list = AsyncMock(return_value=docs or [])
     col.find = MagicMock(return_value=cursor)
     return col
 
 
-@pytest.mark.asyncio
-async def test_resolve_medication_names_empty_for_legacy_reminder_without_field(scheduler):
-    """
-    本變更前建立的規則在資料庫中沒有 medication_ids 欄位；讀回後視為空陣列，
-    解析結果應為空清單，且完全不必查詢藥品表。
-    """
-    reminder_doc = {
-        "_id": "REM_1",
-        "creator_user_id": "U_CARE",
-        "user_id": "U_PATIENT",
-        "slot_type": "morning",
-        "scheduled_time": "08:00",
-        "start_date": "2026-07-29",
-        "enabled": True,
-        # 沒有 medication_ids 鍵，模擬既有規則
-    }
-    reminder_col = _fake_collection(find_one_return=reminder_doc)
-    medication_col = _fake_collection(find_return=[])
+def _log(log_id: str, reminder_id: str, scheduled_at: datetime) -> MedicationLog:
+    return MedicationLog(
+        id=log_id,
+        reminder_id=reminder_id,
+        user_id="U_PATIENT",
+        alert_notify_user_id="U_CARE",
+        slot_type="morning",
+        scheduled_at=scheduled_at,
+        timeout_at=scheduled_at,
+        status="pending",
+    )
 
-    names = await scheduler._resolve_medication_names(
-        "REM_1",
-        datetime(2026, 7, 29, 0, 0, tzinfo=timezone.utc),
-        reminder_collection=reminder_col,
-        medication_collection=medication_col,
+
+@pytest.mark.asyncio
+async def test_tick_cache_batches_queries_at_constant_count_regardless_of_log_count():
+    """
+    Finding 1 的核心主張：N 筆 log 共用同一份查表時，查詢次數是常數，不隨 N 增加。
+    這裡用 6 筆 log（對應 3 個不同的 reminder，模擬多位使用者共用同一個 08:00
+    時段）驗證：無論 `.get()` 被呼叫幾次，`find_by_ids` 與 `find_active_by_ids`
+    各自只真正發出一次查詢。
+    """
+    scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)  # 台北 08:00
+    logs = [
+        _log("L1", "REM_1", scheduled_at),
+        _log("L2", "REM_1", scheduled_at),  # 同一個 reminder 的其他 log 也算進來
+        _log("L3", "REM_2", scheduled_at),
+        _log("L4", "REM_2", scheduled_at),
+        _log("L5", "REM_3", scheduled_at),
+        _log("L6", "REM_3", scheduled_at),
+    ]
+    reminder_docs = [
+        {"_id": "REM_1", "creator_user_id": "U_CARE", "user_id": "U_P1", "slot_type": "morning", "scheduled_time": "08:00", "medication_ids": ["M1"]},
+        {"_id": "REM_2", "creator_user_id": "U_CARE", "user_id": "U_P2", "slot_type": "morning", "scheduled_time": "08:00", "medication_ids": ["M2"]},
+        {"_id": "REM_3", "creator_user_id": "U_CARE", "user_id": "U_P3", "slot_type": "morning", "scheduled_time": "08:00", "medication_ids": []},
+    ]
+    medication_docs = [
+        {"_id": "M1", "user_id": "U_P1", "created_by_user_id": "U_CARE", "name": "脈優"},
+        {"_id": "M2", "user_id": "U_P2", "created_by_user_id": "U_CARE", "name": "利尿劑"},
+    ]
+    reminder_col = _find_collection(reminder_docs)
+    medication_col = _find_collection(medication_docs)
+
+    cache = _TickMedicationNameCache(logs)
+    results = {
+        log.id: await cache.get(
+            log, reminder_collection=reminder_col, medication_collection=medication_col
+        )
+        for log in logs
+    }
+
+    assert results == {
+        "L1": ["脈優"],
+        "L2": ["脈優"],
+        "L3": ["利尿劑"],
+        "L4": ["利尿劑"],
+        "L5": [],
+        "L6": [],
+    }
+    # 重點斷言：查詢次數是常數（各 1 次），不是每筆 log 都各查一次（會是 6 次）。
+    reminder_col.find.assert_called_once()
+    medication_col.find.assert_called_once()
+    (reminder_query,), _ = reminder_col.find.call_args
+    assert reminder_query == {"_id": {"$in": ["REM_1", "REM_2", "REM_3"]}}
+    (medication_query,), _ = medication_col.find.call_args
+    assert medication_query["_id"] == {"$in": ["M1", "M2"]}
+
+
+@pytest.mark.asyncio
+async def test_tick_cache_skips_medication_query_when_no_reminder_has_medication_ids():
+    """既有規則（medication_ids 皆為空）常態：查完規則後發現沒有任何藥品 id，
+    直接省下第二趟查詢——不是查回空清單，而是根本不發這個查詢。"""
+    scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
+    logs = [_log("L1", "REM_1", scheduled_at)]
+    reminder_docs = [
+        {
+            "_id": "REM_1",
+            "creator_user_id": "U_CARE",
+            "user_id": "U_PATIENT",
+            "slot_type": "morning",
+            "scheduled_time": "08:00",
+            # 沒有 medication_ids 鍵，模擬本變更前寫入的規則
+        }
+    ]
+    reminder_col = _find_collection(reminder_docs)
+    medication_col = _find_collection([])
+
+    cache = _TickMedicationNameCache(logs)
+    names = await cache.get(
+        logs[0], reminder_collection=reminder_col, medication_collection=medication_col
     )
 
     assert names == []
@@ -657,93 +732,203 @@ async def test_resolve_medication_names_empty_for_legacy_reminder_without_field(
 
 
 @pytest.mark.asyncio
-async def test_resolve_medication_names_lists_active_drugs(scheduler):
-    reminder_doc = {
-        "_id": "REM_1",
-        "creator_user_id": "U_CARE",
-        "user_id": "U_PATIENT",
-        "slot_type": "morning",
-        "scheduled_time": "08:00",
-        "medication_ids": ["M1", "M2"],
-    }
-    medication_docs = [
-        {"_id": "M1", "user_id": "U_PATIENT", "created_by_user_id": "U_CARE", "name": "脈優"},
-        {"_id": "M2", "user_id": "U_PATIENT", "created_by_user_id": "U_CARE", "name": "利尿劑"},
-    ]
-    reminder_col = _fake_collection(find_one_return=reminder_doc)
-    medication_col = _fake_collection(find_return=medication_docs)
-
-    names = await scheduler._resolve_medication_names(
-        "REM_1",
-        datetime(2026, 7, 29, 0, 0, tzinfo=timezone.utc),
-        reminder_collection=reminder_col,
-        medication_collection=medication_col,
-    )
-
-    assert names == ["脈優", "利尿劑"]
-    (query,), _ = medication_col.find.call_args
-    # 委派給 find_active_by_ids 既有的有效性判定（enabled + 療程日期區間），
-    # 不在 scheduler 這一層重做一套過濾邏輯。
-    assert query["_id"] == {"$in": ["M1", "M2"]}
-    assert query["enabled"] is True
-
-
-@pytest.mark.asyncio
-async def test_resolve_medication_names_excludes_drug_filtered_out_by_repository(scheduler):
+async def test_tick_cache_excludes_drug_filtered_out_by_repository():
     """
     藥品失效（停用或療程已結束）時，find_active_by_ids 就不會把它撈出來；
-    這裡驗證 scheduler 老實把查詢結果轉成名稱清單，失效藥品不會出現。
+    這裡驗證整批查表老實把查詢結果轉成名稱清單，失效藥品不會出現。
     """
-    reminder_doc = {
-        "_id": "REM_1",
-        "creator_user_id": "U_CARE",
-        "user_id": "U_PATIENT",
-        "slot_type": "morning",
-        "scheduled_time": "08:00",
-        "medication_ids": ["M1", "M2"],
-    }
+    scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
+    logs = [_log("L1", "REM_1", scheduled_at)]
+    reminder_docs = [
+        {
+            "_id": "REM_1",
+            "creator_user_id": "U_CARE",
+            "user_id": "U_PATIENT",
+            "slot_type": "morning",
+            "scheduled_time": "08:00",
+            "medication_ids": ["M1", "M2"],
+        }
+    ]
     # M2 已停用／過期，模擬 find_active_by_ids 在 DB 端就把它濾掉
     medication_docs = [
         {"_id": "M1", "user_id": "U_PATIENT", "created_by_user_id": "U_CARE", "name": "脈優"},
     ]
-    reminder_col = _fake_collection(find_one_return=reminder_doc)
-    medication_col = _fake_collection(find_return=medication_docs)
+    reminder_col = _find_collection(reminder_docs)
+    medication_col = _find_collection(medication_docs)
 
-    names = await scheduler._resolve_medication_names(
-        "REM_1",
-        datetime(2026, 7, 29, 0, 0, tzinfo=timezone.utc),
-        reminder_collection=reminder_col,
-        medication_collection=medication_col,
+    cache = _TickMedicationNameCache(logs)
+    names = await cache.get(
+        logs[0], reminder_collection=reminder_col, medication_collection=medication_col
     )
 
     assert names == ["脈優"]
 
 
 @pytest.mark.asyncio
-async def test_resolve_medication_names_missing_reminder_returns_empty(scheduler):
-    reminder_col = _fake_collection(find_one_return=None)
-    medication_col = _fake_collection(find_return=[])
+async def test_tick_cache_missing_reminder_yields_empty_for_that_log():
+    """規則批次查詢查不到某個 reminder_id（例如剛好被刪除）時，該筆 log 的
+    藥品清單退化為空，不影響其他 log。"""
+    scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
+    logs = [_log("L1", "REM_MISSING", scheduled_at), _log("L2", "REM_1", scheduled_at)]
+    reminder_docs = [
+        {
+            "_id": "REM_1",
+            "creator_user_id": "U_CARE",
+            "user_id": "U_PATIENT",
+            "slot_type": "morning",
+            "scheduled_time": "08:00",
+            "medication_ids": ["M1"],
+        }
+    ]
+    medication_docs = [
+        {"_id": "M1", "user_id": "U_PATIENT", "created_by_user_id": "U_CARE", "name": "脈優"},
+    ]
+    reminder_col = _find_collection(reminder_docs)
+    medication_col = _find_collection(medication_docs)
 
-    names = await scheduler._resolve_medication_names(
-        "REM_MISSING",
-        datetime(2026, 7, 29, 0, 0, tzinfo=timezone.utc),
-        reminder_collection=reminder_col,
-        medication_collection=medication_col,
+    cache = _TickMedicationNameCache(logs)
+    names_missing = await cache.get(
+        logs[0], reminder_collection=reminder_col, medication_collection=medication_col
+    )
+    names_found = await cache.get(
+        logs[1], reminder_collection=reminder_col, medication_collection=medication_col
     )
 
-    assert names == []
+    assert names_missing == []
+    assert names_found == ["脈優"]
+
+
+@pytest.mark.asyncio
+async def test_tick_cache_reminder_batch_failure_degrades_to_empty_for_every_log():
+    """
+    整批「查規則」的查詢拋例外時，這一批所有 log 的推播都要照常送出，只是藥品
+    清單全部退化為空——不是只有第一筆失敗，而是整批共用的失敗結果。同時要確認
+    這個失敗只讓查詢真的發生一次，不會因為後續 log 呼叫 `.get()` 就重試。
+    """
+    scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
+    logs = [
+        _log("L1", "REM_1", scheduled_at),
+        _log("L2", "REM_2", scheduled_at),
+        _log("L3", "REM_3", scheduled_at),
+    ]
+    reminder_col = _find_collection(raise_error=RuntimeError("Mongo down"))
+    medication_col = _find_collection([])
+
+    cache = _TickMedicationNameCache(logs)
+    results = [
+        await cache.get(
+            log, reminder_collection=reminder_col, medication_collection=medication_col
+        )
+        for log in logs
+    ]
+
+    assert results == [[], [], []]
+    reminder_col.find.assert_called_once()
+    # 規則都查不到，藥品查詢完全不會被觸發。
     medication_col.find.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_tick_cache_medication_batch_failure_degrades_to_empty_for_every_log():
+    """
+    規則查詢成功、但整批「查藥品」的查詢拋例外時，同樣要讓這一批所有 log 的
+    藥品清單退化為空，且查詢只嘗試一次。
+    """
+    scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
+    logs = [
+        _log("L1", "REM_1", scheduled_at),
+        _log("L2", "REM_2", scheduled_at),
+    ]
+    reminder_docs = [
+        {"_id": "REM_1", "creator_user_id": "U_CARE", "user_id": "U_P1", "slot_type": "morning", "scheduled_time": "08:00", "medication_ids": ["M1"]},
+        {"_id": "REM_2", "creator_user_id": "U_CARE", "user_id": "U_P2", "slot_type": "morning", "scheduled_time": "08:00", "medication_ids": ["M2"]},
+    ]
+    reminder_col = _find_collection(reminder_docs)
+    medication_col = _find_collection(raise_error=RuntimeError("Mongo down"))
+
+    cache = _TickMedicationNameCache(logs)
+    results = [
+        await cache.get(
+            log, reminder_collection=reminder_col, medication_collection=medication_col
+        )
+        for log in logs
+    ]
+
+    assert results == [[], []]
+    medication_col.find.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_send_patient_reminder_reads_names_from_shared_cache(scheduler, mock_replier):
+    """
+    整合點檢查：`_send_patient_reminder` 真的把 cache 解析出的藥名餵進
+    flex builder，而不是自己另外查一次。這裡直接呼叫該方法（不透過
+    process_ticks），確認 claim 之外的組裝流程正確串起來。
+
+    直接預先填好 cache 內部的查表結果，不必真的發查詢——這個測試要驗證的是
+    「組裝文案時讀 cache」這件事本身，查表怎麼被填滿已經由上面幾個
+    `_TickMedicationNameCache` 的測試涵蓋了。
+    """
+    scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
+    log = _log("L1", "REM_1", scheduled_at)
+    cache = _TickMedicationNameCache([log])
+    cache._names_by_log_id = {"L1": ["脈優"]}
+
+    sent = await scheduler._send_patient_reminder(log, cache)
+
+    assert sent is True
+    mock_replier.push_flex.assert_awaited_once()
+    call_args = mock_replier.push_flex.call_args[0]
+    rendered = str(call_args[1].contents.to_dict())
+    assert "脈優" in rendered
+
+
+@pytest.mark.asyncio
+async def test_send_urgent_reminder_reads_names_from_shared_cache(scheduler, mock_replier):
+    scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
+    log = _log("L1", "REM_1", scheduled_at)
+    cache = _TickMedicationNameCache([log])
+    cache._names_by_log_id = {"L1": ["普拿疼"]}
+
+    sent = await scheduler._send_urgent_reminder(log, cache)
+
+    assert sent is True
+    mock_replier.push_flex.assert_awaited_once()
+    call_args = mock_replier.push_flex.call_args[0]
+    rendered = str(call_args[1].contents.to_dict())
+    assert "普拿疼" in rendered
 
 
 def test_process_ticks_expansion_path_does_not_reference_medication_ids():
     """
     展開與搶佔路徑不得讀 medication_ids —— 這是排程器既有併發保證（原子搶佔、
     唯一索引、停機補償）能夠成立的前提，見 openspec 決策。藥名解析已刻意搬到
-    `_resolve_medication_names`，只在組裝推播文案時才呼叫；這裡用原始碼掃描
+    `_TickMedicationNameCache`，只在組裝推播文案時才呼叫；這裡用原始碼掃描
     鎖住 process_ticks 本體不會再讀這個欄位。
     """
     import inspect
 
     source = inspect.getsource(MedicationScheduler.process_ticks)
     assert "medication_ids" not in source
+
+
+def test_process_ticks_builds_exactly_one_cache_per_stage_outside_the_loop():
+    """
+    Finding 1 的批次化必須是「每個階段建立一次查表物件」，而不是在迴圈裡逐筆
+    建立（逐筆建立會讓批次化形同虛設，因為每個物件只服務一筆 log）。這裡用
+    原始碼掃描鎖住：`_TickMedicationNameCache(` 只會出現兩次（T+0、T+20 各一
+    次），且都在各自的 `for log in ...` 迴圈之前。
+    """
+    import inspect
+
+    source = inspect.getsource(MedicationScheduler.process_ticks)
+    assert source.count("_TickMedicationNameCache(") == 2
+
+    initial_cache_pos = source.index("_TickMedicationNameCache(pending_initial_logs)")
+    initial_loop_pos = source.index("for log in pending_initial_logs:")
+    assert initial_cache_pos < initial_loop_pos
+
+    urgent_cache_pos = source.index("_TickMedicationNameCache(pending_urgent_logs)")
+    urgent_loop_pos = source.index("for log in pending_urgent_logs:")
+    assert urgent_cache_pos < urgent_loop_pos
 

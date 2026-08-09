@@ -112,6 +112,25 @@ class MedicationReminderRepository:
         return MedicationReminder(**doc)
 
     @staticmethod
+    async def find_by_ids(
+        reminder_ids: List[str], collection: Optional[Any] = None
+    ) -> List[MedicationReminder]:
+        """批次查詢多筆規則。
+
+        推播組裝文案時（見 `MedicationScheduler._TickMedicationNameCache`）用來把
+        「查規則」從逐筆改成整批——同一個時段常常有多位使用者共用，一個 tick 內
+        對同一批 log 各自查一次規則會是 O(log 數) 次序列往返，改成 `$in` 一次查完
+        整批 reminder_id 就是固定 1 次。
+        """
+        if not reminder_ids:
+            return []
+        if collection is None:
+            collection = MongoDBManager.get_medication_reminders_collection()
+        cursor = collection.find({"_id": {"$in": reminder_ids}})
+        docs = await cursor.to_list(length=None)
+        return [MedicationReminder(**{**doc, "_id": str(doc["_id"])}) for doc in docs]
+
+    @staticmethod
     async def list_reminders_by_user(
         user_id: str, collection: Optional[Any] = None
     ) -> List[MedicationReminder]:

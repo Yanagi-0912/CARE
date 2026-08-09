@@ -154,6 +154,55 @@ async def test_get_reminder_by_id(override_medication_reminders_col):
     assert res.slot_type == "morning"
 
 
+@pytest.mark.asyncio
+async def test_find_by_ids_queries_reminders_by_id_set():
+    """
+    給 MedicationScheduler 的批次藥名查表用：一次用 $in 查一批 reminder，
+    取代逐筆呼叫 get_reminder_by_id，見 medication_scheduler._TickMedicationNameCache。
+    """
+    col = MagicMock()
+    cursor = MagicMock()
+    cursor.to_list = AsyncMock(
+        return_value=[
+            {
+                "_id": "R1",
+                "creator_user_id": "U_CARE",
+                "user_id": "U_P1",
+                "slot_type": "morning",
+                "scheduled_time": "08:00",
+                "medication_ids": ["M1"],
+            },
+            {
+                "_id": "R2",
+                "creator_user_id": "U_CARE",
+                "user_id": "U_P2",
+                "slot_type": "morning",
+                "scheduled_time": "08:00",
+            },
+        ]
+    )
+    col.find = MagicMock(return_value=cursor)
+
+    reminders = await MedicationReminderRepository.find_by_ids(
+        ["R1", "R2"], collection=col
+    )
+
+    assert [r.id for r in reminders] == ["R1", "R2"]
+    (query,), _ = col.find.call_args
+    assert query == {"_id": {"$in": ["R1", "R2"]}}
+
+
+@pytest.mark.asyncio
+async def test_find_by_ids_with_empty_list_does_not_query_reminders():
+    col = MagicMock()
+    col.find = MagicMock()
+
+    reminders = await MedicationReminderRepository.find_by_ids([], collection=col)
+
+    assert reminders == []
+    col.find.assert_not_called()
+
+
 def _fake_log_doc(now: datetime) -> dict:
     return {
         "_id": "L123",

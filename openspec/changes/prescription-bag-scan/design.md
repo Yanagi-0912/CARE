@@ -32,7 +32,7 @@ CARE 的用藥提醒（`openspec/specs/medication-reminders/spec.md`）已經有
 
 ### 決策 1：影像從 LIFF 直接上傳，不走 LINE 訊息路徑
 
-**選擇**：LIFF 以 `<input type="file" accept="image/*" capture="environment">` 取得影像，multipart 上傳到 `POST /api/users/medications/prescription-scan`，同步回傳草稿。
+**選擇**：LIFF 以 `<input type="file" accept="image/*" capture="environment">` 取得影像，multipart 上傳到 `POST /api/medications/prescription-scan`，同步回傳草稿。（前綴是 `/api/medications`：router 檔案位於 `app/routers/users/medications.py`，但 `app/main.py:102` 掛載於 `/api/medications`。）
 
 **替代方案 A — 在 `media_handler` 內分流**：使用者於聊天室傳照片，handler 判斷是不是藥袋。體驗最自然（拍了就傳），但要動共用路徑、要為每張圖多付一次分類呼叫、且 `media_handler.py:11` 是 module-level singleton 直接 import，加測試就必須先做 DI 重構。否決：改動面與風險都落在別人維護的檔案上。
 

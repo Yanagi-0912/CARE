@@ -19,7 +19,11 @@ from app.services.rag.fail_messages import (
     rag_fail,
 )
 from app.services.rag.web_client import WebSearchClient
-from app.services.rag.whitelist import is_allowed_url, with_whitelist_site_filter
+from app.services.rag.whitelist import (
+    is_allowed_url,
+    normalize_url,
+    with_whitelist_site_filter,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -139,8 +143,16 @@ class WebSearchService:
         docs: list[Document] = []
         seen: set[str] = set()
         for hit in hits:
-            url = (hit.url or "").strip()
-            if not url or url in seen or not is_allowed_url(url):
+            raw_url = (hit.url or "").strip()
+            if not raw_url:
+                continue
+            # 先正規化再比對／去重／顯示：hit URL 可能帶 utm、大小寫不一，
+            # 也可能是 whitelist.py 判定會造成解析歧異的字串（None）。
+            # normalize 是冪等的（whitelist.py 的不動點檢查保證），對已正規化
+            # 的字串再 normalize 一次會拿回原字串，所以下面直接用 url 檢查
+            # 允許清單，不需要對 raw_url 再算一次。
+            url = normalize_url(raw_url)
+            if url is None or url in seen or not is_allowed_url(url):
                 continue
             # 優先用 search snippet，避免 Firecrawl scrape 15–45s 連逾時拖死整輪
             text = (hit.description or "").strip()

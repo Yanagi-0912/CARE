@@ -50,6 +50,7 @@ from app.services.rag import (
 from app.services.rag.cohere_reranker import CohereReranker, VectorScoreReranker
 from app.services.rag.firecrawl_client import FirecrawlClient
 from app.services.rag.ingest_service import IngestService
+from app.services.rag.whitelist import default_url_policy
 from app.services.rag.user_document_answer_service import UserDocumentAnswerService
 from app.services.rag.user_document_ingest_service import UserDocumentIngestService
 from app.services.rag.user_document_retriever import UserDocumentVectorRetriever
@@ -171,12 +172,14 @@ if _firecrawl_client is not None and settings.MONGODB_URI and settings.MONGODB_C
         vector_dim=(
             settings.MONGODB_VECTOR_DIM if settings.MONGODB_VECTOR_DIM > 0 else None
         ),
+        url_policy=default_url_policy(),
     )
 
 _knowledge_report_repository = KnowledgeReportRepository()
 _knowledge_report_service = KnowledgeReportService(
     repository=_knowledge_report_repository,
     ingest_service=_ingest_service,
+    url_policy=default_url_policy(),
 )
 configure_knowledge_report_tool(_knowledge_report_service)
 

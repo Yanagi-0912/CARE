@@ -1032,6 +1032,31 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "…และอีก {count} รายการ",
         "ja": "…ほか {count} 件",
     },
+    # --- 知識回報核准：URL 白名單錯誤（design.md Decision 7）---
+    # 這三個 key 刻意只提供 zh-TW 與 en，且刻意不進
+    # tests/unit/i18n/test_messages.py 的 REQUIRED_KEYS。那份清單是 LINE
+    # 使用者面訊息的六語硬性要求；這三個字串只會出現在 admin 審核頁與
+    # API 400 錯誤回應，受眾是營運人員，不是 LINE 使用者。t() 對缺語系
+    # 會退回 zh-TW（見本檔案 t() 的實作），行為安全。
+    # 這是刻意的取捨，不是漏做——如果你想「順手補齊六語」，請先看這裡。
+    "url.reject.summary": {
+        "zh-TW": "以下 {count} 個網址未通過來源白名單，請檢查後重新送出。",
+        "en": (
+            "The following {count} URL(s) did not pass the source whitelist. "
+            "Please review and resubmit."
+        ),
+    },
+    # 對應 InvalidUrl.reason 的可讀標籤，供呈現層需要時把 invalid_urls[].reason
+    # 轉成人看得懂的文字。reason 本身在 API 回應中維持機器可讀代碼
+    # （"malformed"／"not_allowed"），不因為有翻譯就改變契約。
+    "url.reject.reason.malformed": {
+        "zh-TW": "網址格式錯誤",
+        "en": "Malformed URL",
+    },
+    "url.reject.reason.not_allowed": {
+        "zh-TW": "網域不在來源白名單內",
+        "en": "Domain not in the source whitelist",
+    },
 }
 
 

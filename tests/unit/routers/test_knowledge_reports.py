@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.dependencies import (
@@ -212,6 +213,42 @@ def test_admin_approve_schedules_background_ingest(mock_service, override_admin_
     )
     assert response.status_code == 200
     mock_service.run_ingest.assert_awaited_once_with("KR-20260802-AB12")
+
+
+def test_admin_approve_400_body_shape(mock_service, override_admin_user):
+    """approve 因白名單被拒時，400 body 的 detail 是結構化物件，不是硬編字串。
+
+    fake service 用 app.dependency_overrides 注入（FastAPI 官方機制），
+    不是 unittest.mock.patch 改 settings／模組層常數。
+    """
+    mock_service.approve = AsyncMock(
+        side_effect=HTTPException(
+            status_code=400,
+            detail={
+                "code": "url_not_allowed",
+                "invalid_urls": [
+                    {"url": "https://evil.com/", "reason": "not_allowed"},
+                    {"url": "ht!tp://x", "reason": "malformed"},
+                ],
+                "message": "以下 2 個網址未通過來源白名單，請檢查後重新送出。",
+            },
+        )
+    )
+
+    response = client.post(
+        "/api/admin/knowledge-reports/KR-20260802-AB12/approve",
+        json={"selected_urls": ["https://evil.com/", "ht!tp://x"]},
+    )
+
+    assert response.status_code == 400
+    detail = response.json()["detail"]
+    assert detail["code"] == "url_not_allowed"
+    assert isinstance(detail["invalid_urls"], list)
+    assert len(detail["invalid_urls"]) == 2
+    assert detail["invalid_urls"][0] == {
+        "url": "https://evil.com/",
+        "reason": "not_allowed",
+    }
 
 
 def test_admin_reject_success_for_admin(mock_service, override_admin_user):

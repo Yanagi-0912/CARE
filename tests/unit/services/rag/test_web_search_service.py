@@ -347,6 +347,49 @@ async def test_answer_missing_line_user_id_skips_create_but_returns_answer():
 
 
 @pytest.mark.asyncio
+async def test_skips_hit_with_parser_divergent_url():
+    """hit URL 為反斜線繞過字串時 normalize_url 回 None，不進 Document（本 change 核心迴歸）。"""
+    web = FakeWebClient(
+        hits=[
+            WebSearchHit(
+                title="偽裝網域",
+                url="https://evil.com\\.gov.tw/x",
+                description="足夠長的敘述文字，確保就算沒被擋也不會走到 scrape 分支。",
+            )
+        ],
+    )
+    svc, gemini = _make_service(web_client=web)
+
+    result = await svc.answer("問題")
+
+    assert result == rag_fail(RagFailCode.WEB_EMPTY)
+    assert web.scrape_calls == []
+    gemini.chat_model.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_document_url_is_normalized():
+    """合法但帶 utm／大寫的 hit，Document.metadata["url"]（經來源清單顯示）是正規化字串。"""
+    raw_url = "HTTPS://WWW.HPA.GOV.TW/htn?utm_source=line&nodeid=1"
+    normalized_url = "https://www.hpa.gov.tw/htn?nodeid=1"
+    web = FakeWebClient(
+        hits=[WebSearchHit(title="國健署高血壓", url=raw_url)],
+        pages={normalized_url: "控制血壓要規律量測與低鈉飲食。"},
+    )
+    svc, _ = _make_service(
+        answer_content="根據網路資料，請規律量測血壓。",
+        web_client=web,
+    )
+
+    result = await svc.answer("高血壓要注意什麼")
+
+    assert f"[1] 網路：國健署高血壓：{normalized_url}" in result
+    assert raw_url not in result
+    # scrape 打的是正規化後的字串，不是原始大小寫／帶 utm 的字串
+    assert web.scrape_calls == [normalized_url]
+
+
+@pytest.mark.asyncio
 async def test_answer_create_failure_still_returns_answer():
     web = FakeWebClient(
         hits=[

@@ -7,6 +7,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 
+from app.i18n.messages import t
 from app.models.knowledge_report import (
     IngestJob,
     IngestJobResult,
@@ -15,7 +16,7 @@ from app.models.knowledge_report import (
 )
 from app.repositories.knowledge_report_repository import KnowledgeReportRepository
 from app.services.rag.ingest_service import IngestService
-from app.services.rag.whitelist import is_allowed_url
+from app.services.rag.whitelist import UrlNotAllowedError, UrlPolicy, default_url_policy
 
 # 超過此時間仍停在 running 的 job 視為服務重啟遺留的孤兒，允許重新核准取代
 INGEST_JOB_STALE_AFTER = timedelta(minutes=10)
@@ -27,9 +28,11 @@ class KnowledgeReportService:
         *,
         repository: KnowledgeReportRepository,
         ingest_service: Optional[IngestService] = None,
+        url_policy: UrlPolicy | None = None,
     ) -> None:
         self._repository = repository
         self._ingest_service = ingest_service
+        self._url_policy = url_policy or default_url_policy()
 
     @staticmethod
     def _generate_report_id(now: datetime | None = None) -> str:
@@ -156,12 +159,28 @@ class KnowledgeReportService:
         if not normalized_urls:
             raise HTTPException(status_code=400, detail="selected_urls cannot be empty")
 
-        for url in normalized_urls:
-            if not is_allowed_url(url):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"URL not in whitelist: {url}",
-                )
+        # whitelist.py 不 import fastapi／i18n（design.md Decision 7）：讓它知道
+        # HTTP 狀態碼會把信任邊界綁死在一個 transport 上，change 3 的 agent
+        # tool 路徑不走 HTTP。把 UrlNotAllowedError 轉成 HTTPException、把
+        # 文案接上 i18n，是呼叫端（這裡）的責任。
+        try:
+            # assert_allowed 回傳的是正規化後的清單：admin 在畫面上看到、
+            # ingest job 實際登記的，都是同一份會拿去抓取的字串。
+            normalized_urls = self._url_policy.assert_allowed(normalized_urls)
+        except UrlNotAllowedError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "url_not_allowed",
+                    "invalid_urls": [
+                        {"url": item.url, "reason": item.reason}
+                        for item in exc.invalid
+                    ],
+                    # 一次列出全部不合格網址（而非遇到第一個就中止），admin
+                    # 貼 5 個錯 3 個時，一次就能改完，不必來回送出三次。
+                    "message": t("url.reject.summary").format(count=len(exc.invalid)),
+                },
+            ) from exc
 
         if self._ingest_service is None:
             raise HTTPException(status_code=503, detail="Ingest service not configured")

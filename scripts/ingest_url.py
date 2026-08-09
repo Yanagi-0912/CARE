@@ -22,7 +22,7 @@ from app.core.config import settings
 from app.services.rag.chunking import split_text_to_chunks
 from app.services.rag.firecrawl_client import FirecrawlClient
 from app.services.rag.ingest_service import IngestResult, IngestService
-from app.services.rag.whitelist import is_allowed_url
+from app.services.rag.whitelist import is_allowed_url, normalize_url
 
 
 def _build_embeddings() -> GoogleGenerativeAIEmbeddings:
@@ -74,9 +74,14 @@ def _exit_for_result(result: IngestResult) -> None:
 
 async def _dry_run(url: str) -> None:
     if not is_allowed_url(url):
+        # is_allowed_url 只回布林值；normalize_url 回 None 表示格式本身就
+        # 剖析不出安全的 host（reason=malformed），非 None 則是格式沒問題、
+        # 純粹網域不在白名單內（reason=not_allowed）。呼叫端（這支 CLI）
+        # 自己判斷原因碼，whitelist.py 不需要為此多開一個介面。
+        reason = "malformed" if normalize_url(url) is None else "not_allowed"
         print("status=rejected")
         print(f"url={url}")
-        print("message=URL not in whitelist")
+        print(f"message=url_not_allowed reason={reason}")
         sys.exit(1)
 
     web_client = _require_firecrawl()

@@ -13,6 +13,7 @@ from app.services.knowledge_reports.service import (
     KnowledgeReportService,
 )
 from app.services.rag.ingest_service import IngestResult
+from app.services.rag.whitelist import UrlPolicy
 
 ALLOWED_URL = "https://www.hpa.gov.tw/Pages/Detail.aspx?nodeid=1"
 SECOND_ALLOWED_URL = "https://www.cdc.gov.tw/Category/Page/abc"
@@ -347,6 +348,101 @@ async def test_approve_rejects_non_whitelist_url(
 
     assert exc.value.status_code == 400
     mock_ingest.ingest_url.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_approve_reports_all_invalid_urls(
+    mock_repo: MagicMock, mock_ingest: AsyncMock
+):
+    """一次列出全部不合格的網址，不是遇到第一個就中止。
+
+    情境貼近 admin 實際操作：5 個裡有 2 個合法、3 個不合格（順序刻意打散），
+    逐次回報會讓他來回送出三次；斷言不合格清單只含那 3 筆、順序與輸入一致，
+    合法的 2 筆完全不出現在 invalid_urls 裡。
+    """
+    mock_repo.find_by_report_id.return_value = _sample_report()
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        url_policy=UrlPolicy(allowed_suffixes=("gov.tw",)),
+    )
+    not_allowed_url = "https://www.google.com/search?q=test"
+    # port 不是數字：補上 https:// scheme 後 netloc 解析出的 port 轉 int 失敗，
+    # whitelist.py 的 _compute_once 對此回 None（見該檔案同一案例的註解）。
+    malformed_url = "javascript:alert(1)"
+    backslash_url = "https://evil.com\\.gov.tw/x"
+
+    with pytest.raises(HTTPException) as exc:
+        await service.approve(
+            report_id="KR-20260802-AB12",
+            selected_urls=[
+                ALLOWED_URL,
+                not_allowed_url,
+                SECOND_ALLOWED_URL,
+                malformed_url,
+                backslash_url,
+            ],
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail["code"] == "url_not_allowed"
+    assert exc.value.detail["invalid_urls"] == [
+        {"url": not_allowed_url, "reason": "not_allowed"},
+        {"url": malformed_url, "reason": "malformed"},
+        {"url": backslash_url, "reason": "malformed"},
+    ]
+    assert "3" in exc.value.detail["message"]
+    mock_ingest.ingest_url.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_approve_rejects_backslash_lookalike_url(
+    mock_repo: MagicMock, mock_ingest: AsyncMock
+):
+    """本 change 的核心迴歸：反斜線繞過在核准端點也要被擋。"""
+    mock_repo.find_by_report_id.return_value = _sample_report()
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        url_policy=UrlPolicy(allowed_suffixes=("gov.tw",)),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await service.approve(
+            report_id="KR-20260802-AB12",
+            selected_urls=["https://evil.com\\.gov.tw/x"],
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail["code"] == "url_not_allowed"
+    assert exc.value.detail["invalid_urls"] == [
+        {"url": "https://evil.com\\.gov.tw/x", "reason": "malformed"}
+    ]
+    mock_ingest.ingest_url.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_approve_registers_normalized_urls(
+    mock_repo: MagicMock, mock_ingest: AsyncMock
+):
+    """登記進 ingest job 的是正規化後的字串。"""
+    mock_repo.find_by_report_id.return_value = _sample_report()
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        url_policy=UrlPolicy(allowed_suffixes=("gov.tw",)),
+    )
+    raw_url = "https://www.hpa.gov.tw/Pages/Detail.aspx?nodeid=1&utm_source=line"
+
+    result = await service.approve(
+        report_id="KR-20260802-AB12",
+        selected_urls=[raw_url],
+    )
+
+    assert result.ingest_job is not None
+    assert result.ingest_job.selected_urls == [ALLOWED_URL]
+    kwargs = mock_repo.start_ingest_job.await_args.kwargs
+    assert kwargs["job"].selected_urls == [ALLOWED_URL]
 
 
 @pytest.mark.asyncio

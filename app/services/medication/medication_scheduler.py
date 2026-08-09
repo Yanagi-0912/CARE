@@ -2,7 +2,8 @@ import asyncio
 import logging
 from contextlib import suppress
 from datetime import datetime, timedelta
-from typing import Optional
+from functools import partial
+from typing import Awaitable, Callable, Optional
 
 from app.core.user_font_size import (
     DEFAULT_USER_FONT_SIZE,
@@ -21,6 +22,7 @@ from app.repositories.medication_repository import (
 )
 from app.services.line_messaging.flex.medication_flex import (
     build_caregiver_alert_flex,
+    build_caregiver_missed_summary_flex,
     build_patient_medication_flex,
     build_patient_urgent_reminder_flex,
 )
@@ -28,6 +30,11 @@ from app.services.line_messaging.reply.reply import LineReplier
 from app.services.users.user_profile_service import UserProfileService
 
 logger = logging.getLogger(__name__)
+
+# 錯過多久之後就不再補推播。對應 APScheduler 的 misfire_grace_time。
+# 預設取 20 分鐘（＝T+20 催促的門檻）：短暫部署造成的延遲仍會正常送達，
+# 超過這個範圍代表整條 T+0／T+20／T+30 時序已經失去意義，補推只會變成連環轟炸。
+DEFAULT_MISFIRE_GRACE_MINUTES = 20
 
 
 class MedicationScheduler:
@@ -43,10 +50,12 @@ class MedicationScheduler:
         replier: LineReplier,
         user_profile_service: Optional[UserProfileService] = None,
         check_interval_seconds: int = 60,
+        misfire_grace_minutes: int = DEFAULT_MISFIRE_GRACE_MINUTES,
     ) -> None:
         self._replier = replier
         self._user_profile_service = user_profile_service
         self._check_interval_seconds = check_interval_seconds
+        self._misfire_grace_minutes = misfire_grace_minutes
         self._task: Optional[asyncio.Task] = None
 
     async def _resolve_display_prefs(self, user_id: str) -> tuple[str, str]:
@@ -69,6 +78,146 @@ class MedicationScheduler:
             normalize_user_language(settings.get("language")),
             normalize_user_font_size(settings.get("font_size")),
         )
+
+    async def _dispatch(
+        self,
+        *,
+        stage: str,
+        log_id: str,
+        claim: Callable[[str], Awaitable[bool]],
+        release: Callable[[str], Awaitable[bool]],
+        send: Callable[[], Awaitable[bool]],
+    ) -> None:
+        """
+        推播權搶佔 → 推播 → 失敗還原。
+
+        三個階段共用同一套流程，差別只在旗標與訊息內容。搶佔的理由見
+        `MedicationLogRepository` 的「推播權搶佔」段落：查詢與標記之間沒有原子性，
+        多實例並存時會重複推播。
+        """
+        try:
+            claimed = await claim(log_id)
+        except Exception:
+            logger.exception(
+                "[MedicationScheduler] Failed to claim %s for log %s", stage, log_id
+            )
+            return
+
+        if not claimed:
+            # 旗標已被其他實例搶走，或先前的 tick 已送出。
+            return
+
+        try:
+            sent = await send()
+        except Exception:
+            logger.exception(
+                "[MedicationScheduler] Failed to process %s for log %s", stage, log_id
+            )
+            sent = False
+
+        if not sent:
+            # 推播沒成功就把推播權還回去，下一個 tick 會重新搶佔並重試。
+            with suppress(Exception):
+                await release(log_id)
+
+    async def _send_patient_reminder(self, log: MedicationLog) -> bool:
+        language, font_size = await self._resolve_display_prefs(log.user_id)
+        flex_msg = build_patient_medication_flex(
+            log_id=log.id,
+            slot_type=log.slot_type,
+            scheduled_time=to_taipei_hm(log.scheduled_at, default="08:00"),
+            disabled=False,
+            language=language,
+            font_size=font_size,
+        )
+        return await self._replier.push_flex(log.user_id, flex_msg)
+
+    async def _send_urgent_reminder(self, log: MedicationLog) -> bool:
+        language, font_size = await self._resolve_display_prefs(log.user_id)
+        urgent_flex = build_patient_urgent_reminder_flex(
+            log_id=log.id,
+            slot_type=log.slot_type,
+            scheduled_time=to_taipei_hm(log.scheduled_at, default="08:00"),
+            language=language,
+            font_size=font_size,
+        )
+        return await self._replier.push_flex(log.user_id, urgent_flex)
+
+    async def _resolve_patient_name(self, user_id: str) -> str:
+        """取得用藥者的顯示名稱；查不到時回退為泛稱。"""
+        if not self._user_profile_service:
+            return "成員"
+        try:
+            profile = await self._user_profile_service.get_user_profile(user_id)
+            if profile and isinstance(profile, dict) and profile.get("name"):
+                return profile["name"]
+        except Exception:
+            pass
+        return "成員"
+
+    async def _send_caregiver_alert(self, log: MedicationLog) -> bool:
+        patient_name = await self._resolve_patient_name(log.user_id)
+
+        # 這則推播的收件人是家屬，語言與字級需取家屬本人的設定
+        language, font_size = await self._resolve_display_prefs(
+            log.alert_notify_user_id
+        )
+        alert_flex = build_caregiver_alert_flex(
+            patient_name=patient_name,
+            slot_type=log.slot_type,
+            scheduled_time=to_taipei_hm(log.scheduled_at, default="08:00"),
+            language=language,
+            font_size=font_size,
+        )
+        return await self._replier.push_flex(log.alert_notify_user_id, alert_flex)
+
+    async def _notify_missed_summary(
+        self, misfired_by_caregiver: dict[str, list[MedicationLog]]
+    ) -> None:
+        """
+        把本次 tick 新發現的錯過時段，依家屬彙整成一則通知送出。
+
+        不做推播權搶佔：來源是 `upsert_log` 回報的 created 旗標，而 (reminder_id,
+        scheduled_at) 唯一索引保證同一個時段只會被插入一次，所以多實例並存時也只有
+        真正插入成功的那個實例會拿到這些 log。
+
+        送不出去就只記 log，不重試：這是中斷後的補充告知，為它額外維護一份「待通知」
+        狀態並不划算，而錯過的時段本身已經以 status=missed 留在資料庫裡。
+        """
+        name_cache: dict[str, str] = {}
+
+        for caregiver_id, logs in misfired_by_caregiver.items():
+            if not caregiver_id:
+                continue
+            try:
+                entries: list[dict[str, str]] = []
+                for log in sorted(logs, key=lambda item: ensure_aware_utc(item.scheduled_at)):
+                    if log.user_id not in name_cache:
+                        name_cache[log.user_id] = await self._resolve_patient_name(
+                            log.user_id
+                        )
+                    entries.append(
+                        {
+                            "patient_name": name_cache[log.user_id],
+                            "slot_type": log.slot_type,
+                            "scheduled_time": to_taipei_hm(
+                                log.scheduled_at, default="08:00"
+                            ),
+                        }
+                    )
+
+                language, font_size = await self._resolve_display_prefs(caregiver_id)
+                await self._replier.push_flex(
+                    caregiver_id,
+                    build_caregiver_missed_summary_flex(
+                        missed=entries, language=language, font_size=font_size
+                    ),
+                )
+            except Exception:
+                logger.exception(
+                    "[MedicationScheduler] Failed to send missed-slot summary to %s",
+                    caregiver_id,
+                )
 
     def start(self) -> None:
         if self._task is not None and not self._task.done():
@@ -101,11 +250,16 @@ class MedicationScheduler:
         today_date_str = current_time.strftime("%Y-%m-%d")
         current_hm_str = current_time.strftime("%H:%M")
 
+        # 錯過超過 grace 的時段不再推播（見 DEFAULT_MISFIRE_GRACE_MINUTES）。
+        misfire_cutoff = current_time - timedelta(minutes=self._misfire_grace_minutes)
+
         # ── 階段 1：T+0min 首刷提醒建立與推播 ──────────────────────────
         # 1. 查詢今日所有已到期 (scheduled_time <= current_hm_str) 的活躍提醒並為其 upsert 當日 log
         active_reminders = await MedicationReminderRepository.list_active_reminders_up_to_time(
             max_scheduled_time=current_hm_str, target_date_str=today_date_str
         )
+        # 本次 tick 才發現的錯過時段，依通報家屬分組，稍後彙整成一則通知。
+        misfired_by_caregiver: dict[str, list[MedicationLog]] = {}
         for reminder in active_reminders:
             try:
                 scheduled_dt = datetime.strptime(
@@ -119,6 +273,21 @@ class MedicationScheduler:
                 if scheduled_dt < ensure_aware_utc(reminder.created_at):
                     continue
 
+                # 停機期間錯過的時段：仍建立 log 留下紀錄，但直接記為 missed 且三個
+                # 旗標全部設起，不推播。上面的 created_at 檢查只擋得住「提醒是後來才
+                # 建立的」，擋不住「服務當時沒在跑」——下午三點重啟時，早上 08:00 與
+                # 中午 12:00 的 log 會在同一個 tick 內被建立，接著三個階段依序判定成立，
+                # 使用者一次收到四則、家屬收到兩則逾時警報。
+                is_misfired = scheduled_dt < misfire_cutoff
+                if is_misfired:
+                    logger.info(
+                        "[MedicationScheduler] Misfired slot recorded without push: "
+                        "reminder=%s scheduled=%s grace=%dmin",
+                        reminder.id,
+                        scheduled_dt.isoformat(),
+                        self._misfire_grace_minutes,
+                    )
+
                 log_data = MedicationLog(
                     reminder_id=reminder.id,
                     user_id=reminder.user_id,
@@ -126,41 +295,42 @@ class MedicationScheduler:
                     slot_type=reminder.slot_type,
                     scheduled_at=scheduled_dt,
                     timeout_at=timeout_dt,
-                    status="pending",
-                    patient_reminder_sent=False,
-                    urgent_reminder_sent=False,
-                    caregiver_alert_sent=False,
+                    status="missed" if is_misfired else "pending",
+                    patient_reminder_sent=is_misfired,
+                    urgent_reminder_sent=is_misfired,
+                    caregiver_alert_sent=is_misfired,
                 )
-                await MedicationLogRepository.upsert_log(log_data)
+                # upsert 是 $setOnInsert，所以只有「第一次建立」會套用上面的靜默標記；
+                # 正常運行中早就建好的 log 不會被這裡蓋掉。
+                saved_log, created = await MedicationLogRepository.upsert_log(log_data)
+
+                # 只有「本次才建立」的錯過時段要通知；否則每 60 秒的 tick 都會重算出
+                # 同一批 is_misfired，家屬會被同一則通知洗版。
+                if created and is_misfired:
+                    misfired_by_caregiver.setdefault(
+                        reminder.creator_user_id, []
+                    ).append(saved_log)
             except Exception:
                 logger.exception(
                     f"[MedicationScheduler] Failed to upsert T+0min log for user {reminder.user_id}"
                 )
+
+        # 1b. 中斷期間錯過的時段：每位家屬彙整成一則通知（措辭與 T+30 逾時警報不同）
+        if misfired_by_caregiver:
+            await self._notify_missed_summary(misfired_by_caregiver)
 
         # 2. 使用 list_pending_patient_reminders 查詢已到期 (scheduled_at <= current_time) 且未發送首刷的紀錄推播
         pending_initial_logs = await MedicationLogRepository.list_pending_patient_reminders(
             threshold_time=current_time
         )
         for log in pending_initial_logs:
-            try:
-                scheduled_hm = to_taipei_hm(log.scheduled_at, default="08:00")
-                language, font_size = await self._resolve_display_prefs(log.user_id)
-                flex_msg = build_patient_medication_flex(
-                    log_id=log.id,
-                    slot_type=log.slot_type,
-                    scheduled_time=scheduled_hm,
-                    disabled=False,
-                    language=language,
-                    font_size=font_size,
-                )
-                ok = await self._replier.push_flex(log.user_id, flex_msg)
-                if ok:
-                    await MedicationLogRepository.mark_patient_reminder_sent(log.id)
-            except Exception:
-                logger.exception(
-                    f"[MedicationScheduler] Failed to process T+0min initial reminder for log {log.id}"
-                )
-
+            await self._dispatch(
+                stage="T+0min initial reminder",
+                log_id=log.id,
+                claim=MedicationLogRepository.claim_patient_reminder,
+                release=MedicationLogRepository.release_patient_reminder,
+                send=partial(self._send_patient_reminder, log),
+            )
 
         # ── 階段 2：T+20min 第二次溫馨催促 ─────────────────────────────
         # 門檻計算：找出 scheduled_at <= (當前時間 - 20分鐘) 的記錄
@@ -171,24 +341,13 @@ class MedicationScheduler:
             threshold_time=urgent_threshold
         )
         for log in pending_urgent_logs:
-            try:
-                scheduled_hm = to_taipei_hm(log.scheduled_at, default="08:00")
-                language, font_size = await self._resolve_display_prefs(log.user_id)
-                urgent_flex = build_patient_urgent_reminder_flex(
-                    log_id=log.id,
-                    slot_type=log.slot_type,
-                    scheduled_time=scheduled_hm,
-                    language=language,
-                    font_size=font_size,
-                )
-                ok = await self._replier.push_flex(log.user_id, urgent_flex)
-                if ok:
-                    # 成功發送後立即標記 urgent_reminder_sent=True，確保下次 Tick 不會重複處理
-                    await MedicationLogRepository.mark_patient_urgent_reminder_sent(log.id)
-            except Exception:
-                logger.exception(
-                    f"[MedicationScheduler] Failed to process T+20min urgent reminder for log {log.id}"
-                )
+            await self._dispatch(
+                stage="T+20min urgent reminder",
+                log_id=log.id,
+                claim=MedicationLogRepository.claim_patient_urgent_reminder,
+                release=MedicationLogRepository.release_patient_urgent_reminder,
+                send=partial(self._send_urgent_reminder, log),
+            )
 
         # ── 階段 3：T+30min 第三次家屬逾時警報 ─────────────────────────
         # 門檻計算：找出 timeout_at <= 當前時間 且狀態仍為 pending (未確認用藥) 的記錄
@@ -196,36 +355,13 @@ class MedicationScheduler:
             threshold_time=current_time
         )
         for log in pending_alert_logs:
-            try:
-                patient_name = "成員"
-                if self._user_profile_service:
-                    try:
-                        profile = await self._user_profile_service.get_user_profile(log.user_id)
-                        if profile and isinstance(profile, dict) and profile.get("name"):
-                            patient_name = profile["name"]
-                    except Exception:
-                        pass
-
-                scheduled_hm = to_taipei_hm(log.scheduled_at, default="08:00")
-                # 這則推播的收件人是家屬，語言與字級需取家屬本人的設定
-                language, font_size = await self._resolve_display_prefs(
-                    log.alert_notify_user_id
-                )
-                alert_flex = build_caregiver_alert_flex(
-                    patient_name=patient_name,
-                    slot_type=log.slot_type,
-                    scheduled_time=scheduled_hm,
-                    language=language,
-                    font_size=font_size,
-                )
-                ok = await self._replier.push_flex(log.alert_notify_user_id, alert_flex)
-                if ok:
-                    # 成功發送警報後將記錄更新為 caregiver_alert_sent=True 且 status='missed'
-                    await MedicationLogRepository.mark_caregiver_alert_sent(log.id)
-            except Exception:
-                logger.exception(
-                    f"[MedicationScheduler] Failed to process T+30min caregiver alert for log {log.id}"
-                )
+            await self._dispatch(
+                stage="T+30min caregiver alert",
+                log_id=log.id,
+                claim=MedicationLogRepository.claim_caregiver_alert,
+                release=MedicationLogRepository.release_caregiver_alert,
+                send=partial(self._send_caregiver_alert, log),
+            )
 
 
 

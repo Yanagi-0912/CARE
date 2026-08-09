@@ -2,6 +2,7 @@ from linebot.v3.messaging import FlexMessage
 
 from app.services.line_messaging.flex.medication_flex import (
     build_caregiver_alert_flex,
+    build_caregiver_missed_summary_flex,
     build_patient_medication_flex,
     build_patient_urgent_reminder_flex,
     get_slot_display_name,
@@ -94,3 +95,57 @@ def test_unknown_slot_type_falls_back_to_raw_value():
     body = str(msg.contents.to_dict())
     assert "brunch" in body
     assert "slot.brunch" not in body
+
+
+# ── 停機錯過時段的彙整通知 ────────────────────────────────────────────
+
+
+def _missed(slot_type: str, scheduled_time: str, patient_name: str = "李老先生") -> dict:
+    return {
+        "patient_name": patient_name,
+        "slot_type": slot_type,
+        "scheduled_time": scheduled_time,
+    }
+
+
+def test_missed_summary_groups_slots_under_each_patient():
+    msg = build_caregiver_missed_summary_flex(
+        [
+            _missed("morning", "08:00"),
+            _missed("noon", "12:00"),
+            _missed("evening", "18:00", patient_name="王阿嬤"),
+        ]
+    )
+    assert isinstance(msg, FlexMessage)
+    body = msg.contents.to_dict()["body"]["contents"]
+    names = [
+        block["contents"][0]["text"]
+        for block in body
+        if block.get("type") == "box"
+    ]
+    # 同一位家人的時段收在同一個區塊，不重複列出姓名
+    assert names == ["李老先生", "王阿嬤"]
+
+
+def test_missed_summary_wording_differs_from_overdue_alert():
+    """
+    這則說的是「我們沒能發出提醒」，不是「家人逾時未服藥」。
+    沿用逾時警報的措辭會讓家屬誤以為長輩沒吃藥。
+    """
+    summary = build_caregiver_missed_summary_flex([_missed("morning", "08:00")])
+    alert = build_caregiver_alert_flex(
+        patient_name="李老先生", slot_type="morning", scheduled_time="08:00"
+    )
+    assert summary.alt_text != alert.alt_text
+    assert "未發出" in summary.alt_text
+
+
+def test_missed_summary_truncates_long_outages():
+    """停機半天會累積大量時段，超過上限的部分收斂成一行，避免 Flex 過大。"""
+    entries = [_missed("morning", f"{hour:02d}:00") for hour in range(14)]
+    msg = build_caregiver_missed_summary_flex(entries)
+
+    rendered = str(msg.contents.to_dict())
+    assert "另有 4 個時段" in rendered
+    # altText 仍要報出完整數量
+    assert "14" in msg.alt_text

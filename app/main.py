@@ -19,12 +19,14 @@ from app.dependencies import (
 )
 from app.repositories.consultation_repository import ConsultationRepository
 from app.repositories.knowledge_report_repository import KnowledgeReportRepository
+from app.repositories.medication_repository import MedicationLogRepository
 from app.services.consultation.scheduler import (
     start_consultation_daily_summary_scheduler,
 )
 from app.services.rag.user_document_store import ensure_user_docs_indexes_on_startup
 
 from app.routers.users.family_tree import router as family_tree_router
+from app.routers.users.medical import router as medical_router
 from app.routers.users.knowledge_reports import router as knowledge_reports_router
 from app.routers.users.medications import router as medications_router
 from app.routers.admin.knowledge_reports import router as admin_knowledge_reports_router
@@ -39,6 +41,9 @@ async def lifespan(app: FastAPI):
     # 先確認 MongoDB 摘要 collection 有 TTL index，讓摘要只保留 7 天。
     await ConsultationRepository.ensure_indexes()
     await KnowledgeReportRepository.ensure_indexes()
+    # 用藥 log 的 (reminder_id, scheduled_at) 唯一索引：多實例並存時，
+    # 它是「同一個時段只有一份 log」的唯一保證，推播權搶佔才有意義。
+    await MedicationLogRepository.ensure_indexes()
     await ensure_user_docs_indexes_on_startup()
 
     # 預載院所名稱索引，供判斷使用者說的「診所／醫院／藥局」是專名還是泛稱。
@@ -92,6 +97,7 @@ app.include_router(
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(family_tree_router, prefix="/api/family", tags=["Family Tree"])
 app.include_router(medications_router, prefix="/api/medications", tags=["Medications"])
+app.include_router(medical_router, prefix="/api/medical", tags=["Medical"])
 app.include_router(
     knowledge_reports_router,
     prefix="/api/knowledge-reports",

@@ -288,3 +288,109 @@ def build_caregiver_alert_flex(
         altText=t("flex.med.alt.caregiver", language).format(name=patient_name),
         contents=container,
     )
+
+
+# 一次中斷可能累積很多時段（停機 6 小時 × 多位家人），Flex 有大小上限，
+# 家屬也不會逐行讀。超過的部分收斂成一行「另有 N 個時段」。
+MISSED_SUMMARY_MAX_ROWS = 10
+
+
+def build_caregiver_missed_summary_flex(
+    missed: list[dict[str, str]],
+    language: str | None = None,
+    font_size: str | None = None,
+) -> FlexMessage:
+    """
+    系統中斷期間錯過的時段，彙整成一則傳送給家屬的通知。
+
+    `missed` 每筆需含 `patient_name`、`slot_type`、`scheduled_time`；同一位家屬照顧
+    多人時會依 `patient_name` 分組。措辭與 T+30 逾時警報刻意分開：那則說的是
+    「家人逾時未服藥」，這則說的是「我們沒能發出提醒，所以無法確認服藥與否」。
+    """
+    ft = theme.resolve_theme(font_size)
+    total = len(missed)
+    shown = missed[:MISSED_SUMMARY_MAX_ROWS]
+
+    grouped: dict[str, list[str]] = {}
+    for entry in shown:
+        name = entry.get("patient_name") or "成員"
+        slot_name = get_slot_display_name(entry.get("slot_type", ""), language)
+        grouped.setdefault(name, []).append(
+            f"{slot_name}　{entry.get('scheduled_time', '')}"
+        )
+
+    patient_blocks: list[dict[str, Any]] = []
+    for name, rows in grouped.items():
+        patient_blocks.append(
+            {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": theme.SURFACE_ALT,
+                "cornerRadius": "md",
+                "paddingAll": "lg",
+                "spacing": "xs",
+                "margin": "md",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": name,
+                        "weight": "bold",
+                        "size": ft.title,
+                        "color": theme.TEXT,
+                        "wrap": True,
+                    },
+                    *[
+                        {
+                            "type": "text",
+                            "text": row,
+                            "size": ft.body,
+                            "color": theme.TEXT_MUTED,
+                            "wrap": True,
+                        }
+                        for row in rows
+                    ],
+                ],
+            }
+        )
+
+    if total > len(shown):
+        patient_blocks.append(
+            _paragraph(
+                t("flex.med.missed_summary_more", language).format(
+                    count=total - len(shown)
+                ),
+                ft,
+                color=theme.TEXT_FAINT,
+                margin="sm",
+            )
+        )
+
+    bubble_dict = {
+        "type": "bubble",
+        "header": _header(
+            t("flex.med.header.missed_summary", language),
+            ft,
+            background=theme.STATUS_UNKNOWN,
+        ),
+        "body": _body(
+            [
+                _paragraph(t("flex.med.missed_summary_body", language), ft),
+                *patient_blocks,
+                _paragraph(
+                    t("flex.med.missed_summary_hint", language),
+                    ft,
+                    color=theme.TEXT,
+                    weight="bold",
+                    margin="md",
+                ),
+            ]
+        ),
+    }
+
+    container = FlexContainer.from_dict(bubble_dict)
+    return FlexMessage(
+        altText=t("flex.med.alt.missed_summary", language).format(
+            name=next(iter(grouped), "成員"), count=total
+        ),
+        contents=container,
+    )

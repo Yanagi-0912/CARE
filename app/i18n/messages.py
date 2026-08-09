@@ -990,6 +990,48 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "กรุณาโทรหรือแวะไปดูแลสมาชิกในครอบครัวเมื่อสะดวก",
         "ja": "お時間のあるときに、ご家族へ連絡または様子をご確認ください。",
     },
+    # 系統中斷期間錯過的時段：措辭必須與 T+30 逾時警報區隔。
+    # 那則是「家人沒有按時服藥」，這則是「我們沒能發出提醒，因此不知道有沒有服藥」。
+    "flex.med.header.missed_summary": {
+        "zh-TW": "系統中斷未能提醒",
+        "en": "Reminders missed (service outage)",
+        "id": "Pengingat terlewat (gangguan sistem)",
+        "vi": "Bỏ lỡ nhắc nhở (sự cố hệ thống)",
+        "th": "พลาดการแจ้งเตือน (ระบบขัดข้อง)",
+        "ja": "システム停止により通知できませんでした",
+    },
+    "flex.med.alt.missed_summary": {
+        "zh-TW": "{name} 有 {count} 個時段未發出服藥提醒",
+        "en": "{count} reminder(s) not sent for {name}",
+        "id": "{count} pengingat tidak terkirim untuk {name}",
+        "vi": "{count} nhắc nhở chưa gửi cho {name}",
+        "th": "มี {count} รายการที่ไม่ได้แจ้งเตือนสำหรับ {name}",
+        "ja": "{name} の服薬通知 {count} 件が未送信です",
+    },
+    "flex.med.missed_summary_body": {
+        "zh-TW": "系統中斷期間未能發出提醒，以下時段的服藥狀況無法確認。",
+        "en": "Reminders could not be sent during a service outage, so the doses below are unconfirmed.",
+        "id": "Pengingat tidak dapat dikirim saat sistem terganggu, sehingga dosis berikut belum dapat dipastikan.",
+        "vi": "Không thể gửi nhắc nhở trong thời gian hệ thống gián đoạn, nên các cữ thuốc sau chưa được xác nhận.",
+        "th": "ไม่สามารถส่งการแจ้งเตือนได้ในช่วงที่ระบบขัดข้อง จึงยังไม่สามารถยืนยันการรับประทานยาต่อไปนี้",
+        "ja": "システム停止中は通知を送信できませんでした。以下の服薬状況は確認できていません。",
+    },
+    "flex.med.missed_summary_hint": {
+        "zh-TW": "請確認家人是否已按時服藥。",
+        "en": "Please check whether your family member has taken these doses.",
+        "id": "Mohon periksa apakah anggota keluarga Anda sudah minum obat tersebut.",
+        "vi": "Vui lòng kiểm tra xem người thân đã uống các cữ thuốc này chưa.",
+        "th": "กรุณาตรวจสอบว่าสมาชิกในครอบครัวรับประทานยาเหล่านี้แล้วหรือยัง",
+        "ja": "ご家族が服薬されたかどうかご確認ください。",
+    },
+    "flex.med.missed_summary_more": {
+        "zh-TW": "…另有 {count} 個時段",
+        "en": "…and {count} more",
+        "id": "…dan {count} lainnya",
+        "vi": "…và {count} cữ khác",
+        "th": "…และอีก {count} รายการ",
+        "ja": "…ほか {count} 件",
+    },
 }
 
 

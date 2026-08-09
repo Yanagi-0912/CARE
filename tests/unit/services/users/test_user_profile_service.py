@@ -35,6 +35,7 @@ async def test_get_user_settings_returns_defaults_when_missing_in_db():
         "notify_family": True,
         "voice_reply_enabled": False,
         "voice_rate": "normal",
+        "voice_gender": "female",
     }
 
 
@@ -77,6 +78,21 @@ async def test_get_user_settings_defaults_voice_rate_to_normal_when_missing():
     settings = await service.get_user_settings("U123")
 
     assert settings["voice_rate"] == "normal"
+
+
+@pytest.mark.asyncio
+async def test_get_user_settings_defaults_voice_gender_to_female_when_missing():
+    """舊資料的 settings 沒有 voice_gender 欄位時，讀取應補上預設值 female。"""
+    service, _ = _build_service(
+        get_user_profile_return={
+            "line_id": "U123",
+            "settings": {"font_size": "xlarge"},
+        }
+    )
+
+    settings = await service.get_user_settings("U123")
+
+    assert settings["voice_gender"] == "female"
 
 
 @pytest.mark.asyncio
@@ -127,6 +143,29 @@ async def test_update_user_settings_writes_voice_rate():
 
 
 @pytest.mark.asyncio
+async def test_update_user_settings_writes_voice_gender():
+    stored_profile = {
+        "line_id": "U123",
+        "settings": {"voice_gender": "female"},
+    }
+    service, repo = _build_service()
+    repo.get_user_profile.side_effect = lambda _line_id: stored_profile
+
+    async def _fake_update_user_settings(_line_id, changed_fields):
+        stored_profile["settings"].update(changed_fields)
+        return True
+
+    repo.update_user_settings.side_effect = _fake_update_user_settings
+
+    result = await service.update_user_settings(
+        "U123", UserSettingsUpdate(voice_gender="male")
+    )
+
+    repo.update_user_settings.assert_awaited_once_with("U123", {"voice_gender": "male"})
+    assert result["voice_gender"] == "male"
+
+
+@pytest.mark.asyncio
 async def test_update_user_settings_skips_repo_call_when_nothing_changed():
     service, repo = _build_service(get_user_profile_return={"line_id": "U123"})
 
@@ -158,6 +197,7 @@ async def test_create_default_user_profile_includes_default_settings():
         "notify_family": True,
         "voice_reply_enabled": False,
         "voice_rate": "normal",
+        "voice_gender": "female",
     }
 
 

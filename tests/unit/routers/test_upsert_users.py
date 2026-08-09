@@ -16,6 +16,7 @@ DEFAULT_SETTINGS = {
     "notify_family": True,
     "voice_reply_enabled": False,
     "voice_rate": "normal",
+    "voice_gender": "female",
 }
 
 
@@ -228,5 +229,57 @@ def test_patch_user_settings_other_field_does_not_change_voice_rate(
     body = response.json()
     assert body["settings"]["font_size"] == "xlarge"
     assert body["settings"]["voice_rate"] == "fast"
+
+    fake_service.update_user_settings.assert_awaited_once()
+
+
+def test_patch_user_settings_voice_gender_male_updates_value(
+    client, override_user_profile_service, override_current_user
+):
+    override_current_user("U123")
+    fake_service = override_user_profile_service(FakeUserProfileService())
+
+    response = client.patch(
+        "/api/profiles/me/settings", json={"voice_gender": "male"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["settings"]["voice_gender"] == "male"
+
+    fake_service.update_user_settings.assert_awaited_once()
+
+
+def test_patch_user_settings_invalid_voice_gender_returns_422_and_keeps_existing_value(
+    client, override_user_profile_service, override_current_user
+):
+    override_current_user("U123")
+    fake_service = override_user_profile_service(
+        FakeUserProfileService(settings={**DEFAULT_SETTINGS, "voice_gender": "male"})
+    )
+
+    response = client.patch(
+        "/api/profiles/me/settings", json={"voice_gender": "robot"}
+    )
+    assert response.status_code == 422
+
+    fake_service.update_user_settings.assert_not_awaited()
+    assert fake_service._settings["voice_gender"] == "male"
+
+
+def test_patch_user_settings_other_field_does_not_change_voice_gender(
+    client, override_user_profile_service, override_current_user
+):
+    override_current_user("U123")
+    fake_service = override_user_profile_service(
+        FakeUserProfileService(settings={**DEFAULT_SETTINGS, "voice_gender": "male"})
+    )
+
+    response = client.patch(
+        "/api/profiles/me/settings", json={"font_size": "xlarge"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["settings"]["font_size"] == "xlarge"
+    assert body["settings"]["voice_gender"] == "male"
 
     fake_service.update_user_settings.assert_awaited_once()

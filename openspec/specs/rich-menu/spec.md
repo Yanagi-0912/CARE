@@ -3,9 +3,7 @@
 ## Purpose
 
 定義 CARE LINE Rich Menu 六格版面、多語圖檔／label、LIFF deep link／location／語音 toggle 熱區契約、語音一鍵切換，以及使用者改語言時 link 對應選單。實作位於 `app/services/line_messaging/rich_menu_layout.py`、`rich_menu_service.py`、`scripts/setup_rich_menu.py`、`user_profile_service.py` 與 `dispatcher.py`。
-
 ## Requirements
-
 ### Requirement: Six-grid Rich Menu layout and asset
 
 The setup script SHALL create a LINE Rich Menu of size 1200×810 with six equal areas of 400×405, and SHALL upload the image at `resources/rich_menu_zh-TW.png`.
@@ -50,7 +48,7 @@ Each of the six areas SHALL trigger the corresponding action below (labels are f
 
 ### Requirement: Voice reply one-tap toggle
 
-When handling postback `action=toggle_voice_reply`, the dispatcher SHALL support flipping the user's current voice-reply setting when `enabled` is omitted, and SHALL still honor explicit `enabled=true|false`.
+When handling postback `action=toggle_voice_reply`, the dispatcher SHALL support flipping the user's current voice-reply setting when `enabled` is omitted, and SHALL still honor explicit `enabled=true|false`. The Rich Menu toggle and the LIFF settings page SHALL act on the same stored user setting, so a change made through either entry point is visible from the other.
 
 #### Scenario: Omit enabled flips current setting from false to true
 - **WHEN** postback data is `action=toggle_voice_reply` and the user's current `voice_reply_enabled` is false
@@ -63,6 +61,10 @@ When handling postback `action=toggle_voice_reply`, the dispatcher SHALL support
 #### Scenario: Explicit enabled remains supported
 - **WHEN** postback data is `action=toggle_voice_reply&enabled=true` (or `false`)
 - **THEN** the system MUST set `voice_reply_enabled` to that boolean value regardless of the previous value
+
+#### Scenario: Rich Menu toggle is reflected in the LIFF settings page
+- **WHEN** the user toggles voice reply from the Rich Menu and then opens the LIFF settings page
+- **THEN** the settings page MUST show the updated `voice_reply_enabled` value
 
 ### Requirement: Localized Rich Menu area labels
 
@@ -116,3 +118,4 @@ When a user's `settings.language` is updated via the profile settings API, the s
 #### Scenario: Missing menu id is non-fatal
 - **WHEN** language changes but no richMenuId is configured for that language (after fallback)
 - **THEN** settings MUST still be saved and the API MUST return success without raising
+

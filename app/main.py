@@ -26,7 +26,6 @@ from app.services.consultation.scheduler import (
 from app.services.rag.user_document_store import ensure_user_docs_indexes_on_startup
 
 from app.routers.users.family_tree import router as family_tree_router
-from app.routers.users.medical import router as medical_router
 from app.routers.users.knowledge_reports import router as knowledge_reports_router
 from app.routers.users.medications import router as medications_router
 from app.routers.admin.knowledge_reports import router as admin_knowledge_reports_router
@@ -97,7 +96,6 @@ app.include_router(
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(family_tree_router, prefix="/api/family", tags=["Family Tree"])
 app.include_router(medications_router, prefix="/api/medications", tags=["Medications"])
-app.include_router(medical_router, prefix="/api/medical", tags=["Medical"])
 app.include_router(
     knowledge_reports_router,
     prefix="/api/knowledge-reports",

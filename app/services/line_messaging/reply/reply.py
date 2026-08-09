@@ -54,6 +54,7 @@ class LineReplier:
         voice_reply_enabled: bool = True,
         language: str | None = None,
         voice_rate: str = "normal",
+        voice_gender: str = "female",
     ) -> bool:
         """發送 LINE 訊息（包含文字訊息、Flex Message 與選填的 TTS 語音訊息）"""
         try:
@@ -88,6 +89,7 @@ class LineReplier:
                     voice_reply_enabled=voice_reply_enabled,
                     language=language,
                     voice_rate=voice_rate,
+                    voice_gender=voice_gender,
                 )
 
             # quickReply 只會顯示在陣列最後一則訊息上，因此統一在此處掛到最後一則，
@@ -218,6 +220,7 @@ class LineReplier:
         voice_reply_enabled: bool,
         language: str | None = None,
         voice_rate: str = "normal",
+        voice_gender: str = "female",
     ) -> None:
         if not voice_reply_enabled or self._tts_service is None:
             return
@@ -227,6 +230,7 @@ class LineReplier:
                 message_text,
                 language=language or "zh-TW",
                 voice_rate=voice_rate,
+                voice_gender=voice_gender,
             )
             audio_url = self._resolve_audio_url(output)
         except Exception:

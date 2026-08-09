@@ -145,6 +145,75 @@ async def test_synthesize_maps_language_to_configured_voice(language, expected_v
 
 
 @pytest.mark.parametrize(
+    "language,voice_gender,expected_voice",
+    [
+        ("zh-TW", "female", "zh-TW-HsiaoChenNeural"),
+        ("zh-TW", "male", "zh-TW-YunJheNeural"),
+        ("en", "female", "en-US-AriaNeural"),
+        ("en", "male", "en-US-AndrewNeural"),
+        ("ja", "female", "ja-JP-NanamiNeural"),
+        ("ja", "male", "ja-JP-KeitaNeural"),
+        ("th", "female", "th-TH-PremwadeeNeural"),
+        ("th", "male", "th-TH-NiwatNeural"),
+        ("vi", "female", "vi-VN-HoaiMyNeural"),
+        ("vi", "male", "vi-VN-NamMinhNeural"),
+        ("id", "female", "id-ID-GadisNeural"),
+        ("id", "male", "id-ID-ArdiNeural"),
+    ],
+)
+async def test_synthesize_maps_language_and_gender_to_configured_voice(
+    language, voice_gender, expected_voice
+):
+    engine = FakeSpeechEngine()
+    service = TTSService(engine=engine, fallback_engine=FakeFallbackEngine())
+
+    _, path, _ = await service.synthesize(
+        "hello", language=language, voice_rate="normal", voice_gender=voice_gender
+    )
+    try:
+        assert engine.calls[0]["voice"] == expected_voice
+    finally:
+        _cleanup(path)
+
+
+async def test_synthesize_unknown_voice_gender_falls_back_to_female():
+    engine = FakeSpeechEngine()
+    service = TTSService(engine=engine, fallback_engine=FakeFallbackEngine())
+
+    _, path, _ = await service.synthesize(
+        "hello", language="ja", voice_rate="normal", voice_gender="nonbinary"
+    )
+    try:
+        assert engine.calls[0]["voice"] == "ja-JP-NanamiNeural"
+    finally:
+        _cleanup(path)
+
+
+async def test_synthesize_default_voice_gender_matches_existing_female_voice():
+    engine = FakeSpeechEngine()
+    service = TTSService(engine=engine, fallback_engine=FakeFallbackEngine())
+
+    _, path, _ = await service.synthesize("hello", language="zh-TW", voice_rate="normal")
+    try:
+        assert engine.calls[0]["voice"] == "zh-TW-HsiaoChenNeural"
+    finally:
+        _cleanup(path)
+
+
+async def test_synthesize_unknown_language_with_male_gender_falls_back_to_zh_tw_male():
+    engine = FakeSpeechEngine()
+    service = TTSService(engine=engine, fallback_engine=FakeFallbackEngine())
+
+    _, path, _ = await service.synthesize(
+        "hello", language="fr-FR", voice_rate="normal", voice_gender="male"
+    )
+    try:
+        assert engine.calls[0]["voice"] == "zh-TW-YunJheNeural"
+    finally:
+        _cleanup(path)
+
+
+@pytest.mark.parametrize(
     "voice_rate,expected_rate",
     [
         ("slow", "-25%"),

@@ -135,6 +135,7 @@ class BaseLineMessageHandler:
             call_request_location = agent_response.get("call_request_location", False)
             voice_reply_enabled = self._parse_voice_reply_enabled(user_profile)
             voice_rate = self._parse_voice_rate(user_profile)
+            voice_gender = self._parse_voice_gender(user_profile)
 
             t2 = time.perf_counter()
             success = await self._replier.reply(
@@ -145,6 +146,7 @@ class BaseLineMessageHandler:
                 voice_reply_enabled=voice_reply_enabled,
                 language=user_language,
                 voice_rate=voice_rate,
+                voice_gender=voice_gender,
             )
             log_stage(
                 logger,
@@ -208,6 +210,15 @@ class BaseLineMessageHandler:
         if "voice_rate" in settings_dict:
             return settings_dict["voice_rate"] or "normal"
         return user_profile.get("voice_rate") or "normal"
+
+    def _parse_voice_gender(self, user_profile: Optional[dict]) -> str:
+        """同步解析使用者個人檔案中的語音性別設定，缺值時預設為 "female"。"""
+        if not user_profile:
+            return "female"
+        settings_dict = user_profile.get("settings") or {}
+        if "voice_gender" in settings_dict:
+            return settings_dict["voice_gender"] or "female"
+        return user_profile.get("voice_gender") or "female"
 
 
 class LineMessageHandler(BaseLineMessageHandler):

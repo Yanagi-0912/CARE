@@ -50,6 +50,10 @@ class UserSettings(BaseModel):
         default="normal",
         description="語音回覆語速",
     )
+    voice_gender: Literal["female", "male"] = Field(
+        default="female",
+        description="語音回覆音色性別",
+    )
 
 
 class UserSettingsUpdate(BaseModel):
@@ -69,6 +73,10 @@ class UserSettingsUpdate(BaseModel):
     voice_rate: Optional[Literal["slow", "normal", "fast"]] = Field(
         default=None,
         description="語音回覆語速",
+    )
+    voice_gender: Optional[Literal["female", "male"]] = Field(
+        default=None,
+        description="語音回覆音色性別",
     )
 
 

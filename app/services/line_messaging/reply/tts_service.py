@@ -34,15 +34,18 @@ TTS_TMP_DIR = Path("app_data") / "tmp"
 DEFAULT_DURATION_MS = 1_000
 DEFAULT_TTS_FILE_TTL_SECONDS = 60 * 60
 
-# 六語系 → edge-tts voice 名稱。未知語言一律 fallback DEFAULT_USER_LANGUAGE。
+# 六語系 → 性別 → edge-tts voice 名稱。未知語言一律 fallback DEFAULT_USER_LANGUAGE，
+# 未知性別一律 fallback DEFAULT_VOICE_GENDER。
 VOICE_BY_LANGUAGE = {
-    "zh-TW": "zh-TW-HsiaoChenNeural",
-    "en": "en-US-AriaNeural",
-    "ja": "ja-JP-NanamiNeural",
-    "th": "th-TH-PremwadeeNeural",
-    "vi": "vi-VN-HoaiMyNeural",
-    "id": "id-ID-GadisNeural",
+    "zh-TW": {"female": "zh-TW-HsiaoChenNeural", "male": "zh-TW-YunJheNeural"},
+    "en": {"female": "en-US-AriaNeural", "male": "en-US-AndrewNeural"},
+    "ja": {"female": "ja-JP-NanamiNeural", "male": "ja-JP-KeitaNeural"},
+    "th": {"female": "th-TH-PremwadeeNeural", "male": "th-TH-NiwatNeural"},
+    "vi": {"female": "vi-VN-HoaiMyNeural", "male": "vi-VN-NamMinhNeural"},
+    "id": {"female": "id-ID-GadisNeural", "male": "id-ID-ArdiNeural"},
 }
+
+DEFAULT_VOICE_GENDER = "female"
 
 # voice_rate 檔位 → edge-tts rate 百分比（正負號、"+0%" 形式由 f"{percent:+d}%" 產生）。
 RATE_PERCENT = {"slow": -25, "normal": 0, "fast": 25}
@@ -110,7 +113,7 @@ class GTTSEngine:
 class TTSService:
     """Text-to-speech service：edge-tts 為主引擎，gTTS 為備援。
 
-    synthesize(text, language, voice_rate) -> (bytes, path_or_url, duration_ms)。
+    synthesize(text, language, voice_rate, voice_gender) -> (bytes, path_or_url, duration_ms)。
     """
 
     def __init__(
@@ -122,7 +125,11 @@ class TTSService:
         self._fallback_engine = fallback_engine
 
     async def synthesize(
-        self, text: str, language: str = "zh-TW", voice_rate: str = "normal"
+        self,
+        text: str,
+        language: str = "zh-TW",
+        voice_rate: str = "normal",
+        voice_gender: str = DEFAULT_VOICE_GENDER,
     ) -> Tuple[bytes, str, Optional[int]]:
         """Synthesize and return (bytes, path, duration_ms).
 
@@ -135,7 +142,7 @@ class TTSService:
             TTS_TMP_DIR.mkdir(parents=True, exist_ok=True)
             self.cleanup_expired_audio_files()
 
-            data = await self._synthesize_bytes(text, language, voice_rate)
+            data = await self._synthesize_bytes(text, language, voice_rate, voice_gender)
             duration_ms = self._get_duration_ms(data, text)
             filename = f"tts_{uuid.uuid4().hex}.mp3"
             tmp_path = TTS_TMP_DIR / filename
@@ -147,9 +154,14 @@ class TTSService:
             logger.exception("TTS synthesis failed")
             raise
 
-    async def _synthesize_bytes(self, text: str, language: str, voice_rate: str) -> bytes:
+    async def _synthesize_bytes(
+        self, text: str, language: str, voice_rate: str, voice_gender: str = DEFAULT_VOICE_GENDER
+    ) -> bytes:
         normalized_language = language if language in SUPPORTED_LANGUAGES else DEFAULT_USER_LANGUAGE
-        voice = VOICE_BY_LANGUAGE.get(normalized_language, VOICE_BY_LANGUAGE[DEFAULT_USER_LANGUAGE])
+        voices_by_gender = VOICE_BY_LANGUAGE.get(
+            normalized_language, VOICE_BY_LANGUAGE[DEFAULT_USER_LANGUAGE]
+        )
+        voice = voices_by_gender.get(voice_gender) or voices_by_gender[DEFAULT_VOICE_GENDER]
         percent = RATE_PERCENT.get(voice_rate, RATE_PERCENT[DEFAULT_VOICE_RATE])
         rate = f"{percent:+d}%"
         try:

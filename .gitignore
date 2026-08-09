@@ -141,6 +141,9 @@ celerybeat.pid
 
 # Environments
 .env
+# .env 的備份／變體同樣含實際憑證。下方 env.bak/ 是虛擬環境目錄，涵蓋不到這些。
+.env.*
+!.env.example
 .envrc
 .venv
 env/

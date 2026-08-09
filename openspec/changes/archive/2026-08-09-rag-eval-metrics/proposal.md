@@ -35,3 +35,4 @@ CARE 的 RAG 知識庫問答目前 top-5 hit_rate 偏低（實測 vector 0.29 / 
 - **API／route**：無新 HTTP route；僅影響 `get_rag_answer` tool 內部回覆內文與 eval 腳本輸出
 - **測試**：`tests/unit/services/rag/` 新增／更新（`test_retriever.py`、`test_eval_scoring.py`、`test_answer_service.py`、`test_answer_prompts.py`）；`./init.sh`（或 pytest）全綠才算完成
 - **相依**：無新增套件
+- **歸檔順序（硬性）**：`cohere-rag-rerank` MUST 先歸檔。兩者都 MODIFY `rag-responses` 的「檢索上下文與參考來源上限」，而 MODIFIED 是整塊取代；本 change 的 delta 已建立在精排（`RAG_RETRIEVE_CANDIDATES`／`RAG_RERANK_TOP_N`）之上並改以「實際被引用」為列出準則。順序顛倒會讓引用式來源清單被舊的「精排順位前三筆」覆蓋

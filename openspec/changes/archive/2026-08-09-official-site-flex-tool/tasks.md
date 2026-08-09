@@ -1,6 +1,6 @@
 ## 1. Flex 與 Tool
 
-- [x] 1.1 新增官網入口 Flex 純函式（雙按鈕；缺 URL 時降級）
+- [x] 1.1 新增官網入口 Flex 純函式（單一入口按鈕，優先 LIFF；兩者皆空時由 tool 降級為純文字）
 - [x] 1.2 新增 `open_official_site` tool（讀 settings／可 DI 注入 URL），回傳 JSON 字串
 - [x] 1.3 註冊至 `registry.py`；必要時在 `dependencies.py` configure
 - [x] 1.4 單元測試：Flex 結構、雙／單 URL、皆空、tool 註冊

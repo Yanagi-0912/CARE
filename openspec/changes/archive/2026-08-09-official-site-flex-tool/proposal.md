@@ -4,7 +4,7 @@
 
 ## What Changes
 
-- 新增 Agent tool `open_official_site`：回傳 LINE Flex JSON（官網 `PUBLIC_BASE_URL` + LIFF `LIFF_URL` 兩個 URI 按鈕）。
+- 新增 Agent tool `open_official_site`：回傳 LINE Flex JSON，含單一入口 URI 按鈕；URL 優先取 `LIFF_URL`，未設定時退回 `PUBLIC_BASE_URL`。
 - 純函式產生 Flex bubble（resources／flex 模組），URL 從 settings 注入，禁止寫死網域。
 - System prompt：使用者要官網／網站／打開 LIFF 入口時優先呼叫此 tool；有 Flex JSON 須原樣輸出。
 - 短關鍵字（官網、打開官網、官方網站、打開網站、LIFF 怎麼開等）可 force 此 tool，並禁止同輪 force RAG。
@@ -27,3 +27,4 @@
 - **測試**：`tests/unit/tools/`、`tests/unit/services/agent/`
 - **API**：無新 HTTP route；行為經 LINE Agent
 - **部署**：無需新 env（既有 `LIFF_URL`、`PUBLIC_BASE_URL`）；若 `PUBLIC_BASE_URL` 空則僅顯示 LIFF 按鈕或降級純文字說明
+- **歸檔順序（硬性）**：`crag-web-fallback` MUST 先歸檔。兩者都 MODIFY `agent-architecture` 的「代理可用工具集」，而 MODIFIED 是整塊取代；本 change 的 delta 已含 `crag-web-fallback` 的工具清單並額外加入 `open_official_site`，前提是它先落地。順序顛倒會讓 `open_official_site` 從主規格消失

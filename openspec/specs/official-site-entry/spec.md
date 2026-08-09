@@ -1,23 +1,28 @@
-## ADDED Requirements
+# official-site-entry Specification
 
+## Purpose
+TBD - created by archiving change official-site-flex-tool. Update Purpose after archive.
+## Requirements
 ### Requirement: 官網入口 Flex Tool
 
-系統 SHALL 提供 Agent tool `open_official_site`。呼叫時 SHALL 回傳 LINE Flex Message 的 JSON 字串（非 Markdown）。Flex SHALL 引導使用者開啟 CARE 官方入口，並在設定值可用時提供：
+系統 SHALL 提供 Agent tool `open_official_site`。呼叫時 SHALL 回傳 LINE Flex Message 的 JSON 字串（非 Markdown）。Flex SHALL 引導使用者開啟 CARE 官方入口。
 
-- LIFF 入口 URI（來自 `LIFF_URL`）
-- 官網 URI（來自 `PUBLIC_BASE_URL`）
+LIFF 與官網對使用者而言是同一個目的地，因此 Flex SHALL 只渲染**單一**入口按鈕，其 URI 依下列優先序決定：
 
-當僅一側 URL 有非空白值時，SHALL 只渲染對應按鈕。當兩側皆空白時，SHALL 回傳簡短純文字說明（不得拋未處理例外）。
+1. `LIFF_URL`（有非空白值時優先）
+2. `PUBLIC_BASE_URL`
 
-#### Scenario: 雙 URL 皆設定
+當兩者皆空白時，工具 SHALL 回傳簡短純文字說明（不得拋未處理例外）。
+
+#### Scenario: 雙 URL 皆設定時優先 LIFF
 
 - **WHEN** `LIFF_URL` 與 `PUBLIC_BASE_URL` 皆非空且呼叫 `open_official_site`
-- **THEN** 回傳 Flex JSON，內容含兩個 URI action，分別指向上述兩個 URL
+- **THEN** 回傳 Flex JSON，內容僅含一個 URI action，指向 `LIFF_URL`
 
-#### Scenario: 僅 LIFF
+#### Scenario: 僅官網
 
-- **WHEN** 僅 `LIFF_URL` 非空
-- **THEN** 回傳 Flex JSON，至少含開啟 LIFF 的 URI 按鈕，且不含空白 URI
+- **WHEN** 僅 `PUBLIC_BASE_URL` 非空
+- **THEN** 回傳 Flex JSON，其唯一 URI action 指向 `PUBLIC_BASE_URL`，且不含空白 URI
 
 #### Scenario: 皆未設定
 
@@ -42,3 +47,4 @@
 
 - **WHEN** 訊息以媒體抽出前綴開頭
 - **THEN** 即使內文含「官網」字樣，亦不強制 `open_official_site`
+

@@ -26,3 +26,4 @@
 - **程式**：`prompt.py`、`nodes.py`、`fail_messages.py`、`message_handler.py`、`dispatcher.py`、`reply.py`、`medical_tools.py`、`medical_service.py`；新增 `app/i18n/`（或同等模組）
 - **API／route**：無新端點；讀既有 profile settings
 - **測試計畫**：單元測試涵蓋 normalize、訊息表、prompt 語言規則、關鍵呼叫點；`pytest tests/unit -q` 相關路徑全綠
+- **歸檔順序（硬性）**：`no-fabricated-rag-sources` MUST 先歸檔。兩者都 MODIFY `line-reply-rules` 的「保留參考資料來源」，而 MODIFIED 是整塊取代；本 change 的 delta 已把「工具輸出不含來源標題時不得捏造」一併寫入，前提是它先落地。順序顛倒會讓防捏造條文從主規格消失

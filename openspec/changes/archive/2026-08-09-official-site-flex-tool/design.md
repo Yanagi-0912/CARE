@@ -1,6 +1,6 @@
 ## Context
 
-CARE Agent 已有院所 Flex（tool 回 `json.dumps` bubble，`reply.py` 辨識後送 FlexMessage）與 location quick reply force 模式。`LIFF_URL`、`PUBLIC_BASE_URL`（Helm 由 `public.host` 組出，如 `https://care.jamessu2016.com`）已存在。桌面外開 LIFF 體驗差，故入口卡同時給「官網」與「LIFF」兩顆按鈕。
+CARE Agent 已有院所 Flex（tool 回 `json.dumps` bubble，`reply.py` 辨識後送 FlexMessage）與 location quick reply force 模式。`LIFF_URL`、`PUBLIC_BASE_URL`（Helm 由 `public.host` 組出，如 `https://care.jamessu2016.com`）已存在。LIFF 與官網對使用者而言是同一個目的地，兩顆按鈕只會製造選擇成本，故入口卡只給一顆按鈕，優先導向 LIFF。
 
 ## Goals / Non-Goals
 
@@ -20,7 +20,7 @@ CARE Agent 已有院所 Flex（tool 回 `json.dumps` bubble，`reply.py` 辨識�
 1. **Tool 名稱** `open_official_site`  
    - 無參數；回傳 `json.dumps(flex_dict, ensure_ascii=False)`，格式對齊院所 Flex（含 `type: flex`／`contents` 結構，與現有 `_to_flex_message_text` 慣例一致）。
 
-2. **雙按鈕**  
+2. **單一入口按鈕（優先 LIFF）**  
    - 主：開啟 LIFF（`LIFF_URL`）  
    - 次：開啟官網（`PUBLIC_BASE_URL`）  
    - 若僅一端有值：只渲染有值的按鈕；兩者皆空 → 回傳簡短純文字錯誤提示（勿拋例外炸 Agent）。
@@ -48,7 +48,7 @@ CARE Agent 已有院所 Flex（tool 回 `json.dumps` bubble，`reply.py` 辨識�
 ## Migration Plan
 
 1. 合併後部署後端即可；確認 ConfigMap 有 `LIFF_URL`、`PUBLIC_BASE_URL`
-2. LINE 實測：「打開官網」→ Flex 雙按鈕
+2. LINE 實測：「打開官網」→ Flex 單顆按鈕，點擊進入 LIFF
 3. Rollback：關閉 force＋自 registry 移除 tool（或 feature 未做 flag 則 revert commit）
 
 ## Open Questions

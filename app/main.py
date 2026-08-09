@@ -14,6 +14,7 @@ from app.dependencies import (
     get_chat_history_repository,
     get_line_replier,
     get_user_profile_service,
+    preload_facility_name_index,
     start_medication_scheduler,
 )
 from app.repositories.consultation_repository import ConsultationRepository

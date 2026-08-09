@@ -258,6 +258,47 @@ class ScrapedPage:  text: str; final_url: str | None
 - **change 2（approve-with-content-preview）**：預覽抓取請走 `scrape_page`，顯示給 admin 的網址用 `final_url`（有的話）而非 admin 輸入的字串；Decision 8 的 fail-open 殘留風險要寫進該 change 的 Context。
 - **change 3（manual-knowledge-report）**：建立端點對單一 URL 呼叫 `assert_allowed_urls([url])`，把 `InvalidUrl.reason` 對映成表單的欄位錯誤（`malformed` → 「網址格式不正確」；`not_allowed` → 「目前只收錄下列來源…」並列出 `allowed_suffixes`）。存進 `user_source_urls` 的必須是回傳的正規化字串。
 
+### 界面已落地（tasks.md 9.4）
+
+以上界面已於分支 `sdd/harden-url-whitelist`（CARE 端 HEAD `b7602a4`）實際落地並通過測試，change 2、3 可以開始依賴。下面是直接讀自原始碼的最終簽章，與上面設計草稿有出入之處以此為準（草稿沒列出 `UrlPolicy` 三個方法與 `WebSearchClient.scrape_page` 的完整簽章，此處補齊；其餘與草稿一致）：
+
+```python
+# app/services/rag/whitelist.py
+DEFAULT_ALLOWED_DOMAIN_SUFFIXES: tuple[str, ...]  # 原 ALLOWED_DOMAIN_SUFFIXES 已更名
+
+class InvalidUrl:                       # frozen dataclass
+    url: str
+    reason: Literal["malformed", "not_allowed"]
+
+class UrlNotAllowedError(Exception):
+    invalid: list[InvalidUrl]
+    def __init__(self, invalid: list[InvalidUrl]) -> None: ...
+
+class UrlPolicy:                        # frozen dataclass；建構子注入 allowed_suffixes，測試不必碰 settings
+    allowed_suffixes: tuple[str, ...]
+    def normalize(self, raw: str) -> str | None: ...
+    def is_allowed(self, raw: str) -> bool: ...
+    def assert_allowed(self, urls: list[str]) -> list[str]: ...  # 回正規化後清單；走完全部才一次拋錯
+
+def parse_allowed_suffixes(raw: str) -> tuple[str, ...]: ...
+def default_url_policy() -> UrlPolicy: ...              # lru_cache(maxsize=1) 單例，讀 settings.RAG_ALLOWED_DOMAIN_SUFFIXES
+def normalize_url(raw: str) -> str | None: ...            # 薄包裝，委派 default_url_policy().normalize
+def is_allowed_url(url: str) -> bool: ...                  # 薄包裝，委派 default_url_policy().is_allowed
+def assert_allowed_urls(urls: list[str]) -> list[str]: ...  # 薄包裝，委派 default_url_policy().assert_allowed
+
+# app/services/rag/web_client.py
+class ScrapedPage:                      # frozen dataclass
+    text: str
+    final_url: str | None = None
+
+class WebSearchClient(Protocol):
+    async def search(self, query: str, *, limit: int = 5) -> list[WebSearchHit]: ...
+    async def scrape(self, url: str) -> str: ...          # 保留，web_search_service.py 仍在用
+    async def scrape_page(self, url: str) -> ScrapedPage: ...
+```
+
+驗證狀態：`tests/unit/services/rag/test_web_whitelist.py` 等本 change 新增／覆蓋的測試共 321 個全綠；CARE `pytest tests/` 共 1330 個測試全綠；CARE-LIFF（第 8 節錯誤訊息顯示，分支同名、commit `e80a68e`）`npx vitest run` 105 個測試全綠。
+
 ## Open Questions
 
 - 是否值得引入真正對齊 WHATWG 的 Python URL 解析器（`ada-url`）取代 Decision 1 的前置檢查？現階段的答案是「不值得為 40 行模組加 C 擴充相依」，但若之後 URL 輸入面再擴大（例如開放使用者上傳含連結的文件），值得重評。

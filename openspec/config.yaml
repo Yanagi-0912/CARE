@@ -15,6 +15,7 @@ context: |
     - line-reply-rules：LINE 回覆格式（純文字、不用 Markdown、RAG 前綴、參考來源）
     - rag-responses：RAG 閘門、最多 3 筆參考來源、無命中處理
     - location-search：位置快速回覆與鄰近院所搜尋
+    - medication-reminders：用藥提醒規則、三階遞進推播、停機與多實例下的排程行為
   進行中的變更：openspec/changes/
   語言：面向使用者文件與 commit/PR 描述使用繁體中文
 

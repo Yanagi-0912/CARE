@@ -20,4 +20,11 @@
 ## 4. 驗證與收尾
 
 - [x] 4.1 本機抽樣跑數題（含預期不足題）確認 log 有 `crag_grade` 且行為符合 spec
-- [ ] 4.2 以清楚訊息 commit（使用者指示後再 push）
+- [x] 4.2 以清楚訊息 commit（使用者指示後再 push）
+- [x] 4.3 歸檔前覆核：spec delta 原本越權規定了「不足之後對使用者回應什麼」
+  （回傳無資料訊息、不附來源、不在服務內打網），而 `crag-web-fallback` 之後
+  反轉了該契約——`RagAnswerService` 現在會在不足時呼叫 web fallback。
+  delta 已縮回本 capability 真正的職責（分級與改寫機制），移除
+  「不在 RAG 服務內觸發網路搜尋」整條與整份 `rag-responses` delta。
+  `tests/unit/services/rag/{test_retrieval_grader,test_answer_service,test_query_rewriter}.py`
+  共 50 項通過

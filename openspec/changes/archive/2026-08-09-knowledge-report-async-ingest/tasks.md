@@ -22,4 +22,4 @@
 ## 5. 收尾
 
 - [x] 5.1 `./init.sh` 全綠
-- [ ] 5.2 勾選本 tasks；commit
+- [x] 5.2 勾選本 tasks；commit

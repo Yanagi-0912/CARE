@@ -38,4 +38,4 @@
 
 - [x] 6.1 `src/tests/adminKnowledgeReports.test.tsx`：部分勾選核准送出正確 `selected_urls`、全不選時停用、ingest 失敗顯示原因、重試呼叫 approve、載入更多
 - [x] 6.2 `./init.sh` 全綠；LIFF `npx vitest run` 全綠
-- [ ] 6.3 勾選本 tasks；commit
+- [x] 6.3 勾選本 tasks；commit

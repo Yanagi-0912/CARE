@@ -3,9 +3,7 @@
 ## Purpose
 
 定義 CARE 知識庫問答（RAG）與公開網路搜尋工具的行為：何時啟用、如何附上參考來源、以及無命中或失敗時的處理。實作位於 `app/services/rag/`（`answer_service`、`web_search_service`、`retriever`）與 `app/tools/rag_tools.py`、`app/tools/web_tools.py`。
-
 ## Requirements
-
 ### Requirement: RAG 與網路搜尋工具閘門
 
 系統 SHALL 僅在 guardrail 判定訊息與健康醫療相關（`allow_rag = True`）時，才對代理提供 `get_rag_answer` 與 `search_public_web` 工具。位置座標訊息 SHALL NOT 啟用上述工具。
@@ -65,3 +63,18 @@ RAG 檢索 SHALL 取回最多 10 筆關聯文件，並將這 10 筆內容全部�
 
 - **WHEN** `get_rag_answer` 被呼叫但 RAG 服務尚未注入
 - **THEN** 回傳「RAG 服務未初始化，請稍後再試。」而非中斷流程
+
+### Requirement: Web fallback 成功後觸發知識回報
+
+當 `RagAnswerService` 因知識庫不足（空檢索、CRAG `incorrect`、或 `ambiguous` 且 rewrite 後仍不足）而成功取得白名單網路回答時，系統 SHALL 將該次查詢與引用來源 URL 交給知識回報流程建立 pending（見 knowledge-reports）。此步驟 SHALL NOT 改變已回傳給代理的網路答案內容；觸發失敗時 SHALL 僅記錄錯誤。
+
+#### Scenario: CRAG incorrect 網路成功後建報
+
+- **WHEN** CRAG 評為 incorrect、web fallback 成功並附白名單來源
+- **THEN** 代理仍收到網路答案，且系統建立對應 pending 知識回報
+
+#### Scenario: 僅知識庫答案不建報
+
+- **WHEN** 知識庫檢索充足並直接生成答案（未走 web fallback）
+- **THEN** 系統不因此建立知識回報
+

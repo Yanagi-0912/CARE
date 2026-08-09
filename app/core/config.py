@@ -109,5 +109,19 @@ class Settings:
         "RAG_WEB_FALLBACK_ENABLED", "true"
     ).lower() in ("1", "true", "yes", "on")
 
+    # 入庫／核准的來源白名單（逗號分隔的網域後綴）。只有落在此清單的網址能
+    # 進向量庫、能被核准。判準見 openspec/changes/harden-url-whitelist/design.md
+    # Decision 4：機構層級的權威性、內容穩定可長期存取、無商業銷售動機、
+    # 註冊門檻構成實質限制、對台灣使用者的可用性。
+    RAG_ALLOWED_DOMAIN_SUFFIXES: str = os.getenv(
+        "RAG_ALLOWED_DOMAIN_SUFFIXES",
+        "gov.tw,nhri.edu.tw,who.int,cdc.gov,nih.gov,medlineplus.gov",
+    )
+    # 網搜（Firecrawl）用的 site: 篩選字串，與上方入庫白名單各自獨立設定
+    # （design.md Decision 5）：網搜只是收窄召回，真正把關的是入庫白名單。
+    RAG_WEB_SEARCH_SITE_FILTER: str = os.getenv(
+        "RAG_WEB_SEARCH_SITE_FILTER", "site:gov.tw"
+    )
+
 
 settings = Settings()

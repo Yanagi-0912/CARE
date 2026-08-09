@@ -34,7 +34,7 @@ from app.services.rag import (
     RERANK_TOP_N,
     RagAnswerService,
 )
-from app.services.rag.answer_service import cited_indices
+from app.services.rag.answer_service import cited_indices, dedup_ranked_docs
 from app.services.rag.cohere_reranker import VectorScoreReranker
 from app.services.rag.retrieval_grader import Grade
 
@@ -626,3 +626,107 @@ async def test_crag_grader_exception_degrades_to_generate():
     result = await svc.answer("高血壓要注意什麼")
     assert "RAG 回覆" in result
     gemini.chat_model.ainvoke.assert_awaited()
+
+
+# --- 精排後之文章層級去重（dedup_ranked_docs） ---------------------------
+
+
+def _article_doc(article: str, content: str, *, url_prefix: str = "https"):
+    """同一篇文章共用 url，方便建構「多個 chunk 屬於同一篇文章」的情境。"""
+    return _doc(
+        source=f"來源{article}",
+        url=f"{url_prefix}://example.com/{article}",
+        title=f"文章{article}",
+        content=content,
+    )
+
+
+def test_dedup_ranked_docs_caps_two_chunks_per_article_by_default():
+    a1 = _article_doc("A", "a1")
+    a2 = _article_doc("A", "a2")
+    b1 = _article_doc("B", "b1")
+    a3 = _article_doc("A", "a3")
+    b2 = _article_doc("B", "b2")
+    a4 = _article_doc("A", "a4")
+    b3 = _article_doc("B", "b3")
+    docs = [a1, a2, b1, a3, b2, a4, b3]  # 精排完整排序：A×4、B×3 交錯
+
+    result = dedup_ranked_docs(docs, max_per_article=2)
+
+    # 每篇文章最多留 2 個 chunk，且保持原本排序（第一次出現的位置）
+    assert result == [a1, a2, b1, b2]
+
+
+def test_dedup_ranked_docs_cap_one_keeps_only_top_ranked_chunk_per_article():
+    a1 = _article_doc("A", "a1")
+    a2 = _article_doc("A", "a2")
+    b1 = _article_doc("B", "b1")
+    a3 = _article_doc("A", "a3")
+    docs = [a1, a2, b1, a3]
+
+    result = dedup_ranked_docs(docs, max_per_article=1)
+
+    assert result == [a1, b1]
+
+
+def test_dedup_ranked_docs_identity_without_url_uses_source_and_title():
+    """無 url 的文章：source_name+original_title 相同才視為同一篇。"""
+    same_1 = _doc(source="食藥署", url=None, title="標題A", content="x1")
+    same_2 = _doc(source="食藥署", url=None, title="標題A", content="x2")
+    different_title = _doc(source="食藥署", url=None, title="標題B", content="y1")
+    different_source = _doc(source="疾管署", url=None, title="標題A", content="z1")
+
+    result = dedup_ranked_docs(
+        [same_1, same_2, different_title, different_source], max_per_article=1
+    )
+
+    # same_2 與 same_1 同一篇（source+title 相同）被去重；其餘兩篇 source 或
+    # title 不同，各自視為獨立文章保留
+    assert result == [same_1, different_title, different_source]
+
+
+@pytest.mark.parametrize("invalid_cap", [0, -1, -5])
+def test_dedup_ranked_docs_non_positive_cap_treated_as_one(invalid_cap):
+    a1 = _article_doc("A", "a1")
+    a2 = _article_doc("A", "a2")
+    b1 = _article_doc("B", "b1")
+    docs = [a1, a2, b1]
+
+    result = dedup_ranked_docs(docs, max_per_article=invalid_cap)
+
+    assert result == [a1, b1]
+
+
+def test_dedup_ranked_docs_empty_input_returns_empty():
+    assert dedup_ranked_docs([], max_per_article=2) == []
+
+
+@pytest.mark.asyncio
+async def test_retrieve_and_rerank_sends_full_ranked_list_to_reranker_and_dedups():
+    """reranker 應收到完整排序（top_n=len(docs)），去重後才截 rerank_top_n。"""
+    a1 = _article_doc("A", "a1")
+    a2 = _article_doc("A", "a2")
+    b1 = _article_doc("B", "b1")
+    a3 = _article_doc("A", "a3")
+    b2 = _article_doc("B", "b2")
+    a4 = _article_doc("A", "a4")
+    b3 = _article_doc("B", "b3")
+    docs = [a1, a2, b1, a3, b2, a4, b3]
+
+    reranker = MagicMock()
+    reranker.rerank = AsyncMock(side_effect=lambda query, docs, *, top_n: docs)
+    svc, _gemini, retriever = _make_service(
+        docs=docs, reranker=reranker, rerank_top_n=5
+    )
+
+    result = await svc._retrieve_and_rerank("測試問題")
+
+    retriever.ainvoke.assert_awaited_once_with("測試問題")
+    reranker.rerank.assert_awaited_once_with("測試問題", docs, top_n=len(docs))
+    assert len(result) <= 5
+
+    counts: dict[str, int] = {}
+    for doc in result:
+        key = RagAnswerService._source_key(doc)
+        counts[key] = counts.get(key, 0) + 1
+    assert all(count <= 2 for count in counts.values())

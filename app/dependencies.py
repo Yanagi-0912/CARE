@@ -169,6 +169,7 @@ _rag_answer_service = RagAnswerService(
     retriever=_rag_retriever,
     reranker=_rag_reranker,
     rerank_top_n=settings.RAG_RERANK_TOP_N,
+    max_chunks_per_article=settings.RAG_RERANK_MAX_CHUNKS_PER_ARTICLE,
     grader=_rag_grader,
     rewriter=_rag_rewriter,
     crag_enabled=settings.RAG_CRAG_ENABLED,

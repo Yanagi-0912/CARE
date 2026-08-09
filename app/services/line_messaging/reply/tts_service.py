@@ -113,7 +113,7 @@ class GTTSEngine:
 class TTSService:
     """Text-to-speech service：edge-tts 為主引擎，gTTS 為備援。
 
-    synthesize(text, language, voice_rate) -> (bytes, path_or_url, duration_ms)。
+    synthesize(text, language, voice_rate, voice_gender) -> (bytes, path_or_url, duration_ms)。
     """
 
     def __init__(
@@ -161,8 +161,7 @@ class TTSService:
         voices_by_gender = VOICE_BY_LANGUAGE.get(
             normalized_language, VOICE_BY_LANGUAGE[DEFAULT_USER_LANGUAGE]
         )
-        normalized_gender = voice_gender if voice_gender in voices_by_gender else DEFAULT_VOICE_GENDER
-        voice = voices_by_gender.get(normalized_gender, voices_by_gender[DEFAULT_VOICE_GENDER])
+        voice = voices_by_gender.get(voice_gender) or voices_by_gender[DEFAULT_VOICE_GENDER]
         percent = RATE_PERCENT.get(voice_rate, RATE_PERCENT[DEFAULT_VOICE_RATE])
         rate = f"{percent:+d}%"
         try:

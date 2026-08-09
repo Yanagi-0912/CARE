@@ -550,14 +550,25 @@ def get_current_user(
     return CurrentUser(line_user_id=line_user_id)
 
 
-def require_prescription_scan_enabled() -> None:
-    """功能開關關閉時，讓藥袋辨識相關端點表現得像不存在一樣，回 404。
+def get_prescription_scan_enabled() -> bool:
+    """讀取藥袋辨識功能開關目前的值。
 
-    刻意在請求當下讀 `settings.PRESCRIPTION_SCAN_ENABLED`（而不是在模組載入時
-    算好一個布林值存起來），測試才能單純以 app.dependency_overrides 覆寫這個
-    dependency 來模擬「開啟」，不必真的改動 settings 或重新 import 這個模組。
+    獨立成一支 dependency（而不是在呼叫端直接讀 settings.PRESCRIPTION_SCAN_ENABLED），
+    是因為除了 require_prescription_scan_enabled 用它來決定要不要 404 之外，
+    `GET /api/profiles/me/settings` 也要把這個布林值原樣回給 LIFF，讓前端在
+    渲染掃描入口之前就能知道開關狀態，不必再用「探測一個不存在的草稿 ID、
+    比對 404 錯誤訊息」這種依賴未受約束字串的方式旁敲側擊。兩處共用同一支
+    dependency，測試也才能用 app.dependency_overrides 一次覆寫，不必動到
+    settings 這個整個行程共用的單例。
     """
-    if not settings.PRESCRIPTION_SCAN_ENABLED:
+    return settings.PRESCRIPTION_SCAN_ENABLED
+
+
+def require_prescription_scan_enabled(
+    enabled: bool = Depends(get_prescription_scan_enabled),
+) -> None:
+    """功能開關關閉時，讓藥袋辨識相關端點表現得像不存在一樣，回 404。"""
+    if not enabled:
         raise HTTPException(status_code=404, detail="Not Found")
 
 

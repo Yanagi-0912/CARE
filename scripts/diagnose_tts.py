@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 import sys
 
@@ -30,14 +31,14 @@ def main() -> None:
     print(f"TTS_AUDIO_URL_PATH: {settings.TTS_AUDIO_URL_PATH!r}")
 
     service = TTSService()
-    print(f"gTTS available: {service.available()}")
+    print(f"TTS available: {service.available()}")
 
     if not settings.PUBLIC_BASE_URL.strip():
         print("ERROR: PUBLIC_BASE_URL is empty. LINE audio replies will be skipped.")
 
     try:
-        _data, path, duration_ms = service.synthesize(
-            "這是 CARE 語音回覆診斷測試。", locale="zh-TW"
+        _data, path, duration_ms = asyncio.run(
+            service.synthesize("這是 CARE 語音回覆診斷測試。", language="zh-TW")
         )
     except Exception as exc:
         print(f"ERROR: TTS synthesis failed: {exc}")

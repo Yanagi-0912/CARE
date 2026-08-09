@@ -134,6 +134,7 @@ class BaseLineMessageHandler:
             )
             call_request_location = agent_response.get("call_request_location", False)
             voice_reply_enabled = self._parse_voice_reply_enabled(user_profile)
+            voice_rate = self._parse_voice_rate(user_profile)
 
             t2 = time.perf_counter()
             success = await self._replier.reply(
@@ -143,6 +144,7 @@ class BaseLineMessageHandler:
                 request_location=call_request_location,
                 voice_reply_enabled=voice_reply_enabled,
                 language=user_language,
+                voice_rate=voice_rate,
             )
             log_stage(
                 logger,
@@ -190,13 +192,22 @@ class BaseLineMessageHandler:
         return normalize_user_font_size(settings.get("font_size"))
 
     def _parse_voice_reply_enabled(self, user_profile: Optional[dict]) -> bool:
-        """同步解析使用者個人檔案中的語音回覆設定，預設為 True。"""
+        """同步解析使用者個人檔案中的語音回覆設定；缺省為 False（與 UserSettings 及 LIFF UI 一致）。"""
         if not user_profile:
-            return True
+            return False
         settings_dict = user_profile.get("settings") or {}
         if "voice_reply_enabled" in settings_dict:
             return bool(settings_dict["voice_reply_enabled"])
-        return bool(user_profile.get("voice_reply_enabled", True))
+        return bool(user_profile.get("voice_reply_enabled", False))
+
+    def _parse_voice_rate(self, user_profile: Optional[dict]) -> str:
+        """同步解析使用者個人檔案中的語速設定，缺值時預設為 "normal"。"""
+        if not user_profile:
+            return "normal"
+        settings_dict = user_profile.get("settings") or {}
+        if "voice_rate" in settings_dict:
+            return settings_dict["voice_rate"] or "normal"
+        return user_profile.get("voice_rate") or "normal"
 
 
 class LineMessageHandler(BaseLineMessageHandler):

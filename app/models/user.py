@@ -46,6 +46,10 @@ class UserSettings(BaseModel):
     notify_reminder: bool = Field(default=True, description="是否啟用用藥提醒通知")
     notify_family: bool = Field(default=True, description="是否啟用家人健康通知")
     voice_reply_enabled: bool = Field(default=False, description="是否啟用語音回覆")
+    voice_rate: Literal["slow", "normal", "fast"] = Field(
+        default="normal",
+        description="語音回覆語速",
+    )
 
 
 class UserSettingsUpdate(BaseModel):
@@ -62,6 +66,10 @@ class UserSettingsUpdate(BaseModel):
     notify_reminder: Optional[bool] = Field(default=None, description="是否啟用用藥提醒通知")
     notify_family: Optional[bool] = Field(default=None, description="是否啟用家人健康通知")
     voice_reply_enabled: Optional[bool] = Field(default=None, description="是否啟用語音回覆")
+    voice_rate: Optional[Literal["slow", "normal", "fast"]] = Field(
+        default=None,
+        description="語音回覆語速",
+    )
 
 
 class UserProfile(UserProfileData):

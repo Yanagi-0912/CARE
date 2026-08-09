@@ -110,3 +110,37 @@ async def test_scrape_timeout_returns_empty_without_raising():
     http_client.post = AsyncMock(side_effect=httpx.ReadTimeout("slow"))
     client = FirecrawlClient(api_key="fc-test", http_client=http_client)
     assert await client.scrape("https://www.hpa.gov.tw/a") == ""
+
+
+@pytest.mark.asyncio
+async def test_scrape_page_returns_final_url_from_metadata():
+    http_client = AsyncMock()
+    http_client.post = AsyncMock(
+        return_value=_mock_response(
+            {
+                "success": True,
+                "data": {
+                    "markdown": "# 標題\n內容",
+                    "metadata": {"url": "https://www.hpa.gov.tw/final"},
+                },
+            }
+        )
+    )
+    client = FirecrawlClient(api_key="fc-test", http_client=http_client)
+    page = await client.scrape_page("https://www.hpa.gov.tw/a")
+    assert page.final_url == "https://www.hpa.gov.tw/final"
+    assert "內容" in page.text
+
+
+@pytest.mark.asyncio
+async def test_scrape_page_returns_none_final_url_when_metadata_missing():
+    http_client = AsyncMock()
+    http_client.post = AsyncMock(
+        return_value=_mock_response(
+            {"success": True, "data": {"markdown": "# 標題\n內容"}}
+        )
+    )
+    client = FirecrawlClient(api_key="fc-test", http_client=http_client)
+    page = await client.scrape_page("https://www.hpa.gov.tw/a")
+    assert page.final_url is None
+    assert "內容" in page.text

@@ -4,7 +4,7 @@ import logging
 
 import httpx
 
-from app.services.rag.web_client import WebSearchHit
+from app.services.rag.web_client import ScrapedPage, WebSearchHit
 
 logger = logging.getLogger(__name__)
 
@@ -76,9 +76,9 @@ class FirecrawlClient:
             )
         return hits
 
-    async def scrape(self, url: str) -> str:
+    async def scrape_page(self, url: str) -> ScrapedPage:
         if not self._api_key:
-            return ""
+            return ScrapedPage(text="", final_url=None)
         timeout = self._scrape_timeout_seconds
         client = self._http_client or httpx.AsyncClient(timeout=timeout)
         owns_client = self._http_client is None
@@ -97,15 +97,31 @@ class FirecrawlClient:
                 url,
                 timeout,
             )
-            return ""
+            return ScrapedPage(text="", final_url=None)
         except Exception:
             logger.exception("Firecrawl scrape failed url=%s", url)
-            return ""
+            return ScrapedPage(text="", final_url=None)
         finally:
             if owns_client:
                 await client.aclose()
 
         data = payload.get("data") if isinstance(payload, dict) else None
         if not isinstance(data, dict):
-            return ""
-        return str(data.get("markdown") or "").strip()
+            return ScrapedPage(text="", final_url=None)
+
+        text = str(data.get("markdown") or "").strip()
+
+        # metadata 可能不是 dict（甚至不存在），取值前要防禦；依序試
+        # metadata.url、metadata.sourceURL，皆無則 final_url 為 None
+        # （design.md Decision 8 的 fail-open，由呼叫端 log 並決定續行）。
+        metadata = data.get("metadata")
+        final_url: str | None = None
+        if isinstance(metadata, dict):
+            raw_final_url = metadata.get("url") or metadata.get("sourceURL")
+            if raw_final_url:
+                final_url = str(raw_final_url)
+
+        return ScrapedPage(text=text, final_url=final_url)
+
+    async def scrape(self, url: str) -> str:
+        return (await self.scrape_page(url)).text

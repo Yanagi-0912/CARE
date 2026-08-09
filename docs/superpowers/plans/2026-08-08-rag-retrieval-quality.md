@@ -103,8 +103,38 @@ created: 2026-08-08
 
 以 `## 1. …` / `- [ ] 1.1 …` 格式，對應本計畫 Task 2–6 的步驟，
 並依 `openspec/config.yaml` 的 `rules.tasks` 要求引用 `tests/` 下對應的 pytest 路徑。
+最後一節須含 Definition of Done 項目（`./init.sh` 全綠）。
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: 建立 spec delta `specs/rag-responses/spec.md`**
+
+repo 中 19 個 change 有 18 個都有 `specs/<capability>/spec.md` delta ——
+這是 `openspec archive` 併回 `openspec/specs/` 的機制，proposal 的散文不能取代它。
+建立 `openspec/changes/rag-eval-metrics/specs/rag-responses/spec.md`：
+
+```markdown
+## MODIFIED Requirements
+
+### Requirement: 檢索上下文與參考來源上限
+
+RAG 檢索 SHALL 先取回最多 `RAG_RETRIEVE_CANDIDATES` 筆關聯文件作為候選（預設 40），經精排後 SHALL 將最多 `RAG_RERANK_TOP_N` 筆（預設 5）內容放入生成 prompt，且每筆 SHALL 帶有編號與出處標頭（來源名與標題）。回答最下方的「參考資料來源」SHALL 只列出**實際被引用**的來源，最多 3 筆，依首次引用順序連續重編號。當某筆來源缺少 `url` 時，系統 SHALL 以「來源名｜標題」呈現，不得因缺 url 而靜默丟棄。當模型未輸出任何引用編號時，系統 SHALL NOT 附上參考來源清單。
+
+#### Scenario: 只列出實際被引用的來源
+
+- **WHEN** 生成的答案引用了第 3 筆與第 1 筆內容
+- **THEN** 參考來源只列這兩筆，依首次引用順序重編為 [1]、[2]，且答案內文中的編號一併改寫為對應的新編號
+
+#### Scenario: 缺少 url 的來源仍顯示
+
+- **WHEN** 被引用的文件有 `source_name` 與 `original_title` 但 `url` 為空
+- **THEN** 該筆以「來源名｜標題」形式列於參考來源清單中
+
+#### Scenario: 完全沒有引用時不附來源
+
+- **WHEN** 生成的答案不含任何引用編號
+- **THEN** 回覆不附「參考資料來源：」段落，並記錄 `citation_missing` log
+```
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add openspec/changes/rag-eval-metrics
@@ -133,45 +163,23 @@ git commit -m "docs(openspec): 新增 rag-eval-metrics change 提案"
 
 - [ ] **Step 1: 寫失敗測試 — retriever 投影 `original_title`**
 
-加到 `tests/unit/services/rag/test_retriever.py`。此檔既有測試以假的 collection
-物件注入（依 DI 規則，不得 monkey patch）；沿用同一種假件寫法：
+加到 `tests/unit/services/rag/test_retriever.py`。**沿用該檔既有的
+`_make_retriever()` + `MagicMock` 假件寫法**（全檔 18 個測試都是這個風格；
+依 DI 規則不得 monkey patch，但也不要手刻新的假件類別而讓同一檔案出現兩種風格）。
+注意 `_make_retriever` 的 `text_field` 預設是 `"chunk_text"`：
 
 ```python
-import pytest
-
-from app.services.rag.retriever import MongoAtlasVectorRetriever
-
-
-class _FakeCursor:
-    def __init__(self, docs):
-        self._docs = docs
-
-    async def to_list(self, length=None):
-        return self._docs
-
-
-class _FakeCollection:
-    def __init__(self, docs):
-        self._docs = docs
-        self.last_pipeline = None
-
-    def aggregate(self, pipeline):
-        self.last_pipeline = pipeline
-        return _FakeCursor(self._docs)
-
-
-class _FakeEmbeddings:
-    async def aembed_query(self, query):
-        return [0.1, 0.2, 0.3]
-
-
 @pytest.mark.asyncio
-async def test_vector_retriever_projects_and_exposes_original_title():
-    collection = _FakeCollection(
-        [
+async def test_retriever_projects_and_exposes_original_title():
+    retriever, emb = _make_retriever(vector_dim=2)
+    emb.aembed_query = AsyncMock(return_value=[0.1, 0.2])
+
+    fake_cursor = MagicMock()
+    fake_cursor.to_list = AsyncMock(
+        return_value=[
             {
                 "_id": "abc",
-                "text": "幽門螺旋桿菌與胃癌風險",
+                "chunk_text": "幽門螺旋桿菌與胃癌風險",
                 "source_name": "食藥署闢謠專區",
                 "url": None,
                 "original_title": "捍「胃」健康 過年聚餐用公筷",
@@ -179,21 +187,20 @@ async def test_vector_retriever_projects_and_exposes_original_title():
             }
         ]
     )
-    retriever = MongoAtlasVectorRetriever(
-        embeddings=_FakeEmbeddings(),
-        mongo_uri="mongodb://x",
-        db_name="db",
-        collection_name="col",
-        index_name="idx",
-    )
-    retriever._collection = collection
+    fake_collection = MagicMock()
+    fake_collection.aggregate.return_value = fake_cursor
+    retriever._collection = fake_collection
 
     docs = await retriever.ainvoke("幽門螺旋桿菌")
 
-    project_stage = next(s for s in collection.last_pipeline if "$project" in s)
+    pipeline = fake_collection.aggregate.call_args.args[0]
+    project_stage = next(s for s in pipeline if "$project" in s)
     assert project_stage["$project"]["original_title"] == 1
     assert docs[0].metadata["original_title"] == "捍「胃」健康 過年聚餐用公筷"
 ```
+
+同樣以 `MongoAtlasTextRetriever` 寫一個對應的測試，確認 text retriever 的
+`$project` 與 metadata 也帶出 `original_title`。
 
 - [ ] **Step 2: 執行測試確認失敗**
 
@@ -932,6 +939,14 @@ def test_append_sources_caps_at_three_and_drops_overflow_markers():
     out = RagAnswerService._append_sources("a[1]b[2]c[3]d[4]", docs)
     assert "[4]" not in out.split("參考")[0]  # 超出上限的標記被移除
     assert out.count("https://e.example/") == 3
+
+
+def test_append_sources_strips_markers_when_none_resolve():
+    """全部引用都解析不到時，仍要移除標記，只是不附來源清單。"""
+    docs = [_doc(source="A", url="https://a.example/1")]
+    out = RagAnswerService._append_sources("內容 [9]。", docs)
+    assert out == "內容 。"
+    assert "參考" not in out
 ```
 
 - [ ] **Step 2: 執行測試確認失敗**
@@ -1020,21 +1035,27 @@ def cited_indices(answer_text: str) -> list[int]:
             renumber[old_idx] = new_idx
             source_lines.append(f"[{new_idx}] {label}")
 
-        if not source_lines:
-            logger.info("citation_unresolved cited=%s docs=%d", cited, len(docs))
-            return answer_text
-
         def _replace(match: re.Match[str]) -> str:
             mapped = renumber.get(int(match.group(1)))
             return f"[{mapped}]" if mapped is not None else ""
 
+        # 先改寫內文再決定要不要附清單：即使一筆來源都解析不出來，
+        # 那些指向不存在來源的標記仍必須從答案中移除。
         body = _CITATION_RE.sub(_replace, answer_text)
+
+        if not source_lines:
+            logger.info("citation_unresolved cited=%s docs=%d", cited, len(docs))
+            return body
+
         heading = t("agent.sources_heading")
         return f"{body}\n\n{heading}\n" + "\n".join(source_lines)
 ```
 
 註記：對應不到來源的 `[n]`（超出 `CITE_TOP_K` 上限、索引越界、或該篇
 url 與 title 皆缺）會被整個移除，而非留下指向不存在來源的編號。
+**這包含「全部引用都解析不到」的情況** —— 該情況下答案照樣要去掉標記，
+只是不附來源清單。（`cited` 為空、亦即模型完全沒標 `[n]` 時仍是提早回傳原文，
+因為沒有東西要移除。）
 
 - [ ] **Step 5: 執行測試確認通過**
 
@@ -1164,16 +1185,20 @@ Expected: PASS
 並在檔頭既有的 `from app.services.rag.eval_scoring import (...)` 匯入區塊中
 加入 `answer_citation_count,`。
 
-`_print_summary` 的 `if with_answer:` 區塊末尾補上輸出：
+`_print_summary` 的 `if with_answer:` 區塊末尾補上輸出。**直接印 summary 的值，
+不要在 CLI 重算** —— 重算會用 `results`（含 skipped 的 refuse／web 題）當分母，
+而 `EvalSummary.citation_coverage` 用的是 `scored`（只含有計分的 kb 題），
+兩個同名數字會有不同定義：
 
 ```python
-        cited_cases = [r for r in results if r.citation_count is not None]
-        if cited_cases:
-            ok = sum(1 for r in cited_cases if r.citation_count > 0)
-            print(f"citation_coverage: {ok}/{len(cited_cases)}")
+        if summary.citation_coverage is not None:
+            print(f"citation_coverage: {_fmt(summary.citation_coverage)}")
 ```
 
-未使用 `--with-answer` 時 `citation_count` 維持 `None`，不計入分母。
+為什麼分母要用 `scored` 而非全部 results：`route=refuse` 的題目**正確拒答時本來就
+不該有引用**，把它算進分母會讓「拒答成功」反而拉低 citation coverage，指標方向就反了。
+
+未使用 `--with-answer` 時 `citation_count` 維持 `None`，`citation_coverage` 為 `None`，不印。
 
 - [ ] **Step 6: 實跑驗證**
 
@@ -1234,32 +1259,77 @@ created: 2026-08-08
 - `DEFAULT_MIN_SCORE` 由 `0.5` 改為 `0.0`，並新增 env `RAG_VECTOR_MIN_SCORE`
 - reranker 送出的 document 文本改為 `主題：{original_title}\n內容：{chunk}`，
   無標題時退回純內容
-- 新增 `scripts/purge_navigation_chunks.py` 清除 229 筆導覽列噪音（預設 dry-run）
+- 新增 `scripts/purge_navigation_chunks.py` 清除 266 筆導覽列噪音（預設 dry-run）
 - 修正 `resources/atlas_text_search_index.json` 欄位名 `text` → `chunk_content`
 - **非 BREAKING**
 
 `## Capabilities` — `### Modified Capabilities`：
 `rag-responses` 的檢索行為（移除向量分數硬門檻，過濾職責移交 reranker）。
 
-`## Impact` — 程式：`retriever.py`、`config.py`、`cohere_reranker.py`、
-`resources/atlas_text_search_index.json`、`scripts/` 新增一支；
-`.env.example` 新增 `RAG_VECTOR_MIN_SCORE`；無新相依套件。
+`## Impact` — 程式：`retriever.py`、`user_document_retriever.py`、`config.py`、
+`dependencies.py`、`cohere_reranker.py`、`resources/atlas_text_search_index.json`、
+`scripts/` 新增一支；`.env.example` 新增 `RAG_VECTOR_MIN_SCORE`；無新相依套件。
+須明確記載：本變更**不改變**使用者上傳文件問答（`rag-user-docs`）的檢索行為，
+該路徑的門檻維持 0.5。
 
 - [ ] **Step 3: 撰寫 `design.md`**
 
 `## Decisions` 需涵蓋：
-- **D1 為何移除 min_score 而非調低**：絕對門檻對 cosine 才成立，
-  且 RRF 融合後 `metadata["score"]` 已被覆寫為融合分數，
-  對 hybrid 路徑套用 0.5 門檻在語意上是錯的。保留參數但預設 0.0。
+- **D1 為何移除 min_score 而非調低**：在 wide retrieve → rerank 架構下，
+  第一階段的職責是最大化召回，過濾與排序是精排階段的工作；
+  0.5 這個絕對門檻在候選進 reranker 之前就先砍掉一批，與架構意圖相反。
+  保留參數但預設 0.0。
+  **不要**寫「RRF 融合後對融合分數套門檻所以語意錯誤」這類理由 ——
+  實際上 `min_score` 過濾發生在 `MongoAtlasVectorRetriever.ainvoke` 內部
+  （`retriever.py:122-124`），早於 `HybridRetriever` 呼叫 `reciprocal_rank_fusion`，
+  融合分數覆寫只發生在回傳值上，其後沒有任何 min_score 檢查。
+- **D1b 使用者文件路徑不同步放寬**：`user_document_retriever.py` 目前
+  `from app.services.rag.retriever import DEFAULT_MIN_SCORE` 並用作預設，
+  且 `dependencies.py` 未覆寫。但 `UserDocumentAnswerService` **沒有 reranker**，
+  檢索結果直接進 prompt —— 「過濾交給 reranker」的前提在該路徑不成立。
+  故兩條路徑各自持有明確的預設值，見 Task 8。
 - **D2 reranker 文本格式對齊 embedding**：格式刻意與上游
   `main_pipeline.get_embedding` 的 `f"主題：{title}\n內容：{chunk}"` 完全一致，
   使三個階段（向量／BM25／rerank）看到的語境盡量收斂。
 - **D3 為何不順手改 BM25 索引**：`chunk_content` 加標題需重寫 4,605 筆文件，
   屬上游 ETL 職責（見 `docs/care-data-issues.md`），本 change 不做。
 
-- [ ] **Step 4: 撰寫 `tasks.md`**（對應 Task 8–11，引用對應 pytest 路徑）
+- [ ] **Step 4: 撰寫 `tasks.md`**（對應 Task 8–11，引用對應 pytest 路徑，
+      最後一節含 Definition of Done：`./init.sh` 全綠）
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: 建立 spec delta `specs/rag-responses/spec.md`**
+
+同 Task 1 Step 5 的理由：`openspec archive` 靠這個檔案併回 `openspec/specs/`。
+
+**必須用 `## ADDED Requirements` 而非 `MODIFIED`** ——「向量檢索候選過濾」是一條
+全新的 requirement，`openspec/specs/rag-responses/spec.md` 裡並不存在同名項目。
+openspec CLI 的合併邏輯在 MODIFIED 找不到對應 header 時會直接拋錯
+（`specs-apply.js`：`MODIFIED failed for header ... - not found`），
+屆時 `openspec archive rag-retrieval-tuning` 會整個失敗。
+
+建立 `openspec/changes/rag-retrieval-tuning/specs/rag-responses/spec.md`：
+
+```markdown
+## ADDED Requirements
+
+### Requirement: 向量檢索候選過濾
+
+向量檢索 SHALL NOT 以固定的相似度門檻過濾候選文件；預設 `RAG_VECTOR_MIN_SCORE` 為 `0.0`，第一階段的職責是最大化召回，過濾與排序 SHALL 由精排階段負責。系統 SHALL 保留該設定項，使需要時可由環境變數調回非零門檻。
+
+送入精排的文件文本 SHALL 與建立 embedding 時的格式一致：當文件具備 `original_title` 時，SHALL 組為「主題：{original_title}\n內容：{chunk}」；缺標題時 SHALL 退回純內容。精排回傳的文件 `page_content` SHALL 維持原始 chunk 內容不變。
+
+#### Scenario: 低分候選仍進入精排
+
+- **WHEN** 向量檢索取回的文件中包含相似度低於 0.5 的候選
+- **THEN** 這些候選仍送入精排階段，由精排決定去留
+
+#### Scenario: 精排輸入帶標題
+
+- **WHEN** 候選文件具備 `original_title`
+- **THEN** 送往精排 API 的文本為「主題：{標題}\n內容：{內容}」，而回傳文件的 `page_content` 仍為原始 chunk 內容
+```
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add openspec/changes/rag-retrieval-tuning
@@ -1272,56 +1342,83 @@ git commit -m "docs(openspec): 新增 rag-retrieval-tuning change 提案"
 
 **Files:**
 - Modify: `app/services/rag/retriever.py:26`（`DEFAULT_MIN_SCORE`）
+- Modify: `app/services/rag/user_document_retriever.py`（改為自有常數，見 Step 3b）
 - Modify: `app/core/config.py`
 - Modify: `app/dependencies.py`
 - Modify: `.env.example`
 - Test: `tests/unit/services/rag/test_retriever.py`
+- Test: `tests/unit/services/rag/test_user_document_retriever.py`
 
 **Interfaces:**
 - Consumes: 無
-- Produces: `settings.RAG_VECTOR_MIN_SCORE: float`（預設 `0.0`）
+- Produces:
+  - `settings.RAG_VECTOR_MIN_SCORE: float`（預設 `0.0`）
+  - `user_document_retriever.DEFAULT_USER_DOC_MIN_SCORE: float`（值 `0.5`）
+
+**⚠️ 這個 Task 有一個不明顯的連帶影響，務必先讀完再動手**
+
+`app/services/rag/user_document_retriever.py:11` 目前是：
+
+```python
+from app.services.rag.retriever import DEFAULT_MIN_SCORE, _NUM_CANDIDATES_MULTIPLIER
+```
+
+並在第 31 行用作 `min_score` 的預設值。`app/dependencies.py` 建構
+`UserDocumentVectorRetriever` 時**沒有**覆寫 `min_score`。
+
+關鍵差異：**`UserDocumentAnswerService` 沒有 reranker** —— 檢索結果直接進 prompt
+（見 `user_document_answer_service.py`）。所以「把過濾交給 reranker」這個理由
+在使用者文件路徑上不成立。若只改共用常數，等於在沒有任何補償機制的情況下
+拆掉該功能的品質底線。
+
+處置：兩條路徑各自持有明確的預設值，並在註解寫明理由。
 
 - [ ] **Step 1: 寫失敗測試**
 
+沿用 `test_retriever.py` 既有的 `_make_retriever()` + `MagicMock` 假件寫法
+（全檔一致，勿手刻假件類別）。注意 `_make_retriever` 的 `text_field` 預設是
+`"chunk_text"`，測資的鍵名要跟著用：
+
 ```python
 @pytest.mark.asyncio
-async def test_vector_retriever_keeps_low_score_docs_by_default():
-    collection = _FakeCollection(
-        [
-            {"_id": "1", "text": "高分", "score": 0.9},
-            {"_id": "2", "text": "低分", "score": 0.12},
+async def test_retriever_keeps_low_score_docs_by_default():
+    retriever, emb = _make_retriever(vector_dim=2)
+    emb.aembed_query = AsyncMock(return_value=[0.1, 0.2])
+
+    fake_cursor = MagicMock()
+    fake_cursor.to_list = AsyncMock(
+        return_value=[
+            {"_id": "1", "chunk_text": "高分", "score": 0.9},
+            {"_id": "2", "chunk_text": "低分", "score": 0.12},
         ]
     )
-    retriever = MongoAtlasVectorRetriever(
-        embeddings=_FakeEmbeddings(),
-        mongo_uri="mongodb://x", db_name="db",
-        collection_name="col", index_name="idx",
-    )
-    retriever._collection = collection
+    fake_collection = MagicMock()
+    fake_collection.aggregate.return_value = fake_cursor
+    retriever._collection = fake_collection
 
-    docs = await retriever.ainvoke("q")
+    docs = await retriever.ainvoke("高血壓")
 
     # 過濾職責移交 reranker，第一階段不再砍低分候選
     assert [d.page_content for d in docs] == ["高分", "低分"]
 
 
 @pytest.mark.asyncio
-async def test_vector_retriever_still_honours_explicit_min_score():
-    collection = _FakeCollection(
-        [
-            {"_id": "1", "text": "高分", "score": 0.9},
-            {"_id": "2", "text": "低分", "score": 0.12},
+async def test_retriever_still_honours_explicit_min_score():
+    retriever, emb = _make_retriever(vector_dim=2, min_score=0.5)
+    emb.aembed_query = AsyncMock(return_value=[0.1, 0.2])
+
+    fake_cursor = MagicMock()
+    fake_cursor.to_list = AsyncMock(
+        return_value=[
+            {"_id": "1", "chunk_text": "高分", "score": 0.9},
+            {"_id": "2", "chunk_text": "低分", "score": 0.12},
         ]
     )
-    retriever = MongoAtlasVectorRetriever(
-        embeddings=_FakeEmbeddings(),
-        mongo_uri="mongodb://x", db_name="db",
-        collection_name="col", index_name="idx",
-        min_score=0.5,
-    )
-    retriever._collection = collection
+    fake_collection = MagicMock()
+    fake_collection.aggregate.return_value = fake_cursor
+    retriever._collection = fake_collection
 
-    docs = await retriever.ainvoke("q")
+    docs = await retriever.ainvoke("高血壓")
     assert [d.page_content for d in docs] == ["高分"]
 ```
 
@@ -1330,15 +1427,52 @@ async def test_vector_retriever_still_honours_explicit_min_score():
 Run: `.venv/bin/python -m pytest tests/unit/services/rag/test_retriever.py -v -k min_score`
 Expected: 第一個測試 FAIL（低分被 0.5 門檻濾掉），第二個 PASS
 
-- [ ] **Step 3: 改預設值**
+- [ ] **Step 3: 改 KB 路徑的預設值**
 
 `app/services/rag/retriever.py`：
 
 ```python
 # 第一階段負責衝 recall，過濾交給 reranker（見 openspec/changes/rag-retrieval-tuning）。
 # 保留參數以便需要時由 env 調回。
+# 注意：使用者上傳文件的檢索路徑沒有 reranker，因此不共用這個值，
+# 見 user_document_retriever.DEFAULT_USER_DOC_MIN_SCORE。
 DEFAULT_MIN_SCORE = 0.0
 ```
+
+- [ ] **Step 3b: 讓使用者文件路徑持有自己的門檻**
+
+先寫測試，確認使用者文件檢索**仍然**過濾低分文件
+（加到 `tests/unit/services/rag/test_user_document_retriever.py`，
+沿用該檔既有的假件風格）：
+
+```python
+@pytest.mark.asyncio
+async def test_user_document_retriever_still_filters_low_score_by_default():
+    """使用者文件路徑沒有 reranker，必須保留 0.5 門檻。
+
+    這個測試守的是「KB 路徑放寬門檻時不會連帶把這裡也放寬」。
+    """
+    retriever = _make_user_doc_retriever(vector_dim=2)
+    ...  # 注入含 score 0.9 與 score 0.12 兩筆的假 collection
+    docs = await retriever.ainvoke("q", user_id="u1")
+    assert [d.page_content for d in docs] == ["高分"]
+```
+
+（假件與建構細節請對齊該測試檔既有寫法；`ainvoke` 的簽名以實際程式碼為準。）
+
+然後修改 `app/services/rag/user_document_retriever.py`：把第 11 行的 import 改為
+只取 `_NUM_CANDIDATES_MULTIPLIER`，並新增自有常數：
+
+```python
+from app.services.rag.retriever import _NUM_CANDIDATES_MULTIPLIER
+
+# 這條路徑沒有 reranker——檢索結果直接進 prompt（見 UserDocumentAnswerService）。
+# 因此不能沿用 KB 路徑「過濾交給 reranker」的放寬，必須自己保留品質門檻。
+DEFAULT_USER_DOC_MIN_SCORE = 0.5
+```
+
+並把 `__init__` 的 `min_score: float = DEFAULT_MIN_SCORE` 改為
+`min_score: float = DEFAULT_USER_DOC_MIN_SCORE`。
 
 - [ ] **Step 4: 新增設定並接線**
 
@@ -1382,8 +1516,11 @@ time .venv/bin/python scripts/rag_eval.py --rank-mode cohere --top-n 5 --out /tm
 - [ ] **Step 7: Commit**
 
 ```bash
-git add app/services/rag/retriever.py app/core/config.py app/dependencies.py \
-        .env.example tests/unit/services/rag/test_retriever.py
+git add app/services/rag/retriever.py app/services/rag/user_document_retriever.py \
+        app/core/config.py app/dependencies.py .env.example \
+        tests/unit/services/rag/test_retriever.py \
+        tests/unit/services/rag/test_user_document_retriever.py \
+        openspec/changes/rag-retrieval-tuning/design.md
 git commit -m "fix(rag): 移除向量分數硬門檻，過濾職責移交 reranker"
 ```
 
@@ -1818,6 +1955,13 @@ Expected: 全綠。勾選 `openspec/changes/rag-retrieval-tuning/tasks.md` 全�
    須註明：本次僅證實預設值等同 QUERY，**實際排序影響需 A/B 驗證**，
    不宜宣稱必然改善。
 
+   **佐證數據**（Task 8 實測的 `$vectorSearch` top-40 分數分佈）：
+   160 筆全部落在 **0.79–0.90**，且一個**完全不相關**的查詢
+   （「幫我寫一首關於貓咪的詩」）仍拿到 0.79–0.82，與相關查詢的
+   0.83–0.90 幾乎重疊。餘弦相似度在此設定下近乎不具絕對區辨力。
+   query-query 對比在同語言同領域下高度聚集、壓縮動態範圍，
+   與 taskType 未指定的推論一致。這份分佈可作為說服上游修正的實據。
+
 2. **標題只進 embedding、未寫入 `chunk_content`**（`main_pipeline.py:74,80`）
    三階段對照表（向量有標題／BM25 無／rerank 無）。
    建議把 `f"主題：{title}\n內容：{chunk}"` 一併寫入 `chunk_content`，
@@ -1837,6 +1981,26 @@ Expected: 全綠。勾選 `openspec/changes/rag-retrieval-tuning/tasks.md` 全�
    句子從中間斷開（例：`'元整及55萬8,000元。國民健康署呼籲...'`）；
    尾段殘渣 127 筆長度 1 字元（`'3'`、`'。'`、`'×'`），480 筆 <100 字元（10.4%）。
    建議先按段落切、超長段落再按句界（`。！？`）切，並丟棄過短殘渣。
+
+   **這一項是本次調查中最有價值的線索，請用以下兩組實測數據支撐：**
+
+   (a) **刪除噪音立即帶來可重現的增益**。CARE 端刪掉 266 筆（僅佔 KB 的 5.8%）
+   由 Firecrawl 抓首頁產生的導覽列 chunk 後：
+
+   | 指標 | 刪除前 | 刪除後 |
+   | --- | --- | --- |
+   | hit_rate@5 | 0.382 | **0.441** |
+   | mean_mrr | 0.217 | **0.241** |
+   | mean_ndcg@5 | 0.257 | **0.291** |
+
+   重跑一次得到逐位元相同的數字（此 eval harness 在程式碼與資料固定時為確定性），
+   故非單次波動。**唯一變數是資料**，因果歸因成立。
+
+   (b) **相對地，兩項純檢索調參都沒有增益**：移除向量分數門檻 → 指標逐位元不變；
+   把標題補進 reranker 輸入 → nDCG@5 僅 +0.004（雜訊等級）。
+
+   合起來的訊息很明確：**這個系統的瓶頸在資料品質，不在檢索邏輯。**
+   ETL 產出的切片品質，是目前最高槓桿的改善點。
 
 6. **食藥署文章無 URL**（`scraper_api.py:44`）
    實測該 API 欄位僅 `['標題', '內容', '附檔連結', '發布日期']`，
@@ -1861,7 +2025,25 @@ Expected: 全綠。勾選 `openspec/changes/rag-retrieval-tuning/tasks.md` 全�
 
 報告末尾加一節「**建議不要做的事**」，說明為何不需改用 Firecrawl：
 91% 資料來自兩支回傳結構化 JSON 的政府 API；CARE 端已有 Firecrawl 實測結果
-（266 筆首頁導覽列噪音）；真正需要網頁爬取的只有 TFC 的 132 chunks（2.9%）。
+（266 筆首頁導覽列噪音，已於 2026-08-08 刪除）；真正需要網頁爬取的只有
+TFC 的 132 chunks（2.9%）。
+
+再加一節「**這份報告如何被驗證**」，說明所有數字的取得方式，讓收到報告的人
+可以自行複核，而不是只能選擇相信：
+
+- 分數分佈、chunk 長度、欄位覆蓋率：直接查詢線上 MongoDB collection
+- `taskType` 預設值：對 Gemini `embedContent` 端點實際發送三種 payload 比對 cosine
+- API 欄位：直接呼叫兩支政府 API 檢視回傳鍵名
+- 檢索指標：`python scripts/rag_eval.py --rank-mode cohere --top-n 5`，
+  題庫在 `evals/rag/golden.jsonl`（34 題計分）
+
+並明確標示**哪些是推測而非實測**：
+- 「500 字元硬切導致 cross-encoder 表現不佳」是推測，未經實驗驗證
+- 修正 `taskType` 後的實際排序改善幅度未知，需 A/B 驗證
+
+報告的語氣：對方是協作者不是被稽核對象。這份 ETL 有不少做得好的地方
+（Early Stopping 的設計動機、429 退避、GitHub Actions 排程、資料一致性測試），
+先肯定再指出問題，並且每一項都附上可自行複核的方法。
 
 - [ ] **Step 2: 自我檢查**
 

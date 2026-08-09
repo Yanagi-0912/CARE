@@ -34,6 +34,7 @@ from app.services.rag import (
     RERANK_TOP_N,
     RagAnswerService,
 )
+from app.services.rag.answer_service import cited_indices
 from app.services.rag.cohere_reranker import VectorScoreReranker
 from app.services.rag.retrieval_grader import Grade
 
@@ -76,6 +77,97 @@ def _make_service(
     )
 
 
+def _doc(source=None, url=None, title=None, content="內容"):
+    return Document(
+        page_content=content,
+        metadata={"source_name": source, "url": url, "original_title": title},
+    )
+
+
+def test_cited_indices_returns_first_appearance_order_without_duplicates():
+    assert cited_indices("甲 [3]，乙 [1]，丙 [3]。") == [3, 1]
+    assert cited_indices("沒有引用") == []
+
+
+def test_append_sources_lists_only_cited_and_renumbers():
+    docs = [
+        _doc(source="A", url="https://a.example/1"),
+        _doc(source="B", url="https://b.example/2"),
+        _doc(source="C", url="https://c.example/3"),
+    ]
+    out = RagAnswerService._append_sources("甲 [3]。乙 [1]。", docs)
+
+    # [3] 首次出現 → 重編為 [1]；[1] → [2]
+    assert "甲 [1]。乙 [2]。" in out
+    assert "[1] C：https://c.example/3" in out
+    assert "[2] A：https://a.example/1" in out
+    assert "b.example" not in out  # 未被引用者不列出
+
+
+def test_append_sources_uses_title_when_url_missing():
+    docs = [_doc(source="食藥署闢謠專區", url=None, title="捍「胃」健康")]
+    out = RagAnswerService._append_sources("內容 [1]。", docs)
+    assert "[1] 食藥署闢謠專區｜捍「胃」健康" in out
+
+
+def test_append_sources_returns_text_unchanged_when_no_citation():
+    docs = [_doc(source="A", url="https://a.example/1")]
+    text = "完全沒有引用標記的答案。"
+    assert RagAnswerService._append_sources(text, docs) == text
+
+
+def test_append_sources_deduplicates_same_url_to_one_number():
+    docs = [
+        _doc(source="A", url="https://a.example/1"),
+        _doc(source="A", url="https://a.example/1"),
+    ]
+    out = RagAnswerService._append_sources("甲 [1]。乙 [2]。", docs)
+    assert "甲 [1]。乙 [1]。" in out
+    assert out.count("https://a.example/1") == 1
+
+
+def test_append_sources_caps_at_three_and_drops_overflow_markers():
+    docs = [_doc(source=f"S{i}", url=f"https://e.example/{i}") for i in range(1, 6)]
+    out = RagAnswerService._append_sources("a[1]b[2]c[3]d[4]", docs)
+    assert "[4]" not in out.split("參考")[0]  # 超出上限的標記被移除
+    assert out.count("https://e.example/") == 3
+
+
+def test_append_sources_strips_markers_when_none_resolve():
+    """全部引用都解析不到時，仍要移除標記，只是不附來源清單。"""
+    docs = [_doc(source="A", url="https://a.example/1")]
+    out = RagAnswerService._append_sources("內容 [9]。", docs)
+    assert out == "內容 。"
+    assert "參考" not in out
+
+
+def test_build_context_includes_numbered_source_and_title_header():
+    docs = [
+        Document(
+            page_content="幽門螺旋桿菌與胃癌風險有關。",
+            metadata={
+                "source_name": "食藥署闢謠專區",
+                "original_title": "捍「胃」健康 過年聚餐用公筷",
+                "url": None,
+            },
+        ),
+        Document(
+            page_content="定期篩檢可降低大腸癌風險。",
+            metadata={"source_name": "衛福部闢謠網站", "original_title": None},
+        ),
+    ]
+
+    context = RagAnswerService._build_context(docs)
+
+    assert "[1] 來源：食藥署闢謠專區｜標題：捍「胃」健康 過年聚餐用公筷" in context
+    assert "幽門螺旋桿菌與胃癌風險有關。" in context
+    # 缺 title 時只留來源，不留空欄位
+    assert "[2] 來源：衛福部闢謠網站" in context
+    assert "標題：None" not in context
+    # url 不得進 context（避免模型改寫或杜撰網址）
+    assert "http" not in context
+
+
 @pytest.mark.asyncio
 async def test_answer_uses_docs_to_build_rag_prompt():
     docs = [
@@ -98,7 +190,9 @@ async def test_answer_uses_docs_to_build_rag_prompt():
             },
         ),
     ]
-    svc, gemini_service, retriever = _make_service(docs=docs)
+    svc, gemini_service, retriever = _make_service(
+        docs=docs, answer_content="RAG 回覆 [1]"
+    )
     result = await svc.answer("我有高血壓要注意什麼")
 
     assert "RAG 回覆" in result
@@ -125,13 +219,19 @@ async def test_answer_puts_rerank_top_n_in_prompt_but_cites_top_3_only():
         )
         for i in range(1, 12)
     ]
-    svc, gemini_service, _retriever = _make_service(docs=docs, rerank_top_n=RERANK_TOP_N)
+    svc, gemini_service, _retriever = _make_service(
+        docs=docs,
+        rerank_top_n=RERANK_TOP_N,
+        answer_content="測試回覆 [1] [2] [3] [4]",
+    )
     result = await svc.answer("測試問題")
 
     prompt = gemini_service.chat_model.ainvoke.await_args.args[0][0].content
     for i in range(1, RERANK_TOP_N + 1):
-        assert f"{i}. 知識內容 {i}" in prompt
-    assert f"{RERANK_TOP_N + 1}. 知識內容" not in prompt
+        assert f"[{i}] 來源：來源 {i}" in prompt
+        assert f"知識內容 {i}" in prompt
+    assert f"[{RERANK_TOP_N + 1}]" not in prompt
+    assert f"知識內容 {RERANK_TOP_N + 1}" not in prompt
 
     for i in range(1, CITE_TOP_K + 1):
         assert f"[{i}] 來源 {i}：https://example.com/{i}" in result
@@ -168,7 +268,10 @@ async def test_answer_uses_reranker_order_for_prompt_and_citations():
             return [docs[1], docs[0]]
 
     svc, gemini_service, _retriever = _make_service(
-        docs=docs, reranker=FixedReranker(), rerank_top_n=2
+        docs=docs,
+        reranker=FixedReranker(),
+        rerank_top_n=2,
+        answer_content="回覆內容 [1] [2]",
     )
     result = await svc.answer("測試")
     prompt = gemini_service.chat_model.ainvoke.await_args.args[0][0].content
@@ -262,7 +365,7 @@ def test_append_sources_renumbers_after_skipping_missing_and_duplicate_urls():
             },
         ),
     ]
-    result = RagAnswerService._append_sources("答案正文", docs)
+    result = RagAnswerService._append_sources("答案正文 [1][2][3][4]", docs)
     assert "參考資料來源：" in result
     assert "[1] 國健署：https://www.hpa.gov.tw/a" in result
     assert "[2] 疾管署：https://www.cdc.gov.tw/b" in result
@@ -375,7 +478,10 @@ async def test_crag_correct_generates_answer():
     grader = MagicMock()
     grader.grade = AsyncMock(return_value=Grade.CORRECT)
     svc, gemini, _ret = _make_service(
-        docs=[_kb_doc()], grader=grader, crag_enabled=True
+        docs=[_kb_doc()],
+        grader=grader,
+        crag_enabled=True,
+        answer_content="RAG 回覆 [1]",
     )
     result = await svc.answer("高血壓要注意什麼")
     assert "RAG 回覆" in result
@@ -428,7 +534,7 @@ async def test_crag_ambiguous_rewrite_then_correct():
     gemini_service = MagicMock()
     gemini_service.chat_model = MagicMock()
     gemini_service.chat_model.ainvoke = AsyncMock(
-        return_value=AIMessage(content="改寫後回答")
+        return_value=AIMessage(content="改寫後回答 [1]")
     )
     retriever = MagicMock()
     retriever.ainvoke = AsyncMock(side_effect=[first_docs, second_docs])

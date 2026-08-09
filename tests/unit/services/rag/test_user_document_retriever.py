@@ -80,3 +80,28 @@ async def test_user_document_retriever_filter_and_text_field():
     assert pipeline[1]["$project"]["text"] == 1
 
     emb.aembed_query.assert_awaited_once_with("熱量怎麼算")
+
+
+@pytest.mark.asyncio
+async def test_user_document_retriever_still_filters_low_score_by_default():
+    """使用者文件路徑沒有 reranker，必須保留 0.5 門檻。
+
+    這個測試守的是「KB 路徑放寬門檻時不會連帶把這裡也放寬」。
+    """
+    retriever, emb = _make_retriever(vector_dim=2, text_field="text")
+    emb.aembed_query = AsyncMock(return_value=[0.1, 0.2])
+
+    fake_cursor = MagicMock()
+    fake_cursor.to_list = AsyncMock(
+        return_value=[
+            {"_id": "1", "text": "高分", "score": 0.9},
+            {"_id": "2", "text": "低分", "score": 0.12},
+        ]
+    )
+    fake_collection = MagicMock()
+    fake_collection.aggregate.return_value = fake_cursor
+    retriever._collection = fake_collection
+
+    docs = await retriever.ainvoke("q", line_user_id="U123456")
+
+    assert [d.page_content for d in docs] == ["高分"]

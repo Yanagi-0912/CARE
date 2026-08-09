@@ -11,13 +11,13 @@
     "會把整句中文當成單一 token，BM25 因此完全失效（看起來有跑但撈不到東西）。",
     "lucene.cjk 做字元 bigram 切分（乙醯胺酚 -> 乙醯/醯胺/胺酚），中文可用。",
     "",
-    "若 MONGODB_TEXT_FIELD 不是 'text'，下方 fields 的鍵名要一併改掉。"
+    "本檔已對齊線上索引定義（2026-08-08 核對）；若 MONGODB_TEXT_FIELD 改變，下方 fields 的鍵名要一併改掉"
   ],
   "name": "care_text_index",
   "mappings": {
     "dynamic": false,
     "fields": {
-      "text": {
+      "chunk_content": {
         "type": "string",
         "analyzer": "lucene.cjk",
         "searchAnalyzer": "lucene.cjk"

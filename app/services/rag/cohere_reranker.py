@@ -13,6 +13,21 @@ logger = logging.getLogger(__name__)
 COHERE_RERANK_URL = "https://api.cohere.com/v2/rerank"
 
 
+def rerank_document_text(doc: Document) -> str:
+    """組出送進 reranker 的文本。
+
+    上游 ETL 產生 embedding 時用的是 f"主題：{title}\\n內容：{chunk}"，
+    但寫入 Mongo 的 chunk_content 不含標題。若直接把 chunk_content 丟給
+    reranker，reranker 讀到的會是缺語境的斷句碎片，與向量空間所見不一致。
+    這裡刻意重建同樣的格式，讓兩階段看到的語境收斂。
+    """
+    content = doc.page_content or ""
+    title = str(doc.metadata.get("original_title") or "").strip()
+    if not title:
+        return content
+    return f"主題：{title}\n內容：{content}"
+
+
 class Reranker(Protocol):
     async def rerank(
         self, query: str, docs: list[Document], *, top_n: int
@@ -79,7 +94,7 @@ class CohereReranker:
         if not self._api_key:
             return await self._fallback.rerank(query, docs, top_n=top_n)
 
-        documents = [d.page_content for d in docs]
+        documents = [rerank_document_text(d) for d in docs]
         payload = {
             "model": self._model,
             "query": query,

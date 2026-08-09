@@ -104,6 +104,7 @@ _rag_vector_retriever = MongoAtlasVectorRetriever(
     text_field=settings.MONGODB_TEXT_FIELD,
     vector_dim=settings.MONGODB_VECTOR_DIM if settings.MONGODB_VECTOR_DIM > 0 else None,
     k=settings.RAG_RETRIEVE_CANDIDATES,
+    min_score=settings.RAG_VECTOR_MIN_SCORE,
 )
 
 # Hybrid 與純向量共用同一個 ainvoke 介面，所以下游 RagAnswerService 不需要知道差別

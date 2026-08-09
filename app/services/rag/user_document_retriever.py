@@ -8,9 +8,13 @@ from typing import Any
 from langchain_core.documents import Document
 from motor.motor_asyncio import AsyncIOMotorClient
 
-from app.services.rag.retriever import DEFAULT_MIN_SCORE, _NUM_CANDIDATES_MULTIPLIER
+from app.services.rag.retriever import _NUM_CANDIDATES_MULTIPLIER
 
 DEFAULT_USER_DOCS_TOP_K = 5
+
+# 這條路徑沒有 reranker——檢索結果直接進 prompt（見 UserDocumentAnswerService）。
+# 因此不能沿用 KB 路徑「過濾交給 reranker」的放寬，必須自己保留品質門檻。
+DEFAULT_USER_DOC_MIN_SCORE = 0.5
 
 
 class UserDocumentVectorRetriever:
@@ -28,7 +32,7 @@ class UserDocumentVectorRetriever:
         text_field: str = "text",
         vector_dim: int | None = None,
         k: int = DEFAULT_USER_DOCS_TOP_K,
-        min_score: float = DEFAULT_MIN_SCORE,
+        min_score: float = DEFAULT_USER_DOC_MIN_SCORE,
     ) -> None:
         self.embeddings = embeddings
         self.mongo_uri = mongo_uri

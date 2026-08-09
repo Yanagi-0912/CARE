@@ -89,6 +89,7 @@ async def test_retriever_returns_documents():
             "score": 0.9,
             "source_name": "來源A",
             "url": "https://a.example",
+            "original_title": None,
         },
     )
     assert docs[1].page_content == "B"
@@ -124,6 +125,48 @@ async def test_retriever_filters_by_min_score():
     assert len(docs) == 1
     assert docs[0].page_content == "高血壓飲食"
     assert docs[0].metadata["score"] == 0.5
+
+
+@pytest.mark.asyncio
+async def test_retriever_keeps_low_score_docs_by_default():
+    retriever, emb = _make_retriever(vector_dim=2)
+    emb.aembed_query = AsyncMock(return_value=[0.1, 0.2])
+
+    fake_cursor = MagicMock()
+    fake_cursor.to_list = AsyncMock(
+        return_value=[
+            {"_id": "1", "chunk_text": "高分", "score": 0.9},
+            {"_id": "2", "chunk_text": "低分", "score": 0.12},
+        ]
+    )
+    fake_collection = MagicMock()
+    fake_collection.aggregate.return_value = fake_cursor
+    retriever._collection = fake_collection
+
+    docs = await retriever.ainvoke("高血壓")
+
+    # 過濾職責移交 reranker，第一階段不再砍低分候選
+    assert [d.page_content for d in docs] == ["高分", "低分"]
+
+
+@pytest.mark.asyncio
+async def test_retriever_still_honours_explicit_min_score():
+    retriever, emb = _make_retriever(vector_dim=2, min_score=0.5)
+    emb.aembed_query = AsyncMock(return_value=[0.1, 0.2])
+
+    fake_cursor = MagicMock()
+    fake_cursor.to_list = AsyncMock(
+        return_value=[
+            {"_id": "1", "chunk_text": "高分", "score": 0.9},
+            {"_id": "2", "chunk_text": "低分", "score": 0.12},
+        ]
+    )
+    fake_collection = MagicMock()
+    fake_collection.aggregate.return_value = fake_cursor
+    retriever._collection = fake_collection
+
+    docs = await retriever.ainvoke("高血壓")
+    assert [d.page_content for d in docs] == ["高分"]
 
 
 # ── MongoAtlasTextRetriever（BM25）─────────────────────────────────
@@ -167,6 +210,7 @@ async def test_text_retriever_builds_search_pipeline():
         "score": 8.4,
         "source_name": None,
         "url": None,
+        "original_title": None,
     }
 
     pipeline = collection.aggregate.call_args.args[0]
@@ -320,3 +364,61 @@ def test_ensure_collection_creates_motor_collection_once():
     assert first is fake_collection
     assert second is fake_collection
     mock_motor.assert_called_once_with("mongodb://localhost")
+
+
+# ── original_title 投影 ───────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_vector_retriever_projects_and_exposes_original_title():
+    retriever, emb = _make_retriever(vector_dim=2)
+    emb.aembed_query = AsyncMock(return_value=[0.1, 0.2])
+
+    fake_cursor = MagicMock()
+    fake_cursor.to_list = AsyncMock(
+        return_value=[
+            {
+                "_id": "abc",
+                "chunk_text": "幽門螺旋桿菌與胃癌風險",
+                "source_name": "食藥署闢謠專區",
+                "url": None,
+                "original_title": "捍「胃」健康 過年聚餐用公筷",
+                "score": 0.8,
+            }
+        ]
+    )
+    fake_collection = MagicMock()
+    fake_collection.aggregate.return_value = fake_cursor
+    retriever._collection = fake_collection
+
+    docs = await retriever.ainvoke("幽門螺旋桿菌")
+
+    pipeline = fake_collection.aggregate.call_args.args[0]
+    project_stage = next(s for s in pipeline if "$project" in s)
+    assert project_stage["$project"]["original_title"] == 1
+    assert docs[0].metadata["original_title"] == "捍「胃」健康 過年聚餐用公筷"
+
+
+@pytest.mark.asyncio
+async def test_text_retriever_projects_and_exposes_original_title():
+    retriever = _make_text_retriever()
+    collection = _fake_collection(
+        [
+            {
+                "_id": "abc",
+                "chunk_text": "幽門螺旋桿菌與胃癌風險",
+                "source_name": "食藥署闢謠專區",
+                "url": None,
+                "original_title": "捍「胃」健康 過年聚餐用公筷",
+                "score": 8.4,
+            }
+        ]
+    )
+    retriever._collection = collection
+
+    docs = await retriever.ainvoke("幽門螺旋桿菌")
+
+    pipeline = collection.aggregate.call_args.args[0]
+    project_stage = next(s for s in pipeline if "$project" in s)
+    assert project_stage["$project"]["original_title"] == 1
+    assert docs[0].metadata["original_title"] == "捍「胃」健康 過年聚餐用公筷"

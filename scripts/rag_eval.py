@@ -33,6 +33,7 @@ from app.services.rag.cohere_reranker import CohereReranker, VectorScoreReranker
 from app.services.rag.eval_scoring import (
     CaseResult,
     EvalCase,
+    answer_citation_count,
     load_golden_jsonl,
     score_case_retrieval,
     is_refuse_ok,
@@ -196,6 +197,7 @@ async def _eval_one(
         return result
 
     result.answer_preview = (answer or "")[:240]
+    result.citation_count = answer_citation_count(answer)
     if case.must_not_answer or case.route == "refuse":
         result.refuse_ok = is_refuse_ok(answer)
     if case.route == "kb" and case.expected_url_substrings:
@@ -211,6 +213,12 @@ def _print_summary(label: str, golden: Path, summary, results, *, with_answer: b
     print(f"hits: {summary.hits}")
     rate = summary.hit_rate
     print(f"hit_rate: {rate if rate is not None else 'n/a'}")
+
+    def _fmt(value: Optional[float]) -> str:
+        return f"{value:.3f}" if value is not None else "n/a"
+
+    print(f"mean_mrr: {_fmt(summary.mean_mrr)}")
+    print(f"mean_ndcg@5: {_fmt(summary.mean_ndcg_at_5)}")
     print(f"miss_ids: {summary.miss_ids}")
     print(f"skipped_ids: {summary.skipped_ids}")
     if summary.error_ids:
@@ -224,6 +232,8 @@ def _print_summary(label: str, golden: Path, summary, results, *, with_answer: b
         if source_cases:
             ok = sum(1 for r in source_cases if r.source_hit)
             print(f"source_hit: {ok}/{len(source_cases)}")
+        if summary.citation_coverage is not None:
+            print(f"citation_coverage: {_fmt(summary.citation_coverage)}")
 
 
 async def run_eval(
@@ -394,6 +404,11 @@ def main(argv: Optional[list[str]] = None) -> int:
             print(f"regressed_by_cohere: {only_vector}")
         else:
             print("hit_rate_delta: n/a")
+        if v_sum.mean_ndcg_at_5 is not None and c_sum.mean_ndcg_at_5 is not None:
+            print(
+                "ndcg@5_delta: "
+                f"{c_sum.mean_ndcg_at_5 - v_sum.mean_ndcg_at_5:+.3f}"
+            )
 
         if out_path is not None:
             payload = {

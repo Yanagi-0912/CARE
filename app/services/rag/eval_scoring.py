@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -25,6 +26,7 @@ class EvalCase:
     expected_url_substrings: list[str] = field(default_factory=list)
     expected_source_substrings: list[str] = field(default_factory=list)
     expected_content_substrings: list[str] = field(default_factory=list)
+    expected_title_substrings: list[str] = field(default_factory=list)
     must_not_answer: bool = False
     notes: str = ""
     split: str = ""
@@ -35,6 +37,7 @@ class EvalCase:
             self.expected_url_substrings
             or self.expected_source_substrings
             or self.expected_content_substrings
+            or self.expected_title_substrings
         )
 
 
@@ -47,11 +50,15 @@ class CaseResult:
     retrieval_hit: Optional[bool]
     retrieved_urls: list[str]
     retrieved_sources: list[str] = field(default_factory=list)
+    retrieved_titles: list[str] = field(default_factory=list)
     source_hit: Optional[bool] = None
     refuse_ok: Optional[bool] = None
     answer_preview: Optional[str] = None
     error: Optional[str] = None
+    mrr: Optional[float] = None
+    ndcg_at_5: Optional[float] = None
     rank_mode: Optional[str] = None
+    citation_count: Optional[int] = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -63,6 +70,9 @@ class EvalSummary:
     scored_cases: int
     hits: int
     hit_rate: Optional[float]
+    mean_mrr: Optional[float]
+    mean_ndcg_at_5: Optional[float]
+    citation_coverage: Optional[float]
     miss_ids: list[str]
     skipped_ids: list[str]
     error_ids: list[str]
@@ -89,6 +99,15 @@ def source_names_from_docs(docs: list[Document]) -> list[str]:
     return names
 
 
+def titles_from_docs(docs: list[Document]) -> list[str]:
+    titles: list[str] = []
+    for doc in docs:
+        title = str(doc.metadata.get("original_title") or "").strip()
+        if title:
+            titles.append(title)
+    return titles
+
+
 def is_substring_hit(values: list[str], expected_substrings: list[str]) -> bool:
     if not values or not expected_substrings:
         return False
@@ -113,14 +132,66 @@ def is_doc_retrieval_hit(
     expected_url_substrings: list[str],
     expected_source_substrings: list[str],
     expected_content_substrings: list[str] | None = None,
+    expected_title_substrings: list[str] | None = None,
 ) -> bool:
     if is_substring_hit(urls_from_docs(docs), expected_url_substrings):
         return True
     if is_substring_hit(source_names_from_docs(docs), expected_source_substrings):
         return True
+    if is_substring_hit(titles_from_docs(docs), expected_title_substrings or []):
+        return True
     return is_substring_hit(
         contents_from_docs(docs), expected_content_substrings or []
     )
+
+
+def doc_relevances(case: EvalCase, docs: list[Document]) -> list[int]:
+    """逐篇判定二元 relevance（1 = 命中任一期望 substring）。
+
+    以單篇為單位重用 `is_doc_retrieval_hit`，因此 url／title／source／content
+    的判準與 hit_rate 完全一致，指標之間不會互相矛盾。
+    """
+    return [
+        1
+        if is_doc_retrieval_hit(
+            [doc],
+            expected_url_substrings=case.expected_url_substrings,
+            expected_source_substrings=case.expected_source_substrings,
+            expected_content_substrings=case.expected_content_substrings,
+            expected_title_substrings=case.expected_title_substrings,
+        )
+        else 0
+        for doc in docs
+    ]
+
+
+def mrr(relevances: list[int]) -> float:
+    """第一筆命中的排名倒數；全無命中回傳 0.0。"""
+    for rank, rel in enumerate(relevances, start=1):
+        if rel:
+            return 1.0 / rank
+    return 0.0
+
+
+def _dcg(gains: list[int]) -> float:
+    return sum(g / math.log2(i + 1) for i, g in enumerate(gains, start=1) if g)
+
+
+def ndcg_at_k(relevances: list[int], k: int) -> float:
+    """二元 gain 的 nDCG@k。
+
+    IDCG 以「取回清單自身的 relevance 重排後」計算，而非語料庫全體的理想排序 ——
+    golden set 沒有窮盡的相關性判準，無法得知語料庫中共有幾篇相關文件。
+    此為缺完整判準時的標準做法，口徑已記於 evals/rag/README.md。
+    """
+    if k <= 0:
+        return 0.0
+    gains = relevances[:k]
+    ideal = sorted(relevances, reverse=True)[:k]
+    idcg = _dcg(ideal)
+    if not idcg:
+        return 0.0
+    return _dcg(gains) / idcg
 
 
 def urls_from_answer_sources(answer_text: str) -> list[str]:
@@ -141,6 +212,16 @@ def is_source_hit(answer_text: str, expected_substrings: list[str]) -> bool:
     return is_retrieval_hit(urls_from_answer_sources(answer_text), expected_substrings)
 
 
+def answer_citation_count(answer_text: str) -> int:
+    """答案中出現的相異引用編號數量。
+
+    重用 answer_service.cited_indices，確保與線上組裝來源時的判準一致。
+    """
+    from app.services.rag.answer_service import cited_indices
+
+    return len(cited_indices(answer_text or ""))
+
+
 def is_refuse_ok(answer_text: str) -> bool:
     from app.services.rag.answer_service import CANNOT_ANSWER_MARKERS
     from app.services.rag.fail_messages import is_rag_fail
@@ -151,6 +232,15 @@ def is_refuse_ok(answer_text: str) -> bool:
     if is_rag_fail(text):
         return True
     return any(marker in text for marker in CANNOT_ANSWER_MARKERS)
+
+
+def _string_list_field(
+    data: dict[str, Any], key: str, *, line_no: int, case_id: str
+) -> list[str]:
+    value = data.get(key) or []
+    if not isinstance(value, list):
+        raise ValueError(f"line {line_no} (id={case_id}): {key} must be a list")
+    return [str(x).strip() for x in value if str(x).strip()]
 
 
 def load_golden_jsonl(path: Path) -> list[EvalCase]:
@@ -182,33 +272,18 @@ def load_golden_jsonl(path: Path) -> list[EvalCase]:
                     f"route must be one of {sorted(VALID_ROUTES)}"
                 )
 
-            expected = data.get("expected_url_substrings") or []
-            if not isinstance(expected, list):
-                raise ValueError(
-                    f"line {line_no} (id={case_id}): "
-                    "expected_url_substrings must be a list"
-                )
-            expected_clean = [str(x).strip() for x in expected if str(x).strip()]
-
-            expected_src = data.get("expected_source_substrings") or []
-            if not isinstance(expected_src, list):
-                raise ValueError(
-                    f"line {line_no} (id={case_id}): "
-                    "expected_source_substrings must be a list"
-                )
-            expected_src_clean = [
-                str(x).strip() for x in expected_src if str(x).strip()
-            ]
-
-            expected_content = data.get("expected_content_substrings") or []
-            if not isinstance(expected_content, list):
-                raise ValueError(
-                    f"line {line_no} (id={case_id}): "
-                    "expected_content_substrings must be a list"
-                )
-            expected_content_clean = [
-                str(x).strip() for x in expected_content if str(x).strip()
-            ]
+            expected_clean = _string_list_field(
+                data, "expected_url_substrings", line_no=line_no, case_id=case_id
+            )
+            expected_src_clean = _string_list_field(
+                data, "expected_source_substrings", line_no=line_no, case_id=case_id
+            )
+            expected_content_clean = _string_list_field(
+                data, "expected_content_substrings", line_no=line_no, case_id=case_id
+            )
+            expected_title_clean = _string_list_field(
+                data, "expected_title_substrings", line_no=line_no, case_id=case_id
+            )
 
             cases.append(
                 EvalCase(
@@ -218,6 +293,7 @@ def load_golden_jsonl(path: Path) -> list[EvalCase]:
                     expected_url_substrings=expected_clean,
                     expected_source_substrings=expected_src_clean,
                     expected_content_substrings=expected_content_clean,
+                    expected_title_substrings=expected_title_clean,
                     must_not_answer=bool(data.get("must_not_answer", False)),
                     notes=str(data.get("notes") or ""),
                     split=str(data.get("split") or ""),
@@ -229,7 +305,8 @@ def load_golden_jsonl(path: Path) -> list[EvalCase]:
 def score_case_retrieval(case: EvalCase, docs: list[Document]) -> CaseResult:
     urls = urls_from_docs(docs)
     sources = source_names_from_docs(docs)
-    # kb 且有期望 url／source／content 才計分；其餘 skip
+    titles = titles_from_docs(docs)
+    # kb 且有期望 url／source／content／title 才計分；其餘 skip
     if case.route != "kb" or not case.has_retrieval_expectations:
         return CaseResult(
             id=case.id,
@@ -239,7 +316,9 @@ def score_case_retrieval(case: EvalCase, docs: list[Document]) -> CaseResult:
             retrieval_hit=None,
             retrieved_urls=urls,
             retrieved_sources=sources,
+            retrieved_titles=titles,
         )
+    relevances = doc_relevances(case, docs)
     return CaseResult(
         id=case.id,
         query=case.query,
@@ -250,9 +329,13 @@ def score_case_retrieval(case: EvalCase, docs: list[Document]) -> CaseResult:
             expected_url_substrings=case.expected_url_substrings,
             expected_source_substrings=case.expected_source_substrings,
             expected_content_substrings=case.expected_content_substrings,
+            expected_title_substrings=case.expected_title_substrings,
         ),
         retrieved_urls=urls,
         retrieved_sources=sources,
+        retrieved_titles=titles,
+        mrr=mrr(relevances),
+        ndcg_at_5=ndcg_at_k(relevances, 5),
     )
 
 
@@ -261,11 +344,22 @@ def summarize_results(results: list[CaseResult]) -> EvalSummary:
     hits = sum(1 for r in scored if r.retrieval_hit is True)
     scored_n = len(scored)
     hit_rate = (hits / scored_n) if scored_n else None
+    mrr_values = [r.mrr for r in scored if r.mrr is not None]
+    ndcg_values = [r.ndcg_at_5 for r in scored if r.ndcg_at_5 is not None]
+    cited = [r for r in scored if r.citation_count is not None]
+    citation_coverage = (
+        sum(1 for r in cited if r.citation_count > 0) / len(cited)
+    ) if cited else None
     return EvalSummary(
         total_cases=len(results),
         scored_cases=scored_n,
         hits=hits,
         hit_rate=hit_rate,
+        mean_mrr=(sum(mrr_values) / len(mrr_values)) if mrr_values else None,
+        mean_ndcg_at_5=(
+            (sum(ndcg_values) / len(ndcg_values)) if ndcg_values else None
+        ),
+        citation_coverage=citation_coverage,
         miss_ids=[r.id for r in scored if r.retrieval_hit is False],
         skipped_ids=[r.id for r in results if r.skipped],
         error_ids=[r.id for r in results if r.error],

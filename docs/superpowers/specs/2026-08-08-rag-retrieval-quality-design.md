@@ -170,16 +170,98 @@ B3 細節：
 
 | 項 | 內容 | 檔案 |
 | --- | --- | --- |
-| C1 | 移除 `min_score` 預設 0.5（改 0.0，參數保留），過濾交給 reranker | `retriever.py`、`config.py` |
+| C1 | 移除 KB 路徑的 `min_score` 預設 0.5（改 0.0，參數保留），過濾交給 reranker；**使用者文件路徑維持 0.5** | `retriever.py`、`user_document_retriever.py`、`config.py` |
 | C2 | rerank 輸入補回標題，格式對齊 embedding 時的 `主題：{title}\n內容：{chunk}` | `cohere_reranker.py`、`answer_service.py` |
 | C3 | 清除 266 筆 Firecrawl 導覽列噪音，腳本須支援 dry-run | `scripts/` 新增 |
 | C4 | 修正 Atlas Search index 範本欄位名 `text` → `chunk_content` | `resources/atlas_text_search_index.json` |
 
 C1 理由：在 wide retrieve → rerank 架構下，第一階段職責是衝 recall，
 過濾是 reranker 的工作。0.5 是針對 cosine 的絕對門檻，
-在候選進 reranker 前就先砍掉一批，與架構意圖相反。
+與架構意圖相反。
+
+**C1 實測結果（Task 8）—— 假設被推翻，但揭露了更重要的事**
+
+移除門檻後 `hit_rate` / `mean_mrr` / `mean_ndcg@5` **逐位元不變**，連 `miss_ids`
+都完全相同（已 A/B 重跑確認非巧合）。原因實測如下 —— `$vectorSearch` top-40
+的分數分佈：
+
+| query | min | max | < 0.5 的筆數 |
+| --- | --- | --- | --- |
+| 高血壓平常要注意什麼？ | 0.8694 | 0.8986 | 0/40 |
+| 糖尿病患者飲食該怎麼調整？ | 0.8417 | 0.8781 | 0/40 |
+| 幽門螺旋桿菌檢測幾歲可以做 | 0.8273 | 0.8839 | 0/40 |
+| **幫我寫一首關於貓咪的詩**（不相關） | 0.7926 | 0.8237 | 0/40 |
+
+160 筆全部落在 **0.79–0.90**，沒有任何一筆低於 0.5。
+**`min_score=0.5` 從來沒有過濾掉任何東西**，所以移除它不可能帶來增益。
+C1 仍值得做（移除潛在隱患：換 embedding 模型或語料後該門檻會突然開始咬人），
+但必須誠實記載它**沒有**改善檢索品質。
+
+更值得注意的是這份分佈本身：**一個完全不相關的查詢仍拿到 0.79**，
+而相關查詢也只有 0.83–0.90。全語料的餘弦相似度擠在 0.11 寬的帶狀區間內，
+意味著向量分數在此設定下**幾乎不具絕對區辨力** —— 任何絕對門檻都沒有意義，
+也部分解釋了為何 `mean_ndcg@5` 只有 0.253：向量排序本身的鑑別度就很低。
+
+這與 §2.3 的 `taskType` 發現一致：全庫文件被編碼在 query 空間，
+query-query 對比在同語言同領域下本來就會高度聚集、壓縮動態範圍。
+此分佈應作為交付 A（CARE-data 報告）中 `taskType` 那一項的佐證數據。
+
+**C1 的連帶影響（Task 7 review 發現）**：`user_document_retriever.py` 直接
+`from app.services.rag.retriever import DEFAULT_MIN_SCORE` 並用作自己的預設，
+而 `dependencies.py` 建構 `UserDocumentVectorRetriever` 時沒有覆寫它。
+關鍵差異是 **`UserDocumentAnswerService` 沒有 reranker** —— 檢索結果直接進 prompt。
+因此「把過濾交給 reranker」的理由在該路徑不成立，若共用常數一起改為 0.0，
+等於在沒有補償機制的情況下拆掉品質底線。
+
+處置：兩條路徑各自擁有明確的預設值。`retriever.DEFAULT_MIN_SCORE` 改為 `0.0`
+（KB 路徑，後面有 reranker）；`user_document_retriever.py` 改為定義自己的
+`DEFAULT_USER_DOC_MIN_SCORE = 0.5` 並註明「此路徑無 reranker，故保留門檻」，
+不再 import KB 的常數。
+
+**更正**：本文件先前在 C1 主張「hybrid 路徑經 RRF 融合後 `metadata["score"]`
+已被覆寫為融合分數，對它套用 0.5 門檻語意上是錯的」。**該敘述不成立** ——
+`min_score` 過濾發生在 `MongoAtlasVectorRetriever.ainvoke` 內部
+（`retriever.py:122-124`），早於 `HybridRetriever` 呼叫
+`reciprocal_rank_fusion`；融合分數覆寫只發生在回傳值上，其後沒有任何
+min_score 檢查。移除門檻的決定仍然成立，但理由只有「第一階段應衝 recall」這一條。
 
 C2 理由：見 2.4。這是不需重建知識庫就能取得的增益。
+
+**C2 實測結果（Task 9）—— 主要假設被推翻**
+
+補上標題後：`hit_rate 0.412 → 0.382`、`mean_mrr 0.198 → 0.217`、
+`mean_ndcg@5 0.253 → 0.257`（+0.004，雜訊等級）。
+`--compare-rerank` 的 delta 由 `-0.294 / -0.194` 變為 `-0.324 / -0.190`
+—— **方向未被扭轉**。「reranker 因缺標題而表現不佳」這個假設不成立。
+
+**但這次量測揭露了一個更重要的事實，且先前被指標名稱誤導了。**
+
+`--rank-mode vector` 使用的是 `VectorScoreReranker`，它依 `metadata["score"]` 排序。
+而在 `RAG_HYBRID_ENABLED=true`（現況）之下，`reciprocal_rank_fusion`
+會**把 `metadata["score"]` 覆寫為 RRF 融合分數**（`rank_fusion.py:99`）。
+因此該模式**不是純向量排序，而是「RRF 混合排序（向量 + BM25）」**。
+
+修正後的結論：
+
+> **在目前的資料與設定下，RRF 混合排序明顯優於 Cohere 精排。**
+> `regressed_by_cohere = 13` 對 `fixed_by_cohere = 2` —— Cohere 弄壞的題數
+> 是它修好的 6.5 倍。
+
+這也解釋了為何與 `evals/rag/README.md` 舊記錄（vector 0.29 → cohere 0.44，
+cohere 勝出）方向相反：該記錄的日期為 2026-08-01，當時 `--rank-mode vector`
+比較的很可能是**純向量**；hybrid 啟用後，同一個旗標的語意已經改變。
+
+合理的機制推測（未驗證）：chunk 是 500 字元硬切、常從句中斷開的碎片。
+cross-encoder 評估的是 query 與 passage 的語意相關性，在殘缺片段上表現不佳；
+而 RRF 得益於 BM25 對藥名、劑量、疾病名這類精確詞的字面匹配，
+這類匹配在碎片上依然有效。若此推測成立，真正的修法在上游切片（交付 A），
+而非精排階段。
+
+**衍生行動（超出本計畫範圍，交由使用者決定）**：
+1. 現行設定下 Cohere Rerank 正在**降低**檢索品質，且是付費 API。
+   是否改為預設使用 RRF 融合排序、把 Cohere 設為可選，值得評估。
+2. `--rank-mode vector` 這個名稱在 hybrid 啟用後具誤導性，
+   應更名或在 README 註明其實際語意。
 
 ### 4.4 非範圍
 

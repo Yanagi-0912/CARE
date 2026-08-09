@@ -27,5 +27,5 @@
 
 - [x] 5.1 後端 `.venv/bin/python -m pytest tests/unit -q` 全綠（此 worktree 無 `.venv`，實際以主 checkout 的 `/Users/jamessu/Desktop/computersciencehomework/CARE/.venv/bin/python -m pytest tests/unit -q` 執行，1246 passed）
 - [x] 5.2 前端 `npx vitest run`、`npm run build` 全綠，lint 問題數不增加（vitest 15 files／83 tests passed；build 成功；lint 19 problems／16 errors／3 warnings，與 Task 4 基準相同）
-- [ ] 5.3 手動：切換男聲後發一則訊息，確認音色實際改變（待人耳驗收，需真實 LINE 帳號，尚未執行）
+- [x] 5.3 手動：切換男聲後發一則訊息，確認音色實際改變（已由專案負責人實聽驗收，六語音色與語速皆確認可用）
 - [x] 5.4 勾選本 tasks 並建立清楚的 git commit（繁體中文描述）

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 KnowledgeReportStatus = Literal["pending", "reviewing", "resolved", "rejected"]
 KnowledgeReportReason = Literal["outdated", "missing", "other"]
+IngestJobStatus = Literal["running", "succeeded", "failed"]
 
 
 class IngestJobResult(BaseModel):
@@ -20,6 +21,10 @@ class IngestJob(BaseModel):
     selected_urls: list[str] = Field(default_factory=list)
     results: list[IngestJobResult] = Field(default_factory=list)
     error: Optional[str] = None
+    # None 代表本欄位加入前寫下的舊紀錄，一律視為已結束
+    status: Optional[IngestJobStatus] = Field(default=None, description="ingest 執行狀態")
+    started_at: Optional[datetime] = Field(default=None, description="ingest 開始時間")
+    finished_at: Optional[datetime] = Field(default=None, description="ingest 結束時間")
 
 
 class KnowledgeReport(BaseModel):
@@ -54,6 +59,14 @@ class CreateKnowledgeReportResponse(BaseModel):
 
 class KnowledgeReportListResponse(BaseModel):
     reports: list[KnowledgeReport]
+    # 以下分頁欄位僅 admin 待審列表會填；使用者端個人列表維持 None
+    total: Optional[int] = Field(default=None, description="符合篩選條件的總筆數")
+    limit: Optional[int] = Field(default=None, description="本次查詢的每頁筆數")
+    offset: Optional[int] = Field(default=None, description="本次查詢的位移")
+    status_counts: Optional[dict[str, int]] = Field(
+        default=None,
+        description="待審佇列各狀態的實際筆數，不受 status 篩選與分頁影響",
+    )
 
 
 class ApproveKnowledgeReportRequest(BaseModel):

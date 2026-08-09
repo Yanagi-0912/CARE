@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 import string
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import HTTPException
@@ -16,6 +16,9 @@ from app.models.knowledge_report import (
 from app.repositories.knowledge_report_repository import KnowledgeReportRepository
 from app.services.rag.ingest_service import IngestService
 from app.services.rag.whitelist import is_allowed_url
+
+# 超過此時間仍停在 running 的 job 視為服務重啟遺留的孤兒，允許重新核准取代
+INGEST_JOB_STALE_AFTER = timedelta(minutes=10)
 
 
 class KnowledgeReportService:
@@ -81,13 +84,42 @@ class KnowledgeReportService:
         return await self._repository.list_by_line_user_id(line_user_id)
 
     async def list_for_admin(
-        self, status: str | None = None
-    ) -> list[KnowledgeReport]:
+        self,
+        status: str | None = None,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[list[KnowledgeReport], int, dict[str, int]]:
+        """回傳 (本頁回報, 符合條件總筆數, 待審佇列各狀態筆數)。
+
+        status_counts 恆定回傳 pending／reviewing 的實際筆數，不受本次篩選影響，
+        讓前端不必用已載入的頁自行推算——那只反映已載入的部分。
+        """
         if status:
             statuses = [status]
         else:
             statuses = ["pending", "reviewing"]
-        return await self._repository.list_by_statuses(statuses)
+        reports = await self._repository.list_by_statuses(
+            statuses, limit=limit, offset=offset
+        )
+        total = await self._repository.count_by_statuses(statuses)
+        status_counts = {
+            "pending": await self._repository.count_by_statuses(["pending"]),
+            "reviewing": await self._repository.count_by_statuses(["reviewing"]),
+        }
+        return reports, total, status_counts
+
+    @staticmethod
+    def _is_ingest_in_progress(job: IngestJob | None, now: datetime) -> bool:
+        """job 是否仍在進行中。status 為 None 的舊紀錄一律視為已結束。"""
+        if job is None or job.status != "running":
+            return False
+        if job.started_at is None:
+            return True
+        started_at = job.started_at
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+        return now - started_at < INGEST_JOB_STALE_AFTER
 
     async def approve(
         self,
@@ -97,6 +129,7 @@ class KnowledgeReportService:
         resolution: str | None = None,
         reviewer_note: str | None = None,
     ) -> KnowledgeReport:
+        """驗證並登記 ingest 工作後立即回傳；實際 ingest 由 run_ingest 於背景執行。"""
         report = await self._repository.find_by_report_id(report_id)
         if report is None:
             raise HTTPException(status_code=404, detail="Report not found")
@@ -106,6 +139,10 @@ class KnowledgeReportService:
                 status_code=409,
                 detail=f"Report already {report.status}",
             )
+
+        now = datetime.now(timezone.utc)
+        if self._is_ingest_in_progress(report.ingest_job, now):
+            raise HTTPException(status_code=409, detail="Ingest already running")
 
         normalized_urls = [
             url.strip() for url in (selected_urls or []) if url and url.strip()
@@ -129,42 +166,89 @@ class KnowledgeReportService:
         if self._ingest_service is None:
             raise HTTPException(status_code=503, detail="Ingest service not configured")
 
-        now = datetime.now(timezone.utc)
+        job = IngestJob(
+            selected_urls=normalized_urls,
+            results=[],
+            status="running",
+            started_at=now,
+        )
+        # 條件式登記：併發的第二個 approve 會在這裡落空而非各排一個背景工作
+        acquired = await self._repository.start_ingest_job(
+            report_id=report_id,
+            job=job,
+            stale_before=now - INGEST_JOB_STALE_AFTER,
+            resolution=resolution,
+            reviewer_note=reviewer_note,
+        )
+        if not acquired:
+            raise HTTPException(status_code=409, detail="Ingest already running")
+
         report.status = "reviewing"
-        report.resolution = resolution
-        report.reviewer_note = reviewer_note
-        report.ingest_job = IngestJob(selected_urls=normalized_urls, results=[])
+        # patch 語意：沒帶就沿用原值，重試不會清掉上次寫的備註
+        if resolution is not None:
+            report.resolution = resolution
+        if reviewer_note is not None:
+            report.reviewer_note = reviewer_note
+        report.ingest_job = job
         report.updated_at = now
-        await self._repository.update(report)
+        return report
 
+    async def run_ingest(self, report_id: str) -> KnowledgeReport | None:
+        """背景執行 approve 登記的 ingest 工作，並將結果寫回報告。"""
+        report = await self._repository.find_by_report_id(report_id)
+        if report is None or report.ingest_job is None:
+            return None
+
+        job = report.ingest_job
+        started_at = job.started_at
         results: list[IngestJobResult] = []
-        all_ok = True
-        for url in normalized_urls:
-            ingest_result = await self._ingest_service.ingest_url(url)
-            job_result = IngestJobResult(
-                url=ingest_result.url,
-                status=ingest_result.status,
-                chunk_count=ingest_result.chunk_count,
-                message=ingest_result.message,
-            )
-            results.append(job_result)
-            if ingest_result.status != "ok":
-                all_ok = False
+        try:
+            if self._ingest_service is None:
+                raise RuntimeError("Ingest service not configured")
 
-        report.ingest_job.results = results
-        report.updated_at = datetime.now(timezone.utc)
+            all_ok = True
+            for url in job.selected_urls:
+                ingest_result = await self._ingest_service.ingest_url(url)
+                results.append(
+                    IngestJobResult(
+                        url=ingest_result.url,
+                        status=ingest_result.status,
+                        chunk_count=ingest_result.chunk_count,
+                        message=ingest_result.message,
+                    )
+                )
+                if ingest_result.status != "ok":
+                    all_ok = False
 
-        if all_ok:
-            report.status = "resolved"
-            report.ingest_job.error = None
-        else:
+            job.results = results
+            if all_ok:
+                report.status = "resolved"
+                job.status = "succeeded"
+                job.error = None
+            else:
+                report.status = "reviewing"
+                job.status = "failed"
+                failed = [r for r in results if r.status != "ok"]
+                job.error = "; ".join(
+                    f"{r.url}: {r.status} ({r.message or 'failed'})" for r in failed
+                )
+        except Exception as exc:  # 不讓 job 停在 running
             report.status = "reviewing"
-            failed = [r for r in results if r.status != "ok"]
-            report.ingest_job.error = "; ".join(
-                f"{r.url}: {r.status} ({r.message or 'failed'})" for r in failed
-            )
+            job.status = "failed"
+            # 保留崩潰前已完成的部分，重試時看得出哪些已經成功
+            job.results = results
+            job.error = f"ingest job crashed: {exc}"
 
-        return await self._repository.update(report)
+        job.finished_at = datetime.now(timezone.utc)
+        report.updated_at = job.finished_at
+        # 條件式寫回：期間若被拒絕或被重新 approve 就不命中，本次結果丟棄
+        applied = await self._repository.finish_ingest_job(
+            report_id=report_id,
+            started_at=started_at,
+            report_status=report.status,
+            job=job,
+        )
+        return report if applied else None
 
     async def reject(
         self,
@@ -184,6 +268,10 @@ class KnowledgeReportService:
             )
 
         now = datetime.now(timezone.utc)
+        # 系統無法反收錄，所以不能讓「已拒絕但內容已進向量庫」的狀態成立
+        if self._is_ingest_in_progress(report.ingest_job, now):
+            raise HTTPException(status_code=409, detail="Ingest already running")
+
         report.status = "rejected"
         report.reviewer_note = reviewer_note
         report.resolution = resolution

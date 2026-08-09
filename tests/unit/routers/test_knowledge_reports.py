@@ -14,7 +14,7 @@ from app.dependencies import (
     require_admin_user,
 )
 from app.main import app
-from app.models.knowledge_report import KnowledgeReport
+from app.models.knowledge_report import IngestJob, KnowledgeReport
 
 client = TestClient(app)
 
@@ -68,8 +68,20 @@ def mock_service():
     service = MagicMock()
     service.create = AsyncMock(return_value=_sample_report())
     service.list_for_user = AsyncMock(return_value=[_sample_report()])
-    service.list_for_admin = AsyncMock(return_value=[_sample_report()])
-    service.approve = AsyncMock(return_value=_sample_report(status="resolved"))
+    service.list_for_admin = AsyncMock(
+        return_value=([_sample_report()], 1, {"pending": 1, "reviewing": 0})
+    )
+    service.approve = AsyncMock(
+        return_value=_sample_report(
+            status="reviewing",
+            ingest_job=IngestJob(
+                selected_urls=[ALLOWED_URL],
+                status="running",
+                started_at=datetime(2026, 8, 2, 12, 0, tzinfo=timezone.utc),
+            ),
+        )
+    )
+    service.run_ingest = AsyncMock(return_value=None)
     service.reject = AsyncMock(return_value=_sample_report(status="rejected"))
     app.dependency_overrides[get_knowledge_report_service] = lambda: service
     yield service
@@ -137,13 +149,47 @@ def test_admin_list_success_for_admin(mock_service, override_admin_user):
     data = response.json()
     assert len(data["reports"]) == 1
     assert data["reports"][0]["report_id"] == "KR-20260802-AB12"
-    mock_service.list_for_admin.assert_awaited_once_with(status=None)
+    assert data["total"] == 1
+    assert data["limit"] == 50
+    assert data["offset"] == 0
+    assert data["status_counts"] == {"pending": 1, "reviewing": 0}
+    mock_service.list_for_admin.assert_awaited_once_with(
+        status=None, limit=50, offset=0
+    )
 
 
 def test_admin_list_with_status_filter(mock_service, override_admin_user):
     response = client.get("/api/admin/knowledge-reports?status=pending")
     assert response.status_code == 200
-    mock_service.list_for_admin.assert_awaited_once_with(status="pending")
+    mock_service.list_for_admin.assert_awaited_once_with(
+        status="pending", limit=50, offset=0
+    )
+
+
+def test_admin_list_rejects_invalid_status(mock_service, override_admin_user):
+    response = client.get("/api/admin/knowledge-reports?status=foo")
+    assert response.status_code == 422
+    mock_service.list_for_admin.assert_not_awaited()
+
+
+def test_admin_list_with_pagination(mock_service, override_admin_user):
+    response = client.get("/api/admin/knowledge-reports?limit=20&offset=20")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["limit"] == 20
+    assert data["offset"] == 20
+    mock_service.list_for_admin.assert_awaited_once_with(
+        status=None, limit=20, offset=20
+    )
+
+
+@pytest.mark.parametrize("query", ["limit=500", "limit=0", "offset=-1"])
+def test_admin_list_rejects_out_of_range_pagination(
+    mock_service, override_admin_user, query
+):
+    response = client.get(f"/api/admin/knowledge-reports?{query}")
+    assert response.status_code == 422
+    mock_service.list_for_admin.assert_not_awaited()
 
 
 def test_admin_approve_success_for_admin(mock_service, override_admin_user):
@@ -152,7 +198,20 @@ def test_admin_approve_success_for_admin(mock_service, override_admin_user):
         json={"selected_urls": [ALLOWED_URL]},
     )
     assert response.status_code == 200
-    assert response.json()["status"] == "resolved"
+    data = response.json()
+    # ingest 移到背景後，approve 回應只保證登記成功，不再是終局狀態
+    assert data["status"] == "reviewing"
+    assert data["ingest_job"]["status"] == "running"
+
+
+def test_admin_approve_schedules_background_ingest(mock_service, override_admin_user):
+    # TestClient 會在回應送出後執行 background task
+    response = client.post(
+        "/api/admin/knowledge-reports/KR-20260802-AB12/approve",
+        json={"selected_urls": [ALLOWED_URL]},
+    )
+    assert response.status_code == 200
+    mock_service.run_ingest.assert_awaited_once_with("KR-20260802-AB12")
 
 
 def test_admin_reject_success_for_admin(mock_service, override_admin_user):

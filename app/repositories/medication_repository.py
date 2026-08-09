@@ -1,11 +1,16 @@
 import logging
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 
 from app.db.mongodb import MongoDBManager
-from app.models.medication import TAIPEI_TZ, MedicationLog, MedicationReminder
+from app.models.medication import (
+    TAIPEI_TZ,
+    Medication,
+    MedicationLog,
+    MedicationReminder,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +121,111 @@ class MedicationReminderRepository:
         col = MongoDBManager.get_medication_reminders_collection()
         result = await col.delete_one({"_id": reminder_id})
         return result.deleted_count > 0
+
+    @staticmethod
+    async def link_medications_to_reminder(
+        reminder_id: str,
+        medication_ids: List[str],
+        collection: Optional[Any] = None,
+    ) -> bool:
+        """把藥品掛到既有的時段規則上。
+
+        用 $addToSet 而非 $push：同一份處方被重複提交、或使用者把同一種藥
+        再指定一次到同一個時段時，重複的 id 會讓推播把同一種藥列兩遍。
+        """
+        if not medication_ids:
+            return False
+        if collection is None:
+            collection = MongoDBManager.get_medication_reminders_collection()
+        result = await collection.update_one(
+            {"_id": reminder_id},
+            {
+                "$addToSet": {"medication_ids": {"$each": medication_ids}},
+                "$set": {"updated_at": datetime.now(timezone.utc)},
+            },
+        )
+        return result.matched_count > 0
+
+
+class MedicationRepository:
+    """
+    藥品 (medications) 資料庫操作。
+
+    與時段規則分開存放，因此可以單獨停用或結束某一種藥的療程，
+    而不動到同一時段的其他藥。
+    """
+
+    @staticmethod
+    async def create_many(
+        medications: List[Medication], collection: Optional[Any] = None
+    ) -> List[Medication]:
+        if not medications:
+            return []
+        if collection is None:
+            collection = MongoDBManager.get_medications_collection()
+
+        documents = []
+        created = []
+        for medication in medications:
+            document = medication.model_dump(by_alias=True)
+            if not document.get("_id"):
+                document["_id"] = str(ObjectId())
+            documents.append(document)
+            created.append(medication.model_copy(update={"id": document["_id"]}))
+
+        await collection.insert_many(documents)
+        return created
+
+    @staticmethod
+    async def find_by_ids(
+        medication_ids: List[str], collection: Optional[Any] = None
+    ) -> List[Medication]:
+        if not medication_ids:
+            return []
+        if collection is None:
+            collection = MongoDBManager.get_medications_collection()
+        cursor = collection.find({"_id": {"$in": medication_ids}})
+        docs = await cursor.to_list(length=None)
+        return [Medication(**{**doc, "_id": str(doc["_id"])}) for doc in docs]
+
+    @staticmethod
+    async def find_active_by_ids(
+        medication_ids: List[str],
+        date_str: str,
+        collection: Optional[Any] = None,
+    ) -> List[Medication]:
+        """只回傳當日仍有效的藥品。
+
+        推播的藥品清單走這裡：已停用或療程已結束的藥不該再出現在提醒上，
+        但它們的失效不影響時段規則本身是否推播。
+        """
+        if not medication_ids:
+            return []
+        if collection is None:
+            collection = MongoDBManager.get_medications_collection()
+        query = {
+            "_id": {"$in": medication_ids},
+            "enabled": True,
+            "$and": _active_date_window(date_str),
+        }
+        cursor = collection.find(query)
+        docs = await cursor.to_list(length=None)
+        return [Medication(**{**doc, "_id": str(doc["_id"])}) for doc in docs]
+
+    @staticmethod
+    async def set_enabled(
+        medication_id: str,
+        user_id: str,
+        enabled: bool,
+        collection: Optional[Any] = None,
+    ) -> bool:
+        if collection is None:
+            collection = MongoDBManager.get_medications_collection()
+        result = await collection.update_one(
+            {"_id": medication_id, "user_id": user_id},
+            {"$set": {"enabled": enabled, "updated_at": datetime.now(timezone.utc)}},
+        )
+        return result.matched_count > 0
 
 
 class MedicationLogRepository:

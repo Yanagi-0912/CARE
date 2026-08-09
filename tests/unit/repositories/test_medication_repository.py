@@ -228,3 +228,148 @@ async def test_mark_as_taken(override_medication_logs_col):
     assert log is not None
     assert log.status == "taken"
     assert log.taken_at == now
+
+
+# --- 藥品（medications）與提醒的關聯 -------------------------------------
+# 新增的方法一律以 collection= 注入替身，不使用 monkeypatch。
+
+def _medications_col() -> MagicMock:
+    col = MagicMock()
+    col.insert_many = AsyncMock()
+    col.update_one = AsyncMock()
+    cursor = MagicMock()
+    cursor.to_list = AsyncMock(return_value=[])
+    col.find = MagicMock(return_value=cursor)
+    return col
+
+
+@pytest.mark.asyncio
+async def test_create_many_assigns_ids_and_returns_medications():
+    from app.models.medication import Medication
+    from app.repositories.medication_repository import MedicationRepository
+
+    col = _medications_col()
+    medications = [
+        Medication(user_id="U_P", created_by_user_id="U_F", name="藥一"),
+        Medication(user_id="U_P", created_by_user_id="U_F", name="藥二"),
+    ]
+
+    created = await MedicationRepository.create_many(medications, collection=col)
+
+    assert [medication.name for medication in created] == ["藥一", "藥二"]
+    assigned_ids = [medication.id for medication in created]
+    assert all(assigned_ids)
+    assert len(set(assigned_ids)) == 2
+    (documents,), _ = col.insert_many.call_args
+    assert [document["_id"] for document in documents] == assigned_ids
+    assert [document["name"] for document in documents] == ["藥一", "藥二"]
+    assert all(document["_id"] for document in documents)
+
+
+@pytest.mark.asyncio
+async def test_create_many_with_empty_list_does_not_touch_the_database():
+    from app.repositories.medication_repository import MedicationRepository
+
+    col = _medications_col()
+
+    created = await MedicationRepository.create_many([], collection=col)
+
+    assert created == []
+    col.insert_many.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_find_by_ids_queries_by_id_set():
+    from app.repositories.medication_repository import MedicationRepository
+
+    col = _medications_col()
+
+    await MedicationRepository.find_by_ids(["M1", "M2"], collection=col)
+
+    (query,), _ = col.find.call_args
+    assert query == {"_id": {"$in": ["M1", "M2"]}}
+
+
+@pytest.mark.asyncio
+async def test_find_by_ids_with_empty_list_does_not_query():
+    from app.repositories.medication_repository import MedicationRepository
+
+    col = _medications_col()
+
+    found = await MedicationRepository.find_by_ids([], collection=col)
+
+    assert found == []
+    col.find.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_find_active_by_ids_excludes_disabled_and_out_of_range():
+    from app.repositories.medication_repository import MedicationRepository
+
+    col = _medications_col()
+
+    await MedicationRepository.find_active_by_ids(
+        ["M1"], "2026-08-09", collection=col
+    )
+
+    (query,), _ = col.find.call_args
+    assert query["_id"] == {"$in": ["M1"]}
+    assert query["enabled"] is True
+    conditions = query["$and"]
+    assert {"$or": [{"start_date": {"$exists": False}}, {"start_date": {"$lte": "2026-08-09"}}]} in conditions
+    assert {
+        "$or": [
+            {"end_date": None},
+            {"end_date": {"$exists": False}},
+            {"end_date": {"$gte": "2026-08-09"}},
+        ]
+    } in conditions
+
+
+@pytest.mark.asyncio
+async def test_set_enabled_updates_only_that_medication():
+    from app.repositories.medication_repository import MedicationRepository
+
+    col = _medications_col()
+    col.update_one.return_value = MagicMock(matched_count=1)
+
+    updated = await MedicationRepository.set_enabled(
+        "M1", "U_P", False, collection=col
+    )
+
+    assert updated is True
+    (query, update), _ = col.update_one.call_args
+    assert query == {"_id": "M1", "user_id": "U_P"}
+    assert update["$set"]["enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_link_medications_uses_add_to_set_to_avoid_duplicates():
+    from app.repositories.medication_repository import MedicationReminderRepository
+
+    col = MagicMock()
+    col.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
+
+    linked = await MedicationReminderRepository.link_medications_to_reminder(
+        "R1", ["M1", "M2"], collection=col
+    )
+
+    assert linked is True
+    (query, update), _ = col.update_one.call_args
+    assert query == {"_id": "R1"}
+    assert update["$addToSet"]["medication_ids"] == {"$each": ["M1", "M2"]}
+
+
+@pytest.mark.asyncio
+async def test_link_medications_with_empty_list_does_not_update():
+    from app.repositories.medication_repository import MedicationReminderRepository
+
+    col = MagicMock()
+    col.update_one = AsyncMock()
+
+    linked = await MedicationReminderRepository.link_medications_to_reminder(
+        "R1", [], collection=col
+    )
+
+    assert linked is False
+    col.update_one.assert_not_called()

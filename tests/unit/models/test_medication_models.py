@@ -153,3 +153,92 @@ def test_update_request_rejects_malformed_scheduled_time():
 
     assert UpdateMedicationReminderRequest(scheduled_time="08:05").scheduled_time == "08:05"
     assert UpdateMedicationReminderRequest().scheduled_time is None
+
+
+def test_reminder_medication_ids_defaults_to_empty_list():
+    reminder = MedicationReminder(
+        creator_user_id="U_FAMILY",
+        user_id="U_PATIENT",
+        slot_type="morning",
+    )
+
+    assert reminder.medication_ids == []
+
+
+def test_reminder_reads_back_without_medication_ids_field():
+    """本變更前寫入的規則沒有 medication_ids 欄位，讀回時必須仍然成立。"""
+    document = {
+        "_id": "R1",
+        "creator_user_id": "U_FAMILY",
+        "user_id": "U_PATIENT",
+        "slot_type": "evening",
+        "scheduled_time": "18:00",
+        "start_date": "2026-08-09",
+        "enabled": True,
+    }
+
+    reminder = MedicationReminder(**document)
+
+    assert reminder.medication_ids == []
+    assert reminder.slot_type == "evening"
+
+
+def test_reminder_medication_ids_are_independent_between_instances():
+    """default_factory 的驗證：兩個實例不得共用同一個 list。"""
+    first = MedicationReminder(
+        creator_user_id="U_FAMILY", user_id="U_PATIENT", slot_type="morning"
+    )
+    second = MedicationReminder(
+        creator_user_id="U_FAMILY", user_id="U_PATIENT", slot_type="noon"
+    )
+
+    first.medication_ids.append("M1")
+
+    assert second.medication_ids == []
+
+
+def test_medication_defaults():
+    from app.models.medication import Medication
+
+    med = Medication(
+        user_id="U_PATIENT",
+        created_by_user_id="U_FAMILY",
+        name="脈優錠5毫克",
+    )
+
+    assert med.enabled is True
+    assert med.source == "manual"
+    assert med.end_date is None
+    assert med.frequency_code == "OTHER"
+    assert med.start_date == datetime.now(TAIPEI_TZ).strftime("%Y-%m-%d")
+
+
+def test_medication_rejects_unknown_source():
+    from app.models.medication import Medication
+
+    with pytest.raises(ValidationError):
+        Medication(
+            user_id="U_PATIENT",
+            created_by_user_id="U_FAMILY",
+            name="某藥",
+            source="imported_from_somewhere",
+        )
+
+
+def test_medication_keeps_usage_raw_and_indication():
+    from app.models.medication import Medication
+
+    med = Medication(
+        user_id="U_PATIENT",
+        created_by_user_id="U_FAMILY",
+        name="某藥",
+        usage_raw="TID PC",
+        indication="高血壓",
+        license_number="衛署藥製字第000001號",
+        source="prescription_ocr",
+    )
+
+    assert med.usage_raw == "TID PC"
+    assert med.indication == "高血壓"
+    assert med.license_number == "衛署藥製字第000001號"
+    assert med.source == "prescription_ocr"

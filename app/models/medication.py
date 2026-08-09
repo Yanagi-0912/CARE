@@ -12,6 +12,13 @@ HHMM_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 MedicationSlotType = Literal["morning", "noon", "evening", "bedtime"]
 MedicationLogStatus = Literal["pending", "taken", "missed"]
 
+# 醫囑頻次。無法明確歸類者一律 OTHER——臆測頻次會直接變成錯誤的服藥時間。
+# 定義在這裡而非 prescription.py，是因為 prescription.py 需要 MedicationSlotType，
+# 反向 import 會造成循環。
+MedicationFrequencyCode = Literal["QD", "BID", "TID", "QID", "HS", "PRN", "OTHER"]
+
+MedicationSource = Literal["manual", "prescription_ocr"]
+
 DEFAULT_SLOT_TIMES: dict[str, str] = {
     "morning": "08:00",
     "noon": "12:00",
@@ -65,6 +72,36 @@ class MedicationReminder(BaseModel):
     user_id: str                           # 服用藥物的使用者 LINE userId
     slot_type: MedicationSlotType
     scheduled_time: str = "08:00"
+    start_date: str = Field(default_factory=_today_date_str)
+    end_date: Optional[str] = None
+    enabled: bool = True
+    # 該時段應服用的藥品。純關聯欄位，排程器的展開與搶佔判定不讀它——
+    # 那些併發行為已有既定條文與保證，不讓藥品關聯成為它們的輸入。
+    # 本欄位之前寫入的規則沒有這個 key，讀回時為空陣列，行為與過去一致。
+    medication_ids: List[str] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class Medication(BaseModel):
+    """一種藥。與時段規則分開存放，因此可以單獨停用或結束療程，
+    而不影響同一時段的其他藥。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: Optional[str] = Field(default=None, alias="_id")
+    user_id: str                           # 服用此藥的使用者 LINE userId
+    created_by_user_id: str                # 建立者 LINE userId
+    name: str
+    generic_name: Optional[str] = None
+    license_number: Optional[str] = None
+    unit_content: Optional[str] = None
+    total_quantity: Optional[int] = None
+    usage_raw: Optional[str] = None        # 藥袋上的用法原文，供使用者核對
+    frequency_code: MedicationFrequencyCode = "OTHER"
+    # 適應症會直接揭露病情，僅供 LIFF 內呈現，不得進入任何推播訊息。
+    indication: Optional[str] = None
+    source: MedicationSource = "manual"
     start_date: str = Field(default_factory=_today_date_str)
     end_date: Optional[str] = None
     enabled: bool = True

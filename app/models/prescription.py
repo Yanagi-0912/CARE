@@ -88,3 +88,46 @@ class PrescriptionDraft(BaseModel):
     expires_at: datetime
     committed_at: Optional[datetime] = None
     committed_medication_ids: list[str] = Field(default_factory=list)
+
+
+class CommitDrugItem(BaseModel):
+    """使用者核對草稿後，確認要建立的單一藥品。
+
+    欄位只涵蓋 Medication 真正會寫入的部分——timing／duration_days 這類
+    只在辨識階段供人核對用的顯示欄位，提交後就沒有去處，不放進來。
+    """
+
+    name: str
+    generic_name: Optional[str] = None
+    # 前端把掃描時藥證庫比對到的證號原樣回傳；提交階段不重新比對，
+    # 因為使用者可能已把藥名編輯成別的字串，那應該是下一次掃描的責任，
+    # 不該在提交當下悄悄用新名字重新配對出不同的證號。
+    license_number: Optional[str] = None
+    unit_content: Optional[str] = None
+    total_quantity: Optional[int] = None
+    usage_raw: Optional[str] = None
+    frequency_code: FrequencyCode = "OTHER"
+    indication: Optional[str] = None
+    # 使用者可覆寫頻次映射出的時段；OTHER 頻次且未指定時必須拒絕提交。
+    slots: Optional[list[MedicationSlotType]] = None
+    # 使用者可以把辨識出但不需要的項目（誤判、重複、不想建立）取消勾選。
+    include: bool = True
+
+
+class CommitPrescriptionDraftRequest(BaseModel):
+    """提交草稿的請求本體。draft_id 由路由的路徑參數提供，不重複放在這裡。"""
+
+    user_id: str
+    drugs: list[CommitDrugItem] = Field(default_factory=list)
+
+
+class PrescriptionCommitResult(BaseModel):
+    """提交後的結果。
+
+    medication_ids 涵蓋本次建立的所有藥品，PRN 也在其中——它們確實被建立了，
+    只是不會出現在任何提醒的關聯裡。prn_medication_ids 是其中屬於 PRN 的子集，
+    讓呼叫端不必重新猜測哪些藥沒有對應的提醒。
+    """
+
+    medication_ids: list[str] = Field(default_factory=list)
+    prn_medication_ids: list[str] = Field(default_factory=list)

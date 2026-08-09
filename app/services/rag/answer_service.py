@@ -29,6 +29,8 @@ logger = logging.getLogger(__name__)
 RETRIEVAL_TOP_K = 40
 RERANK_TOP_N = 5
 CITE_TOP_K = 3
+# 精排後之文章層級去重：同一篇文章最多留幾個 chunk（見 dedup_ranked_docs）
+RERANK_MAX_CHUNKS_PER_ARTICLE = 2
 
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 
@@ -53,6 +55,7 @@ class RagAnswerService:
         reranker: Reranker | None = None,
         *,
         rerank_top_n: int = RERANK_TOP_N,
+        max_chunks_per_article: int = RERANK_MAX_CHUNKS_PER_ARTICLE,
         grader: RetrievalGrader | None = None,
         rewriter: QueryRewriter | None = None,
         crag_enabled: bool = False,
@@ -63,6 +66,7 @@ class RagAnswerService:
         self.retriever = retriever
         self.reranker: Reranker = reranker or VectorScoreReranker()
         self.rerank_top_n = rerank_top_n
+        self.max_chunks_per_article = max_chunks_per_article
         self.grader = grader
         self.rewriter = rewriter
         self.crag_enabled = crag_enabled and grader is not None
@@ -117,7 +121,12 @@ class RagAnswerService:
         docs = await self.retriever.ainvoke(query)
         if not docs:
             return []
-        return await self.reranker.rerank(query, docs, top_n=self.rerank_top_n)
+        # 拿完整排序（不是只拿 top_n）：文章層級去重必須看過全部候選才能
+        # 判斷「這篇文章還有沒有更高分的 chunk 沒被算進去」，只截斷後的
+        # top_n 會讓去重看不到被擠掉的候選，等於沒去重。
+        ranked = await self.reranker.rerank(query, docs, top_n=len(docs))
+        deduped = dedup_ranked_docs(ranked, max_per_article=self.max_chunks_per_article)
+        return deduped[: self.rerank_top_n]
 
     async def _apply_crag(
         self, user_text: str, ranked: list[Document]
@@ -261,3 +270,31 @@ class RagAnswerService:
 
         heading = t("agent.sources_heading")
         return f"{body}\n\n{heading}\n" + "\n".join(source_lines)
+
+
+def dedup_ranked_docs(
+    docs: list[Document], *, max_per_article: int
+) -> list[Document]:
+    """精排後之文章層級去重：同一篇文章最多留 max_per_article 個 chunk。
+
+    *docs* 必須已依相關性排序（分數高在前，例如 reranker 的完整排序結果）；
+    本函式只依序掃描並過濾超出上限的 chunk，**不重新排序**，因此保留的
+    chunk 之間相對順序與輸入一致。
+
+    文章身分判定沿用 `RagAnswerService._source_key`（有 url 用 url，無 url
+    用 source_name+original_title），不重新發明身分邏輯，確保與
+    `_append_sources` 判斷「同一來源」的邏輯一致。
+
+    `max_per_article < 1` 視為 1（至少保留每篇文章的最高分 chunk），不拋例外。
+    """
+    cap = max_per_article if max_per_article >= 1 else 1
+    counts: dict[str, int] = {}
+    out: list[Document] = []
+    for doc in docs:
+        key = RagAnswerService._source_key(doc)
+        count = counts.get(key, 0)
+        if count >= cap:
+            continue
+        counts[key] = count + 1
+        out.append(doc)
+    return out

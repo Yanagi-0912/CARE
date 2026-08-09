@@ -29,6 +29,7 @@ load_dotenv(_PROJECT_ROOT / ".env")
 
 from app.core.config import settings
 from app.dependencies import get_rag_answer_service, get_rag_retriever
+from app.services.rag.answer_service import dedup_ranked_docs
 from app.services.rag.cohere_reranker import CohereReranker, VectorScoreReranker
 from app.services.rag.eval_scoring import (
     CaseResult,
@@ -148,9 +149,22 @@ def _build_reranker(rank_mode: str):
 
 
 async def _maybe_rank(docs, *, query: str, rank_mode: str, top_n: int, reranker):
+    """鏡射 production `RagAnswerService._retrieve_and_rerank` 的行為。
+
+    `rank_mode == "none"` 是刻意的裸檢索觀測（production 永遠有 reranker，
+    這個分支不代表任何真實路徑），維持原始檢索順序不動、不套用去重。
+    其餘 rank_mode（vector／cohere）都對應到「production 一定會呼叫某個
+    reranker」的事實，因此鏡射同一套流程：先讓 reranker 對*完整*候選集
+    排序（top_n=len(docs)，而非只要 top_n 筆），文章層級去重必須看過全部
+    候選才能判斷哪些 chunk 因同文章擠壓而被排除；去重後才截斷到 top_n。
+    """
     if rank_mode == "none" or reranker is None:
         return docs
-    return await reranker.rerank(query, docs, top_n=top_n)
+    ranked = await reranker.rerank(query, docs, top_n=len(docs))
+    deduped = dedup_ranked_docs(
+        ranked, max_per_article=settings.RAG_RERANK_MAX_CHUNKS_PER_ARTICLE
+    )
+    return deduped[:top_n]
 
 
 async def _eval_one(
@@ -310,8 +324,25 @@ async def run_compare_rerank(
             continue
         try:
             wide = await retriever.ainvoke(case.query)
-            v_docs = await vector_rr.rerank(case.query, wide, top_n=effective_top_n)
-            c_docs = await cohere_rr.rerank(case.query, wide, top_n=effective_top_n)
+            # 兩個分支都經過 _maybe_rank（rerank 全排 → 文章層級去重 → 截
+            # top_n），鏡射 production 行為——production 無論用哪個
+            # reranker（Cohere 或降級用的 VectorScoreReranker）都會套用
+            # 同一套去重，這裡的 vector／cohere 分支分別代表「如果那天是
+            # 這個 reranker 在跑」。
+            v_docs = await _maybe_rank(
+                wide,
+                query=case.query,
+                rank_mode="vector",
+                top_n=effective_top_n,
+                reranker=vector_rr,
+            )
+            c_docs = await _maybe_rank(
+                wide,
+                query=case.query,
+                rank_mode="cohere",
+                top_n=effective_top_n,
+                reranker=cohere_rr,
+            )
         except Exception as exc:  # noqa: BLE001
             err = CaseResult(
                 id=case.id,

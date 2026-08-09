@@ -92,6 +92,12 @@ class Settings:
     # 向量檢索最低分門檻。預設 0.0＝不過濾；過濾職責在 reranker。
     RAG_VECTOR_MIN_SCORE: float = float(os.getenv("RAG_VECTOR_MIN_SCORE", "0.0"))
 
+    # 精排後之文章層級去重：同一篇文章最多留幾個 chunk 進 top-n（避免單一
+    # 文章的多個 chunk 擠爆 top-n 名額，犧牲來源多樣性）。
+    RAG_RERANK_MAX_CHUNKS_PER_ARTICLE: int = int(
+        os.getenv("RAG_RERANK_MAX_CHUNKS_PER_ARTICLE", "2")
+    )
+
     # Light CRAG（檢索充足性分級；關閉則等同舊行為）
     RAG_CRAG_ENABLED: bool = os.getenv("RAG_CRAG_ENABLED", "true").lower() in (
         "1",

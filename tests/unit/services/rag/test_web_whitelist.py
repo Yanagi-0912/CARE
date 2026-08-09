@@ -71,6 +71,28 @@ def test_is_allowed_url_accepts_whitelist_domains(url):
         #     與現行「拿原始 unicode 字串 endswith」的做法會誤判。
         "https://evil.com。gov.tw/",
         "https://台灣.gov.tw/x",
+        # --- code review Important 4：host 正字集規則。這些字元在 DNS 上
+        #     解析不到、Node／瀏覽器都拒絕剖析，光靠 '%' 檢查擋不到它們——
+        #     必須是正向規則（只允許已知安全字元）才能一次涵蓋。
+        "https://evil.com<.gov.tw/x",
+        "https://evil.com>.gov.tw/x",
+        "https://evil.com^.gov.tw/x",
+        "https://evil.com|.gov.tw/x",
+        "https://.gov.tw/",  # 空標籤（開頭）
+        "https://a..gov.tw/",  # 空標籤（中間）
+        # --- code review Important 3 的補充案例：userinfo 順序與 5.4 相反
+        #     （合法 host 在 '@' 後面）。拿掉 userinfo 檢查的話，
+        #     parsed.hostname 會自動把 'evil.com@' 這段當帳密丟掉，host 變成
+        #     "www.hpa.gov.tw"（合法），會被誤判通過——5.4 那兩個案例是因為
+        #     host 變成 evil.com（not_allowed）或 port 解析拋錯而被拒，
+        #     跟這道 userinfo 檢查本身無關，無法用來釘住它。
+        "https://evil.com@www.hpa.gov.tw/x",
+        # --- code review Important 1 的補充案例：控制字元放在 path（而非
+        #     host），確保這個案例只靠「剖析前的控制字元前置檢查」才會被擋。
+        #     若放在 host 裡，Important 4 新增的 host 正字集規則也會擋下它，
+        #     那就無法用來單獨釘住控制字元前置檢查這一道防線了。
+        "https://www.hpa.gov.tw/x\x00",
+        "https://www.hpa.gov.tw/x\x7f",
     ],
 )
 def test_is_allowed_url_rejects_non_whitelist(url):
@@ -117,6 +139,13 @@ def test_normalize_url_is_idempotent(raw, expected):
     once = policy.normalize(raw)
     assert once == expected
     assert policy.normalize(once) == once
+
+
+def test_normalize_url_collapses_multiple_trailing_slashes():
+    """code review Minor：/x// 只是多打一個斜線，應收斂成 /x，不該被當成格式錯誤。"""
+    policy = UrlPolicy(allowed_suffixes=("gov.tw",))
+    assert policy.normalize("https://hpa.gov.tw/x//") == "https://hpa.gov.tw/x"
+    assert policy.normalize("https://hpa.gov.tw///") == "https://hpa.gov.tw/"
 
 
 @pytest.mark.parametrize(

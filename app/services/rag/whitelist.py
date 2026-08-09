@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Literal
@@ -55,6 +56,28 @@ _TRACKING_PARAMS: frozenset[str] = frozenset(
 )
 
 _DEFAULT_PORTS: dict[str, int] = {"http": 80, "https": 443}
+
+# host 的正字集規則：只允許 RFC 1123 主機名字元（小寫字母、數字、連字號），
+# 標籤不得為空、不得以連字號開頭或結尾。
+#
+# 這條規則是 code review 後補上的（見 task-1-report.md Important 4）：原本只
+# 針對 authority 含 '%' 這一個症狀個別擋（"evil.com%5C.gov.tw" 字面上就是以
+# ".gov.tw" 結尾，會騙過標籤邊界比對，而不動點檢查對它是穩定的、抓不到），
+# 但那是在列舉症狀、不是在陳述規則——host 除了 '%' 之外，還可能出現
+# '<'／'>'／'^'／'|' 這類 DNS 上解析不到、Node 與瀏覽器都會拒絕剖析的字元，
+# 或是空標籤（"https://.gov.tw/"、"https://a..gov.tw/"）。這些字面上雖然
+# 「不可利用」（沒有任何下游解析器會把它們解成別的 host），但直接違反
+# design.md 的 Goal：「任何我們放行的字串，其 host 在 Python、Node、瀏覽器
+# 三者的解讀必須一致」——不一致的前提是三者都要能剖析，這些字串 Node 根本
+# 剖析不了。改成正向規則（只允許已知安全的字元集）一次涵蓋以上全部，
+# 包含原本的 '%' 檢查，故該檢查已移除、理由併入這裡。
+#
+# 註：底線 '_' 刻意不在允許字元集內（RFC 1123 主機名不允許底線）。這是刻意
+# 的收斂，實作前已確認 resources/medical_anti_fraud_seed_urls.txt 與既有測試
+# 中沒有任何 host 含底線的真實網址，故不會誤擋現有資料。
+_HOST_RE = re.compile(
+    r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*"
+)
 
 
 @dataclass(frozen=True)
@@ -127,21 +150,13 @@ def _compute_once(raw: str) -> tuple[str, str] | None:
 
     netloc = parsed.netloc
     if "@" in netloc:
-        # userinfo：两边解析器都会把 @ 前面丟掉當成帳密，但
+        # userinfo：兩邊解析器都會把 @ 前面丟掉當成帳密，但
         # "www.hpa.gov.tw@evil.com" 貼在審核頁上人眼會讀成 hpa.gov.tw。
         return None
     if not netloc.isascii():
         # 見 Decision 3：authority 一律要求 ASCII，先不支援 IDN。
         # 'evil.com。gov.tw'.encode('idna') 會把 U+3002 當標籤分隔符，
         # 與 Node 的 new URL().host 一致，放行等於引入同形異義字風險。
-        return None
-    if "%" in netloc:
-        # 額外的前置檢查（不在 design.md 14 步的字面列舉中，是實作時發現的
-        # 缺口，見 task-1-report.md）："evil.com%5C.gov.tw" 這種字面上就是
-        # 以 ".gov.tw" 結尾的字串，會騙過標籤邊界比對；而不動點檢查對它是
-        # 穩定的（兩次正規化結果相同、host 也相同），不會被 14 步的最後一關
-        # 攔下。authority 段本來就不該出現百分比編碼（合法的 gov.tw 主機名
-        # 不會有 %），故直接視為 malformed。
         return None
 
     try:
@@ -157,6 +172,11 @@ def _compute_once(raw: str) -> tuple[str, str] | None:
     host = host.lower().rstrip(".")
     if not host:
         return None
+    if not _HOST_RE.fullmatch(host):
+        # 正字集規則：只允許 RFC 1123 主機名字元。見上方 _HOST_RE 的註解，
+        # 這一條同時涵蓋 '%'、'<'／'>'／'^'／'|'、空標籤等所有「Node／瀏覽器
+        # 根本剖析不了的字元」，不需要為每一種症狀各寫一條檢查。
+        return None
 
     default_port = _DEFAULT_PORTS.get(scheme)
     port_suffix = "" if port is None or port == default_port else f":{port}"
@@ -168,8 +188,13 @@ def _compute_once(raw: str) -> tuple[str, str] | None:
     path = parsed.path
     if not path:
         path = "/"
-    elif path != "/" and path.endswith("/"):
-        path = path[:-1]
+    else:
+        # 用 rstrip 一次收斂全部尾端斜線（而非只去一個），與下面 host 的
+        # rstrip(".") 用同一種手法。code review 發現原本用 path[:-1] 只去
+        # 一個尾斜線，導致 "/x//" 這種輸入不冪等（第一次只變成 "/x/"，還要
+        # 再正規化一次才會變成 "/x"），被不動點檢查誤判成 malformed——使用者
+        # 只是多打了一個斜線，不該被當成格式錯誤。
+        path = path.rstrip("/") or "/"
     # 刻意不做：不解析 . / .. 路徑段、不對 path 做百分比編解碼——路徑不影響
     # host，對信任邊界零貢獻；改寫反而可能把好好的網址改成 404（Decision 2）。
 
@@ -188,6 +213,16 @@ def _normalize_url(raw: str) -> str | None:
     # normalize(out) == out 且 urlsplit(out).hostname 必須等於這次認定的
     # host，任一不成立就拒絕。這是前置檢查之外的第二道防線，抓的是「這次
     # 序列化出來的字串，重新剖析後會不會變成別的東西」。
+    #
+    # 註（code review Important 2）：修完 path 的多尾斜線收斂（見下方
+    # rstrip("/") 的註解）之後，_compute_once 內的每一步轉換（strip、
+    # scheme／host 小寫、host 去尾點、port 去預設值、query 剝追蹤參數、path
+    # 去尾斜線）單獨看都是「套一次就到終態」，理論上組合起來也會是套一次就
+    # 穩定。實測用結構化案例＋約 8 萬筆隨機模糊測試都沒找到任何一個輸入是
+    # 「只靠這道檢查才會被擋」（見 task-1-report.md）。仍然保留這道檢查，
+    # 是因為它的存在理由本來就不是「擋今天已知的案例」，而是 Decision 1
+    # 講的「沒想到的攻擊手法預設拒絕」——它是防未來有人改動上面任一步驟、
+    # 不小心引入新的不冪等轉換時的安全網，不是防今天已知的輸入。
     second = _compute_once(out)
     if second is None:
         return None

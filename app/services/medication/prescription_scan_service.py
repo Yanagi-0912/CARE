@@ -14,6 +14,7 @@ from bson import ObjectId
 
 from app.models.medication import (
     DEFAULT_SLOT_TIMES,
+    TAIPEI_TZ,
     Medication,
     MedicationReminder,
     MedicationSlotType,
@@ -30,6 +31,21 @@ from app.models.prescription import (
 from app.services.medication.drug_catalog_service import DrugCatalogMatch
 
 logger = logging.getLogger(__name__)
+
+
+def _today_date_str() -> str:
+    return datetime.now(TAIPEI_TZ).strftime("%Y-%m-%d")
+
+
+def _end_date_from_duration(start_date: str, duration_days: int) -> str:
+    """把療程天數換算成結束日期，起始日算療程的第一天。
+
+    5 天的療程從 start_date 當天開始服用，涵蓋 start_date 起的 5 個整天
+    （第 1～5 天），因此結束日是 start_date + 4 天，而不是 + 5 天。
+    """
+    start = datetime.strptime(start_date, "%Y-%m-%d")
+    end = start + timedelta(days=duration_days - 1)
+    return end.strftime("%Y-%m-%d")
 
 
 class DraftNotFoundError(Exception):
@@ -250,7 +266,9 @@ class PrescriptionScanService:
             ]
             await self._medication_repository.create_many(medications)
 
-            await self._link_reminders(resolved, medication_ids, target_user_id, user_id)
+            reminder_ids = await self._link_reminders(
+                resolved, medication_ids, target_user_id, user_id
+            )
         except Exception:
             await self._draft_repository.release_commit(draft_id, user_id, medication_ids)
             raise
@@ -258,6 +276,7 @@ class PrescriptionScanService:
         return PrescriptionCommitResult(
             medication_ids=medication_ids,
             prn_medication_ids=self._prn_ids(resolved, medication_ids),
+            reminder_ids=reminder_ids,
         )
 
     def _resolve_slots(
@@ -267,10 +286,16 @@ class PrescriptionScanService:
 
         「需要時才吃」的備用藥若被排進固定時段，會讓人依提醒定時服用備用藥，
         這是安全規則，不是偏好，即使使用者手動指定了 slots 也不理會。
+
+        `item.slots is None`（前端沒有覆寫）與 `item.slots == []`
+        （使用者在核對畫面上把每個時段都取消勾選）SHALL NOT 視為同一件事：
+        前者才落到頻次映射的預設值，後者是使用者明確表達「這顆藥不要定時
+        提醒」的選擇，必須原樣尊重、不得悄悄退回預設時段——否則使用者
+        取消勾選的操作會被無聲地覆蓋，這顆藥因此排進了他明確拒絕的時段。
         """
         if item.frequency_code == "PRN":
             return []
-        if item.slots:
+        if item.slots is not None:
             return list(item.slots)
         mapped = FREQUENCY_TO_SLOTS.get(item.frequency_code, ())
         if not mapped:
@@ -315,6 +340,20 @@ class PrescriptionScanService:
         target_user_id: str,
         creator_user_id: str,
     ) -> Medication:
+        """組出要寫入的 Medication。
+
+        start_date 固定為今天（提交當下），end_date 由 duration_days 換算——
+        沒有 duration_days（慢性病長期用藥是常見情形）就不設 end_date，
+        維持長期有效，不臆測一個療程終點。start_date 與 end_date 的換算
+        必須用同一個「今天」，避免兩次各自呼叫 `_today_date_str()` 在極端
+        情況下跨過午夜而算出不一致的結果。
+        """
+        start_date = _today_date_str()
+        end_date = (
+            _end_date_from_duration(start_date, item.duration_days)
+            if item.duration_days and item.duration_days > 0
+            else None
+        )
         return Medication(
             id=medication_id,
             user_id=target_user_id,
@@ -328,6 +367,8 @@ class PrescriptionScanService:
             frequency_code=item.frequency_code,
             indication=item.indication,
             source="prescription_ocr",
+            start_date=start_date,
+            end_date=end_date,
         )
 
     async def _link_reminders(
@@ -336,8 +377,8 @@ class PrescriptionScanService:
         medication_ids: list[str],
         target_user_id: str,
         creator_user_id: str,
-    ) -> None:
-        """把非 PRN 的藥關聯到對應時段的提醒。
+    ) -> list[str]:
+        """把非 PRN 的藥關聯到對應時段的提醒，回傳實際建立或連結到的提醒 id（去重）。
 
         取得（或建立）提醒規則本身走 find_or_create_reminder 的原子 upsert，
         不是「先查一次現有規則、缺席才建立」——先查後建的模式在兩個並行的
@@ -346,7 +387,12 @@ class PrescriptionScanService:
         mark_committed 的 CAS 能擋下的：那個 CAS 只保護「同一份草稿被重複
         提交」，不同的兩份草稿（例如兩位家屬各自掃描同一位長輩、或同一人
         連續掃了兩張藥袋）本來就都會走到這裡，各自合法地想要同一個時段。
+
+        回傳值供呼叫端組成 PrescriptionCommitResult.reminder_ids——「藥品
+        建立成功」不等於「會被排程器推播」，呼叫端必須能看到藥品實際掛在
+        哪些提醒規則上，而不是被動信任一句「已建立」。
         """
+        reminder_ids: list[str] = []
         for (item, slots), medication_id in zip(resolved, medication_ids):
             if item.frequency_code == "PRN":
                 continue
@@ -360,3 +406,6 @@ class PrescriptionScanService:
                 await self._reminder_repository.link_medications_to_reminder(
                     reminder.id, [medication_id]
                 )
+                if reminder.id not in reminder_ids:
+                    reminder_ids.append(reminder.id)
+        return reminder_ids

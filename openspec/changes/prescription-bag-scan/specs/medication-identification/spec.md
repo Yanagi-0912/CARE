@@ -2,7 +2,7 @@
 
 ### Requirement: 辨識入口與影像處理邊界
 
-藥袋影像 SHALL 由 LIFF 以 multipart 直接上傳至 `POST /api/users/medications/prescription-scan`，SHALL NOT 經由 LINE 訊息的媒體處理路徑。
+藥袋影像 SHALL 由 LIFF 以 multipart 直接上傳至 `POST /api/medications/prescription-scan`，SHALL NOT 經由 LINE 訊息的媒體處理路徑。
 
 理由：既有媒體路徑（`app/services/line_messaging/handler/media_handler.py` → `app/services/media/mutimedia_processor.py:161`）把所有影像 POST 到 `MEDIA_PARSE_WEBHOOK_URL` 換回一段純文字，藥袋需要的是 schema 約束的結構化輸出；且該路徑以 module-level singleton 被直接 import，無法在禁止 monkey patch 的前提下注入測試替身。
 

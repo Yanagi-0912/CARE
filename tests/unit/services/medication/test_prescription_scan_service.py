@@ -445,6 +445,73 @@ async def test_commit_links_tid_drug_to_three_slots():
 
 
 @pytest.mark.asyncio
+async def test_commit_result_exposes_the_reminder_ids_created_or_linked():
+    """「已建立」的回應不能是黑箱：呼叫端必須能看到藥品實際掛在哪些提醒
+    規則上，而不是被動信任一句成功訊息（見 find_or_create_reminder 的
+    修正：命中一筆停用或過期的規則時不會重用它，這裡要確保呼叫端真的
+    看得到最後掛上去的是哪一筆）。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    reminders = FakeReminderRepository()
+    service = _service(
+        drafts=drafts,
+        reminders=reminders,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    result = await service.commit(
+        "D1", "U_FAMILY", _request(CommitDrugItem(name="某藥", frequency_code="TID"))
+    )
+
+    assert set(result.reminder_ids) == {r.id for r in reminders.created}
+    assert len(result.reminder_ids) == 3
+
+
+@pytest.mark.asyncio
+async def test_commit_result_reminder_ids_are_deduplicated():
+    """兩顆藥若映射到同一個時段，那個時段只有一筆提醒規則——reminder_ids
+    不該因為兩顆藥都連到它就重複出現兩次。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="藥一"), RecognizedDrug(name="藥二"))
+    reminders = FakeReminderRepository()
+    service = _service(
+        drafts=drafts,
+        reminders=reminders,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    result = await service.commit(
+        "D1",
+        "U_FAMILY",
+        _request(
+            CommitDrugItem(name="藥一", frequency_code="QD"),
+            CommitDrugItem(name="藥二", frequency_code="QD"),
+        ),
+    )
+
+    assert len(reminders.links) == 2
+    assert result.reminder_ids == [reminders.created[0].id]
+
+
+@pytest.mark.asyncio
+async def test_commit_result_reminder_ids_empty_for_prn_only_submission():
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="止痛藥"))
+    reminders = FakeReminderRepository()
+    service = _service(
+        drafts=drafts,
+        reminders=reminders,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    result = await service.commit(
+        "D1", "U_FAMILY", _request(CommitDrugItem(name="止痛藥", frequency_code="PRN"))
+    )
+
+    assert result.reminder_ids == []
+
+
+@pytest.mark.asyncio
 async def test_commit_creates_medication_but_no_reminder_for_prn():
     """需要時才吃的備用藥若建成定時提醒，會使人依提醒定時服用備用藥。"""
     drafts = FakeDraftRepository()
@@ -551,6 +618,63 @@ async def test_user_supplied_slots_override_the_frequency_mapping():
     )
 
     assert [reminder.slot_type for reminder in reminders.created] == ["bedtime"]
+
+
+@pytest.mark.asyncio
+async def test_user_supplied_empty_slots_are_not_treated_as_no_override():
+    """`slots=[]`（使用者在核對畫面上把每個時段都取消勾選）與 `slots=None`
+    （前端沒有覆寫）是兩件不同的事：前者是明確表達「這顆藥不要定時提醒」，
+    不能被當成後者、悄悄退回頻次代碼算出的預設時段——那正是使用者取消
+    勾選的操作被無聲覆蓋。這顆藥仍然要被建立，只是不連結任何提醒，
+    與 PRN 走到的結果一致。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    reminders = FakeReminderRepository()
+    medications = FakeMedicationRepository()
+    service = _service(
+        drafts=drafts,
+        reminders=reminders,
+        medications=medications,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    result = await service.commit(
+        "D1",
+        "U_FAMILY",
+        _request(CommitDrugItem(name="某藥", frequency_code="QD", slots=[])),
+    )
+
+    assert len(medications.created) == 1
+    assert reminders.created == []
+    assert reminders.links == []
+    # 不是 PRN，所以不會出現在 prn_medication_ids 裡——但它確實沒有任何提醒，
+    # 這件事目前只由「沒有提醒被建立」這個事實本身反映，呼叫端（LIFF）
+    # 在送出前就已經知道使用者取消勾選了什麼，不需要仰賴這裡的回應。
+    assert result.prn_medication_ids == []
+    assert result.reminder_ids == []
+
+
+@pytest.mark.asyncio
+async def test_omitted_slots_still_fall_back_to_the_frequency_mapping():
+    """對照組：`slots=None`（前端真的沒有覆寫）必須維持原本的行為——
+    落到頻次代碼映射出的預設時段，不能因為新增了「空陣列即拒絕自動映射」
+    的規則就連 None 也一起被擋下。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    reminders = FakeReminderRepository()
+    service = _service(
+        drafts=drafts,
+        reminders=reminders,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    await service.commit(
+        "D1",
+        "U_FAMILY",
+        _request(CommitDrugItem(name="某藥", frequency_code="QD", slots=None)),
+    )
+
+    assert [reminder.slot_type for reminder in reminders.created] == ["morning"]
 
 
 @pytest.mark.asyncio
@@ -677,6 +801,58 @@ async def test_commit_records_the_ocr_origin_on_created_medications():
     assert created.created_by_user_id == "U_FAMILY"
     assert created.usage_raw == "QD PC"
     assert created.indication == "高血壓"
+
+
+@pytest.mark.asyncio
+async def test_commit_sets_end_date_from_duration_days():
+    """5 天的療程從今天開始算，涵蓋今天起的 5 個整天，結束日是
+    今天 + 4 天——沒有這個換算，每一份掃描出來的處方都會變成永久提醒
+    （見 MedicationRepository.find_active_by_ids 的日期篩選：沒有 end_date
+    就永遠是「有效」）。"""
+    from app.models.medication import TAIPEI_TZ
+    from datetime import datetime, timedelta
+
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="安莫西林"))
+    medications = FakeMedicationRepository()
+    service = _service(
+        drafts=drafts,
+        medications=medications,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    await service.commit(
+        "D1",
+        "U_FAMILY",
+        _request(CommitDrugItem(name="安莫西林", frequency_code="TID", duration_days=5)),
+    )
+
+    created = medications.created[0]
+    today = datetime.now(TAIPEI_TZ).date()
+    assert created.start_date == today.strftime("%Y-%m-%d")
+    assert created.end_date == (today + timedelta(days=4)).strftime("%Y-%m-%d")
+
+
+@pytest.mark.asyncio
+async def test_commit_leaves_end_date_open_without_duration_days():
+    """沒有療程天數（慢性病長期用藥是常見情形）就不該臆測一個結束日期，
+    這顆藥要維持長期有效。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="脈優錠"))
+    medications = FakeMedicationRepository()
+    service = _service(
+        drafts=drafts,
+        medications=medications,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    await service.commit(
+        "D1",
+        "U_FAMILY",
+        _request(CommitDrugItem(name="脈優錠", frequency_code="QD", duration_days=None)),
+    )
+
+    assert medications.created[0].end_date is None
 
 
 @pytest.mark.asyncio

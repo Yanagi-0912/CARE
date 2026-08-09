@@ -93,8 +93,10 @@ class PrescriptionDraft(BaseModel):
 class CommitDrugItem(BaseModel):
     """使用者核對草稿後，確認要建立的單一藥品。
 
-    欄位只涵蓋 Medication 真正會寫入的部分——timing／duration_days 這類
-    只在辨識階段供人核對用的顯示欄位，提交後就沒有去處，不放進來。
+    欄位涵蓋 Medication 真正會寫入的部分。timing 這類純粹供人核對用的
+    顯示欄位，提交後沒有去處，不放進來；duration_days 則不同——它會
+    換算成 Medication.end_date，決定這顆藥何時自動停止提醒，因此必須
+    帶著使用者在核對畫面上看過（並可能修正過）的值一起送出。
     """
 
     name: str
@@ -108,6 +110,10 @@ class CommitDrugItem(BaseModel):
     usage_raw: Optional[str] = None
     frequency_code: FrequencyCode = "OTHER"
     indication: Optional[str] = None
+    # 療程天數。有值時用來換算 Medication.end_date，讓療程結束後這顆藥
+    # 自然從 find_active_by_ids 掉出去，不需要使用者手動停用。沒有值
+    # （慢性病長期用藥是常態）就不設 end_date，維持長期有效。
+    duration_days: Optional[int] = None
     # 使用者可覆寫頻次映射出的時段；OTHER 頻次且未指定時必須拒絕提交。
     slots: Optional[list[MedicationSlotType]] = None
     # 使用者可以把辨識出但不需要的項目（誤判、重複、不想建立）取消勾選。
@@ -127,7 +133,15 @@ class PrescriptionCommitResult(BaseModel):
     medication_ids 涵蓋本次建立的所有藥品，PRN 也在其中——它們確實被建立了，
     只是不會出現在任何提醒的關聯裡。prn_medication_ids 是其中屬於 PRN 的子集，
     讓呼叫端不必重新猜測哪些藥沒有對應的提醒。
+
+    reminder_ids 是這次提交實際建立或連結到的提醒規則 id（去重後）。沒有它，
+    呼叫端只知道「藥品建立成功」，卻無從得知這顆藥有沒有真的掛上一筆排程器
+    會挑中的提醒——「已建立」的回應不能是黑箱。冪等重放（草稿已被提交過、
+    這次沒有取得提交權）時無法可靠回推當初建立的是哪些提醒，此欄位為空；
+    這與 prn_medication_ids 在同一情境下的處理方式一致，見該欄位重放分支的
+    說明。
     """
 
     medication_ids: list[str] = Field(default_factory=list)
     prn_medication_ids: list[str] = Field(default_factory=list)
+    reminder_ids: list[str] = Field(default_factory=list)

@@ -60,24 +60,46 @@ class MedicationReminderRepository:
         scheduled_time: str,
         collection: Optional[Any] = None,
     ) -> MedicationReminder:
-        """原子地取得或建立某位使用者在某個時段的提醒規則。
+        """取得或建立某位使用者在某個時段「排程器實際會推播」的提醒規則。
 
         呼叫端（例如藥袋提交流程）常常是「查一次現有規則、缺席才建立」，
         但兩個並行的提交若都查到缺席，就會各自建立一筆同一時段的規則，
         使用者因此收到兩則同一時段的推播。改成單一 document 的
-        find_one_and_update + upsert：MongoDB 保證這是原子操作，兩個並行
-        呼叫只有一個真的插入，另一個會讀到剛插入的那筆，不會出現「查詢時
-        都判斷缺席」的競態視窗。
+        find_one_and_update + upsert：MongoDB 保證的是「單一這次呼叫」對
+        它命中的那份文件而言是原子操作——不會有另一個寫入插在它的讀取與
+        寫入之間。但這不等於「兩個並行呼叫只會有一個真的插入」：查詢欄位
+        （user_id、slot_type、enabled 等）上沒有 unique index，兩個呼叫若
+        都同時判斷缺席，MongoDB 並不保證只有一邊的 upsert 會成功，兩邊都
+        可能各自插入一筆。這裡刻意不建那個 unique index——舊資料可能已經
+        存在同一位使用者、同一時段的重複規則，建立唯一索引會直接讓應用起
+        不來。也就是說，本方法把「同一份藥袋重複提交」造成的重複推播機率
+        降到很低，但沒有把它降到零；真正的重複提交防護在 `mark_committed`
+        的提交權 CAS，不是這裡。
+
+        查詢條件刻意加上 enabled=True 與日期仍在有效區間——只重用排程器
+        （`list_active_reminders_up_to_time`）真的會挑中的規則。一筆被停用
+        或療程已結束的規則不代表「這個時段不會再有人吃藥」，只代表它當初
+        被停用/結束的理由（使用者手動關閉、或前一份處方的療程已過）依然
+        成立，不能因為又提交了一份新處方就悄悄把它救活、連帶影響掛在它
+        底下、使用者當初就是要停掉的其他藥品。查不到「活著」的規則時走
+        upsert 插入一筆新的，而不是重用死掉的那筆——這樣新藥才會真的被
+        排程器挑中，而不是掛在一筆永遠不會觸發的規則上、卻讓提交端誤以為
+        成功。
 
         $setOnInsert 只在真的建立新文件時套用——命中既有規則時完全不動它，
-        沿用它原本的排程時間、啟用狀態等設定，不能因為又有人提交同一個
-        時段的藥就悄悄覆蓋使用者已經調整過的設定。
+        沿用它原本的排程時間等設定，不能因為又有人提交同一個時段的藥就
+        悄悄覆蓋使用者已經調整過的設定。
         """
         if collection is None:
             collection = MongoDBManager.get_medication_reminders_collection()
         now = datetime.now(timezone.utc)
+        query = {
+            "user_id": user_id,
+            "slot_type": slot_type,
+            "$and": [{"enabled": True}, *_active_date_window(_today_date_str())],
+        }
         document = await collection.find_one_and_update(
-            {"user_id": user_id, "slot_type": slot_type},
+            query,
             {
                 "$setOnInsert": {
                     "_id": str(ObjectId()),
@@ -98,13 +120,8 @@ class MedicationReminderRepository:
         return MedicationReminder(**document)
 
     @staticmethod
-    async def get_reminder_by_id(
-        reminder_id: str, collection: Optional[Any] = None
-    ) -> Optional[MedicationReminder]:
-        # collection 可注入：推播組裝文案時（見 MedicationScheduler._resolve_medication_names）
-        # 需要在不碰真實資料庫的情況下單元測試藥品名稱解析，不能靠 monkeypatch 整個
-        # MongoDBManager 存取層。
-        col = collection if collection is not None else MongoDBManager.get_medication_reminders_collection()
+    async def get_reminder_by_id(reminder_id: str) -> Optional[MedicationReminder]:
+        col = MongoDBManager.get_medication_reminders_collection()
         doc = await col.find_one({"_id": reminder_id})
         if not doc:
             return None

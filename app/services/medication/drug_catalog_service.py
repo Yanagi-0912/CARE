@@ -91,7 +91,21 @@ class DrugCatalogService:
                 )
                 for item in raw_entries
             ]
-            return cls(entries, threshold=threshold)
+            service = cls(entries, threshold=threshold)
+            # 檔案存在、也成功解析成 JSON，不代表內容真的可用——欄位名稱對不上
+            # FDA 資料集（例如改版換了欄位名）會讓每個 item.get(...) 都拿到
+            # 空字串，最終得到一個「載入成功」但條目數是 0 或每筆都是空殼的
+            # DrugCatalogService，之後所有藥名都悄悄降為低信心，卻沒有任何
+            # 錯誤訊息能讓人發現問題出在資料，而不是模型辨識不準。
+            if service.is_empty:
+                logger.warning(
+                    "藥證庫載入完成但條目數為 0，所有藥名將降為低信心並強制人工核對："
+                    "%s；請確認 FDA 資料集欄位名稱與載入邏輯是否對得上",
+                    path,
+                )
+            else:
+                logger.info("藥證庫載入完成：%s，共 %d 筆條目", path, len(entries))
+            return service
         except (OSError, ValueError, TypeError, AttributeError) as exc:
             logger.error(
                 "藥證庫載入失敗，所有藥名將降為低信心並強制人工核對：%s（%s）",

@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pymongo import ReturnDocument
@@ -59,10 +60,10 @@ async def test_create_reminder(override_medication_reminders_col):
 @pytest.mark.asyncio
 async def test_find_or_create_reminder_upserts_atomically():
     """
-    藥袋提交流程靠這個方法避免「查一次缺席才建立」的競態：兩個並行呼叫
-    必須只有一個真的插入。這裡驗證的是查詢條件、upsert 旗標與只在建立時
-    套用的欄位——原子性本身由 MongoDB 的單一 document 更新保證，不是
-    這個測試能驗證的範圍。
+    藥袋提交流程靠這個方法避免「查一次缺席才建立」的競態。這裡驗證的是
+    查詢條件（含「只重用活著的規則」的 enabled／日期範圍限制）、upsert
+    旗標與只在建立時套用的欄位——單一呼叫的原子性由 MongoDB 保證，
+    不是這個測試能驗證的範圍；跨呼叫的重複插入風險則見方法本身的說明。
     """
     from app.repositories.medication_repository import MedicationReminderRepository
 
@@ -90,7 +91,9 @@ async def test_find_or_create_reminder_upserts_atomically():
 
     assert reminder.id == "R_NEW"
     (query, update), kwargs = col.find_one_and_update.call_args
-    assert query == {"user_id": "U_PATIENT", "slot_type": "morning"}
+    assert query["user_id"] == "U_PATIENT"
+    assert query["slot_type"] == "morning"
+    assert {"enabled": True} in query["$and"]
     set_on_insert = update["$setOnInsert"]
     assert set_on_insert["creator_user_id"] == "U_FAMILY"
     assert set_on_insert["scheduled_time"] == "08:00"
@@ -101,9 +104,10 @@ async def test_find_or_create_reminder_upserts_atomically():
 
 
 @pytest.mark.asyncio
-async def test_find_or_create_reminder_returns_existing_without_overwriting():
-    """命中既有規則時只回傳它，$setOnInsert 不該影響既有文件的欄位——
-    這一點由 MongoDB 語意保證，這裡驗證的是回傳值確實是資料庫回來的既有文件。
+async def test_find_or_create_reminder_returns_existing_live_reminder_without_overwriting():
+    """命中一筆「活著」（啟用中且日期仍有效）的既有規則時只回傳它，
+    $setOnInsert 不該影響既有文件的欄位——這一點由 MongoDB 語意保證，
+    這裡驗證的是回傳值確實是資料庫回來的既有文件。
     """
     from app.repositories.medication_repository import MedicationReminderRepository
 
@@ -115,7 +119,7 @@ async def test_find_or_create_reminder_returns_existing_without_overwriting():
             "user_id": "U_PATIENT",
             "slot_type": "morning",
             "scheduled_time": "09:15",
-            "enabled": False,
+            "enabled": True,
         }
     )
 
@@ -130,7 +134,131 @@ async def test_find_or_create_reminder_returns_existing_without_overwriting():
     assert reminder.id == "R_EXISTING"
     assert reminder.creator_user_id == "U_OTHER_CREATOR"
     assert reminder.scheduled_time == "09:15"
-    assert reminder.enabled is False
+    assert reminder.enabled is True
+
+
+class _FakeReminderCollection:
+    """支援 find_or_create_reminder 所用查詢語法（等值、$and、$or、
+    $exists、$lte、$gte）的極簡 in-memory 假集合。
+
+    這裡要驗證的是「查詢條件本身會不會命中一筆停用或過期的規則」——
+    純 MagicMock 只能回報呼叫時傳了什麼查詢字典，驗證不了查詢字典
+    對一份既有文件到底 match 不 match，所以需要一個會真的做比對的假集合。
+    """
+
+    def __init__(self, existing_doc: Optional[dict] = None):
+        self.docs: list[dict] = [dict(existing_doc)] if existing_doc else []
+
+    async def find_one_and_update(self, query, update, upsert=False, return_document=None):
+        match = next((doc for doc in self.docs if self._matches(doc, query)), None)
+        if match is None and upsert:
+            new_doc: dict = {
+                key: value for key, value in query.items() if not key.startswith("$")
+            }
+            new_doc.update(update.get("$setOnInsert", {}))
+            self.docs.append(new_doc)
+            return new_doc
+        return match
+
+    @classmethod
+    def _matches(cls, doc: dict, query: dict) -> bool:
+        for key, condition in query.items():
+            if key == "$and":
+                if not all(cls._matches(doc, clause) for clause in condition):
+                    return False
+            elif key == "$or":
+                if not any(cls._matches(doc, clause) for clause in condition):
+                    return False
+            elif isinstance(condition, dict):
+                for op, value in condition.items():
+                    if op == "$exists":
+                        if (key in doc) != value:
+                            return False
+                    elif op == "$lte":
+                        if key not in doc or doc[key] is None or doc[key] > value:
+                            return False
+                    elif op == "$gte":
+                        if key not in doc or doc[key] is None or doc[key] < value:
+                            return False
+                    else:
+                        raise NotImplementedError(op)
+            else:
+                if doc.get(key) != condition:
+                    return False
+        return True
+
+
+@pytest.mark.asyncio
+async def test_find_or_create_reminder_does_not_reuse_a_disabled_reminder():
+    """家屬先前手動關掉了這個時段（例如同時段其他藥暫停），今天掃描新藥袋
+    命中同一個時段：不能悄悄把這筆停用的規則救活——那會連帶恢復它底下
+    使用者本來就要停掉的其他藥品。應該另外插入一筆新的、啟用中的規則，
+    新藥才會被排程器（list_active_reminders_up_to_time）真的挑中。
+    """
+    from app.repositories.medication_repository import MedicationReminderRepository
+
+    col = _FakeReminderCollection(
+        existing_doc={
+            "_id": "R_DISABLED",
+            "creator_user_id": "U_FAMILY",
+            "user_id": "U_PATIENT",
+            "slot_type": "morning",
+            "scheduled_time": "08:00",
+            "start_date": "2026-06-01",
+            "end_date": None,
+            "enabled": False,
+            "medication_ids": ["M_OLD"],
+        }
+    )
+
+    reminder = await MedicationReminderRepository.find_or_create_reminder(
+        user_id="U_PATIENT",
+        slot_type="morning",
+        creator_user_id="U_FAMILY",
+        scheduled_time="08:00",
+        collection=col,
+    )
+
+    assert reminder.id != "R_DISABLED"
+    assert reminder.enabled is True
+    assert reminder.medication_ids == []
+    # 原本停用的那筆規則原封不動，它底下的舊藥品關聯不受影響。
+    assert any(doc["_id"] == "R_DISABLED" and doc["enabled"] is False for doc in col.docs)
+
+
+@pytest.mark.asyncio
+async def test_find_or_create_reminder_does_not_reuse_an_expired_reminder():
+    """一份處方療程已經結束（end_date 已過），今天是另一份新處方：
+    同樣不能重用那筆已經到期的規則，否則新藥可能被排程器的日期區間
+    篩選條件擋下、從未真正推播過。
+    """
+    from app.repositories.medication_repository import MedicationReminderRepository
+
+    col = _FakeReminderCollection(
+        existing_doc={
+            "_id": "R_EXPIRED",
+            "creator_user_id": "U_FAMILY",
+            "user_id": "U_PATIENT",
+            "slot_type": "morning",
+            "scheduled_time": "08:00",
+            "start_date": "2026-06-01",
+            "end_date": "2026-07-31",
+            "enabled": True,
+            "medication_ids": ["M_OLD"],
+        }
+    )
+
+    reminder = await MedicationReminderRepository.find_or_create_reminder(
+        user_id="U_PATIENT",
+        slot_type="morning",
+        creator_user_id="U_FAMILY",
+        scheduled_time="08:00",
+        collection=col,
+    )
+
+    assert reminder.id != "R_EXPIRED"
+    assert reminder.enabled is True
+    assert reminder.end_date is None
 
 
 @pytest.mark.asyncio
@@ -451,6 +579,96 @@ async def test_find_active_by_ids_excludes_disabled_and_out_of_range():
             {"end_date": {"$gte": "2026-08-09"}},
         ]
     } in conditions
+
+
+class _FakeMedicationsCollection:
+    """真的會依查詢條件過濾的假 medications 集合，用來證明「療程結束後這顆藥
+    真的會從 find_active_by_ids 掉出去」，而不只是驗證查詢字典的長相
+    （那件事 test_find_active_by_ids_excludes_disabled_and_out_of_range
+    已經驗證過了）。比對邏輯與 test_medication_repository 裡驗證
+    find_or_create_reminder 用的 _FakeReminderCollection 相同。
+    """
+
+    def __init__(self, docs: list[dict]):
+        self.docs = docs
+
+    def find(self, query: dict):
+        matched = [doc for doc in self.docs if self._matches(doc, query)]
+        cursor = MagicMock()
+        cursor.to_list = AsyncMock(return_value=matched)
+        return cursor
+
+    @classmethod
+    def _matches(cls, doc: dict, query: dict) -> bool:
+        for key, condition in query.items():
+            if key == "$and":
+                if not all(cls._matches(doc, clause) for clause in condition):
+                    return False
+            elif key == "$or":
+                if not any(cls._matches(doc, clause) for clause in condition):
+                    return False
+            elif isinstance(condition, dict):
+                for op, value in condition.items():
+                    if op == "$exists":
+                        if (key in doc) != value:
+                            return False
+                    elif op == "$lte":
+                        if key not in doc or doc[key] is None or doc[key] > value:
+                            return False
+                    elif op == "$gte":
+                        if key not in doc or doc[key] is None or doc[key] < value:
+                            return False
+                    elif op == "$in":
+                        if doc.get(key) not in value:
+                            return False
+                    else:
+                        raise NotImplementedError(op)
+            else:
+                if doc.get(key) != condition:
+                    return False
+        return True
+
+
+@pytest.mark.asyncio
+async def test_find_active_by_ids_drops_a_medication_once_its_course_has_ended():
+    """對應藥袋掃描的療程換算：5 天的療程算出 end_date 之後，過了那天
+    這顆藥就不該再出現在推播的藥品清單裡——這是 find_active_by_ids
+    唯一能被觸發的路徑，之前沒有任何呼叫端會傳入已過期的日期組合。
+    """
+    from app.repositories.medication_repository import MedicationRepository
+
+    col = _FakeMedicationsCollection(
+        [
+            {
+                "_id": "M_EXPIRED",
+                "user_id": "U_PATIENT",
+                "created_by_user_id": "U_FAMILY",
+                "name": "安莫西林",
+                "enabled": True,
+                "start_date": "2026-08-01",
+                "end_date": "2026-08-05",
+            },
+            {
+                "_id": "M_CHRONIC",
+                "user_id": "U_PATIENT",
+                "created_by_user_id": "U_FAMILY",
+                "name": "脈優錠",
+                "enabled": True,
+                "start_date": "2026-08-01",
+                "end_date": None,
+            },
+        ]
+    )
+
+    active_during_course = await MedicationRepository.find_active_by_ids(
+        ["M_EXPIRED", "M_CHRONIC"], "2026-08-03", collection=col
+    )
+    active_after_course = await MedicationRepository.find_active_by_ids(
+        ["M_EXPIRED", "M_CHRONIC"], "2026-08-10", collection=col
+    )
+
+    assert {m.id for m in active_during_course} == {"M_EXPIRED", "M_CHRONIC"}
+    assert {m.id for m in active_after_course} == {"M_CHRONIC"}
 
 
 @pytest.mark.asyncio

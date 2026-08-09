@@ -114,3 +114,40 @@ def test_load_from_path_tolerates_malformed_file(tmp_path):
     service = DrugCatalogService.load_from_path(str(path), threshold=0.88)
 
     assert service.is_empty is True
+
+
+def test_load_from_path_warns_when_the_file_parses_but_has_no_entries(tmp_path, caplog):
+    """欄位名稱對不上 FDA 資料集時，載入不會拋例外——只會得到一個條目數為 0
+    的服務，之後每份草稿都悄悄降為低信心。這種情況必須大聲記錄，不能只在
+    「不存在」或「格式錯誤」時才出聲。"""
+    path = tmp_path / "drug_catalog.json"
+    path.write_text("[]", encoding="utf-8")
+
+    with caplog.at_level("WARNING"):
+        service = DrugCatalogService.load_from_path(str(path), threshold=0.88)
+
+    assert service.is_empty is True
+    assert any("條目數為 0" in record.message for record in caplog.records)
+
+
+def test_load_from_path_logs_entry_count_on_success(tmp_path, caplog):
+    path = tmp_path / "drug_catalog.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "license_number": "衛署藥製字第000002號",
+                    "name_zh": "立普妥錠10毫克",
+                    "name_en": "LIPITOR TABLETS 10MG",
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    with caplog.at_level("INFO"):
+        service = DrugCatalogService.load_from_path(str(path), threshold=0.88)
+
+    assert service.is_empty is False
+    assert any("共 1 筆條目" in record.message for record in caplog.records)

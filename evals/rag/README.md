@@ -96,6 +96,8 @@ python scripts/rag_eval.py --split train
 
 ### 本分支實測結果（本機 2026-08-08，`python scripts/rag_eval.py --rank-mode cohere --top-n 5`，golden set 34 scored cases）
 
+> ⚠️ **舊口徑**：下表使用 2026-08-09 題庫稽核**之前**的標籤（後來證實其中多題標籤指向不相關文章）。數字僅供分支內前後對照，不可與稽核後的新基準相比。
+
 | 階段 | hit_rate@5 | mean_mrr | mean_ndcg@5 |
 | --- | --- | --- | --- |
 | 分支起點 | 0.412 | 0.198 | 0.253 |
@@ -108,7 +110,24 @@ python scripts/rag_eval.py --split train
 補充事實：
 - 移除向量分數門檻（Task 1）後，上面三個指標**逐位元不變**——實測 `$vectorSearch` top-40 分數全落在 0.79–0.90，無一低於原本 0.5 的門檻，代表該門檻在本分支的資料上從未真正過濾任何候選。
 - reranker 補標題（Task 2）帶來的 nDCG 變化只有 +0.004，屬雜訊等級；「補標題能讓精排更準」這個假設**未獲驗證**。
-- 整個分支唯一實質的指標增益來自刪除 266 筆導覽列噪音資料，且在程式碼與資料固定的前提下重跑會得到逐位元相同的數字（此 eval harness 是確定性的）。
+- 整個分支唯一實質的指標增益來自刪除 266 筆導覽列噪音資料（當時重跑複核得到相同數字）。
+- **執行間變異（後續實測修正）**：`hit_rate` 與 `miss_ids` 在重跑間穩定，但 `mean_mrr` / `mean_ndcg@5` 存在約 **±0.011–0.015** 的執行間變異（Cohere 精排順序非完全確定性）。小於此幅度的差異不應解讀為訊號。
+
+### 題庫稽核後的新基準（2026-08-09，22 scored cases）
+
+題庫經逐題稽核（詳見 `docs/golden-set-audit.md`）：7 題標籤指向不相關文章已改標、
+12 題 KB 無可回答文章改 `route: web`、kb-005/013/018 補收近重複語料中**同等有效**的
+答案文章（政府新聞稿同主題年年重發，單一正解標籤會把「撈到另一篇同樣正確的文章」
+誤判為 miss）。**口徑改變，數字與上表不可直接相比。**
+
+| 排序方式 | hit_rate@5 | mean_mrr | mean_ndcg@5 |
+| --- | --- | --- | --- |
+| RRF 混合排序 | 0.818 | 0.558 | 0.613 |
+| Cohere rerank-v4.0-pro | **0.864** | **0.583** | **0.644** |
+
+（`--compare-rerank --top-n 5`，同一批 wide retrieve；`regressed_by_cohere` 0 題、
+`fixed_by_cohere` 1 題。文章去重（`rerank-article-dedup`）上線後 RRF 分支為 0.610，
+變化屬雜訊——該改動的目的是 top-5 的來源多樣性，不是指標。）
 
 ### 名詞澄清 A ——`--rank-mode vector` 目前是誤稱
 
@@ -116,7 +135,22 @@ python scripts/rag_eval.py --split train
 
 本 README 舊版留著一筆 2026-08-01 的紀錄，方向與本分支的實測相反（`vector 0.29 → cohere 0.44`），最可能的原因是那次量測時 hybrid 尚未啟用，兩次量測的「vector」根本不是同一件事，因此已移除該筆舊紀錄。
 
-用這個口徑記錄目前 `--compare-rerank` 的實測：`regressed_by_cohere` 13 題 vs `fixed_by_cohere` 2 題，`ndcg@5_delta` **−0.190**——**在現行資料與設定下，RRF 混合排序優於 Cohere 精排**。讀這份 README 的人若只想知道「該不該繼續付 Cohere 的錢」，答案是：以目前的資料與設定，不該。
+用這個口徑看 `--compare-rerank` 的實測，**結論隨題庫標籤品質三度反轉**，完整演變：
+
+| 題庫狀態 | ndcg@5_delta（cohere − RRF） | regressed / fixed | 當時結論 |
+| --- | --- | --- | --- |
+| 舊標籤（循環標註，多題錯標） | −0.190 | 13 / 2 | 「Cohere 明顯有害」 |
+| 稽核修正（單一正解） | −0.022 | 2 / 1 | 「接近雜訊」 |
+| 公允多標籤（承認近重複語料） | **+0.032** | **0 / 1** | **「Cohere 勝出」** |
+
+前兩行的「regressed」後來證實幾乎全是標籤假象：Cohere 撈出同樣正確的另一篇文章被
+判 miss、或同文章多 chunk 擠爆 top-5（後者已由 `rerank-article-dedup` 處理）。
+Cohere 真正的獨特貢獻在細粒度語意區分（例：kb-014 分辨「中風**前兆**」與
+「中風**危險因子**」，BM25 與向量都做不到）。
+
+**教訓：這張表的結論方向完全由標籤品質決定。** 改題庫標籤之前的任何 rerank A/B
+數字都要先問「標籤可信嗎」。目前公允量測下 Cohere 有正增益，續用與否的剩餘考量是
+配額管理（Trial key 1,000 次/月）與降級可觀測性，不是品質。
 
 ### 名詞澄清 B ——`refuse_ok` 目前量到的是錯的層
 

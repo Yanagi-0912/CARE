@@ -80,6 +80,12 @@ def test_is_allowed_url_accepts_whitelist_domains(url):
         "https://evil.com|.gov.tw/x",
         "https://.gov.tw/",  # 空標籤（開頭）
         "https://a..gov.tw/",  # 空標籤（中間）
+        # --- 歸檔前查證補上：規格要求 host 至少含一個 '.'。單標籤主機名不是
+        #     公開網址，應歸為 malformed 而非 not_allowed——兩者在安全上等價
+        #     （都拒絕），但原因碼會被下游對映成表單錯誤訊息。
+        "https://localhost/x",
+        "https://gov/x",
+        "http://intranet:8080/x",
         # --- code review Important 3 的補充案例：userinfo 順序與 5.4 相反
         #     （合法 host 在 '@' 後面）。拿掉 userinfo 檢查的話，
         #     parsed.hostname 會自動把 'evil.com@' 這段當帳密丟掉，host 變成

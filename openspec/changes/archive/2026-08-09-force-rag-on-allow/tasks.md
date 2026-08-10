@@ -6,4 +6,8 @@
 
 ## 2. 收尾
 
-- [ ] 2.1 勾選本 tasks；相關變更 git commit（繁中訊息）
+- [x] 2.1 勾選本 tasks；相關變更 git commit（繁中訊息）
+- [x] 2.2 歸檔前覆核：spec delta 的 SHALL 原本是無條件的，但實作有 10 個條件、
+  其中 6 個是例外。4 個已由本 capability 其他要求涵蓋（已走位置／院所工具、
+  找院所意圖、媒體抽出全文、官網意圖），另外 2 個（指名院所查詢、上傳文件問答）
+  沒有任何地方記錄，已補進本 delta。`tests/unit/services/agent/test_force_rag.py` 通過

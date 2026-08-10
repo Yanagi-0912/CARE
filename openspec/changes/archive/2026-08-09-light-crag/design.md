@@ -89,3 +89,23 @@ if correct → generate + sources
 ## Open Questions
 
 - 無（第一版採三態 + 一次 rewrite + 不內嵌 web；若上線後 Agent 很少改走 web，再開 agent 強化）
+
+---
+
+## 歸檔時的後續註記（2026-08-09）
+
+本文件記錄的是**當時**的決策，其中「RAG 不自動打網」這個前提在本 change 之後
+被 `crag-web-fallback` 反轉了：`RagAnswerService` 現在會在知識庫不足時於服務內
+呼叫 web fallback（`RAG_WEB_FALLBACK_ENABLED` 預設為 `true`）。
+
+因此本 change 的 spec delta 在歸檔前縮回它真正的職責範圍——只規定「分級與改寫」
+這套機制，不再規定不足之後對使用者回應什麼。被移除的部分：
+
+- `rag-crag` 的「不在 RAG 服務內觸發網路搜尋」整條
+- `rag-responses` 的 ADDED「檢索評分不足時的回答」與 MODIFIED「無命中與失敗處理」
+- 「回傳無資料訊息、不附參考來源」等下游行為敘述
+
+那些行為改由 `crag-web-fallback` 規定。這樣本 change 的規格在 web fallback
+上線前後都成立，兩個 change 也不再有歸檔順序的相依。
+
+本節不改變上方的歷史紀錄，只是避免日後翻到這份封存檔的人誤以為該契約仍然有效。

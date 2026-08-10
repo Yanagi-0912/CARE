@@ -18,5 +18,7 @@
 
 - [x] 3.1 新增 `tests/unit/scripts/test_rag_eval_scoring.py`（或 `tests/unit/eval/`）：對 hit 判定純函式做單元測試（注入假 docs，禁止 monkey patch 全域）
 - [x] 3.2 用範例 `golden.jsonl` 在本機對 staging／dev Mongo 跑一輪，確認報告可讀
-- [ ] 3.3 `./init.sh`（或 pytest）全綠後 commit（待使用者指示）
+- [x] 3.3 `./init.sh`（或 pytest）全綠後 commit（待使用者指示）
+  —— `tests/unit/eval/test_rag_eval_scoring.py` 與
+  `tests/unit/services/rag/test_eval_scoring.py` 共 73 項通過
 - [x] 3.4 本機執行 `--compare-rerank` 並記錄 hit_rate_delta

@@ -129,5 +129,31 @@ CARE 的用藥提醒（`openspec/specs/medication-reminders/spec.md`）已經有
 
 ## Open Questions
 
-- 推播藥品清單的顯示上限訂多少？需要看實際處方的藥品數分布。
-- 頻次代碼 `QD` 預設映射到 `morning` 是否合適？部分一日一次的藥（如降血脂）臨床上習慣睡前服用。目前依賴使用者在核對畫面覆寫，是否值得依藥品分類給更好的預設值，留待有實際資料後評估。
+- **推播藥品清單的顯示上限（`MEDICATION_LIST_MAX_ITEMS`，目前為 `5`）訂多少才對？** 這個數字是憑直覺選的，不是量測結果，維持開放。會解決這題的量測是：`PRESCRIPTION_SCAN_ENABLED` 對真實使用者開啟一段時間後，統計每個時段實際掛載的藥品數分布（例如中位數、第 90／99 百分位）——這個上限只影響「推播訊息裡一次列出幾個藥名」的顯示層，不影響藥品或提醒本身有沒有被建立；超過上限的部分已經收斂成一行計數（`_medication_list_rows`，`medication_flex.py:78`），不是被截斷丟失。在拿到這組分布之前，任何具體數字都是編出來的，寧可讓這題繼續開著。
+
+## Decisions（追加）
+
+### 決策 8：`QD` 的預設時段不是「該不該換一個更好的猜測」，而是既有的 `timing` 欄位沒被使用（原 Open Question 2，已由第一次真實環境執行結果回答）
+
+**原提問**：「頻次代碼 `QD` 預設映射到 `morning` 是否合適？部分一日一次的藥（如降血脂）臨床上習慣睡前服用。目前依賴使用者在核對畫面覆寫，是否值得依藥品分類給更好的預設值，留待有實際資料後評估。」
+
+**量測方式**：這個功能合併後第一次針對真實 Gemini API 的端到端執行（先前只被注入假物件的單元測試覆蓋過），以一張自行產生的、寫實的台灣藥袋影像實測：
+
+```
+藥品名稱：冠脂妥膜衣錠10毫克        （rosuvastatin，降血脂用藥）
+用法用量：每日一次  每次一錠  睡前服用
+          QD HS      共 28 天
+```
+
+模型正確辨識出：
+
+```json
+{"name": "冠脂妥膜衣錠10毫克", "frequency_code": "QD", "timing": "bedtime",
+ "duration_days": 28, "usage_raw": "每日一次 每次一錠 睡前服用 QD HS 共 28 天"}
+```
+
+**發現這個問題本身問錯了方向**：不是「`QD → morning` 這個預設值準不準」，而是 `RecognizedDrug.timing` 從辨識階段就正確抽出了「睡前服用」，一路帶到草稿、顯示給使用者核對，卻在 `_resolve_slots` 決定時段時完全沒被讀取——`grep -c timing app/services/medication/prescription_scan_service.py` 在修正前回傳 `0`。因此這顆睡前藥的預設提醒被排到 08:00（`morning`），使用者只能靠事後在核對畫面手動改，而不是系統本來就該用已經有的資訊做對。「要不要依藥品分類給 `QD` 一個更聰明的預設時段」是個假問題：在還沒用到已經辨識出來的 `timing` 之前，不需要引入藥品分類這種額外的知識來源。
+
+**決定**：`CommitDrugItem` 新增 `timing` 欄位（前端把草稿上核對過的 timing 原樣帶進提交請求），`_resolve_slots` 在頻次代碼隱含「一日單一劑量」（目前僅 `QD`；`HS` 已經映射到 `bedtime`，不受影響）且 `timing == "bedtime"` 時，把預設時段由 `morning` 改為 `bedtime`。`before_meal`／`after_meal`／`empty_stomach` 不指向任何特定時段，一律不影響映射。`BID`／`TID`／`QID` 等多劑量頻次不受 `timing` 影響，維持原有映射——多劑量藥袋上的「睡前」通常只限定最後一次劑量，頻次代碼在「一天吃幾次」這件事上是更明確的陳述，貿然用單一 timing 值覆寫整組時段反而會引入新的錯誤。使用者明確覆寫過的 `slots` 一如既往優先於一切自動映射，包含這條新規則。
+
+見 `openspec/specs/medication-identification/spec.md` 的「頻次代碼映射至時段」條文與 `app/services/medication/prescription_scan_service.py::_resolve_slots`。

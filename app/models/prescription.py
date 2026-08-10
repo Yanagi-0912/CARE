@@ -93,10 +93,12 @@ class PrescriptionDraft(BaseModel):
 class CommitDrugItem(BaseModel):
     """使用者核對草稿後，確認要建立的單一藥品。
 
-    欄位涵蓋 Medication 真正會寫入的部分。timing 這類純粹供人核對用的
-    顯示欄位，提交後沒有去處，不放進來；duration_days 則不同——它會
-    換算成 Medication.end_date，決定這顆藥何時自動停止提醒，因此必須
-    帶著使用者在核對畫面上看過（並可能修正過）的值一起送出。
+    欄位涵蓋 Medication 真正會寫入的部分。duration_days 會換算成
+    Medication.end_date，決定這顆藥何時自動停止提醒，因此必須帶著
+    使用者在核對畫面上看過（並可能修正過）的值一起送出。timing 同樣
+    有明確去處——單一每日劑量（QD）標示「睡前」時，決定預設時段要用
+    `bedtime` 而非頻次代碼本身映射出的 `morning`，見
+    `prescription_scan_service._resolve_slots`；不是純顯示欄位。
     """
 
     name: str
@@ -109,6 +111,11 @@ class CommitDrugItem(BaseModel):
     total_quantity: Optional[int] = None
     usage_raw: Optional[str] = None
     frequency_code: FrequencyCode = "OTHER"
+    # 服用時機。只在頻次代碼隱含「一日單一劑量」（目前僅 QD）且值為
+    # `bedtime` 時才會影響時段判定；`before_meal`／`after_meal`／
+    # `empty_stomach` 描述的是與進食的關係，不指向任何特定時段，
+    # 一律不影響映射。見 `prescription_scan_service._resolve_slots`。
+    timing: Optional[DrugTiming] = None
     indication: Optional[str] = None
     # 療程天數。有值時用來換算 Medication.end_date，讓療程結束後這顆藥
     # 自然從 find_active_by_ids 掉出去，不需要使用者手動停用。沒有值

@@ -132,21 +132,50 @@ TBD - created by archiving change prescription-bag-scan. Update Purpose after ar
 
 提交草稿時，系統 SHALL 依頻次代碼決定該藥品要關聯到哪些時段：
 
-- `QD` → `morning`
+- `QD` → `morning`；但辨識出的服用時機（`timing`）為 `bedtime` 時 SHALL 改為 `bedtime`
 - `BID` → `morning`、`evening`
 - `TID` → `morning`、`noon`、`evening`
 - `QID` → `morning`、`noon`、`evening`、`bedtime`
 - `HS` → `bedtime`
 - `OTHER` → 不自動映射；使用者尚未決定時段時 SHALL 要求使用者選擇後才能提交；使用者明確選擇「這個藥不用定時提醒我」時 SHALL 允許以不關聯任何時段的方式提交
 
-使用者 SHALL 能於提交前覆寫任一藥品的時段對應。
+`timing` 對時段映射的影響 SHALL 僅限於前述 `QD` 的例外：`timing` 為 `before_meal`、`after_meal` 或 `empty_stomach` 時 SHALL NOT 影響時段映射；`BID`、`TID`、`QID` 等一日多次的頻次，即使 `timing` 為 `bedtime`，SHALL 仍依原有頻次映射，SHALL NOT 因 `timing` 而改變。
+
+使用者 SHALL 能於提交前覆寫任一藥品的時段對應；使用者的覆寫 SHALL 優先於 `timing` 對映射的任何影響。
 
 理由：「尚未指定時段」與「已經決定不要提醒」是兩種不同的使用者狀態，不能用同一種拒絕方式處理。前者代表使用者還沒看過這個欄位、系統不該替他猜一個服藥時間；後者代表使用者已經看過、明確表示這顆藥不需要定時提醒，此時仍強迫他勾一個時段，只會逼出一個不代表真實情況的選擇。這與 `PRN` 藥品「不建立定時提醒」是同一種最終結果，差別只在於誰做出這個判斷——`PRN` 是系統依安全規則自動判定，`OTHER` 這裡是使用者的主動選擇，兩者都 SHALL 建立藥品資料、SHALL NOT 將其關聯至任何時段的提醒規則。
+
+`QD` 的 `timing` 例外理由：`timing` 是辨識階段就已經抽出的欄位，`bedtime` 是其中唯一明確指向單一時段的值——「睡前服用」不是與進食的關係，而是直接陳述時段本身。一日僅一次的藥品若標示睡前，把預設提醒排在早上，會讓使用者依錯誤的預設時段服藥，且必須每次都手動更正才能得到正確結果；系統不該在已經取得能判斷這件事的資訊時，仍然給出一個明知有更精確答案的預設值。`before_meal`／`after_meal`／`empty_stomach` 不受此例外涵蓋，因為它們描述的是與進食的相對關係，不指向任何一個固定時段，無法據以推得該對應哪一次服藥。一日多次的頻次（`BID`／`TID`／`QID`）同樣不受影響：多劑量藥袋上出現「睡前」多半只限定其中最後一次劑量，頻次代碼本身已經是「一天吃幾次」這件事上更明確、更不容易被誤讀的陳述，用單一 `timing` 值覆寫整組時段映射屬於過度推論，因此刻意不做。
 
 #### Scenario: TID 映射三個時段
 
 - **WHEN** 某藥品的頻次代碼為 `TID` 且使用者未覆寫
 - **THEN** 該藥品 SHALL 關聯至該用藥者的 `morning`、`noon`、`evening` 三筆規則
+
+#### Scenario: QD 標示睡前時映射到 bedtime
+
+- **WHEN** 某藥品的頻次代碼為 `QD`、辨識出的 `timing` 為 `bedtime`，且使用者未覆寫時段
+- **THEN** 該藥品 SHALL 關聯至該用藥者的 `bedtime` 規則，SHALL NOT 關聯至 `morning`
+
+#### Scenario: QD 沒有 timing 時維持既有預設
+
+- **WHEN** 某藥品的頻次代碼為 `QD`、未辨識出 `timing`，且使用者未覆寫時段
+- **THEN** 該藥品 SHALL 關聯至該用藥者的 `morning` 規則
+
+#### Scenario: timing 為飯前後或空腹時不影響映射
+
+- **WHEN** 某藥品的頻次代碼為 `QD`、辨識出的 `timing` 為 `before_meal`、`after_meal` 或 `empty_stomach`
+- **THEN** 該藥品 SHALL 仍關聯至該用藥者的 `morning` 規則，時段映射 SHALL NOT 因 `timing` 而改變
+
+#### Scenario: 一日多次頻次不因睡前 timing 改變映射
+
+- **WHEN** 某藥品的頻次代碼為 `TID`，辨識出的 `timing` 為 `bedtime`
+- **THEN** 該藥品 SHALL 仍關聯至該用藥者的 `morning`、`noon`、`evening` 三筆規則，SHALL NOT 因 `timing` 而改變
+
+#### Scenario: 使用者覆寫優先於 timing
+
+- **WHEN** 某藥品的頻次代碼為 `QD`、辨識出的 `timing` 為 `bedtime`，且使用者明確指定時段為 `morning`
+- **THEN** 該藥品 SHALL 關聯至該用藥者的 `morning` 規則
 
 #### Scenario: 無法歸類的頻次、使用者尚未決定
 

@@ -306,14 +306,26 @@ class PrescriptionScanService:
 
         `item.slots is None`（前端沒有覆寫）與 `item.slots == []`
         （使用者在核對畫面上把每個時段都取消勾選）SHALL NOT 視為同一件事：
-        前者才落到頻次映射的預設值，後者是使用者明確表達「這顆藥不要定時
-        提醒」的選擇，必須原樣尊重、不得悄悄退回預設時段——否則使用者
-        取消勾選的操作會被無聲地覆蓋，這顆藥因此排進了他明確拒絕的時段。
+        前者才落到頻次映射（或下方的 timing 覆寫）的預設值，後者是使用者
+        明確表達「這顆藥不要定時提醒」的選擇，必須原樣尊重、不得悄悄退回
+        預設時段——否則使用者取消勾選的操作會被無聲地覆蓋，這顆藥因此
+        排進了他明確拒絕的時段。
+
+        `timing == "bedtime"` 只在頻次代碼是「一日單一劑量」（目前僅 QD；
+        `HS` 本身就已映射到 `bedtime`，不受影響）時才改寫預設時段為
+        `bedtime`——這是唯一一種 timing 能明確指向單一時段的情況。
+        `before_meal`／`after_meal`／`empty_stomach` 描述的是與進食的
+        關係，不是哪一個時段，一律不影響映射；`BID`／`TID`／`QID` 這類
+        多劑量頻次即使 timing 是 `bedtime` 也維持原有映射不變——「睡前」
+        標在多劑量藥袋上通常只限定最後一次劑量，不能因此把整組時段都
+        改寫，頻次代碼是「一天吃幾次」這件事上更明確的陳述。
         """
         if item.frequency_code == "PRN":
             return []
         if item.slots is not None:
             return list(item.slots)
+        if item.frequency_code == "QD" and item.timing == "bedtime":
+            return ["bedtime"]
         mapped = FREQUENCY_TO_SLOTS.get(item.frequency_code, ())
         if not mapped:
             # OTHER（或任何未來新增但尚未映射的代碼）沒有預設時段可用，

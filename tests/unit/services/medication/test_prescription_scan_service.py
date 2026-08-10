@@ -770,6 +770,164 @@ async def test_omitted_slots_still_fall_back_to_the_frequency_mapping():
     assert [reminder.slot_type for reminder in reminders.created] == ["morning"]
 
 
+# --- timing 覆寫 QD 的預設時段 ---------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_qd_with_bedtime_timing_maps_to_bedtime_not_morning():
+    """真實藥袋案例（冠脂妥膜衣錠，QD＋睡前服用）：頻次代碼本身只映射到
+    `morning`，但辨識出的 timing 明確標示睡前，預設時段必須改為 `bedtime`，
+    不能讓一顆睡前藥的預設提醒排在早上八點。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="冠脂妥膜衣錠10毫克"))
+    reminders = FakeReminderRepository()
+    service = _service(
+        drafts=drafts,
+        reminders=reminders,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    await service.commit(
+        "D1",
+        "U_FAMILY",
+        _request(
+            CommitDrugItem(
+                name="冠脂妥膜衣錠10毫克", frequency_code="QD", timing="bedtime"
+            )
+        ),
+    )
+
+    assert [reminder.slot_type for reminder in reminders.created] == ["bedtime"]
+
+
+@pytest.mark.asyncio
+async def test_qd_without_timing_still_maps_to_morning():
+    """對照組：沒有 timing 的 QD 藥維持既有預設值，不能因為新增 timing
+    覆寫規則而連「沒有 timing」的情況也被牽動。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    reminders = FakeReminderRepository()
+    service = _service(
+        drafts=drafts,
+        reminders=reminders,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    await service.commit(
+        "D1",
+        "U_FAMILY",
+        _request(CommitDrugItem(name="某藥", frequency_code="QD", timing=None)),
+    )
+
+    assert [reminder.slot_type for reminder in reminders.created] == ["morning"]
+
+
+@pytest.mark.asyncio
+async def test_qd_with_after_meal_timing_does_not_change_the_default_slot():
+    """`before_meal`／`after_meal`／`empty_stomach` 描述的是與進食的關係，
+    不指向任何特定時段，不得影響時段判定——只有 `bedtime` 才明確指向
+    一個時段。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    reminders = FakeReminderRepository()
+    service = _service(
+        drafts=drafts,
+        reminders=reminders,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    await service.commit(
+        "D1",
+        "U_FAMILY",
+        _request(
+            CommitDrugItem(name="某藥", frequency_code="QD", timing="after_meal")
+        ),
+    )
+
+    assert [reminder.slot_type for reminder in reminders.created] == ["morning"]
+
+
+@pytest.mark.asyncio
+async def test_tid_with_bedtime_timing_keeps_the_three_usual_slots():
+    """多劑量頻次（TID/BID/QID）即使 timing 是 `bedtime` 也不改寫映射——
+    「睡前」標在多劑量藥袋上通常只限定最後一次劑量，頻次代碼是「一天
+    吃幾次」這件事上更明確的陳述，不能被單一 timing 值覆寫掉整組時段。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    reminders = FakeReminderRepository()
+    service = _service(
+        drafts=drafts,
+        reminders=reminders,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    await service.commit(
+        "D1",
+        "U_FAMILY",
+        _request(
+            CommitDrugItem(name="某藥", frequency_code="TID", timing="bedtime")
+        ),
+    )
+
+    linked_slots = {reminder.slot_type for reminder in reminders.created}
+    assert linked_slots == {"morning", "noon", "evening"}
+
+
+@pytest.mark.asyncio
+async def test_prn_with_bedtime_timing_still_gets_no_slots():
+    """PRN 的安全規則優先於一切，包括 timing——需要時才吃的備用藥
+    不論辨識出什麼 timing 都不建立定時提醒。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="止痛藥"))
+    reminders = FakeReminderRepository()
+    service = _service(
+        drafts=drafts,
+        reminders=reminders,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    result = await service.commit(
+        "D1",
+        "U_FAMILY",
+        _request(
+            CommitDrugItem(name="止痛藥", frequency_code="PRN", timing="bedtime")
+        ),
+    )
+
+    assert reminders.created == []
+    assert result.reminder_ids == []
+
+
+@pytest.mark.asyncio
+async def test_explicit_slots_override_wins_over_bedtime_timing():
+    """使用者在核對畫面明確覆寫過的 slots 永遠優先，即使 timing 指向
+    `bedtime`、頻次也是 QD——這條規則已經存在，新增 timing 覆寫不能
+    讓它退化。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    reminders = FakeReminderRepository()
+    service = _service(
+        drafts=drafts,
+        reminders=reminders,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    await service.commit(
+        "D1",
+        "U_FAMILY",
+        _request(
+            CommitDrugItem(
+                name="某藥",
+                frequency_code="QD",
+                timing="bedtime",
+                slots=["morning"],
+            )
+        ),
+    )
+
+    assert [reminder.slot_type for reminder in reminders.created] == ["morning"]
+
+
 @pytest.mark.asyncio
 async def test_commit_reuses_an_existing_reminder_for_the_slot():
     """一位使用者一個時段只該有一筆規則；重複建立會讓長輩收到兩則提醒。"""

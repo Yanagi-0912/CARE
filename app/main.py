@@ -9,6 +9,7 @@ from app.routers.users.consultations import router as consultations_router
 from app.core.cors import add_cors_middleware
 from app.core.config import settings
 from app.core.logging_setup import configure_logging
+from app.core.upload_limits import MaxUploadSizeMiddleware
 from app.dependencies import (
     get_consultation_service,
     get_chat_history_repository,
@@ -20,6 +21,7 @@ from app.dependencies import (
 from app.repositories.consultation_repository import ConsultationRepository
 from app.repositories.knowledge_report_repository import KnowledgeReportRepository
 from app.repositories.medication_repository import MedicationLogRepository
+from app.repositories.prescription_draft_repository import PrescriptionDraftRepository
 from app.services.consultation.scheduler import (
     start_consultation_daily_summary_scheduler,
 )
@@ -43,6 +45,9 @@ async def lifespan(app: FastAPI):
     # 用藥 log 的 (reminder_id, scheduled_at) 唯一索引：多實例並存時，
     # 它是「同一個時段只有一份 log」的唯一保證，推播權搶佔才有意義。
     await MedicationLogRepository.ensure_indexes()
+    # 藥袋辨識草稿的 TTL 索引：草稿以 PRESCRIPTION_DRAFT_TTL_MINUTES 為存活
+    # 時間，交由資料庫自動清除，應用端不需要另外排程刪除。
+    await PrescriptionDraftRepository.ensure_indexes()
     await ensure_user_docs_indexes_on_startup()
 
     # 預載院所名稱索引，供判斷使用者說的「診所／醫院／藥局」是專名還是泛稱。
@@ -84,6 +89,17 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+# 藥袋影像上傳的大小限制必須在 ASGI 層攔截，路由層檢查太晚——見
+# app/core/upload_limits.py 開頭的說明。放在 add_cors_middleware 之前，
+# 讓 CORS 之後被加入而成為最外層，這樣即使這裡直接短路回應（不經過下游），
+# 回應仍會被 CORS 包住、帶有正確的 CORS 標頭。
+app.add_middleware(
+    MaxUploadSizeMiddleware,
+    path="/api/medications/prescription-scan",
+    method="POST",
+    max_bytes=settings.PRESCRIPTION_SCAN_MAX_IMAGE_BYTES,
+)
 
 # Centralized CORS config
 add_cors_middleware(app)

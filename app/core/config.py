@@ -122,6 +122,28 @@ class Settings:
     RAG_WEB_SEARCH_SITE_FILTER: str = os.getenv(
         "RAG_WEB_SEARCH_SITE_FILTER", "site:gov.tw"
     )
+    # 藥袋辨識。預設關閉：整條路徑可獨立開關，回滾只要把它設回 false。
+    PRESCRIPTION_SCAN_ENABLED: bool = os.getenv(
+        "PRESCRIPTION_SCAN_ENABLED", "false"
+    ).lower() in ("1", "true", "yes", "on")
+    PRESCRIPTION_SCAN_MAX_IMAGE_BYTES: int = int(
+        os.getenv("PRESCRIPTION_SCAN_MAX_IMAGE_BYTES", str(8 * 1024 * 1024))
+    )
+    PRESCRIPTION_SCAN_TIMEOUT_SECONDS: int = int(
+        os.getenv("PRESCRIPTION_SCAN_TIMEOUT_SECONDS", "60")
+    )
+    PRESCRIPTION_DRAFT_TTL_MINUTES: int = int(
+        os.getenv("PRESCRIPTION_DRAFT_TTL_MINUTES", "60")
+    )
+    # 藥證庫為建置期產出的靜態檔，執行期不對外連線。
+    DRUG_CATALOG_PATH: str = os.getenv(
+        "DRUG_CATALOG_PATH", "resources/drug_catalog.json"
+    )
+    # 低於此相似度視為未命中。保守起步：寧可多一次人工核對，
+    # 也不要讓錯讀的藥名通過校驗而被當成高信心。
+    DRUG_CATALOG_MATCH_THRESHOLD: float = float(
+        os.getenv("DRUG_CATALOG_MATCH_THRESHOLD", "0.88")
+    )
 
 
 settings = Settings()

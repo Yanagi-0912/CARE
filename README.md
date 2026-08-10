@@ -59,6 +59,34 @@ pip install -r requirements.txt
 python -m pytest tests/ -v
 ```
 
+## 藥證庫（藥袋辨識用）
+
+`resources/drug_catalog.json` 是藥袋辨識比對藥名用的離線查表，由食藥署開放資料
+建置後**提交進 repo**，執行期不對外連線。它已經在版本控制裡，**一般開發不需要
+做任何事**。
+
+需要重新產生的時機只有一個：食藥署資料集更新（每 7 日同步一次）而你想跟上。
+
+```bash
+python -m scripts.build_drug_catalog        # 覆寫 resources/drug_catalog.json
+pytest tests/unit/resources/test_drug_catalog_artifact.py
+git add resources/drug_catalog.json         # 更新內容自己成為一個可審查的 commit
+```
+
+腳本會抓「全部藥品許可證資料集」與「藥品外觀資料集」（兩個端點路徑叫 `/json`
+但實際回傳 ZIP），輸出目前約 66,000 筆條目、8.6 MB。
+
+**為什麼提交產出物而不是在 build 時產生**：`Dockerfile` 已經 `COPY resources
+./resources`，提交進去就直接進映像；改成建置時下載會讓每次部署都依賴政府站台
+活著，站台維護就等於部署失敗。`resources/` 本來就放已提交的產出物（rich menu
+的各語系 PNG）。取捨與量測見
+`openspec/changes/prescription-bag-scan/design.md` 決策 3。
+
+**檔案缺席時的行為**：應用照常啟動，但所有藥名比對不到而降為低信心，每份辨識
+草稿都會被判為需要人工逐筆核對。這個降級方向是安全的，但代表功能等於半殘，
+所以 `tests/unit/resources/test_drug_catalog_artifact.py` 會在產出物遺失或損壞
+時直接讓測試失敗，而不是讓它無聲地退化。
+
 ## LINE Webhook（callback 網址）
 
 - Callback URL：`https://care.jamessu2016.com/line/callback`

@@ -12,13 +12,22 @@ from app.db.mongodb import MongoDBManager
 from app.db.redis import RedisManager
 from app.repositories.chat_history_repository import build_chat_history_repository
 from app.repositories.consultation_repository import ConsultationRepository
+from app.repositories.family_tree_repository import FamilyTreeRepository
 from app.repositories.knowledge_report_repository import KnowledgeReportRepository
+from app.repositories.medication_repository import (
+    MedicationRepository,
+    MedicationReminderRepository,
+)
+from app.repositories.prescription_draft_repository import PrescriptionDraftRepository
 from app.repositories.user_profile_repository import UserProfileRepository
 from app.services.agent.agent import Agent
 from app.services.consultation.consultation_service import ConsultationService
 from app.services.family.family_tree_service import FamilyTreeService
+from app.services.medication.drug_catalog_service import DrugCatalogService
 from app.services.medication.medication_service import MedicationService
 from app.services.medication.medication_scheduler import start_medication_scheduler
+from app.services.medication.prescription_ocr_service import PrescriptionOcrService
+from app.services.medication.prescription_scan_service import PrescriptionScanService
 from app.services.gemini import GeminiService
 from app.services.guardrail import GuardrailService
 from app.services.history.history_service import LineMessageHistoryService
@@ -339,6 +348,28 @@ _location_handler = LineLocationHandler(
 _family_tree_service = FamilyTreeService()
 _medication_service = MedicationService()
 
+# 藥袋辨識。藥證庫在啟動時載入一次；load_from_path 內部已經處理檔案缺席
+# 或損毀（記錄錯誤、回傳空清單），這裡不需要再包一層 try/except，否則等於
+# 在「不讓應用啟動失敗」這個保證外面又加了一個會讓它啟動失敗的路徑。
+_drug_catalog_service = DrugCatalogService.load_from_path(
+    settings.DRUG_CATALOG_PATH, threshold=settings.DRUG_CATALOG_MATCH_THRESHOLD
+)
+_prescription_ocr_service = PrescriptionOcrService(
+    gemini_service=_gemini_service,
+    timeout_seconds=settings.PRESCRIPTION_SCAN_TIMEOUT_SECONDS,
+)
+# 各 repository 皆以 staticmethod 群組的形式存在（沿用本檔案其他組裝一貫的
+# 慣例），直接把類別本身傳進去即可，不需要另外實例化。
+_prescription_scan_service = PrescriptionScanService(
+    ocr_service=_prescription_ocr_service,
+    catalog_service=_drug_catalog_service,
+    draft_repository=PrescriptionDraftRepository,
+    medication_repository=MedicationRepository,
+    reminder_repository=MedicationReminderRepository,
+    family_tree_repository=FamilyTreeRepository,
+    ttl_minutes=settings.PRESCRIPTION_DRAFT_TTL_MINUTES,
+)
+
 _line_event_handler = LineEventHandler(
     message_handler=_message_handler,
     media_handler=_media_handler,
@@ -453,6 +484,10 @@ def get_medication_service() -> MedicationService:
     return _medication_service
 
 
+def get_prescription_scan_service() -> PrescriptionScanService:
+    return _prescription_scan_service
+
+
 def get_line_replier() -> LineReplier:
     return _line_replier
 
@@ -516,6 +551,28 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="Invalid token payload")
 
     return CurrentUser(line_user_id=line_user_id)
+
+
+def get_prescription_scan_enabled() -> bool:
+    """讀取藥袋辨識功能開關目前的值。
+
+    獨立成一支 dependency（而不是在呼叫端直接讀 settings.PRESCRIPTION_SCAN_ENABLED），
+    是因為除了 require_prescription_scan_enabled 用它來決定要不要 404 之外，
+    `GET /api/profiles/me/settings` 也要把這個布林值原樣回給 LIFF，讓前端在
+    渲染掃描入口之前就能知道開關狀態，不必再用「探測一個不存在的草稿 ID、
+    比對 404 錯誤訊息」這種依賴未受約束字串的方式旁敲側擊。兩處共用同一支
+    dependency，測試也才能用 app.dependency_overrides 一次覆寫，不必動到
+    settings 這個整個行程共用的單例。
+    """
+    return settings.PRESCRIPTION_SCAN_ENABLED
+
+
+def require_prescription_scan_enabled(
+    enabled: bool = Depends(get_prescription_scan_enabled),
+) -> None:
+    """功能開關關閉時，讓藥袋辨識相關端點表現得像不存在一樣，回 404。"""
+    if not enabled:
+        raise HTTPException(status_code=404, detail="Not Found")
 
 
 async def require_admin_user(

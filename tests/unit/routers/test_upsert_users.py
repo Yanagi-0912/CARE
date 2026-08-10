@@ -4,7 +4,12 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
-from app.dependencies import CurrentUser, get_current_user, get_user_profile_service
+from app.dependencies import (
+    CurrentUser,
+    get_current_user,
+    get_prescription_scan_enabled,
+    get_user_profile_service,
+)
 from app.main import app
 
 
@@ -80,6 +85,18 @@ def override_current_user():
     app.dependency_overrides.clear()
 
 
+@pytest.fixture()
+def override_prescription_scan_enabled():
+    """覆寫藥袋掃描開關 dependency，測試兩種狀態都不必真的改動 settings 這個
+    整個行程共用的單例（settings 是全域物件，直接改屬性會讓其他平行測試遭殃）。"""
+
+    def _override(enabled: bool):
+        app.dependency_overrides[get_prescription_scan_enabled] = lambda: enabled
+
+    yield _override
+    app.dependency_overrides.pop(get_prescription_scan_enabled, None)
+
+
 # 下面是測試用的payload，包含所有必填欄位和一些範例資料。
 def _valid_payload() -> dict:
     return {
@@ -142,14 +159,55 @@ def test_upsert_user_profile_service_error_returns_500(override_user_profile_ser
 
 
 def test_get_user_settings_returns_200_and_defaults(
-    client, override_user_profile_service, override_current_user
+    client,
+    override_user_profile_service,
+    override_current_user,
+    override_prescription_scan_enabled,
 ):
     override_current_user("U123")
     override_user_profile_service(FakeUserProfileService())
+    override_prescription_scan_enabled(False)
 
     response = client.get("/api/profiles/me/settings")
     assert response.status_code == 200
-    assert response.json() == {"user_id": "U123", "settings": DEFAULT_SETTINGS}
+    assert response.json() == {
+        "user_id": "U123",
+        "settings": DEFAULT_SETTINGS,
+        "prescription_scan_enabled": False,
+    }
+
+
+# 藥袋掃描開關是全域功能旗標而非使用者偏好，不會出現在 settings 裡；
+# 這裡涵蓋兩種狀態，確保 LIFF 讀到的 prescription_scan_enabled 真的反映
+# dependency 目前的值，而不是恰好因為某個預設值而測試通過。
+def test_get_user_settings_prescription_scan_enabled_true(
+    client,
+    override_user_profile_service,
+    override_current_user,
+    override_prescription_scan_enabled,
+):
+    override_current_user("U123")
+    override_user_profile_service(FakeUserProfileService())
+    override_prescription_scan_enabled(True)
+
+    response = client.get("/api/profiles/me/settings")
+    assert response.status_code == 200
+    assert response.json()["prescription_scan_enabled"] is True
+
+
+def test_get_user_settings_prescription_scan_enabled_false(
+    client,
+    override_user_profile_service,
+    override_current_user,
+    override_prescription_scan_enabled,
+):
+    override_current_user("U123")
+    override_user_profile_service(FakeUserProfileService())
+    override_prescription_scan_enabled(False)
+
+    response = client.get("/api/profiles/me/settings")
+    assert response.status_code == 200
+    assert response.json()["prescription_scan_enabled"] is False
 
 
 def test_patch_user_settings_only_updates_provided_fields(

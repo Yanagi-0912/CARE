@@ -7,6 +7,7 @@ from app.dependencies import (
     get_user_profile_service,
     get_family_tree_service,
     get_current_user,
+    get_prescription_scan_enabled,
     CurrentUser,
 )
 from fastapi import HTTPException
@@ -56,19 +57,26 @@ async def upsert_user_profile(
     summary="取得目前登入使用者的介面偏好設定",
     description=(
         "回傳目前登入使用者的介面偏好設定，若資料庫尚無資料（例如舊帳號）"
-        "則回傳預設值，不會回傳 404。"
+        "則回傳預設值，不會回傳 404。另外附上 prescription_scan_enabled，"
+        "讓 LIFF 能在渲染畫面之前就知道藥袋掃描功能是否開啟，不必再靠"
+        "探測其他端點的錯誤訊息旁敲側擊。"
     ),
 )
 async def get_user_settings(
     current_user: CurrentUser = Depends(get_current_user),
     service: UserProfileService = Depends(get_user_profile_service),
+    prescription_scan_enabled: bool = Depends(get_prescription_scan_enabled),
 ):
     """
     取得目前登入使用者的介面偏好設定。
     """
     user_id = current_user.line_user_id
-    settings = await service.get_user_settings(user_id)
-    return {"user_id": user_id, "settings": settings}
+    user_settings = await service.get_user_settings(user_id)
+    return {
+        "user_id": user_id,
+        "settings": user_settings,
+        "prescription_scan_enabled": prescription_scan_enabled,
+    }
 
 
 @router.patch(

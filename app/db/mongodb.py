@@ -96,6 +96,20 @@ class MongoDBManager:
         return cls.get_database()["medication_logs"]
 
     @classmethod
+    def get_medications_collection(cls):
+        """
+        取得 medications collection
+        """
+        return cls.get_database()["medications"]
+
+    @classmethod
+    def get_prescription_drafts_collection(cls):
+        """
+        取得 prescription_drafts collection
+        """
+        return cls.get_database()["prescription_drafts"]
+
+    @classmethod
     def get_knowledge_reports_collection(cls):
         """
         取得 knowledge_reports collection

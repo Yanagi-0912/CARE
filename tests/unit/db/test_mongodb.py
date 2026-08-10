@@ -56,3 +56,14 @@ def test_get_client_raises_when_url_not_configured(monkeypatch):
 
     with pytest.raises(ValueError, match="MongoDB_url"):
         MongoDBManager.get_client()
+
+
+def test_prescription_scan_collection_getters(monkeypatch):
+    fake_db = MagicMock()
+    monkeypatch.setattr(MongoDBManager, "get_database", classmethod(lambda cls: fake_db))
+
+    MongoDBManager.get_medications_collection()
+    MongoDBManager.get_prescription_drafts_collection()
+
+    fake_db.__getitem__.assert_any_call("medications")
+    fake_db.__getitem__.assert_any_call("prescription_drafts")

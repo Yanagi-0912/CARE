@@ -144,16 +144,7 @@ class PrescriptionScanService:
         """
         recognition = await self._ocr_service.recognize(image_bytes, mime_type)
 
-        all_names_verified = bool(recognition.drugs)
-        for drug in recognition.drugs:
-            match = self._catalog_service.match(drug.name)
-            if match is None:
-                all_names_verified = False
-                continue
-            drug.license_number = match.license_number
-            # 未經藥證庫校驗一律低信心（RecognizedDrug 的預設值）；
-            # 只有比對命中才升到高信心，這是唯一能發現模型錯讀形近藥名的手段。
-            drug.name_confidence = "high"
+        all_names_verified = self._verify_against_catalog(recognition)
 
         all_frequencies_known = bool(recognition.drugs) and all(
             drug.frequency_code != "OTHER" for drug in recognition.drugs
@@ -178,6 +169,28 @@ class PrescriptionScanService:
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=self._ttl_minutes),
         )
         return await self._draft_repository.create(draft)
+
+    def _verify_against_catalog(self, recognition: RecognitionResult) -> bool:
+        """逐筆用藥證庫校驗辨識出的藥名，就地更新每一筆的信心度與證號。
+
+        `match()` 回傳非 None 就代表藥名已驗證為真實存在的核准藥品——
+        這是唯一能發現模型錯讀形近藥名的手段，因此無論 `license_number`
+        有沒有值都要升到高信心。`license_number` 可能是 None：這是含容
+        比對命中不只一張藥證時的正常結果（例如「普拿疼」同時是好幾個
+        普拿疼系列產品品名的子字串），代表藥名本身沒問題、只是不知道
+        對應哪一個品項，不是校驗失敗，見 DrugCatalogMatch 的說明。
+        """
+        all_verified = bool(recognition.drugs)
+        for drug in recognition.drugs:
+            match = self._catalog_service.match(drug.name)
+            if match is None:
+                all_verified = False
+                continue
+            drug.license_number = match.license_number
+            # 未經藥證庫校驗一律低信心（RecognizedDrug 的預設值）；
+            # 只有比對命中才升到高信心，這是唯一能發現模型錯讀形近藥名的手段。
+            drug.name_confidence = "high"
+        return all_verified
 
     async def get_draft(self, draft_id: str, user_id: str) -> PrescriptionDraft:
         """讀回先前掃描產生的草稿，供核對畫面重新載入時使用。

@@ -161,8 +161,14 @@ class KnowledgeReportRepository:
             collection = MongoDBManager.get_knowledge_reports_collection()
 
         payload: dict[str, Any] = {
+            # 刻意用 model_dump() 而非 model_dump(mode="json")：後者會把
+            # started_at／finished_at 序列化成 ISO 字串，而 finish_ingest_job
+            # 的 filter 與 _no_live_ingest_job 的 $lt 都拿 datetime 去比。
+            # Mongo 不做跨型別相等比較，且 BSON 型別排序下 String 恆大於 Date，
+            # 兩者都會永遠不成立——結果是工作永遠停在 running、逾時的孤兒工作
+            # 也永遠無法被取代。存成 BSON date 才能讓兩個判定真的生效。
             "status": "reviewing",
-            "ingest_job": job.model_dump(mode="json"),
+            "ingest_job": job.model_dump(),
             "updated_at": job.started_at,
         }
         if resolution is not None:
@@ -206,7 +212,8 @@ class KnowledgeReportRepository:
             {
                 "$set": {
                     "status": report_status,
-                    "ingest_job": job.model_dump(mode="json"),
+                    # 與 start_ingest_job 一致存成 BSON date，見該處註解
+                    "ingest_job": job.model_dump(),
                     "updated_at": job.finished_at,
                 }
             },

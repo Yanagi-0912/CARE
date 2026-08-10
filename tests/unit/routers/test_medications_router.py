@@ -9,6 +9,7 @@ from app.dependencies import (
     get_current_user,
     get_medication_service,
     get_prescription_scan_service,
+    get_prescription_scan_enabled,
     require_prescription_scan_enabled,
 )
 from app.main import app
@@ -248,10 +249,18 @@ def test_get_created_reminders_router(override_current_user):
 def test_prescription_endpoints_404_when_flag_disabled(
     override_current_user, method, path, kwargs
 ):
-    """PRESCRIPTION_SCAN_ENABLED 預設 false；不覆寫 require_prescription_scan_enabled，
-    讓真正的 dependency 讀到這個預設值，驗證三支端點都表現得像不存在一樣。"""
-    assert settings.PRESCRIPTION_SCAN_ENABLED is False
-    response = getattr(client, method)(path, **kwargs)
+    """功能開關關閉時，三支端點都要表現得像不存在一樣。
+
+    以 dependency_overrides 明確驅動「關閉」這個狀態，而不是依賴
+    PRESCRIPTION_SCAN_ENABLED 當下的預設值——這條規則要被驗證的是行為，
+    不是環境。先前這裡斷言預設值為 False，於是預設一翻成開啟，這個測試
+    就會失敗，但失敗的原因跟它要守的規則無關。
+    """
+    app.dependency_overrides[get_prescription_scan_enabled] = lambda: False
+    try:
+        response = getattr(client, method)(path, **kwargs)
+    finally:
+        app.dependency_overrides.pop(get_prescription_scan_enabled, None)
     assert response.status_code == 404
 
 

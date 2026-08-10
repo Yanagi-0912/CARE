@@ -122,9 +122,11 @@ class Settings:
     RAG_WEB_SEARCH_SITE_FILTER: str = os.getenv(
         "RAG_WEB_SEARCH_SITE_FILTER", "site:gov.tw"
     )
-    # 藥袋辨識。預設關閉：整條路徑可獨立開關，回滾只要把它設回 false。
+    # 藥袋辨識。預設開啟；整條路徑仍可獨立開關，出問題時把它設回 false
+    # 即可停用，已建立的藥品與提醒關聯不受影響（推播的藥品區塊在關聯為空或
+    # 藥品失效時會自動退回原版面），不需要資料回滾。
     PRESCRIPTION_SCAN_ENABLED: bool = os.getenv(
-        "PRESCRIPTION_SCAN_ENABLED", "false"
+        "PRESCRIPTION_SCAN_ENABLED", "true"
     ).lower() in ("1", "true", "yes", "on")
     PRESCRIPTION_SCAN_MAX_IMAGE_BYTES: int = int(
         os.getenv("PRESCRIPTION_SCAN_MAX_IMAGE_BYTES", str(8 * 1024 * 1024))

@@ -94,4 +94,4 @@
 - [x] 10.2 `CARE-LIFF` 執行 `npm run test` 全綠
 - [x] 10.3 `openspec validate prescription-bag-scan --strict` 通過
 - [ ] 10.4 以實際藥袋樣本量測，回填 `design.md` 中三個 Open Question（相似度門檻、藥品顯示上限、`QD` 預設時段）
-- [ ] 10.5 開啟 `PRESCRIPTION_SCAN_ENABLED`
+- [x] 10.5 開啟 `PRESCRIPTION_SCAN_ENABLED`

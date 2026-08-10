@@ -41,8 +41,17 @@ def _is_schedulable(doc: dict, today: str) -> bool:
     """判斷一筆規則「現在」是不是排程器（`list_active_reminders_up_to_time`）
     真的會挑中的那種——啟用中，且今天落在 start_date～end_date 區間內
     （欄位缺席或 end_date 為 null 視為不限，語意對齊 `_active_date_window`）。
+
+    `enabled` 欄位缺席時視為「不可排程」（`doc.get("enabled", False)`），
+    而不是預設為 True：`list_active_reminders_up_to_time` 的查詢條件是
+    exact match `{"enabled": True}`，缺這個欄位的文件不會被該查詢挑中。
+    這裡若把缺席當成可排程，就會出現「這個判斷說沒問題、但排程器永遠不會
+    推播」的文件——判斷通過代表呼叫端不會去修它，於是它就永遠卡在
+    「看起來正常、實際上不會推播」的狀態，正是這整個修正要避免的悄悄失效。
+    嚴格的一邊（查詢）沒有錯的空間可以退讓，所以讓判斷跟著查詢收斂到
+    同一個答案，而不是反過來。
     """
-    if not doc.get("enabled", True):
+    if not doc.get("enabled", False):
         return False
     start_date = doc.get("start_date")
     if start_date and start_date > today:
@@ -150,7 +159,12 @@ class MedicationReminderRepository:
         reactivated = False
         if not _is_schedulable(document, today):
             fix: dict = {}
-            if not document.get("enabled", True):
+            # 預設值必須跟 _is_schedulable 一致（缺欄位視為不可排程）：
+            # 若這裡仍用 True 當預設，缺 enabled 欄位的舊資料會被判斷為
+            # 「不可排程」卻因為這一行覺得它「本來就是 enabled」而不產生
+            # 任何修補，最終 fix 是空字典、不會寫入、reactivated 仍是
+            # False——判斷對了，卻沒有真的把文件修好，等於白判斷。
+            if not document.get("enabled", False):
                 fix["enabled"] = True
             end_date = document.get("end_date")
             if end_date and end_date < today:

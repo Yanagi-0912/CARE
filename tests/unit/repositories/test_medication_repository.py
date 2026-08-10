@@ -217,7 +217,7 @@ async def test_find_or_create_reminder_reactivates_a_disabled_reminder():
             "creator_user_id": "U_FAMILY",
             "user_id": "U_PATIENT",
             "slot_type": "morning",
-            "scheduled_time": "08:00",
+            "scheduled_time": "07:30",
             "start_date": "2026-06-01",
             "end_date": None,
             "enabled": False,
@@ -239,8 +239,9 @@ async def test_find_or_create_reminder_reactivates_a_disabled_reminder():
     # 這個時段最終只剩一份文件，且它底下原本的藥品關聯原封不動。
     assert len(col.docs) == 1
     assert reminder.medication_ids == ["M_OLD"]
-    # 不是使用者自訂的欄位（scheduled_time）沒有被動到。
-    assert reminder.scheduled_time == "08:00"
+    # 不是使用者自訂的欄位（scheduled_time）沒有被動到：家屬把這個時段
+    # 調成 07:30，重新啟用不能把它悄悄改回這次請求帶的 08:00。
+    assert reminder.scheduled_time == "07:30"
 
 
 @pytest.mark.asyncio
@@ -258,7 +259,7 @@ async def test_find_or_create_reminder_reactivates_an_expired_reminder():
             "creator_user_id": "U_FAMILY",
             "user_id": "U_PATIENT",
             "slot_type": "morning",
-            "scheduled_time": "08:00",
+            "scheduled_time": "07:30",
             "start_date": "2026-06-01",
             "end_date": "2026-07-31",
             "enabled": True,
@@ -279,6 +280,9 @@ async def test_find_or_create_reminder_reactivates_an_expired_reminder():
     assert reminder.end_date is None
     assert reactivated is True
     assert len(col.docs) == 1
+    assert reminder.medication_ids == ["M_OLD"]
+    # 不是使用者自訂的欄位（scheduled_time）沒有被動到。
+    assert reminder.scheduled_time == "07:30"
 
 
 @pytest.mark.asyncio
@@ -298,7 +302,7 @@ async def test_find_or_create_reminder_pulls_back_a_future_start_date():
             "creator_user_id": "U_FAMILY",
             "user_id": "U_PATIENT",
             "slot_type": "morning",
-            "scheduled_time": "08:00",
+            "scheduled_time": "07:30",
             "start_date": "2099-01-01",
             "end_date": None,
             "enabled": True,
@@ -318,6 +322,75 @@ async def test_find_or_create_reminder_pulls_back_a_future_start_date():
     assert reminder.start_date == _today_date_str()
     assert reactivated is True
     assert len(col.docs) == 1
+    assert reminder.medication_ids == ["M_OLD"]
+    # 不是使用者自訂的欄位（scheduled_time）沒有被動到。
+    assert reminder.scheduled_time == "07:30"
+
+
+def test_is_schedulable_treats_missing_enabled_as_not_schedulable():
+    """`enabled` 欄位缺席時 `_is_schedulable` 必須回傳 False，跟
+    `list_active_reminders_up_to_time` 的 exact match `{"enabled": True}`
+    對齊——那個查詢不會挑中缺這個欄位的文件。若這裡把缺席當成可排程
+    （舊版行為：`doc.get("enabled", True)`），這筆文件會被判斷成「沒問題」
+    而永遠不被修補，但排程器其實永遠不會挑中它，變成悄悄失效卻沒人發現。
+
+    目前沒有任何寫入路徑會產生缺 `enabled` 欄位的文件（model 預設值與
+    `find_or_create_reminder` 的 `$setOnInsert` 都會補上），這裡是防禦性
+    測試：即使未來出現舊資料或新的寫入路徑漏補這個欄位，判斷仍要跟
+    查詢站在同一邊，而不是各說各話。
+    """
+    from app.repositories.medication_repository import _is_schedulable
+
+    doc = {
+        "_id": "R_LEGACY",
+        "user_id": "U_PATIENT",
+        "slot_type": "morning",
+        "scheduled_time": "08:00",
+        "start_date": "2026-06-01",
+        "end_date": None,
+        # 刻意不放 enabled 欄位
+    }
+
+    assert _is_schedulable(doc, today="2026-08-11") is False
+
+
+@pytest.mark.asyncio
+async def test_find_or_create_reminder_reactivates_a_reminder_missing_enabled_field():
+    """既有規則缺 `enabled` 欄位（防禦性情境，見上一個測試）時，也要被當成
+    不可排程並真的修好（補上 `enabled: True`），而不是因為判斷邏輯覺得
+    「缺欄位＝本來就啟用」就完全不碰它——那樣它會繼續缺這個欄位、繼續被
+    `list_active_reminders_up_to_time` 的 exact match 排除在外，永遠不會
+    推播，且 `reactivated` 也不會回報 True 讓呼叫端知道要告知使用者。
+    """
+    from app.repositories.medication_repository import MedicationReminderRepository
+
+    col = _FakeReminderCollection(
+        existing_doc={
+            "_id": "R_LEGACY",
+            "creator_user_id": "U_FAMILY",
+            "user_id": "U_PATIENT",
+            "slot_type": "morning",
+            "scheduled_time": "07:30",
+            "start_date": "2026-06-01",
+            "end_date": None,
+            "medication_ids": ["M_OLD"],
+            # 刻意不放 enabled 欄位
+        }
+    )
+
+    reminder, reactivated = await MedicationReminderRepository.find_or_create_reminder(
+        user_id="U_PATIENT",
+        slot_type="morning",
+        creator_user_id="U_FAMILY",
+        scheduled_time="08:00",
+        collection=col,
+    )
+
+    assert reminder.id == "R_LEGACY"
+    assert reminder.enabled is True
+    assert reactivated is True
+    assert reminder.medication_ids == ["M_OLD"]
+    assert reminder.scheduled_time == "07:30"
 
 
 @pytest.mark.asyncio

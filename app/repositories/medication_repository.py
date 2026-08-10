@@ -37,6 +37,22 @@ def _active_date_window(date_str: str) -> List[dict]:
     ]
 
 
+def _is_schedulable(doc: dict, today: str) -> bool:
+    """判斷一筆規則「現在」是不是排程器（`list_active_reminders_up_to_time`）
+    真的會挑中的那種——啟用中，且今天落在 start_date～end_date 區間內
+    （欄位缺席或 end_date 為 null 視為不限，語意對齊 `_active_date_window`）。
+    """
+    if not doc.get("enabled", True):
+        return False
+    start_date = doc.get("start_date")
+    if start_date and start_date > today:
+        return False
+    end_date = doc.get("end_date")
+    if end_date and end_date < today:
+        return False
+    return True
+
+
 class MedicationReminderRepository:
     """
     用藥提醒 (medication_reminders) 資料庫操作
@@ -59,45 +75,59 @@ class MedicationReminderRepository:
         creator_user_id: str,
         scheduled_time: str,
         collection: Optional[Any] = None,
-    ) -> MedicationReminder:
+    ) -> tuple[MedicationReminder, bool]:
         """取得或建立某位使用者在某個時段「排程器實際會推播」的提醒規則。
 
-        呼叫端（例如藥袋提交流程）常常是「查一次現有規則、缺席才建立」，
-        但兩個並行的提交若都查到缺席，就會各自建立一筆同一時段的規則，
-        使用者因此收到兩則同一時段的推播。改成單一 document 的
-        find_one_and_update + upsert：MongoDB 保證的是「單一這次呼叫」對
-        它命中的那份文件而言是原子操作——不會有另一個寫入插在它的讀取與
-        寫入之間。但這不等於「兩個並行呼叫只會有一個真的插入」：查詢欄位
-        （user_id、slot_type、enabled 等）上沒有 unique index，兩個呼叫若
-        都同時判斷缺席，MongoDB 並不保證只有一邊的 upsert 會成功，兩邊都
-        可能各自插入一筆。這裡刻意不建那個 unique index——舊資料可能已經
-        存在同一位使用者、同一時段的重複規則，建立唯一索引會直接讓應用起
-        不來。也就是說，本方法把「同一份藥袋重複提交」造成的重複推播機率
-        降到很低，但沒有把它降到零；真正的重複提交防護在 `mark_committed`
-        的提交權 CAS，不是這裡。
+        回傳 `(reminder, reactivated)`。`reactivated` 為 True 代表命中的既有
+        規則原本不會被排程器挑中（停用、療程已過期、或還沒到 start_date），
+        這次呼叫把它改回可排程狀態——呼叫端要能把這件事告知使用者，而不是
+        悄悄復活一筆他當初主動關掉、或早已結束療程的規則。
 
-        查詢條件刻意加上 enabled=True 與日期仍在有效區間——只重用排程器
-        （`list_active_reminders_up_to_time`）真的會挑中的規則。一筆被停用
-        或療程已結束的規則不代表「這個時段不會再有人吃藥」，只代表它當初
-        被停用/結束的理由（使用者手動關閉、或前一份處方的療程已過）依然
-        成立，不能因為又提交了一份新處方就悄悄把它救活、連帶影響掛在它
-        底下、使用者當初就是要停掉的其他藥品。查不到「活著」的規則時走
-        upsert 插入一筆新的，而不是重用死掉的那筆——這樣新藥才會真的被
-        排程器挑中，而不是掛在一筆永遠不會觸發的規則上、卻讓提交端誤以為
-        成功。
+        查詢條件只看 `{user_id, slot_type}`，不篩 enabled 或日期區間——
+        同一位使用者的同一個時段永遠只該有一份規則，不論它現在是開是關、
+        療程有沒有過期。這是本方法要維持的核心不變量：「一個時段一份
+        document」，讓排程器（`list_active_reminders_up_to_time`）與唯一索引
+        `(reminder_id, scheduled_at)` 都不可能因為同一個時段存在兩份規則而
+        讓使用者收到兩則同一時段的推播。
 
-        $setOnInsert 只在真的建立新文件時套用——命中既有規則時完全不動它，
-        沿用它原本的排程時間等設定，不能因為又有人提交同一個時段的藥就
-        悄悄覆蓋使用者已經調整過的設定。
+        （先前版本的查詢條件額外加了 enabled=True 與日期區間限制，理由是
+        「不能悄悄復活使用者主動關掉的規則」；但那個限制的後果是查不到
+        「活著」的規則時會走 upsert 插入第二筆，同一個時段從此有兩份
+        document，兩份都可能同時被排程器挑中——這正是本方法現在要避免的
+        重複推播問題本身，比「連帶恢復其他藥」更嚴重。改回只看
+        `{user_id, slot_type}` 之後，「復活規則會不會連帶恢復其他藥」改由
+        `reactivated` 這個回傳值解決：呼叫端據此在使用者確認前先揭露、
+        提交後再於結果中如實告知，而不是用「乾脆不要復活、另開一筆」來
+        迴避揭露。）
+
+        找到既有規則但目前不可排程時，把它改成可排程：`enabled` 設回
+        True、清空已過期的 `end_date`、把還沒到的 `start_date` 拉回今天。
+        既有規則本身可排程時完全不碰它——不執行第二次寫入，沿用它原本的
+        排程時間等設定，不能因為又有人提交同一個時段的藥就悄悄覆蓋使用者
+        已經調整過的設定。
+
+        MongoDB 保證的是「單一這次呼叫」對它命中的那份文件而言是原子
+        操作——不會有另一個寫入插在它的讀取與寫入之間。但這不等於「兩個
+        並行呼叫只會有一個真的插入」：`{user_id, slot_type}` 上沒有 unique
+        index，兩個呼叫若都同時判斷「這個時段還沒有任何規則」，MongoDB
+        並不保證只有一邊的 upsert 會成功，兩邊都可能各自插入一筆。這裡
+        刻意不建那個 unique index——舊資料可能已經存在同一位使用者、同一
+        時段的重複規則，建立唯一索引會直接讓應用起不來。也就是說，本方法
+        把「同一個時段從零份變成兩份」的機率降到很低（只發生在這個時段
+        真的一份規則都沒有、且兩個提交幾乎同時競爭的極端情況），但沒有把
+        它降到零；真正的重複提交防護在 `mark_committed` 的提交權 CAS，
+        不是這裡。至於「這個時段已經有規則」的情況（不論它現在是開是關），
+        本方法保證後續呼叫一律命中同一份文件，不會再繼續增生。
+
+        `$setOnInsert` 只在真的建立新文件時套用；`today` 只算一次並傳給
+        兩個階段共用，避免兩次呼叫 `_today_date_str()` 在極端情況下跨過
+        午夜而算出不一致的結果。
         """
         if collection is None:
             collection = MongoDBManager.get_medication_reminders_collection()
         now = datetime.now(timezone.utc)
-        query = {
-            "user_id": user_id,
-            "slot_type": slot_type,
-            "$and": [{"enabled": True}, *_active_date_window(_today_date_str())],
-        }
+        today = _today_date_str()
+        query = {"user_id": user_id, "slot_type": slot_type}
         document = await collection.find_one_and_update(
             query,
             {
@@ -105,7 +135,7 @@ class MedicationReminderRepository:
                     "_id": str(ObjectId()),
                     "creator_user_id": creator_user_id,
                     "scheduled_time": scheduled_time,
-                    "start_date": _today_date_str(),
+                    "start_date": today,
                     "end_date": None,
                     "enabled": True,
                     "medication_ids": [],
@@ -116,8 +146,29 @@ class MedicationReminderRepository:
             upsert=True,
             return_document=ReturnDocument.AFTER,
         )
+
+        reactivated = False
+        if not _is_schedulable(document, today):
+            fix: dict = {}
+            if not document.get("enabled", True):
+                fix["enabled"] = True
+            end_date = document.get("end_date")
+            if end_date and end_date < today:
+                fix["end_date"] = None
+            start_date = document.get("start_date")
+            if start_date and start_date > today:
+                fix["start_date"] = today
+            if fix:
+                fix["updated_at"] = now
+                document = await collection.find_one_and_update(
+                    {"_id": document["_id"]},
+                    {"$set": fix},
+                    return_document=ReturnDocument.AFTER,
+                )
+                reactivated = True
+
         document["_id"] = str(document["_id"])
-        return MedicationReminder(**document)
+        return MedicationReminder(**document), reactivated
 
     @staticmethod
     async def get_reminder_by_id(reminder_id: str) -> Optional[MedicationReminder]:

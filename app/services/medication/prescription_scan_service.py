@@ -100,7 +100,7 @@ class _ReminderRepository(Protocol):
         slot_type: str,
         creator_user_id: str,
         scheduled_time: str,
-    ) -> MedicationReminder: ...
+    ) -> tuple[MedicationReminder, bool]: ...
 
     async def link_medications_to_reminder(
         self, reminder_id: str, medication_ids: list[str]
@@ -248,6 +248,9 @@ class PrescriptionScanService:
         if not acquired:
             # 沒取得提交權：這份草稿已經被（正在被）提交過。直接回傳既有結果，
             # 不再建立任何藥品或提醒——這是冪等保證的核心。
+            # 冪等重放同樣拿不回當初那次提交實際重新開啟了哪些時段——
+            # 與 prn_medication_ids 在同一情境下的處理方式一致，回空陣列
+            # 而不是猜測，理由見該欄位重放分支的說明。
             return PrescriptionCommitResult(
                 medication_ids=final_medication_ids,
                 prn_medication_ids=self._prn_ids(resolved, final_medication_ids),
@@ -266,7 +269,7 @@ class PrescriptionScanService:
             ]
             await self._medication_repository.create_many(medications)
 
-            reminder_ids = await self._link_reminders(
+            reminder_ids, reactivated_slots = await self._link_reminders(
                 resolved, medication_ids, target_user_id, user_id
             )
         except Exception:
@@ -277,6 +280,7 @@ class PrescriptionScanService:
             medication_ids=medication_ids,
             prn_medication_ids=self._prn_ids(resolved, medication_ids),
             reminder_ids=reminder_ids,
+            reactivated_slots=reactivated_slots,
         )
 
     def _resolve_slots(
@@ -377,8 +381,20 @@ class PrescriptionScanService:
         medication_ids: list[str],
         target_user_id: str,
         creator_user_id: str,
-    ) -> list[str]:
-        """把非 PRN 的藥關聯到對應時段的提醒，回傳實際建立或連結到的提醒 id（去重）。
+    ) -> tuple[list[str], list[MedicationSlotType]]:
+        """把非 PRN 的藥關聯到對應時段的提醒。
+
+        回傳 `(reminder_ids, reactivated_slots)`：
+        - `reminder_ids` 是實際建立或連結到的提醒 id（去重）——「藥品建立
+          成功」不等於「會被排程器推播」，呼叫端必須能看到藥品實際掛在
+          哪些提醒規則上，而不是被動信任一句「已建立」。
+        - `reactivated_slots` 是這次提交把哪些時段從「停用／已過期／還沒
+          到 start_date」重新變回可排程狀態（去重）。find_or_create_reminder
+          只保證一個時段最多一份規則，不保證那份規則原本就是活的——命中
+          一筆原本關閉的規則時會直接把它改回可排程，順帶恢復掛在它底下、
+          使用者當初就是要停掉的其他藥。這件事不能悄悄發生，呼叫端要能
+          把它組進 PrescriptionCommitResult，讓使用者在核對畫面事先看到、
+          送出後的訊息也如實反映。
 
         取得（或建立）提醒規則本身走 find_or_create_reminder 的原子 upsert，
         不是「先查一次現有規則、缺席才建立」——先查後建的模式在兩個並行的
@@ -387,17 +403,14 @@ class PrescriptionScanService:
         mark_committed 的 CAS 能擋下的：那個 CAS 只保護「同一份草稿被重複
         提交」，不同的兩份草稿（例如兩位家屬各自掃描同一位長輩、或同一人
         連續掃了兩張藥袋）本來就都會走到這裡，各自合法地想要同一個時段。
-
-        回傳值供呼叫端組成 PrescriptionCommitResult.reminder_ids——「藥品
-        建立成功」不等於「會被排程器推播」，呼叫端必須能看到藥品實際掛在
-        哪些提醒規則上，而不是被動信任一句「已建立」。
         """
         reminder_ids: list[str] = []
+        reactivated_slots: list[MedicationSlotType] = []
         for (item, slots), medication_id in zip(resolved, medication_ids):
             if item.frequency_code == "PRN":
                 continue
             for slot in slots:
-                reminder = await self._reminder_repository.find_or_create_reminder(
+                reminder, reactivated = await self._reminder_repository.find_or_create_reminder(
                     user_id=target_user_id,
                     slot_type=slot,
                     creator_user_id=creator_user_id,
@@ -408,4 +421,6 @@ class PrescriptionScanService:
                 )
                 if reminder.id not in reminder_ids:
                     reminder_ids.append(reminder.id)
-        return reminder_ids
+                if reactivated and slot not in reactivated_slots:
+                    reactivated_slots.append(slot)
+        return reminder_ids, reactivated_slots

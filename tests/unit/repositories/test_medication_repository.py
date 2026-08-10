@@ -60,10 +60,10 @@ async def test_create_reminder(override_medication_reminders_col):
 @pytest.mark.asyncio
 async def test_find_or_create_reminder_upserts_atomically():
     """
-    藥袋提交流程靠這個方法避免「查一次缺席才建立」的競態。這裡驗證的是
-    查詢條件（含「只重用活著的規則」的 enabled／日期範圍限制）、upsert
-    旗標與只在建立時套用的欄位——單一呼叫的原子性由 MongoDB 保證，
-    不是這個測試能驗證的範圍；跨呼叫的重複插入風險則見方法本身的說明。
+    藥袋提交流程靠這個方法避免「一個時段變成兩份規則」的競態。這裡驗證的是
+    查詢條件（只看 user_id/slot_type，不篩 enabled 或日期）、upsert 旗標與
+    只在建立時套用的欄位——單一呼叫的原子性由 MongoDB 保證，不是這個測試
+    能驗證的範圍；跨呼叫的重複插入風險則見方法本身的說明。
     """
     from app.repositories.medication_repository import MedicationReminderRepository
 
@@ -81,7 +81,7 @@ async def test_find_or_create_reminder_upserts_atomically():
         }
     )
 
-    reminder = await MedicationReminderRepository.find_or_create_reminder(
+    reminder, reactivated = await MedicationReminderRepository.find_or_create_reminder(
         user_id="U_PATIENT",
         slot_type="morning",
         creator_user_id="U_FAMILY",
@@ -90,10 +90,12 @@ async def test_find_or_create_reminder_upserts_atomically():
     )
 
     assert reminder.id == "R_NEW"
+    assert reactivated is False
+    # 新插入的文件本身就可排程（enabled=True、start_date 是今天），不需要
+    # 第二次寫入去「修好」它——只呼叫了一次 find_one_and_update。
+    col.find_one_and_update.assert_awaited_once()
     (query, update), kwargs = col.find_one_and_update.call_args
-    assert query["user_id"] == "U_PATIENT"
-    assert query["slot_type"] == "morning"
-    assert {"enabled": True} in query["$and"]
+    assert query == {"user_id": "U_PATIENT", "slot_type": "morning"}
     set_on_insert = update["$setOnInsert"]
     assert set_on_insert["creator_user_id"] == "U_FAMILY"
     assert set_on_insert["scheduled_time"] == "08:00"
@@ -105,9 +107,9 @@ async def test_find_or_create_reminder_upserts_atomically():
 
 @pytest.mark.asyncio
 async def test_find_or_create_reminder_returns_existing_live_reminder_without_overwriting():
-    """命中一筆「活著」（啟用中且日期仍有效）的既有規則時只回傳它，
-    $setOnInsert 不該影響既有文件的欄位——這一點由 MongoDB 語意保證，
-    這裡驗證的是回傳值確實是資料庫回來的既有文件。
+    """命中一筆「活著」（啟用中且日期仍有效）的既有規則時只回傳它，不執行
+    任何第二次寫入——不能因為又有人提交同一個時段的藥，就悄悄覆蓋使用者
+    已經調整過的 scheduled_time 等設定。
     """
     from app.repositories.medication_repository import MedicationReminderRepository
 
@@ -123,7 +125,7 @@ async def test_find_or_create_reminder_returns_existing_live_reminder_without_ov
         }
     )
 
-    reminder = await MedicationReminderRepository.find_or_create_reminder(
+    reminder, reactivated = await MedicationReminderRepository.find_or_create_reminder(
         user_id="U_PATIENT",
         slot_type="morning",
         creator_user_id="U_FAMILY",
@@ -135,15 +137,19 @@ async def test_find_or_create_reminder_returns_existing_live_reminder_without_ov
     assert reminder.creator_user_id == "U_OTHER_CREATOR"
     assert reminder.scheduled_time == "09:15"
     assert reminder.enabled is True
+    assert reactivated is False
+    # 只呼叫了一次：既有規則本身可排程，完全沒有第二次寫入去動它。
+    col.find_one_and_update.assert_awaited_once()
 
 
 class _FakeReminderCollection:
     """支援 find_or_create_reminder 所用查詢語法（等值、$and、$or、
-    $exists、$lte、$gte）的極簡 in-memory 假集合。
+    $exists、$lte、$gte、$set）的極簡 in-memory 假集合。
 
-    這裡要驗證的是「查詢條件本身會不會命中一筆停用或過期的規則」——
-    純 MagicMock 只能回報呼叫時傳了什麼查詢字典，驗證不了查詢字典
-    對一份既有文件到底 match 不 match，所以需要一個會真的做比對的假集合。
+    這裡要驗證的是「查詢條件本身會不會命中一筆規則、命中後 $set 有沒有
+    真的把它改回可排程狀態」——純 MagicMock 只能回報呼叫時傳了什麼查詢
+    字典，驗證不了查詢字典對一份既有文件到底 match 不 match，也不會真的
+    套用 $set，所以需要一個會真的做比對與寫入的假集合。
     """
 
     def __init__(self, existing_doc: Optional[dict] = None):
@@ -151,13 +157,17 @@ class _FakeReminderCollection:
 
     async def find_one_and_update(self, query, update, upsert=False, return_document=None):
         match = next((doc for doc in self.docs if self._matches(doc, query)), None)
-        if match is None and upsert:
+        if match is None:
+            if not upsert:
+                return None
             new_doc: dict = {
                 key: value for key, value in query.items() if not key.startswith("$")
             }
             new_doc.update(update.get("$setOnInsert", {}))
             self.docs.append(new_doc)
             return new_doc
+        if "$set" in update:
+            match.update(update["$set"])
         return match
 
     @classmethod
@@ -189,11 +199,15 @@ class _FakeReminderCollection:
 
 
 @pytest.mark.asyncio
-async def test_find_or_create_reminder_does_not_reuse_a_disabled_reminder():
+async def test_find_or_create_reminder_reactivates_a_disabled_reminder():
     """家屬先前手動關掉了這個時段（例如同時段其他藥暫停），今天掃描新藥袋
-    命中同一個時段：不能悄悄把這筆停用的規則救活——那會連帶恢復它底下
-    使用者本來就要停掉的其他藥品。應該另外插入一筆新的、啟用中的規則，
-    新藥才會被排程器（list_active_reminders_up_to_time）真的挑中。
+    命中同一個時段：一個時段永遠只該有一份規則，所以要重用同一筆文件，
+    並把它改回可排程狀態，而不是另外插入第二筆——否則兩筆規則都可能
+    被排程器同時挑中，使用者會收到兩則同一時段的推播。
+
+    這筆規則底下原本掛著的藥（M_OLD）連帶恢復收到提醒，是刻意的：
+    這正是 reactivated 這個回傳值存在的理由——呼叫端據此在使用者確認前
+    先揭露、送出後的訊息也要如實告知，而不是靜默發生。
     """
     from app.repositories.medication_repository import MedicationReminderRepository
 
@@ -211,7 +225,7 @@ async def test_find_or_create_reminder_does_not_reuse_a_disabled_reminder():
         }
     )
 
-    reminder = await MedicationReminderRepository.find_or_create_reminder(
+    reminder, reactivated = await MedicationReminderRepository.find_or_create_reminder(
         user_id="U_PATIENT",
         slot_type="morning",
         creator_user_id="U_FAMILY",
@@ -219,18 +233,22 @@ async def test_find_or_create_reminder_does_not_reuse_a_disabled_reminder():
         collection=col,
     )
 
-    assert reminder.id != "R_DISABLED"
+    assert reminder.id == "R_DISABLED"
     assert reminder.enabled is True
-    assert reminder.medication_ids == []
-    # 原本停用的那筆規則原封不動，它底下的舊藥品關聯不受影響。
-    assert any(doc["_id"] == "R_DISABLED" and doc["enabled"] is False for doc in col.docs)
+    assert reactivated is True
+    # 這個時段最終只剩一份文件，且它底下原本的藥品關聯原封不動。
+    assert len(col.docs) == 1
+    assert reminder.medication_ids == ["M_OLD"]
+    # 不是使用者自訂的欄位（scheduled_time）沒有被動到。
+    assert reminder.scheduled_time == "08:00"
 
 
 @pytest.mark.asyncio
-async def test_find_or_create_reminder_does_not_reuse_an_expired_reminder():
+async def test_find_or_create_reminder_reactivates_an_expired_reminder():
     """一份處方療程已經結束（end_date 已過），今天是另一份新處方：
-    同樣不能重用那筆已經到期的規則，否則新藥可能被排程器的日期區間
-    篩選條件擋下、從未真正推播過。
+    同樣要重用同一份文件並清空過期的 end_date，而不是插入第二筆——否則
+    新藥可能被排程器的日期區間篩選條件擋下、從未真正推播過，同時原本
+    那份「已過期」的規則仍在，兩份文件都對應同一個時段。
     """
     from app.repositories.medication_repository import MedicationReminderRepository
 
@@ -248,7 +266,7 @@ async def test_find_or_create_reminder_does_not_reuse_an_expired_reminder():
         }
     )
 
-    reminder = await MedicationReminderRepository.find_or_create_reminder(
+    reminder, reactivated = await MedicationReminderRepository.find_or_create_reminder(
         user_id="U_PATIENT",
         slot_type="morning",
         creator_user_id="U_FAMILY",
@@ -256,9 +274,50 @@ async def test_find_or_create_reminder_does_not_reuse_an_expired_reminder():
         collection=col,
     )
 
-    assert reminder.id != "R_EXPIRED"
+    assert reminder.id == "R_EXPIRED"
     assert reminder.enabled is True
     assert reminder.end_date is None
+    assert reactivated is True
+    assert len(col.docs) == 1
+
+
+@pytest.mark.asyncio
+async def test_find_or_create_reminder_pulls_back_a_future_start_date():
+    """這筆規則的 start_date 訂在未來（LIFF 的日期輸入框沒有 min 限制，
+    使用者可以合法地這樣設定）：掃描當下它還沒到 start_date、不會被排程器
+    挑中，一樣要重用同一份文件並把 start_date 拉回今天，而不是插入第二筆。
+    """
+    from app.repositories.medication_repository import (
+        MedicationReminderRepository,
+        _today_date_str,
+    )
+
+    col = _FakeReminderCollection(
+        existing_doc={
+            "_id": "R_FUTURE",
+            "creator_user_id": "U_FAMILY",
+            "user_id": "U_PATIENT",
+            "slot_type": "morning",
+            "scheduled_time": "08:00",
+            "start_date": "2099-01-01",
+            "end_date": None,
+            "enabled": True,
+            "medication_ids": ["M_OLD"],
+        }
+    )
+
+    reminder, reactivated = await MedicationReminderRepository.find_or_create_reminder(
+        user_id="U_PATIENT",
+        slot_type="morning",
+        creator_user_id="U_FAMILY",
+        scheduled_time="08:00",
+        collection=col,
+    )
+
+    assert reminder.id == "R_FUTURE"
+    assert reminder.start_date == _today_date_str()
+    assert reactivated is True
+    assert len(col.docs) == 1
 
 
 @pytest.mark.asyncio

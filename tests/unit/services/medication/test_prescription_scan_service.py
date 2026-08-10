@@ -95,8 +95,13 @@ class FakeMedicationRepository:
 
 
 class FakeReminderRepository:
-    def __init__(self, existing=None):
+    def __init__(self, existing=None, reactivate_slots=None):
         self.existing = existing or []
+        # 模擬「命中的既有規則原本不可排程，這次呼叫把它改回可排程」——
+        # 只在第一次命中該時段時回報 True，之後同一次提交內再碰到同一個
+        # 時段（例如 TID 藥的三個時段裡有兩顆藥都連到同一個時段）就已經
+        # 是活的了，對應真正 repository「命中活著的規則就不再寫入」的行為。
+        self.reactivate_slots = set(reactivate_slots or [])
         self.created = []
         self.links: list[tuple[str, list[str]]] = []
         self.find_or_create_calls: list[tuple] = []
@@ -111,7 +116,9 @@ class FakeReminderRepository:
         )
         for reminder in self.existing:
             if reminder.user_id == user_id and reminder.slot_type == slot_type:
-                return reminder
+                reactivated = slot_type in self.reactivate_slots
+                self.reactivate_slots.discard(slot_type)
+                return reminder, reactivated
         reminder = MedicationReminder(
             id=f"R_{slot_type}",
             creator_user_id=creator_user_id,
@@ -121,7 +128,7 @@ class FakeReminderRepository:
         )
         self.created.append(reminder)
         self.existing.append(reminder)
-        return reminder
+        return reminder, False
 
     async def link_medications_to_reminder(self, reminder_id, medication_ids):
         self.links.append((reminder_id, list(medication_ids)))
@@ -491,6 +498,92 @@ async def test_commit_result_reminder_ids_are_deduplicated():
 
     assert len(reminders.links) == 2
     assert result.reminder_ids == [reminders.created[0].id]
+
+
+@pytest.mark.asyncio
+async def test_commit_result_exposes_reactivated_slots():
+    """命中的既有規則原本不可排程（例如使用者先前手動關掉），這次提交把它
+    改回可排程狀態——呼叫端（LIFF）要能從結果看到這件事，才能在送出後的
+    訊息裡如實告知使用者，而不是讓提醒悄悄變回啟用。"""
+    existing = MedicationReminder(
+        id="R_MORNING",
+        creator_user_id="U_FAMILY",
+        user_id="U_PATIENT",
+        slot_type="morning",
+        enabled=False,
+    )
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    reminders = FakeReminderRepository(existing=[existing], reactivate_slots={"morning"})
+    service = _service(
+        drafts=drafts,
+        reminders=reminders,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    result = await service.commit(
+        "D1", "U_FAMILY", _request(CommitDrugItem(name="某藥", frequency_code="QD"))
+    )
+
+    assert result.reactivated_slots == ["morning"]
+
+
+@pytest.mark.asyncio
+async def test_commit_result_reactivated_slots_deduplicated():
+    """兩顆藥都連到同一個已停用的時段：那個時段只重新開啟一次，
+    reactivated_slots 不該因此重複出現兩次。"""
+    existing = MedicationReminder(
+        id="R_MORNING",
+        creator_user_id="U_FAMILY",
+        user_id="U_PATIENT",
+        slot_type="morning",
+        enabled=False,
+    )
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="藥一"), RecognizedDrug(name="藥二"))
+    reminders = FakeReminderRepository(existing=[existing], reactivate_slots={"morning"})
+    service = _service(
+        drafts=drafts,
+        reminders=reminders,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    result = await service.commit(
+        "D1",
+        "U_FAMILY",
+        _request(
+            CommitDrugItem(name="藥一", frequency_code="QD"),
+            CommitDrugItem(name="藥二", frequency_code="QD"),
+        ),
+    )
+
+    assert result.reactivated_slots == ["morning"]
+
+
+@pytest.mark.asyncio
+async def test_commit_result_reactivated_slots_empty_when_reminder_was_already_active():
+    """對照組：命中的既有規則本來就可排程時，reactivated_slots 不該提到它——
+    這件事根本沒有發生，訊息不能暗示使用者「有東西被重新開啟」。"""
+    existing = MedicationReminder(
+        id="R_MORNING",
+        creator_user_id="U_FAMILY",
+        user_id="U_PATIENT",
+        slot_type="morning",
+    )
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    reminders = FakeReminderRepository(existing=[existing])
+    service = _service(
+        drafts=drafts,
+        reminders=reminders,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    result = await service.commit(
+        "D1", "U_FAMILY", _request(CommitDrugItem(name="某藥", frequency_code="QD"))
+    )
+
+    assert result.reactivated_slots == []
 
 
 @pytest.mark.asyncio

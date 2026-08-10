@@ -140,8 +140,17 @@ class PrescriptionCommitResult(BaseModel):
     這次沒有取得提交權）時無法可靠回推當初建立的是哪些提醒，此欄位為空；
     這與 prn_medication_ids 在同一情境下的處理方式一致，見該欄位重放分支的
     說明。
+
+    reactivated_slots 是這次提交把哪些時段從「停用／已過期／還沒到
+    start_date」重新變回可排程狀態（見 find_or_create_reminder）。一個時段
+    永遠只有一份規則，命中一筆原本關閉的規則時會直接復活它，連帶恢復掛在
+    它底下、使用者當初就是要停掉的其他藥——這件事不能只讓資料庫默默發生，
+    呼叫端（LIFF）要能據此在核對畫面事先揭露、送出後的訊息也如實反映，
+    而不是讓使用者事後才在提醒列表發現多了一則自己沒印象重新開啟的提醒。
+    冪等重放時同樣無法可靠回推，此欄位為空。
     """
 
     medication_ids: list[str] = Field(default_factory=list)
     prn_medication_ids: list[str] = Field(default_factory=list)
     reminder_ids: list[str] = Field(default_factory=list)
+    reactivated_slots: list[MedicationSlotType] = Field(default_factory=list)

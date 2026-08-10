@@ -8,7 +8,10 @@ from app.core.request_logging import log_stage
 from app.core.user_language import normalize_user_language
 from app.services.agent.prompt import build_system_prompt
 from app.services.agent.utils.state import State
-from app.services.medical.department_matcher import extract_department_intent
+from app.services.medical.department_matcher import (
+    extract_department_intent,
+    normalize_department_text,
+)
 from app.services.medical.facility_name_index import covers_known_facility_name
 from app.services.medical.medical_facility_matcher import FACILITY_ALIASES
 from app.services.medical.facility_type_matcher import (
@@ -344,6 +347,45 @@ def _is_nearby_department_intent(text: str) -> bool:
     return extract_department_intent(text) is not None
 
 
+# 「我要看大腸科」既沒有鄰近詞，也沒有醫院／診所字眼，上面兩道判定都抓不到，
+# 於是整句掉進強制 RAG —— 使用者想找院所，收到的卻是一段「大腸直腸科醫師在看什麼」
+# 的衛教說明。指名科別 + 就診動詞已經足夠明確表達要看這一科，不必再等鄰近詞。
+#
+# 判定要求動詞緊接在科別前面、科別後面只剩收尾的詞，兩道都是為了不把衛教問句
+# 誤判成找院所（那會用一顆要位置的按鈕蓋掉使用者真正想問的問題）：
+#   - 只看「句中有沒有就診動詞」→「腸胃科是看什麼的」會因為那個「看」中招。
+#   - 只看「動詞是否緊接科別」→「上次看腸胃科醫師說要多喝水，這樣對嗎」這種
+#     轉述句仍會中招，因此科別之後只允許「的醫生／醫師／門診」與語助詞收尾。
+_DEPARTMENT_VISIT_ACTION_RE = re.compile(r"(?:看|掛號|掛|預約|轉|找)(?:個|一下)?$")
+_DEPARTMENT_VISIT_TAIL_RE = re.compile(r"^(?:的?(?:醫生|醫師|門診))?[嗎呢吧啊喔哦耶]*$")
+
+
+def _is_department_visit_intent(text: str) -> bool:
+    """使用者指名科別並表明要就診，例如「我要看大腸科」「幫我掛腸胃科」。"""
+    if not text or _is_media_extracted_content(text):
+        return False
+    if _NAMED_LOOKUP_RE.search(text):
+        return False
+
+    match = extract_department_intent(text)
+    if match is None:
+        return False
+
+    # 別名表比對過的說法要回原句定位，才能看清它前後接了什麼。
+    cleaned = normalize_department_text(text)
+    term = match.requested
+    index = cleaned.find(term)
+    while index != -1:
+        before = cleaned[:index]
+        after = cleaned[index + len(term) :]
+        if _DEPARTMENT_VISIT_ACTION_RE.search(before):
+            if _DEPARTMENT_VISIT_TAIL_RE.match(after):
+                return True
+        index = cleaned.find(term, index + 1)
+
+    return False
+
+
 def _is_nearby_facility_intent(text: str) -> bool:
     if not text or _NAMED_LOOKUP_RE.search(text):
         return False
@@ -351,7 +393,7 @@ def _is_nearby_facility_intent(text: str) -> bool:
         return False
     if _FACILITY_SEARCH_RE.search(text):
         return True
-    return _is_nearby_department_intent(text)
+    return _is_nearby_department_intent(text) or _is_department_visit_intent(text)
 
 
 def _is_named_facility_lookup(text: str) -> bool:

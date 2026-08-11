@@ -228,6 +228,11 @@ app_data/tmp/*
 # Cursor local skills & commands
 .cursor/
 
+# Claude Code local skills、commands 與 worktrees
+# （.claude/worktrees/ 底下是 git worktree 本體，含 .git 指標與整份工作區副本，
+#   誤 commit 會把整個 repo 塞進自己裡面）
+.claude/
+
 # Git worktrees（隔離工作區，不進版控）
 .worktrees/
 

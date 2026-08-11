@@ -1,10 +1,17 @@
 # 針對 facility_detail_flex_message的測試。涵蓋營業時間表格、診療科別網格、電話/地圖按鈕的顯示與隱藏邏輯。
 
 
+from datetime import datetime
+
 import pytest
 from app.schemas import MedicalFacility, ClinicDaySchedule, ClinicTimeSlot
+from app.services.medical.business_hours import TAIPEI_TZ, WEEKDAY_KEYS
 from resources.flex_messages import theme
 from resources.flex_messages.medical_messages.facility_detail_flex_message import (
+    _HAS_CLINIC_MARK,
+    _NO_CLINIC_MARK,
+    _TODAY_COLUMN_BG,
+    _ZEBRA_COLUMN_BG,
     _build_clinic_time_rows,
     _build_department_grid,
     generate_facility_detail_flex_message,
@@ -12,7 +19,8 @@ from resources.flex_messages.medical_messages.facility_detail_flex_message impor
 
 FT = theme.resolve_theme("large")
 
-# 測試看診時間的row
+# 測試門診表：一列是一個時段（早／午／晚診），一欄是一天，
+# 首列為表頭、首欄為時段標籤，所以第 n 天的格子是 rows[i]["contents"][n + 1]。
 
 
 def _make_day(is_closed: bool, slots: list[tuple[str, str]]) -> ClinicDaySchedule:
@@ -22,82 +30,121 @@ def _make_day(is_closed: bool, slots: list[tuple[str, str]]) -> ClinicDaySchedul
     )
 
 
+def _full_week(slots: list[tuple[str, str]]) -> dict[str, ClinicDaySchedule]:
+    return {day: _make_day(is_closed=False, slots=slots) for day in WEEKDAY_KEYS}
+
+
+def _today_key() -> str:
+    """與實作同一套算法取得今天，測試才不會因為執行當天是星期幾而飄動。"""
+    return WEEKDAY_KEYS[datetime.now(TAIPEI_TZ).weekday()]
+
+
+def _cell(row: dict, day_key: str) -> dict:
+    """取出某一天在該列的格子（+1 是跳過最左邊的時段標籤欄）。"""
+    return row["contents"][WEEKDAY_KEYS.index(day_key) + 1]
+
+
+def _texts(node: dict) -> list[str]:
+    return [c["text"] for c in node["contents"] if c.get("type") == "text"]
+
+
 def test_build_clinic_time_rows_empty_returns_empty_list():
     # clinic_time 為 None 時，應回傳空 list（讓呼叫端 fallback 顯示「無資料」）
     assert _build_clinic_time_rows(None, FT) == []
 
 
-def test_build_clinic_time_rows_closed_day():
-    clinic_time = {"monday": _make_day(is_closed=True, slots=[])}
-    rows = _build_clinic_time_rows(clinic_time, FT, "zh-TW")
-    row_str = str(rows)
-    assert "週一" in row_str
-    assert "休診" in row_str
+def test_build_clinic_time_rows_all_closed_returns_empty_list():
+    # 七天全休診時一個時段都畫不出來，畫一張全是「-」的空表沒有意義，
+    # 一樣回空 list 交給呼叫端顯示「無資料」
+    clinic_time = {day: _make_day(is_closed=True, slots=[]) for day in WEEKDAY_KEYS}
+    assert _build_clinic_time_rows(clinic_time, FT, "zh-TW") == []
 
 
-def test_build_clinic_time_rows_localizes_weekday_and_closed_label():
-    # 語言設定應同時作用在星期標籤與休診字樣上
-    clinic_time = {"monday": _make_day(is_closed=True, slots=[])}
-    row_str = str(_build_clinic_time_rows(clinic_time, FT, "en"))
-    assert "Mon" in row_str
-    assert "Closed" in row_str
+def test_build_clinic_time_rows_closed_day_marked_with_dash():
+    # 休診那一天在該時段的格子打「-」，有診的天打圓點
+    clinic_time = _full_week([("09:00", "12:00")])
+    clinic_time["sunday"] = _make_day(is_closed=True, slots=[])
+
+    period_row = _build_clinic_time_rows(clinic_time, FT, "zh-TW")[1]
+    assert _texts(_cell(period_row, "sunday")) == [_NO_CLINIC_MARK]
+    assert _texts(_cell(period_row, "monday")) == [_HAS_CLINIC_MARK]
+
+
+def test_build_clinic_time_rows_header_uses_short_weekday_labels():
+    # 欄寬只有整表的十分之一，表頭走 weekday.short.*（中文「一」、英文「Mo」）
+    rows = _build_clinic_time_rows(_full_week([("09:00", "12:00")]), FT, "zh-TW")
+    assert _texts(_cell(rows[0], "monday")) == ["一"]
+    assert _texts(_cell(rows[0], "sunday")) == ["日"]
+
+
+def test_build_clinic_time_rows_localizes_labels():
+    # 語言設定要同時作用在表頭星期與時段列名上
+    row_str = str(_build_clinic_time_rows(_full_week([("09:00", "12:00")]), FT, "en"))
+    assert "Mo" in row_str
+    assert "Morning" in row_str
+    assert "早診" not in row_str
     assert "週一" not in row_str
 
 
-def test_build_clinic_time_rows_multiple_slots_joined_by_delimiter():
-    # 同一天有多個時段時，應以「、」串接（比照 format_clinic_time 既有慣例）
-    clinic_time = {
-        "tuesday": _make_day(
-            is_closed=False, slots=[("09:00", "12:00"), ("14:00", "17:00")]
-        )
-    }
-    rows = _build_clinic_time_rows(clinic_time, FT)
-    row_str = str(rows)
-    assert "09:00-12:00、14:00-17:00" in row_str
-
-
-def test_build_clinic_time_rows_missing_day_key_skipped():
-    # 只提供一天的資料時，其餘缺失的天數應直接跳過，不應產生空白列
-    clinic_time = {"monday": _make_day(is_closed=False, slots=[("09:00", "17:00")])}
-    rows = _build_clinic_time_rows(clinic_time, FT)
-    assert len(rows) == 1
-    assert all(r.get("type") == "box" for r in rows)
-
-
-def test_build_clinic_time_rows_zebra_striping_between_days():
-    # 七天全滿時應產生 7 列，且底色逐列交替（不再使用分隔線區隔）
-    clinic_time = {
-        day: _make_day(is_closed=False, slots=[("09:00", "17:00")])
-        for day in [
-            "monday",
-            "tuesday",
-            "wednesday",
-            "thursday",
-            "friday",
-            "saturday",
-            "sunday",
-        ]
-    }
-    rows = _build_clinic_time_rows(clinic_time, FT)
-    assert len(rows) == 7
-    assert all(r.get("type") == "box" for r in rows)
-    assert rows[0]["backgroundColor"] == theme.BRAND_TINT
-    assert rows[1]["backgroundColor"] == theme.SURFACE
-
-
-def test_build_clinic_time_rows_empty_slots_no_valid_range_shows_no_data():
-    # isClosed=False 但 slots 為空，或 slot 內 open/close 為空字串時，應顯示「無資料」而非空白
-    clinic_time = {"wednesday": _make_day(is_closed=False, slots=[])}
+def test_build_clinic_time_rows_slots_split_into_period_rows():
+    # 同一天的多個時段依開始時間拆進不同的時段列，不再串成一串文字
+    clinic_time = _full_week([("09:00", "12:00"), ("14:00", "17:00")])
     rows = _build_clinic_time_rows(clinic_time, FT, "zh-TW")
-    assert "無資料" in str(rows)
+
+    assert len(rows) == 3  # 表頭 + 早診 + 午診（整週無晚診，該列不畫）
+    assert _texts(rows[1]["contents"][0]) == ["早診", "09:00\n12:00"]
+    assert _texts(rows[2]["contents"][0]) == ["午診", "14:00\n17:00"]
+
+
+def test_build_clinic_time_rows_exception_time_shown_in_cell():
+    # 某天時間與該列代表時間不同時（週六提早開診），在那一格圓點下方標出實際時間
+    clinic_time = _full_week([("09:30", "12:30")])
+    clinic_time["saturday"] = _make_day(is_closed=False, slots=[("09:00", "12:00")])
+
+    period_row = _build_clinic_time_rows(clinic_time, FT, "zh-TW")[1]
+    assert _texts(_cell(period_row, "saturday")) == [_HAS_CLINIC_MARK, "09:00\n12:00"]
+    # 與代表時間相同的日子只有圓點，不重複標時間
+    assert _texts(_cell(period_row, "monday")) == [_HAS_CLINIC_MARK]
+
+
+def test_build_clinic_time_rows_missing_day_key_marked_with_dash():
+    # 只提供一天的資料時，其餘缺失的天數同樣以「-」呈現（資料上與休診無法區分）
+    clinic_time = {"monday": _make_day(is_closed=False, slots=[("09:00", "11:00")])}
+    rows = _build_clinic_time_rows(clinic_time, FT, "zh-TW")
+
+    assert len(rows) == 2  # 表頭 + 早診
+    assert _texts(_cell(rows[1], "monday")) == [_HAS_CLINIC_MARK]
+    assert _texts(_cell(rows[1], "tuesday")) == [_NO_CLINIC_MARK]
+
+
+def test_build_clinic_time_rows_empty_slots_no_valid_range_returns_empty_list():
+    # isClosed=False 但 slots 為空：沒有任何有效時段，等同無資料
+    clinic_time = {"wednesday": _make_day(is_closed=False, slots=[])}
+    assert _build_clinic_time_rows(clinic_time, FT, "zh-TW") == []
+
+
+def test_build_clinic_time_rows_today_column_highlighted():
+    # 今天整欄（含表頭那一格）換成醒目底色，其餘六欄維持一欄白一欄綠
+    rows = _build_clinic_time_rows(_full_week([("09:00", "12:00")]), FT, "zh-TW")
+    today = _today_key()
+
+    for row in rows:
+        assert _cell(row, today)["backgroundColor"] == _TODAY_COLUMN_BG
+
+    others = [day for day in WEEKDAY_KEYS if day != today]
+    for day in others:
+        expected = _ZEBRA_COLUMN_BG[WEEKDAY_KEYS.index(day) % 2]
+        assert _cell(rows[0], day)["backgroundColor"] == expected
 
 
 def test_build_clinic_time_rows_font_size_scales_text():
-    clinic_time = {"monday": _make_day(is_closed=False, slots=[("09:00", "17:00")])}
+    clinic_time = _full_week([("09:00", "17:00")])
     normal = _build_clinic_time_rows(clinic_time, theme.resolve_theme("normal"))
     xlarge = _build_clinic_time_rows(clinic_time, theme.resolve_theme("xlarge"))
-    assert normal[0]["contents"][0]["size"] == "md"
-    assert xlarge[0]["contents"][0]["size"] == "xl"
+
+    # 表頭的星期字級走 ft.body，隨使用者的字級設定縮放
+    assert normal[0]["contents"][1]["contents"][0]["size"] == "md"
+    assert xlarge[0]["contents"][1]["contents"][0]["size"] == "xl"
 
 
 # 建立診療科別的表格
@@ -138,12 +185,22 @@ def test_build_department_grid_many_departments_all_rendered_without_collapse():
     assert "其他" not in full_str  # 目前版本不收合，確認沒有殘留收合按鈕文字
 
 
-def test_build_department_grid_uses_single_chip_color():
-    # 改版後所有 chip 統一使用品牌淺色底，不再逐列交替色
+def test_build_department_grid_alternates_row_color():
+    # chip 底色以「列」為單位交替：一列淺灰、一列米黃，同一列內顏色一致
     departments = ["內科", "外科", "兒科", "婦產科"]
     rows = _build_department_grid(departments, FT)
-    assert rows[0]["contents"][0]["backgroundColor"] == theme.BRAND_TINT
-    assert rows[1]["contents"][0]["backgroundColor"] == theme.BRAND_TINT
+    first_row_chips = [c for c in rows[0]["contents"] if c.get("type") == "box"]
+
+    assert {chip["backgroundColor"] for chip in first_row_chips} == {"#EEEEEE"}
+    assert rows[1]["contents"][0]["backgroundColor"] == "#FFFDE7"
+
+
+def test_build_department_grid_localizes_known_departments():
+    # 部定專科要跟著語言走；字典未收錄的次專科則原樣保留中文
+    rows = _build_department_grid(["內科", "腸胃內科"], FT, "en")
+    row_str = str(rows)
+    assert "Internal Medicine" in row_str
+    assert "腸胃內科" in row_str  # 未收錄者退回原文，不得顯示成 key
 
 
 # 測試整合產生完整 Flex Message 的函式

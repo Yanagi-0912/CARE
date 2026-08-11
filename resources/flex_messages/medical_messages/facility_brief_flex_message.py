@@ -14,6 +14,7 @@ from app.services.medical.business_hours import (
     BusinessHoursResult,
     BusinessStatus,
     NextOpen,
+    has_emergency_department,
     resolve_business_hours,
 )
 from resources.flex_messages import theme
@@ -55,8 +56,7 @@ _STATUS_PRESENTATION: dict[BusinessStatus, tuple[str, str]] = {
     BusinessStatus.UNKNOWN: (theme.STATUS_UNKNOWN, "flex.status.unknown"),
 }
 
-# 只有這些狀態顯示下次開診時間。營業中不需要；請電洽與無資料本就無可靠時段可講；
-# 急診刻意不顯示——在「設有急診」旁邊放門診時間，會被誤讀成急診那時才開。
+# 只有這些狀態顯示下次開診時間。營業中不需要；請電洽與無資料本就無可靠時段可講。
 _STATUSES_WITH_NEXT_OPEN = frozenset(
     {
         BusinessStatus.BEFORE_OPEN,
@@ -65,6 +65,46 @@ _STATUSES_WITH_NEXT_OPEN = frozenset(
         BusinessStatus.CLOSED_DAY,
     }
 )
+
+def _resolve_clinic_hours(facility: MedicalFacility) -> BusinessHoursResult:
+    #取得「門診」的營業狀態
+    if not has_emergency_department(facility):
+        return resolve_business_hours(facility)
+    return resolve_business_hours(facility.model_copy(update={"departments": None}))
+
+
+def _build_dot_row(text: str, accent: str) -> dict[str, Any]:
+    """圓點＋粗體文字的一列，營業狀態與「設有急診」共用同一種樣式。"""
+    return {
+        "type": "box",
+        "layout": "horizontal",
+        "spacing": "xs",
+        "alignItems": "center",
+        "contents": [
+            {
+                # 模擬圓點
+                "type": "box",
+                "layout": "vertical",
+                "width": "20px",
+                "height": "20px",
+                #borderRadius設為寬高的一半就可以模擬圓形效果
+                "cornerRadius": "10px",
+                "backgroundColor": accent,
+                "flex": 0,
+                "contents": [{"type": "filler"}],
+            },
+            {
+                "type": "text",
+                #故意留空白比較好閱讀
+                "text": f"  {text}",
+                "size": "xxl",
+                "weight": "bold",
+                "color": accent,
+                "flex": 0,
+                "wrap": True,
+            },
+        ],
+    }
 
 
 def _format_next_open(next_open: NextOpen, language: str | None = None) -> str:
@@ -79,73 +119,41 @@ def _format_next_open(next_open: NextOpen, language: str | None = None) -> str:
     )
 
 
-def _build_status_indicator(
+def _build_status_rows(
     hours: BusinessHoursResult,
-    ft: theme.FlexTheme,
+    is_emergency: bool,
     language: str | None = None,
 ) -> dict[str, Any]:
     """
-    組出營業狀態標籤，供簡略卡片與詳情頁共用。
-
-    休診時附上下次開診時間——使用者真正在問的是「我什麼時候能去」，
-    只說「休診中」等於沒回答。
+    把已解析好的狀態渲染成 Flex 結構。
     """
     accent, status_key = _STATUS_PRESENTATION[hours.status]
-    status_text = t(status_key, language)
 
-    rows: list[dict[str, Any]] = [
-        {
-            "type": "box",
-            "layout": "horizontal",
-            "spacing": "sm",
-            "alignItems": "center",
-            "contents": [
-                {
-                    # 細長色條，比圓點更俐落且渲染穩定
-                    "type": "box",
-                    "layout": "vertical",
-                    "width": "6px",
-                    "height": "22px",
-                    "cornerRadius": "3px",
-                    "backgroundColor": accent,
-                    "flex": 0,
-                    "contents": [{"type": "filler"}],
-                },
-                {
-                    "type": "text",
-                    "text": status_text,
-                    "size": ft.body,
-                    "weight": "bold",
-                    "color": accent,
-                    "flex": 0,
-                    "wrap": True,
-                },
-            ],
-        }
-    ]
+    status_row = _build_dot_row(t(status_key, language), accent)
+    rows: list[dict[str, Any]] = [status_row]
 
+    # 下次開診時間改為獨立放在營業狀態下方（第二行）
     if hours.next_open is not None and hours.status in _STATUSES_WITH_NEXT_OPEN:
         rows.append(
             {
                 "type": "text",
                 "text": _format_next_open(hours.next_open, language),
-                "size": ft.caption,
-                "color": theme.TEXT_MUTED,
-                "margin": "xs",
+                "size": "xxl",  
+                "weight": "bold",
+                "color": accent,
+                "margin": "xl",  # 設定上方間距，使其排在狀態列下方
                 "wrap": True,
             }
         )
 
-    if hours.note:
-        # clinicTime 不知道春節。註記原文一律顯示，讓使用者自行判斷是否適用今天。
+    # 設有急診：獨立一列，藍色圓點，排在最下方
+    if is_emergency:
         rows.append(
             {
-                "type": "text",
-                "text": t("flex.facility.note", language).format(note=hours.note),
-                "size": ft.caption,
-                "color": theme.TEXT_FAINT,
-                "margin": "xs",
-                "wrap": True,
+                **_build_dot_row(
+                    t("flex.status.emergency", language), theme.STATUS_EMERGENCY
+                ),
+                "margin": "sm",
             }
         )
 
@@ -157,6 +165,22 @@ def _build_status_indicator(
         "layout": "vertical",
         "contents": rows,
     }
+
+
+def _build_status_indicator(
+    facility: MedicalFacility,
+    language: str | None = None,
+) -> dict[str, Any]:
+    """
+    組出營業狀態標籤（燈號＋狀態文字＋下次開診時間＋設有急診），供簡略卡片與詳情頁共用。
+    "設有急診"不再佔用營業狀態那一格，改成獨立的藍色圓點列排在最下面：
+    它是能力標示而非營業狀態，兩者本來就該並存。
+    """
+    return _build_status_rows(
+        _resolve_clinic_hours(facility),
+        has_emergency_department(facility),
+        language,
+    )
 
 
 def create_facility_item_box(
@@ -178,42 +202,88 @@ def create_facility_item_box(
             value=f"{facility.distance_meters:.0f}"
         )
 
+    # 呼叫自己內部定義的 UI 專用 URL 函數
     map_uri = _build_flex_map_uri(facility)
     call_label = t("flex.button.call", language)
     map_label = t("flex.button.map", language)
 
-    buttons_contents: list[dict[str, Any]] = []
+    # 1. 建立必定會顯示的「前往地圖」按鈕
+    map_button_box = ft.secondary_button(
+        map_label,
+        {"type": "uri", "label": map_label, "uri": map_uri},
+    )
 
-    # 電話存在且清洗後為有效號碼（長度 >= 6）時才顯示撥號按鈕
+    # 2. 宣告一個按鈕列表容器，先把地圖按鈕放進去
+    buttons_contents: list[dict[str, Any]] = [map_button_box]
+
+    # 3.只有當電話存在，且經過清洗後是有效號碼（長度 >= 6）時，才加入電話按鈕
     if facility.phone:
         tel_uri = _build_flex_tel_uri(facility.phone)
         if tel_uri != "tel:":
-            buttons_contents.append(
-                ft.primary_button(
-                    call_label,
-                    {"type": "uri", "label": call_label, "uri": tel_uri},
-                )
+            tel_button_box = ft.primary_button(
+                call_label,
+                {"type": "uri", "label": call_label, "uri": tel_uri},
             )
-
-    buttons_contents.append(
-        ft.secondary_button(
-            map_label,
-            {"type": "uri", "label": map_label, "uri": map_uri},
-        )
-    )
+            # 有電話按鈕時，將它放到地圖按鈕的前面（維持電話在左、地圖在右的順序）
+            buttons_contents.insert(0, tel_button_box)
 
     display_name = facility.name or t("flex.facility.fallback_name", language)
+
+    contents: list[dict[str, Any]] = [
+        {
+            "type": "text",
+            "text": facility.name or t("flex.facility.unknown_name", language),
+            "weight": "bold",
+            "wrap": True,
+            "size": ft.heading,
+            "color": theme.TEXT,
+        },
+        _build_status_indicator(facility, ft, language),
+        {
+            "type": "text",
+            "text": dist_text,
+            "size": ft.body,
+            "weight": "bold",
+            "color": theme.BRAND_DARK,
+        },
+        {
+            "type": "text",
+            "text": facility.address or t("flex.facility.no_address", language),
+            "wrap": True,
+            "size": ft.body,
+            "weight": "bold",
+            "color": theme.TEXT_MUTED,
+        },
+        {
+            "type": "box",
+            "layout": "horizontal",
+            "spacing": "md",
+            "margin": "lg",
+            "contents": buttons_contents,  # 這裡帶入動態組好的按鈕列表
+        },
+    ]
+
+    # 院所註記（notes）放在整張卡片的最底部、按鈕之後。
+    if facility.notes:
+        contents.append(
+            {
+                "type": "text",
+                "text": t("flex.facility.note", language).format(note=facility.notes),
+                "size": ft.body,
+                "weight": "bold",
+                "color": "#B71C1C",
+                "margin": "lg",
+                "wrap": True,
+            }
+        )
 
     return {
         "type": "box",
         "layout": "vertical",
-        "margin": "lg",
-        "paddingAll": "lg",
-        "backgroundColor": theme.SURFACE_ALT,
-        "cornerRadius": "lg",
-        "spacing": "sm",
+        "margin": "xxl",
+        "spacing": "md",
         "action": {
-            # postback 會把資料回傳 webhook，用來回覆對應院所的詳情卡
+            # postback action 會在使用者點擊時，將資料傳回你的 webhook，方便後續回傳對應院所的flex message
             "type": "postback",
             "label": t("flex.action.detail", language),
             "data": f"action=view_facility_detail&facility_id={facility.id}",
@@ -221,39 +291,7 @@ def create_facility_item_box(
                 name=display_name
             ),
         },
-        "contents": [
-            {
-                "type": "text",
-                "text": facility.name or t("flex.facility.unknown_name", language),
-                "weight": "bold",
-                "wrap": True,
-                "size": ft.heading,
-                "color": theme.TEXT,
-            },
-            _build_status_indicator(resolve_business_hours(facility), ft, language),
-            {
-                "type": "text",
-                "text": dist_text,
-                "size": ft.body,
-                "weight": "bold",
-                "color": theme.BRAND_DARK,
-                "margin": "xs",
-            },
-            {
-                "type": "text",
-                "text": facility.address or t("flex.facility.no_address", language),
-                "wrap": True,
-                "size": ft.body,
-                "color": theme.TEXT_MUTED,
-            },
-            {
-                "type": "box",
-                "layout": "horizontal",
-                "spacing": "sm",
-                "margin": "lg",
-                "contents": buttons_contents,
-            },
-        ],
+        "contents": contents,
     }
 
 
@@ -295,19 +333,11 @@ def generate_facility_list_flex_message(
     contents: list[dict[str, Any]] = [
         {
             "type": "text",
-            "text": t("flex.facility.eyebrow", language),
-            "weight": "bold",
-            "size": ft.caption,
-            "color": theme.BRAND,
-        },
-        {
-            "type": "text",
             "text": title_text,
             "weight": "bold",
             "size": ft.title,
             "wrap": True,
             "color": theme.TEXT,
-            "margin": "xs",
         },
         {
             "type": "text",
@@ -315,25 +345,26 @@ def generate_facility_list_flex_message(
             "text": subtitle_text,
             "color": theme.TEXT_MUTED,
             "size": ft.body,
-            "margin": "sm",
         },
-        theme.divider("lg"),
+        theme.divider("md"),
     ]
 
-    # 每張院所卡片自帶底色與圓角，彼此以間距區隔，不再需要分隔線
-    for facility in facilities:
+    for idx, facility in enumerate(facilities):
         contents.append(create_facility_item_box(facility, ft, language))
+        if idx < len(facilities) - 1:
+            contents.append(theme.divider("xxl"))
 
     # 候選清單情境下，若總筆數超過本次顯示筆數，於列表末端補上提示文字
     if is_candidate_list and total_count > len(facilities):
+        contents.append(theme.divider("xxl"))
         contents.append(
             {
                 "type": "text",
                 "text": t("flex.facility.overflow", language),
                 "wrap": True,
-                "size": ft.caption,
+                "size": ft.body,
                 "color": theme.TEXT_FAINT,
-                "margin": "lg",
+                "margin": "xxl",
             }
         )
 
@@ -346,8 +377,7 @@ def generate_facility_list_flex_message(
             "body": {
                 "type": "box",
                 "layout": "vertical",
-                "paddingAll": "xl",
-                "backgroundColor": theme.SURFACE,
+                "spacing": "xl",
                 "contents": contents,
             },
         },

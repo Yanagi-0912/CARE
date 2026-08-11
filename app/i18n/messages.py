@@ -783,14 +783,7 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "แผนก ({count})",
         "ja": "診療科（{count} 件）",
     },
-    "flex.detail.day_closed": {
-        "zh-TW": "休診",
-        "en": "Closed",
-        "id": "Tutup",
-        "vi": "Nghỉ",
-        "th": "ปิด",
-        "ja": "休診",
-    },
+
     "flex.detail.no_data": {
         "zh-TW": "無資料",
         "en": "No data",
@@ -798,6 +791,39 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "vi": "Không có dữ liệu",
         "th": "ไม่มีข้อมูล",
         "ja": "データなし",
+    },
+    # --- Flex：門診表（時段 × 星期的矩陣）---
+    "flex.detail.clinic_table": {
+        "zh-TW": "門診表",
+        "en": "Schedule",
+        "id": "Jadwal",
+        "vi": "Lịch khám",
+        "th": "ตาราง",
+        "ja": "診療表",
+    },
+    "flex.detail.period.morning": {
+        "zh-TW": "早診",
+        "en": "Morning",
+        "id": "Pagi",
+        "vi": "Sáng",
+        "th": "เช้า",
+        "ja": "午前",
+    },
+    "flex.detail.period.afternoon": {
+        "zh-TW": "午診",
+        "en": "Afternoon",
+        "id": "Siang",
+        "vi": "Chiều",
+        "th": "บ่าย",
+        "ja": "午後",
+    },
+    "flex.detail.period.evening": {
+        "zh-TW": "晚診",
+        "en": "Evening",
+        "id": "Malam",
+        "vi": "Tối",
+        "th": "เย็น",
+        "ja": "夜間",
     },
     # --- 星期 ---
     "weekday.monday": {
@@ -827,6 +853,215 @@ _MESSAGES: dict[str, dict[str, str]] = {
     "weekday.sunday": {
         "zh-TW": "週日", "en": "Sun", "id": "Min",
         "vi": "CN", "th": "อา.", "ja": "日",
+    },
+    # --- 星期（門診表欄頭專用的極短版）---
+    "weekday.short.monday": {
+        "zh-TW": "一", "en": "Mo", "id": "Sn",
+        "vi": "T2", "th": "จ", "ja": "月",
+    },
+    "weekday.short.tuesday": {
+        "zh-TW": "二", "en": "Tu", "id": "Sl",
+        "vi": "T3", "th": "อ", "ja": "火",
+    },
+    "weekday.short.wednesday": {
+        "zh-TW": "三", "en": "We", "id": "Rb",
+        "vi": "T4", "th": "พ", "ja": "水",
+    },
+    "weekday.short.thursday": {
+        "zh-TW": "四", "en": "Th", "id": "Km",
+        "vi": "T5", "th": "พฤ", "ja": "木",
+    },
+    "weekday.short.friday": {
+        "zh-TW": "五", "en": "Fr", "id": "Jm",
+        "vi": "T6", "th": "ศ", "ja": "金",
+    },
+    "weekday.short.saturday": {
+        "zh-TW": "六", "en": "Sa", "id": "Sb",
+        "vi": "T7", "th": "ส", "ja": "土",
+    },
+    "weekday.short.sunday": {
+        "zh-TW": "日", "en": "Su", "id": "Mg",
+        "vi": "CN", "th": "อา", "ja": "日",
+    },
+    # --- 診療科別 ---
+    # key 直接用資料庫的中文原文（medicalFacilities.departments 的 distinct 值），
+    # 因為那本來就是唯一穩定的識別字；另外造一組英文 slug 只會多一層對照表要維護。
+    # 查不到的科別（次專科、或整串塞在一格的髒資料）由 department_label() 原樣回傳，
+    # 絕不會顯示成 "department.XXX" 這種 key。
+    "department.內科": {
+        "zh-TW": "內科", "en": "Internal Medicine", "id": "Penyakit Dalam",
+        "vi": "Nội khoa", "th": "อายุรกรรม", "ja": "内科",
+    },
+    "department.外科": {
+        "zh-TW": "外科", "en": "Surgery", "id": "Bedah",
+        "vi": "Ngoại khoa", "th": "ศัลยกรรม", "ja": "外科",
+    },
+    "department.兒科": {
+        "zh-TW": "兒科", "en": "Pediatrics", "id": "Anak",
+        "vi": "Nhi khoa", "th": "กุมารเวชกรรม", "ja": "小児科",
+    },
+    "department.婦產科": {
+        "zh-TW": "婦產科", "en": "Obstetrics & Gynecology", "id": "Kebidanan & Kandungan",
+        "vi": "Sản phụ khoa", "th": "สูตินรีเวช", "ja": "産婦人科",
+    },
+    "department.骨科": {
+        "zh-TW": "骨科", "en": "Orthopedics", "id": "Ortopedi",
+        "vi": "Chấn thương chỉnh hình", "th": "ศัลยกรรมกระดูก", "ja": "整形外科",
+    },
+    "department.神經科": {
+        "zh-TW": "神經科", "en": "Neurology", "id": "Saraf",
+        "vi": "Thần kinh", "th": "ประสาทวิทยา", "ja": "神経内科",
+    },
+    "department.神經外科": {
+        "zh-TW": "神經外科", "en": "Neurosurgery", "id": "Bedah Saraf",
+        "vi": "Ngoại thần kinh", "th": "ศัลยกรรมประสาท", "ja": "脳神経外科",
+    },
+    "department.泌尿科": {
+        "zh-TW": "泌尿科", "en": "Urology", "id": "Urologi",
+        "vi": "Tiết niệu", "th": "ระบบทางเดินปัสสาวะ", "ja": "泌尿器科",
+    },
+    "department.耳鼻喉科": {
+        "zh-TW": "耳鼻喉科", "en": "ENT", "id": "THT",
+        "vi": "Tai mũi họng", "th": "หู คอ จมูก", "ja": "耳鼻咽喉科",
+    },
+    "department.眼科": {
+        "zh-TW": "眼科", "en": "Ophthalmology", "id": "Mata",
+        "vi": "Nhãn khoa", "th": "จักษุวิทยา", "ja": "眼科",
+    },
+    "department.皮膚科": {
+        "zh-TW": "皮膚科", "en": "Dermatology", "id": "Kulit",
+        "vi": "Da liễu", "th": "ผิวหนัง", "ja": "皮膚科",
+    },
+    "department.精神科": {
+        "zh-TW": "精神科", "en": "Psychiatry", "id": "Psikiatri",
+        "vi": "Tâm thần", "th": "จิตเวช", "ja": "精神科",
+    },
+    "department.復健科": {
+        "zh-TW": "復健科", "en": "Rehabilitation", "id": "Rehabilitasi",
+        "vi": "Phục hồi chức năng", "th": "เวชศาสตร์ฟื้นฟู", "ja": "リハビリテーション科",
+    },
+    "department.麻醉科": {
+        "zh-TW": "麻醉科", "en": "Anesthesiology", "id": "Anestesi",
+        "vi": "Gây mê", "th": "วิสัญญีวิทยา", "ja": "麻酔科",
+    },
+    "department.放射診斷科": {
+        "zh-TW": "放射診斷科", "en": "Diagnostic Radiology", "id": "Radiologi Diagnostik",
+        "vi": "Chẩn đoán hình ảnh", "th": "รังสีวินิจฉัย", "ja": "放射線診断科",
+    },
+    "department.放射腫瘤科": {
+        "zh-TW": "放射腫瘤科", "en": "Radiation Oncology", "id": "Onkologi Radiasi",
+        "vi": "Xạ trị ung thư", "th": "รังสีรักษา", "ja": "放射線腫瘍科",
+    },
+    "department.放射線科": {
+        "zh-TW": "放射線科", "en": "Radiology", "id": "Radiologi",
+        "vi": "Chẩn đoán hình ảnh", "th": "รังสีวิทยา", "ja": "放射線科",
+    },
+    "department.解剖病理科": {
+        "zh-TW": "解剖病理科", "en": "Anatomical Pathology", "id": "Patologi Anatomi",
+        "vi": "Giải phẫu bệnh", "th": "พยาธิกายวิภาค", "ja": "解剖病理科",
+    },
+    "department.臨床病理科": {
+        "zh-TW": "臨床病理科", "en": "Clinical Pathology", "id": "Patologi Klinik",
+        "vi": "Bệnh học lâm sàng", "th": "พยาธิคลินิก", "ja": "臨床病理科",
+    },
+    "department.病理科": {
+        "zh-TW": "病理科", "en": "Pathology", "id": "Patologi",
+        "vi": "Giải phẫu bệnh", "th": "พยาธิวิทยา", "ja": "病理科",
+    },
+    "department.核子醫學科": {
+        "zh-TW": "核子醫學科", "en": "Nuclear Medicine", "id": "Kedokteran Nuklir",
+        "vi": "Y học hạt nhân", "th": "เวชศาสตร์นิวเคลียร์", "ja": "核医学科",
+    },
+    "department.急診醫學科": {
+        "zh-TW": "急診醫學科", "en": "Emergency Medicine", "id": "Gawat Darurat",
+        "vi": "Cấp cứu", "th": "เวชศาสตร์ฉุกเฉิน", "ja": "救急科",
+    },
+    "department.整形外科": {
+        "zh-TW": "整形外科", "en": "Plastic Surgery", "id": "Bedah Plastik",
+        "vi": "Phẫu thuật tạo hình", "th": "ศัลยกรรมตกแต่ง", "ja": "形成外科",
+    },
+    "department.職業醫學科": {
+        "zh-TW": "職業醫學科", "en": "Occupational Medicine", "id": "Kedokteran Okupasi",
+        "vi": "Y học lao động", "th": "อาชีวเวชศาสตร์", "ja": "産業医学科",
+    },
+    "department.家庭醫學科": {
+        "zh-TW": "家庭醫學科", "en": "Family Medicine", "id": "Kedokteran Keluarga",
+        "vi": "Y học gia đình", "th": "เวชศาสตร์ครอบครัว", "ja": "家庭医学科",
+    },
+    "department.家醫科": {
+        "zh-TW": "家醫科", "en": "Family Medicine", "id": "Kedokteran Keluarga",
+        "vi": "Y học gia đình", "th": "เวชศาสตร์ครอบครัว", "ja": "家庭医学科",
+    },
+    "department.西醫一般科": {
+        "zh-TW": "西醫一般科", "en": "General Medicine", "id": "Kedokteran Umum",
+        "vi": "Tây y tổng quát", "th": "แพทย์ทั่วไป", "ja": "一般内科",
+    },
+    "department.不分科": {
+        "zh-TW": "不分科", "en": "General (Unspecified)", "id": "Umum",
+        "vi": "Không phân khoa", "th": "ไม่ระบุแผนก", "ja": "総合診療",
+    },
+    "department.中醫一般科": {
+        "zh-TW": "中醫一般科", "en": "Traditional Chinese Medicine", "id": "Pengobatan Tradisional Tiongkok",
+        "vi": "Đông y", "th": "แพทย์แผนจีน", "ja": "中医一般",
+    },
+    "department.洗腎科": {
+        "zh-TW": "洗腎科", "en": "Dialysis", "id": "Dialisis",
+        "vi": "Lọc máu", "th": "ฟอกไต", "ja": "透析科",
+    },
+    "department.一般精神科": {
+        "zh-TW": "一般精神科", "en": "General Psychiatry", "id": "Psikiatri Umum",
+        "vi": "Tâm thần tổng quát", "th": "จิตเวชทั่วไป", "ja": "一般精神科",
+    },
+    "department.兒童青少年精神科": {
+        "zh-TW": "兒童青少年精神科", "en": "Child & Adolescent Psychiatry",
+        "id": "Psikiatri Anak & Remaja", "vi": "Tâm thần trẻ em & vị thành niên",
+        "th": "จิตเวชเด็กและวัยรุ่น", "ja": "児童思春期精神科",
+    },
+    "department.成癮防治科": {
+        "zh-TW": "成癮防治科", "en": "Addiction Medicine", "id": "Kedokteran Adiksi",
+        "vi": "Cai nghiện", "th": "เวชศาสตร์การเสพติด", "ja": "依存症治療科",
+    },
+    "department.牙科": {
+        "zh-TW": "牙科", "en": "Dentistry", "id": "Kedokteran Gigi",
+        "vi": "Nha khoa", "th": "ทันตกรรม", "ja": "歯科",
+    },
+    "department.牙醫一般科": {
+        "zh-TW": "牙醫一般科", "en": "General Dentistry", "id": "Kedokteran Gigi Umum",
+        "vi": "Nha khoa tổng quát", "th": "ทันตกรรมทั่วไป", "ja": "一般歯科",
+    },
+    "department.家庭牙醫科": {
+        "zh-TW": "家庭牙醫科", "en": "Family Dentistry", "id": "Kedokteran Gigi Keluarga",
+        "vi": "Nha khoa gia đình", "th": "ทันตกรรมครอบครัว", "ja": "家庭歯科",
+    },
+    "department.兒童牙科": {
+        "zh-TW": "兒童牙科", "en": "Pediatric Dentistry", "id": "Kedokteran Gigi Anak",
+        "vi": "Nha khoa trẻ em", "th": "ทันตกรรมเด็ก", "ja": "小児歯科",
+    },
+    "department.齒顎矯正科": {
+        "zh-TW": "齒顎矯正科", "en": "Orthodontics", "id": "Ortodonsia",
+        "vi": "Chỉnh nha", "th": "ทันตกรรมจัดฟัน", "ja": "矯正歯科",
+    },
+    "department.牙周病科": {
+        "zh-TW": "牙周病科", "en": "Periodontics", "id": "Periodonsia",
+        "vi": "Nha chu", "th": "ปริทันตวิทยา", "ja": "歯周病科",
+    },
+    "department.牙髓病科": {
+        "zh-TW": "牙髓病科", "en": "Endodontics", "id": "Endodonsia",
+        "vi": "Nội nha", "th": "วิทยาเอ็นโดดอนต์", "ja": "歯内療法科",
+    },
+    "department.贋復補綴牙科": {
+        "zh-TW": "贋復補綴牙科", "en": "Prosthodontics", "id": "Prostodonsia",
+        "vi": "Phục hình răng", "th": "ทันตกรรมประดิษฐ์", "ja": "補綴歯科",
+    },
+    "department.口腔顎面外科": {
+        "zh-TW": "口腔顎面外科", "en": "Oral & Maxillofacial Surgery",
+        "id": "Bedah Mulut & Maksilofasial", "vi": "Phẫu thuật hàm mặt",
+        "th": "ศัลยกรรมช่องปาก", "ja": "口腔外科",
+    },
+    "department.特殊需求者口腔醫學科": {
+        "zh-TW": "特殊需求者口腔醫學科", "en": "Special Needs Dentistry",
+        "id": "Kedokteran Gigi Kebutuhan Khusus", "vi": "Nha khoa nhu cầu đặc biệt",
+        "th": "ทันตกรรมผู้มีความต้องการพิเศษ", "ja": "障害者歯科",
     },
     # --- 用藥時段 ---
     "slot.morning": {
@@ -1086,6 +1321,22 @@ def t(key: str, language: str | None = None) -> str:
     if not translations:
         return key
     return translations.get(lang) or translations[DEFAULT_USER_LANGUAGE]
+
+
+def department_label(department: str, language: str | None = None) -> str:
+    """
+    把資料庫的診療科別譯成使用者語言；沒有對應翻譯時原樣回傳。
+
+    不能直接用 t()：t() 查不到 key 會回傳 key 本身，科別一旦沒收錄就會在卡片上
+    顯示成「department.腸胃內科」。而 departments 除了部定專科之外，還混有次專科與
+    「家醫科、內科、外科…」整串塞進單一元素的髒資料，這些本來就不可能全部收進字典，
+    退回原文（中文）才是正確的降級——看得懂總比看到 key 好。
+    """
+    translations = _MESSAGES.get(f"department.{department}")
+    if not translations:
+        return department
+    lang = get_request_language() if language is None else normalize_user_language(language)
+    return translations.get(lang) or department
 
 
 def all_sources_headings() -> frozenset[str]:

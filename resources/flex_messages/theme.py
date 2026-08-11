@@ -43,7 +43,7 @@ NEUTRAL_BG = "#ECEFEC"
 # 各語義角色在三種字級設定下對應的 LINE Flex size keyword
 _SIZE_SCALE: dict[str, dict[str, str]] = {
     "title": {"normal": "xl", "large": "3xl", "xlarge": "4xl"},
-    "heading": {"normal": "lg", "large": "xl", "xlarge": "xxl"},
+    "heading": {"normal": "xl", "large": "xxl", "xlarge": "3xl"},
     "body": {"normal": "md", "large": "lg", "xlarge": "xl"},
     "caption": {"normal": "sm", "large": "md", "xlarge": "lg"},
     "button": {"normal": "lg", "large": "xl", "xlarge": "xxl"},

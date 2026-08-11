@@ -899,6 +899,32 @@ async def test_send_urgent_reminder_reads_names_from_shared_cache(scheduler, moc
     assert "普拿疼" in rendered
 
 
+@pytest.mark.asyncio
+async def test_send_caregiver_alert_reads_names_from_shared_cache(
+    scheduler, mock_replier
+):
+    """
+    T+30 的家屬警報要說得出漏掉的是哪幾種藥，且藥名同樣從該階段共用的查表取得
+    ——不是自己另外查一次。它與 T+0／T+20 的差別只在收件人是家屬，沒有理由
+    在藥名解析上另起爐灶。
+    """
+    scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
+    log = _log("L1", "REM_1", scheduled_at)
+    cache = _TickMedicationNameCache([log])
+    cache._names_by_log_id = {"L1": ["脈優", "利尿劑"]}
+
+    sent = await scheduler._send_caregiver_alert(log, cache)
+
+    assert sent is True
+    mock_replier.push_flex.assert_awaited_once()
+    call_args = mock_replier.push_flex.call_args[0]
+    assert call_args[0] == "U_CARE"  # 收件人仍是通報家屬
+    rendered = str(call_args[1].contents.to_dict())
+    assert "脈優" in rendered
+    assert "利尿劑" in rendered
+    assert "尚未服用的藥品" in rendered
+
+
 def test_process_ticks_expansion_path_does_not_reference_medication_ids():
     """
     展開與搶佔路徑不得讀 medication_ids —— 這是排程器既有併發保證（原子搶佔、
@@ -916,13 +942,16 @@ def test_process_ticks_builds_exactly_one_cache_per_stage_outside_the_loop():
     """
     Finding 1 的批次化必須是「每個階段建立一次查表物件」，而不是在迴圈裡逐筆
     建立（逐筆建立會讓批次化形同虛設，因為每個物件只服務一筆 log）。這裡用
-    原始碼掃描鎖住：`_TickMedicationNameCache(` 只會出現兩次（T+0、T+20 各一
-    次），且都在各自的 `for log in ...` 迴圈之前。
+    原始碼掃描鎖住：`_TickMedicationNameCache(` 只會出現三次（T+0、T+20、T+30
+    各一次），且都在各自的 `for log in ...` 迴圈之前。
+
+    （T+30 是後來才加入的：家屬警報開始列出漏服的藥品後，它與前兩個階段一樣
+    需要藥名，同一個 tick 內同樣可能有多筆 log，沒有理由退回逐筆查詢。）
     """
     import inspect
 
     source = inspect.getsource(MedicationScheduler.process_ticks)
-    assert source.count("_TickMedicationNameCache(") == 2
+    assert source.count("_TickMedicationNameCache(") == 3
 
     initial_cache_pos = source.index("_TickMedicationNameCache(pending_initial_logs)")
     initial_loop_pos = source.index("for log in pending_initial_logs:")
@@ -931,4 +960,8 @@ def test_process_ticks_builds_exactly_one_cache_per_stage_outside_the_loop():
     urgent_cache_pos = source.index("_TickMedicationNameCache(pending_urgent_logs)")
     urgent_loop_pos = source.index("for log in pending_urgent_logs:")
     assert urgent_cache_pos < urgent_loop_pos
+
+    alert_cache_pos = source.index("_TickMedicationNameCache(pending_alert_logs)")
+    alert_loop_pos = source.index("for log in pending_alert_logs:")
+    assert alert_cache_pos < alert_loop_pos
 

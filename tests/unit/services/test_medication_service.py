@@ -325,3 +325,148 @@ async def test_get_user_reminders_with_medications_empty_when_no_medication_ids(
     # medications 欄位維持未初始化的狀態。
     assert fake_medications.queried_ids == []
 
+
+
+class _FakeActiveMedicationRepository:
+    """`list_medication_names_for_log` 用建構子注入的替身。
+
+    刻意與 FakeMedicationRepository 分開：那個替身模擬的是 `find_by_ids`
+    （LIFF 要看到全部關聯藥品，含已停用的），這裡模擬的是 `find_active_by_ids`
+    （推播只能列出當日仍有效的藥）。兩者的語意不同，共用一個替身會讓「推播
+    是否真的走了有效性篩選」這件事測不出來。
+    """
+
+    def __init__(self, medications: list[Medication] | None = None):
+        self._medications = medications or []
+        self.queried_ids: list[str] | None = None
+        self.queried_date: str | None = None
+
+    async def find_active_by_ids(
+        self, medication_ids: list[str], date_str: str
+    ) -> list[Medication]:
+        self.queried_ids = list(medication_ids)
+        self.queried_date = date_str
+        return [m for m in self._medications if m.id in medication_ids]
+
+
+def _medication(medication_id: str, name: str) -> Medication:
+    return Medication(
+        id=medication_id,
+        user_id="U_PATIENT",
+        created_by_user_id="U_CARE",
+        name=name,
+    )
+
+
+def _log_for_names(scheduled_at: str = "2026-08-09T00:00:00Z") -> MedicationLog:
+    return MedicationLog(
+        id="L123",
+        reminder_id="R123",
+        user_id="U_PATIENT",
+        alert_notify_user_id="U_CARE",
+        slot_type="morning",
+        scheduled_at=scheduled_at,
+        timeout_at="2026-08-09T00:30:00Z",
+        status="taken",
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_medication_names_for_log_preserves_reminder_order():
+    """藥名順序沿用 `reminder.medication_ids`，與排程器的批次版本一致。
+
+    兩條路徑（排程器推播 / 使用者按確認）顯示的是同一個時段的同一批藥，順序
+    不一致會讓使用者以為是兩份不同的清單。
+    """
+    fake_repo = _FakeActiveMedicationRepository(
+        [_medication("M2", "利尿劑"), _medication("M1", "脈優")]
+    )
+    service = MedicationService(medication_repository=fake_repo)
+    reminder = MedicationReminder(
+        id="R123",
+        creator_user_id="U_CARE",
+        user_id="U_PATIENT",
+        slot_type="morning",
+        medication_ids=["M1", "M2"],
+    )
+
+    with patch(
+        "app.services.medication.medication_service.MedicationReminderRepository.get_reminder_by_id",
+        new_callable=AsyncMock,
+        return_value=reminder,
+    ):
+        names = await service.list_medication_names_for_log(_log_for_names())
+
+    assert names == ["脈優", "利尿劑"]
+
+
+@pytest.mark.asyncio
+async def test_list_medication_names_for_log_uses_the_logs_own_taipei_date():
+    """有效性以 log 自己的台北日期判定，不是「今天」。
+
+    確認可能發生在跨日之後（例如睡前那一劑拖到隔天凌晨才按），用今天的日期
+    去篩會把當時仍有效、今天才結束療程的藥錯誤地濾掉。排程器的
+    `_TickMedicationNameCache` 也是這個規則，兩邊必須算出同一個答案。
+    """
+    fake_repo = _FakeActiveMedicationRepository([_medication("M1", "脈優")])
+    service = MedicationService(medication_repository=fake_repo)
+    reminder = MedicationReminder(
+        id="R123",
+        creator_user_id="U_CARE",
+        user_id="U_PATIENT",
+        slot_type="bedtime",
+        medication_ids=["M1"],
+    )
+
+    # UTC 2026-08-09 13:30 = 台北 2026-08-09 21:30
+    with patch(
+        "app.services.medication.medication_service.MedicationReminderRepository.get_reminder_by_id",
+        new_callable=AsyncMock,
+        return_value=reminder,
+    ):
+        await service.list_medication_names_for_log(
+            _log_for_names(scheduled_at="2026-08-09T13:30:00Z")
+        )
+
+    assert fake_repo.queried_date == "2026-08-09"
+
+
+@pytest.mark.asyncio
+async def test_list_medication_names_for_log_returns_empty_without_medication_ids():
+    """既有規則的 medication_ids 是空陣列——不查資料庫，卡片退回原本的版面。"""
+    fake_repo = _FakeActiveMedicationRepository()
+    service = MedicationService(medication_repository=fake_repo)
+    reminder = MedicationReminder(
+        id="R123",
+        creator_user_id="U_CARE",
+        user_id="U_PATIENT",
+        slot_type="morning",
+    )
+
+    with patch(
+        "app.services.medication.medication_service.MedicationReminderRepository.get_reminder_by_id",
+        new_callable=AsyncMock,
+        return_value=reminder,
+    ):
+        names = await service.list_medication_names_for_log(_log_for_names())
+
+    assert names == []
+    assert fake_repo.queried_ids is None
+
+
+@pytest.mark.asyncio
+async def test_list_medication_names_for_log_swallows_lookup_failures():
+    """查詢失敗只回空清單，不得往外拋。
+
+    這個查詢純粹是卡片上的補充資訊，而呼叫端是「使用者剛按下我已用藥」的
+    回覆路徑——用藥已經確認成功了，不能因為查不到藥名就讓他看到錯誤訊息、
+    以為剛才那一下沒有被記錄到。
+    """
+    service = MedicationService(medication_repository=_FakeActiveMedicationRepository())
+
+    with patch(
+        "app.services.medication.medication_service.MedicationReminderRepository.get_reminder_by_id",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("mongo down"),
+    ):
+        assert await service.list_medication_names_for_log(_log_for_names()) == []

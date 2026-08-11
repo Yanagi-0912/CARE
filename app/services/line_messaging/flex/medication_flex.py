@@ -88,14 +88,21 @@ def _medication_list_rows(names: list[str], language: str | None) -> list[str]:
 
 
 def _medication_list_block(
-    medication_names: Optional[list[str]], ft: theme.FlexTheme, language: str | None
+    medication_names: Optional[list[str]],
+    ft: theme.FlexTheme,
+    language: str | None,
+    heading_key: str = "flex.med.medication_list_heading",
 ) -> Optional[dict[str, Any]]:
-    """服藥提醒／二次催促文案的藥品清單區塊。
+    """服藥提醒／已完成／二次催促／家屬警報文案共用的藥品清單區塊。
 
     `medication_names` 為 None 或空清單時回傳 None，呼叫端據此完全不插入這個
     區塊——既有規則的 medication_ids 皆為空陣列，版面必須與本變更前逐一致，
     不能出現空白的藥品區塊或只有標題沒有內容的殘影。
     只放藥名：適應症等其他欄位由呼叫端在解析階段就已經濾除，這裡不重複把關。
+
+    `heading_key` 讓四張卡片共用同一套排版與截斷規則，只換標題的時態與語氣
+    （應服／已服用／尚未服用）。刻意不為此另開三份幾乎相同的 builder：藥名
+    的顯示上限與收斂形狀只該有一個定義，否則往後改上限時必漏改其中一處。
     """
     if not medication_names:
         return None
@@ -111,7 +118,7 @@ def _medication_list_block(
         "contents": [
             {
                 "type": "text",
-                "text": t("flex.med.medication_list_heading", language),
+                "text": t(heading_key, language),
                 "weight": "bold",
                 "size": ft.body,
                 "color": theme.TEXT,
@@ -177,8 +184,12 @@ def build_patient_medication_flex(
     - disabled=False: 顯示【我已用藥】可點擊按鈕
     - disabled=True: 顯示已完成的停用狀態 (點擊後動態替換)
 
-    `medication_names` 僅在 disabled=False（T+0 首刷提醒）時呈現：規則沒有關聯
-    藥品、或關聯的藥品皆已失效時傳入 None／空清單，版面與本參數新增前完全相同。
+    `medication_names` 兩種狀態都會呈現，只換標題的時態（應服／已服用）。
+    已完成的卡片同樣列出藥名，是因為它是使用者事後唯一能回頭查的憑據——
+    只寫「感謝您的紀錄」而不寫吃了什麼，等於把提醒卡上有的資訊在確認後就
+    丟掉，家屬與使用者都無從核對那一次到底服了哪幾種藥。
+    規則沒有關聯藥品、或關聯的藥品皆已失效時傳入 None／空清單，版面與本參數
+    新增前完全相同。
     """
     ft = theme.resolve_theme(font_size)
     slot_name = get_slot_display_name(slot_type, language)
@@ -216,17 +227,24 @@ def build_patient_medication_flex(
             if taken_at_str
             else t("flex.med.done", language)
         )
+        body_contents = [_slot_block(slot_name, scheduled_time, ft, language)]
+        med_block = _medication_list_block(
+            medication_names,
+            ft,
+            language,
+            heading_key="flex.med.medication_list_heading_done",
+        )
+        if med_block is not None:
+            body_contents.append(med_block)
+        body_contents.append(
+            _paragraph(t("flex.med.thanks", language), ft, margin="md")
+        )
         bubble_dict = {
             "type": "bubble",
             "header": _header(
                 t("flex.med.header.done", language), ft, background=theme.STATUS_UNKNOWN
             ),
-            "body": _body(
-                [
-                    _slot_block(slot_name, scheduled_time, ft, language),
-                    _paragraph(t("flex.med.thanks", language), ft, margin="md"),
-                ]
-            ),
+            "body": _body(body_contents),
             "footer": _footer(
                 {
                     "type": "box",
@@ -308,53 +326,70 @@ def build_caregiver_alert_flex(
     patient_name: str,
     slot_type: str,
     scheduled_time: str,
+    medication_names: Optional[list[str]] = None,
     language: str | None = None,
     font_size: str | None = None,
 ) -> FlexMessage:
-    """T+30min 傳送給通報對象家屬的逾時未用藥關心 Flex Message"""
+    """T+30min 傳送給通報對象家屬的逾時未用藥關心 Flex Message
+
+    `medication_names` 列出這個時段漏掉的是哪幾種藥。收件人是規則的建立者
+    （`alert_notify_user_id` 取自 `reminder.creator_user_id`），也就是當初替家人
+    設定這些藥的人，藥名對他不是新揭露的資訊；少了它，警報只說得出「某人某個
+    時段沒吃藥」，家屬無從判斷這次漏掉的是保養用藥還是不能斷的處方。
+    仍然只放藥名——適應症不得進入任何推播訊息（見 `Medication.indication`）。
+    為 None／空清單時版面與本參數新增前完全相同，見 `_medication_list_block`。
+    """
     ft = theme.resolve_theme(font_size)
     slot_name = get_slot_display_name(slot_type, language)
+
+    body_contents: list[dict[str, Any]] = [
+        {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": theme.SURFACE_ALT,
+            "cornerRadius": "md",
+            "paddingAll": "lg",
+            "spacing": "xs",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": patient_name,
+                    "weight": "bold",
+                    "size": ft.title,
+                    "color": theme.TEXT,
+                    "wrap": True,
+                },
+                {
+                    "type": "text",
+                    "text": f"{slot_name}　{scheduled_time}",
+                    "size": ft.body,
+                    "color": theme.TEXT_MUTED,
+                    "wrap": True,
+                },
+            ],
+        },
+        _paragraph(
+            t("flex.med.overdue", language),
+            ft,
+            color=theme.STATUS_CLOSED,
+            weight="bold",
+            margin="md",
+        ),
+    ]
+    med_block = _medication_list_block(
+        medication_names,
+        ft,
+        language,
+        heading_key="flex.med.medication_list_heading_missed",
+    )
+    if med_block is not None:
+        body_contents.append(med_block)
+    body_contents.append(_paragraph(t("flex.med.please_care", language), ft))
 
     bubble_dict = {
         "type": "bubble",
         "header": _header(t("flex.med.header.caregiver", language), ft),
-        "body": _body(
-            [
-                {
-                    "type": "box",
-                    "layout": "vertical",
-                    "backgroundColor": theme.SURFACE_ALT,
-                    "cornerRadius": "md",
-                    "paddingAll": "lg",
-                    "spacing": "xs",
-                    "contents": [
-                        {
-                            "type": "text",
-                            "text": patient_name,
-                            "weight": "bold",
-                            "size": ft.title,
-                            "color": theme.TEXT,
-                            "wrap": True,
-                        },
-                        {
-                            "type": "text",
-                            "text": f"{slot_name}　{scheduled_time}",
-                            "size": ft.body,
-                            "color": theme.TEXT_MUTED,
-                            "wrap": True,
-                        },
-                    ],
-                },
-                _paragraph(
-                    t("flex.med.overdue", language),
-                    ft,
-                    color=theme.STATUS_CLOSED,
-                    weight="bold",
-                    margin="md",
-                ),
-                _paragraph(t("flex.med.please_care", language), ft),
-            ]
-        ),
+        "body": _body(body_contents),
     }
 
     container = FlexContainer.from_dict(bubble_dict)

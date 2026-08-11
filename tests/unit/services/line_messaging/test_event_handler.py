@@ -710,6 +710,7 @@ async def test_handle_postback_event_confirm_medication(
         status="taken",
         taken_at=datetime.now(timezone.utc),
     )
+    mock_med_service.list_medication_names_for_log.return_value = ["脈優", "利尿劑"]
     handler._medication_service = mock_med_service
 
     event = _postback_event("action=confirm_medication&log_id=L123", user_id="U12345")
@@ -719,6 +720,16 @@ async def test_handle_postback_event_confirm_medication(
     mock_line_api.reply_message.assert_called_once()
     reply_req = mock_line_api.reply_message.call_args[0][0]
     assert reply_req.messages[0].type == "flex"
+
+    # 已完成的卡片要留下「這次吃了哪幾種藥」——提醒卡上有的資訊不該在按下
+    # 確認後就消失，那是使用者事後唯一查得到的憑據。藥名取自剛剛確認的那筆
+    # log（而不是「今天的規則」），所以查詢要帶著回傳的 log 本體。
+    mock_med_service.list_medication_names_for_log.assert_awaited_once_with(
+        mock_med_service.confirm_medication.return_value
+    )
+    rendered = str(reply_req.messages[0].contents.to_dict())
+    assert "脈優" in rendered
+    assert "利尿劑" in rendered
 
 
 @pytest.mark.asyncio

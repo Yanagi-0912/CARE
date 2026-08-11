@@ -1058,7 +1058,7 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "en": "Domain not in the source whitelist",
     },
     # --- Flex：服藥提醒／二次催促的藥品清單區塊 ---
-    # 只出現在給用藥者的提醒卡片上；適應症等其他欄位一律不進入這裡，見 medication_flex.py。
+    # 適應症等其他欄位一律不進入這裡，見 medication_flex.py。
     "flex.med.medication_list_heading": {
         "zh-TW": "本次應服藥品",
         "en": "Medications for this dose",
@@ -1066,6 +1066,28 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "vi": "Thuốc cho lần uống này",
         "th": "ยาสำหรับมื้อนี้",
         "ja": "今回服用する薬",
+    },
+    # 用藥已完成卡片的標題。與上一個 key 分開，是因為時態不同：確認之後再說
+    # 「應服」會讓使用者以為還有東西沒吃，而這張卡片的用途正是「留下吃了什麼
+    # 的紀錄」——事後回頭翻訊息時，這行字要能直接回答「那次我吃了哪幾種藥」。
+    "flex.med.medication_list_heading_done": {
+        "zh-TW": "本次服用藥品",
+        "en": "Medications taken",
+        "id": "Obat yang diminum",
+        "vi": "Thuốc đã uống",
+        "th": "ยาที่ทานแล้ว",
+        "ja": "服用した薬",
+    },
+    # 家屬逾時警報的標題。收件人是規則的建立者（alert_notify_user_id ==
+    # creator_user_id），也就是當初替家人設定這些藥的人；讓警報講清楚是哪幾種
+    # 藥沒吃，家屬才知道這次漏掉的嚴重程度，不必再回頭翻 LIFF 才能判斷。
+    "flex.med.medication_list_heading_missed": {
+        "zh-TW": "尚未服用的藥品",
+        "en": "Medications not yet taken",
+        "id": "Obat yang belum diminum",
+        "vi": "Thuốc chưa uống",
+        "th": "ยาที่ยังไม่ได้ทาน",
+        "ja": "まだ服用していない薬",
     },
     # 與 flex.med.missed_summary_more 同一種收斂形狀：超過顯示上限的品項不逐一列出，
     # 收斂成一行計數，避免藥品數量過多時訊息過長。

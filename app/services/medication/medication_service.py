@@ -12,6 +12,7 @@ from app.models.medication import (
     MedicationReminder,
     MedicationReminderWithMedications,
     UpdateMedicationReminderRequest,
+    ensure_aware_utc,
 )
 from app.repositories.family_tree_repository import FamilyTreeRepository
 from app.repositories.medication_repository import (
@@ -180,4 +181,46 @@ class MedicationService:
         if not updated_log:
             raise HTTPException(status_code=400, detail="更新用藥狀態失敗或該紀錄已完成")
         return updated_log
+
+    async def list_medication_names_for_log(self, log: MedicationLog) -> List[str]:
+        """取得某筆用藥日誌「當次」的藥名清單，供推播／回覆的卡片顯示。
+
+        排程器有自己的批次版本（`_TickMedicationNameCache`）——那是為了一個 tick
+        內多筆 log 共用查詢；這裡走的是使用者按下確認的單筆路徑，沒有可攤提的
+        對象，逐筆查兩次反而最省。兩邊的結果必須一致，所以有效性判定同樣以
+        **log 自己的台北日期**（而非今天）為準，藥名順序同樣沿用
+        `reminder.medication_ids` 的順序。
+
+        任何失敗都只記 log 並回傳空清單，不往外拋：這個查詢純粹是卡片上的補充
+        資訊，呼叫端拿到空清單時卡片會退回沒有藥品區塊的原樣。使用者的用藥已經
+        確認成功了，不該因為「查不到藥名」而讓他看到錯誤、或懷疑剛才那一下沒被
+        記錄到。
+        """
+        try:
+            reminder = await MedicationReminderRepository.get_reminder_by_id(
+                log.reminder_id
+            )
+            if not reminder or not reminder.medication_ids:
+                return []
+
+            date_str = (
+                ensure_aware_utc(log.scheduled_at)
+                .astimezone(TAIPEI_TZ)
+                .strftime("%Y-%m-%d")
+            )
+            medications = await self._medication_repository.find_active_by_ids(
+                reminder.medication_ids, date_str
+            )
+            name_by_id = {medication.id: medication.name for medication in medications}
+            return [
+                name_by_id[mid]
+                for mid in reminder.medication_ids
+                if mid in name_by_id
+            ]
+        except Exception:
+            logger.exception(
+                "[MedicationService] 無法取得日誌 %s 的藥名清單，卡片將不顯示藥品區塊",
+                log.id,
+            )
+            return []
 

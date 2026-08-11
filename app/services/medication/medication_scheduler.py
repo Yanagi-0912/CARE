@@ -272,8 +272,13 @@ class MedicationScheduler:
             pass
         return "成員"
 
-    async def _send_caregiver_alert(self, log: MedicationLog) -> bool:
+    async def _send_caregiver_alert(
+        self, log: MedicationLog, medication_cache: _TickMedicationNameCache
+    ) -> bool:
         patient_name = await self._resolve_patient_name(log.user_id)
+        # 藥名查表與 T+0／T+20 共用同一套機制（見 _TickMedicationNameCache）：
+        # 家屬警報同樣是一個 tick 內可能有多筆，逐筆查「規則→藥品」沒有道理。
+        medication_names = await medication_cache.get(log)
 
         # 這則推播的收件人是家屬，語言與字級需取家屬本人的設定
         language, font_size = await self._resolve_display_prefs(
@@ -283,6 +288,7 @@ class MedicationScheduler:
             patient_name=patient_name,
             slot_type=log.slot_type,
             scheduled_time=to_taipei_hm(log.scheduled_at, default="08:00"),
+            medication_names=medication_names,
             language=language,
             font_size=font_size,
         )
@@ -476,13 +482,14 @@ class MedicationScheduler:
         pending_alert_logs = await MedicationLogRepository.list_pending_caregiver_alerts(
             threshold_time=current_time
         )
+        alert_medication_cache = _TickMedicationNameCache(pending_alert_logs)
         for log in pending_alert_logs:
             await self._dispatch(
                 stage="T+30min caregiver alert",
                 log_id=log.id,
                 claim=MedicationLogRepository.claim_caregiver_alert,
                 release=MedicationLogRepository.release_caregiver_alert,
-                send=partial(self._send_caregiver_alert, log),
+                send=partial(self._send_caregiver_alert, log, alert_medication_cache),
             )
 
 

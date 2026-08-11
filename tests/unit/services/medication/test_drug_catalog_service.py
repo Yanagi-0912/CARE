@@ -201,6 +201,11 @@ def test_containment_hit_spanning_multiple_licenses_leaves_license_number_none()
 
     assert match is not None
     assert match.license_number is None
+    assert {c.license_number for c in match.candidates} == {
+        PANADOL_PLAIN.license_number,
+        PANADOL_COLD.license_number,
+        PANADOL_EXTRA.license_number,
+    }
 
 
 def test_query_below_minimum_containment_length_does_not_match_by_containment():
@@ -220,48 +225,59 @@ def test_query_below_minimum_containment_length_does_not_match_by_containment():
 
 
 def _brute_force_match(
-    by_key: dict[str, DrugCatalogEntry], threshold: float, name: str
+    by_key: dict[str, dict[str, DrugCatalogEntry]], threshold: float, name: str
 ):
     """不透過 gram 索引、直接對全部鍵做線性掃描的參考實作。
 
     含容與模糊比對的邏輯與 `DrugCatalogService` 完全相同，差別只在候選
     集合是「全部的鍵」而不是索引narrow 出來的子集——索引只是效能優化，
     不應該改變任何一筆查詢的最終結果，這支函式就是用來驗證這件事的
-    oracle。
+    oracle。`by_key` 的值是 `{license_number: entry}`，跟服務內部的
+    索引結構一致，才能餵服務本身建出來的 `_by_key` 進來比對。
     """
+
+    def resolve(entries_by_license: dict[str, DrugCatalogEntry], score: float):
+        candidates = list(entries_by_license.values())
+        if len(candidates) == 1:
+            (entry,) = candidates
+            return DrugCatalogMatch(
+                entry.license_number, entry.name_zh, entry.name_en, score, candidates
+            )
+        return DrugCatalogMatch(None, "", "", score, candidates)
+
     key = normalize_drug_name(name)
     if not key or not by_key:
         return None
 
     exact = by_key.get(key)
     if exact is not None:
-        return DrugCatalogMatch(exact.license_number, exact.name_zh, exact.name_en, 1.0)
+        return resolve(exact, 1.0)
 
     if len(key) >= 3:
         hits = [k for k in by_key if key in k or k in key]
         if hits:
             entries_by_license: dict[str, DrugCatalogEntry] = {}
             for k in hits:
-                entries_by_license.setdefault(by_key[k].license_number, by_key[k])
+                entries_by_license.update(by_key[k])
             if len(entries_by_license) > 1:
-                return DrugCatalogMatch(None, "", "", 0.0)
+                return resolve(entries_by_license, 0.0)
             (entry,) = entries_by_license.values()
             coverage = max(
                 min(len(key), len(k)) / max(len(key), len(k))
                 for k in hits
-                if by_key[k].license_number == entry.license_number
+                if entry.license_number in by_key[k]
             )
-            return DrugCatalogMatch(entry.license_number, entry.name_zh, entry.name_en, coverage)
+            return resolve(entries_by_license, coverage)
 
-    best_entry = None
+    best_key = None
     best_score = 0.0
-    for k, entry in by_key.items():
+    for k in by_key:
         score = SequenceMatcher(None, key, k).ratio()
         if score > best_score:
-            best_entry, best_score = entry, score
-    if best_entry is None or best_score < threshold:
+            best_key, best_score = k, score
+    if best_key is None or best_score < threshold:
         return None
-    return DrugCatalogMatch(best_entry.license_number, best_entry.name_zh, best_entry.name_en, best_score)
+    return resolve(by_key[best_key], best_score)
 
 
 def test_index_produces_same_results_as_brute_force_scan():
@@ -313,3 +329,84 @@ def test_index_produces_same_results_as_brute_force_scan():
             assert indexed is not None, query
             assert indexed.license_number == reference.license_number, query
             assert indexed.score == pytest.approx(reference.score), query
+            assert {c.license_number for c in indexed.candidates} == {
+                c.license_number for c in reference.candidates
+            }, query
+
+
+# ── 證號唯一才可信（決策 1）───────────────────────────────────────────
+#
+# 全庫實測：112,230 個正規化鍵裡有 10,766 個對應到不只一張藥證，涉及
+# 31,387 張（全庫 47%）。以下用「葉酸」模擬這種碰撞：兩張不同藥證的
+# 品名正規化後完全相同。
+
+FOLIC_ACID_A = DrugCatalogEntry(license_number="衛署藥製字第040001號", name_zh="葉酸")
+FOLIC_ACID_B = DrugCatalogEntry(license_number="衛署藥輸字第040002號", name_zh="葉酸")
+
+
+def test_unique_key_returns_license_number():
+    """鍵唯一對應一張藥證時，license_number 正常有值——這是既有行為，
+    這裡明確釘住它在候選模型下不受影響。"""
+    service = DrugCatalogService([FOLIC_ACID_A], threshold=0.88)
+
+    match = service.match("葉酸")
+
+    assert match is not None
+    assert match.license_number == "衛署藥製字第040001號"
+    assert [c.license_number for c in match.candidates] == ["衛署藥製字第040001號"]
+
+
+def test_colliding_key_leaves_license_number_none_with_both_candidates():
+    """兩張藥證的品名正規化後相同：license_number 必須留空，
+    兩張都要出現在候選清單——不得任選一張冒充答案。"""
+    service = DrugCatalogService([FOLIC_ACID_A, FOLIC_ACID_B], threshold=0.88)
+
+    match = service.match("葉酸")
+
+    assert match is not None
+    assert match.license_number is None
+    assert {c.license_number for c in match.candidates} == {
+        "衛署藥製字第040001號",
+        "衛署藥輸字第040002號",
+    }
+
+
+def test_exact_match_on_colliding_key_still_leaves_license_number_none():
+    """先前錯配的主因：完全比對（score 1.0）命中碰撞鍵時，
+    license_number 仍必須為空。實測全庫 400 筆模擬中 4.8% 比到錯的
+    藥證，其中 74% 就是這種「完全比對卻碰撞」的情形（「得胎隆」本身
+    就是另一張藥證的完整品名）——score 是 1.0 不代表證號唯一確定。"""
+    service = DrugCatalogService([FOLIC_ACID_A, FOLIC_ACID_B], threshold=0.88)
+
+    match = service.match("葉酸")
+
+    assert match is not None
+    assert match.score == 1.0
+    assert match.license_number is None
+
+
+def test_second_colliding_license_is_reachable_not_silently_dropped():
+    """先前用 setdefault 建索引時，碰撞鍵的第二筆永遠進不去索引，
+    無論怎麼查都比對不到。這裡直接檢查兩張藥證各自都在候選清單裡出現
+    過，確認第二張不再被靜默吞掉。"""
+    service = DrugCatalogService([FOLIC_ACID_A, FOLIC_ACID_B], threshold=0.88)
+
+    match = service.match("葉酸")
+
+    assert match is not None
+    licenses_in_candidates = [c.license_number for c in match.candidates]
+    assert FOLIC_ACID_A.license_number in licenses_in_candidates
+    assert FOLIC_ACID_B.license_number in licenses_in_candidates
+
+
+def test_multi_candidate_match_is_still_a_non_none_result():
+    """藥名信心度只看 `match()` 是不是 None（見
+    `PrescriptionScanService._verify_against_catalog` 的說明），跟
+    `license_number` 有沒有值是兩件事。這裡釘住候選多筆時 `match()`
+    仍回傳非 None 的物件，這是信心度判定成立的前提。"""
+    service = DrugCatalogService([FOLIC_ACID_A, FOLIC_ACID_B], threshold=0.88)
+
+    match = service.match("葉酸")
+
+    assert match is not None
+    assert len(match.candidates) == 2

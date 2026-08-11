@@ -11,7 +11,7 @@ from app.models.prescription import (
     RecognitionResult,
     RecognizedDrug,
 )
-from app.services.medication.drug_catalog_service import DrugCatalogMatch
+from app.services.medication.drug_catalog_service import DrugCatalogEntry, DrugCatalogMatch
 from app.services.medication.prescription_scan_service import (
     DraftExpiredError,
     DraftNotFoundError,
@@ -275,6 +275,42 @@ async def test_scan_fills_licence_and_raises_confidence_on_catalog_hit():
 
     assert draft.recognition.drugs[0].license_number == "衛署藥製字第000001號"
     assert draft.recognition.drugs[0].name_confidence == "high"
+
+
+@pytest.mark.asyncio
+async def test_scan_marks_high_name_confidence_when_catalog_hit_has_multiple_candidates():
+    """藥證庫索引改為候選模型後（決策 1），`match()` 命中碰撞鍵時
+    `license_number` 會是 None、`candidates` 有不只一筆。名稱信心度的
+    判定只看 `match()` 是不是 None（`_verify_against_catalog` 的既有
+    註解已載明此意圖），這裡直接餵一筆多候選的比對結果，釘住信心度
+    不會因為候選不只一張就被拖累成低信心——一張藥證命中 41 個候選
+    仍然是一個被驗證為真實存在的藥名。"""
+    drug = RecognizedDrug(name="葉酸", frequency_code="TID")
+    multi_candidate_match = DrugCatalogMatch(
+        license_number=None,
+        name_zh="",
+        name_en="",
+        score=1.0,
+        candidates=[
+            DrugCatalogEntry(license_number="衛署藥製字第040001號", name_zh="葉酸"),
+            DrugCatalogEntry(license_number="衛署藥輸字第040002號", name_zh="葉酸"),
+        ],
+    )
+    service = _service(
+        ocr=FakeOcr(_recognition(drug)),
+        catalog=FakeCatalog({"葉酸": multi_candidate_match}),
+        family=FakeFamilyTreeRepository(
+            _tree(FamilyMember(user_id="U_PATIENT", display_name="王大明"))
+        ),
+    )
+
+    draft = await service.scan(b"image", "image/jpeg", "U_FAMILY")
+
+    assert draft.recognition.drugs[0].name_confidence == "high"
+    assert draft.recognition.drugs[0].license_number is None
+    # 名稱信心度不受候選數量拖累，草稿整體信心度也應維持最高等級——
+    # 其餘條件（頻次已知、用藥對象已建議）都滿足時就是 high。
+    assert draft.confidence_level == "high"
 
 
 @pytest.mark.asyncio

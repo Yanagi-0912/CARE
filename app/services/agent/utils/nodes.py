@@ -98,6 +98,80 @@ def _parse_shared_location(text: str) -> tuple[float, float] | None:
 # 科別資訊落在更早的訊息裡。只看最後一則會把科別整個弄丟，因此往回掃歷史。
 _DEPARTMENT_INTENT_LOOKBACK = 4
 
+# 「使用者有沒有指名某一科」與「那是哪一科」是兩個不同的問題，這裡只回答前者。
+#
+# 為什麼不能只靠 extract_department_intent：它解析不出來就回 None，於是
+# 「指名了某一科，但別名表裡沒有」與「根本沒指名科別」在下游長得一模一樣。
+# 前者應該讓 medical_service 用 LLM 兜底、真的兜不出來就誠實說看不懂；後者才該
+# 做不分科搜尋。兩者混在一起的後果是科別被靜默丟掉——使用者說「大腸科」，卻拿到
+# 一份包含牙科、婦產科的「附近醫療院所」清單，還以為系統聽懂了。
+#
+# 因此表查不到時改用字面判斷「這句話裡有沒有一個 X 科」，把原始說法原樣往下傳，
+# 對應工作全部交給 medical_service 的兩層解析（別名表 → LLM 兜底）。這一層不做
+# 任何醫療判斷，也不需要額外的 LLM 呼叫。
+_DEPARTMENT_MENTION_RE = re.compile(
+    # 排除「科技」「科學」「科系」「科班」「科目」「科普」「科別」「科室」——
+    # 這些都是「科」後面還接字的一般詞彙，不是在指某一科。
+    r"科(?![技學系班目普別室])"
+)
+
+# 找到「科」之後往回取字，遇到這些字就停。
+#
+# 為什麼是「停止字」而不是「剝掉開頭的語助詞」：後者要求語助詞剛好對齊比對起點，
+# 一旦沒對齊就會整段吃進來——實測「請問哪裡有睡眠障礙科」會抽出「裡有睡眠障礙科」、
+# 「他大學讀理科」會抽出「他大學讀理科」而逃過非科別詞的過濾。往回走到功能詞為止
+# 不受對齊影響，上述兩句分別停在「有」與「讀」，得到「睡眠障礙科」與「理科」。
+#
+# 刻意不收「家」「學」「大」：家醫科、職業醫學科、大腸科都含這些字，收了會把
+# 真正的科別名稱切斷。「哪家」「大學」分別由「哪」「讀／是」擋下。
+_MENTION_STOP_CHARS = frozenset(
+    "我你他她它們要想去看找有的了嗎呢吧啊嘛喔哦"
+    "請問幫附近最周週圍鄰哪沒推薦介紹預約掛號讀"
+    "是在這那很和跟與也都就才會能可及對於把被從到往向"
+    "科"  # 連續兩個科（「婦產科內科」）不可黏成一個詞
+)
+
+# 往回取字的上限。最長的部定專科「兒童青少年精神科」是 8 個字，取到這個長度就夠；
+# 再長多半是把整句話吃進來了。
+_MENTION_MAX_CHARS = 8
+
+# 字面上是「X科」但不是科別的常見詞。這裡只需要收「別名表查不到、又會被上面
+# 正則撈到」的詞——真正的科別（內科、婦產科…）在別名表就命中了，根本走不到這。
+_NOT_A_DEPARTMENT = frozenset(
+    {
+        "理科", "文科", "商科", "工科", "農科", "學科", "術科", "本科",
+        "專科", "全科", "分科", "選科", "轉科", "這科", "那科", "哪科",
+    }
+)
+
+
+def _looks_like_department_mention(text: str) -> str | None:
+    """
+    這句話裡有沒有指名某一科？有的話回傳使用者的原始說法，沒有回 None。
+
+    刻意不判斷那是不是真的存在的科別——那是 medical_service 的工作。
+    """
+    cleaned = normalize_department_text(text)
+    if not cleaned:
+        return None
+
+    for match in _DEPARTMENT_MENTION_RE.finditer(cleaned):
+        end = match.start()  # 「科」本身的位置
+        start = end
+        while start > 0 and end - start < _MENTION_MAX_CHARS:
+            char = cleaned[start - 1]
+            if char in _MENTION_STOP_CHARS or not ("一" <= char <= "鿿"):
+                break
+            start -= 1
+
+        candidate = cleaned[start : end + 1]
+        # 只剩「科」一個字代表前面全是功能詞，不是在指名科別。
+        if len(candidate) < 2 or candidate in _NOT_A_DEPARTMENT:
+            continue
+        return candidate
+
+    return None
+
 
 def _extract_department_from_history(messages) -> str | None:
     """
@@ -122,6 +196,15 @@ def _extract_department_from_history(messages) -> str | None:
         match = extract_department_intent(text)
         if match is not None:
             return match.requested
+
+        # 別名表查不到，但字面上確實指名了某一科 → 原樣往下傳，讓 service 層去對應。
+        mention = _looks_like_department_mention(text)
+        if mention is not None:
+            logger.info(
+                "[Agent] 別名表未收錄但字面指名了科別，交由 service 層解析：%r",
+                mention,
+            )
+            return mention
 
     return None
 
@@ -367,13 +450,16 @@ def _is_department_visit_intent(text: str) -> bool:
     if _NAMED_LOOKUP_RE.search(text):
         return False
 
+    # 別名表查不到時沿用 _looks_like_department_mention 的字面判定，
+    # 「我要看腹腔鏡科」這類未收錄的說法才不會因為查表落空就掉回 RAG。
     match = extract_department_intent(text)
-    if match is None:
+    term = (
+        match.requested if match is not None else _looks_like_department_mention(text)
+    )
+    if not term:
         return False
 
-    # 別名表比對過的說法要回原句定位，才能看清它前後接了什麼。
     cleaned = normalize_department_text(text)
-    term = match.requested
     index = cleaned.find(term)
     while index != -1:
         before = cleaned[:index]

@@ -385,8 +385,14 @@ def test_patient_reminder_empty_medication_list_matches_baseline():
     assert with_empty.contents.to_dict() == _BASELINE_PATIENT_REMINDER_CONTENTS
 
 
-def test_patient_reminder_disabled_state_ignores_medication_names():
-    """已完成用藥的卡片沒有『該吃什麼』的需求，傳入藥名也不該改變版面。"""
+def test_patient_reminder_disabled_state_lists_medication_names():
+    """已完成用藥的卡片要留下「這次吃了哪幾種藥」。
+
+    （先前這條規則是反過來的：已完成卡片刻意忽略藥名，理由是「沒有『該吃什麼』
+    的需求」。那個理由只看了確認前的用途——確認之後這張卡片就是使用者事後唯一
+    查得到的憑據，提醒卡上列得出來的藥名在按下按鈕後整批消失，等於沒有任何地方
+    回答得了「那一次到底服了哪幾種藥」。標題改用已服用的時態，不再說「應服」。）
+    """
     without = build_patient_medication_flex(
         log_id="L123",
         slot_type="evening",
@@ -402,7 +408,21 @@ def test_patient_reminder_disabled_state_ignores_medication_names():
         taken_at_str="18:05",
         medication_names=["脈優"],
     )
-    assert without.contents.to_dict() == with_names.contents.to_dict()
+    rendered = str(with_names.contents.to_dict())
+    assert "脈優" in rendered
+    assert "本次服用藥品" in rendered
+    assert "本次應服藥品" not in rendered
+
+    # 沒有藥品關聯的既有規則，版面必須與本變更前完全相同（不能出現空白區塊）。
+    assert without.contents.to_dict() == build_patient_medication_flex(
+        log_id="L123",
+        slot_type="evening",
+        scheduled_time="18:00",
+        disabled=True,
+        taken_at_str="18:05",
+        medication_names=[],
+    ).contents.to_dict()
+    assert "脈優" not in str(without.contents.to_dict())
 
 
 def test_patient_reminder_lists_medication_names():
@@ -466,35 +486,65 @@ def test_urgent_reminder_medication_list_collapses_overflow_to_one_line():
     assert "另有 2 種藥品" in rendered
 
 
-def test_caregiver_alert_flex_carries_no_medication_names():
+def test_caregiver_alert_flex_lists_the_medications_that_were_missed():
     """
-    家屬的逾時警報要回答的是「有沒有吃」，不是「該吃什麼」——函式簽章本身
-    就不接受藥品清單參數，用意識地不讓病情資訊進到家屬的通知列。
+    家屬的逾時警報要說得出漏掉的是哪幾種藥。
 
-    只斷言簽章沒有這個參數還不夠有說服力：如果 build_caregiver_alert_flex
-    根本沒有任何管道能收到藥名，那「輸出裡沒有藥名」這件事就是恆真命題，
-    不管實作對不對都會過。這裡先證明這個時段「確實」關聯了藥品——把同一批
-    藥名餵給用藥者卡片，確認它們真的會出現——再證明同一時段的家屬警報完全
-    不含這些藥名，這樣才是真的在測「家屬卡片排除藥名」這條規則。
+    （先前這條規則是反過來的：簽章刻意不收藥品清單，理由是不讓病情資訊進到
+    家屬的通知列。但收件人 `alert_notify_user_id` 取自 `reminder.creator_user_id`
+    ——正是當初替家人建立這些藥的人，藥名對他不是新揭露的資訊；而少了藥名，
+    警報只說得出「某人某個時段沒吃藥」，家屬無從判斷漏掉的是保養用藥還是
+    不能斷的處方。真正不得外流的是適應症，那條界線由
+    `test_caregiver_alert_flex_never_carries_indication` 單獨守住。）
     """
     medication_names = ["脈優", "利尿劑"]
-    patient_card = build_patient_medication_flex(
-        log_id="L123",
+    caregiver_card = build_caregiver_alert_flex(
+        patient_name="王小明",
         slot_type="morning",
         scheduled_time="08:00",
         medication_names=medication_names,
     )
-    assert all(
-        name in str(patient_card.contents.to_dict()) for name in medication_names
-    )
-
-    assert "medication_names" not in inspect.signature(build_caregiver_alert_flex).parameters
-
-    caregiver_card = build_caregiver_alert_flex(
-        patient_name="王小明", slot_type="morning", scheduled_time="08:00"
-    )
     rendered = str(caregiver_card.contents.to_dict())
-    assert not any(name in rendered for name in medication_names)
+    assert all(name in rendered for name in medication_names)
+    assert "尚未服用的藥品" in rendered
+    # 病患姓名與時段仍是主資訊，不能被藥品區塊擠掉
+    assert "王小明" in rendered
+    assert "08:00" in rendered
+
+
+def test_caregiver_alert_flex_without_medication_names_keeps_the_original_layout():
+    """沒有藥品關聯的既有規則（medication_ids 為空陣列）版面必須完全不變。"""
+    baseline = build_caregiver_alert_flex(
+        patient_name="王小明", slot_type="morning", scheduled_time="08:00"
+    ).contents.to_dict()
+    assert (
+        build_caregiver_alert_flex(
+            patient_name="王小明",
+            slot_type="morning",
+            scheduled_time="08:00",
+            medication_names=[],
+        ).contents.to_dict()
+        == baseline
+    )
+    assert "尚未服用的藥品" not in str(baseline)
+
+
+def test_caregiver_alert_flex_never_carries_indication():
+    """
+    藥名可以進家屬警報，適應症不行——它會直接揭露病情（見 Medication.indication
+    的欄位註解：「不得進入任何推播訊息」）。呼叫端只被允許傳藥名，這裡鎖住
+    build_caregiver_alert_flex 沒有任何其他管道能收到適應症欄位。
+    """
+    assert "indication" not in inspect.signature(build_caregiver_alert_flex).parameters
+    rendered = str(
+        build_caregiver_alert_flex(
+            patient_name="王小明",
+            slot_type="morning",
+            scheduled_time="08:00",
+            medication_names=["脈優"],
+        ).contents.to_dict()
+    )
+    assert "高血壓" not in rendered
 
 
 def test_caregiver_missed_summary_flex_carries_no_medication_names():

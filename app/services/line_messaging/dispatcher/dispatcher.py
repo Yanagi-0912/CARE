@@ -189,6 +189,12 @@ class LineEventDispatcher:
                 log = await self._medication_service.confirm_medication(log_id, user_id)
                 taken_time_str = to_taipei_hm(log.taken_at)
                 scheduled_time_str = to_taipei_hm(log.scheduled_at, default="08:00")
+                # 已完成的卡片要留下「這次吃了哪幾種藥」——提醒卡上有的資訊
+                # 不該在按下確認後就消失，那是使用者事後唯一查得到的憑據。
+                # 查不到時回傳空清單，卡片自動退回沒有藥品區塊的原樣。
+                medication_names = (
+                    await self._medication_service.list_medication_names_for_log(log)
+                )
 
                 disabled_flex = build_patient_medication_flex(
                     log_id=log_id,
@@ -196,6 +202,7 @@ class LineEventDispatcher:
                     scheduled_time=scheduled_time_str,
                     disabled=True,
                     taken_at_str=taken_time_str,
+                    medication_names=medication_names,
                     language=user_language,
                     font_size=self._font_size_from_profile(user_profile),
                 )

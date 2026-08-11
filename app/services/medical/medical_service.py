@@ -1,7 +1,7 @@
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.repositories.medical_facility_repository import MedicalFacilityRepository
 from app.schemas import MedicalFacility
@@ -21,6 +21,11 @@ from app.services.medical.medical_facility_matcher import (
     build_facility_query,
     similarity_rank,
 )
+
+if TYPE_CHECKING:
+    # 只為了型別標註而 import。llm_term_resolver 會拉進 GeminiService／langchain，
+    # 執行期匯入等於讓「查附近院所」相依於 LLM 用戶端，而兜底解析器是選填的。
+    from app.services.medical.llm_term_resolver import TermResolver
 
 logger = logging.getLogger(__name__)
 
@@ -122,8 +127,77 @@ class DepartmentSearchResult(NearbySearchResult):
     match: DepartmentMatch | None = None
     """解析出的科別；為 None 代表看不懂使用者說的科別，未執行查詢。"""
 class MedicalService:
-    def __init__(self, repository: MedicalFacilityRepository | None = None) -> None:
+    def __init__(
+        self,
+        repository: MedicalFacilityRepository | None = None,
+        *,
+        department_resolver: "TermResolver | None" = None,
+        facility_type_resolver: "TermResolver | None" = None,
+    ) -> None:
         self.repository = repository or MedicalFacilityRepository()
+        # 兩個兜底解析器都是選填：沒接上時行為與加這層之前完全相同（表查不到就
+        # 回「看不懂」）。單元測試因此不需要為了測搜尋邏輯而準備一個假 LLM。
+        self._department_resolver = department_resolver
+        self._facility_type_resolver = facility_type_resolver
+
+    def configure_llm_fallbacks(
+        self,
+        *,
+        department_resolver: "TermResolver | None" = None,
+        facility_type_resolver: "TermResolver | None" = None,
+    ) -> None:
+        """
+        事後接上 LLM 兜底解析器。
+
+        存在的理由：本模組結尾就地建立了 medical_service 單例（模組載入時），
+        而解析器需要 GeminiService，那是在 app.dependencies 才組好的。與其把
+        單例改成延遲建立而動到所有 import 端，不如比照 configure_medical_tools
+        的做法，在 dependencies 完成組裝後回頭注入。
+        """
+        if department_resolver is not None:
+            self._department_resolver = department_resolver
+        if facility_type_resolver is not None:
+            self._facility_type_resolver = facility_type_resolver
+
+    async def _resolve_department_with_fallback(
+        self, department: str
+    ) -> DepartmentMatch | None:
+        """先查別名表，表查不到才動用 LLM 兜底（見 llm_term_resolver 模組註解）。"""
+        match = resolve_department(department)
+        if match is not None or self._department_resolver is None:
+            return match
+
+        canonical = await self._department_resolver.resolve(department)
+        if canonical is None:
+            return None
+        logger.info(
+            f"{LOGGER_HEADER_TEXT} 科別由 LLM 兜底解析，requested=%r → canonical=%r",
+            department,
+            canonical,
+        )
+        return DepartmentMatch(
+            canonical=canonical, requested=department, source="llm"
+        )
+
+    async def _resolve_facility_type_with_fallback(
+        self, facility_type: str
+    ) -> FacilityTypeMatch | None:
+        """同 _resolve_department_with_fallback，但對應到院所類型分類。"""
+        match = resolve_facility_type(facility_type)
+        if match is not None or self._facility_type_resolver is None:
+            return match
+
+        category = await self._facility_type_resolver.resolve(facility_type)
+        if category is None:
+            return None
+        logger.info(
+            f"{LOGGER_HEADER_TEXT} 院所類型由 LLM 兜底解析，requested=%r → category=%r",
+            facility_type,
+            category,
+        )
+        return FacilityTypeMatch(
+            category=category, requested=facility_type, source="llm"
+        )
 
     async def _search_tiered(
         self,
@@ -205,7 +279,7 @@ class MedicalService:
         type_match: FacilityTypeMatch | None = None
         type_query: dict[str, Any] | None = None
         if facility_type is not None:
-            type_match = resolve_facility_type(facility_type)
+            type_match = await self._resolve_facility_type_with_fallback(facility_type)
             if type_match is None:
                 logger.info(
                     f"{LOGGER_HEADER_TEXT} 無法解析院所類型，facility_type=%r",
@@ -256,17 +330,18 @@ class MedicalService:
         但空字串／純空白視同未提供（見 _normalize_optional_arg）。
         """
         facility_type = _normalize_optional_arg(facility_type)
-        match = resolve_department(department)
+        match = await self._resolve_department_with_fallback(department)
         if match is None:
             logger.info(
-                f"{LOGGER_HEADER_TEXT} 無法解析科別，department=%r", department
+                f"{LOGGER_HEADER_TEXT} 無法解析科別（含 LLM 兜底），department=%r",
+                department,
             )
             return DepartmentSearchResult(match=None)
 
         type_match: FacilityTypeMatch | None = None
         type_query: dict[str, Any] | None = None
         if facility_type is not None:
-            type_match = resolve_facility_type(facility_type)
+            type_match = await self._resolve_facility_type_with_fallback(facility_type)
             if type_match is None:
                 logger.info(
                     f"{LOGGER_HEADER_TEXT} 無法解析院所類型，facility_type=%r",

@@ -113,6 +113,10 @@ class DepartmentMatch:
     requested: str
     """使用者原本的說法，例如「腸胃科」。用於回覆時說明轉換。"""
 
+    source: str = "table"
+    """解析來源："table" 為別名表命中，"llm" 為表查不到時的 LLM 兜底。
+    純供記錄與觀測——用來找出該收編進別名表的高頻俗稱，不影響查詢行為。"""
+
     @property
     def is_alias(self) -> bool:
         """使用者說法與部定專科不同時為 True，回覆需明確說明對應關係。"""

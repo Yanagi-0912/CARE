@@ -238,7 +238,9 @@ def create_facility_item_box(
             "size": ft.heading,
             "color": theme.TEXT,
         },
-        _build_status_indicator(facility, ft, language),
+        # 第二個位置參數是 language，不是 ft——_build_status_indicator 與它底下的
+        # _build_status_rows 都沒有字級參數，詳情頁的呼叫點也是 (facility, language)。
+        _build_status_indicator(facility, language),
         {
             "type": "text",
             "text": dist_text,

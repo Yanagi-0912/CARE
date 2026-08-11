@@ -14,6 +14,18 @@
 - **WHEN** guardrail 判定允許 RAG（`allow_rag = True`）
 - **THEN** 工具集可含 `get_rag_answer`，且 SHALL NOT 含 `search_public_web`
 
+## REMOVED Requirements
+
+### Requirement: RAG 僅查知識庫
+
+（由「知識庫不足時內建 Web Fallback」取代。）
+
+### Requirement: 公開網路搜尋工具
+
+（代理不再暴露 `search_public_web`；行為併入 `RagAnswerService` web fallback。`WebSearchService` 與 `web_tools.search_public_web` 可保留供內部／測試，但 SHALL NOT 出現在 `get_all_tools`。）
+
+## ADDED Requirements
+
 ### Requirement: 知識庫不足時內建 Web Fallback
 
 `get_rag_answer` / `RagAnswerService` SHALL 先檢索內部知識庫（含 CRAG 分級與最多一次 query rewrite，若已啟用）。當下列任一情況成立且 web fallback 已啟用並已注入 `WebSearchService` 時，SHALL 呼叫該服務回答（沿用既有 Firecrawl 搜尋、允許網域白名單、回答前綴「以下參考網路公開資料」、來源以「網路：」標示），而非僅回傳知識庫無命中字串：
@@ -43,18 +55,6 @@
 
 - **WHEN** `RAG_WEB_FALLBACK_ENABLED` 為 false 或未注入 `WebSearchService`，且知識庫不足
 - **THEN** 回傳知識庫無命中／無法提供類訊息，且不進行網路搜尋
-
-## REMOVED Requirements
-
-### Requirement: RAG 僅查知識庫
-
-（由「知識庫不足時內建 Web Fallback」取代。）
-
-### Requirement: 公開網路搜尋工具
-
-（代理不再暴露 `search_public_web`；行為併入 `RagAnswerService` web fallback。`WebSearchService` 與 `web_tools.search_public_web` 可保留供內部／測試，但 SHALL NOT 出現在 `get_all_tools`。）
-
-## ADDED Requirements
 
 ### Requirement: get_rag_answer 說明內含網路補充
 

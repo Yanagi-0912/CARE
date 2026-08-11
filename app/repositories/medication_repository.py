@@ -490,13 +490,24 @@ class MedicationLogRepository:
     # 因此推播前先以「旗標仍為 False」為條件做單一 document 的原子更新搶下推播權
     # （MongoDB 保證單一 document 的更新是原子的），搶輸的實例直接跳過；推播失敗
     # 再把旗標還原，交給下一個 tick 重試。
+    #
+    # 三個 claim 都必須把「清單查詢用過的 status 條件」再斷言一次，不能只看旗標。
+    # 清單查出來的那一刻起，結果就已經是過期資料：排程器是「查清單 → 逐筆搶佔 →
+    # 推播」，每一筆的搶佔都夾在前面幾筆的 profile 查詢與 LINE 推播之後，使用者
+    # 完全有時間在這段空檔按下「我已用藥」。搶佔若不重驗 status，就會發生
+    #   1. 已經確認用藥的人收到 T+20「您尚未點擊我已用藥」；
+    #   2. 家屬收到 T+30 逾時警報，而且 claim_caregiver_alert 會把 status 從
+    #      taken 蓋回 missed，連正確的用藥紀錄一起毀掉。
+    # 加上 status 條件之後，兩種先後次序都正確：確認先落地則搶佔失敗、不推播；
+    # 搶佔先落地則該筆在當下確實仍未服藥（警報屬實），mark_as_taken 允許 missed
+    # 轉 taken，紀錄最終仍收斂成 taken。
 
     @staticmethod
     async def claim_patient_reminder(log_id: str) -> bool:
         """搶下 T+0min 首刷提醒的推播權，回傳 True 代表本實例取得推播權。"""
         col = MongoDBManager.get_medication_logs_collection()
         result = await col.update_one(
-            {"_id": log_id, "patient_reminder_sent": False},
+            {"_id": log_id, "status": "pending", "patient_reminder_sent": False},
             {"$set": {"patient_reminder_sent": True}},
         )
         return result.modified_count > 0
@@ -513,10 +524,14 @@ class MedicationLogRepository:
 
     @staticmethod
     async def claim_patient_urgent_reminder(log_id: str) -> bool:
-        """搶下 T+20min 催促提醒的推播權。"""
+        """搶下 T+20min 催促提醒的推播權。
+
+        `status: "pending"` 是必要條件，不是多餘的保險：見上方「推播權搶佔」
+        段落——少了它，剛按完「我已用藥」的人會收到「您尚未點擊我已用藥」。
+        """
         col = MongoDBManager.get_medication_logs_collection()
         result = await col.update_one(
-            {"_id": log_id, "urgent_reminder_sent": False},
+            {"_id": log_id, "status": "pending", "urgent_reminder_sent": False},
             {"$set": {"urgent_reminder_sent": True}},
         )
         return result.modified_count > 0
@@ -533,10 +548,18 @@ class MedicationLogRepository:
 
     @staticmethod
     async def claim_caregiver_alert(log_id: str) -> bool:
-        """搶下 T+30min 家屬警報的推播權，同時把狀態設為 missed。"""
+        """搶下 T+30min 家屬警報的推播權，同時把狀態設為 missed。
+
+        `status: "pending"` 是必要條件，不是多餘的保險：見上方「推播權搶佔」
+        段落。少了它，使用者在「清單查出來」與「這一筆輪到搶佔」之間按下
+        確認時，家屬仍會收到逾時警報，而且 `$set` 的 status 會把 taken 蓋回
+        missed——正確的用藥紀錄被推播流程毀掉，比多推一則更嚴重。
+        `release_caregiver_alert` 早就有同一個防呆（它的 filter 帶
+        `status: "missed"`），搶佔這一端不能是唯一的缺口。
+        """
         col = MongoDBManager.get_medication_logs_collection()
         result = await col.update_one(
-            {"_id": log_id, "caregiver_alert_sent": False},
+            {"_id": log_id, "status": "pending", "caregiver_alert_sent": False},
             {"$set": {"caregiver_alert_sent": True, "status": "missed"}},
         )
         return result.modified_count > 0

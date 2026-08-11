@@ -555,8 +555,69 @@ async def test_claim_patient_reminder_guards_on_flag(override_medication_logs_co
 
     assert await MedicationLogRepository.claim_patient_reminder("L123") is True
     args, _ = col.update_one.await_args
-    assert args[0] == {"_id": "L123", "patient_reminder_sent": False}
+    assert args[0] == {
+        "_id": "L123",
+        "status": "pending",
+        "patient_reminder_sent": False,
+    }
     assert args[1] == {"$set": {"patient_reminder_sent": True}}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "claim",
+    [
+        MedicationLogRepository.claim_patient_reminder,
+        MedicationLogRepository.claim_patient_urgent_reminder,
+        MedicationLogRepository.claim_caregiver_alert,
+    ],
+)
+async def test_claims_require_status_still_pending(claim, override_medication_logs_col):
+    """
+    三個階段的搶佔都必須把 `status: "pending"` 放進 filter，只看旗標不夠。
+
+    排程器是「查清單 → 逐筆搶佔 → 推播」，清單查出來的那一刻結果就已經過期：
+    每一筆的搶佔都排在前面幾筆的 profile 查詢與 LINE 推播之後，使用者完全有
+    時間在這段空檔按下「我已用藥」。少了這個條件，會發生
+      * T+20：剛確認完的人收到「您尚未點擊我已用藥」；
+      * T+30：家屬收到逾時警報，而且 claim 的 `$set` 會把 status 從 taken
+        蓋回 missed，連正確的用藥紀錄一起毀掉。
+    filter 帶上 status 之後，MongoDB 單一 document 更新的原子性就保證了：
+    確認先落地則搶佔失敗（不推播），搶佔先落地則當下確實仍未服藥（警報屬實）。
+    """
+    col = MagicMock()
+    col.update_one = AsyncMock(return_value=MagicMock(modified_count=1))
+    override_medication_logs_col(col)
+
+    await claim("L123")
+    args, _ = col.update_one.await_args
+    assert args[0]["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_claim_caregiver_alert_does_not_clobber_taken(
+    override_medication_logs_col,
+):
+    """
+    搶佔家屬警報時，status 仍是 pending 才算數。
+
+    `release_caregiver_alert` 早就有同一個防呆（見下一個測試），但當時只補了
+    還原那一端；搶佔這一端才是實際會把 `status: "missed"` 寫下去的地方，
+    漏掉它等於防呆只做了一半——已確認用藥的紀錄仍會被推播流程改回 missed。
+    """
+    col = MagicMock()
+    col.update_one = AsyncMock(return_value=MagicMock(modified_count=0))
+    override_medication_logs_col(col)
+
+    # 使用者已按下確認（status=taken）→ filter 不成立 → 不取得推播權
+    assert await MedicationLogRepository.claim_caregiver_alert("L123") is False
+    args, _ = col.update_one.await_args
+    assert args[0] == {
+        "_id": "L123",
+        "status": "pending",
+        "caregiver_alert_sent": False,
+    }
+    assert args[1] == {"$set": {"caregiver_alert_sent": True, "status": "missed"}}
 
 
 @pytest.mark.asyncio

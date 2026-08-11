@@ -512,6 +512,16 @@ def get_knowledge_report_service() -> KnowledgeReportService:
     return _knowledge_report_service
 
 
+def get_manual_report_quota() -> int:
+    """手動知識回報的 24 小時配額上限。
+
+    做成依賴而不是在 router 直接讀 settings，是為了讓測試用
+    app.dependency_overrides 換成小值，不必 monkey patch Settings
+    （tasks.md 4.3）。
+    """
+    return settings.KNOWLEDGE_REPORT_MANUAL_DAILY_QUOTA
+
+
 def get_user_document_ingest_service() -> UserDocumentIngestService | None:
     """取得使用者上傳文件 ingest 服務；未設定 collection 時回傳 None。"""
     return _user_document_ingest_service

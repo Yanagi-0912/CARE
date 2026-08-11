@@ -222,6 +222,48 @@ async def test_ensure_indexes_covers_admin_queue_query():
 
 
 @pytest.mark.asyncio
+async def test_ensure_indexes_unchanged_by_manual_quota():
+    """手動回報配額沿用既有的 line_user_id + created_at 複合索引，不新增索引。
+
+    source 是索引外的殘餘篩選：每人每日至多數十筆的量級下，為它多開一個
+    索引沒有意義（design.md 決策 5）。這則斷言把「不新增」釘住——日後若有人
+    順手加索引，這裡會變紅，逼他回頭看那個決策。
+    """
+    collection = MagicMock()
+    collection.create_index = AsyncMock()
+
+    await KnowledgeReportRepository.ensure_indexes(collection=collection)
+
+    names = [call.kwargs["name"] for call in collection.create_index.await_args_list]
+    assert names == [
+        "knowledge_report_id",
+        "knowledge_report_line_user_created",
+        "knowledge_report_status_created",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_count_manual_by_line_user_since_filters_to_manual_only():
+    """配額只計手動回報：自動建報不該吃掉使用者自己的額度。"""
+    collection = MagicMock()
+    collection.count_documents = AsyncMock(return_value=3)
+    since = datetime(2026, 8, 10, 12, 0, tzinfo=timezone.utc)
+
+    total = await KnowledgeReportRepository.count_manual_by_line_user_since(
+        "U_TEST", since, collection=collection
+    )
+
+    assert total == 3
+    collection.count_documents.assert_awaited_once_with(
+        {
+            "line_user_id": "U_TEST",
+            "source": "manual",
+            "created_at": {"$gte": since},
+        }
+    )
+
+
+@pytest.mark.asyncio
 async def test_count_by_statuses_empty_noop():
     collection = MagicMock()
     collection.count_documents = AsyncMock()

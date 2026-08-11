@@ -122,6 +122,17 @@ class Settings:
     RAG_WEB_SEARCH_SITE_FILTER: str = os.getenv(
         "RAG_WEB_SEARCH_SITE_FILTER", "site:gov.tw"
     )
+    # 手動知識回報的濫用防護。只計 source="manual" 的回報：若把 agent tool 與
+    # web fallback 自動建報也算進來，使用者在 LINE 多問幾個知識庫答不出來的
+    # 問題就會把自己的手動額度用光，而他完全不會知道自己「用掉」了什麼
+    # （design.md 決策 4）。視窗是滾動 24 小時而非自然日，否則午夜前後可以送
+    # 兩倍。設成 env 是因為真實用量還沒有資料，第一版一定要調。
+    KNOWLEDGE_REPORT_MANUAL_DAILY_QUOTA: int = int(
+        os.getenv("KNOWLEDGE_REPORT_MANUAL_DAILY_QUOTA", "10")
+    )
+    KNOWLEDGE_REPORT_MAX_SOURCE_URLS: int = int(
+        os.getenv("KNOWLEDGE_REPORT_MAX_SOURCE_URLS", "3")
+    )
     # 藥袋辨識。預設開啟；整條路徑仍可獨立開關，出問題時把它設回 false
     # 即可停用，已建立的藥品與提醒關聯不受影響（推播的藥品區塊在關聯為空或
     # 藥品失效時會自動退回原版面），不需要資料回滾。

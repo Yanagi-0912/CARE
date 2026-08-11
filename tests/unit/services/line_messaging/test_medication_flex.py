@@ -45,7 +45,11 @@ _BASELINE_PATIENT_REMINDER_CONTENTS = {
                 "text": "用藥提醒",
                 "color": "#FFFFFF",
                 "weight": "bold",
-                "size": "xl",
+                # 14666f9（PR #101）把 theme 的 heading 整排調大一級
+                # （large: xl → xxl），是為了長輩可讀性的刻意變更。這份快照要
+                # 守的是「加入 medication_names 沒有改動空清單的版面」，不是把
+                # 字級凍結在某個版本，因此跟著主題更新。
+                "size": "xxl",
                 "wrap": True,
             }
         ],
@@ -140,7 +144,8 @@ _BASELINE_URGENT_REMINDER_CONTENTS = {
                 "text": "尚未完成用藥",
                 "color": "#FFFFFF",
                 "weight": "bold",
-                "size": "xl",
+                # 同上：跟隨 14666f9 對 theme heading 的刻意調整。
+                "size": "xxl",
                 "wrap": True,
             }
         ],

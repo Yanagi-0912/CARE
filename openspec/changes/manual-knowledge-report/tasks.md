@@ -20,9 +20,15 @@
 
 ## 驗證狀態
 
-- 後端 `pytest`：1574 passed（在既有 `.venv` 下執行；10.1 的 `./init.sh` 未跑，
-  該腳本會重建 venv 並重裝依賴，與本次驗證目的無關）
+- 後端 `init.sh`：exit 0。三個 Step 全過——於 worktree 建立全新 `.venv`、
+  依 `requirements.txt` 乾淨安裝、`pytest tests/ -v` **1574 passed**
 - `CARE-LIFF`：`npm run test` 23 files / 164 tests passed、`npm run build` 通過
+
+> 執行 `init.sh` 時發現的既有問題（不在本 change 範圍）：`init.sh` 的執行位元
+> 沒有記在 git 裡（模式為 `100644`）。主 checkout 能跑是因為那份檔案在本機被
+> `chmod` 過；任何新 clone 或新 worktree 拿到的都是不可執行的版本，照 README
+> 打 `./init.sh` 會得到 `permission denied`。修法是
+> `git update-index --chmod=+x init.sh` 並提交。
 
 ## 1. 設定與資料模型
 

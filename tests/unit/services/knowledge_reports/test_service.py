@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
+from pymongo.errors import DuplicateKeyError
 
 from app.models.knowledge_report import IngestJob, KnowledgeReport
 from app.repositories.knowledge_report_repository import KnowledgeReportRepository
@@ -649,10 +650,113 @@ async def test_create_from_web_fallback(mock_repo: MagicMock):
     assert report.question == "高血壓飲食？"
     assert report.user_note == "auto:web-fallback"
     assert report.user_source_urls == [ALLOWED_URL]
+    # 自動建報標記為 web_fallback：不佔使用者的手動配額，admin 端也看得出
+    # 這個 URL 不是使用者親手貼的
+    assert report.source == "web_fallback"
     mock_repo.delete_pending_or_reviewing_by_urls.assert_awaited_once_with(
         [ALLOWED_URL]
     )
     mock_repo.insert.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_accepts_source_and_writes_it(mock_repo: MagicMock):
+    service = KnowledgeReportService(repository=mock_repo)
+
+    report = await service.create(
+        line_user_id="U_TEST",
+        question="問題",
+        reason="outdated",
+        user_note="說明",
+        user_source_urls=[ALLOWED_URL],
+        source="manual",
+    )
+
+    assert report.source == "manual"
+
+
+@pytest.mark.asyncio
+async def test_create_defaults_source_to_none(mock_repo: MagicMock):
+    """舊呼叫端不帶 source 時維持 None，讀回來視為非手動、不佔配額。"""
+    service = KnowledgeReportService(repository=mock_repo)
+
+    report = await service.create(
+        line_user_id="U_TEST", question="問題", reason="other"
+    )
+
+    assert report.source is None
+
+
+@pytest.mark.asyncio
+async def test_create_retries_on_report_id_collision(mock_repo: MagicMock):
+    """編號碰撞不該變成 500。
+
+    _generate_report_id 只有 4 碼（36^4 ≈ 168 萬），生日悖論下單日約 1500 筆
+    就有五成機率撞到，而 report_id 是 unique index。表單開放後這會直接打在
+    剛送出的使用者臉上，還會被誤讀成「白名單擋掉了」（design.md 決策 10）。
+    """
+    first_attempt = _sample_report()
+    mock_repo.insert = AsyncMock(
+        side_effect=[DuplicateKeyError("duplicate"), first_attempt]
+    )
+    service = KnowledgeReportService(repository=mock_repo)
+
+    report = await service.create(
+        line_user_id="U_TEST", question="問題", reason="other"
+    )
+
+    assert report is first_attempt
+    assert mock_repo.insert.await_count == 2
+    # 重試必須換一個新編號，不是把同一個再送一次
+    attempted_ids = [call.args[0].report_id for call in mock_repo.insert.await_args_list]
+    assert attempted_ids[0] != attempted_ids[1]
+
+
+@pytest.mark.asyncio
+async def test_create_gives_up_after_five_collisions(mock_repo: MagicMock):
+    """無上限的 while True 在 unique index 因其他欄位衝突時會變成無窮迴圈。"""
+    mock_repo.insert = AsyncMock(side_effect=DuplicateKeyError("duplicate"))
+    service = KnowledgeReportService(repository=mock_repo)
+
+    with pytest.raises(DuplicateKeyError):
+        await service.create(line_user_id="U_TEST", question="問題", reason="other")
+
+    assert mock_repo.insert.await_count == 5
+
+
+@pytest.mark.asyncio
+async def test_create_does_not_validate_whitelist(mock_repo: MagicMock):
+    """守門測試：驗證不在 service 層。
+
+    create_from_web_fallback 內部就是呼叫 create。若把 assert_allowed_urls 塞進
+    create，白名單一收緊自動建報就會拋例外，而 web_search_service 的
+    except Exception 會把它吞掉——使用者照樣拿到網路答案，回報卻靜默消失，
+    只在 log 留一行（design.md 決策 1）。
+    """
+    service = KnowledgeReportService(repository=mock_repo)
+
+    report = await service.create(
+        line_user_id="U_TEST",
+        question="問題",
+        reason="other",
+        user_source_urls=[BLOCKED_URL],
+    )
+
+    assert report.user_source_urls == [BLOCKED_URL]
+    mock_repo.insert.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_count_manual_reports_since_delegates_to_repository(mock_repo: MagicMock):
+    """router 做配額檢查時不直接碰 repository。"""
+    mock_repo.count_manual_by_line_user_since = AsyncMock(return_value=4)
+    service = KnowledgeReportService(repository=mock_repo)
+    since = datetime(2026, 8, 10, 12, 0, tzinfo=timezone.utc)
+
+    total = await service.count_manual_reports_since("U_TEST", since)
+
+    assert total == 4
+    mock_repo.count_manual_by_line_user_since.assert_awaited_once_with("U_TEST", since)
 
 
 @pytest.mark.asyncio

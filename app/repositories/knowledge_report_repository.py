@@ -112,6 +112,30 @@ class KnowledgeReportRepository:
         return int(await collection.count_documents({"status": {"$in": statuses}}))
 
     @staticmethod
+    async def count_manual_by_line_user_since(
+        line_user_id: str, since: datetime, collection: Optional[Any] = None
+    ) -> int:
+        """數某使用者在 since 之後手動送出的回報筆數。
+
+        只計 source="manual"：agent tool 與 web fallback 的自動建報不佔配額，
+        否則使用者在 LINE 多問幾題就會把自己的手動額度用光（design.md 決策 4）。
+        走既有的 knowledge_report_line_user_created 複合索引，source 為索引外的
+        殘餘篩選——不為它新增索引，理由見決策 5。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_knowledge_reports_collection()
+
+        return int(
+            await collection.count_documents(
+                {
+                    "line_user_id": line_user_id,
+                    "source": "manual",
+                    "created_at": {"$gte": since},
+                }
+            )
+        )
+
+    @staticmethod
     async def update(
         report: KnowledgeReport, collection: Optional[Any] = None
     ) -> KnowledgeReport:

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import logging
 import random
 import string
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import HTTPException
+from pymongo.errors import DuplicateKeyError
 
 from app.i18n.messages import t
 from app.models.knowledge_report import (
@@ -13,13 +15,19 @@ from app.models.knowledge_report import (
     IngestJobResult,
     KnowledgeReport,
     KnowledgeReportReason,
+    KnowledgeReportSource,
 )
 from app.repositories.knowledge_report_repository import KnowledgeReportRepository
 from app.services.rag.ingest_service import IngestService
 from app.services.rag.whitelist import UrlNotAllowedError, UrlPolicy, default_url_policy
 
+logger = logging.getLogger(__name__)
+
 # 超過此時間仍停在 running 的 job 視為服務重啟遺留的孤兒，允許重新核准取代
 INGEST_JOB_STALE_AFTER = timedelta(minutes=10)
+# report_id 碰撞的重試上限。位數維持 4 碼——改 6 碼只降低機率不消除問題，
+# 且會讓既有的長度斷言變紅；重試才是正解（design.md 決策 10）。
+_REPORT_ID_MAX_ATTEMPTS = 5
 
 
 class KnowledgeReportService:
@@ -48,20 +56,52 @@ class KnowledgeReportService:
         reason: KnowledgeReportReason,
         user_note: str | None = None,
         user_source_urls: list[str] | None = None,
+        source: KnowledgeReportSource | None = None,
     ) -> KnowledgeReport:
+        """把一筆回報寫進去。
+
+        這裡刻意 **不** 做白名單驗證與配額檢查：create_from_web_fallback 內部
+        就是呼叫本方法，把驗證塞進來會讓白名單一收緊就使自動建報拋例外，而
+        web_search_service.py 的 except Exception 會靜默吞掉它（design.md
+        決策 1）。判斷「這筆回報從哪來、可不可信」是呼叫端的責任。
+        """
         now = datetime.now(timezone.utc)
-        report = KnowledgeReport(
-            report_id=self._generate_report_id(now),
-            line_user_id=line_user_id,
-            status="pending",
-            reason=reason,
-            question=question.strip(),
-            user_note=user_note.strip() if user_note else None,
-            user_source_urls=list(user_source_urls or []),
-            created_at=now,
-            updated_at=now,
+        # report_id 是 unique index 而亂碼只有 4 碼，碰撞會是 DuplicateKeyError。
+        # 換一個編號重試，而不是讓它變成 500（design.md 決策 10）。上限 5 次：
+        # 無上限的迴圈在 unique index 因其他欄位衝突時會變成無窮迴圈。
+        for attempt in range(_REPORT_ID_MAX_ATTEMPTS):
+            report = KnowledgeReport(
+                report_id=self._generate_report_id(now),
+                line_user_id=line_user_id,
+                status="pending",
+                reason=reason,
+                question=question.strip(),
+                user_note=user_note.strip() if user_note else None,
+                user_source_urls=list(user_source_urls or []),
+                source=source,
+                created_at=now,
+                updated_at=now,
+            )
+            try:
+                return await self._repository.insert(report)
+            except DuplicateKeyError:
+                if attempt == _REPORT_ID_MAX_ATTEMPTS - 1:
+                    raise
+                logger.warning(
+                    "report_id 碰撞，重新產生編號重試（第 %s 次）：%s",
+                    attempt + 1,
+                    report.report_id,
+                )
+        # 迴圈只會以 return 或 raise 收場，這行僅為型別完整性
+        raise AssertionError("unreachable")
+
+    async def count_manual_reports_since(
+        self, line_user_id: str, since: datetime
+    ) -> int:
+        """供 router 做配額檢查；router 不直接碰 repository。"""
+        return await self._repository.count_manual_by_line_user_since(
+            line_user_id, since
         )
-        return await self._repository.insert(report)
 
     async def create_from_web_fallback(
         self,
@@ -81,6 +121,7 @@ class KnowledgeReportService:
             reason="missing",
             user_note="auto:web-fallback",
             user_source_urls=normalized_urls,
+            source="web_fallback",
         )
 
     async def list_for_user(self, line_user_id: str) -> list[KnowledgeReport]:

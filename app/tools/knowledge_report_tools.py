@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from contextvars import ContextVar, Token
 
 from langchain_core.tools import tool
@@ -10,6 +11,9 @@ from app.core.request_context import (
     set_line_user_id,
 )
 from app.services.knowledge_reports.service import KnowledgeReportService
+from app.services.rag.whitelist import is_allowed_url
+
+logger = logging.getLogger(__name__)
 
 _knowledge_report_service: KnowledgeReportService | None = None
 
@@ -41,12 +45,27 @@ async def submit_knowledge_report(
     if normalized_reason not in ("outdated", "missing", "other"):
         return "reason 必須為 outdated、missing 或 other。"
 
+    # 過濾而非拒絕：讓工具呼叫失敗會使 agent 重試並「修正」參數——它修正的
+    # 方式就是換一個更像 gov.tw 的網址，又回到幻覺（design.md 決策 3）。
+    # None 必須維持 None，不可變成 []：那是「tool 不強制 URL」的契約。
+    filtered_urls = user_source_urls
+    if user_source_urls is not None:
+        filtered_urls = [url for url in user_source_urls if is_allowed_url(url)]
+        dropped = [url for url in user_source_urls if url not in filtered_urls]
+        if dropped:
+            logger.info(
+                "submit_knowledge_report 丟棄 %s 個非白名單 URL：%s",
+                len(dropped),
+                dropped,
+            )
+
     report = await _knowledge_report_service.create(
         line_user_id=line_user_id,
         question=question,
         reason=normalized_reason,  # type: ignore[arg-type]
         user_note=user_note,
-        user_source_urls=user_source_urls,
+        user_source_urls=filtered_urls,
+        source="agent_tool",
     )
     return (
         f"已建立知識回報 {report.report_id}，狀態為 pending，"

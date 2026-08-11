@@ -195,6 +195,8 @@ async def test_department_question_without_location_requests_location(
         ("我想預約眼科門診", True),
         ("我要看小兒科的醫生", True),
         ("我想看牙醫", True),
+        # 別名表未收錄也要成立，否則查表落空就掉回 RAG
+        ("我要看腹腔鏡科", True),
         # 衛教問句：句中有「看」但不是要就診
         ("腸胃科是看什麼的", False),
         ("大腸科在看什麼", False),

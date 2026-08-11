@@ -7,26 +7,30 @@
 建構子接受已載入的條目而非路徑，測試才能直接餵小型固定資料集，
 不必碰檔案系統，也不必 monkey patch。
 
-比對分三個階段（依序，任何一階段命中就不再往下）。三個階段都是先取
-命中鍵對應到的藥證集合，再交給 `_resolve` 判定：集合剛好一筆才給
-`license_number`，否則留空、把集合原樣交出去當 `candidates`——見
-DrugCatalogMatch 的說明，這條規則對所有階段一視同仁，完全比對不例外。
+比對分兩個階段（依序，第一階段有命中就不再往下）：
 
-1. 完全比對：正規化後字串與某個鍵相同，score 1.0。這只證明查詢字串
-   本身是一個真實藥名，不證明那個鍵只對應一張藥證——「感冒液」完全
-   比對命中時就對應 41 張。
-2. 含容比對：藥袋通常只印短的品牌名（「普拿疼」），藥證上卻是連劑型、
-   劑量都在內的全名（「普拿疼錠500毫克」）。單純用 SequenceMatcher 比
-   長度差這麼大的兩個字串，比值會被長度差拉低到任何門檻都分不開「這是
-   同一顆藥的縮寫」跟「這是兩個不相干的字串」（實測：'普拿疼' 對
-   '普拿疼錠500毫克' 只有 0.500）。含容比對繞過這個問題：直接檢查其中
-   一個字串是不是另一個的子字串。
-3. 模糊比對：對前兩階段都沒處理到的查詢做 SequenceMatcher，取門檻以上
-   的最高分對應的鍵。
+1. 完全比對 ∪ 含容比對：查詢字串等於某個鍵（完全比對），聯集上品名
+   包含這個查詢字串的所有鍵（含容比對，方向不拘：查詢是候選的子字串，
+   或候選是查詢的子字串）。這兩者要聯集成同一份候選集合、一起交給
+   `_resolve` 判定唯一性，不能讓完全比對單獨決定答案——藥袋通常只印
+   短的品牌名（「普拿疼」），藥證上卻是連劑型、劑量都在內的全名
+   （「普拿疼錠500毫克」），但這個短名本身也可能剛好等於**另一張**
+   藥證的完整品名（「得胎隆」完全比對只中一張，另有 3 張品名包含它，
+   例如「亞培」得胎隆膜衣錠10毫克）。只看完全比對會把後者的存在視而
+   不見，讓一次精準但仍有多個可能的命中，看起來像已經確定——這正是
+   score 1.0 卻比錯藥證的主因，見 DrugCatalogMatch 的說明。
+   （單純用 SequenceMatcher 比長度差懸殊的兩個字串，比值會被長度差
+   拉低到任何門檻都分不開「這是同一顆藥的縮寫」跟「這是兩個不相干的
+   字串」——實測 '普拿疼' 對 '普拿疼錠500毫克' 只有 0.500——含容比對
+   繞過這個問題：直接檢查子字串關係。）
+2. 模糊比對：完全比對與含容比對都沒有任何命中時，對候選做
+   SequenceMatcher，取門檻以上的最高分對應的鍵。
 
-第 2、3 階段的候選集合都來自同一份字元 n-gram 反向索引（建構子裡建一次），
-不再對全部鍵做線性掃描——這是修正「模糊比對未命中時卡住事件迴圈
-400~750ms」缺陷的根本作法，細節見各方法的說明。
+含容比對與模糊比對的候選集合都來自同一份字元 n-gram 反向索引（建構子
+裡建一次），不再對全部鍵做線性掃描——這是修正「模糊比對未命中時卡住
+事件迴圈 400~750ms」缺陷的根本作法，細節見各方法的說明。查詢長度低於
+`_MIN_CONTAINMENT_LENGTH` 時跳過含容比對（不查 n-gram 索引），只看
+完全比對是否命中，避免極短查詢把半個藥證庫都拉進候選。
 """
 
 import json
@@ -74,18 +78,22 @@ class DrugCatalogEntry:
 class DrugCatalogMatch:
     """藥名比對結果。
 
-    `license_number` 是 Optional，這個 None 代表命中的正規化鍵對應到
-    不只一張藥證字號——可能來自完全比對（例如「得胎隆」本身就是另一張
-    藥證的完整品名），也可能來自含容比對（例如「普拿疼」同時是好幾個
-    普拿疼系列產品品名的子字串）。**完全比對命中（`score == 1.0`）不是
-    例外**：查詢字串跟某個鍵逐字相同，只代表這個字串本身是一個真實藥名，
-    不代表這個字串只可能對應一張藥證——「感冒液」完全比對命中時就對應
-    41 張藥證。這種情況下藥名本身已經被驗證為真實存在、核准過的藥品——
-    這正是本比對唯一的存在理由——只是不知道對應哪一個品項，因此不得
-    任意選一個冒充答案（選第一個、選最短的、甚至選 score 最高的都是
-    編造），寧可留空也不要讓使用者的用藥提醒掛上一個他根本沒有被開立
-    的藥證字號。`candidates` 帶出命中鍵對應到的全部藥證（依 license_number
-    去重），供呼叫端在唯一時直接用、在多筆時交給使用者挑一個。
+    `license_number` 是 Optional，這個 None 代表候選集合裡有不只一張
+    藥證字號。候選集合是「完全比對命中的鍵」跟「品名包含查詢字串的鍵」
+    的**聯集**——兩者缺一都會漏掉真正的歧義：只看完全比對，會漏掉查詢
+    字串剛好也是另一張藥證全名一部分的情形（「得胎隆」完全比對只中
+    一張，但另有 3 張品名包含它，例如「亞培」得胎隆膜衣錠10毫克，
+    真正在藥袋上的可能是後者）；只看含容比對，則會漏掉查詢字串自己
+    就精準等於另一張藥證品名的情形（「普拿疼」同時是好幾個普拿疼系列
+    產品品名的子字串）。**完全比對命中（`score == 1.0`）不是例外**：
+    查詢字串跟某個鍵逐字相同，只代表這個字串本身是一個真實藥名，不
+    代表消除了歧義——「感冒液」完全比對命中時就對應 41 張藥證。這種
+    情況下藥名本身已經被驗證為真實存在、核准過的藥品——這正是本比對
+    唯一的存在理由——只是不知道對應哪一個品項，因此不得任意選一個
+    冒充答案（選第一個、選最短的、甚至選 score 最高的都是編造），
+    寧可留空也不要讓使用者的用藥提醒掛上一個他根本沒有被開立的藥證
+    字號。`candidates` 帶出聯集後的全部藥證（依 license_number 去重），
+    供呼叫端在唯一時直接用、在多筆時交給使用者挑一個。
 
     呼叫端判斷「這個藥名有沒有通過藥證庫校驗」必須看 `match()` 的回傳
     值是不是 None，而不是看 `license_number` 是不是 None——後者只表示
@@ -210,17 +218,18 @@ class DrugCatalogService:
             return None
 
         exact = self._by_key.get(key)
-        if exact is not None:
-            # 完全比對只證明「這個字串等於某個鍵」，不證明那個鍵唯一對應
-            # 一張藥證——「感冒液」完全比對命中時就對應 41 張。score 仍是
-            # 1.0（字串確實逐字相同），但 license_number 是否有值要交給
-            # `_resolve` 依候選數量判定，不能因為是完全比對就預設唯一。
-            return self._resolve(exact.values(), 1.0)
+        # 含容比對的候選鍵：品名跟查詢字串有子字串關係（不拘方向）。
+        # 跟完全比對一起聯集，不能讓完全比對單獨決定答案——查詢字串
+        # 精準命中一個鍵，不代表它不會同時是另一張藥證全名的一部分
+        # （「得胎隆」完全比對只中一張，但另有 3 張品名包含它）。低於
+        # 最小長度時跳過（不查 n-gram 索引），避免極短查詢拉進半個
+        # 藥證庫，見 `_MIN_CONTAINMENT_LENGTH` 的說明。
+        containment_hits = (
+            self._containment_hit_keys(key) if len(key) >= _MIN_CONTAINMENT_LENGTH else []
+        )
 
-        if len(key) >= _MIN_CONTAINMENT_LENGTH:
-            containment = self._match_by_containment(key)
-            if containment is not None:
-                return containment
+        if exact is not None or containment_hits:
+            return self._resolve_exact_and_containment(key, exact, containment_hits)
 
         return self._match_by_fuzzy(key)
 
@@ -256,26 +265,49 @@ class DrugCatalogService:
 
         return candidates
 
-    def _match_by_containment(self, key: str) -> Optional[DrugCatalogMatch]:
-        hits = [
+    def _containment_hit_keys(self, key: str) -> list[str]:
+        """從 gram 索引取出跟查詢字串有子字串關係（任一方向）的鍵。
+
+        只負責找出「品名有子字串關係」的候選鍵，不做任何唯一性判定——
+        判定交給 `_resolve_exact_and_containment`，這裡回傳的鍵清單會
+        跟完全比對的結果聯集。
+        """
+        return [
             candidate_key
             for candidate_key in self._candidates(key)
             if key in candidate_key or candidate_key in key
         ]
-        if not hits:
-            return None
 
-        # 命中鍵可能不只一個（「普拿疼」同時是三個品名的子字串），每個
-        # 命中鍵本身也可能已經是碰撞鍵——兩層都要攤平成同一份候選集合，
-        # 唯一性判定才不會漏看任何一張藥證。
+    def _resolve_exact_and_containment(
+        self,
+        key: str,
+        exact: Optional[dict[str, DrugCatalogEntry]],
+        containment_hits: list[str],
+    ) -> DrugCatalogMatch:
+        """把「完全比對命中的鍵」跟「品名包含查詢字串的鍵」聯集成同一份候選。
+
+        見 spec「證號唯一才可信」與 DrugCatalogMatch 的說明：完全比對
+        精準命中一個鍵不代表消除了歧義，兩種訊號要聯集之後才能交給
+        `_resolve` 判定唯一性。命中鍵可能不只一個（「普拿疼」同時是
+        三個品名的子字串），每個命中鍵本身也可能已經是碰撞鍵——都要
+        攤平進同一份候選集合，唯一性判定才不會漏看任何一張藥證。
+        """
         entries_by_license: dict[str, DrugCatalogEntry] = {}
-        for candidate_key in hits:
+        for candidate_key in containment_hits:
             entries_by_license.update(self._by_key[candidate_key])
 
+        if exact is not None:
+            entries_by_license.update(exact)
+            # 完全比對存在時 score 固定 1.0（字串確實逐字相同），不論
+            # 聯集後候選是不是唯一——這正是 score 1.0 不再等於證號確定
+            # 的地方，由 `_resolve` 依候選數量決定 license_number。
+            return self._resolve(entries_by_license.values(), 1.0)
+
         if len(entries_by_license) > 1:
-            # 藥名驗證為真，但無法判斷是哪一張藥證——理由見
-            # DrugCatalogMatch 的說明。score 沒有另外定義的意義，
-            # 這裡不是相似度比對，留 0.0 只是滿足型別。
+            # 沒有完全比對、純靠含容比對湊出多張藥證：藥名驗證為真，
+            # 但無法判斷是哪一張——理由見 DrugCatalogMatch 的說明。
+            # score 沒有另外定義的意義，這裡不是相似度比對，留 0.0
+            # 只是滿足型別。
             return self._resolve(entries_by_license.values(), 0.0)
 
         (entry,) = entries_by_license.values()
@@ -283,7 +315,7 @@ class DrugCatalogService:
         # 純粹供除錯／記錄參考，比對邏輯本身不看這個分數。
         coverage = max(
             min(len(key), len(candidate_key)) / max(len(key), len(candidate_key))
-            for candidate_key in hits
+            for candidate_key in containment_hits
             if entry.license_number in self._by_key[candidate_key]
         )
         return self._resolve(entries_by_license.values(), coverage)
@@ -311,8 +343,8 @@ class DrugCatalogService:
     def _resolve(entries: Iterable[DrugCatalogEntry], score: float) -> DrugCatalogMatch:
         """把「命中鍵對應到的藥證集合」收斂成一筆比對結果。
 
-        這是唯一決定 `license_number` 有沒有值的地方，三個比對階段
-        （完全／含容／模糊）都先取到候選集合才呼叫這裡——證號是否確定
+        這是唯一決定 `license_number` 有沒有值的地方，兩個比對階段
+        （完全∪含容／模糊）都先取到候選集合才呼叫這裡——證號是否確定
         只看候選數量是不是剛好 1，跟走的是哪個階段、score 是多少無關。
         `candidates` 一律帶出完整候選集合（唯一時也是只含一筆的清單），
         供呼叫端在多筆時交給使用者挑一個。

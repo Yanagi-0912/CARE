@@ -229,11 +229,11 @@ def _brute_force_match(
 ):
     """不透過 gram 索引、直接對全部鍵做線性掃描的參考實作。
 
-    含容與模糊比對的邏輯與 `DrugCatalogService` 完全相同，差別只在候選
-    集合是「全部的鍵」而不是索引narrow 出來的子集——索引只是效能優化，
-    不應該改變任何一筆查詢的最終結果，這支函式就是用來驗證這件事的
-    oracle。`by_key` 的值是 `{license_number: entry}`，跟服務內部的
-    索引結構一致，才能餵服務本身建出來的 `_by_key` 進來比對。
+    完全比對∪含容比對、模糊比對的邏輯與 `DrugCatalogService` 完全相同，
+    差別只在候選集合是「全部的鍵」而不是索引narrow 出來的子集——索引
+    只是效能優化，不應該改變任何一筆查詢的最終結果，這支函式就是用來
+    驗證這件事的 oracle。`by_key` 的值是 `{license_number: entry}`，
+    跟服務內部的索引結構一致，才能餵服務本身建出來的 `_by_key` 進來比對。
     """
 
     def resolve(entries_by_license: dict[str, DrugCatalogEntry], score: float):
@@ -250,24 +250,24 @@ def _brute_force_match(
         return None
 
     exact = by_key.get(key)
-    if exact is not None:
-        return resolve(exact, 1.0)
+    hits = [k for k in by_key if key in k or k in key] if len(key) >= 3 else []
 
-    if len(key) >= 3:
-        hits = [k for k in by_key if key in k or k in key]
-        if hits:
-            entries_by_license: dict[str, DrugCatalogEntry] = {}
-            for k in hits:
-                entries_by_license.update(by_key[k])
-            if len(entries_by_license) > 1:
-                return resolve(entries_by_license, 0.0)
-            (entry,) = entries_by_license.values()
-            coverage = max(
-                min(len(key), len(k)) / max(len(key), len(k))
-                for k in hits
-                if entry.license_number in by_key[k]
-            )
-            return resolve(entries_by_license, coverage)
+    if exact is not None or hits:
+        entries_by_license: dict[str, DrugCatalogEntry] = {}
+        for k in hits:
+            entries_by_license.update(by_key[k])
+        if exact is not None:
+            entries_by_license.update(exact)
+            return resolve(entries_by_license, 1.0)
+        if len(entries_by_license) > 1:
+            return resolve(entries_by_license, 0.0)
+        (entry,) = entries_by_license.values()
+        coverage = max(
+            min(len(key), len(k)) / max(len(key), len(k))
+            for k in hits
+            if entry.license_number in by_key[k]
+        )
+        return resolve(entries_by_license, coverage)
 
     best_key = None
     best_score = 0.0
@@ -303,6 +303,10 @@ def test_index_produces_same_results_as_brute_force_scan():
         ),
         DrugCatalogEntry(license_number="衛署藥製字第030001號", name_zh="脈定錠5毫克"),
         DrugCatalogEntry(license_number="衛署藥製字第030002號", name_zh="銀杏葉萃取物膠囊"),
+        DEDROGYL_EXACT,
+        DEDROGYL_ABBOTT,
+        DEDROGYL_OTHER_A,
+        DEDROGYL_OTHER_B,
     ]
     threshold = 0.88
     service = DrugCatalogService(entries, threshold=threshold)
@@ -315,6 +319,7 @@ def test_index_produces_same_results_as_brute_force_scan():
         "LIPITOR",  # 含容比對（英文），命中多張藥證
         "脈定錠5毫克",  # 未達門檻的模糊比對
         "銀杏葉萃取物膠囊",  # 完全比對
+        "得胎隆",  # 完全比對唯一，但聯集含容比對後變成多張
         "這絕對不是一個藥名",  # 未命中
         "XYZQWERTY",  # 未命中
     ]
@@ -410,3 +415,52 @@ def test_multi_candidate_match_is_still_a_non_none_result():
 
     assert match is not None
     assert len(match.candidates) == 2
+
+
+# ── 完全比對 ∪ 含容比對：唯一的鍵不代表消除了歧義 ─────────────────────
+#
+# 「得胎隆」完全比對只命中一張藥證，但同時也是另外幾張藥證品名的一部分
+# （真實案例：「亞培」得胎隆膜衣錠10毫克）。只看完全比對命中的鍵是不是
+# 唯一，會漏掉這種情形——候選集合必須是完全比對跟含容比對的聯集。
+
+DEDROGYL_EXACT = DrugCatalogEntry(license_number="內衛藥輸字第002077號", name_zh="得胎隆")
+DEDROGYL_ABBOTT = DrugCatalogEntry(
+    license_number="衛署藥輸字第050001號", name_zh='"亞培"得胎隆膜衣錠10毫克'
+)
+DEDROGYL_OTHER_A = DrugCatalogEntry(license_number="衛署藥輸字第050002號", name_zh="得胎隆錠5毫克")
+DEDROGYL_OTHER_B = DrugCatalogEntry(license_number="衛署藥輸字第050003號", name_zh="得胎隆糖衣錠")
+
+
+def test_exact_match_unions_with_entries_whose_name_contains_the_query():
+    """查詢字串的完全比對鍵唯一（只有 DEDROGYL_EXACT 這一張），但它同時
+    是另外 3 張藥證品名的子字串。候選集合必須是兩者的聯集，讓
+    license_number 留空、四張藥證都在候選——不能因為完全比對本身唯一
+    就當作證號已確定，這正是先前「得胎隆比到別張藥證」錯配的根源。"""
+    service = DrugCatalogService(
+        [DEDROGYL_EXACT, DEDROGYL_ABBOTT, DEDROGYL_OTHER_A, DEDROGYL_OTHER_B],
+        threshold=0.88,
+    )
+
+    match = service.match("得胎隆")
+
+    assert match is not None
+    assert match.score == 1.0
+    assert match.license_number is None
+    assert {c.license_number for c in match.candidates} == {
+        DEDROGYL_EXACT.license_number,
+        DEDROGYL_ABBOTT.license_number,
+        DEDROGYL_OTHER_A.license_number,
+        DEDROGYL_OTHER_B.license_number,
+    }
+
+
+def test_exact_match_stays_unique_when_nothing_else_contains_it():
+    """對照上一個測試：完全比對命中的鍵如果沒有任何其他藥證的品名包含
+    它，聯集後仍然只有一張，license_number 正常有值——聯集規則不會把
+    原本就唯一的答案也變成留空。"""
+    service = DrugCatalogService([DEDROGYL_EXACT], threshold=0.88)
+
+    match = service.match("得胎隆")
+
+    assert match is not None
+    assert match.license_number == DEDROGYL_EXACT.license_number

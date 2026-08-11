@@ -33,6 +33,21 @@ from app.services.medication.prescription_scan_service import (
 
 router = APIRouter()
 
+# 凡是回傳 MedicationReminder／Medication／MedicationLog 的端點都要帶
+# response_model_by_alias=False。
+#
+# 這些模型的 id 欄位是 Field(alias="_id")，為了能直接用 Mongo document 建構；
+# 但 alias 同時作用於輸入與輸出，而 FastAPI 序列化 response_model 預設
+# by_alias=True，於是 id 會被送成 `_id`。LIFF 讀的是 reminder.id，拿到
+# undefined，接著打 PUT/DELETE /reminders/undefined，後端查不到就回 404
+# 「找不到該用藥提醒」——關閉與刪除提醒因此完全失效。
+#
+# 為什麼不在模型上加 serialization_alias="id" 一次解決：repository 的三處寫入
+# （create_reminder、create_medications、用藥日誌 upsert 的 $setOnInsert）都靠
+# model_dump(by_alias=True) 產出的 `_id` 來判斷要不要補 ObjectId。改了模型，
+# 那些判斷會恆真，既有 id 被丟棄、還會在文件裡多留一個雜散的 `id` 欄位。
+# 把修正留在 HTTP 邊界，資料層完全不動。
+
 # 辨識失敗的三種原因映射到的 HTTP 狀態碼。unreadable／not_prescription 都是
 # 「這張圖本身沒問題，但讀不出可用內容」，用同一個 4xx 家族；
 # service_unavailable 是外部服務故障，用 503 讓語意更精確，也讓呼叫端
@@ -57,6 +72,7 @@ def _scan_failure_response(exc: PrescriptionScanError) -> HTTPException:
 @router.post(
     "/reminders",
     response_model=List[MedicationReminder],
+    response_model_by_alias=False,  # 見檔頭說明：輸出鍵須為 id，不是 _id
     summary="新增用藥提醒",
     description="為自己或家庭成員勾選時段 (早/中/晚/睡前) 並設定起訖日期以新增用藥提醒。",
 )
@@ -73,6 +89,7 @@ async def create_reminders(
 @router.get(
     "/reminders",
     response_model=List[MedicationReminderWithMedications],
+    response_model_by_alias=False,  # 見檔頭說明：輸出鍵須為 id，不是 _id
     summary="查詢用藥提醒列表",
     description=(
         "取得個人或指定成員的用藥提醒列表。若未傳入 target_user_id 則回傳本人提醒。"
@@ -95,6 +112,7 @@ async def get_reminders(
 @router.get(
     "/reminders/created",
     response_model=List[MedicationReminder],
+    response_model_by_alias=False,  # 見檔頭說明：輸出鍵須為 id，不是 _id
     summary="查詢自己開立的用藥提醒",
     description=(
         "取得由本人開立的所有用藥提醒，含為自己與為家庭成員設定的。"
@@ -113,6 +131,7 @@ async def get_created_reminders(
 @router.put(
     "/reminders/{reminder_id}",
     response_model=MedicationReminder,
+    response_model_by_alias=False,  # 見檔頭說明：輸出鍵須為 id，不是 _id
     summary="修改用藥提醒",
     description="修改用藥提醒的時間、起訖日期或開關狀態。",
 )
@@ -148,6 +167,7 @@ async def delete_reminder(
 @router.post(
     "/confirm/{log_id}",
     response_model=MedicationLog,
+    response_model_by_alias=False,  # 見檔頭說明：輸出鍵須為 id，不是 _id
     summary="確認完成服藥",
     description="用藥者點擊【已用藥】按鈕後呼叫此 API 更新日誌狀態為 taken。",
 )

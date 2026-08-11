@@ -170,6 +170,43 @@ def test_get_reminders_router(override_current_user):
         app.dependency_overrides.pop(get_medication_service, None)
 
 
+def test_get_reminders_router_exposes_id_not_underscore_id(override_current_user):
+    """回應必須用 `id` 這個鍵，不能是 `_id`。
+
+    MedicationReminder.id 帶 alias="_id"（為了能直接吃 Mongo document），而
+    FastAPI 序列化 response_model 預設 by_alias=True，於是 `id` 會被送成
+    `_id`。LIFF 讀的是 reminder.id，拿到 undefined，接著 PUT/DELETE
+    /reminders/undefined，後端查不到就回 404「找不到該用藥提醒」——
+    關閉提醒與刪除提醒因此全都失效。
+
+    既有的 router 測試看不出這件事：它們的 fixture 都沒有設 id，斷言也只看
+    slot_type／medications；前端測試則是 mock 回傳 id。
+    """
+    fake_reminder = MedicationReminder(
+        id="R1",
+        creator_user_id="U_TEST_USER",
+        user_id="U_TEST_USER",
+        slot_type="morning",
+        scheduled_time="08:00",
+    )
+
+    class _FakeMedicationService:
+        async def get_user_reminders_with_medications(
+            self, user_id, requester_user_id=None
+        ):
+            return [fake_reminder]
+
+    app.dependency_overrides[get_medication_service] = lambda: _FakeMedicationService()
+    try:
+        response = client.get("/api/medications/reminders")
+        assert response.status_code == 200
+        data = response.json()
+        assert data[0]["id"] == "R1"
+        assert "_id" not in data[0]
+    finally:
+        app.dependency_overrides.pop(get_medication_service, None)
+
+
 def test_get_reminders_router_includes_resolved_medications(override_current_user):
     """7.4：GET /reminders 的回應新增 medications 欄位——驗證有 medication_ids
     時，回應裡真的帶著解析出來的藥品物件，而不只是原本的 id 陣列。"""

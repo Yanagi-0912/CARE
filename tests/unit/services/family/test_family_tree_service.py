@@ -192,3 +192,54 @@ async def test_set_relationship_unidirectional(service):
         
         assert result == mock_tree
         mock_set.assert_called_once_with(user_id, member_id, "parent")
+
+
+def _tree_with(owner_id: str, member_ids: list[str]) -> FamilyTree:
+    now = datetime.now(timezone.utc)
+    return FamilyTree(
+        user_id=owner_id,
+        family_members=[FamilyMember(user_id=m) for m in member_ids],
+        created_at=now,
+        updated_at=now,
+    )
+
+
+@pytest.mark.asyncio
+async def test_ensure_family_member_allows_self_without_query(service):
+    """查自己不查族譜：族譜為空的新使用者也必須讀得到自己的資料。"""
+    with patch.object(service, "get_family_tree", new_callable=AsyncMock) as mock_get:
+        await service.ensure_family_member("U_ME", "U_ME")
+        mock_get.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ensure_family_member_allows_member(service):
+    with patch.object(service, "get_family_tree", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = _tree_with("U_ME", ["U_MEMBER"])
+        await service.ensure_family_member("U_ME", "U_MEMBER")
+        mock_get.assert_awaited_once_with("U_ME")
+
+
+@pytest.mark.asyncio
+async def test_ensure_family_member_rejects_stranger_with_403(service):
+    with patch.object(service, "get_family_tree", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = _tree_with("U_ME", ["U_MEMBER"])
+
+        with pytest.raises(HTTPException) as exc_info:
+            await service.ensure_family_member("U_ME", "U_STRANGER")
+
+        assert exc_info.value.status_code == 403
+        assert "非家庭成員" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_ensure_family_member_is_not_symmetric_by_accident(service):
+    """授權只看請求者自己的族譜。對方把我加為家人，不等於我能讀對方的資料。"""
+    with patch.object(service, "get_family_tree", new_callable=AsyncMock) as mock_get:
+        mock_get.return_value = _tree_with("U_ME", [])
+
+        with pytest.raises(HTTPException) as exc_info:
+            await service.ensure_family_member("U_ME", "U_OTHER")
+
+        assert exc_info.value.status_code == 403
+        mock_get.assert_awaited_once_with("U_ME")

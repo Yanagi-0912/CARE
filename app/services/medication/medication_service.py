@@ -33,11 +33,19 @@ class MedicationService:
     用藥提醒與日誌業務邏輯處理
     """
 
-    def __init__(self, medication_repository=MedicationRepository) -> None:
+    def __init__(
+        self,
+        medication_repository=MedicationRepository,
+        reminder_repository=MedicationReminderRepository,
+        log_repository=MedicationLogRepository,
+    ) -> None:
         # 其餘方法沿用既有慣例，直接呼叫 repository 的 staticmethod；
-        # 這裡額外開一個可注入的參數，只給 get_user_reminders_with_medications
-        # 用——測試不需要碰資料庫，也不必用 monkeypatch 換掉整個 import。
+        # 這裡額外開可注入的參數，給 get_user_reminders_with_medications 與
+        # update_reminder 用——測試不需要碰資料庫，也不必用 monkeypatch 換掉
+        # 整個 import（openspec 的測試規則明文禁止後者）。
         self._medication_repository = medication_repository
+        self._reminder_repository = reminder_repository
+        self._log_repository = log_repository
 
     async def create_reminders(
         self, creator_user_id: str, request: CreateMedicationReminderRequest
@@ -144,7 +152,7 @@ class MedicationService:
         self, creator_user_id: str, reminder_id: str, request: UpdateMedicationReminderRequest
     ) -> MedicationReminder:
         """更新用藥提醒 (時段時間、起訖日期、啟動狀態)"""
-        reminder = await MedicationReminderRepository.get_reminder_by_id(reminder_id)
+        reminder = await self._reminder_repository.get_reminder_by_id(reminder_id)
         if not reminder:
             raise HTTPException(status_code=404, detail="找不到該用藥提醒")
 
@@ -152,9 +160,28 @@ class MedicationService:
             raise HTTPException(status_code=403, detail="無權限修改此用藥提醒")
 
         update_data = request.model_dump(exclude_none=True)
-        updated = await MedicationReminderRepository.update_reminder(reminder_id, update_data)
+        updated = await self._reminder_repository.update_reminder(reminder_id, update_data)
         if not updated:
             raise HTTPException(status_code=500, detail="更新用藥提醒失敗")
+
+        # 關閉規則只讓排程器「明天起」不再展開；當天已經展開、還沒確認的那筆紀錄
+        # 不受影響，會繼續走 T+20 催促與 T+30 家屬逾時警報（三個階段都只查 log，
+        # 不回頭確認規則現在還開不開）。使用者關掉之後照樣被催、家人照樣收到他漏
+        # 吃藥的通知，看起來就像關閉這個功能根本沒作用。所以在關閉的當下就把那些
+        # 紀錄註銷，讓後續推播停在這裡。
+        #
+        # 註銷排在更新成功之後：更新失敗時規則其實還是開著的，不該把當天的紀錄
+        # 作廢。判斷用 `is False` 而不是 falsy——`enabled` 沒帶時是 None，那種請求
+        # （例如只改時間）不能順手把當天的紀錄一起註銷。
+        if request.enabled is False:
+            cancelled = await self._log_repository.cancel_pending_by_reminder(reminder_id)
+            if cancelled:
+                logger.info(
+                    "[MedicationService] 關閉提醒 %s，註銷當日未確認的執行紀錄 %d 筆",
+                    reminder_id,
+                    cancelled,
+                )
+
         return updated
 
     async def delete_reminder(self, creator_user_id: str, reminder_id: str) -> bool:

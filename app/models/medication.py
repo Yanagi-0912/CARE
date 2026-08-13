@@ -10,7 +10,16 @@ TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 HHMM_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 MedicationSlotType = Literal["morning", "noon", "evening", "bedtime"]
-MedicationLogStatus = Literal["pending", "taken", "missed"]
+# `cancelled` 是使用者關閉時段規則時，當日已展開但還沒確認的紀錄會落到的狀態。
+# 它與 `missed` 分開的理由：missed 代表「該吃卻沒吃」，會連帶發出家屬逾時警報、
+# 也會進錯過時段的彙整通知；規則被主動關掉的那一次不該算在使用者頭上。留下
+# 紀錄而不是直接刪除，是為了保住「這個時段當天確實展開過」這件事實，避免排程器
+# 在同一天的後續 tick 又把它重新 upsert 回 pending。
+#
+# 它不是終局狀態：使用者若其實已服藥（先吃了藥才關掉時段），按下【我已用藥】
+# 仍可轉成 `taken`——使用者按下的確認一律優先於系統推得的狀態。但它不會出現在
+# 用藥歷史裡，那是內部記帳，不是使用者做過的事。
+MedicationLogStatus = Literal["pending", "taken", "missed", "cancelled"]
 
 # 醫囑頻次。無法明確歸類者一律 OTHER——臆測頻次會直接變成錯誤的服藥時間。
 # 定義在這裡而非 prescription.py，是因為 prescription.py 需要 MedicationSlotType，

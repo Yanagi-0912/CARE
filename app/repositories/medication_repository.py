@@ -461,11 +461,21 @@ class MedicationLogRepository:
 
     @staticmethod
     async def mark_as_taken(log_id: str, taken_at: Optional[datetime] = None) -> Optional[MedicationLog]:
-        """更新單一 Document 狀態為已服藥 (允許 pending 或 missed 狀態被標記為 taken)"""
+        """更新單一 Document 狀態為已服藥。
+
+        `pending`、`missed`、`cancelled` 三種狀態都允許轉成 `taken`：使用者按下的
+        確認一律優先於系統推得的狀態。`missed` 是排程器判定的逾時，`cancelled` 是
+        規則被關閉時的註銷——兩者都可能發生在使用者其實已經服藥之後（先吃了藥，
+        才進 LIFF 關掉這個時段，最後才想起來按推播訊息上還留著的【我已用藥】）。
+        真的吃過藥是事實，紀錄應該收斂成 `taken`。
+
+        放寬狀態條件不會讓已經停下的推播復活：三階推播的待推播查詢限定
+        `status="pending"`，`taken` 同樣挑不到。
+        """
         col = MongoDBManager.get_medication_logs_collection()
         now = taken_at or datetime.now(tz=timezone.utc)
         result = await col.update_one(
-            {"_id": log_id, "status": {"$in": ["pending", "missed"]}},
+            {"_id": log_id, "status": {"$in": ["pending", "missed", "cancelled"]}},
             {"$set": {"status": "taken", "taken_at": now}},
         )
         if result.matched_count == 0:
@@ -474,6 +484,36 @@ class MedicationLogRepository:
                 return log
             return None
         return await MedicationLogRepository.get_log_by_id(log_id)
+
+    @staticmethod
+    async def cancel_pending_by_reminder(
+        reminder_id: str,
+        collection: Optional[Any] = None,
+    ) -> int:
+        """把某筆時段規則底下還沒確認的紀錄改為 cancelled，回傳受影響的筆數。
+
+        使用者關閉時段規則時呼叫。三個推播階段（`list_pending_patient_reminders`／
+        `list_pending_urgent_reminders`／`list_pending_caregiver_alerts`）的查詢
+        條件都帶 `status="pending"`，所以狀態一離開 pending，那些查詢就再也挑不到
+        這筆紀錄——後續的催促與家屬逾時警報自然停下，不需要在推播路徑上多做一次
+        規則的 join（那條路徑的原子搶佔行為已有既定保證，不動它）。
+
+        條件限定 `status="pending"`，不是只用 reminder_id：
+        - 已 `taken` 的不能改——那是使用者真的吃過藥的事實。
+        - 已 `missed` 的也不改——家屬警報早就送出去了，事後把它變成「不算漏吃」
+          會讓資料庫與已經送到家屬手上的通知互相矛盾。
+
+        沒有帶日期條件。理由：紀錄是惰性展開的，`pending` 只會是還在三階推播時間
+        窗內的那一筆——更早的都已被 T+30 階段改成 `missed`，未來的還沒展開。多加
+        一個日期範圍條件只會讓「關閉之後仍殘留 pending」多一種可能。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_medication_logs_collection()
+        result = await collection.update_many(
+            {"reminder_id": reminder_id, "status": "pending"},
+            {"$set": {"status": "cancelled"}},
+        )
+        return result.modified_count
 
 
     # ── 推播權搶佔 ────────────────────────────────────────────────────
@@ -628,7 +668,17 @@ class MedicationLogRepository:
 
     @staticmethod
     async def list_logs_by_user(user_id: str, limit: int = 50) -> List[MedicationLog]:
+        """列出使用者的用藥歷史，不含已註銷的紀錄。
+
+        `cancelled` 只是為了擋住排程器在同一天的後續 tick 把紀錄重新 upsert 回
+        `pending` 而留下的內部記帳，不是使用者做過的事。列出來的話，使用者會在
+        歷史裡看到一筆自己從未互動、狀態也無從解讀的紀錄。
+        """
         col = MongoDBManager.get_medication_logs_collection()
-        cursor = col.find({"user_id": user_id}).sort("scheduled_at", -1).limit(limit)
+        cursor = (
+            col.find({"user_id": user_id, "status": {"$ne": "cancelled"}})
+            .sort("scheduled_at", -1)
+            .limit(limit)
+        )
         docs = await cursor.to_list(length=None)
         return [MedicationLog(**{**doc, "_id": str(doc["_id"])}) for doc in docs]

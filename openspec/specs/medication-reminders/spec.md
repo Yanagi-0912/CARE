@@ -156,6 +156,51 @@ grace 之內的延遲 SHALL 照常推播，使短暫部署造成的延遲不致�
 - **WHEN** 非該紀錄用藥者的使用者呼叫確認
 - **THEN** 系統 SHALL 拒絕
 
+### Requirement: 關閉時段規則
+
+關閉一筆時段規則（`enabled` 設為 false）SHALL 立即止住該規則當日尚未確認的紀錄的後續推播：系統 SHALL 將其狀態由 `pending` 改為 `cancelled`。
+
+`cancelled` SHALL NOT 計為漏吃——該紀錄 SHALL NOT 觸發 T+20 二次催促、SHALL NOT 觸發 T+30 家屬逾時警報，狀態 SHALL NOT 變為 `missed`。
+
+理由：三階推播的待推播查詢只讀執行紀錄，不回頭確認規則現在是否仍啟用。若僅寫入 `enabled=false`，當日已展開的紀錄會照常走完催促與家屬警報——使用者主動關閉後仍被催促，家屬還收到他漏服藥的警報，關閉因此看起來完全沒有作用。
+
+三階推播的查詢條件 SHALL 維持限定 `status` 為 `pending`。此為註銷得以生效的唯一依據：條件一旦放寬（例如改為排除 `taken`），關閉將再次悄悄失效。
+
+註銷 SHALL 僅作用於 `pending` 的紀錄。已為 `taken` 者 SHALL NOT 被改寫——那是使用者確實服藥的事實；已為 `missed` 者亦 SHALL NOT 被改寫——家屬警報已送出，事後改為「不算漏吃」會使資料庫與已送達的通知互相矛盾。
+
+註銷 SHALL 於規則更新成功之後才執行；更新失敗時規則仍為啟用，SHALL NOT 作廢當日紀錄。未帶 `enabled` 的更新請求（例如只調整提醒時間）SHALL NOT 註銷任何紀錄。
+
+關閉 SHALL NOT 刪除規則本身，亦 SHALL NOT 停用其關聯藥品。同日再次開啟 SHALL NOT 復原已註銷的紀錄——展開以 `(reminder_id, scheduled_at)` 為唯一識別且僅在插入時寫入初始欄位，已存在的紀錄不會被改回 `pending`，該時段當日因此不再推播。
+
+`cancelled` SHALL NOT 為終局狀態：使用者對已註銷的紀錄按下【已用藥】，系統 SHALL 將其狀態改為 `taken`。理由：使用者可能先服了藥才關閉該時段（例如療程結束），最後才按下推播訊息上仍留著的確認；服藥是事實，紀錄應收斂為 `taken`。此與 `missed` 允許事後轉 `taken` 為同一判斷——使用者按下的確認一律優先於系統推得的狀態。此放寬 SHALL NOT 使推播復活：三階查詢限定 `pending`，`taken` 同樣不會被挑中。
+
+用藥歷史 SHALL NOT 列出狀態為 `cancelled` 的紀錄。理由：該狀態是為阻止排程器於同日後續 tick 重新展開而留下的內部記帳，並非使用者的行為；列出會使使用者在歷史中看到一筆自己從未互動、狀態亦無從解讀的紀錄。已由 `cancelled` 轉為 `taken` 者 SHALL 照常列出。
+
+#### Scenario: 關閉後不再催促
+
+- **WHEN** 08:00 的紀錄已展開且尚未確認，使用者於 08:05 關閉該時段規則
+- **THEN** 該紀錄狀態 SHALL 為 `cancelled`，用藥者 SHALL NOT 收到 T+20 催促，家屬 SHALL NOT 收到 T+30 逾時警報
+
+#### Scenario: 已確認的紀錄不受關閉影響
+
+- **WHEN** 使用者已按下【已用藥】後才關閉該時段規則
+- **THEN** 該紀錄狀態 SHALL 維持 `taken`
+
+#### Scenario: 只調整提醒時間
+
+- **WHEN** 更新請求僅帶 `scheduled_time`，未帶 `enabled`
+- **THEN** SHALL NOT 註銷任何當日紀錄
+
+#### Scenario: 關閉後才補按已用藥
+
+- **WHEN** 該時段的紀錄已為 `cancelled`，使用者按下【已用藥】
+- **THEN** 該紀錄狀態 SHALL 為 `taken`，且 SHALL 出現在用藥歷史中
+
+#### Scenario: 已註銷的紀錄不進歷史
+
+- **WHEN** 查詢使用者的用藥歷史，其中一筆紀錄狀態為 `cancelled`
+- **THEN** 回傳結果 SHALL NOT 包含該筆紀錄
+
 ### Requirement: 推播的時區與顯示設定
 
 推播文案中的時間 SHALL 以台北時間顯示。從資料庫取回的時間為無時區的 UTC，SHALL 先補上時區再轉換，否則會顯示為相差 8 小時的時刻。

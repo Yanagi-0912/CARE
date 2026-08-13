@@ -470,3 +470,144 @@ async def test_list_medication_names_for_log_swallows_lookup_failures():
         side_effect=RuntimeError("mongo down"),
     ):
         assert await service.list_medication_names_for_log(_log_for_names()) == []
+# --- 關閉提醒要止住當日後續推播 -------------------------------------------
+#
+# 排程器的三個推播階段（T+0／T+20／T+30）都只查 medication_logs，條件是
+# status="pending" 加上各自的已送出旗標，不會回頭確認那筆規則現在還開不開
+# （見 MedicationLogRepository.list_pending_* 三個查詢）。所以把規則關掉只
+# 影響「隔天還要不要展開」，當天已經展開的紀錄照樣會催促、照樣會發家屬逾時
+# 警報。使用者的體感就是「我關了還是被催、家人還收到我漏吃藥的通知」。
+#
+# 修正的方向是在關閉的當下就把那些還沒確認的紀錄註銷，讓三個查詢自然濾掉
+# 它們，而不是在排程器裡多做一次 reminder 的 join——推播路徑上的併發搶佔
+# 行為已有既定保證，不動它。
+
+
+def _reminder(enabled: bool = True) -> MedicationReminder:
+    return MedicationReminder(
+        _id="R123",
+        creator_user_id="U_SELF",
+        user_id="U_SELF",
+        slot_type="morning",
+        scheduled_time="08:00",
+        enabled=enabled,
+    )
+
+
+class FakeReminderRepository:
+    """`update_reminder` 用建構子注入的替身。
+
+    openspec 的測試規則禁止用 monkey patch 換掉別處導入的實例，所以這裡走
+    依賴注入，並記下 update_reminder 收到的 update_data，讓「enabled=False
+    真的有送到資料層」這件事可以直接斷言。
+    """
+
+    def __init__(self, reminder: MedicationReminder):
+        self._reminder = reminder
+        self.received_update: dict | None = None
+
+    async def get_reminder_by_id(self, reminder_id: str) -> MedicationReminder:
+        return self._reminder
+
+    async def update_reminder(self, reminder_id: str, update_data: dict) -> MedicationReminder:
+        self.received_update = dict(update_data)
+        return self._reminder.model_copy(update=update_data)
+
+
+class FakeLogRepository:
+    def __init__(self, cancelled: int = 0):
+        self._cancelled = cancelled
+        self.cancelled_reminder_ids: list[str] = []
+
+    async def cancel_pending_by_reminder(self, reminder_id: str) -> int:
+        self.cancelled_reminder_ids.append(reminder_id)
+        return self._cancelled
+
+
+def _service_with_fakes(reminder: MedicationReminder, cancelled: int = 0):
+    reminders = FakeReminderRepository(reminder)
+    logs = FakeLogRepository(cancelled=cancelled)
+    service = MedicationService(reminder_repository=reminders, log_repository=logs)
+    return service, reminders, logs
+
+
+@pytest.mark.asyncio
+async def test_disabling_reminder_cancels_pending_logs():
+    service, reminders, logs = _service_with_fakes(_reminder(enabled=True), cancelled=1)
+
+    result = await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(enabled=False),
+    )
+
+    # enabled=False 必須真的送到資料層：exclude_none 只濾掉 None，False 要留下。
+    assert reminders.received_update["enabled"] is False
+    assert result.enabled is False
+    # 關閉的當下就把當日還沒確認的紀錄註銷，後續的催促與家屬警報才會停。
+    assert logs.cancelled_reminder_ids == ["R123"]
+
+
+@pytest.mark.asyncio
+async def test_enabling_reminder_does_not_cancel_logs():
+    """重新開啟不該註銷任何東西——那個時段當天可能已經有一筆正常在跑的紀錄。"""
+    service, _, logs = _service_with_fakes(_reminder(enabled=False))
+
+    await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(enabled=True),
+    )
+
+    assert logs.cancelled_reminder_ids == []
+
+
+@pytest.mark.asyncio
+async def test_changing_only_time_does_not_cancel_logs():
+    """只改時間的請求沒有帶 enabled（是 None），不能順手註銷當天的紀錄。"""
+    service, reminders, logs = _service_with_fakes(_reminder(enabled=True))
+
+    await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(scheduled_time="09:00"),
+    )
+
+    assert "enabled" not in reminders.received_update
+    assert logs.cancelled_reminder_ids == []
+
+
+@pytest.mark.asyncio
+async def test_disable_by_patient_who_is_not_creator_also_cancels():
+    """用藥者本人關閉自己的提醒同樣要止住推播——權限判斷放行 creator 或 user 兩者。"""
+    reminder = _reminder(enabled=True).model_copy(
+        update={"creator_user_id": "U_CARE", "user_id": "U_PATIENT"}
+    )
+    service, _, logs = _service_with_fakes(reminder, cancelled=1)
+
+    await service.update_reminder(
+        creator_user_id="U_PATIENT",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(enabled=False),
+    )
+
+    assert logs.cancelled_reminder_ids == ["R123"]
+
+
+@pytest.mark.asyncio
+async def test_forbidden_disable_does_not_cancel_logs():
+    """無權限的關閉請求擋在 403，絕不能先把別人的紀錄註銷掉。"""
+    reminder = _reminder(enabled=True).model_copy(
+        update={"creator_user_id": "U_CARE", "user_id": "U_PATIENT"}
+    )
+    service, _, logs = _service_with_fakes(reminder, cancelled=1)
+
+    with pytest.raises(HTTPException) as excinfo:
+        await service.update_reminder(
+            creator_user_id="U_STRANGER",
+            reminder_id="R123",
+            request=UpdateMedicationReminderRequest(enabled=False),
+        )
+
+    assert excinfo.value.status_code == 403
+    assert logs.cancelled_reminder_ids == []

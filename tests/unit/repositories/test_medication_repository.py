@@ -911,3 +911,122 @@ async def test_link_medications_with_empty_list_does_not_update():
 
     assert linked is False
     col.update_one.assert_not_called()
+
+
+# --- 關閉提醒時註銷當日尚未確認的執行紀錄 ---------------------------------
+
+
+@pytest.mark.asyncio
+async def test_cancel_pending_by_reminder_only_touches_pending_logs():
+    """註銷只能打中仍為 pending 的紀錄。
+
+    已經 taken 的不能被改寫——那是使用者真的吃過藥的事實；已經 missed 的也不
+    改，家屬警報早就發出去了，事後把它變成「不算漏吃」會讓紀錄與已送出的通知
+    互相矛盾。所以查詢條件必須帶 status="pending"，不能只用 reminder_id。
+    """
+    col = MagicMock()
+    col.update_many = AsyncMock(return_value=MagicMock(modified_count=1))
+
+    cancelled = await MedicationLogRepository.cancel_pending_by_reminder(
+        "R123", collection=col
+    )
+
+    assert cancelled == 1
+    (query, update), _ = col.update_many.call_args
+    assert query["reminder_id"] == "R123"
+    assert query["status"] == "pending"
+    assert update["$set"]["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_cancel_pending_by_reminder_returns_zero_when_nothing_pending():
+    col = MagicMock()
+    col.update_many = AsyncMock(return_value=MagicMock(modified_count=0))
+
+    cancelled = await MedicationLogRepository.cancel_pending_by_reminder(
+        "R123", collection=col
+    )
+
+    assert cancelled == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method_name",
+    [
+        "list_pending_patient_reminders",
+        "list_pending_urgent_reminders",
+        "list_pending_caregiver_alerts",
+    ],
+)
+async def test_push_queries_are_limited_to_pending_status(
+    override_medication_logs_col, method_name
+):
+    """三個推播階段的查詢都必須把狀態限定在 pending。
+
+    這是 cancel_pending_by_reminder 之所以能止住後續推播的唯一依據：關閉規則時
+    把紀錄移出 pending，這三個查詢就再也挑不到它。哪天有人為了「補漏發」把這裡
+    的狀態條件放寬（例如改成 $ne: "taken"），關閉提醒會再次悄悄失效——使用者關掉
+    了卻照樣被催、家人照樣收到逾時警報，而且沒有任何測試會紅。
+    """
+    col = MagicMock()
+    cursor = MagicMock()
+    cursor.to_list = AsyncMock(return_value=[])
+    col.find = MagicMock(return_value=cursor)
+    override_medication_logs_col(col)
+
+    await getattr(MedicationLogRepository, method_name)(
+        threshold_time=datetime.now(tz=timezone.utc)
+    )
+
+    (query,), _ = col.find.call_args
+    assert query["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_mark_as_taken_accepts_cancelled_logs(override_medication_logs_col):
+    """已註銷的紀錄仍然可以被標記為 taken。
+
+    使用者可能先吃了藥，才進 LIFF 把這個時段關掉（例如療程結束），最後才想起
+    來按下推播訊息上還留著的【我已用藥】。真的吃過藥是事實，紀錄應該收斂成
+    `taken`，不該因為規則被關掉就永遠停在 `cancelled`。這與 `missed` 允許事後
+    轉 `taken` 是同一個判斷：使用者按下的確認一律優先於系統推得的狀態。
+
+    放寬它不會讓推播復活——三階查詢限定 `status="pending"`，`taken` 同樣挑不到。
+    """
+    now = datetime.now(tz=timezone.utc)
+    col = MagicMock()
+    col.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
+    col.find_one = AsyncMock(return_value={**_fake_log_doc(now), "status": "taken"})
+    override_medication_logs_col(col)
+
+    log = await MedicationLogRepository.mark_as_taken("L123")
+
+    assert log is not None
+    assert log.status == "taken"
+    (query, _update), _ = col.update_one.call_args
+    assert set(query["status"]["$in"]) == {"pending", "missed", "cancelled"}
+
+
+@pytest.mark.asyncio
+async def test_list_logs_by_user_excludes_cancelled(override_medication_logs_col):
+    """用藥歷史不列出已註銷的紀錄。
+
+    `cancelled` 是為了擋住排程器在同一天的後續 tick 把紀錄重新 upsert 回
+    `pending` 才留下來的內部記帳，不是使用者做過的事。把它一併列出來，使用者
+    會在歷史裡看到一筆自己沒有互動過、狀態也無從解讀的紀錄（前端沒有對應的
+    標籤，只會顯示成空白或原始字串）。
+    """
+    col = MagicMock()
+    cursor = MagicMock()
+    cursor.sort = MagicMock(return_value=cursor)
+    cursor.limit = MagicMock(return_value=cursor)
+    cursor.to_list = AsyncMock(return_value=[])
+    col.find = MagicMock(return_value=cursor)
+    override_medication_logs_col(col)
+
+    await MedicationLogRepository.list_logs_by_user("U_SELF")
+
+    (query,), _ = col.find.call_args
+    assert query["user_id"] == "U_SELF"
+    assert query["status"] == {"$ne": "cancelled"}

@@ -581,6 +581,98 @@ def test_bare_dosage_form_registered_alone_is_reachable_as_containment_candidate
     }
 
 
+# ── reverse-only 命中不得單獨建立驗證結果（Task 1 第二輪 code review 發現）──
+#
+# 上面那次修復把反方向含容比對變精確之後，反而讓一條先前形同死路的
+# 路徑活了起來：「候選鍵是查詢字串的子字串」只代表查詢字串裡剛好包含
+# 某個登記過的片段（常見的是「膜衣錠」這類劑型名稱），不代表查詢字串
+# 本身是真實藥名——任何字串，包含模型讀錯或完全虛構的藥名，只要恰好
+# 含有這種短詞就會湊出命中。若把這種命中當成驗證證據，會讓「這個字串
+# 不是任何真實藥名」的偵測整個失效，直接違背本模組存在的唯一理由。
+# reverse 命中只能在已經有 exact 或 forward 證據時用來拆掉唯一性
+# （見上面「潔毒注射液」的測試），不能在完全沒有其他證據時單獨把
+# match() 的結果從「未驗證」變成「已驗證」。
+
+BARE_FILM_COATED_TABLET = DrugCatalogEntry(
+    license_number="衛部藥輸字第026602號", name_zh='"康普萊"膜衣錠'
+)
+
+
+def test_reverse_only_hit_does_not_verify_an_absent_drug():
+    """真實案例：藥證庫裡沒有「克雷伯膜衣錠5毫克」這個藥證，也沒有任何
+    品名把它整個包在裡面（forward 命中為空）。它只是剛好包含了單獨
+    掛證的「膜衣錠」——這不構成藥名已驗證的證據，必須回傳 None，
+    交給人工核對，而不是誤判成已驗證甚至證號唯一確定。"""
+    service = DrugCatalogService([BARE_FILM_COATED_TABLET], threshold=0.88)
+
+    assert service.match("克雷伯膜衣錠5毫克") is None
+
+
+def test_reverse_only_hit_does_not_verify_an_ocr_misread():
+    """真實案例：視覺模型把「冠脂妥膜衣錠10毫克」讀錯一個字變成
+    「冠脂托膜衣錠10毫克」。藥證庫裡沒有這個錯字字串，也不是任何真實
+    品名的一部分，唯一的命中訊號只有「膜衣錠」這個 reverse 命中——
+    這正是本模組要偵測的「模型錯讀」情境，絕不能因為剛好含有一個
+    登記過的劑型名稱就被判定為已驗證。"""
+    service = DrugCatalogService([BARE_FILM_COATED_TABLET], threshold=0.88)
+
+    assert service.match("冠脂托膜衣錠10毫克") is None
+
+
+def test_reverse_hit_still_widens_candidates_when_exact_present():
+    """對照：有 exact 命中時，reverse 命中依然要聯集進來拆掉唯一性——
+    這是前一次修復要保留的行為（見「潔毒注射液」的測試），這次的方向
+    不對稱規則不能連這個都削弱掉。"""
+    real_drug = DrugCatalogEntry(
+        license_number="衛署藥輸字第024131號", name_zh="冠脂妥膜衣錠10毫克"
+    )
+    service = DrugCatalogService([real_drug, BARE_FILM_COATED_TABLET], threshold=0.88)
+
+    match = service.match("冠脂妥膜衣錠10毫克")
+
+    assert match is not None
+    assert match.license_number is None
+    assert {c.license_number for c in match.candidates} == {
+        real_drug.license_number,
+        BARE_FILM_COATED_TABLET.license_number,
+    }
+
+
+# ── 純標點符號的鍵不進索引（Task 1 第二輪 code review 發現）────────────
+#
+# 藥證庫原始資料裡混著整個品名就是「.」或「*」這類純標點符號的資料
+# 瑕疵。這種鍵不具任何辨識力，卻會在反方向含容比對裡跟任何帶有這個
+# 符號的字串（例如英文縮寫的句點 "F.C."）湊出虛假的子字串命中。
+
+JUNK_PERIOD_ENTRY = DrugCatalogEntry(license_number="衛署成製字第012731號", name_zh=".")
+
+
+def test_punctuation_only_key_is_excluded_from_index():
+    """純標點符號的品名不該進 `_by_key`——用它去查詢應該找不到任何東西，
+    這張條目本身還在 `self._entries`，只是沒有可用的索引鍵。"""
+    service = DrugCatalogService([JUNK_PERIOD_ENTRY], threshold=0.88)
+
+    assert service.match(".") is None
+    assert service.is_empty is False
+
+
+def test_english_name_with_period_is_not_derailed_by_junk_key():
+    """真實案例：英文藥名常見縮寫帶句點（"F.C. TABLETS"）。純標點的
+    雜訊鍵「.」不該把它拖進候選，讓原本能唯一確定的證號平白變成
+    找不到或多候選。"""
+    real_drug = DrugCatalogEntry(
+        license_number="衛署藥輸字第099999號",
+        name_zh="立普康",
+        name_en="LIPICOR F.C. TABLETS 40MG",
+    )
+    service = DrugCatalogService([real_drug, JUNK_PERIOD_ENTRY], threshold=0.88)
+
+    match = service.match("LIPICOR F.C. TABLETS 40MG")
+
+    assert match is not None
+    assert match.license_number == real_drug.license_number
+
+
 # ── 索引與暴力掃描在真實規模下仍一致 ────────────────────────────────────
 #
 # 前面 `test_index_produces_same_results_as_brute_force_scan` 只餵 16 筆
@@ -592,12 +684,15 @@ def test_bare_dosage_form_registered_alone_is_reachable_as_containment_candidate
 # 上限，是這個等價性斷言第一次有機會真正失敗的規模。
 
 
-def _brute_force_containment_union(by_key: dict, key: str) -> dict:
-    """完全不透過索引、對全部鍵做一次線性掃描算出的真正聯集。
+def _brute_force_forward_and_reverse(by_key: dict, key: str) -> tuple[set, set]:
+    """完全不透過索引，對全部鍵做一次線性掃描，分別算出 forward
+    （查詢是候選鍵的子字串）與 reverse（候選鍵是查詢字串的子字串）
+    兩個方向的真正命中鍵集合。
 
-    跟 `DrugCatalogService._resolve_exact_and_containment` 同一套規則
-    （完全比對 ∪ 雙向子字串），差別只在候選鍵集合是「全部的鍵」而不是
-    索引narrow 出來的子集——這裡故意不重用 `_candidates`，因為那正是
+    兩個方向分開算、不直接聯集，是因為它們的證據力不對稱（見
+    `match()` 的判斷式）：forward 代表查詢字串整個對應到一張真實登記
+    品名的一部分，reverse 只代表查詢字串剛好包含某個登記片段。這裡
+    故意不重用 `_candidates`／`_reverse_containment_hits`，因為那正是
     被測對象，拿它當 ground truth 沒有意義。
 
     低於 `_MIN_CONTAINMENT_LENGTH` 的查詢一律跳過含容比對，只看完全
@@ -605,15 +700,62 @@ def _brute_force_containment_union(by_key: dict, key: str) -> dict:
     子字串，含容比對會失去意義），不是這次修的漏洞，ground truth 必須
     照著同一條規則算，否則會拿「服務故意不做的事」來冤枉它漏東西。
     """
-    entries_by_licence: dict[str, DrugCatalogEntry] = {}
+    forward: set = set()
+    reverse: set = set()
+    if len(key) >= _MIN_CONTAINMENT_LENGTH:
+        for candidate_key in by_key:
+            if key in candidate_key:
+                forward.add(candidate_key)
+            elif candidate_key in key:
+                reverse.add(candidate_key)
+    return forward, reverse
+
+
+def _brute_force_match_result(by_key: dict, key: str) -> tuple[bool, dict]:
+    """完全不透過索引算出的真正比對結果：(是否已驗證, 聯集後的
+    license_number → entry)。
+
+    只有 exact 或 forward 命中非空才算已驗證（見 `match()` 的判斷式與
+    模組文件「證據力」那段）；未驗證時第二個回傳值恆為空字典，呼叫端
+    不該去看它——reverse-only 的候選不具驗證意義，聯集內容沒有正確
+    答案可言。
+    """
     exact = by_key.get(key)
+    forward, reverse = _brute_force_forward_and_reverse(by_key, key)
+    verified = exact is not None or bool(forward)
+    if not verified:
+        return False, {}
+
+    entries_by_licence: dict[str, DrugCatalogEntry] = {}
     if exact is not None:
         entries_by_licence.update(exact)
-    if len(key) >= _MIN_CONTAINMENT_LENGTH:
-        for candidate_key, candidate_entries in by_key.items():
-            if key in candidate_key or candidate_key in key:
-                entries_by_licence.update(candidate_entries)
-    return entries_by_licence
+    for candidate_key in forward | reverse:
+        entries_by_licence.update(by_key[candidate_key])
+    return True, entries_by_licence
+
+
+# 已知單獨掛證、會產生 reverse 命中的劑型片段，用來構造「reverse-only」
+# 的查詢（見下面 `_absent_drug_queries` 的說明）。
+_REVERSE_ONLY_PROBES = ("膜衣錠", "注射液", "膠囊", "軟膏", "糖漿")
+
+
+def _absent_drug_queries(rng: random.Random, count: int) -> list[str]:
+    """構造保證落在「reverse-only」情境的查詢：隨機亂數字元接上一個
+    已知單獨掛證的劑型片段。
+
+    亂數字元刻意選在 Unicode 私人使用區（U+E000–U+F8FF）——這個區段
+    不會出現在任何真實藥名裡，所以整段查詢字串保證不等於、也保證不是
+    任何真實登記品名的一部分（沒有 exact、沒有 forward），但仍然完整
+    包含這個劑型片段（保證有 reverse 命中）。這精準對應 code review
+    描述的「完全不存在的藥名剛好包含一個登記片段」這個情境，不必依賴
+    隨機亂數「碰巧」造出這個情境。
+    """
+    queries = []
+    for _ in range(count):
+        gibberish = "".join(chr(rng.randint(0xE000, 0xF8FF)) for _ in range(rng.randint(3, 8)))
+        probe = rng.choice(_REVERSE_ONLY_PROBES)
+        queries.append(gibberish + probe)
+    return queries
 
 
 @pytest.mark.skipif(
@@ -656,12 +798,12 @@ def test_index_matches_brute_force_at_real_catalog_scale():
             "TESTOSTERONEPROPIONATEINJECTIONN.Y.",
         )
     ]
-    queried_keys = sampled_keys + known_bare_forms
 
-    for key in queried_keys:
+    for key in sampled_keys + known_bare_forms:
         indexed = service.match(key)
-        true_union = _brute_force_containment_union(by_key, key)
+        verified, true_union = _brute_force_match_result(by_key, key)
 
+        assert verified, key  # 這批查詢全部取自真實存在的鍵，必然已驗證
         assert indexed is not None, key
         assert {c.license_number for c in indexed.candidates} == set(true_union), key
         if len(true_union) == 1:
@@ -672,3 +814,19 @@ def test_index_matches_brute_force_at_real_catalog_scale():
                 f"查詢 {key!r} 真候選數 {len(true_union)}，"
                 f"但索引回傳唯一證號 {indexed.license_number!r}——假唯一"
             )
+
+    # 反方向：完全不存在的藥名剛好包含一個登記過的劑型片段，必須維持
+    # 未驗證——見 code review「a drug that is NOT in the catalogue now
+    # resolves to a confidently wrong licence」。實測全庫規模下量測
+    # 這類查詢的「假證號率」曾高達 13.1%，這裡直接對真實藥證庫斷言
+    # 為 0%，把量測結果釘進自動化測試，而不是只留在一次性量測腳本裡。
+    for key in _absent_drug_queries(rng, 200):
+        verified, _ = _brute_force_match_result(by_key, key)
+        assert not verified, key  # 構造方式保證：沒有 exact，也沒有 forward
+
+        indexed = service.match(key)
+        assert indexed is None, (
+            f"查詢 {key!r} 沒有任何完全比對或 forward 命中，"
+            f"只有 reverse 命中，match() 卻回傳非 None——reverse-only "
+            f"不該單獨建立驗證結果"
+        )

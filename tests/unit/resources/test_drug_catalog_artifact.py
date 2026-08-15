@@ -46,17 +46,21 @@ def test_committed_catalog_has_no_empty_shells():
 def test_committed_catalog_actually_matches_a_known_drug():
     """載入得起來不等於比對得到。用一個真實存在的藥證品名走完整條比對路徑。
 
-    這裡只斷言 `match()` 非 None（藥名驗證為真），不斷言 `license_number`
-    有值——兩者是兩件事（見 drug-appearance-photo spec「藥名驗證與證號
-    確定是兩件事」）。這個真實品名剛好就是活生生的例子：藥證庫裡另有
-    一張藥證單獨以「膜衣錠」掛證（"康普萊"膜衣錠，正規化後廠商前綴
-    被拿掉只剩「膜衣錠」），而「膜衣錠」正是「冠脂妥膜衣錠10毫克」的
-    子字串，所以候選其實有兩張、license_number 理應留空——先前含容
-    比對的近似索引漏掉了這張單獨掛證的候選，讓這裡誤以為證號唯一確定，
-    正是本檔案要守住的那類壞掉的產出。
+    只斷言 `match()` 非 None 不足以守住這件事：`match()` 非 None 這件事
+    本身可能只來自反方向含容比對（查詢字串剛好包含某個登記片段），跟
+    「這張品名真的在藥證庫裡」是兩回事——把冠脂妥那筆條目整個刪掉，
+    `match("冠脂妥膜衣錠10毫克")` 仍會因為藥證庫另有一張證號單獨以
+    「膜衣錠」掛證（"康普萊"膜衣錠，正規化後廠商前綴被拿掉只剩
+    「膜衣錠」，是這個查詢的子字串）而回傳非 None。真正證明這張品名
+    在庫裡的方式，是斷言它的證號出現在候選清單中。
+
+    不斷言 `license_number` 有值：候選其實有兩張（CRESTOR 本身，以及
+    上述單獨掛證的「膜衣錠」），`license_number` 理應留空——藥名驗證
+    與證號確定是兩件事（見 drug-appearance-photo spec）。
     """
     service = DrugCatalogService.load_from_path(str(CATALOG), threshold=0.88)
     assert not service.is_empty
 
     match = service.match("冠脂妥膜衣錠10毫克")
     assert match is not None
+    assert "衛署藥輸字第024131號" in {c.license_number for c in match.candidates}

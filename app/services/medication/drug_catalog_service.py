@@ -44,6 +44,17 @@ gram 索引近似（聯集查詢裡罕見的 gram），但驗證後發現這條�
 全部案例」又「窮舉集合夠小」。這個方向因此改用前綴分桶的精確多模式
 比對（`_reverse_containment_hits`），不靠任何長度上限或頻率近似，
 數學上保證找到每一個真正的子字串候選，見該方法的說明。
+
+兩個方向的完整度補齊之後，還有另一件事不對稱：**證據力**。「查詢是
+候選鍵的子字串」代表查詢字串整個對應到一張真實登記品名的一部分，是
+「這是真實藥名」的證據；「候選鍵是查詢的子字串」只代表查詢字串裡
+剛好包含某個登記過的片段（常見的是「膠囊」「膜衣錠」這類劑型名稱），
+任何字串——包含模型讀錯、甚至完全虛構的藥名——只要恰好含有這類短詞
+就會湊出這種命中，不構成「查詢字串本身是真實藥名」的證據。因此
+reverse 命中只能用來**拆掉**已經成立的唯一性（跟 exact 或 forward
+湊在一起讓候選變多，例如「潔毒注射液」命中單獨掛證的「注射液」），
+不能單獨**建立**驗證結果：沒有 exact、也沒有 forward 命中時，即使
+reverse 命中非空，`match()` 仍回傳 None，見該方法的判斷式。
 """
 
 import json
@@ -149,6 +160,20 @@ def normalize_drug_name(name: str) -> str:
     return normalized.upper()
 
 
+def _has_identifying_content(key: str) -> bool:
+    """鍵是否至少含有一個英數字或中日韓文字。
+
+    原始資料裡混著純標點符號的資料瑕疵——整個品名就是「.」或「*」，
+    這種鍵不具任何辨識力，卻會在反方向含容比對裡跟任何帶有這個符號的
+    字串（例如英文縮寫的句點 "F.C. TABLETS"）湊出虛假的子字串命中：
+    實測全庫 112,230 個鍵裡只有這兩個純標點鍵，但其中「.」單獨掛的
+    那張證號（一款乾洗手液）讓抽樣的英文藥名裡有 88% 因為名稱帶句點
+    而被拖進候選、平白失去原本能確定的證號。這種鍵在建索引時就該
+    整個排除，而不是等到查詢時才特別處理。
+    """
+    return any(ch.isalnum() for ch in key)
+
+
 def _ngrams(key: str, size: int = _GRAM_SIZE) -> set[str]:
     """把字串切成字元 n-gram 集合，供反向索引使用。
 
@@ -173,11 +198,14 @@ class DrugCatalogService:
         # 用 setdefault 只留第一筆會讓其餘藥證永遠比對不到——這裡改成
         # 集合，讓碰撞的每一筆都保留、都可觸達；「保留多筆」跟「回傳哪一筆」
         # 是兩件事，後者留給 `match()` 依候選數量決定（見 `_resolve`）。
+        # 純標點符號的鍵（見 `_has_identifying_content` 的說明）在這裡就
+        # 排除，不進 `_by_key`——它不具辨識力，留著只會讓下游的反方向
+        # 含容比對把它當成任何帶有該符號之字串的「候選」。
         self._by_key: dict[str, dict[str, DrugCatalogEntry]] = {}
         for entry in self._entries:
             for raw_name in (entry.name_zh, entry.name_en):
                 key = normalize_drug_name(raw_name)
-                if key:
+                if key and _has_identifying_content(key):
                     self._by_key.setdefault(key, {})[entry.license_number] = entry
 
         # gram → 含這個 gram 的鍵集合。在建構子裡建一次；之後每次查詢
@@ -268,18 +296,42 @@ class DrugCatalogService:
             return None
 
         exact = self._by_key.get(key)
-        # 含容比對的候選鍵：品名跟查詢字串有子字串關係（不拘方向）。
-        # 跟完全比對一起聯集，不能讓完全比對單獨決定答案——查詢字串
-        # 精準命中一個鍵，不代表它不會同時是另一張藥證全名的一部分
-        # （「得胎隆」完全比對只中一張，但另有 3 張品名包含它）。低於
-        # 最小長度時跳過（不查 n-gram 索引），避免極短查詢拉進半個
-        # 藥證庫，見 `_MIN_CONTAINMENT_LENGTH` 的說明。
-        containment_hits = (
-            self._containment_hit_keys(key) if len(key) >= _MIN_CONTAINMENT_LENGTH else []
-        )
+        forward_hits: set[str] = set()
+        reverse_hits: set[str] = set()
+        if len(key) >= _MIN_CONTAINMENT_LENGTH:
+            # 含容比對兩個方向的證據力不對稱，不能等量齊觀：
+            # - forward（查詢是候選鍵的子字串）代表查詢字串整個對應到
+            #   一張真實登記品名的一部分——這是「藥名真實存在」的證據
+            #   （藥袋印短的品牌名，藥證是含劑型劑量的全名，見模組文件）。
+            # - reverse（候選鍵是查詢字串的子字串）只代表某個登記過的
+            #   片段剛好出現在查詢字串裡——任何字串只要恰好包含一個
+            #   登記過的短詞（例如劑型名稱「膜衣錠」），不論是模型讀錯
+            #   還是完全虛構的藥名，都會湊出這種命中。這不構成「查詢
+            #   字串本身是真實藥名」的證據，見 `_reverse_containment_hits`
+            #   與下方判斷式的說明。
+            forward_hits = self._forward_containment_hits(key)
+            reverse_hits = self._reverse_containment_hits(key)
 
-        if exact is not None or containment_hits:
-            return self._resolve_exact_and_containment(key, exact, containment_hits)
+        if exact is not None or forward_hits:
+            # 已有完全比對或 forward 命中，藥名驗證為真：這時候把
+            # reverse 命中一起聯集進來，只會「拆掉」原本看似唯一的
+            # 答案（「潔毒注射液」命中「注射液」單獨掛證、「冠脂妥
+            # 膜衣錠10毫克」命中「膜衣錠」單獨掛證都是這種情形），不會
+            # 讓一個原本沒證據的查詢無中生有變成有證據——聯集只能讓
+            # 候選變多，不能讓候選從 0 變成非 0。
+            return self._resolve_exact_and_containment(
+                key, exact, list(forward_hits | reverse_hits)
+            )
+
+        if reverse_hits:
+            # 唯一的命中訊號只有 reverse：查詢字串不對應任何真實登記
+            # 的品名、也不是其中一部分，純粹是剛好包含了某個登記片段
+            # （常見的是劑型名稱，或資料瑕疵留下的雜訊短鍵）。這不構成
+            # 「藥名已驗證」的證據，必須維持未驗證、回傳 None，不得
+            # 落入模糊比對——原本的判斷式本來就是「exact 或
+            # 任一方向的含容命中非空」就不進模糊比對，這裡延續同一個
+            # 控制流程，只是不再讓 reverse-only 的命中被誤判成已驗證。
+            return None
 
         return self._match_by_fuzzy(key)
 
@@ -349,25 +401,16 @@ class DrugCatalogService:
                     hits.add(candidate_key)
         return hits
 
-    def _containment_hit_keys(self, key: str) -> list[str]:
-        """取出跟查詢字串有子字串關係（任一方向）的鍵。
+    def _forward_containment_hits(self, key: str) -> set[str]:
+        """找出「查詢是候選鍵的子字串」這個方向的候選鍵。
 
-        只負責找出「品名有子字串關係」的候選鍵，不做任何唯一性判定——
-        判定交給 `_resolve_exact_and_containment`，這裡回傳的鍵清單會
-        跟完全比對的結果聯集。
-
-        兩個方向用兩種不同機制，缺一不可：
-        - 「查詢是候選鍵的子字串」：`_candidates(key)` 的 gram 交集
-          完整覆蓋（候選鍵必然含有查詢的每一個 gram）。
-        - 「候選鍵是查詢的子字串」：`_reverse_containment_hits(key)`
-          用前綴分桶做精確多模式比對，見該方法的說明——不是近似，
-          數學上保證不漏。
+        由 `_candidates(key)` 的 gram 交集完整覆蓋——候選鍵必然含有
+        查詢的每一個 gram，見該方法的說明。這個方向代表查詢字串整個
+        對應到某個真實登記品名的一部分，是「藥名真實存在」的證據，
+        跟 `_reverse_containment_hits` 只能用來拆掉唯一性、不能單獨
+        建立驗證結果的地位不同，見 `match()` 的判斷式。
         """
-        forward_hits = (
-            candidate_key for candidate_key in self._candidates(key) if key in candidate_key
-        )
-        reverse_hits = self._reverse_containment_hits(key)
-        return list({*forward_hits, *reverse_hits})
+        return {candidate_key for candidate_key in self._candidates(key) if key in candidate_key}
 
     def _resolve_exact_and_containment(
         self,

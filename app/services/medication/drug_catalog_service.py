@@ -31,6 +31,19 @@
 事件迴圈 400~750ms」缺陷的根本作法，細節見各方法的說明。查詢長度低於
 `_MIN_CONTAINMENT_LENGTH` 時跳過含容比對（不查 n-gram 索引），只看
 完全比對是否命中，避免極短查詢把半個藥證庫都拉進候選。
+
+含容比對的兩個方向完整度不對稱，用兩種不同機制：「查詢是候選鍵的
+子字串」由 n-gram 交集完整覆蓋（候選鍵必然含有查詢的每一個 gram，
+見 `_candidates` 的說明）。「候選鍵是查詢的子字串」原本想用同一套
+gram 索引近似（聯集查詢裡罕見的 gram），但驗證後發現這條路徑無法
+被「provably 完整」：候選鍵越短、或候選鍵自己的 gram 在全庫剛好都很
+常見，就會被系統性地漏掉——真實案例：食藥署藥品許可證庫裡有藥證
+單獨以劑型或成分名稱掛證，中文的如「注射液」「膜衣錠100毫克」，
+英文的如單獨掛證的原料藥名「TESTOSTERONE」「TESTOSTERONEPROPIONATE」，
+長度從 2 字到 20 幾字都有，沒有一個長度上限能同時「provably 涵蓋
+全部案例」又「窮舉集合夠小」。這個方向因此改用前綴分桶的精確多模式
+比對（`_reverse_containment_hits`），不靠任何長度上限或頻率近似，
+數學上保證找到每一個真正的子字串候選，見該方法的說明。
 """
 
 import json
@@ -177,6 +190,22 @@ class DrugCatalogService:
             for gram in _ngrams(key):
                 self._gram_index.setdefault(gram, set()).add(key)
 
+        # 前綴分桶：鍵的前兩個字元 → 有這個前綴的全部鍵（長度不足 2 字的
+        # 鍵另外存進 `_single_char_keys`）。供 `_reverse_containment_hits`
+        # 做「候選鍵是查詢字串子字串」這個方向的精確多模式比對——任何
+        # 鍵若真的從查詢字串某個位置開始逐字相同，它的前兩個字元必然
+        # 等於查詢字串同一個位置的前兩個字元，所以只要對查詢的「每一個
+        # 起始位置」查這份分桶，就保證不漏掉任何真正的子字串候選，不必
+        # 對全庫線性掃描。實測全庫 112,230 個鍵只有 21,093 種不同的兩字
+        # 前綴，桶的中位數只有 1 筆、最大 1,692 筆，遠比逐鍵掃描全庫便宜。
+        self._by_prefix: dict[str, list[str]] = {}
+        self._single_char_keys: set[str] = set()
+        for key in self._by_key:
+            if len(key) == 1:
+                self._single_char_keys.add(key)
+            else:
+                self._by_prefix.setdefault(key[:2], []).append(key)
+
     @property
     def is_empty(self) -> bool:
         return not self._entries
@@ -286,18 +315,59 @@ class DrugCatalogService:
 
         return candidates
 
+    def _reverse_containment_hits(self, key: str) -> set[str]:
+        """精確找出全部「是查詢字串子字串」的鍵，不透過 gram 索引近似。
+
+        這個方向沒有 gram 交集可用：候選鍵比查詢短，gram 數量本來就比
+        查詢少，不可能涵蓋查詢的「每一個」gram。先前試過「聯集查詢裡
+        （未超過頻率上限的）gram 的 postings」這個近似捷徑，仍然證明
+        無法 provably 完整——候選鍵若自己的 gram 在全庫剛好都很常見
+        （例如中文的「膜衣」「毫克」，或英文藥名裡到處都是的雙字母
+        組合），就會被系統性地漏掉，且沒有一個長度上限能同時「涵蓋
+        全部案例」又「窮舉集合夠小」（實測真實藥證庫裡單獨掛證的案例
+        從 2 字的「膠囊」到 22 字的「TESTOSTERONEPROPIONATE」都有）。
+
+        改用前綴分桶做精確多模式比對：候選鍵若真的從查詢字串某個位置
+        開始逐字相同，它的前兩個字元必然等於查詢字串同一個位置的前
+        兩個字元（`self._by_prefix` 正是用鍵的前兩個字元分桶）。所以
+        對查詢字串的每一個起始位置，查一次分桶、對桶內候選逐一做切片
+        比對確認是不是真的整段相同，就保證找到每一個真正的子字串候選，
+        不必對全庫線性掃描——這是數學上的保證，不是機率上的近似。
+        長度不足 2 字的鍵（`self._single_char_keys`）沒有完整的兩字
+        前綴可分桶，另外在每個位置直接比對那一個字元。
+        """
+        hits: set[str] = set()
+        length = len(key)
+        for start in range(length):
+            if key[start] in self._single_char_keys:
+                hits.add(key[start])
+            prefix = key[start : start + 2]
+            if len(prefix) < 2:
+                continue
+            for candidate_key in self._by_prefix.get(prefix, ()):
+                if key[start : start + len(candidate_key)] == candidate_key:
+                    hits.add(candidate_key)
+        return hits
+
     def _containment_hit_keys(self, key: str) -> list[str]:
-        """從 gram 索引取出跟查詢字串有子字串關係（任一方向）的鍵。
+        """取出跟查詢字串有子字串關係（任一方向）的鍵。
 
         只負責找出「品名有子字串關係」的候選鍵，不做任何唯一性判定——
         判定交給 `_resolve_exact_and_containment`，這裡回傳的鍵清單會
         跟完全比對的結果聯集。
+
+        兩個方向用兩種不同機制，缺一不可：
+        - 「查詢是候選鍵的子字串」：`_candidates(key)` 的 gram 交集
+          完整覆蓋（候選鍵必然含有查詢的每一個 gram）。
+        - 「候選鍵是查詢的子字串」：`_reverse_containment_hits(key)`
+          用前綴分桶做精確多模式比對，見該方法的說明——不是近似，
+          數學上保證不漏。
         """
-        return [
-            candidate_key
-            for candidate_key in self._candidates(key)
-            if key in candidate_key or candidate_key in key
-        ]
+        forward_hits = (
+            candidate_key for candidate_key in self._candidates(key) if key in candidate_key
+        )
+        reverse_hits = self._reverse_containment_hits(key)
+        return list({*forward_hits, *reverse_hits})
 
     def _resolve_exact_and_containment(
         self,

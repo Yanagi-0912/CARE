@@ -1,14 +1,19 @@
 import json
+import random
 from difflib import SequenceMatcher
+from pathlib import Path
 
 import pytest
 
 from app.services.medication.drug_catalog_service import (
+    _MIN_CONTAINMENT_LENGTH,
     DrugCatalogEntry,
     DrugCatalogMatch,
     DrugCatalogService,
     normalize_drug_name,
 )
+
+REAL_CATALOG_PATH = Path(__file__).resolve().parents[4] / "resources" / "drug_catalog.json"
 
 AMLODIPINE = DrugCatalogEntry(
     license_number="衛署藥製字第000001號",
@@ -537,3 +542,133 @@ def test_exact_match_stays_unique_when_nothing_else_contains_it():
 
     assert match is not None
     assert match.license_number == DEDROGYL_EXACT.license_number
+
+
+# ── 反方向含容比對必須是精確聯集，不是近似（Task 1 code review 發現）──
+#
+# `_candidates` 只聯集查詢裡「最罕見的一個 gram」的 postings 來補反方向
+# 的召回率（候選鍵是查詢的子字串）。這個近似天生不完整：候選鍵越短，
+# 自己的 gram 數量越少，落在查詢裡那個被挑中的稀有 gram 的機率也越低，
+# 會被系統性地漏掉。真實案例：食藥署藥品許可證庫裡有藥證單獨以劑型
+# 名稱掛證（「注射液」兩張、「膠囊」「膜衣錠」「軟膏」「糖漿」各一張），
+# 查詢一個完整品名「潔毒注射液」時，「注射液」理應因為是查詢的子字串
+# 而進入候選聯集，近似索引卻找不到它——結果 license_number 被判定為
+# 唯一確定，但真正的聯集有 3 張證號。下游會據此貼給使用者一張看似
+# 篤定、實則錯誤的藥丸照片，是本次 change 存在的理由要擋的正是這種
+# 錯誤。
+
+BARE_INJECTION_FORM_A = DrugCatalogEntry(license_number="衛署藥輸字第021715號", name_zh="注射液")
+BARE_INJECTION_FORM_B = DrugCatalogEntry(license_number="衛署藥輸字第018726號", name_zh="注射液")
+JIEDU_INJECTION = DrugCatalogEntry(license_number="衛署藥輸字第008820號", name_zh="潔毒注射液")
+
+
+def test_bare_dosage_form_registered_alone_is_reachable_as_containment_candidate():
+    """迴歸測試：真實案例「潔毒注射液」。修法前這裡的 license_number 會被
+    誤判為 '衛署藥輸字第008820號'（看似唯一），但「注射液」本身另外
+    掛著兩張證號，真正的聯集是 3 張，必須留空並讓三張都進候選。"""
+    service = DrugCatalogService(
+        [JIEDU_INJECTION, BARE_INJECTION_FORM_A, BARE_INJECTION_FORM_B], threshold=0.88
+    )
+
+    match = service.match("潔毒注射液")
+
+    assert match is not None
+    assert match.license_number is None
+    assert {c.license_number for c in match.candidates} == {
+        JIEDU_INJECTION.license_number,
+        BARE_INJECTION_FORM_A.license_number,
+        BARE_INJECTION_FORM_B.license_number,
+    }
+
+
+# ── 索引與暴力掃描在真實規模下仍一致 ────────────────────────────────────
+#
+# 前面 `test_index_produces_same_results_as_brute_force_scan` 只餵 16 筆
+# 固定資料集——這個規模下 `_MAX_RARE_GRAM_POSTINGS`（3000）永遠不會
+# 生效，postings 也永遠不完整才會失真，等於在「近似捷徑不可能失效」
+# 的條件下斷言「索引等於暴力掃描」，這個斷言在那個規模下不可能失敗，
+# 也就掩蓋了上面那個真實漏洞（見 code review）。改用真實藥證庫：
+# 66,478 筆藥證、112,230 個正規化鍵，常見 gram 的 postings 遠超過
+# 上限，是這個等價性斷言第一次有機會真正失敗的規模。
+
+
+def _brute_force_containment_union(by_key: dict, key: str) -> dict:
+    """完全不透過索引、對全部鍵做一次線性掃描算出的真正聯集。
+
+    跟 `DrugCatalogService._resolve_exact_and_containment` 同一套規則
+    （完全比對 ∪ 雙向子字串），差別只在候選鍵集合是「全部的鍵」而不是
+    索引narrow 出來的子集——這裡故意不重用 `_candidates`，因為那正是
+    被測對象，拿它當 ground truth 沒有意義。
+
+    低於 `_MIN_CONTAINMENT_LENGTH` 的查詢一律跳過含容比對，只看完全
+    比對——這是既有規則（見該常數的說明：極短查詢幾乎是任何品名的
+    子字串，含容比對會失去意義），不是這次修的漏洞，ground truth 必須
+    照著同一條規則算，否則會拿「服務故意不做的事」來冤枉它漏東西。
+    """
+    entries_by_licence: dict[str, DrugCatalogEntry] = {}
+    exact = by_key.get(key)
+    if exact is not None:
+        entries_by_licence.update(exact)
+    if len(key) >= _MIN_CONTAINMENT_LENGTH:
+        for candidate_key, candidate_entries in by_key.items():
+            if key in candidate_key or candidate_key in key:
+                entries_by_licence.update(candidate_entries)
+    return entries_by_licence
+
+
+@pytest.mark.skipif(
+    not REAL_CATALOG_PATH.is_file(), reason="resources/drug_catalog.json 未產出，略過真實規模測試"
+)
+def test_index_matches_brute_force_at_real_catalog_scale():
+    with REAL_CATALOG_PATH.open(encoding="utf-8") as catalog_file:
+        raw_entries = json.load(catalog_file)
+    entries = [
+        DrugCatalogEntry(
+            license_number=item["license_number"],
+            name_zh=item.get("name_zh", ""),
+            name_en=item.get("name_en", ""),
+        )
+        for item in raw_entries
+    ]
+    service = DrugCatalogService(entries, threshold=0.88)
+    by_key = service._by_key
+
+    rng = random.Random(20260815)
+    sampled_keys = rng.sample([k for k in by_key if len(k) >= 3], 500)
+    # 明確納入已知會被近似索引漏掉的案例，不能只靠隨機抽樣碰運氣抽中——
+    # 這正是 code review 指出的具體漏洞，而且漏掉的長度範圍比一開始
+    # 想的更廣：中文的單獨劑型掛證（2～3 字）、中文的「劑型+劑量」掛證
+    # （如 8 字的「膜衣錠100毫克」）、英文的單獨原料藥掛證（如 22 字的
+    # 「TESTOSTERONEPROPIONATE」）都出現過，且都是被同一種近似捷徑
+    # （只挑查詢裡「最罕見的一個 gram」去聯集）系統性漏掉，不是各自獨立
+    # 的巧合，長度上限治不了根本問題，這也是最終改用前綴分桶精確比對
+    # 而不是再調一次長度上限的原因。
+    known_bare_forms = [
+        normalize_drug_name(name)
+        for name in (
+            "潔毒注射液",
+            "注射液",
+            "膠囊",
+            "膜衣錠",
+            "軟膏",
+            "糖漿",
+            "威達挺膜衣錠100毫克",
+            "TESTOSTERONEPROPIONATEINJECTIONN.Y.",
+        )
+    ]
+    queried_keys = sampled_keys + known_bare_forms
+
+    for key in queried_keys:
+        indexed = service.match(key)
+        true_union = _brute_force_containment_union(by_key, key)
+
+        assert indexed is not None, key
+        assert {c.license_number for c in indexed.candidates} == set(true_union), key
+        if len(true_union) == 1:
+            (only_licence,) = true_union
+            assert indexed.license_number == only_licence, key
+        else:
+            assert indexed.license_number is None, (
+                f"查詢 {key!r} 真候選數 {len(true_union)}，"
+                f"但索引回傳唯一證號 {indexed.license_number!r}——假唯一"
+            )

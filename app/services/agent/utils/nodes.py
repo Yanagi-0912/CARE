@@ -524,19 +524,45 @@ def _already_ran_official_site(messages) -> bool:
     )
 
 
+_CHRONIC_CODE_LABELS = {
+    "hypertension": "高血壓",
+    "diabetes": "糖尿病",
+    "hyperlipidemia": "高血脂",
+    "heartDisease": "心臟病",
+    "kidneyDisease": "腎臟病",
+    "asthma": "氣喘",
+    "copd": "慢性阻塞性肺病",
+    "cancer": "癌症",
+}
+
+# 舊資料存過中文，查不到就原樣輸出，與上面同一個規則
+_GENDER_LABELS = {"male": "男", "female": "女", "unknown": "未提供"}
+
+
+def _format_chronic(user_profile: dict) -> str:
+    """固定選項的 code 還原成中文，接上使用者自行輸入的病名（後者原文照用）。"""
+    names = [
+        _CHRONIC_CODE_LABELS.get(code, code)
+        for code in user_profile.get("chronic_diseases") or []
+    ]
+    names += list(user_profile.get("chronic_custom") or [])
+    return "、".join(names) or "無"
+
+
 def format_user_profile_prompt(user_profile: dict | None) -> str:
     if not user_profile:
         return ""
 
     name = user_profile.get("name") or "未提供"
-    gender = user_profile.get("gender") or "未提供"
+    gender_code = user_profile.get("gender") or "unknown"
+    gender = _GENDER_LABELS.get(gender_code, gender_code)
     age = user_profile.get("age")
     age_str = f"{age} 歲" if age is not None and age > 0 else "未提供"
     height = user_profile.get("height")
     height_str = f"{height} cm" if height and height > 0 else "未提供"
     weight = user_profile.get("weight")
     weight_str = f"{weight} kg" if weight and weight > 0 else "未提供"
-    chronic = user_profile.get("chronic_history") or "無"
+    chronic = _format_chronic(user_profile)
     major = user_profile.get("major_illness_history") or "無"
     surgery = user_profile.get("surgery_history") or "無"
 

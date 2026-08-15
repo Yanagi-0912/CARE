@@ -1,9 +1,14 @@
 import hashlib
 import io
 import json
+import shutil
+import stat
 import zipfile
 
+import pytest
+
 from scripts.build_drug_catalog import (
+    _require_magick,
     build_entries,
     image_fetch_targets,
     pending_image_targets,
@@ -269,3 +274,38 @@ def test_pending_image_targets_returns_destination_path_under_image_dir(tmp_path
     assert pending == [
         ("L1", "https://example.test/1.jpg", str(tmp_path / thumbnail_filename("L1")))
     ]
+
+
+# ── magick 前置檢查（fetch_images 的第一件事，見 build_drug_catalog 模組文件）──
+#
+# 沒有這道檢查時，缺少 magick 只會在逐一轉檔時才被發現，但下載在轉檔之前
+# 就已發生——六千多次對政府主機的請求全部白費才失敗。`_require_magick`
+# 接受一個 `path` 參數覆寫要搜尋的目錄，讓「PATH 上沒有 magick」不必真的
+# 更動使用者的 PATH 環境變數就能重現，跟本檔案其他測試一樣只用真實的
+# tmp_path，不 monkeypatch。
+
+
+def test_require_magick_raises_clearly_when_binary_is_absent(tmp_path):
+    """搜尋目錄裡沒有 magick 時要在任何下載前就失敗，訊息要點名缺的是誰。"""
+    with pytest.raises(RuntimeError, match="magick"):
+        _require_magick(path=str(tmp_path))  # 空目錄，什麼執行檔都沒有
+
+
+def test_require_magick_passes_when_binary_is_present(tmp_path):
+    fake_magick = tmp_path / "magick"
+    fake_magick.write_text("#!/bin/sh\nexit 0\n")
+    fake_magick.chmod(fake_magick.stat().st_mode | stat.S_IEXEC)
+
+    _require_magick(path=str(tmp_path))  # 不丟例外即為通過
+
+
+def test_require_magick_uses_real_path_by_default():
+    """不帶 path 參數時要吃真正的 PATH 環境變數——這是 fetch_images 呼叫的
+    形式。開發機與 CI 對 --fetch-images 的假設不同（design.md 決策 3：
+    抓圖不在一般開發或 CI 路徑上），所以這裡不斷言結果，只確認呼叫時不需要
+    額外參數、且行為對齊 shutil.which 對真實 PATH 的判斷。"""
+    if shutil.which("magick") is None:
+        with pytest.raises(RuntimeError, match="magick"):
+            _require_magick()
+    else:
+        _require_magick()  # 不丟例外

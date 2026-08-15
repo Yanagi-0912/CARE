@@ -10,6 +10,13 @@ repo（見 `openspec/changes/drug-appearance-photo/design.md` 決策 2：執行�
 
 所以守門放在這裡：縮圖目錄、內容、檔名與藥證庫的對應關係有問題時，讓測試
 大聲失敗，而不是任由這個能力無聲地退化成「一張照片都沒有」。
+
+這份檔案本身出過這種事：早期版本用固定抽樣（sorted 後每隔一段取樣 30 張，
+每次執行結果都相同）驗證解碼與尺寸，把
+`resources/drug_appearance/0035efa548799046.jpg` 截斷成 0 byte 後整批測試
+仍是全綠——抽樣永遠不會選到它。全量解碼 6,267 張實測約 1.4 秒（PIL），
+沒有效能理由需要抽樣，所以改成每一張都驗，見
+`test_all_files_decode_and_are_160x160`。
 """
 
 import hashlib
@@ -29,7 +36,6 @@ IMAGE_DIR = REPO_ROOT / "resources" / "drug_appearance"
 # 的更新增減。
 MINIMUM_FILES = 5_000
 THUMBNAIL_PX = 160
-SAMPLE_SIZE = 30
 
 
 def _license_numbers_with_image_url() -> set[str]:
@@ -63,16 +69,18 @@ def test_image_directory_exists_and_has_plausible_count():
     )
 
 
-def test_sample_of_files_decode_and_are_160x160():
-    """抽樣解碼一批縮圖，而不是只看副檔名或檔案大小——0 byte 或半途寫壞
-    的檔案，光靠存在與否測不出來。"""
+def test_all_files_decode_and_are_160x160():
+    """解碼**每一張**已提交的縮圖，而不是只看副檔名或檔案大小——0 byte 或
+    半途寫壞的檔案，光靠存在與否測不出來。
+
+    這裡刻意不抽樣：全量解碼 6,267 張實測約 1.4 秒，沒有效能理由要犧牲
+    覆蓋率換取速度，而抽樣正是本檔案模組說明裡「集體損毀卻無人發現」
+    這個失敗模式的具體重現——固定抽樣一次就會漏掉抽樣點以外的所有壞檔，
+    而且是永遠、確定地漏掉同一批。"""
     files = sorted(IMAGE_DIR.glob("*.jpg"))
     assert files, "縮圖目錄是空的"
 
-    step = max(1, len(files) // SAMPLE_SIZE)
-    sample = files[::step][:SAMPLE_SIZE]
-
-    for path in sample:
+    for path in files:
         with Image.open(path) as image:
             image.load()  # 強制完整解碼，不只是讀檔頭
             assert image.format == "JPEG", f"{path.name} 不是有效的 JPEG"

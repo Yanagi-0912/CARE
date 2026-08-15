@@ -26,6 +26,7 @@ import io
 import json
 import logging
 import os
+import shutil
 import subprocess
 import threading
 import time
@@ -161,9 +162,34 @@ IMAGE_THUMBNAIL_QUALITY = 82
 # 檢查，避免主機謊報標頭或以 chunked 編碼繞過。
 IMAGE_MAX_BYTES = 60 * 1024 * 1024
 IMAGE_FETCH_TIMEOUT_SECONDS = 120
+# 轉檔是本機運算（縮放＋補白＋重新編碼一張最大 60 MB 的原圖），正常應在
+# 一兩秒內完成；訂 30 秒是留給偶發的系統負載尖峰，而不是預期會用到——
+# 沒有這個上限，卡住的 magick 行程會讓一個 worker thread 永久停擺，
+# 且不留下任何診斷線索。
+IMAGE_CONVERT_TIMEOUT_SECONDS = 30
 IMAGE_FETCH_SLEEP_SECONDS = 0.35
 IMAGE_FETCH_WORKERS = 3
 _IMAGE_PROGRESS_EVERY = 250
+
+
+def _require_magick(path: Optional[str] = None) -> None:
+    """抓圖前先確認 `magick` 執行檔存在，在任何網路請求之前就失敗。
+
+    沒有這道檢查時，`magick` 缺席只會在逐一轉檔時才被發現：
+    `_fetch_and_thumbnail_one` 的 `except Exception` 吞下 `FileNotFoundError`
+    並記一行帶完整 traceback 的紀錄，但下載在轉檔之前就已經發生——六千多次
+    對 mcp.fda.gov.tw 的請求全部白費，而限速對象正是這個主機（design.md
+    決策 3）。
+
+    `path` 只給測試用：覆寫 `shutil.which` 要搜尋的目錄，讓「PATH 上沒有
+    magick」這個情境不必真的更動使用者的 PATH 環境變數就能重現。
+    """
+    if shutil.which("magick", path=path) is None:
+        raise RuntimeError(
+            "找不到 ImageMagick 的 `magick` 執行檔——縮圖流程要靠它把原圖轉成 "
+            f"{IMAGE_THUMBNAIL_PX}x{IMAGE_THUMBNAIL_PX}。macOS 可用 "
+            "`brew install imagemagick` 安裝，見 README「藥品外觀縮圖」。"
+        )
 
 
 def thumbnail_filename(license_number: str) -> str:
@@ -212,10 +238,15 @@ def _fetch_and_thumbnail_one(image_url: str, out_path: str) -> str:
     合計約 20 GB，峰值磁碟只能有一張原圖在場（design.md 決策 2）。等比
     縮放、置中補白、保留尺規、不裁切：消歧介面的候選常是同名藥，同色
     同形時尺規顯示的長度差是唯一能分辨的線索，裁掉尺規會讓這類候選變成
-    不可分辨（design.md 決策 6）。回傳 "ok" / "toobig" / "fail" 供呼叫端
-    彙總統計，任何例外都不得讓整批抓取中斷。
+    不可分辨（design.md 決策 6）。輸出同樣先寫暫存檔再 `os.replace`：
+    `magick` 是否曾經寫出部分結果就被中斷（逾時、被殺、磁碟滿）並無文件
+    保證，直接寫 `out_path` 一旦真的發生就是一張半途而廢的縮圖，還會被
+    `pending_image_targets` 當成「已存在」永遠跳過，不會再重抓。回傳
+    "ok" / "toobig" / "fail" 供呼叫端彙總統計，任何例外都不得讓整批抓取
+    中斷。
     """
-    tmp_path = out_path + ".src"
+    tmp_src_path = out_path + ".src"
+    tmp_dst_path = out_path + ".tmp"
     try:
         request = urllib.request.Request(image_url, headers=_IMAGE_FETCH_HEADERS)
         with urllib.request.urlopen(request, timeout=IMAGE_FETCH_TIMEOUT_SECONDS) as response:
@@ -225,28 +256,32 @@ def _fetch_and_thumbnail_one(image_url: str, out_path: str) -> str:
             data = response.read(IMAGE_MAX_BYTES + 1)
         if len(data) > IMAGE_MAX_BYTES:
             return "toobig"
-        with open(tmp_path, "wb") as tmp_file:
+        with open(tmp_src_path, "wb") as tmp_file:
             tmp_file.write(data)
         subprocess.run(
             [
-                "magick", tmp_path,
+                "magick", tmp_src_path,
                 "-resize", f"{IMAGE_THUMBNAIL_PX}x{IMAGE_THUMBNAIL_PX}>",
                 "-background", "white",
                 "-gravity", "center",
                 "-extent", f"{IMAGE_THUMBNAIL_PX}x{IMAGE_THUMBNAIL_PX}",
                 "-strip", "-quality", str(IMAGE_THUMBNAIL_QUALITY),
-                out_path,
+                tmp_dst_path,
             ],
             check=True,
             capture_output=True,
+            timeout=IMAGE_CONVERT_TIMEOUT_SECONDS,
         )
+        os.replace(tmp_dst_path, out_path)  # 同檔案系統內為原子操作，不會留下半成品
         return "ok"
     except Exception:
         logger.exception("縮圖失敗，略過：%s", image_url)
         return "fail"
     finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+        if os.path.exists(tmp_src_path):
+            os.remove(tmp_src_path)
+        if os.path.exists(tmp_dst_path):
+            os.remove(tmp_dst_path)
 
 
 def fetch_images(entries: Iterable[dict[str, str]], image_dir: str) -> dict[str, int]:
@@ -256,7 +291,12 @@ def fetch_images(entries: Iterable[dict[str, str]], image_dir: str) -> dict[str,
     請求之間限速，避免對政府主機造成過大負載——單次完整抓取是六千多次
     請求、約 20 GB，這是明確選用的步驟，不在 CI 或部署路徑上
     （design.md 決策 3）。
+
+    第一件事是確認 `magick` 存在：這個檢查必須在任何 `urlopen` 之前，
+    否則「工具沒裝」會被包裝成六千多次對政府主機的下載，全部下載完才
+    在轉檔那一步失敗。
     """
+    _require_magick()
     os.makedirs(image_dir, exist_ok=True)
     targets = image_fetch_targets(entries)
     pending = pending_image_targets(targets, image_dir)

@@ -14,13 +14,26 @@ class UserProfileData(BaseModel):
     """
 
     name: str = Field(..., min_length=1, description="使用者顯示名稱")
-    gender: str = Field(..., min_length=1, description="使用者性別")
+    gender: Literal["male", "female", "unknown"] = Field(
+        ...,
+        description="使用者性別。值刻意與前端 i18n key 的最後一段同名，前端才能直接以值拼出翻譯 key",
+    )
     height: float = Field(..., gt=0, description="身高（公分）")
     weight: float = Field(..., gt=0, description="體重（公斤）")
     age: int = Field(..., ge=0, le=130, description="年齡")
-    chronic_history: str = Field(..., description="慢性病史")
-    major_illness_history: str = Field(..., description="重大疾病史")
-    surgery_history: str = Field(..., description="手術病史")
+    # 慢性病拆成兩欄而非一個 "、" 串起來的字串：固定選項要依使用者語言翻譯，
+    # 自行輸入的病名則必須原文照留。混在同一個字串裡就分不出哪個是哪個，
+    # 讀取端只能猜，猜錯就會把使用者打的字拿去翻譯。
+    chronic_diseases: list[str] = Field(
+        ...,
+        description="固定選項的慢性病 code（如 hypertension）。與前端 i18n key 的最後一段同名",
+    )
+    chronic_custom: list[str] = Field(
+        ...,
+        description="使用者自行輸入的慢性病名。原文照存，任何時候都不翻譯",
+    )
+    major_illness_history: str = Field(..., description="重大疾病史。空字串代表沒有")
+    surgery_history: str = Field(..., description="手術病史。空字串代表沒有")
 
 
 class UserSettings(BaseModel):

@@ -102,6 +102,79 @@ def test_load_from_path_reads_entries(tmp_path):
     assert service.match("立普妥錠10毫克") is not None
 
 
+def test_load_from_path_populates_appearance_fields(tmp_path):
+    path = tmp_path / "drug_catalog.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "license_number": "衛署藥製字第000002號",
+                    "name_zh": "立普妥錠10毫克",
+                    "name_en": "LIPITOR TABLETS 10MG",
+                    "image_url": "https://example.test/a.jpg",
+                    "shape": "圓形",
+                    "color": "白色",
+                    "score_line": "無",
+                    "mark_one": "LIPITOR",
+                    "mark_two": "10",
+                    "size": "8mm",
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    service = DrugCatalogService.load_from_path(str(path), threshold=0.88)
+    match = service.match("立普妥錠10毫克")
+
+    assert match is not None
+    (entry,) = match.candidates
+    assert entry.image_url == "https://example.test/a.jpg"
+    assert entry.shape == "圓形"
+    assert entry.color == "白色"
+    assert entry.score_line == "無"
+    assert entry.mark_one == "LIPITOR"
+    assert entry.mark_two == "10"
+    assert entry.size == "8mm"
+
+
+def test_load_from_path_tolerates_entries_from_an_older_build_without_appearance_fields(
+    tmp_path,
+):
+    """drug_catalog.json 是提交進 repo 的產出物，舊 commit 的檔案沒有外觀
+    欄位。載入不能因為缺欄位而壞掉——缺的欄位一律當成空字串，而不是讓
+    整個服務降級成空。"""
+    path = tmp_path / "drug_catalog.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "license_number": "衛署藥製字第000002號",
+                    "name_zh": "立普妥錠10毫克",
+                    "name_en": "LIPITOR TABLETS 10MG",
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    service = DrugCatalogService.load_from_path(str(path), threshold=0.88)
+    match = service.match("立普妥錠10毫克")
+
+    assert service.is_empty is False
+    assert match is not None
+    (entry,) = match.candidates
+    assert entry.image_url == ""
+    assert entry.shape == ""
+    assert entry.color == ""
+    assert entry.score_line == ""
+    assert entry.mark_one == ""
+    assert entry.mark_two == ""
+    assert entry.size == ""
+
+
 def test_load_from_path_tolerates_missing_file(tmp_path):
     """藥證庫缺席不得讓應用啟動失敗；改為所有藥名都比對不到（降為低信心）。"""
     service = DrugCatalogService.load_from_path(

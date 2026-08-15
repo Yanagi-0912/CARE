@@ -55,6 +55,37 @@ def _clean(value: Any) -> str:
     return str(value).strip()
 
 
+# 外觀資料集的中文欄名 → 藥證庫條目使用的鍵名，比照既有 license_number／
+# name_zh／name_en 的命名風格。順序即輸出 JSON 的欄位順序。
+_APPEARANCE_FIELD_MAP = {
+    "外觀圖檔連結": "image_url",
+    "形狀": "shape",
+    "顏色": "color",
+    "刻痕": "score_line",
+    "標註一": "mark_one",
+    "標註二": "mark_two",
+    "外觀尺寸": "size",
+}
+
+_EMPTY_APPEARANCE_FIELDS = dict.fromkeys(_APPEARANCE_FIELD_MAP.values(), "")
+
+
+def _index_appearance_fields(
+    appearances: Iterable[dict[str, Any]],
+) -> dict[str, dict[str, str]]:
+    """許可證字號 → 外觀欄位。同證號出現多筆時取第一筆，跟品名合併的
+    去重規則一致。"""
+    by_licence: dict[str, dict[str, str]] = {}
+    for row in appearances:
+        license_number = _clean(row.get("許可證字號"))
+        if not license_number or license_number in by_licence:
+            continue
+        by_licence[license_number] = {
+            field: _clean(row.get(raw_key)) for raw_key, field in _APPEARANCE_FIELD_MAP.items()
+        }
+    return by_licence
+
+
 def build_entries(
     licences: Iterable[dict[str, Any]],
     appearances: Iterable[dict[str, Any]],
@@ -64,7 +95,15 @@ def build_entries(
     以許可證字號去重；許可證資料集優先，外觀資料集只補許可證資料集沒有的品項。
     沒有證號、或中英文品名都空的資料列直接略過——它們對比對沒有貢獻，
     留著只會拉低相似度比對的品質。
+
+    外觀欄位（外觀圖檔連結、形狀、顏色、刻痕、標註一／二、外觀尺寸）的
+    附掛規則跟上面的品名補充規則各自獨立：不論這張證號的品名最終取自
+    哪個資料集，只要外觀資料集有對應紀錄就貼上外觀欄位；沒有外觀記錄的
+    證號則全部留空字串。這樣才不會讓「外觀資料集只補許可證沒有的品項」
+    這條規則被誤套用到外觀欄位本身——那條規則管的是名稱該聽誰的，
+    不是外觀資料該不該附掛。
     """
+    appearances = list(appearances)
     by_licence: dict[str, dict[str, str]] = {}
 
     for source in (licences, appearances):
@@ -83,6 +122,10 @@ def build_entries(
                 "name_zh": name_zh,
                 "name_en": name_en,
             }
+
+    appearance_by_licence = _index_appearance_fields(appearances)
+    for license_number, entry in by_licence.items():
+        entry.update(appearance_by_licence.get(license_number, _EMPTY_APPEARANCE_FIELDS))
 
     return list(by_licence.values())
 

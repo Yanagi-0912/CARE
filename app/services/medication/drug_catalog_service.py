@@ -72,6 +72,17 @@ class DrugCatalogEntry:
     license_number: str
     name_zh: str
     name_en: str = ""
+    # 外觀欄位（來自食藥署藥品外觀資料集，見 scripts/build_drug_catalog.py）：
+    # 無外觀記錄的藥證全部留空字串，不是 None——呼叫端不必先判斷型別
+    # 才能安全串接顯示。原樣帶過原始資料，不在這裡正規化（例如 score_line
+    # 常是字面上的「無」，color 可能是「黃;;;白」），正規化是呈現面的事。
+    image_url: str = ""
+    shape: str = ""
+    color: str = ""
+    score_line: str = ""
+    mark_one: str = ""
+    mark_two: str = ""
+    size: str = ""
 
 
 @dataclass(frozen=True)
@@ -186,6 +197,16 @@ class DrugCatalogService:
                     license_number=item.get("license_number", ""),
                     name_zh=item.get("name_zh", ""),
                     name_en=item.get("name_en", ""),
+                    # `.get(..., "")`：drug_catalog.json 是提交進 repo 的產出物，
+                    # 舊 commit 產出的檔案沒有這些鍵，缺鍵時視為空字串而不是
+                    # 讓載入失敗——外觀欄位是既有藥證資料的擴充，不是前提。
+                    image_url=item.get("image_url", ""),
+                    shape=item.get("shape", ""),
+                    color=item.get("color", ""),
+                    score_line=item.get("score_line", ""),
+                    mark_one=item.get("mark_one", ""),
+                    mark_two=item.get("mark_two", ""),
+                    size=item.get("size", ""),
                 )
                 for item in raw_entries
             ]

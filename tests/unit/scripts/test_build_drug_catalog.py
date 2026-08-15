@@ -1,8 +1,15 @@
+import hashlib
 import io
 import json
 import zipfile
 
-from scripts.build_drug_catalog import build_entries, read_dataset_zip
+from scripts.build_drug_catalog import (
+    build_entries,
+    image_fetch_targets,
+    pending_image_targets,
+    read_dataset_zip,
+    thumbnail_filename,
+)
 
 
 def _zip_bytes(payload, name="dataset.json") -> bytes:
@@ -211,3 +218,54 @@ def test_appearance_field_null_becomes_empty_string():
     assert entry["mark_one"] == ""
     assert entry["mark_two"] == ""
     assert entry["size"] == ""
+
+
+# ── 藥丸照片抓取：純邏輯部分（--fetch-images，見 design.md 決策 2、3、6）──
+#
+# 抓圖與縮圖本身需要網路與 ImageMagick，不在單元測試範圍內；但「檔名怎麼
+# 算」與「哪些該跳過」是純邏輯，刻意拆成獨立函式讓這裡直接測，不必對
+# urllib 或 subprocess 做 monkeypatch。
+
+
+def test_thumbnail_filename_is_sha256_prefix_of_license_number():
+    license_number = "衛署藥製字第000002號"
+    expected = hashlib.sha256(license_number.encode("utf-8")).hexdigest()[:16] + ".jpg"
+
+    assert thumbnail_filename(license_number) == expected
+
+
+def test_thumbnail_filename_is_deterministic_and_distinct_per_licence():
+    assert thumbnail_filename("A") == thumbnail_filename("A")
+    assert thumbnail_filename("A") != thumbnail_filename("B")
+
+
+def test_image_fetch_targets_keeps_only_entries_with_licence_and_http_image():
+    entries = [
+        {"license_number": "L1", "image_url": "https://mcp.fda.gov.tw/a.jpg"},
+        {"license_number": "L2", "image_url": ""},  # 無外觀記錄
+        {"license_number": "", "image_url": "https://mcp.fda.gov.tw/c.jpg"},  # 理論上不該發生，仍要擋
+        {"license_number": "L4", "image_url": "not-a-url"},
+    ]
+
+    assert image_fetch_targets(entries) == [("L1", "https://mcp.fda.gov.tw/a.jpg")]
+
+
+def test_pending_image_targets_skips_files_that_already_exist(tmp_path):
+    """已存在的縮圖不重抓——這是抓取可中斷續跑的關鍵，見 build_drug_catalog
+    模組文件。用真實的暫存目錄驗證，不必 monkeypatch 檔案系統。"""
+    (tmp_path / thumbnail_filename("L1")).write_bytes(b"fake-jpeg")
+    targets = [("L1", "https://example.test/1.jpg"), ("L2", "https://example.test/2.jpg")]
+
+    pending = pending_image_targets(targets, str(tmp_path))
+
+    assert [license_number for license_number, _, _ in pending] == ["L2"]
+
+
+def test_pending_image_targets_returns_destination_path_under_image_dir(tmp_path):
+    targets = [("L1", "https://example.test/1.jpg")]
+
+    pending = pending_image_targets(targets, str(tmp_path))
+
+    assert pending == [
+        ("L1", "https://example.test/1.jpg", str(tmp_path / thumbnail_filename("L1")))
+    ]

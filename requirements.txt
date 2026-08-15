@@ -34,6 +34,10 @@ motor==3.7.1
 pytest>=8.2,<9
 pytest-asyncio==0.25.0
 pytest-cov==7.0.0
+# 守門測試需要實際解碼已提交的藥丸照片縮圖以驗證尺寸與格式
+# （tests/unit/resources/test_drug_appearance_images.py），非建置腳本本身
+# 的相依——建置腳本沿用既有的 ImageMagick CLI（見 scripts/build_drug_catalog.py）
+Pillow==12.3.0
 
 # 工具套件
 pydantic==2.12.5

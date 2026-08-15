@@ -87,6 +87,46 @@ git add resources/drug_catalog.json         # 更新內容自己成為一個可�
 所以 `tests/unit/resources/test_drug_catalog_artifact.py` 會在產出物遺失或損壞
 時直接讓測試失敗，而不是讓它無聲地退化。
 
+## 藥品外觀縮圖
+
+`resources/drug_appearance/` 是藥丸照片的縮圖（160×160 JPEG，檔名為許可證
+字號 SHA-256 前 16 字元），推播與 LIFF 用它讓長輩用外觀（而不只是藥名）確認
+「該吃哪一顆」。跟藥證庫同一套原則：建置期產出、**提交進 repo**，執行期不對
+外連線（不直連 `mcp.fda.gov.tw`）。它已經在版本控制裡，**一般開發不需要做
+任何事**。
+
+需要重新產生的時機只有一個：跟著食藥署藥品外觀資料集的更新（每 7 日同步
+一次）補上新藥證的照片。
+
+```bash
+python -m scripts.build_drug_catalog --fetch-images
+pytest tests/unit/resources/test_drug_appearance_images.py
+git add resources/drug_appearance/
+```
+
+**這一步刻意設計成明確選用（`--fetch-images`，預設關閉），不是 `build_drug_catalog`
+的一般流程，更不在 CI 或部署路徑上**：全量抓取要對 `mcp.fda.gov.tw` 發出六千
+多次請求，下載約 20 GB 原圖（縮圖前即捨棄），實測要跑約 86 分鐘，對政府主機
+是不小的負載。抓圖需要 [ImageMagick](https://imagemagick.org/)（`magick` 指令）
+把原圖縮成置中補白、保留尺規、不裁切的正方形縮圖——刻痕與標註在任何縮圖尺寸
+下都不可辨讀，那部分本來就交給外觀資料的文字欄位；但同名候選常常同色同形，
+尺規顯示的長度差是唯一能分辨的線索，因此不裁切見
+`openspec/changes/drug-appearance-photo/design.md` 決策 6。
+
+**可中斷續跑**：已存在的縮圖一律跳過、不重新下載，所以可以隨時中斷，重新
+執行只會抓缺的那一部分，資料集小幅更新時也只需補抓新增的藥證。
+
+**為什麼提交產出物而不是在 build 時產生**：跟藥證庫同一個理由——部署不依賴
+政府站台活著，映像建置不必每次都對外抓 20 GB。取捨與量測見
+`openspec/changes/drug-appearance-photo/design.md` 決策 2、3。
+
+**檔案缺席或損毀時的行為**：`license_number` 未確定或對應縮圖不存在時，介面
+與推播一律退回既有的純文字版面，不會出現空的圖片區塊——外觀是加分項，不是
+建立藥品或呈現提醒的必要條件。`tests/unit/resources/test_drug_appearance_images.py`
+會在縮圖目錄消失、內容損壞、或跟藥證庫對不上時讓測試失敗，理由與
+`test_drug_catalog_artifact.py` 相同：這類壞掉不會讓任何東西報錯，只會讓照片
+悄悄地全部消失。
+
 ## LINE Webhook（callback 網址）
 
 - Callback URL：`https://care.jamessu2016.com/line/callback`

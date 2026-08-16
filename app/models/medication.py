@@ -104,6 +104,17 @@ class Medication(BaseModel):
     name: str
     generic_name: Optional[str] = None
     license_number: Optional[str] = None
+    # 外觀欄位：形狀／顏色／刻痕／標註／外觀尺寸。license_number 是使用者從
+    # 候選清單挑定的值時，於提交當下原樣帶自對應候選（DrugCandidate，見
+    # prescription.py）；未挑選或無外觀記錄則留空字串，不是 None——與
+    # DrugCatalogEntry 同一慣例，呼叫端（Flex 訊息、LIFF 清單）不必先判斷
+    # 型別就能安全串接顯示。
+    shape: str = ""
+    color: str = ""
+    score_line: str = ""
+    mark_one: str = ""
+    mark_two: str = ""
+    size: str = ""
     unit_content: Optional[str] = None
     total_quantity: Optional[int] = None
     usage_raw: Optional[str] = None        # 藥袋上的用法原文，供使用者核對

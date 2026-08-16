@@ -40,6 +40,27 @@ FREQUENCY_TO_SLOTS: dict[str, tuple[MedicationSlotType, ...]] = {
 }
 
 
+class DrugCandidate(BaseModel):
+    """單一候選藥證：藥名命中多張藥證時，供核對畫面呈現給使用者挑選的其中一張。
+
+    欄位原樣帶自 DrugCatalogEntry（見該類別的說明），外觀欄位缺席時留空字串
+    而非 None——呼叫端（Flex 訊息、LIFF 清單）不必先判斷型別就能安全串接顯示。
+    `thumbnail_url` 是 drug_appearance_image_service 在掃描當下就地解析出的
+    對外縮圖路徑，查無縮圖時為 None，呈現面據此安全地退回純文字（spec
+    「照片缺席時的降級」），不必等到呈現當下才去檢查檔案是否存在。
+    """
+
+    license_number: str
+    name_zh: str
+    shape: str = ""
+    color: str = ""
+    score_line: str = ""
+    mark_one: str = ""
+    mark_two: str = ""
+    size: str = ""
+    thumbnail_url: Optional[str] = None
+
+
 class RecognizedDrug(BaseModel):
     """單一藥品的辨識結果。除藥名外全部允許為空——欄位缺漏時留空，不填推測值。"""
 
@@ -57,6 +78,12 @@ class RecognizedDrug(BaseModel):
     indication: Optional[str] = None
     # 藥證庫比對命中後才會有值
     license_number: Optional[str] = None
+    # 藥名命中多張藥證時的候選清單（見 DrugCatalogMatch.candidates 的說明）；
+    # 唯一命中時仍是只含一筆的清單，不受影響。核對畫面用它呈現候選的照片與
+    # 外觀描述供使用者挑選；挑選結果經由 CommitDrugItem.license_number 送回，
+    # 並在 commit() 時校驗必須落在這份清單之內——這是那道校驗唯一的
+    # ground truth，見 PrescriptionScanService._resolve_candidate。
+    candidates: list[DrugCandidate] = Field(default_factory=list)
     # 未經藥證庫校驗一律低信心。視覺模型讀錯形近藥名時自述信心度仍然很高，
     # 只有外部字典能發現該字串不對應任何一張核准藥證。
     name_confidence: ConfidenceLevel = "low"
@@ -103,9 +130,12 @@ class CommitDrugItem(BaseModel):
 
     name: str
     generic_name: Optional[str] = None
-    # 前端把掃描時藥證庫比對到的證號原樣回傳；提交階段不重新比對，
-    # 因為使用者可能已把藥名編輯成別的字串，那應該是下一次掃描的責任，
-    # 不該在提交當下悄悄用新名字重新配對出不同的證號。
+    # 前端把使用者在候選清單中挑定的證號原樣回傳；留空代表未挑選，兩者皆合法
+    # （見 spec「使用者為多候選藥品挑定藥證」：未挑選 SHALL NOT 阻擋提交）。
+    # 提交階段不會拿（可能已被使用者改過的）藥名重新比對出新證號——那應該是
+    # 下一次掃描的責任；但會反過來驗證帶回的值是否落在草稿當初那筆藥品的
+    # 候選清單內，候選清單是這條路徑上唯一的 ground truth，不在清單內的值
+    # 一律拒絕且不寫入任何東西，見 PrescriptionScanService._resolve_candidate。
     license_number: Optional[str] = None
     unit_content: Optional[str] = None
     total_quantity: Optional[int] = None

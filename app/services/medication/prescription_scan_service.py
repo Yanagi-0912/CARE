@@ -8,7 +8,7 @@
 
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Protocol
+from typing import Callable, Optional, Protocol
 
 from bson import ObjectId
 
@@ -24,9 +24,11 @@ from app.models.prescription import (
     FREQUENCY_TO_SLOTS,
     CommitDrugItem,
     CommitPrescriptionDraftRequest,
+    DrugCandidate,
     PrescriptionCommitResult,
     PrescriptionDraft,
     RecognitionResult,
+    RecognizedDrug,
 )
 from app.services.medication.drug_catalog_service import DrugCatalogMatch
 
@@ -59,6 +61,16 @@ class DraftExpiredError(Exception):
 
 class SlotsRequiredError(Exception):
     """OTHER 頻次沒有可映射的時段，使用者也沒有指定——拒絕提交，不臆測時段。"""
+
+
+class LicenseNumberNotInCandidatesError(Exception):
+    """使用者帶回的 license_number 不在該筆藥品掃描時的候選清單內。
+
+    候選清單受藥名約束，是這條路徑上唯一的 ground truth；接受清單外的任意
+    證號，等於讓藥丸照片可以指向任何藥品，決策「證號不確定時不得顯示藥丸
+    照片」的安全邊界也就失效了。整批拒絕、不寫入任何東西，見
+    PrescriptionScanService._resolve_candidate。
+    """
 
 
 class TargetNotInFamilyError(Exception):
@@ -111,6 +123,14 @@ class _FamilyTreeRepository(Protocol):
     async def get_by_user_id(self, user_id: str): ...
 
 
+# 證號 -> 對外縮圖 URL（查無縮圖回 None）。以純函式簽章注入而非直接依賴
+# drug_appearance_image_service 模組，測試才能餵一個字典查表的假實作，
+# 不必碰檔案系統或 monkeypatch settings 單例；正式組裝時直接把
+# resolve_drug_appearance_image_url 這個函式本身傳進來即可（其餘參數
+# 皆有預設值，讀 app.core.config.settings）。
+_AppearanceImageResolver = Callable[[str], Optional[str]]
+
+
 class PrescriptionScanService:
     def __init__(
         self,
@@ -120,6 +140,7 @@ class PrescriptionScanService:
         medication_repository: _MedicationRepository,
         reminder_repository: _ReminderRepository,
         family_tree_repository: _FamilyTreeRepository,
+        appearance_image_resolver: _AppearanceImageResolver,
         ttl_minutes: int,
     ) -> None:
         self._ocr_service = ocr_service
@@ -128,6 +149,7 @@ class PrescriptionScanService:
         self._medication_repository = medication_repository
         self._reminder_repository = reminder_repository
         self._family_tree_repository = family_tree_repository
+        self._appearance_image_resolver = appearance_image_resolver
         self._ttl_minutes = ttl_minutes
 
     # ── 掃描 ────────────────────────────────────────────────────────
@@ -190,6 +212,24 @@ class PrescriptionScanService:
             # 未經藥證庫校驗一律低信心（RecognizedDrug 的預設值）；
             # 只有比對命中才升到高信心，這是唯一能發現模型錯讀形近藥名的手段。
             drug.name_confidence = "high"
+            # 把 match() 已經算好的候選集合原樣搬到草稿上（唯一命中時也是只含
+            # 一筆的清單，見 DrugCatalogMatch 的說明），供核對畫面呈現候選的
+            # 照片與外觀描述；縮圖 URL 在這裡就地解析一次，呈現面不必再另外
+            # 查一次檔案系統或組路徑。
+            drug.candidates = [
+                DrugCandidate(
+                    license_number=entry.license_number,
+                    name_zh=entry.name_zh,
+                    shape=entry.shape,
+                    color=entry.color,
+                    score_line=entry.score_line,
+                    mark_one=entry.mark_one,
+                    mark_two=entry.mark_two,
+                    size=entry.size,
+                    thumbnail_url=self._appearance_image_resolver(entry.license_number),
+                )
+                for entry in match.candidates
+            ]
         return all_verified
 
     async def get_draft(self, draft_id: str, user_id: str) -> PrescriptionDraft:
@@ -243,10 +283,12 @@ class PrescriptionScanService:
             ):
                 raise TargetNotInFamilyError(target_user_id)
 
-        # 先把每一項要建立的藥決定好時段（或確認不需要時段），任何一項
-        # 需要時段卻沒有就整批拒絕——此時還沒產生任何 id，也還沒寫入任何東西。
+        # 先把每一項要建立的藥決定好時段、並驗證挑定的證號（或確認未挑選），
+        # 任何一項需要時段卻沒有、或證號不在候選清單內就整批拒絕——此時還沒
+        # 產生任何 id，也還沒寫入任何東西。
+        candidates_by_name = self._candidates_by_name(draft.recognition.drugs)
         resolved = [
-            (item, self._resolve_slots(item))
+            (item, self._resolve_slots(item), self._resolve_candidate(item, candidates_by_name))
             for item in payload.drugs
             if item.include
         ]
@@ -277,8 +319,8 @@ class PrescriptionScanService:
         # 下一次重試才能真的重新取得提交權、重新寫入。
         try:
             medications = [
-                self._build_medication(item, medication_id, target_user_id, user_id)
-                for (item, _slots), medication_id in zip(resolved, medication_ids)
+                self._build_medication(item, candidate, medication_id, target_user_id, user_id)
+                for (item, _slots, candidate), medication_id in zip(resolved, medication_ids)
             ]
             await self._medication_repository.create_many(medications)
 
@@ -334,8 +376,49 @@ class PrescriptionScanService:
         return list(mapped)
 
     @staticmethod
+    def _candidates_by_name(
+        drugs: list[RecognizedDrug],
+    ) -> dict[str, dict[str, DrugCandidate]]:
+        """把草稿裡每一筆辨識藥品的候選清單，整理成「藥名 → {證號: 候選}」，
+        供 `_resolve_candidate` 查詢使用。
+
+        同一個藥名理論上不會出現兩筆候選不同的辨識結果——`match()` 對同一個
+        字串永遠算出同一個候選集合——這裡仍以合併而非覆蓋處理，純粹保守；
+        不曾出現在草稿中的藥名對應到空字典，任何非空證號都會在
+        `_resolve_candidate` 被拒絕。
+        """
+        by_name: dict[str, dict[str, DrugCandidate]] = {}
+        for drug in drugs:
+            bucket = by_name.setdefault(drug.name, {})
+            for candidate in drug.candidates:
+                bucket[candidate.license_number] = candidate
+        return by_name
+
+    @staticmethod
+    def _resolve_candidate(
+        item: CommitDrugItem,
+        candidates_by_name: dict[str, dict[str, DrugCandidate]],
+    ) -> Optional[DrugCandidate]:
+        """驗證使用者挑定的證號落在該筆藥品掃描時的候選清單內，回傳對應的候選
+        （含外觀欄位，供 `_build_medication` 直接使用）。
+
+        未挑選（`item.license_number` 為空）一律合法，回傳 None——挑選是
+        附加價值，不是提交的必要條件，不得阻擋提交（spec「使用者為多候選
+        藥品挑定藥證」）。挑選了卻查不到對應候選——藥名從未通過校驗、
+        candidates 是空清單，或藥名已被改成候選清單之外的字串——一律視為
+        候選清單為空，任何非空證號都拒絕：候選清單是這條路徑上唯一的
+        ground truth，接受清單外的任意證號等於讓照片可以指向任何藥品。
+        """
+        if not item.license_number:
+            return None
+        candidate = candidates_by_name.get(item.name, {}).get(item.license_number)
+        if candidate is None:
+            raise LicenseNumberNotInCandidatesError(item.name, item.license_number)
+        return candidate
+
+    @staticmethod
     def _prn_ids(
-        resolved: list[tuple[CommitDrugItem, list[MedicationSlotType]]],
+        resolved: list[tuple[CommitDrugItem, list[MedicationSlotType], Optional[DrugCandidate]]],
         medication_ids: list[str],
     ) -> list[str]:
         """從這次的 payload 推算哪些建立出來的藥品屬於 PRN。
@@ -358,13 +441,14 @@ class PrescriptionScanService:
             return []
         return [
             medication_id
-            for (item, _slots), medication_id in zip(resolved, medication_ids)
+            for (item, _slots, _candidate), medication_id in zip(resolved, medication_ids)
             if item.frequency_code == "PRN"
         ]
 
     @staticmethod
     def _build_medication(
         item: CommitDrugItem,
+        candidate: Optional[DrugCandidate],
         medication_id: str,
         target_user_id: str,
         creator_user_id: str,
@@ -390,6 +474,15 @@ class PrescriptionScanService:
             name=item.name,
             generic_name=item.generic_name,
             license_number=item.license_number,
+            # 外觀欄位只在挑定的證號通過 `_resolve_candidate` 校驗（candidate
+            # 非 None）時才有值，原樣帶自對應候選——未挑選時 candidate 是
+            # None，維持 Medication 欄位的預設空字串，不臆測外觀。
+            shape=candidate.shape if candidate else "",
+            color=candidate.color if candidate else "",
+            score_line=candidate.score_line if candidate else "",
+            mark_one=candidate.mark_one if candidate else "",
+            mark_two=candidate.mark_two if candidate else "",
+            size=candidate.size if candidate else "",
             unit_content=item.unit_content,
             total_quantity=item.total_quantity,
             usage_raw=item.usage_raw,
@@ -402,7 +495,7 @@ class PrescriptionScanService:
 
     async def _link_reminders(
         self,
-        resolved: list[tuple[CommitDrugItem, list[MedicationSlotType]]],
+        resolved: list[tuple[CommitDrugItem, list[MedicationSlotType], Optional[DrugCandidate]]],
         medication_ids: list[str],
         target_user_id: str,
         creator_user_id: str,
@@ -431,7 +524,7 @@ class PrescriptionScanService:
         """
         reminder_ids: list[str] = []
         reactivated_slots: list[MedicationSlotType] = []
-        for (item, slots), medication_id in zip(resolved, medication_ids):
+        for (item, slots, _candidate), medication_id in zip(resolved, medication_ids):
             if item.frequency_code == "PRN":
                 continue
             for slot in slots:

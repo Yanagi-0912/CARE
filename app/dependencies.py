@@ -27,6 +27,9 @@ from app.repositories.user_profile_repository import UserProfileRepository
 from app.services.agent.agent import Agent
 from app.services.consultation.consultation_service import ConsultationService
 from app.services.family.family_tree_service import FamilyTreeService
+from app.services.medication.drug_appearance_image_service import (
+    resolve_drug_appearance_image_url,
+)
 from app.services.medication.drug_catalog_service import DrugCatalogService
 from app.services.medication.medication_service import MedicationService
 from app.services.medication.medication_scheduler import start_medication_scheduler
@@ -417,6 +420,9 @@ _prescription_scan_service = PrescriptionScanService(
     medication_repository=MedicationRepository,
     reminder_repository=MedicationReminderRepository,
     family_tree_repository=FamilyTreeRepository,
+    # 其餘參數（image_dir／public_base_url／url_path）皆有預設值，讀
+    # app.core.config.settings，正式組裝時不需要額外帶入。
+    appearance_image_resolver=resolve_drug_appearance_image_url,
     ttl_minutes=settings.PRESCRIPTION_DRAFT_TTL_MINUTES,
 )
 

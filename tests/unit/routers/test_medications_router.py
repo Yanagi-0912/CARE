@@ -33,6 +33,7 @@ from app.services.medication.prescription_ocr_service import (
 from app.services.medication.prescription_scan_service import (
     DraftExpiredError,
     DraftNotFoundError,
+    LicenseNumberNotInCandidatesError,
     SlotsRequiredError,
     TargetNotInFamilyError,
 )
@@ -519,6 +520,24 @@ def test_commit_endpoint_400_when_slots_required(
 
     assert response.status_code == 400
     assert "某藥" in response.json()["detail"]
+
+
+def test_commit_endpoint_400_when_license_number_not_in_candidates(
+    override_current_user, prescription_scan_enabled
+):
+    """使用者帶回不在候選清單內的證號：候選清單是這條路徑上唯一的
+    ground truth，路由層要把它轉成 400 而不是讓例外裸露成 500。"""
+    fake_service = FakePrescriptionScanService(
+        commit_exception=LicenseNumberNotInCandidatesError("某藥", "L_NOT_A_CANDIDATE")
+    )
+    _override_scan_service(fake_service)
+
+    response = client.post(
+        "/api/medications/prescription-drafts/D1/commit",
+        json={"user_id": "U_TEST_USER", "drugs": []},
+    )
+
+    assert response.status_code == 400
 
 
 def test_confirm_medication_router(override_current_user):

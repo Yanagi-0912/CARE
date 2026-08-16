@@ -5,10 +5,17 @@ import asyncio
 import logging
 from contextlib import suppress
 from datetime import date, datetime, time, timedelta
+from app.core import scheduler_heartbeat
 from app.services.consultation.consultation_service import ConsultationService
 from app.repositories.chat_history_repository import ChatHistoryRepository
 
 logger = logging.getLogger(__name__)
+
+# 心跳登記。本排程器每天只醒一次，因此預期間隔是一整天。它的心跳對偵測
+# 「排程器 pod 掛掉」幫助不大（要等一天以上才會過期），登記它只是為了讓
+# 健康檢查端點能一併揭露狀態，真正的 liveness 依據是用藥提醒那支。
+HEARTBEAT_NAME = "consultation_daily_summary"
+HEARTBEAT_INTERVAL_SECONDS = 24 * 60 * 60
 
 
 class ConsultationDailySummaryScheduler:
@@ -27,6 +34,14 @@ class ConsultationDailySummaryScheduler:
     def start(self) -> None:
         if self._task is not None and not self._task.done():
             return
+        # 容忍倍數放寬到 1.5：本排程器每天才醒一次，用預設的 3 倍代表要停擺
+        # 三天才會被發現，而 1.5 倍（36 小時）已足以容納執行時間與時區換日的
+        # 誤差，又不至於遲鈍到毫無意義。
+        scheduler_heartbeat.register(
+            HEARTBEAT_NAME,
+            expected_interval_seconds=HEARTBEAT_INTERVAL_SECONDS,
+            tolerance_factor=1.5,
+        )
         # 建立背景 task；呼叫端不需要等待它完成，排程會自己在 _run_loop 中循環。
         self._task = asyncio.create_task(self._run_loop())
         logger.info(
@@ -55,6 +70,9 @@ class ConsultationDailySummaryScheduler:
                 wait_seconds,
             )
             await asyncio.sleep(wait_seconds)
+            # 心跳在 _run_once 之前回報：要證明的是「迴圈醒過來了」，
+            # 而不是「這次摘要有沒有成功」。
+            scheduler_heartbeat.beat(HEARTBEAT_NAME)
             await self._run_once()
 
     def _next_run_at(self, now: datetime) -> datetime:

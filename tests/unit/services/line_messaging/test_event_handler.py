@@ -135,6 +135,7 @@ def handler(
     mock_medical_service,
 ):
     token_manager = MagicMock()
+    token_manager.get_token_async = AsyncMock(return_value="dummy_token")
     token_manager.get_token.return_value = "dummy_token"
     return create_handler(
         agent=mock_agent,
@@ -479,6 +480,7 @@ async def test_handle_text_message_with_user_profile(
     mock_profile_service.get_user_profile = AsyncMock(return_value=dummy_profile)
 
     token_manager = MagicMock()
+    token_manager.get_token_async = AsyncMock(return_value="dummy_token")
     token_manager.get_token.return_value = "dummy_token"
 
     handler = create_handler(

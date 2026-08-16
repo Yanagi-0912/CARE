@@ -12,6 +12,7 @@ from linebot.v3.webhooks import (
 from app.i18n.messages import t
 from app.services.line_messaging.handler.message_handler import LineMessageHandler
 from app.services.line_messaging.reply.reply import LineReplier
+from tests.conftest import fake_line_token_manager
 
 
 class FakeTTSService:
@@ -44,12 +45,11 @@ class FakeTTSService:
 
 @pytest.fixture
 def replier():
-    return LineReplier(token_manager=MagicMock(), tts_service=None)
+    return LineReplier(token_manager=fake_line_token_manager("token"), tts_service=None)
 
 
 async def _send_reply(replier: LineReplier, **kwargs):
     """在 patch 掉 LINE SDK 呼叫的前提下送出一次 reply()，回傳 (ok, messaging_api mock)。"""
-    replier._token_manager.get_token.return_value = "token"
     with patch("app.services.line_messaging.reply.reply.Configuration"), patch(
         "app.services.line_messaging.reply.reply.ApiClient"
     ), patch(
@@ -64,7 +64,6 @@ async def _send_reply(replier: LineReplier, **kwargs):
 
 @pytest.mark.asyncio
 async def test_reply_location_qr_label_uses_japanese(replier):
-    replier._token_manager.get_token.return_value = "token"
 
     with patch("app.services.line_messaging.reply.reply.Configuration"), patch(
         "app.services.line_messaging.reply.reply.ApiClient"
@@ -92,7 +91,7 @@ async def test_reply_location_qr_label_uses_japanese(replier):
 @pytest.mark.asyncio
 async def test_reply_passes_language_and_voice_rate_to_tts():
     fake_tts = FakeTTSService()
-    replier = LineReplier(token_manager=MagicMock(), tts_service=fake_tts)
+    replier = LineReplier(token_manager=fake_line_token_manager("token"), tts_service=fake_tts)
 
     ok, messaging_api = await _send_reply(
         replier,
@@ -123,7 +122,7 @@ async def test_reply_passes_language_and_voice_rate_to_tts():
 @pytest.mark.asyncio
 async def test_reply_passes_voice_gender_to_tts():
     fake_tts = FakeTTSService()
-    replier = LineReplier(token_manager=MagicMock(), tts_service=fake_tts)
+    replier = LineReplier(token_manager=fake_line_token_manager("token"), tts_service=fake_tts)
 
     ok, _messaging_api = await _send_reply(
         replier,
@@ -150,7 +149,7 @@ async def test_reply_passes_voice_gender_to_tts():
 @pytest.mark.asyncio
 async def test_reply_defaults_voice_gender_to_female_when_omitted():
     fake_tts = FakeTTSService()
-    replier = LineReplier(token_manager=MagicMock(), tts_service=fake_tts)
+    replier = LineReplier(token_manager=fake_line_token_manager("token"), tts_service=fake_tts)
 
     ok, _messaging_api = await _send_reply(
         replier,
@@ -206,7 +205,7 @@ async def _handle_event(handler: LineMessageHandler) -> None:
 @pytest.mark.asyncio
 async def test_message_handler_passes_voice_gender_from_settings_to_synthesize():
     fake_tts = FakeTTSService()
-    replier = LineReplier(token_manager=MagicMock(), tts_service=fake_tts)
+    replier = LineReplier(token_manager=fake_line_token_manager("token"), tts_service=fake_tts)
     handler = _build_handler(
         replier,
         {"settings": {"voice_reply_enabled": True, "voice_gender": "male"}},
@@ -221,7 +220,7 @@ async def test_message_handler_passes_voice_gender_from_settings_to_synthesize()
 @pytest.mark.asyncio
 async def test_message_handler_defaults_voice_gender_to_female_when_missing():
     fake_tts = FakeTTSService()
-    replier = LineReplier(token_manager=MagicMock(), tts_service=fake_tts)
+    replier = LineReplier(token_manager=fake_line_token_manager("token"), tts_service=fake_tts)
     handler = _build_handler(
         replier,
         {"settings": {"voice_reply_enabled": True}},
@@ -236,7 +235,7 @@ async def test_message_handler_defaults_voice_gender_to_female_when_missing():
 @pytest.mark.asyncio
 async def test_message_handler_settings_voice_gender_takes_precedence_over_top_level():
     fake_tts = FakeTTSService()
-    replier = LineReplier(token_manager=MagicMock(), tts_service=fake_tts)
+    replier = LineReplier(token_manager=fake_line_token_manager("token"), tts_service=fake_tts)
     handler = _build_handler(
         replier,
         {
@@ -254,7 +253,7 @@ async def test_message_handler_settings_voice_gender_takes_precedence_over_top_l
 @pytest.mark.asyncio
 async def test_reply_flex_message_does_not_trigger_tts():
     fake_tts = FakeTTSService()
-    replier = LineReplier(token_manager=MagicMock(), tts_service=fake_tts)
+    replier = LineReplier(token_manager=fake_line_token_manager("token"), tts_service=fake_tts)
 
     flex_json = (
         '{"type": "flex", "altText": "alt", '
@@ -281,7 +280,7 @@ async def test_reply_flex_message_does_not_trigger_tts():
 @pytest.mark.asyncio
 async def test_reply_tts_failure_still_sends_text_without_raising():
     fake_tts = FakeTTSService(exc=RuntimeError("synthesis exploded"))
-    replier = LineReplier(token_manager=MagicMock(), tts_service=fake_tts)
+    replier = LineReplier(token_manager=fake_line_token_manager("token"), tts_service=fake_tts)
 
     ok, messaging_api = await _send_reply(
         replier,
@@ -303,7 +302,7 @@ async def test_reply_tts_failure_still_sends_text_without_raising():
 @pytest.mark.asyncio
 async def test_reply_voice_reply_disabled_skips_tts():
     fake_tts = FakeTTSService()
-    replier = LineReplier(token_manager=MagicMock(), tts_service=fake_tts)
+    replier = LineReplier(token_manager=fake_line_token_manager("token"), tts_service=fake_tts)
 
     ok, messaging_api = await _send_reply(
         replier,

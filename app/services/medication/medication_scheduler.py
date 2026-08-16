@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from functools import partial
 from typing import Any, Awaitable, Callable, Optional
 
+from app.core import scheduler_heartbeat
 from app.core.user_font_size import (
     DEFAULT_USER_FONT_SIZE,
     normalize_user_font_size,
@@ -31,6 +32,11 @@ from app.services.line_messaging.reply.reply import LineReplier
 from app.services.users.user_profile_service import UserProfileService
 
 logger = logging.getLogger(__name__)
+
+# 心跳登記名稱。用藥提醒是每 60 秒一輪的短週期排程，因此它的心跳是判斷
+# 「排程器 pod 是否還健康」最靈敏的訊號——每日諮詢摘要睡到隔天才醒，
+# 停擺一整天都還在它的正常範圍內，當不了 liveness 依據。
+HEARTBEAT_NAME = "medication"
 
 # 錯過多久之後就不再補推播。對應 APScheduler 的 misfire_grace_time。
 # 預設取 20 分鐘（＝T+20 催促的門檻）：短暫部署造成的延遲仍會正常送達，
@@ -345,6 +351,11 @@ class MedicationScheduler:
     def start(self) -> None:
         if self._task is not None and not self._task.done():
             return
+        # 登記心跳：排程器與 API 拆成不同 pod 之後，這是 K8s 唯一能判斷
+        # 「排程器還在跑」的依據——uvicorn 活著不代表這個 task 還在。
+        scheduler_heartbeat.register(
+            HEARTBEAT_NAME, expected_interval_seconds=self._check_interval_seconds
+        )
         self._task = asyncio.create_task(self._run_loop())
         logger.info("[MedicationScheduler] Background scheduler started")
 
@@ -362,6 +373,11 @@ class MedicationScheduler:
                 await self.process_ticks()
             except Exception:
                 logger.exception("[MedicationScheduler] Error during tick execution")
+            # 心跳放在 except 之外：單次 tick 失敗（例如資料庫瞬斷）不代表排程器
+            # 停擺，迴圈本身仍在轉，重啟這個 pod 只會讓情況更糟——重啟期間錯過
+            # 的時段不會補推。心跳要回答的是「這個迴圈還在不在」，不是「這一輪
+            # 有沒有成功」。
+            scheduler_heartbeat.beat(HEARTBEAT_NAME)
             await asyncio.sleep(self._check_interval_seconds)
 
     async def process_ticks(self, now: Optional[datetime] = None) -> None:

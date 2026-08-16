@@ -4,6 +4,7 @@ from datetime import datetime
 import mimetypes
 from app.core.config import settings
 
+import asyncio
 import logging
 import secrets
 import requests
@@ -58,12 +59,25 @@ class MediaProcessorService:
         temp_file_path = None
         try:
             logger.info(f"Processing {user_media_type} message from user {user_id}...")
-            temp_file_path = self._download_media_to_tmp(
+            # 兩步都以 asyncio.to_thread 移出事件迴圈。底下的 helper 用的是同步的
+            # requests，直接 await 這個 async 函式會讓單執行緒的事件迴圈整個停住：
+            # 下載最久 20 秒、webhook 最久 WEBHOOK_TIMEOUT_SECONDS（120 秒），
+            # 期間所有 LINE 訊息、LIFF API 與背景排程都無法推進，連 /health 都回
+            # 不了——readinessProbe 連續失敗後 pod 會被移出 Service，等於整個後端
+            # 暫時下線。
+            #
+            # 用 to_thread 而不是改寫成 httpx：本專案已在 tts_service.py:110／:193
+            # 以同一手法處理同一類問題，沿用既有做法可以讓 helper 維持同步、
+            # 既有單元測試不受影響，改動面也只有這裡。
+            temp_file_path = await asyncio.to_thread(
+                self._download_media_to_tmp,
                 media_message_id,
                 user_media_type,
                 source_file_name=source_file_name,
             )
-            user_text = self._extract_user_text_via_webhook(temp_file_path)
+            user_text = await asyncio.to_thread(
+                self._extract_user_text_via_webhook, temp_file_path
+            )
             # TODO: 清洗user_text，移除不必要的空白或控制字元，確保回覆格式整潔。
             logger.info(f"Successfully processed and replied to user {user_id}")
             return user_text

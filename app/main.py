@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -7,7 +8,7 @@ from app.routers.system import router as system_router
 from app.routers.users.upsert_users import router as profile_router
 from app.routers.users.consultations import router as consultations_router
 from app.core.cors import add_cors_middleware
-from app.core.config import settings
+from app.core.config import settings, should_run_schedulers
 from app.core.logging_setup import configure_logging
 from app.core.upload_limits import MaxUploadSizeMiddleware
 from app.dependencies import (
@@ -36,6 +37,8 @@ from app.routers.tts.tts import router as tts_router
 
 configure_logging()
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -56,20 +59,40 @@ async def lifespan(app: FastAPI):
     # 且意圖判定是同步函式，不適合在其中做非同步查詢。
     await preload_facility_name_index()
 
-    # 啟動每日諮詢摘要排程
-    scheduler = start_consultation_daily_summary_scheduler(
-        enabled=True,  # 啟動自動排程
-        run_time=settings.CONSULTATION_DAILY_SUMMARY_TIME,
-        consultation_service=get_consultation_service(),
-        consultation_store=get_chat_history_repository(),
-    )
+    # 背景排程器只在扮演 scheduler 角色的行程啟動。
+    #
+    # 拆開的理由：排程器原本與 API 共用同一個事件迴圈，因此 API 的每一次重新
+    # 部署、OOM 或崩潰都會連帶重啟排程器，而 medication-reminders 的規格明訂
+    # 「錯過時段不補推播」——重啟若橫跨某個服藥時段，那個時段就永久錯過。
+    # 分開之後，改 API 不再影響提醒的準時性。
+    #
+    # 注意：拆開後**不代表**只會有一個排程器實例。滾動更新的策略是
+    # maxUnavailable: 0 / maxSurge: 1（先起新的、ready 後才關舊的），每次
+    # 部署都必然有一段時間兩個實例並存，因此 medication-reminders 既有的
+    # 原子搶佔與 (reminder_id, scheduled_at) 唯一索引仍然是必要的，不得移除。
+    run_schedulers = should_run_schedulers(settings.APP_ROLE)
+    scheduler = None
+    medication_scheduler = None
 
-    # 啟動雙階遞進用藥提醒排程引擎
-    medication_scheduler = start_medication_scheduler(
-        enabled=True,
-        replier=get_line_replier(),
-        user_profile_service=get_user_profile_service(),
-    )
+    if run_schedulers:
+        # 啟動每日諮詢摘要排程
+        scheduler = start_consultation_daily_summary_scheduler(
+            enabled=True,  # 啟動自動排程
+            run_time=settings.CONSULTATION_DAILY_SUMMARY_TIME,
+            consultation_service=get_consultation_service(),
+            consultation_store=get_chat_history_repository(),
+        )
+
+        # 啟動雙階遞進用藥提醒排程引擎
+        medication_scheduler = start_medication_scheduler(
+            enabled=True,
+            replier=get_line_replier(),
+            user_profile_service=get_user_profile_service(),
+        )
+    else:
+        logger.info(
+            "APP_ROLE=%s：本行程不啟動背景排程器（僅服務請求）", settings.APP_ROLE
+        )
 
     try:
         # yield 期間代表 app 正在運行並處理 requests。

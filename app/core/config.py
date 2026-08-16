@@ -229,10 +229,16 @@ class Settings:
         os.getenv("DRUG_CATALOG_MATCH_THRESHOLD", "0.88")
     )
 
-    # 用藥風險偵測。預設關閉：通報家人是不可逆的動作（訊息推出去收不回來，
-    # 收件人是一整個家庭），誤報率必須先以實際訊息觀察過才開。關閉時完全不
-    # 執行抽取、判定與推播，行為與本能力導入前相同。
-    SAFETY_ALERT_ENABLED: bool = os.getenv("SAFETY_ALERT_ENABLED", "false").lower() in (
+    # 用藥風險偵測。預設開啟，沿用 PRESCRIPTION_SCAN_ENABLED 的形狀：不必在
+    # 每個環境各設一次，但出問題時把它設回 false 就能整條停用（設為 false 時
+    # 完全不執行抽取、判定與推播，行為與本能力導入前相同），不需要 deploy 才
+    # 救得回來。
+    #
+    # 這個開關比藥袋辨識更需要留著：通報家人是不可逆的動作——訊息推出去收不
+    # 回來，收件人是一整個家庭，而誤報一次的代價（長輩覺得被監視，從此不再
+    # 發問）遠大於漏報一次。誤報率還沒有真實流量的數據（見 design.md 的
+    # Open Questions），這是唯一的煞車。
+    SAFETY_ALERT_ENABLED: bool = os.getenv("SAFETY_ALERT_ENABLED", "true").lower() in (
         "1",
         "true",
         "yes",

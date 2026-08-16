@@ -261,7 +261,7 @@ log SHALL NOT 記錄輸入文字的內容或抽取到的姓名、機構等資訊
 
 ### Requirement: 功能開關與前置篩選
 
-本能力 SHALL 由 `SAFETY_ALERT_ENABLED` 控制，預設為關閉。關閉時 SHALL NOT 執行任何抽取、判定或推播。
+本能力 SHALL 由 `SAFETY_ALERT_ENABLED` 控制，預設為開啟。設為 `false` 時 SHALL NOT 執行任何抽取、判定或推播。
 
 輸入文字 SHALL 先經過不呼叫模型的前置篩選，未通過篩選的訊息 SHALL NOT 觸發抽取。
 

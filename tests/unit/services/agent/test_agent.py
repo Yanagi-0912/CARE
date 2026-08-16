@@ -140,15 +140,45 @@ def test_format_user_profile_prompt_builds_expected_header():
         "age": 68,
         "height": 165.0,
         "weight": 62.0,
-        "chronic_history": "高血壓",
-        "major_illness_history": "無",
-        "surgery_history": "無",
+        "chronic_diseases": ["hypertension", "diabetes"],
+        "chronic_custom": ["痛風"],
+        "major_illness_history": "",
+        "surgery_history": "",
     }
     result = format_user_profile_prompt(profile)
     assert "王大明" in result
     assert "68 歲" in result
-    assert "高血壓" in result
+    assert "性別：男" in result
+    # 固定選項還原成中文，使用者自行輸入的接在後面且原文照用
+    assert "慢性病史：高血壓、糖尿病、痛風" in result
     assert "【對話使用者的個人健康與病史檔案】" in result
+
+
+def test_format_user_profile_prompt_never_claims_none_when_data_exists():
+    """回歸測試：有病史時，prompt 絕不可以說「無」。
+
+    「慢性病史：無」是一句合法通順的臨床斷言，LLM 無從分辨它是「確認沒有」
+    還是「資料讀不到」。欄位改名或改型別時，這裡是唯一會攔下靜默失效的地方。
+    """
+    from app.services.agent.utils.nodes import format_user_profile_prompt
+
+    only_fixed = format_user_profile_prompt({"name": "A", "chronic_diseases": ["hypertension"]})
+    assert "慢性病史：高血壓" in only_fixed
+    assert "慢性病史：無" not in only_fixed
+
+    only_custom = format_user_profile_prompt({"name": "A", "chronic_custom": ["腦溢血"]})
+    assert "慢性病史：腦溢血" in only_custom
+    assert "慢性病史：無" not in only_custom
+
+    # 認不得的 code 原樣輸出，寧可讓 prompt 出現代碼也不能少掉一項病史
+    unknown = format_user_profile_prompt({"name": "A", "chronic_diseases": ["gout_v2"]})
+    assert "慢性病史：gout_v2" in unknown
+
+    # 兩者皆空才說「無」
+    empty = format_user_profile_prompt(
+        {"name": "A", "chronic_diseases": [], "chronic_custom": []}
+    )
+    assert "慢性病史：無" in empty
 
 
 @pytest.mark.asyncio
@@ -292,7 +322,11 @@ async def test_agent_node_injects_user_profile_prompt():
     state = {
         "messages": [HumanMessage(content="你好")],
         "allow_rag": False,
-        "user_profile": {"name": "王大明", "age": 70, "chronic_history": "糖尿病"},
+        "user_profile": {
+            "name": "王大明",
+            "age": 70,
+            "chronic_diseases": ["diabetes"],
+        },
     }
 
     res = await nodes.agent_node(state)

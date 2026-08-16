@@ -29,7 +29,24 @@ class FamilyTreeService:
         tree = await FamilyTreeRepository.get_by_user_id(user_id)
         assert tree is not None
         return tree
-    
+
+    async def ensure_family_member(self, requester_id: str, target_id: str) -> None:
+        """確認 requester_id 有權讀取 target_id 的資料，否則丟 403。
+
+        規則只有兩條：查自己一律放行；查別人則對方必須在自己的族譜成員名單內。
+        任何以 /{userId} 形式讀取他人資料的端點都該先過這一關——光有登入態不代表
+        有權讀取任意 userId 的資料，否則只要知道對方的 LINE userId 就能撈走。
+        """
+        if requester_id == target_id:
+            return
+
+        tree = await self.get_family_tree(requester_id)
+        if not any(m.user_id == target_id for m in tree.family_members):
+            raise HTTPException(
+                status_code=403,
+                detail="您無權查看此使用者的資料（非家庭成員）",
+            )
+
     async def create_invitation(self, inviter_id: str) -> PendingInvitation:
         """
         建立邀請碼與過期時間，並存入資料庫。

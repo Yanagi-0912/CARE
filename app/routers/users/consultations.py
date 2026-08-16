@@ -14,6 +14,7 @@ from app.dependencies import (
     get_consultation_download_token_service,
     get_consultation_service,
     get_current_user,
+    get_family_tree_service,
 )
 from app.models.consultation import (
     ConsultationSummarizeRequest,
@@ -21,6 +22,7 @@ from app.models.consultation import (
     ConsultationSummary,
 )
 from app.services.consultation.consultation_service import ConsultationService
+from app.services.family.family_tree_service import FamilyTreeService
 from app.services.gemini.shared.errors import GeminiHttpError
 from app.services.liff.jwt_service import AppJwtService
 
@@ -184,3 +186,56 @@ async def summarize_consultations(
         raise HTTPException(status_code=503, detail="Redis 連線異常，請稍後再試")
     except PyMongoError:
         raise HTTPException(status_code=503, detail="MongoDB 連線異常，請稍後再試")
+
+
+@router.get(
+    "/{userId}/allsummaries",
+    response_model=list[ConsultationSummary],
+    summary="取得指定家庭成員的所有摘要紀錄",
+    description=(
+        "供 LIFF 家庭頁查看家人的諮詢摘要，回傳格式與 /me/allsummaries 相同。"
+        "出於安全考量，請求者與目標使用者必須在同一個家庭族譜內。"
+    ),
+)
+async def get_member_summary_history(
+    userId: str,
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    consultation_service: Annotated[
+        ConsultationService, Depends(get_consultation_service)
+    ],
+    family_service: Annotated[FamilyTreeService, Depends(get_family_tree_service)],
+) -> list[ConsultationSummary]:
+    await family_service.ensure_family_member(current_user.line_user_id, userId)
+    try:
+        return await consultation_service.get_all_summaries(userId)
+    except PyMongoError:
+        raise HTTPException(status_code=503, detail=DB_ERROR_DETAIL)
+
+
+@router.get(
+    "/{userId}/messages/raw",
+    response_model=ConsultationViewResponse,
+    summary="取得指定家庭成員的原始諮詢快取",
+    description=(
+        "供 LIFF 家庭頁查看家人的原始對話，回傳格式與 /me/messages/raw 相同。"
+        "出於安全考量，請求者與目標使用者必須在同一個家庭族譜內。"
+    ),
+)
+async def get_member_raw_consultations(
+    userId: str,
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    consultation_service: Annotated[
+        ConsultationService, Depends(get_consultation_service)
+    ],
+    family_service: Annotated[FamilyTreeService, Depends(get_family_tree_service)],
+) -> ConsultationViewResponse:
+    await family_service.ensure_family_member(current_user.line_user_id, userId)
+    try:
+        messages = await consultation_service.get_raw_view(userId)
+        return ConsultationViewResponse(
+            line_id=userId,
+            view_type="raw",
+            messages=messages,
+        )
+    except RedisError:
+        raise HTTPException(status_code=503, detail=DB_ERROR_DETAIL)

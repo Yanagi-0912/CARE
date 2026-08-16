@@ -101,13 +101,15 @@ def override_prescription_scan_enabled():
 def _valid_payload() -> dict:
     return {
         "name": "Amy",
-        "gender": "女性",
+        "gender": "female",
         "height": 160.0,
         "weight": 50.0,
         "age": 30,
-        "chronic_history": "無",
-        "major_illness_history": "無",
-        "surgery_history": "無",
+        # 空陣列即代表沒有慢性病，不再用 "無" 這種塞在資料裡的哨兵值
+        "chronic_diseases": [],
+        "chronic_custom": [],
+        "major_illness_history": "",
+        "surgery_history": "",
     }
 
 

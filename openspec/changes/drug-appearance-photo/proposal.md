@@ -91,7 +91,7 @@
 - **API**：`POST /api/medications/prescription-scan` 的草稿回應中，每筆藥品新增候選藥證清單；`POST /api/medications/prescription-drafts/{draft_id}/commit` 的 `CommitDrugItem` 接受使用者挑定的 `license_number`；`GET /api/medications/reminders` 的藥品物件新增外觀欄位。**皆為欄位新增，無 breaking change**
 - **測試**：`tests/unit/services/medication/test_drug_catalog_service.py`、`tests/unit/services/medication/test_prescription_scan_service.py`、`tests/unit/services/line_messaging/test_medication_flex.py`、`tests/unit/resources/test_drug_catalog_artifact.py`、`tests/unit/routers/test_medications_router.py`、`CARE-LIFF/src/tests/prescriptionScan.test.tsx`
 - **設定**：新增靜態圖片資源的服務路徑設定；`DRUG_CATALOG_PATH` 沿用
-- **建置產出物**：`resources/drug_catalog.json` 體積增加（新增外觀欄位）；新增約 5,700 張縮圖。需在 design 階段決定縮圖尺寸與是否納入 git（目前 `drug_catalog.json` 8.9 MB 是進 repo 的）
+- **建置產出物**：`resources/drug_catalog.json` 體積增加（新增外觀欄位）；新增約 5,700 張縮圖。需在 design 階段決定縮圖尺寸與是否納入 git（本 change 之前的 `drug_catalog.json` 8.6 MB（8,996,926 bytes）就是進 repo 的；加上外觀欄位之後是 15.9 MB，見 `README.md` 與 design 決策 2）
 - **相依**：新增影像處理套件（縮圖用，建置期）。執行期仍不對外連線
 - **不受影響**：`medication_scheduler`（排程輸入不變）、藥袋辨識的 Gemini 呼叫（prompt 與 schema 不動）、`CARE-n8n`、`rich-menu`
 - **隱私**：藥丸照片洩漏的資訊不多於已在推播中的藥名，不觸及「適應症 SHALL NOT 出現在推播」的既有規則。但自有靜態圖片的 URL 會被 LINE 伺服器抓取並快取，**SHALL NOT 使用可枚舉的識別碼**，也不得讓 URL 反映使用者或藥品以外的資訊

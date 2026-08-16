@@ -1364,6 +1364,74 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "…และอีก {count} รายการยา",
         "ja": "…ほか {count} 件の薬",
     },
+    # 用藥風險偵測。給當事人的兩則一律純文字（見 line-reply-rules），措辭刻意
+    # 不帶指責：這個功能最容易的失敗方式是讓長輩覺得被監視而不再發問。
+    "safety.patient.low": {
+        "zh-TW": "「{drug}」這個名字，我在台灣核准的藥品資料裡查不到。可能只是簡稱或寫法不同，方便的話可以拍一下包裝上的完整名稱，我再幫您看看。",
+        "en": "I couldn't find \"{drug}\" among medicines approved in Taiwan. It may simply be a short name or a different spelling. If it's convenient, send me a photo of the full name on the package and I'll take another look.",
+        "id": "Saya tidak menemukan \"{drug}\" dalam daftar obat yang disetujui di Taiwan. Mungkin itu hanya nama singkat atau ejaan yang berbeda. Jika berkenan, kirimkan foto nama lengkap pada kemasannya dan saya akan memeriksanya lagi.",
+        "vi": "Tôi không tìm thấy \"{drug}\" trong danh mục thuốc được cấp phép tại Đài Loan. Có thể đó chỉ là tên gọi tắt hoặc cách viết khác. Nếu tiện, bạn hãy chụp tên đầy đủ trên bao bì để tôi xem lại giúp bạn.",
+        "th": "ฉันไม่พบ \"{drug}\" ในรายการยาที่ได้รับอนุญาตในไต้หวัน อาจเป็นเพียงชื่อย่อหรือสะกดต่างกัน หากสะดวก กรุณาถ่ายรูปชื่อเต็มบนบรรจุภัณฑ์ แล้วฉันจะช่วยดูอีกครั้ง",
+        "ja": "「{drug}」という名称は、台湾で承認された医薬品のデータでは見つかりませんでした。略称や表記の違いだけかもしれません。よろしければ、パッケージに書かれた正式名称を撮って送ってください。もう一度確認します。",
+    },
+    "safety.patient.high": {
+        "zh-TW": "關於「{drug}」，{reason}。這類藥品在台灣沒有經過查驗登記，成分與劑量無從確認，先不要繼續服用，找醫師或藥師看一下比較妥當。我已經請家人一起看看。",
+        "en": "About \"{drug}\": {reason}. Medicines like this haven't gone through registration review in Taiwan, so their ingredients and dosage can't be verified. Please hold off on taking it and check with a doctor or pharmacist. I've also asked your family to take a look.",
+        "id": "Tentang \"{drug}\": {reason}. Obat seperti ini belum melalui pendaftaran resmi di Taiwan, sehingga kandungan dan dosisnya tidak dapat dipastikan. Sebaiknya hentikan dulu dan periksakan ke dokter atau apoteker. Saya juga sudah meminta keluarga Anda untuk ikut melihat.",
+        "vi": "Về \"{drug}\": {reason}. Những thuốc như thế này chưa qua đăng ký thẩm định tại Đài Loan nên không thể xác minh thành phần và liều lượng. Bạn hãy tạm ngưng dùng và hỏi bác sĩ hoặc dược sĩ. Tôi cũng đã nhờ người thân của bạn cùng xem giúp.",
+        "th": "เกี่ยวกับ \"{drug}\": {reason} ยาลักษณะนี้ยังไม่ผ่านการขึ้นทะเบียนในไต้หวัน จึงไม่สามารถยืนยันส่วนประกอบและขนาดยาได้ กรุณาหยุดใช้ไว้ก่อนและปรึกษาแพทย์หรือเภสัชกร ฉันได้แจ้งให้ครอบครัวของคุณช่วยดูด้วยแล้ว",
+        "ja": "「{drug}」についてですが、{reason}。この種の医薬品は台湾で承認審査を受けていないため、成分や用量を確認できません。服用はいったん止めて、医師か薬剤師に相談してください。ご家族にも一緒に確認していただくようお伝えしました。",
+    },
+    # 風險類型的說明。刻意只描述訊號本身（外文標示、不明通路），不描述病情，
+    # 也不重述使用者的原話——通報訊息會出現在通知列與鎖定畫面。
+    "safety.reason.foreign_version": {
+        "zh-TW": "包裝上有外文標示，看起來不是台灣核准的版本",
+        "en": "the packaging carries foreign-language labelling and doesn't look like the version approved in Taiwan",
+        "id": "kemasannya memuat label berbahasa asing dan tampaknya bukan versi yang disetujui di Taiwan",
+        "vi": "bao bì có nhãn tiếng nước ngoài và có vẻ không phải phiên bản được cấp phép tại Đài Loan",
+        "th": "บรรจุภัณฑ์มีฉลากภาษาต่างประเทศ และดูเหมือนไม่ใช่รุ่นที่ได้รับอนุญาตในไต้หวัน",
+        "ja": "パッケージに外国語の表示があり、台湾で承認された版ではないようです",
+    },
+    "safety.reason.unverified_channel": {
+        "zh-TW": "取得的管道不是醫療機構或合法藥局",
+        "en": "it wasn't obtained from a medical institution or a licensed pharmacy",
+        "id": "obat ini tidak diperoleh dari fasilitas medis atau apotek berizin",
+        "vi": "thuốc không được lấy từ cơ sở y tế hoặc nhà thuốc được cấp phép",
+        "th": "ไม่ได้รับมาจากสถานพยาบาลหรือร้านขายยาที่ได้รับอนุญาต",
+        "ja": "入手経路が医療機関でも正規の薬局でもありません",
+    },
+    "flex.safety.header.family": {
+        "zh-TW": "用藥安全提醒",
+        "en": "Medication safety alert",
+        "id": "Peringatan keamanan obat",
+        "vi": "Cảnh báo an toàn thuốc",
+        "th": "แจ้งเตือนความปลอดภัยด้านยา",
+        "ja": "医薬品安全のお知らせ",
+    },
+    "flex.safety.family.intro": {
+        "zh-TW": "提到了這個藥品",
+        "en": "mentioned this medication",
+        "id": "menyebutkan obat ini",
+        "vi": "đã nhắc đến loại thuốc này",
+        "th": "ได้กล่าวถึงยานี้",
+        "ja": "この薬について話していました",
+    },
+    "flex.safety.family.please_check": {
+        "zh-TW": "請找個時間一起確認來源，必要時陪同就醫。當事人也收到了同一則提醒。",
+        "en": "Please find a moment to check where it came from together, and see a doctor if needed. They have received the same notice.",
+        "id": "Mohon luangkan waktu untuk memeriksa asal obat ini bersama, dan periksakan ke dokter bila perlu. Yang bersangkutan juga menerima pemberitahuan yang sama.",
+        "vi": "Xin hãy dành thời gian cùng kiểm tra nguồn gốc thuốc, và đi khám nếu cần. Người đó cũng đã nhận được thông báo tương tự.",
+        "th": "กรุณาหาเวลาตรวจสอบแหล่งที่มาร่วมกัน และพาไปพบแพทย์หากจำเป็น เจ้าตัวได้รับการแจ้งเตือนเดียวกันแล้ว",
+        "ja": "お時間のあるときに入手先を一緒にご確認いただき、必要なら受診に付き添ってください。ご本人にも同じ通知が届いています。",
+    },
+    "flex.safety.alt.family": {
+        "zh-TW": "{name} 的用藥安全提醒",
+        "en": "Medication safety alert for {name}",
+        "id": "Peringatan keamanan obat untuk {name}",
+        "vi": "Cảnh báo an toàn thuốc cho {name}",
+        "th": "แจ้งเตือนความปลอดภัยด้านยาของ {name}",
+        "ja": "{name} さんの医薬品安全のお知らせ",
+    },
 }
 
 

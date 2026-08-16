@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from datetime import datetime, timezone
@@ -40,12 +41,18 @@ class BaseLineMessageHandler:
         user_profile_service,
         replier: LineReplier,
         loading_animation_service=None,
+        safety_alert_service=None,
     ):
         self._agent = agent
         self._history_service = history_service
         self._user_profile_service = user_profile_service
         self._replier = replier
         self._loading_animation_service = loading_animation_service
+        # 功能關閉時 dependencies 根本不會組出這個服務，這裡就是 None，
+        # 整條路徑一步都不會執行（見 app/dependencies.py 的組裝）。
+        self._safety_alert_service = safety_alert_service
+        # 併行任務要被持有參考直到完成，否則可能在跑完之前就被 GC 回收。
+        self._safety_alert_tasks: set[asyncio.Task] = set()
 
     async def _process_and_reply(
         self,
@@ -68,6 +75,12 @@ class BaseLineMessageHandler:
                 type=message_type,
                 text_len=len(user_text or ""),
             )
+
+            # 用藥風險評估與主回覆併行。放在這裡是因為此處是文字與媒體訊息的
+            # 共用匯流點，且媒體的 OCR 文字已經備妥——判定所需的訊號全在字串
+            # 裡，不需要再碰一次影像。它不參與下面任何一步，主回覆的內容與
+            # 時序完全不受影響。
+            self._schedule_safety_alert_check(user_id, user_text)
 
             t0 = time.perf_counter()
             chat_history = await self._history_service.load_history(
@@ -180,6 +193,25 @@ class BaseLineMessageHandler:
                 reset_request_language(lang_token)
             if font_token is not None:
                 reset_request_font_size(font_token)
+
+    def _schedule_safety_alert_check(self, user_id: str, user_text: str) -> None:
+        """把一次風險評估丟到背景執行。
+
+        失敗一律留在任務內部：使用者沒有在等這個結果，讓例外逸散只會變成
+        "Task exception was never retrieved"，而且會污染主流程的錯誤處理。
+        """
+        if self._safety_alert_service is None or not user_id or not user_text:
+            return
+
+        async def _run() -> None:
+            try:
+                await self._safety_alert_service.check(user_id, user_text)
+            except Exception:  # noqa: BLE001 - 背景旁路，例外不得逸散
+                logger.exception("用藥風險評估任務失敗")
+
+        task = asyncio.create_task(_run())
+        self._safety_alert_tasks.add(task)
+        task.add_done_callback(self._safety_alert_tasks.discard)
 
     @staticmethod
     def _language_from_profile(user_profile: Optional[dict]) -> str:

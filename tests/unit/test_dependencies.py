@@ -1,6 +1,7 @@
 import pytest
 
 from app import dependencies
+from app.core.config import settings
 
 
 def test_getters_return_singleton_instances():
@@ -56,3 +57,30 @@ def test_get_mongodb_uri_raises_when_missing(monkeypatch):
     with pytest.raises(ValueError) as exc:
         dependencies.get_mongodb_uri()
     assert "MONGODB_URI" in str(exc.value)
+
+
+def test_safety_alert_service_reuses_the_loaded_drug_catalog():
+    """藥證庫十一萬多筆、啟動時載入一次；再載入一份是純粹的記憶體浪費。"""
+    service = dependencies._safety_alert_service
+
+    assert service._catalog_service is dependencies._drug_catalog_service
+
+
+def test_safety_alert_service_is_wired_with_its_own_dependencies():
+    service = dependencies._safety_alert_service
+
+    assert service._extractor is dependencies._drug_mention_extractor
+    assert service._replier is dependencies._line_replier
+    assert service._user_profile_service is dependencies._user_profile_service
+    assert service._dedupe_hours == settings.SAFETY_ALERT_DEDUPE_HOURS
+
+
+def test_handlers_only_get_the_safety_service_when_the_flag_is_on():
+    """開關是唯一的閘門：關閉時 handler 拿到 None，整條路徑一步都不執行。"""
+    handler = dependencies.get_line_event_handler()
+    expected = (
+        dependencies._safety_alert_service if settings.SAFETY_ALERT_ENABLED else None
+    )
+
+    assert handler._message_handler._safety_alert_service is expected
+    assert handler._media_handler._safety_alert_service is expected

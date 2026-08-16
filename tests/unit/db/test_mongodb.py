@@ -67,3 +67,13 @@ def test_prescription_scan_collection_getters(monkeypatch):
 
     fake_db.__getitem__.assert_any_call("medications")
     fake_db.__getitem__.assert_any_call("prescription_drafts")
+
+
+def test_safety_alerts_collection_getter(monkeypatch):
+    """通報節流紀錄自成一個集合，與用藥資料完全分開（偵測不建檔）。"""
+    fake_db = MagicMock()
+    monkeypatch.setattr(MongoDBManager, "get_database", classmethod(lambda cls: fake_db))
+
+    MongoDBManager.get_safety_alerts_collection()
+
+    fake_db.__getitem__.assert_any_call("safety_alerts")

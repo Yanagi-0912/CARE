@@ -319,3 +319,29 @@ async def test_reply_voice_reply_disabled_skips_tts():
     assert fake_tts.calls == []
     reply_req = messaging_api.reply_message.call_args[0][0]
     assert len(reply_req.messages) == 1
+
+
+@pytest.mark.asyncio
+async def test_push_text_sends_a_plain_text_message(replier):
+    """背景通報不佔 reply token，且給當事人的訊息一律純文字、不含 Markdown。"""
+    replier._token_manager.get_token.return_value = "token"
+
+    with patch("app.services.line_messaging.reply.reply.Configuration"), patch(
+        "app.services.line_messaging.reply.reply.ApiClient"
+    ), patch(
+        "app.services.line_messaging.reply.reply.MessagingApi"
+    ) as mock_messaging_api:
+        messaging_api = MagicMock()
+        mock_messaging_api.return_value = messaging_api
+
+        ok = await replier.push_text("U1", "這個名字我查不到")
+
+    assert ok is True
+    push_req = messaging_api.push_message.call_args[0][0]
+    assert push_req.to == "U1"
+    assert push_req.messages[0].text == "這個名字我查不到"
+
+
+@pytest.mark.asyncio
+async def test_push_text_returns_false_without_a_user_id(replier):
+    assert await replier.push_text("", "訊息") is False

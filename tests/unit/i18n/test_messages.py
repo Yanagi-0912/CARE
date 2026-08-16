@@ -1,7 +1,7 @@
 import pytest
 
 from app.core.user_language import SUPPORTED_LANGUAGES, set_request_language
-from app.i18n.messages import strip_sources_section, t
+from app.i18n.messages import _MESSAGES, strip_sources_section, t
 
 REQUIRED_KEYS = (
     "rag.fail.KB_EMPTY",
@@ -27,6 +27,14 @@ REQUIRED_KEYS = (
     "location.type.unknown",
     "location.type.pharmacy_none",
     "location.type.pharmacy_data_gap",
+    "safety.patient.low",
+    "safety.patient.high",
+    "safety.reason.foreign_version",
+    "safety.reason.unverified_channel",
+    "flex.safety.header.family",
+    "flex.safety.family.intro",
+    "flex.safety.family.please_check",
+    "flex.safety.alt.family",
 )
 
 # 院所類型篩選各 key 的 placeholder 對照，供格式化測試沿用。
@@ -138,3 +146,31 @@ def test_t_uses_request_language_when_language_is_none():
         from app.core.user_language import reset_request_language
 
         reset_request_language(token)
+
+
+# 用藥風險通報的文案。這些訊息的收件人包含不讀中文的家人，而 t() 缺語言時
+# 會靜默落回 zh-TW——非中文使用者會收到一則看不懂的通報卻沒有任何錯誤訊號。
+SAFETY_KEYS = (
+    "safety.patient.low",
+    "safety.patient.high",
+    "safety.reason.foreign_version",
+    "safety.reason.unverified_channel",
+    "flex.safety.header.family",
+    "flex.safety.family.intro",
+    "flex.safety.family.please_check",
+    "flex.safety.alt.family",
+)
+
+
+@pytest.mark.parametrize("key", SAFETY_KEYS)
+@pytest.mark.parametrize("language", SUPPORTED_LANGUAGES)
+def test_safety_messages_have_their_own_translation(key, language):
+    assert _MESSAGES[key].get(language)
+
+
+@pytest.mark.parametrize("language", SUPPORTED_LANGUAGES)
+def test_safety_patient_messages_carry_their_placeholders(language):
+    assert "{drug}" in _MESSAGES["safety.patient.low"][language]
+    assert "{drug}" in _MESSAGES["safety.patient.high"][language]
+    assert "{reason}" in _MESSAGES["safety.patient.high"][language]
+    assert "{name}" in _MESSAGES["flex.safety.alt.family"][language]

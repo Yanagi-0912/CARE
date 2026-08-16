@@ -998,13 +998,20 @@ async def test_tick_cache_thumbnail_resolution_failure_degrades_without_raising(
 
 
 @pytest.mark.asyncio
-async def test_thumbnail_resolution_failure_does_not_block_the_push(scheduler, mock_replier):
+async def test_send_patient_reminder_pushes_even_when_entries_have_no_thumbnail(
+    scheduler, mock_replier
+):
     """
-    縮圖解析失敗不得吞掉推播——這則提醒仍要送出，只是沒有圖片。
+    這裡驗證的是「送出這一端」不依賴縮圖是否存在——即使拿到的是已經退化為沒有
+    image_url 的 entries，push_flex 仍然照常被呼叫、回傳成功，不會因為缺了圖片
+    就不送。
 
-    `_load()` 已經在內部把單一藥品的解析失敗擋下（見上一則測試），這裡從
-    `_send_patient_reminder` 的角度驗證：即使拿到的是「已退化為沒有縮圖」的
-    entries，push_flex 仍然照常被呼叫、回傳成功，不會因為缺了圖片就不送。
+    這不是「縮圖解析失敗會被擋下」本身的證明：本測試直接預先塞好已退化的
+    entries，繞過 `_load()`，所以解析函式根本沒被呼叫到。「解析失敗不會拋出、
+    會被 `_load()` 擋下」這件事由
+    `test_tick_cache_thumbnail_resolution_failure_degrades_without_raising`
+    單獨驗證；兩則測試合起來才完整覆蓋「解析失敗 → 不拋出 → 送出端不受影響」
+    這條鏈。
     """
     scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
     log = _log("L1", "REM_1", scheduled_at)
@@ -1026,9 +1033,15 @@ async def test_thumbnail_resolution_failure_does_not_block_the_push(scheduler, m
 @pytest.mark.asyncio
 async def test_send_patient_reminder_reads_names_from_shared_cache(scheduler, mock_replier):
     """
-    整合點檢查：`_send_patient_reminder` 真的把 cache 解析出的藥名餵進
-    flex builder，而不是自己另外查一次。這裡直接呼叫該方法（不透過
-    process_ticks），確認 claim 之外的組裝流程正確串起來。
+    整合點檢查：`_send_patient_reminder` 真的把 cache 解析出的「藥名＋縮圖」
+    餵進 flex builder，而不是自己另外查一次、也不是只挑了名字把縮圖丟掉。
+    這裡直接呼叫該方法（不透過 process_ticks），確認 claim 之外的組裝流程
+    正確串起來。
+
+    entries 特意帶入真正的 image_url（不是 None）：這是唯一能鎖住
+    `_send_patient_reminder` 呼叫的是 `get_entries()` 而非 `get()` 的地方——
+    若日後被改回呼叫 `get()`（等同縮圖功能導入前的呼叫方式），image_url 會在
+    `.get()` 內被丟棄，這裡斷言的 URL 就不會出現在渲染結果，測試會失敗。
 
     直接預先填好 cache 內部的查表結果，不必真的發查詢——這個測試要驗證的是
     「組裝文案時讀 cache」這件事本身，查表怎麼被填滿已經由上面幾個
@@ -1037,7 +1050,9 @@ async def test_send_patient_reminder_reads_names_from_shared_cache(scheduler, mo
     scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
     log = _log("L1", "REM_1", scheduled_at)
     cache = _TickMedicationNameCache([log])
-    cache._entries_by_log_id = {"L1": [MedicationListEntry(name="脈優")]}
+    cache._entries_by_log_id = {
+        "L1": [MedicationListEntry(name="脈優", image_url="https://img.example.com/a.jpg")]
+    }
 
     sent = await scheduler._send_patient_reminder(log, cache)
 
@@ -1046,14 +1061,19 @@ async def test_send_patient_reminder_reads_names_from_shared_cache(scheduler, mo
     call_args = mock_replier.push_flex.call_args[0]
     rendered = str(call_args[1].contents.to_dict())
     assert "脈優" in rendered
+    assert "https://img.example.com/a.jpg" in rendered
 
 
 @pytest.mark.asyncio
 async def test_send_urgent_reminder_reads_names_from_shared_cache(scheduler, mock_replier):
+    """同上：帶真正的 image_url，鎖住 `_send_urgent_reminder` 呼叫的是
+    `get_entries()` 而不是把縮圖丟掉的 `get()`。"""
     scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
     log = _log("L1", "REM_1", scheduled_at)
     cache = _TickMedicationNameCache([log])
-    cache._entries_by_log_id = {"L1": [MedicationListEntry(name="普拿疼")]}
+    cache._entries_by_log_id = {
+        "L1": [MedicationListEntry(name="普拿疼", image_url="https://img.example.com/b.jpg")]
+    }
 
     sent = await scheduler._send_urgent_reminder(log, cache)
 
@@ -1062,6 +1082,7 @@ async def test_send_urgent_reminder_reads_names_from_shared_cache(scheduler, moc
     call_args = mock_replier.push_flex.call_args[0]
     rendered = str(call_args[1].contents.to_dict())
     assert "普拿疼" in rendered
+    assert "https://img.example.com/b.jpg" in rendered
 
 
 @pytest.mark.asyncio
@@ -1072,12 +1093,23 @@ async def test_send_caregiver_alert_reads_names_from_shared_cache(
     T+30 的家屬警報要說得出漏掉的是哪幾種藥，且藥名同樣從該階段共用的查表取得
     ——不是自己另外查一次。它與 T+0／T+20 的差別只在收件人是家屬，沒有理由
     在藥名解析上另起爐灶。
+
+    entries 特意帶入真正的 image_url（不是 None）：這是唯一能鎖住
+    `_send_caregiver_alert` 呼叫的是「只回藥名」的 `get()` 而非
+    `get_entries()` 的地方。改用純字串清單當 fixture 只是「剛好」讓縮圖不可能
+    出現——那是巧合，不是保證；若日後 `_send_caregiver_alert` 被改成呼叫
+    `get_entries()`（例如複製貼上 `_send_patient_reminder` 時忘了改），這裡
+    帶真正 URL 的 entries 就會讓縮圖真的出現在渲染結果，下面的斷言才攔得住
+    （spec「家屬卡片不含縮圖」）。
     """
     scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
     log = _log("L1", "REM_1", scheduled_at)
     cache = _TickMedicationNameCache([log])
     cache._entries_by_log_id = {
-        "L1": [MedicationListEntry(name="脈優"), MedicationListEntry(name="利尿劑")]
+        "L1": [
+            MedicationListEntry(name="脈優", image_url="https://img.example.com/a.jpg"),
+            MedicationListEntry(name="利尿劑", image_url="https://img.example.com/b.jpg"),
+        ]
     }
 
     sent = await scheduler._send_caregiver_alert(log, cache)
@@ -1090,6 +1122,10 @@ async def test_send_caregiver_alert_reads_names_from_shared_cache(
     assert "脈優" in rendered
     assert "利尿劑" in rendered
     assert "尚未服用的藥品" in rendered
+    # 核心斷言（spec「家屬卡片不含縮圖」）：即使 cache 裡的 entries 帶著真正的
+    # image_url，家屬警報渲染出來也不能有任何圖片節點，URL 本身也不能外流。
+    assert "'type': 'image'" not in rendered
+    assert "https://img.example.com" not in rendered
 
 
 def test_process_ticks_expansion_path_does_not_reference_medication_ids():

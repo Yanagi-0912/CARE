@@ -47,6 +47,14 @@ _SIZE_SCALE: dict[str, dict[str, str]] = {
     "body": {"normal": "md", "large": "lg", "xlarge": "xl"},
     "caption": {"normal": "sm", "large": "md", "xlarge": "lg"},
     "button": {"normal": "lg", "large": "xl", "xlarge": "xxl"},
+    # 藥丸縮圖（app/services/line_messaging/flex/medication_flex.py 的
+    # _medication_row_node）：本功能的前提是靠外觀（形狀、顏色）認藥，字級調大
+    # 的長輩不該仍被鎖在固定的最小縮圖上——那樣藥名變大、照片卻原地不動，等於
+    # 把「放大字級＝方便閱讀」的訴求做了一半。design.md 決策 6 只定了縮圖來源
+    # 檔（160px 正方形、保留比例尺）的尺寸，沒有定推播時的顯示尺寸，因此這裡
+    # 沿用既有的三段字級系統，而不是另訂一個固定值。sm/md/lg 是目前的估計值，
+    # 待 tasks.md 8.4 的真機檢視確認或調整。
+    "thumbnail": {"normal": "sm", "large": "md", "xlarge": "lg"},
 }
 
 
@@ -59,6 +67,7 @@ class FlexTheme:
     body: str
     caption: str
     button: str
+    thumbnail: str
 
     def primary_button(self, label: str, action: dict[str, Any]) -> dict[str, Any]:
         """實心主要按鈕，內距放大以擴大點擊判定面積。"""

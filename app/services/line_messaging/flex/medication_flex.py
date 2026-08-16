@@ -140,7 +140,10 @@ def _medication_row_node(row: MedicationListEntry, ft: theme.FlexTheme) -> dict[
             {
                 "type": "image",
                 "url": row.image_url,
-                "size": "xxs",
+                # 縮圖尺寸跟字級一起放大（見 theme._SIZE_SCALE 的 "thumbnail"
+                # 項）：本功能靠外觀認藥，字級調大的長輩不該仍被鎖在固定的
+                # 最小尺寸，那樣藥名變大、照片卻原地不動。
+                "size": ft.thumbnail,
                 "aspectMode": "cover",
                 "aspectRatio": "1:1",
                 "flex": 0,

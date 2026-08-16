@@ -228,6 +228,156 @@ _BASELINE_URGENT_REMINDER_CONTENTS = {
 }
 
 
+# ── 加入藥丸縮圖之前、有純文字藥名時的實際輸出快照 ──────────────────────
+#
+# 上面兩份快照只涵蓋 medication_names 為 None／空清單（藥品區塊整個不出現）的
+# 情況，沒有涵蓋「區塊有出現、但每一列是純文字」的結構——這支模組加入縮圖列
+# 之後，純文字列的寫法是否還跟本功能導入前逐位元組相同，光靠這兩份舊快照證
+# 不出來。這份快照老實從加入縮圖列「之前」的提交（b7af30c^ = 85317f6）擷取：
+#
+#   git worktree add /tmp/task6_baseline 85317f6
+#   cd /tmp/task6_baseline && .venv/bin/python -c "
+#       from app.services.line_messaging.flex.medication_flex import build_patient_medication_flex
+#       build_patient_medication_flex(
+#           log_id='L123', slot_type='morning', scheduled_time='08:00',
+#           medication_names=['脈優', '利尿劑', '阿斯匹靈'],
+#       ).contents.to_dict()
+#   "
+_BASELINE_PATIENT_REMINDER_WITH_PLAIN_NAMES_CONTENTS = {
+    "type": "bubble",
+    "header": {
+        "type": "box",
+        "layout": "vertical",
+        "backgroundColor": "#2E7D32",
+        "paddingAll": "lg",
+        "contents": [
+            {
+                "type": "text",
+                "text": "用藥提醒",
+                "color": "#FFFFFF",
+                "weight": "bold",
+                "size": "xxl",
+                "wrap": True,
+            }
+        ],
+    },
+    "body": {
+        "type": "box",
+        "layout": "vertical",
+        "paddingAll": "xl",
+        "backgroundColor": "#FFFFFF",
+        "spacing": "md",
+        "contents": [
+            {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#EDF5EE",
+                "cornerRadius": "md",
+                "paddingAll": "lg",
+                "spacing": "xs",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "早",
+                        "weight": "bold",
+                        "size": "3xl",
+                        "color": "#1B5E20",
+                        "wrap": True,
+                    },
+                    {
+                        "type": "text",
+                        "text": "服藥時間 08:00",
+                        "size": "lg",
+                        "color": "#1B5E20",
+                        "wrap": True,
+                    },
+                ],
+            },
+            {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#F4F6F4",
+                "cornerRadius": "md",
+                "paddingAll": "lg",
+                "spacing": "xs",
+                "margin": "md",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "本次應服藥品",
+                        "weight": "bold",
+                        "size": "lg",
+                        "color": "#111111",
+                        "wrap": True,
+                    },
+                    {
+                        "type": "text",
+                        "text": "脈優",
+                        "size": "lg",
+                        "color": "#555555",
+                        "wrap": True,
+                    },
+                    {
+                        "type": "text",
+                        "text": "利尿劑",
+                        "size": "lg",
+                        "color": "#555555",
+                        "wrap": True,
+                    },
+                    {
+                        "type": "text",
+                        "text": "阿斯匹靈",
+                        "size": "lg",
+                        "color": "#555555",
+                        "wrap": True,
+                    },
+                ],
+            },
+            {
+                "type": "text",
+                "text": "請於 30 分鐘內服藥，並點擊下方按鈕確認。",
+                "size": "lg",
+                "color": "#555555",
+                "wrap": True,
+                "margin": "md",
+            },
+        ],
+    },
+    "footer": {
+        "type": "box",
+        "layout": "vertical",
+        "paddingAll": "lg",
+        "contents": [
+            {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#2E7D32",
+                "cornerRadius": "md",
+                "paddingAll": "lg",
+                "flex": 1,
+                "action": {
+                    "type": "postback",
+                    "label": "我已用藥",
+                    "data": "action=confirm_medication&log_id=L123",
+                    "displayText": "我已經完成用藥了",
+                },
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "我已用藥",
+                        "color": "#FFFFFF",
+                        "weight": "bold",
+                        "size": "xl",
+                        "align": "center",
+                        "wrap": True,
+                    }
+                ],
+            }
+        ],
+    },
+}
+
+
 def test_get_slot_display_name():
     assert get_slot_display_name("morning") == "早"
     assert get_slot_display_name("noon") == "中"
@@ -443,6 +593,24 @@ def test_patient_reminder_lists_medication_names():
     assert "利尿劑" in body
 
 
+def test_patient_reminder_plain_name_rows_match_pre_thumbnail_baseline():
+    """
+    純文字列（沒有任何一筆帶縮圖）的結構要跟加入縮圖列「之前」逐位元組相同。
+
+    先前的空清單快照只證明「區塊整個不出現」時版面沒變，證不出「區塊有出現、
+    但每一列都是純文字」這條路徑也沒變——`_medication_row_node` 改寫後，
+    純文字分支理論上該是原樣搬過去，這裡跟 85317f6（加入縮圖列之前）誠實
+    擷取出來的輸出逐位元組比對，而不是自己跟自己比。
+    """
+    msg = build_patient_medication_flex(
+        log_id="L123",
+        slot_type="morning",
+        scheduled_time="08:00",
+        medication_names=["脈優", "利尿劑", "阿斯匹靈"],
+    )
+    assert msg.contents.to_dict() == _BASELINE_PATIENT_REMINDER_WITH_PLAIN_NAMES_CONTENTS
+
+
 def test_patient_reminder_medication_list_collapses_overflow_to_one_line():
     """超過顯示上限的藥品收斂為單行計數，形狀比照家屬彙整通知的截斷方式。"""
     names = [f"藥{i}" for i in range(8)]
@@ -483,6 +651,37 @@ def test_patient_reminder_row_with_thumbnail_carries_image():
     assert image_node["url"] == "https://img.example.com/a.jpg"
     text_node = next(c for c in row["contents"] if c["type"] == "text")
     assert text_node["text"] == "脈優"
+
+
+def test_medication_thumbnail_size_follows_font_size_setting():
+    """
+    縮圖尺寸要跟著使用者的字級設定放大，不能固定鎖在最小尺寸。
+
+    本功能的前提是靠外觀（形狀、顏色）認藥；使用者把字級調大通常是視力需求，
+    若藥名跟著放大、縮圖卻原地不動，等於把「放大字級方便閱讀」的訴求只做了
+    一半——縮圖恰好是這個功能裡最需要放大的那個元素。
+    """
+    entries = [MedicationListEntry(name="脈優", image_url="https://img.example.com/a.jpg")]
+
+    def _image_size(font_size: str) -> str:
+        msg = build_patient_medication_flex(
+            log_id="L1",
+            slot_type="morning",
+            scheduled_time="08:00",
+            medication_names=entries,
+            font_size=font_size,
+        )
+        med_block = msg.contents.to_dict()["body"]["contents"][1]
+        row = med_block["contents"][1]
+        image_node = next(c for c in row["contents"] if c["type"] == "image")
+        return image_node["size"]
+
+    normal_size = _image_size("normal")
+    large_size = _image_size("large")
+    xlarge_size = _image_size("xlarge")
+
+    # 三種字級設定要各自不同，不能有兩種字級共用同一個縮圖尺寸。
+    assert len({normal_size, large_size, xlarge_size}) == 3
 
 
 def test_patient_reminder_mixed_thumbnail_and_text_rows_layout_intact():

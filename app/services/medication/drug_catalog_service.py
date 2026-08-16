@@ -52,11 +52,29 @@ gram 索引近似（聯集查詢裡罕見的 gram），但驗證後發現這條�
 「這是真實藥名」的證據；「候選鍵是查詢的子字串」只代表查詢字串裡
 剛好包含某個登記過的片段（常見的是「膠囊」「膜衣錠」這類劑型名稱），
 任何字串——包含模型讀錯、甚至完全虛構的藥名——只要恰好含有這類短詞
-就會湊出這種命中，不構成「查詢字串本身是真實藥名」的證據。因此
-reverse 命中只能用來**拆掉**已經成立的唯一性（跟 exact 或 forward
-湊在一起讓候選變多，例如「潔毒注射液」命中單獨掛證的「注射液」），
-不能單獨**建立**驗證結果：沒有 exact、也沒有 forward 命中時，即使
-reverse 命中非空，`match()` 仍回傳 None，見該方法的判斷式。
+就會湊出這種命中，不構成「查詢字串本身是真實藥名」的證據。這條規則
+有兩半，兩半都要成立：
+
+1. **不能單獨建立驗證結果**：沒有 exact、也沒有 forward 命中時，即使
+   reverse 命中非空，`match()` 仍回傳 None，見該方法的判斷式。
+2. **不能成為可挑選的候選**：reverse 命中只能用來**拆掉**已經成立的
+   唯一性（讓 `license_number` 留空），不得出現在 `candidates` 裡。
+   `candidates` 是拿給使用者挑、且挑中就會貼上藥丸照片的清單，它的
+   安全性建立在「候選皆受藥名約束，錯的候選仍是同名藥品」這個前提上
+   （design.md 的 Risks）；reverse 命中按這個模組自己的定義就是**別的
+   藥**——只是碰巧有個登記過的片段落在查詢字串裡。實測全庫 56,886 個
+   中文品名，若把 reverse 命中一起放進 `candidates`，有 429 個藥名
+   （0.75%）畫面上每一張照片都屬於別的藥、使用者自己那顆一張都沒有
+   （「欲胃能錠」只有「胃能錠」有照片；「康保酊（辣椒酊）」只有
+   「"明通" 辣椒酊」有照片），排除 reverse 後降到 233 個，剩下的全是
+   forward 命中的同名藥品家族（不同廠牌或劑量），那是 spec 明訂的預期
+   行為。這跟模糊路徑一律不帶候選是同一條理由，見 `_match_by_fuzzy`。
+
+因此「唯一性判定用的集合」與「可挑選的候選集合」是兩份不同的集合：
+前者是 exact ∪ forward ∪ reverse，後者只有 exact ∪ forward，
+由 `_resolve` 分別承接，見該方法的說明。實測這個切分不改變任何一個
+藥名的釘證結果（全庫 56,886 個中文品名，`license_number` 變動數為 0），
+拿掉的只有「別的藥可以被挑」。
 
 同一把尺量下去，**模糊命中的證據力比 reverse 更弱**：查詢字串在全庫
 連一個字面命中都沒有，只是「長得像」某個鍵。它足以支撐藥名驗證（這正
@@ -135,8 +153,18 @@ class DrugCatalogMatch:
     唯一的存在理由——只是不知道對應哪一個品項，因此不得任意選一個
     冒充答案（選第一個、選最短的、甚至選 score 最高的都是編造），
     寧可留空也不要讓使用者的用藥提醒掛上一個他根本沒有被開立的藥證
-    字號。`candidates` 帶出聯集後的全部藥證（依 license_number 去重），
-    供呼叫端在唯一時直接用、在多筆時交給使用者挑一個。
+    字號。
+
+    `candidates` **不是**上面那個聯集，是它的一個子集：只含完全比對與
+    正向含容命中的藥證（依 license_number 去重），供呼叫端在唯一時直接
+    用、在多筆時交給使用者挑一個。反向含容命中（品名是查詢字串子字串的
+    那些藥證）算進唯一性判定、卻不列入 `candidates`——它們按定義是別的
+    藥，不能拿給使用者挑，理由與量測見模組文件「證據力」那一段。
+    因此 `len(candidates) == 1` **不蘊含** `license_number` 有值：這代表
+    「只有一張藥證有資格被挑，但庫裡還有別的可能」，呈現面必須把它當成
+    「請使用者確認」而不是「已確定」（見 LIFF 的 `DrugCandidateSection`）。
+    反向的蘊含仍然成立：`license_number` 有值時 `candidates` 必然剛好
+    一筆，見 `_resolve`。
 
     呼叫端判斷「這個藥名有沒有通過藥證庫校驗」必須看 `match()` 的回傳
     值是不是 None，而不是看 `license_number` 是不是 None——後者只表示
@@ -329,9 +357,10 @@ class DrugCatalogService:
             # 膜衣錠10毫克」命中「膜衣錠」單獨掛證都是這種情形），不會
             # 讓一個原本沒證據的查詢無中生有變成有證據——聯集只能讓
             # 候選變多，不能讓候選從 0 變成非 0。
-            return self._resolve_exact_and_containment(
-                key, exact, list(forward_hits | reverse_hits)
-            )
+            # 兩個方向要分開傳，不能在這裡先聯集成一份：reverse 只參與
+            # 唯一性判定，不得進入可挑選的候選清單（模組文件「證據力」
+            # 那條規則的第 2 半），兩份集合由 `_resolve` 分別承接。
+            return self._resolve_exact_and_containment(key, exact, forward_hits, reverse_hits)
 
         if reverse_hits:
             # 唯一的命中訊號只有 reverse：查詢字串不對應任何真實登記
@@ -426,43 +455,62 @@ class DrugCatalogService:
         self,
         key: str,
         exact: Optional[dict[str, DrugCatalogEntry]],
-        containment_hits: list[str],
+        forward_hits: Iterable[str],
+        reverse_hits: Iterable[str],
     ) -> DrugCatalogMatch:
-        """把「完全比對命中的鍵」跟「品名包含查詢字串的鍵」聯集成同一份候選。
+        """把三種命中攤平成「唯一性集合」與「可挑選集合」兩份。
 
         見 spec「證號唯一才可信」與 DrugCatalogMatch 的說明：完全比對
-        精準命中一個鍵不代表消除了歧義，兩種訊號要聯集之後才能交給
+        精準命中一個鍵不代表消除了歧義，三種訊號要聯集之後才能交給
         `_resolve` 判定唯一性。命中鍵可能不只一個（「普拿疼」同時是
         三個品名的子字串），每個命中鍵本身也可能已經是碰撞鍵——都要
-        攤平進同一份候選集合，唯一性判定才不會漏看任何一張藥證。
+        攤平進同一份集合，唯一性判定才不會漏看任何一張藥證。
+
+        但唯一性判定的集合不等於拿給使用者挑的集合：reverse 命中按
+        定義是**別的藥**（只是碰巧有個登記過的片段落在查詢字串裡），
+        它足以拆掉唯一性，卻不能當成「你吃的可能是這一顆」讓使用者
+        挑——挑中就會貼上那顆藥的照片。因此這裡建兩份字典，
+        `entries_by_license` 決定 `license_number`，`pickable_by_license`
+        決定 `candidates`，兩者的差集正好是 reverse-only 的命中。
+        理由與量測見模組文件「證據力」那一段。
         """
+        forward_keys = set(forward_hits)
+        reverse_keys = set(reverse_hits)
+
         entries_by_license: dict[str, DrugCatalogEntry] = {}
-        for candidate_key in containment_hits:
+        for candidate_key in forward_keys | reverse_keys:
             entries_by_license.update(self._by_key[candidate_key])
+        pickable_by_license: dict[str, DrugCatalogEntry] = {}
+        for candidate_key in forward_keys:
+            pickable_by_license.update(self._by_key[candidate_key])
 
         if exact is not None:
             entries_by_license.update(exact)
+            # 完全比對是「查詢字串本身就是這張藥證的品名」，是三種命中裡
+            # 證據力最強的一種，當然可挑。
+            pickable_by_license.update(exact)
             # 完全比對存在時 score 固定 1.0（字串確實逐字相同），不論
             # 聯集後候選是不是唯一——這正是 score 1.0 不再等於證號確定
             # 的地方，由 `_resolve` 依候選數量決定 license_number。
-            return self._resolve(entries_by_license.values(), 1.0)
+            return self._resolve(entries_by_license.values(), 1.0, pickable_by_license.values())
 
         if len(entries_by_license) > 1:
             # 沒有完全比對、純靠含容比對湊出多張藥證：藥名驗證為真，
             # 但無法判斷是哪一張——理由見 DrugCatalogMatch 的說明。
             # score 沒有另外定義的意義，這裡不是相似度比對，留 0.0
             # 只是滿足型別。
-            return self._resolve(entries_by_license.values(), 0.0)
+            return self._resolve(entries_by_license.values(), 0.0, pickable_by_license.values())
 
         (entry,) = entries_by_license.values()
         # 含容覆蓋率：兩字串長度比值，短字串完全落在長字串裡時最高為 1.0。
-        # 純粹供除錯／記錄參考，比對邏輯本身不看這個分數。
+        # 純粹供除錯／記錄參考，比對邏輯本身不看這個分數。兩個方向的命中
+        # 都算進來（跟切分候選之前一樣），這個分數不參與任何判定。
         coverage = max(
             min(len(key), len(candidate_key)) / max(len(key), len(candidate_key))
-            for candidate_key in containment_hits
+            for candidate_key in forward_keys | reverse_keys
             if entry.license_number in self._by_key[candidate_key]
         )
-        return self._resolve(entries_by_license.values(), coverage)
+        return self._resolve(entries_by_license.values(), coverage, pickable_by_license.values())
 
     def _match_by_fuzzy(self, key: str) -> Optional[DrugCatalogMatch]:
         candidates = self._candidates(key)
@@ -502,18 +550,41 @@ class DrugCatalogService:
         )
 
     @staticmethod
-    def _resolve(entries: Iterable[DrugCatalogEntry], score: float) -> DrugCatalogMatch:
+    def _resolve(
+        entries: Iterable[DrugCatalogEntry],
+        score: float,
+        pickable: Iterable[DrugCatalogEntry],
+    ) -> DrugCatalogMatch:
         """把「命中鍵對應到的藥證集合」收斂成一筆比對結果。
 
-        這是唯一決定 `license_number` 有沒有值的地方，兩個比對階段
-        （完全∪含容／模糊）都先取到候選集合才呼叫這裡——證號是否確定
-        只看候選數量是不是剛好 1，跟走的是哪個階段、score 是多少無關。
-        `candidates` 一律帶出完整候選集合（唯一時也是只含一筆的清單），
-        供呼叫端在多筆時交給使用者挑一個。
+        這是唯一決定 `license_number` 有沒有值的地方——證號是否確定只看
+        `entries` 的數量是不是剛好 1，跟走的是哪個階段、score 是多少無關。
+
+        `entries` 與 `pickable` 是**兩個不同的角色**，刻意分成兩個參數而
+        不是一份集合兼任：
+
+        - `entries`：唯一性判定用。包含 reverse 命中——它證據力不足以
+          指認身分，卻足以證明「還有別的可能」，漏掉它會回傳一個錯的
+          確定證號。
+        - `pickable`：`candidates` 的來源，也就是畫面上會出現、使用者
+          挑中就會貼上藥丸照片的清單。不含 reverse-only 的命中。
+
+        `pickable` 沒有預設值是刻意的：預設成 `entries` 會讓任何新的
+        呼叫端在忘記切分時，悄悄地把「別的藥」放回可挑清單，而這個
+        退化沒有任何測試以外的地方看得出來（照片一貼上去，畫面上不會
+        有東西反駁它）。要兩者相同就明講兩次。
+
+        `entries` 唯一時 `pickable` 必然等於 `entries`：走到這裡的前提是
+        exact 或 forward 命中非空（見 `match()` 的判斷式），所以 `pickable`
+        非空，而 `pickable ⊆ entries`——「已釘證號卻沒有候選」這個狀態
+        不可能出現。反過來不成立：`pickable` 剩一筆時 `entries` 可能仍有
+        多筆，此時證號留空、候選只有一筆，由使用者確認才釘定
+        （見 LIFF 的 `DrugCandidateSection`）。
         """
-        candidates = list(entries)
-        if len(candidates) == 1:
-            (entry,) = candidates
+        entries = list(entries)
+        candidates = list(pickable)
+        if len(entries) == 1:
+            (entry,) = entries
             return DrugCatalogMatch(
                 license_number=entry.license_number,
                 name_zh=entry.name_zh,

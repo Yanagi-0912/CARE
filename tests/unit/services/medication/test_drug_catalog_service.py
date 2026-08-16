@@ -598,10 +598,17 @@ BARE_INJECTION_FORM_B = DrugCatalogEntry(license_number="衛署藥輸字第01872
 JIEDU_INJECTION = DrugCatalogEntry(license_number="衛署藥輸字第008820號", name_zh="潔毒注射液")
 
 
-def test_bare_dosage_form_registered_alone_is_reachable_as_containment_candidate():
+def test_bare_dosage_form_registered_alone_breaks_uniqueness_without_becoming_a_candidate():
     """迴歸測試：真實案例「潔毒注射液」。修法前這裡的 license_number 會被
     誤判為 '衛署藥輸字第008820號'（看似唯一），但「注射液」本身另外
-    掛著兩張證號，真正的聯集是 3 張，必須留空並讓三張都進候選。"""
+    掛著兩張證號，真正的聯集是 3 張，證號必須留空。
+
+    那兩張「注射液」同時也**不得**進入 `candidates`：它們是別的藥，只是
+    碰巧品名整個落在查詢字串裡（reverse 命中）。候選是拿給使用者挑、挑中
+    就會貼上藥丸照片的清單，放進去等於邀請長輩挑一顆他沒被開立的藥。
+    因此這裡是「證號空、候選只剩一筆」——這個狀態合法且必然存在，
+    呈現面要把它當成「請確認」而不是「已確定」（見 `_resolve` 的說明）。
+    """
     service = DrugCatalogService(
         [JIEDU_INJECTION, BARE_INJECTION_FORM_A, BARE_INJECTION_FORM_B], threshold=0.88
     )
@@ -610,11 +617,7 @@ def test_bare_dosage_form_registered_alone_is_reachable_as_containment_candidate
 
     assert match is not None
     assert match.license_number is None
-    assert {c.license_number for c in match.candidates} == {
-        JIEDU_INJECTION.license_number,
-        BARE_INJECTION_FORM_A.license_number,
-        BARE_INJECTION_FORM_B.license_number,
-    }
+    assert {c.license_number for c in match.candidates} == {JIEDU_INJECTION.license_number}
 
 
 # ── reverse-only 命中不得單獨建立驗證結果（Task 1 第二輪 code review 發現）──
@@ -655,7 +658,7 @@ def test_reverse_only_hit_does_not_verify_an_ocr_misread():
     assert service.match("冠脂托膜衣錠10毫克") is None
 
 
-def test_reverse_hit_still_widens_candidates_when_exact_present():
+def test_reverse_hit_still_breaks_uniqueness_when_exact_present():
     """對照：有 exact 命中時，reverse 命中依然要聯集進來拆掉唯一性——
     這是前一次修復要保留的行為（見「潔毒注射液」的測試），這次的方向
     不對稱規則不能連這個都削弱掉。"""
@@ -668,9 +671,75 @@ def test_reverse_hit_still_widens_candidates_when_exact_present():
 
     assert match is not None
     assert match.license_number is None
+
+
+def test_reverse_hit_is_not_offered_as_a_pickable_candidate():
+    """方向不對稱規則的第二半：reverse 命中拆得掉唯一性，卻不得出現在
+    `candidates` 裡。
+
+    真實案例：使用者的藥是「冠脂妥膜衣錠10毫克」，藥證庫裡另有一張單獨
+    掛證的「"康普萊"膜衣錠」——完全不同的藥，只因為「膜衣錠」三個字落在
+    查詢字串裡而湊出 reverse 命中。把它列成候選，長輩會在兩張照片之間挑，
+    而其中一張根本不是他的藥；照片一旦貼上，畫面上沒有任何東西能反駁它。
+    """
+    real_drug = DrugCatalogEntry(
+        license_number="衛署藥輸字第024131號", name_zh="冠脂妥膜衣錠10毫克"
+    )
+    service = DrugCatalogService([real_drug, BARE_FILM_COATED_TABLET], threshold=0.88)
+
+    match = service.match("冠脂妥膜衣錠10毫克")
+
+    assert match is not None
+    assert {c.license_number for c in match.candidates} == {real_drug.license_number}
+    assert BARE_FILM_COATED_TABLET.license_number not in {
+        c.license_number for c in match.candidates
+    }
+
+
+def test_single_candidate_without_a_pinned_licence_is_a_real_state():
+    """`len(candidates) == 1` **不蘊含** `license_number` 有值。
+
+    切分之前，`_resolve` 在集合大小為 1 時一律釘證號，所以
+    「候選剛好一筆」跟「證號已確定」是同一件事，呈現面因此只靠候選數量
+    就敢貼上「已確認」。切分之後這個等價關係斷了：唯一性看的是
+    exact ∪ forward ∪ reverse，候選看的是 exact ∪ forward，前者有 2 張、
+    後者只有 1 張的情形實測佔全庫 56,886 個中文品名的 47.6%（27,058 個，
+    其中 3,901 個的那一筆候選有已提交的縮圖）。這個測試把該狀態釘住，
+    讓任何「候選只有一筆就等於確定」的假設在後端這一層就先炸掉。
+    """
+    real_drug = DrugCatalogEntry(
+        license_number="衛署藥輸字第024131號", name_zh="冠脂妥膜衣錠10毫克"
+    )
+    service = DrugCatalogService([real_drug, BARE_FILM_COATED_TABLET], threshold=0.88)
+
+    match = service.match("冠脂妥膜衣錠10毫克")
+
+    assert match is not None
+    assert len(match.candidates) == 1
+    assert match.license_number is None
+
+
+def test_forward_hits_remain_pickable_candidates():
+    """對照組：切掉的只有 reverse，forward 命中一張都不能少。
+
+    forward 命中代表查詢字串整個落在某張藥證品名裡（藥袋印品牌短名
+    「得胎隆」，藥證是「"亞培"得胎隆膜衣錠10毫克」），那是**同名藥品
+    家族**——不同廠牌或劑量的同一個藥名。spec 明訂使用者就是在這種
+    候選之間挑，拿掉它們等於拿掉整個消歧介面。
+    """
+    short_name = DrugCatalogEntry(license_number="內衛藥輸字第002077號", name_zh="得胎隆")
+    full_name = DrugCatalogEntry(
+        license_number="衛署藥輸字第025539號", name_zh='"亞培"得胎隆膜衣錠10毫克'
+    )
+    service = DrugCatalogService([short_name, full_name], threshold=0.88)
+
+    match = service.match("得胎隆")
+
+    assert match is not None
+    assert match.license_number is None
     assert {c.license_number for c in match.candidates} == {
-        real_drug.license_number,
-        BARE_FILM_COATED_TABLET.license_number,
+        short_name.license_number,
+        full_name.license_number,
     }
 
 
@@ -747,27 +816,36 @@ def _brute_force_forward_and_reverse(by_key: dict, key: str) -> tuple[set, set]:
     return forward, reverse
 
 
-def _brute_force_match_result(by_key: dict, key: str) -> tuple[bool, dict]:
-    """完全不透過索引算出的真正比對結果：(是否已驗證, 聯集後的
-    license_number → entry)。
+def _brute_force_match_result(by_key: dict, key: str) -> tuple[bool, dict, dict]:
+    """完全不透過索引算出的真正比對結果：(是否已驗證, 唯一性集合, 可挑選集合)。
 
     只有 exact 或 forward 命中非空才算已驗證（見 `match()` 的判斷式與
-    模組文件「證據力」那段）；未驗證時第二個回傳值恆為空字典，呼叫端
-    不該去看它——reverse-only 的候選不具驗證意義，聯集內容沒有正確
+    模組文件「證據力」那段）；未驗證時後兩個回傳值恆為空字典，呼叫端
+    不該去看它們——reverse-only 的候選不具驗證意義，聯集內容沒有正確
     答案可言。
+
+    兩個集合刻意分開算，而不是算一份再讓測試自己推導：唯一性集合是
+    exact ∪ forward ∪ reverse（決定 `license_number`），可挑選集合是
+    exact ∪ forward（決定 `candidates`）。這支 oracle 是這條規則在
+    真實藥證庫規模下的獨立第二實作，跟 `_resolve_exact_and_containment`
+    沒有共用任何一行程式碼。
     """
     exact = by_key.get(key)
     forward, reverse = _brute_force_forward_and_reverse(by_key, key)
     verified = exact is not None or bool(forward)
     if not verified:
-        return False, {}
+        return False, {}, {}
 
-    entries_by_licence: dict[str, DrugCatalogEntry] = {}
+    uniqueness_by_licence: dict[str, DrugCatalogEntry] = {}
+    pickable_by_licence: dict[str, DrugCatalogEntry] = {}
     if exact is not None:
-        entries_by_licence.update(exact)
+        uniqueness_by_licence.update(exact)
+        pickable_by_licence.update(exact)
     for candidate_key in forward | reverse:
-        entries_by_licence.update(by_key[candidate_key])
-    return True, entries_by_licence
+        uniqueness_by_licence.update(by_key[candidate_key])
+    for candidate_key in forward:
+        pickable_by_licence.update(by_key[candidate_key])
+    return True, uniqueness_by_licence, pickable_by_licence
 
 
 # 已知單獨掛證、會產生 reverse 命中的劑型片段，用來構造「reverse-only」
@@ -835,13 +913,23 @@ def test_index_matches_brute_force_at_real_catalog_scale():
         )
     ]
 
+    # 這批查詢裡真的有「唯一性集合比可挑選集合大」的案例（reverse-only 命中
+    # 存在）才算驗到方向不對稱規則的第二半；沒有的話下面的候選斷言會退化成
+    # 跟舊行為同義，測試會靜悄悄地失去鑑別力。
+    split_cases = 0
+
     for key in sampled_keys + known_bare_forms:
         indexed = service.match(key)
-        verified, true_union = _brute_force_match_result(by_key, key)
+        verified, true_union, true_pickable = _brute_force_match_result(by_key, key)
 
         assert verified, key  # 這批查詢全部取自真實存在的鍵，必然已驗證
         assert indexed is not None, key
-        assert {c.license_number for c in indexed.candidates} == set(true_union), key
+        # 候選只能是 exact ∪ forward——reverse-only 命中是別的藥，拆得掉
+        # 唯一性，但不得出現在使用者挑得到的清單裡。
+        assert {c.license_number for c in indexed.candidates} == set(true_pickable), key
+        if set(true_pickable) != set(true_union):
+            split_cases += 1
+        # 但唯一性仍要看含 reverse 的完整聯集：切掉候選不得放寬釘證條件。
         if len(true_union) == 1:
             (only_licence,) = true_union
             assert indexed.license_number == only_licence, key
@@ -851,13 +939,18 @@ def test_index_matches_brute_force_at_real_catalog_scale():
                 f"但索引回傳唯一證號 {indexed.license_number!r}——假唯一"
             )
 
+    assert split_cases > 0, (
+        "抽樣裡沒有任何一筆的 reverse 命中帶進了額外藥證，"
+        "候選斷言等於沒有驗到方向不對稱規則的第二半"
+    )
+
     # 反方向：完全不存在的藥名剛好包含一個登記過的劑型片段，必須維持
     # 未驗證——見 code review「a drug that is NOT in the catalogue now
     # resolves to a confidently wrong licence」。實測全庫規模下量測
     # 這類查詢的「假證號率」曾高達 13.1%，這裡直接對真實藥證庫斷言
     # 為 0%，把量測結果釘進自動化測試，而不是只留在一次性量測腳本裡。
     for key in _absent_drug_queries(rng, 200):
-        verified, _ = _brute_force_match_result(by_key, key)
+        verified, _, _ = _brute_force_match_result(by_key, key)
         assert not verified, key  # 構造方式保證：沒有 exact，也沒有 forward
 
         indexed = service.match(key)

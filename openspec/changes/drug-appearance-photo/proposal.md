@@ -32,9 +32,38 @@
 
 那 33.5% 不需要放棄：含容比對其實**已經找到候選集合了**，只是在回傳前把它丟掉。把候選交給核對畫面上那個手裡正握著藥袋的人挑一次，就從「機器猜不出來」變成「人看一眼就知道」——這與本專案既有的 PRN、`OTHER` 頻次、用藥對象的處理方式是同一套原則：不臆測，問使用者。
 
+### 補充量測（2026-08-12）：錯配的主因不是含容比對，是索引會靜默併掉同名藥證
+
+以相同方法獨立重跑（400 筆，抽樣種子不同）得到 47.8% / 32.2% / **4.8%** / 15.2%，與上表同一量級，錯配確實存在。但把那 19 筆錯配依 `score` 拆開後，歸因與上一段不同：
+
+| 錯配的 `score` | 筆數 | 意義 |
+| --- | --- | --- |
+| **1.0（完全比對）** | **14（74%）** | 藥袋上的短名，本身就等於**另一張**藥證的完整品名 |
+| 0.2 ~ 0.833 | 5 | 相似度或含容的近似誤命中 |
+
+```
+'得胎隆' → 真：「亞培」得胎隆膜衣錠10毫克 → 比到另一張品名就叫「得胎隆」的藥證
+'葉酸'   → 真：「應元」葉酸錠1毫克        → 比到另一張品名就叫「葉酸」的藥證
+```
+
+**這些回傳的是單一、`score=1.0`、看起來最有把握的結果**，所以「含容命中多張時不顯示照片」這道防護對它們完全無效。
+
+根因在索引建構：`DrugCatalogService.__init__` 以 `setdefault` 建「正規化鍵 → 單一條目」的字典。實測全庫 66,478 筆、112,228 個可用的鍵當中（另有 2 個純標點鍵建索引時排除），**有 10,765 個鍵對應到不只一張藥證，涉及 21,250 張不重複藥證（全庫的 32.0%）**：
+
+```
+'感冒液' → 41 張藥證      '乙醯胺酚' → 38 張      'CIMETIDINE' → 37 張
+```
+
+碰撞時只有第一筆進得了索引，其餘藥證**永遠比對不到**；查詢者拿到的是那個任意的「第一筆」，且以完全比對的姿態呈現，沒有任何訊號顯示它其實是 41 選 1。
+
+對既有功能而言這幾乎無害——藥證庫的用途是「這是不是真實核准藥名」，`license_number` 是附帶資訊，目前沒有任何呼叫端消費它。但一旦拿它去查藥丸照片，就變成從 41 張藥證裡任選一張的照片貼給長輩看，正是本提案自己指出「比不貼更危險」的那件事。
+
+**因此安全邊界要比原本寫的更強**：`license_number` 只有在該正規化鍵**唯一**對應一張藥證時才可信；碰撞鍵一律視為多候選，不論它是經由完全比對或含容比對命中的。這同時修掉既有的「近半數藥證永遠比不到」缺陷，且與本 change 要做的「`DrugCatalogMatch` 攜帶候選清單」改的是同一個函式，因此併入本 change 而非另立前置提案。
+
 ## What Changes
 
-- **`DrugCatalogMatch` 改為可攜帶候選清單**：含容比對命中多張藥證時，不再只回一個 `license_number=None` 的空殼，而是附上候選藥證（證號、中文品名、外觀欄位）。`match()` 回傳非 `None` 仍然只代表「藥名已驗證為真實核准藥品」，**信心度的判定邏輯完全不變**——候選清單是新增的資訊，不是新的判定依據。
+- **索引改為「正規化鍵 → 藥證集合」，並以唯一性決定證號可不可信**：取代目前 `setdefault` 造成的靜默併除。`match()` 只有在命中鍵唯一對應一張藥證時才回傳 `license_number`，否則視為多候選並附上候選清單。**完全比對不再等同於證號確定**。
+- **`DrugCatalogMatch` 改為可攜帶候選清單**：命中多張藥證時，不再只回一個 `license_number=None` 的空殼，而是附上候選藥證（證號、中文品名、外觀欄位）。`match()` 回傳非 `None` 仍然只代表「藥名已驗證為真實核准藥品」，**信心度的判定邏輯完全不變**——候選清單是新增的資訊，不是新的判定依據。
 - **藥證庫納入外觀欄位**：`scripts/build_drug_catalog.py` 從外觀資料集額外取出 `外觀圖檔連結`、`形狀`、`顏色`、`刻痕`、`標註一`、`標註二`、`外觀尺寸`，寫入 `resources/drug_catalog.json`。無外觀記錄的藥證這些欄位留空。
 - **照片在建置期落地成自有靜態資源**：建表腳本一併下載、縮圖、存成專案自有的靜態檔，**執行期不 hot-link `mcp.fda.gov.tw`**。LINE 是在推播渲染當下才去抓圖，直連政府主機等於把推播的可用性綁在政府站台上，且每則提醒都打一次外部主機。
 - **核對畫面新增藥證消歧**：候選超過一張時，逐筆藥品顯示候選藥丸照片與外觀描述，讓使用者挑「藥袋裡的那一顆」。挑選後該筆的 `license_number` 才被釘定並隨草稿提交。**未挑選 SHALL NOT 阻擋提交**——照片是附加價值，不是建藥品的必要條件，缺照片只是沒照片。
@@ -62,7 +91,7 @@
 - **API**：`POST /api/medications/prescription-scan` 的草稿回應中，每筆藥品新增候選藥證清單；`POST /api/medications/prescription-drafts/{draft_id}/commit` 的 `CommitDrugItem` 接受使用者挑定的 `license_number`；`GET /api/medications/reminders` 的藥品物件新增外觀欄位。**皆為欄位新增，無 breaking change**
 - **測試**：`tests/unit/services/medication/test_drug_catalog_service.py`、`tests/unit/services/medication/test_prescription_scan_service.py`、`tests/unit/services/line_messaging/test_medication_flex.py`、`tests/unit/resources/test_drug_catalog_artifact.py`、`tests/unit/routers/test_medications_router.py`、`CARE-LIFF/src/tests/prescriptionScan.test.tsx`
 - **設定**：新增靜態圖片資源的服務路徑設定；`DRUG_CATALOG_PATH` 沿用
-- **建置產出物**：`resources/drug_catalog.json` 體積增加（新增外觀欄位）；新增約 5,700 張縮圖。需在 design 階段決定縮圖尺寸與是否納入 git（目前 `drug_catalog.json` 8.9 MB 是進 repo 的）
+- **建置產出物**：`resources/drug_catalog.json` 體積增加（新增外觀欄位）；新增約 5,700 張縮圖。需在 design 階段決定縮圖尺寸與是否納入 git（本 change 之前的 `drug_catalog.json` 8.6 MB（8,996,926 bytes）就是進 repo 的；加上外觀欄位之後是 15.9 MB，見 `README.md` 與 design 決策 2）
 - **相依**：新增影像處理套件（縮圖用，建置期）。執行期仍不對外連線
 - **不受影響**：`medication_scheduler`（排程輸入不變）、藥袋辨識的 Gemini 呼叫（prompt 與 schema 不動）、`CARE-n8n`、`rich-menu`
 - **隱私**：藥丸照片洩漏的資訊不多於已在推播中的藥名，不觸及「適應症 SHALL NOT 出現在推播」的既有規則。但自有靜態圖片的 URL 會被 LINE 伺服器抓取並快取，**SHALL NOT 使用可枚舉的識別碼**，也不得讓 URL 反映使用者或藥品以外的資訊

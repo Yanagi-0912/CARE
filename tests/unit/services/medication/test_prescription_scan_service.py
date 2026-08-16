@@ -7,11 +7,12 @@ from app.models.medication import MedicationReminder
 from app.models.prescription import (
     CommitDrugItem,
     CommitPrescriptionDraftRequest,
+    DrugCandidate,
     PrescriptionDraft,
     RecognitionResult,
     RecognizedDrug,
 )
-from app.services.medication.drug_catalog_service import DrugCatalogMatch
+from app.services.medication.drug_catalog_service import DrugCatalogEntry, DrugCatalogMatch
 from app.services.medication.prescription_scan_service import (
     DraftExpiredError,
     DraftNotFoundError,
@@ -143,6 +144,18 @@ class FakeFamilyTreeRepository:
         return self._tree
 
 
+class FakeAppearanceImageResolver:
+    """以字典模擬「證號 → 縮圖 URL」的查表，貼合正式服務
+    （resolve_drug_appearance_image_url）查無縮圖時回 None 的介面，
+    不必碰檔案系統或 monkeypatch settings 單例。"""
+
+    def __init__(self, urls: dict[str, str] | None = None):
+        self._urls = urls or {}
+
+    def __call__(self, license_number: str) -> str | None:
+        return self._urls.get(license_number)
+
+
 def _tree(*members: FamilyMember) -> FamilyTree:
     now = datetime.now(timezone.utc)
     return FamilyTree(
@@ -160,6 +173,7 @@ def _service(
     medications=None,
     reminders=None,
     family=None,
+    appearance_images=None,
 ):
     return PrescriptionScanService(
         ocr_service=ocr or FakeOcr(RecognitionResult()),
@@ -168,6 +182,7 @@ def _service(
         medication_repository=medications or FakeMedicationRepository(),
         reminder_repository=reminders or FakeReminderRepository(),
         family_tree_repository=family or FakeFamilyTreeRepository(),
+        appearance_image_resolver=appearance_images or FakeAppearanceImageResolver(),
         ttl_minutes=60,
     )
 
@@ -182,11 +197,30 @@ def _recognition(*drugs: RecognizedDrug, patient_name="王大明") -> Recognitio
 
 
 def _match(name="脈優錠5毫克") -> DrugCatalogMatch:
-    return DrugCatalogMatch(
+    """單一命中的比對結果。
+
+    真正的 `DrugCatalogService._resolve()` 在 `license_number` 有值時，
+    `candidates` 一定剛好帶著那一張藥證（唯一命中時也是只含一筆的清單，
+    見該方法與 DrugCatalogMatch 的說明）——`license_number` 有值卻
+    `candidates` 是空清單，是 `_resolve()` 絕對不會產生的狀態。這個
+    fixture 過去沒有帶 candidates，若繼續留空，一旦有程式碼開始依賴
+    「證號有值 ⇒ 該證號在候選清單內」這個不變式（例如提交時的候選驗證），
+    這裡就測不出問題——用這個假造的 match 餵出去的 RecognizedDrug 反而會
+    是候選模型上線前才可能出現的舊式資料，卻被當成「今天掃描產生的正常
+    結果」在測。這裡補上同一張藥證的 DrugCatalogEntry，讓 fixture 忠實
+    反映真正的比對結果。
+    """
+    entry = DrugCatalogEntry(
         license_number="衛署藥製字第000001號",
         name_zh=name,
         name_en="AMLODIPINE TABLETS 5MG",
+    )
+    return DrugCatalogMatch(
+        license_number=entry.license_number,
+        name_zh=name,
+        name_en="AMLODIPINE TABLETS 5MG",
         score=1.0,
+        candidates=[entry],
     )
 
 
@@ -275,6 +309,79 @@ async def test_scan_fills_licence_and_raises_confidence_on_catalog_hit():
 
     assert draft.recognition.drugs[0].license_number == "衛署藥製字第000001號"
     assert draft.recognition.drugs[0].name_confidence == "high"
+
+
+@pytest.mark.asyncio
+async def test_scan_marks_high_name_confidence_when_catalog_hit_has_multiple_candidates():
+    """藥證庫索引改為候選模型後（決策 1），`match()` 命中碰撞鍵時
+    `license_number` 會是 None、`candidates` 有不只一筆。名稱信心度的
+    判定只看 `match()` 是不是 None（`_verify_against_catalog` 的既有
+    註解已載明此意圖），這裡直接餵一筆多候選的比對結果，釘住信心度
+    不會因為候選不只一張就被拖累成低信心——一張藥證命中 41 個候選
+    仍然是一個被驗證為真實存在的藥名。
+
+    同時釘住候選清單本身正確地落到草稿上（spec「草稿攜帶藥證候選清單」）：
+    證號、中文品名、外觀欄位都要原樣帶過，縮圖 URL 則由掃描當下注入的
+    resolver 就地解析——其中一張候選（第二張）在 resolver 裡查無縮圖，
+    驗證這種情況下 `thumbnail_url` 為 None 且不影響其餘候選。"""
+    drug = RecognizedDrug(name="葉酸", frequency_code="TID")
+    entry_with_photo = DrugCatalogEntry(
+        license_number="衛署藥製字第040001號",
+        name_zh="葉酸",
+        shape="圓形",
+        color="白色",
+        score_line="有",
+        mark_one="F1",
+        mark_two="",
+        size="8mm",
+    )
+    entry_without_photo = DrugCatalogEntry(
+        license_number="衛署藥輸字第040002號", name_zh="葉酸"
+    )
+    multi_candidate_match = DrugCatalogMatch(
+        license_number=None,
+        name_zh="",
+        name_en="",
+        score=1.0,
+        candidates=[entry_with_photo, entry_without_photo],
+    )
+    service = _service(
+        ocr=FakeOcr(_recognition(drug)),
+        catalog=FakeCatalog({"葉酸": multi_candidate_match}),
+        family=FakeFamilyTreeRepository(
+            _tree(FamilyMember(user_id="U_PATIENT", display_name="王大明"))
+        ),
+        appearance_images=FakeAppearanceImageResolver(
+            {"衛署藥製字第040001號": "https://static.example/a3f1.jpg"}
+        ),
+    )
+
+    draft = await service.scan(b"image", "image/jpeg", "U_FAMILY")
+
+    assert draft.recognition.drugs[0].name_confidence == "high"
+    assert draft.recognition.drugs[0].license_number is None
+    # 名稱信心度不受候選數量拖累，草稿整體信心度也應維持最高等級——
+    # 其餘條件（頻次已知、用藥對象已建議）都滿足時就是 high。
+    assert draft.confidence_level == "high"
+
+    candidates = draft.recognition.drugs[0].candidates
+    assert [c.license_number for c in candidates] == [
+        "衛署藥製字第040001號",
+        "衛署藥輸字第040002號",
+    ]
+    first = candidates[0]
+    assert first.name_zh == "葉酸"
+    assert first.shape == "圓形"
+    assert first.color == "白色"
+    assert first.score_line == "有"
+    assert first.mark_one == "F1"
+    assert first.size == "8mm"
+    assert first.thumbnail_url == "https://static.example/a3f1.jpg"
+    # 查無縮圖的候選：thumbnail_url 為 None，且不影響其餘欄位或這筆候選
+    # 本身出現在清單裡——查無照片不是把候選整筆丟掉的理由。
+    second = candidates[1]
+    assert second.license_number == "衛署藥輸字第040002號"
+    assert second.thumbnail_url is None
 
 
 @pytest.mark.asyncio
@@ -1104,6 +1211,346 @@ async def test_commit_leaves_end_date_open_without_duration_days():
     )
 
     assert medications.created[0].end_date is None
+
+
+# --- commit：使用者挑定的候選證號 ------------------------------------------
+
+
+def _candidate(license_number="L1", name_zh="某藥", **overrides) -> DrugCandidate:
+    fields = dict(
+        shape="圓形",
+        color="白色",
+        score_line="有",
+        mark_one="M1",
+        mark_two="M2",
+        size="8mm",
+        thumbnail_url="https://static.example/thumb.jpg",
+    )
+    fields.update(overrides)
+    return DrugCandidate(license_number=license_number, name_zh=name_zh, **fields)
+
+
+@pytest.mark.asyncio
+async def test_commit_accepts_a_license_number_within_the_candidates():
+    """挑定候選清單內的證號：建立的藥品要帶著這個證號，外觀欄位也要原樣
+    帶自該候選（spec「提交時接受使用者挑定的藥證」）。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(
+        RecognizedDrug(
+            name="某藥",
+            candidates=[_candidate(license_number="L1"), _candidate(license_number="L2")],
+        )
+    )
+    medications = FakeMedicationRepository()
+    service = _service(
+        drafts=drafts,
+        medications=medications,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    result = await service.commit(
+        "D1",
+        "U_FAMILY",
+        _request(CommitDrugItem(name="某藥", frequency_code="QD", license_number="L1")),
+    )
+
+    assert len(result.medication_ids) == 1
+    created = medications.created[0]
+    assert created.license_number == "L1"
+    assert created.shape == "圓形"
+    assert created.color == "白色"
+    assert created.score_line == "有"
+    assert created.mark_one == "M1"
+    assert created.mark_two == "M2"
+    assert created.size == "8mm"
+
+
+@pytest.mark.asyncio
+async def test_commit_discards_a_license_number_outside_the_candidates():
+    """帶回不在該筆藥品候選清單內的證號：SHALL NOT 拒絕整份提交（spec
+    「提交時接受使用者挑定的藥證」已修訂），而是丟棄該證號、以空證號建立
+    這一筆，其餘欄位不受影響；丟棄的結果要點名在回應裡，不能靜默發生。
+    候選清單外的值實務上只來自用戶端瑕疵，或使用者改名後證號未隨之清空
+    ——兩者都不該讓使用者連同已核對過的其他藥品一併失去。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(
+        RecognizedDrug(name="某藥", candidates=[_candidate(license_number="L1")])
+    )
+    medications = FakeMedicationRepository()
+    service = _service(
+        drafts=drafts,
+        medications=medications,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    result = await service.commit(
+        "D1",
+        "U_FAMILY",
+        _request(
+            CommitDrugItem(
+                name="某藥", frequency_code="QD", license_number="L_NOT_A_CANDIDATE"
+            )
+        ),
+    )
+
+    assert len(medications.created) == 1
+    created = medications.created[0]
+    assert created.license_number is None
+    assert result.medication_ids == [created.id]
+    assert result.discarded_license_medication_ids == [created.id]
+
+
+@pytest.mark.asyncio
+async def test_commit_discarded_license_does_not_inherit_another_candidates_appearance():
+    """被丟棄的挑選不能誤繼承候選清單裡任何一張的外觀——候選清單本身不是
+    空的、候選確實帶著看得出來的外觀資料，丟棄後這一筆仍然要是完全空白
+    的外觀，而不是意外選到清單中的某一張（例如「就近取第一筆」這類錯誤
+    的容錯邏輯）。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(
+        RecognizedDrug(
+            name="某藥",
+            candidates=[
+                _candidate(license_number="L1", shape="圓形", color="白色"),
+                _candidate(license_number="L2", shape="星形", color="藍色"),
+            ],
+        )
+    )
+    medications = FakeMedicationRepository()
+    service = _service(
+        drafts=drafts,
+        medications=medications,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    await service.commit(
+        "D1",
+        "U_FAMILY",
+        _request(
+            CommitDrugItem(
+                name="某藥", frequency_code="QD", license_number="L_NOT_A_CANDIDATE"
+            )
+        ),
+    )
+
+    created = medications.created[0]
+    assert created.license_number is None
+    assert created.shape == ""
+    assert created.color == ""
+    assert created.score_line == ""
+    assert created.mark_one == ""
+    assert created.mark_two == ""
+    assert created.size == ""
+
+
+@pytest.mark.asyncio
+async def test_commit_discards_one_drugs_license_while_the_rest_commit_normally():
+    """多筆藥品中只有一筆挑定的證號落在候選外：那一筆以空證號建立，其餘
+    藥品正常建立（不因此株連），回應要點名哪一筆被丟棄——spec 明文要求
+    SHALL NOT 因此拒絕整份提交，且 SHALL 於回應中列出被丟棄的藥品。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(
+        RecognizedDrug(name="藥一", candidates=[_candidate(license_number="L1")]),
+        RecognizedDrug(
+            name="藥二", candidates=[_candidate(license_number="L2", name_zh="藥二")]
+        ),
+    )
+    medications = FakeMedicationRepository()
+    reminders = FakeReminderRepository()
+    service = _service(
+        drafts=drafts,
+        medications=medications,
+        reminders=reminders,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    result = await service.commit(
+        "D1",
+        "U_FAMILY",
+        _request(
+            CommitDrugItem(name="藥一", frequency_code="QD", license_number="L_BAD"),
+            CommitDrugItem(name="藥二", frequency_code="QD", license_number="L2"),
+        ),
+    )
+
+    assert len(medications.created) == 2
+    by_name = {medication.name: medication for medication in medications.created}
+    assert by_name["藥一"].license_number is None
+    assert by_name["藥一"].shape == ""
+    assert by_name["藥二"].license_number == "L2"
+    assert by_name["藥二"].shape == "圓形"  # 正常挑定的那一筆外觀照常帶入
+
+    assert result.discarded_license_medication_ids == [by_name["藥一"].id]
+    # 丟棄不影響其他行為：兩顆藥都是 QD、都應該照常連結到提醒。
+    assert len(reminders.links) == 2
+
+
+@pytest.mark.asyncio
+async def test_commit_drops_the_pre_migration_license_number_when_a_legacy_draft_has_no_candidates():
+    """本次部署前就存在的草稿，讀回時 RecognizedDrug.candidates 是空清單
+    （欄位在那之前不存在，pydantic 補上預設值），只留著一個 license_number。
+    **那個證號必須被丟掉。**
+
+    先前這裡放行它，理由寫的是「同一份 ground truth，只是還沒有候選清單
+    這個表達方式」。那個理由是錯的：部署前的 `match()` 在正規化鍵碰撞時，
+    索引以 `setdefault` 只留得下第一筆，回傳的是那個鍵上 N 張藥證裡**任意
+    的一張**（「感冒液」一個鍵就有 41 張），而不是驗證過的答案——那正是本
+    change 要消滅的 4.8% 錯配。放行它等於讓舊索引的瑕疵繞過新的安全邊界，
+    而且讀取時證號會單獨解析出縮圖，畫面上沒有任何外觀文字能跟它牴觸，
+    長輩只會看到一張沒有東西反駁的錯照片。
+
+    丟棄不列入 `discarded_license_medication_ids`：核對畫面在候選為空時
+    整段外觀區塊都不呈現，使用者根本沒有東西可挑，用戶端只是把草稿裡既有
+    的值原樣送回來。告訴他「你的挑選被丟棄了」是假的，這是 spec 的
+    「未挑選」而不是「丟棄」。代價是部署前 TTL window 內的草稿沒有照片，
+    正是 spec「照片缺席時的降級」規定的方向。
+
+    直接用一份「沒有 candidates 鍵」的原始 dict 餵給 `PrescriptionDraft(
+    **doc)`，模擬從 Mongo 讀回舊文件、pydantic 以預設值補上空清單的真實
+    情形（`PRESCRIPTION_DRAFT_TTL_MINUTES` window 內，部署前掃描、部署後
+    提交的草稿正是這個形狀）。"""
+    now = datetime.now(timezone.utc)
+    legacy_doc = {
+        "draft_id": "D1",
+        "creator_user_id": "U_FAMILY",
+        "recognition": {
+            "institution": "臺大醫院",
+            "patient_name": "王大明",
+            "dispensed_date": "2026-08-09",
+            "drugs": [
+                {
+                    "name": "脈優錠5毫克",
+                    "frequency_code": "QD",
+                    "license_number": "衛署藥製字第000001號",
+                    "name_confidence": "high",
+                    # 刻意不帶 "candidates" 鍵——模擬這個欄位上線前寫入的文件。
+                }
+            ],
+        },
+        "confidence_level": "high",
+        "created_at": now,
+        "expires_at": now + timedelta(minutes=60),
+    }
+    draft = PrescriptionDraft(**legacy_doc)
+    # 佐證這確實是「沒有候選清單」的舊式草稿，不是這個測試自己餵錯資料。
+    assert draft.recognition.drugs[0].candidates == []
+
+    drafts = FakeDraftRepository()
+    drafts.draft = draft
+    medications = FakeMedicationRepository()
+    service = _service(
+        drafts=drafts,
+        medications=medications,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    result = await service.commit(
+        "D1",
+        "U_FAMILY",
+        _request(
+            CommitDrugItem(
+                name="脈優錠5毫克",
+                frequency_code="QD",
+                license_number="衛署藥製字第000001號",
+            )
+        ),
+    )
+
+    # 提交照常成功——照片是附加價值，舊草稿不得因此被拒絕。
+    assert len(medications.created) == 1
+    created = medications.created[0]
+    # 舊索引任意挑出來的證號不得落地，落地了就會單獨解析出一張錯的縮圖。
+    assert created.license_number is None
+    # 沒有候選物件可用（舊式草稿沒有留下外觀資料），外觀欄位維持空。
+    assert created.shape == ""
+    # 使用者從來沒有挑過任何東西，不能對他宣稱「你的挑選被丟棄了」。
+    assert result.discarded_license_medication_ids == []
+    # 其餘欄位不受影響：這顆 QD 藥照常連結到提醒。
+    assert len(result.reminder_ids) == 1
+
+
+@pytest.mark.asyncio
+async def test_commit_discloses_the_discard_when_the_name_is_absent_from_the_draft():
+    """藥名根本不在草稿裡（改名後證號未隨之清空）：證號要丟掉，而且要
+    **揭露**——`discarded_license_medication_ids` 必須點名這一筆。
+
+    這是「候選桶是空的」與「這個藥名根本不在草稿裡」兩件事的分界：
+    - 桶存在但是空的 → 走「未挑選」，不揭露（上一個測試）。使用者面前
+      根本沒有外觀區塊，說「你的挑選被丟棄了」是假的。
+    - 桶不存在（`candidates_by_name.get(name)` 是 None）→ 走「丟棄」，
+      要揭露。使用者確實挑過東西，只是他接著把藥名改成了別的字串。
+      `_resolve_candidate` 的 docstring 把改名列為這條路徑最主要的
+      真實來源。
+
+    這條路徑先前沒有任何測試覆蓋：把 `_resolve_candidate` 的
+    `if bucket is not None and not bucket:` 改成 `if not bucket:`，
+    全檔仍然全綠——但改完之後這一筆會被當成「未挑選」，
+    `discarded_license_medication_ids` 空著、`commit()` 的 WARNING
+    （它自己的註解稱為「後端唯一能觀察到它的地方」）永遠不會響，
+    用戶端瑕疵就此完全隱形。證號一樣不落地，所以不會貼錯照片；
+    掉的是揭露。
+    """
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(
+        RecognizedDrug(name="某藥", candidates=[_candidate(license_number="L1")])
+    )
+    medications = FakeMedicationRepository()
+    service = _service(
+        drafts=drafts,
+        medications=medications,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    result = await service.commit(
+        "D1",
+        "U_FAMILY",
+        _request(
+            # 藥名被改過，草稿裡沒有這個名字；證號卻還是原本那一筆的。
+            CommitDrugItem(name="改過的藥名", frequency_code="QD", license_number="L1")
+        ),
+    )
+
+    assert len(medications.created) == 1
+    created = medications.created[0]
+    assert created.license_number is None
+    assert created.shape == ""
+    assert result.medication_ids == [created.id]
+    # 承重的斷言：丟棄必須被點名，不得靜默。
+    assert result.discarded_license_medication_ids == [created.id]
+
+
+@pytest.mark.asyncio
+async def test_commit_without_choosing_a_license_still_succeeds():
+    """未挑選 SHALL NOT 阻擋提交：該筆以 license_number 為空建立，外觀欄位
+    留空，其餘欄位不受影響（spec「使用者為多候選藥品挑定藥證」場景
+    「使用者未挑選」）。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(
+        RecognizedDrug(
+            name="某藥",
+            candidates=[_candidate(license_number="L1"), _candidate(license_number="L2")],
+        )
+    )
+    medications = FakeMedicationRepository()
+    service = _service(
+        drafts=drafts,
+        medications=medications,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    result = await service.commit(
+        "D1", "U_FAMILY", _request(CommitDrugItem(name="某藥", frequency_code="QD"))
+    )
+
+    assert len(result.medication_ids) == 1
+    created = medications.created[0]
+    assert created.license_number is None
+    assert created.shape == ""
+    assert created.color == ""
+    assert created.score_line == ""
+    assert created.mark_one == ""
+    assert created.mark_two == ""
+    assert created.size == ""
 
 
 @pytest.mark.asyncio

@@ -35,6 +35,7 @@ from app.routers.users.medical import router as medical_router
 from app.routers.users.medications import router as medications_router
 from app.routers.admin.knowledge_reports import router as admin_knowledge_reports_router
 from app.routers.tts.tts import router as tts_router
+from app.routers.drug_appearance.images import router as drug_appearance_router
 
 configure_logging()
 
@@ -156,3 +157,11 @@ app.include_router(
     tags=["Knowledge Reports Admin"],
 )
 app.include_router(tts_router, prefix="/tts")
+# 前綴直接讀 settings，不能像上面 tts_router 那樣寫死字面值：
+# drug_appearance_image_service 組 URL 時就是用這個設定值，寫死會讓兩邊
+# 在改了 env 之後兜不起來（掛載路徑沒變，組出來的 URL 卻變了），
+# 縮圖看似正常產生實際上全部 404，而且不會有任何錯誤訊息。
+app.include_router(
+    drug_appearance_router,
+    prefix="/" + settings.DRUG_APPEARANCE_IMAGE_URL_PATH.strip("/"),
+)

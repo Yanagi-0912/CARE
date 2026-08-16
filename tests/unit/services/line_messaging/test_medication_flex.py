@@ -3,6 +3,7 @@ import inspect
 from linebot.v3.messaging import FlexMessage
 
 from app.services.line_messaging.flex.medication_flex import (
+    MedicationListEntry,
     build_caregiver_alert_flex,
     build_caregiver_missed_summary_flex,
     build_patient_medication_flex,
@@ -185,6 +186,156 @@ _BASELINE_URGENT_REMINDER_CONTENTS = {
             {
                 "type": "text",
                 "text": "您尚未點擊「我已用藥」。請即刻服藥並點擊下方按鈕確認。",
+                "size": "lg",
+                "color": "#555555",
+                "wrap": True,
+                "margin": "md",
+            },
+        ],
+    },
+    "footer": {
+        "type": "box",
+        "layout": "vertical",
+        "paddingAll": "lg",
+        "contents": [
+            {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#2E7D32",
+                "cornerRadius": "md",
+                "paddingAll": "lg",
+                "flex": 1,
+                "action": {
+                    "type": "postback",
+                    "label": "我已用藥",
+                    "data": "action=confirm_medication&log_id=L123",
+                    "displayText": "我已經完成用藥了",
+                },
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "我已用藥",
+                        "color": "#FFFFFF",
+                        "weight": "bold",
+                        "size": "xl",
+                        "align": "center",
+                        "wrap": True,
+                    }
+                ],
+            }
+        ],
+    },
+}
+
+
+# ── 加入藥丸縮圖之前、有純文字藥名時的實際輸出快照 ──────────────────────
+#
+# 上面兩份快照只涵蓋 medication_names 為 None／空清單（藥品區塊整個不出現）的
+# 情況，沒有涵蓋「區塊有出現、但每一列是純文字」的結構——這支模組加入縮圖列
+# 之後，純文字列的寫法是否還跟本功能導入前逐位元組相同，光靠這兩份舊快照證
+# 不出來。這份快照老實從加入縮圖列「之前」的提交（b7af30c^ = 85317f6）擷取：
+#
+#   git worktree add /tmp/task6_baseline 85317f6
+#   cd /tmp/task6_baseline && .venv/bin/python -c "
+#       from app.services.line_messaging.flex.medication_flex import build_patient_medication_flex
+#       build_patient_medication_flex(
+#           log_id='L123', slot_type='morning', scheduled_time='08:00',
+#           medication_names=['脈優', '利尿劑', '阿斯匹靈'],
+#       ).contents.to_dict()
+#   "
+_BASELINE_PATIENT_REMINDER_WITH_PLAIN_NAMES_CONTENTS = {
+    "type": "bubble",
+    "header": {
+        "type": "box",
+        "layout": "vertical",
+        "backgroundColor": "#2E7D32",
+        "paddingAll": "lg",
+        "contents": [
+            {
+                "type": "text",
+                "text": "用藥提醒",
+                "color": "#FFFFFF",
+                "weight": "bold",
+                "size": "xxl",
+                "wrap": True,
+            }
+        ],
+    },
+    "body": {
+        "type": "box",
+        "layout": "vertical",
+        "paddingAll": "xl",
+        "backgroundColor": "#FFFFFF",
+        "spacing": "md",
+        "contents": [
+            {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#EDF5EE",
+                "cornerRadius": "md",
+                "paddingAll": "lg",
+                "spacing": "xs",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "早",
+                        "weight": "bold",
+                        "size": "3xl",
+                        "color": "#1B5E20",
+                        "wrap": True,
+                    },
+                    {
+                        "type": "text",
+                        "text": "服藥時間 08:00",
+                        "size": "lg",
+                        "color": "#1B5E20",
+                        "wrap": True,
+                    },
+                ],
+            },
+            {
+                "type": "box",
+                "layout": "vertical",
+                "backgroundColor": "#F4F6F4",
+                "cornerRadius": "md",
+                "paddingAll": "lg",
+                "spacing": "xs",
+                "margin": "md",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": "本次應服藥品",
+                        "weight": "bold",
+                        "size": "lg",
+                        "color": "#111111",
+                        "wrap": True,
+                    },
+                    {
+                        "type": "text",
+                        "text": "脈優",
+                        "size": "lg",
+                        "color": "#555555",
+                        "wrap": True,
+                    },
+                    {
+                        "type": "text",
+                        "text": "利尿劑",
+                        "size": "lg",
+                        "color": "#555555",
+                        "wrap": True,
+                    },
+                    {
+                        "type": "text",
+                        "text": "阿斯匹靈",
+                        "size": "lg",
+                        "color": "#555555",
+                        "wrap": True,
+                    },
+                ],
+            },
+            {
+                "type": "text",
+                "text": "請於 30 分鐘內服藥，並點擊下方按鈕確認。",
                 "size": "lg",
                 "color": "#555555",
                 "wrap": True,
@@ -442,6 +593,24 @@ def test_patient_reminder_lists_medication_names():
     assert "利尿劑" in body
 
 
+def test_patient_reminder_plain_name_rows_match_pre_thumbnail_baseline():
+    """
+    純文字列（沒有任何一筆帶縮圖）的結構要跟加入縮圖列「之前」逐位元組相同。
+
+    先前的空清單快照只證明「區塊整個不出現」時版面沒變，證不出「區塊有出現、
+    但每一列都是純文字」這條路徑也沒變——`_medication_row_node` 改寫後，
+    純文字分支理論上該是原樣搬過去，這裡跟 85317f6（加入縮圖列之前）誠實
+    擷取出來的輸出逐位元組比對，而不是自己跟自己比。
+    """
+    msg = build_patient_medication_flex(
+        log_id="L123",
+        slot_type="morning",
+        scheduled_time="08:00",
+        medication_names=["脈優", "利尿劑", "阿斯匹靈"],
+    )
+    assert msg.contents.to_dict() == _BASELINE_PATIENT_REMINDER_WITH_PLAIN_NAMES_CONTENTS
+
+
 def test_patient_reminder_medication_list_collapses_overflow_to_one_line():
     """超過顯示上限的藥品收斂為單行計數，形狀比照家屬彙整通知的截斷方式。"""
     names = [f"藥{i}" for i in range(8)]
@@ -457,6 +626,151 @@ def test_patient_reminder_medication_list_collapses_overflow_to_one_line():
     for hidden in names[5:]:
         assert hidden not in rendered
     assert "另有 3 種藥品" in rendered
+
+
+# ── 藥丸縮圖：證號已確定且有照片時，該列改為「縮圖＋藥名」───────────────
+
+
+def test_patient_reminder_row_with_thumbnail_carries_image():
+    """證號已確定且有落地縮圖時，該列要看得到縮圖節點與對應的藥名。"""
+    msg = build_patient_medication_flex(
+        log_id="L123",
+        slot_type="morning",
+        scheduled_time="08:00",
+        medication_names=[
+            MedicationListEntry(name="脈優", image_url="https://img.example.com/a.jpg")
+        ],
+    )
+    med_block = msg.contents.to_dict()["body"]["contents"][1]
+    rows = med_block["contents"][1:]  # 第一個是標題列
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["type"] == "box"
+    assert row["layout"] == "horizontal"
+    image_node = next(c for c in row["contents"] if c["type"] == "image")
+    assert image_node["url"] == "https://img.example.com/a.jpg"
+    text_node = next(c for c in row["contents"] if c["type"] == "text")
+    assert text_node["text"] == "脈優"
+
+
+def test_medication_thumbnail_size_follows_font_size_setting():
+    """
+    縮圖尺寸要跟著使用者的字級設定放大，不能固定鎖在最小尺寸。
+
+    本功能的前提是靠外觀（形狀、顏色）認藥；使用者把字級調大通常是視力需求，
+    若藥名跟著放大、縮圖卻原地不動，等於把「放大字級方便閱讀」的訴求只做了
+    一半——縮圖恰好是這個功能裡最需要放大的那個元素。
+    """
+    entries = [MedicationListEntry(name="脈優", image_url="https://img.example.com/a.jpg")]
+
+    def _image_size(font_size: str) -> str:
+        msg = build_patient_medication_flex(
+            log_id="L1",
+            slot_type="morning",
+            scheduled_time="08:00",
+            medication_names=entries,
+            font_size=font_size,
+        )
+        med_block = msg.contents.to_dict()["body"]["contents"][1]
+        row = med_block["contents"][1]
+        image_node = next(c for c in row["contents"] if c["type"] == "image")
+        return image_node["size"]
+
+    normal_size = _image_size("normal")
+    large_size = _image_size("large")
+    xlarge_size = _image_size("xlarge")
+
+    # 三種字級設定要各自不同，不能有兩種字級共用同一個縮圖尺寸。
+    assert len({normal_size, large_size, xlarge_size}) == 3
+
+
+def test_patient_reminder_mixed_thumbnail_and_text_rows_layout_intact():
+    """同一時段圖文混排是常態：有縮圖的列變成 box，沒有的維持純文字列，兩者並存。"""
+    msg = build_patient_medication_flex(
+        log_id="L123",
+        slot_type="morning",
+        scheduled_time="08:00",
+        medication_names=[
+            MedicationListEntry(name="脈優", image_url="https://img.example.com/a.jpg"),
+            "利尿劑",  # 證號未確定或無落地縮圖，仍以純文字呈現
+        ],
+    )
+    med_block = msg.contents.to_dict()["body"]["contents"][1]
+    rows = med_block["contents"][1:]
+    assert len(rows) == 2
+
+    with_image, without_image = rows
+    assert with_image["type"] == "box"
+    assert any(c["type"] == "image" for c in with_image["contents"])
+
+    assert without_image["type"] == "text"
+    assert without_image["text"] == "利尿劑"
+
+
+def test_urgent_reminder_row_with_thumbnail_carries_image():
+    """二次催促與首刷提醒共用同一套藥品清單區塊，縮圖同樣要出現。"""
+    msg = build_patient_urgent_reminder_flex(
+        log_id="L123",
+        slot_type="noon",
+        scheduled_time="12:00",
+        medication_names=[
+            MedicationListEntry(name="普拿疼", image_url="https://img.example.com/b.jpg")
+        ],
+    )
+    rendered = msg.contents.to_dict()
+    med_block = rendered["body"]["contents"][1]
+    row = med_block["contents"][1]
+    assert row["type"] == "box"
+    image_node = next(c for c in row["contents"] if c["type"] == "image")
+    assert image_node["url"] == "https://img.example.com/b.jpg"
+
+
+def test_patient_reminder_overflow_collapse_stays_text_only_even_with_thumbnails():
+    """收斂成單行計數的那一列不代表任何一張藥證，即使清單裡混著帶縮圖的藥品，
+    這一行本身也絕不能出現縮圖。
+    """
+    entries = [
+        MedicationListEntry(name=f"藥{i}", image_url=f"https://img.example.com/{i}.jpg")
+        for i in range(8)
+    ]
+    msg = build_patient_medication_flex(
+        log_id="L123",
+        slot_type="morning",
+        scheduled_time="08:00",
+        medication_names=entries,
+    )
+    med_block = msg.contents.to_dict()["body"]["contents"][1]
+    rows = med_block["contents"][1:]
+    assert len(rows) == 6  # 5 顯示 + 1 收斂列
+    for shown_row in rows[:5]:
+        assert shown_row["type"] == "box"  # 前 5 筆都帶縮圖
+    last_row = rows[-1]
+    assert last_row["type"] == "text"
+    assert last_row["text"] == "…另有 3 種藥品"
+
+
+def test_caregiver_alert_flex_never_contains_image():
+    """家屬的逾時警報即使帶藥名，也不得出現任何縮圖節點（spec「家屬卡片不含縮圖」）。"""
+    msg = build_caregiver_alert_flex(
+        patient_name="王小明",
+        slot_type="morning",
+        scheduled_time="08:00",
+        medication_names=["脈優", "利尿劑"],
+    )
+    rendered = str(msg.contents.to_dict())
+    # dict 轉字串後圖片節點會是 "'type': 'image'"（Python repr 用單引號）
+    assert "'type': 'image'" not in rendered
+
+
+def test_caregiver_missed_summary_flex_never_contains_image():
+    """錯過時段的彙整通知同樣不帶任何縮圖——它連 medication_names 參數都沒有，
+    這裡仍明確鎖住輸出裡沒有任何圖片節點。
+    """
+    msg = build_caregiver_missed_summary_flex(
+        [_missed("morning", "08:00"), _missed("noon", "12:00", patient_name="王阿嬤")]
+    )
+    rendered = str(msg.contents.to_dict())
+    assert "'type': 'image'" not in rendered
 
 
 def test_urgent_reminder_empty_medication_list_matches_baseline():

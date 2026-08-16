@@ -13,6 +13,7 @@ from app.core.user_font_size import (
 from app.core.user_language import DEFAULT_USER_LANGUAGE, normalize_user_language
 from app.models.medication import (
     TAIPEI_TZ,
+    Medication,
     MedicationLog,
     ensure_aware_utc,
     to_taipei_hm,
@@ -23,12 +24,16 @@ from app.repositories.medication_repository import (
     MedicationRepository,
 )
 from app.services.line_messaging.flex.medication_flex import (
+    MedicationListEntry,
     build_caregiver_alert_flex,
     build_caregiver_missed_summary_flex,
     build_patient_medication_flex,
     build_patient_urgent_reminder_flex,
 )
 from app.services.line_messaging.reply.reply import LineReplier
+from app.services.medication.drug_appearance_image_service import (
+    resolve_drug_appearance_image_url,
+)
 from app.services.users.user_profile_service import UserProfileService
 
 logger = logging.getLogger(__name__)
@@ -45,7 +50,7 @@ DEFAULT_MISFIRE_GRACE_MINUTES = 20
 
 
 class _TickMedicationNameCache:
-    """一個 tick 內、同一階段（T+0 或 T+20）所有待推播 log 共用的藥名查表。
+    """一個 tick 內、同一階段（T+0／T+20／T+30）所有待推播 log 共用的藥品清單查表。
 
     背景：同一時段（例如每天 08:00）常常有多位使用者共用，若每筆 log 各自查一次
     「規則→藥品」，一個 tick 就會是 2 x（待推播 log 數）次序列往返；改成整批查詢後
@@ -54,20 +59,38 @@ class _TickMedicationNameCache:
     misfire grace 的 log 在建立當下就已被靜默為 missed，不會進到這裡）。
 
     刻意延遲到第一次真正要組裝文案時（也就是第一筆 log 的 claim 成功之後）才發出
-    查詢：`get()` 只會被 `_send_patient_reminder`／`_send_urgent_reminder` 呼叫，而
-    它們只在 `_dispatch` 搶到推播權之後才會執行。這保證「claim 必須先於任何藥品
-    查詢」永遠成立——查詢的時機不會提前到迴圈裡第一筆 log 的 claim 之前，之後的
-    log 讀的是已經查好的結果，不會再發任何新查詢，也就不會因為查詢延遲或失敗而
-    影響到任何一筆 log 的搶佔時機。
+    查詢：`get()`／`get_entries()` 只會被 `_send_patient_reminder`／
+    `_send_urgent_reminder`／`_send_caregiver_alert` 呼叫，而它們只在 `_dispatch`
+    搶到推播權之後才會執行。這保證「claim 必須先於任何藥品查詢」永遠成立——查詢
+    的時機不會提前到迴圈裡第一筆 log 的 claim 之前，之後的 log 讀的是已經查好的
+    結果，不會再發任何新查詢，也就不會因為查詢延遲或失敗而影響到任何一筆 log 的
+    搶佔時機。
 
     以 `log.id` 而非 `reminder_id` 當查表的 key：同一個 reminder 理論上可能同時有
     跨日的兩筆 pending log（例如停機補建），用 reminder_id 當 key 會讓其中一筆的
     查詢結果覆蓋掉另一筆，用 log.id 可以完全避免這個邊界情況。
+
+    縮圖 URL 的解析沿用這裡「查規則→查藥品」同一批結果，不是另外的查詢——
+    `_load()` 在組出 `entry_by_id` 的同一個迴圈裡，順便對每筆藥品解析縮圖，因此
+    無論 log 數多寡，縮圖解析也只發生在這固定一批藥品上，不會隨 log 數量增加。
+    T+0／T+20 用藥者提醒需要縮圖（spec「推播的藥品清單得帶出藥丸縮圖」），T+30
+    家屬警報不需要（spec「家屬卡片不含縮圖」）：兩者共用同一份查表，差別只在
+    讀出來時要不要保留 image_url——`get()` 只回藥名（給家屬警報用），
+    `get_entries()` 回帶縮圖 URL 的完整列（給用藥者提醒用）。
     """
 
-    def __init__(self, logs: list["MedicationLog"]) -> None:
+    def __init__(
+        self,
+        logs: list["MedicationLog"],
+        *,
+        resolve_image_url: Callable[[str], Optional[str]] = resolve_drug_appearance_image_url,
+    ) -> None:
         self._logs = logs
-        self._names_by_log_id: Optional[dict[str, list[str]]] = None
+        # 可注入的縮圖解析函式：正式路徑用真正的檔案系統查詢，測試可以換一個
+        # 會丟例外的假函式，驗證「縮圖解析失敗不能讓推播跟著噴掉」
+        # （見 `_resolve_thumbnail`）。
+        self._resolve_image_url = resolve_image_url
+        self._entries_by_log_id: Optional[dict[str, list[MedicationListEntry]]] = None
 
     async def get(
         self,
@@ -76,24 +99,67 @@ class _TickMedicationNameCache:
         reminder_collection: Optional[Any] = None,
         medication_collection: Optional[Any] = None,
     ) -> list[str]:
-        """取得指定 log 的藥名清單；第一次呼叫才會真的發出查詢。
+        """取得指定 log 的藥名清單（不含縮圖）；供家屬警報使用。
 
         `reminder_collection`／`medication_collection` 僅供測試注入假的
         collection；正式路徑一律傳 None，落回 MongoDBManager 的真實連線。
         """
-        if self._names_by_log_id is None:
-            self._names_by_log_id = await self._load(
+        entries = await self.get_entries(
+            log,
+            reminder_collection=reminder_collection,
+            medication_collection=medication_collection,
+        )
+        return [entry.name for entry in entries]
+
+    async def get_entries(
+        self,
+        log: "MedicationLog",
+        *,
+        reminder_collection: Optional[Any] = None,
+        medication_collection: Optional[Any] = None,
+    ) -> list[MedicationListEntry]:
+        """取得指定 log 的藥品清單列（藥名＋縮圖 URL）；供用藥者提醒使用。
+
+        第一次呼叫（不論是這支或 `get`）才會真的發出查詢，之後都讀已經查好的
+        結果，理由見 class docstring。
+        """
+        if self._entries_by_log_id is None:
+            self._entries_by_log_id = await self._load(
                 reminder_collection=reminder_collection,
                 medication_collection=medication_collection,
             )
-        return self._names_by_log_id.get(log.id, [])
+        return self._entries_by_log_id.get(log.id, [])
+
+    def _resolve_thumbnail(self, medication: Medication) -> Optional[str]:
+        """證號已確定時才嘗試解析縮圖 URL。
+
+        `license_number` 為空 SHALL NOT 顯示照片（spec「證號不確定時不得顯示藥丸
+        照片」）——排程器只在這裡呼叫縮圖解析，把關必須設在這裡，不能指望
+        `resolve_image_url` 自己判斷「這個證號是不是已經確定」，它只認檔案存不
+        存在。
+
+        解析本身出例外（例如測試注入的假解析器、或未來實作換成其他來源）不能讓
+        整批藥品清單查詢連坐失敗；退化成沒有縮圖，文字列照常呈現、推播照常送出
+        （spec「照片缺席時的降級」）。
+        """
+        if not medication.license_number:
+            return None
+        try:
+            return self._resolve_image_url(medication.license_number)
+        except Exception:
+            logger.exception(
+                "[MedicationScheduler] Failed to resolve drug appearance thumbnail "
+                "for medication %s",
+                medication.id,
+            )
+            return None
 
     async def _load(
         self,
         *,
         reminder_collection: Optional[Any],
         medication_collection: Optional[Any],
-    ) -> dict[str, list[str]]:
+    ) -> dict[str, list[MedicationListEntry]]:
         reminder_ids = sorted({log.reminder_id for log in self._logs})
         if not reminder_ids:
             return {}
@@ -126,7 +192,7 @@ class _TickMedicationNameCache:
             )
             logs_by_date.setdefault(date_str, []).append(log)
 
-        names_by_log_id: dict[str, list[str]] = {}
+        entries_by_log_id: dict[str, list[MedicationListEntry]] = {}
         for date_str, logs_on_date in logs_by_date.items():
             try:
                 medications = await MedicationRepository.find_active_by_ids(
@@ -137,19 +203,25 @@ class _TickMedicationNameCache:
                     "[MedicationScheduler] Failed to batch-load medications for medication list"
                 )
                 for log in logs_on_date:
-                    names_by_log_id[log.id] = []
+                    entries_by_log_id[log.id] = []
                 continue
 
-            name_by_id = {medication.id: medication.name for medication in medications}
+            entry_by_id = {
+                medication.id: MedicationListEntry(
+                    name=medication.name,
+                    image_url=self._resolve_thumbnail(medication),
+                )
+                for medication in medications
+            }
             for log in logs_on_date:
                 reminder = reminder_by_id.get(log.reminder_id)
                 if not reminder:
-                    names_by_log_id[log.id] = []
+                    entries_by_log_id[log.id] = []
                     continue
-                names_by_log_id[log.id] = [
-                    name_by_id[mid] for mid in reminder.medication_ids if mid in name_by_id
+                entries_by_log_id[log.id] = [
+                    entry_by_id[mid] for mid in reminder.medication_ids if mid in entry_by_id
                 ]
-        return names_by_log_id
+        return entries_by_log_id
 
 
 class MedicationScheduler:
@@ -239,13 +311,15 @@ class MedicationScheduler:
         self, log: MedicationLog, medication_cache: _TickMedicationNameCache
     ) -> bool:
         language, font_size = await self._resolve_display_prefs(log.user_id)
-        medication_names = await medication_cache.get(log)
+        # 用藥者的提醒卡要看得出「哪一顆」，走 get_entries() 帶出縮圖 URL；
+        # 家屬警報只需要藥名，見 _send_caregiver_alert 仍是 get()。
+        medication_entries = await medication_cache.get_entries(log)
         flex_msg = build_patient_medication_flex(
             log_id=log.id,
             slot_type=log.slot_type,
             scheduled_time=to_taipei_hm(log.scheduled_at, default="08:00"),
             disabled=False,
-            medication_names=medication_names,
+            medication_names=medication_entries,
             language=language,
             font_size=font_size,
         )
@@ -255,12 +329,12 @@ class MedicationScheduler:
         self, log: MedicationLog, medication_cache: _TickMedicationNameCache
     ) -> bool:
         language, font_size = await self._resolve_display_prefs(log.user_id)
-        medication_names = await medication_cache.get(log)
+        medication_entries = await medication_cache.get_entries(log)
         urgent_flex = build_patient_urgent_reminder_flex(
             log_id=log.id,
             slot_type=log.slot_type,
             scheduled_time=to_taipei_hm(log.scheduled_at, default="08:00"),
-            medication_names=medication_names,
+            medication_names=medication_entries,
             language=language,
             font_size=font_size,
         )

@@ -521,6 +521,28 @@ def test_commit_endpoint_400_when_slots_required(
     assert "某藥" in response.json()["detail"]
 
 
+def test_commit_endpoint_exposes_discarded_license_medication_ids(
+    override_current_user, prescription_scan_enabled
+):
+    """帶回候選外的證號不再讓整份提交失敗（spec 已修訂），而是 200 成功並在
+    回應中列出哪些藥品的證號被丟棄——路由層只需要把 service 回傳的結果原樣
+    透傳，這裡釘住這個欄位確實會出現在 JSON 回應裡。"""
+    result = PrescriptionCommitResult(
+        medication_ids=["M1"],
+        discarded_license_medication_ids=["M1"],
+    )
+    fake_service = FakePrescriptionScanService(commit_result=result)
+    _override_scan_service(fake_service)
+
+    response = client.post(
+        "/api/medications/prescription-drafts/D1/commit",
+        json={"user_id": "U_TEST_USER", "drugs": []},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["discarded_license_medication_ids"] == ["M1"]
+
+
 def test_confirm_medication_router(override_current_user):
     fake_log = MedicationLog(
         reminder_id="R123",

@@ -116,3 +116,14 @@ class MongoDBManager:
         """
         return cls.get_database()["knowledge_reports"]
 
+    @classmethod
+    def get_knowledge_report_previews_collection(cls):
+        """
+        取得 knowledge_report_previews collection
+
+        內容快照獨立成一個集合而非塞進 knowledge_reports：待審列表每頁回 50 筆，
+        內容放進報告文件會讓回應從幾 KB 變成幾 MB；且快照該過期、報告不該，
+        TTL 索引沒辦法只清掉一個欄位（design.md 決策 2）。
+        """
+        return cls.get_database()["knowledge_report_previews"]
+

@@ -1292,6 +1292,36 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "zh-TW": "網域不在來源白名單內",
         "en": "Domain not in the source whitelist",
     },
+    # --- 核准前的內容預覽 ---
+    # 與上面三個 key 相同的取捨：受眾是 admin 審核頁與 API 錯誤回應，不是 LINE
+    # 使用者，所以只提供 zh-TW 與 en，也不進 REQUIRED_KEYS 的六語硬性要求。
+    "preview.reject.too_many_urls": {
+        "zh-TW": "一次最多只能預覽 {max} 個網址，請減少選取數量後重試。",
+        "en": "At most {max} URL(s) can be previewed at once. Please select fewer.",
+    },
+    "preview.stale.missing": {
+        "zh-TW": "尚未取得內容預覽，請先抓取內容再核准。",
+        "en": "No content preview yet. Fetch the content before approving.",
+    },
+    "preview.stale.expired": {
+        "zh-TW": "內容預覽已逾期，請重新抓取後再核准。",
+        "en": "The content preview has expired. Please fetch it again before approving.",
+    },
+    "preview.stale.superseded": {
+        "zh-TW": "內容預覽已被更新的一份取代，請重新檢視後再核准。",
+        "en": "The content preview has been superseded. Please review the new one.",
+    },
+    "preview.stale.url_missing": {
+        "zh-TW": "以下網址沒有成功的預覽內容，無法核准：{urls}",
+        "en": "The following URL(s) have no successful preview content: {urls}",
+    },
+    "preview.stale.hash_mismatch": {
+        "zh-TW": "以下網址的內容與你檢視的版本不符，請重新檢視後再核准：{urls}",
+        "en": (
+            "The content of the following URL(s) differs from what you reviewed: "
+            "{urls}"
+        ),
+    },
     # --- Flex：服藥提醒／二次催促的藥品清單區塊 ---
     # 適應症等其他欄位一律不進入這裡，見 medication_flex.py。
     "flex.med.medication_list_heading": {

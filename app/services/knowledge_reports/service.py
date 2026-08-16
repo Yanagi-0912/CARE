@@ -11,6 +11,7 @@ from pymongo.errors import DuplicateKeyError
 
 from app.i18n.messages import t
 from app.models.knowledge_report import (
+    ContentPreviewItem,
     IngestJob,
     IngestJobResult,
     KnowledgeReport,
@@ -18,6 +19,7 @@ from app.models.knowledge_report import (
     KnowledgeReportSource,
 )
 from app.repositories.knowledge_report_repository import KnowledgeReportRepository
+from app.services.knowledge_reports.preview_service import ContentPreviewService
 from app.services.rag.ingest_service import IngestService
 from app.services.rag.whitelist import UrlNotAllowedError, UrlPolicy, default_url_policy
 
@@ -37,10 +39,12 @@ class KnowledgeReportService:
         repository: KnowledgeReportRepository,
         ingest_service: Optional[IngestService] = None,
         url_policy: UrlPolicy | None = None,
+        preview_service: Optional[ContentPreviewService] = None,
     ) -> None:
         self._repository = repository
         self._ingest_service = ingest_service
         self._url_policy = url_policy or default_url_policy()
+        self._preview_service = preview_service
 
     @staticmethod
     def _generate_report_id(now: datetime | None = None) -> str:
@@ -153,6 +157,13 @@ class KnowledgeReportService:
         }
         return reports, total, status_counts
 
+    async def get_for_review(self, report_id: str) -> KnowledgeReport:
+        """供審核端取一筆回報；不存在即 404。router 不直接碰 repository。"""
+        report = await self._repository.find_by_report_id(report_id)
+        if report is None:
+            raise HTTPException(status_code=404, detail="Report not found")
+        return report
+
     @staticmethod
     def _is_ingest_in_progress(job: IngestJob | None, now: datetime) -> bool:
         """job 是否仍在進行中。status 為 None 的舊紀錄一律視為已結束。"""
@@ -172,6 +183,8 @@ class KnowledgeReportService:
         selected_urls: list[str] | None = None,
         resolution: str | None = None,
         reviewer_note: str | None = None,
+        preview_id: str | None = None,
+        content_hashes: dict[str, str] | None = None,
     ) -> KnowledgeReport:
         """驗證並登記 ingest 工作後立即回傳；實際 ingest 由 run_ingest 於背景執行。"""
         report = await self._repository.find_by_report_id(report_id)
@@ -226,11 +239,22 @@ class KnowledgeReportService:
         if self._ingest_service is None:
             raise HTTPException(status_code=503, detail="Ingest service not configured")
 
+        # 既有驗證全部通過之後才做預覽綁定：狀態不對、job 還在跑、網址不合格
+        # 這些先擋掉，錯誤訊息才會指向真正的原因而不是「預覽沒準備好」。
+        await self._assert_preview_binding(
+            report_id=report_id,
+            urls=normalized_urls,
+            preview_id=preview_id,
+            content_hashes=content_hashes or {},
+            now=now,
+        )
+
         job = IngestJob(
             selected_urls=normalized_urls,
             results=[],
             status="running",
             started_at=now,
+            preview_id=preview_id,
         )
         # 條件式登記：併發的第二個 approve 會在這裡落空而非各排一個背景工作
         acquired = await self._repository.start_ingest_job(
@@ -253,6 +277,95 @@ class KnowledgeReportService:
         report.updated_at = now
         return report
 
+    @staticmethod
+    def _preview_conflict(code: str, message: str, **extra) -> HTTPException:
+        return HTTPException(
+            status_code=409,
+            detail={"code": code, "message": message, **extra},
+        )
+
+    async def _assert_preview_binding(
+        self,
+        *,
+        report_id: str,
+        urls: list[str],
+        preview_id: str | None,
+        content_hashes: dict[str, str],
+        now: datetime,
+    ) -> None:
+        """核准的對象必須是一份具體的、admin 檢視過的內容快照。
+
+        這是消除 TOCTOU 的驗證端：通過之後即代表呼叫端看過的位元組與稍後寫入
+        向量庫的位元組是同一份。任一項不成立一律 409 並指出是哪一種原因——
+        「逾期」「已被取代」「雜湊不符」對 admin 而言是三件不同的事。
+        """
+        if self._preview_service is None:
+            raise HTTPException(
+                status_code=503, detail="Content preview not configured"
+            )
+
+        if not preview_id:
+            raise self._preview_conflict(
+                "preview_missing", t("preview.stale.missing")
+            )
+
+        snapshot = await self._preview_service.get_snapshot(report_id)
+        if snapshot is None:
+            raise self._preview_conflict(
+                "preview_missing", t("preview.stale.missing")
+            )
+
+        if snapshot.preview_id != preview_id:
+            raise self._preview_conflict(
+                "preview_superseded", t("preview.stale.superseded")
+            )
+
+        expires_at = snapshot.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at <= now:
+            raise self._preview_conflict(
+                "preview_expired", t("preview.stale.expired")
+            )
+
+        items = {item.url: item for item in snapshot.items}
+        missing = [
+            url for url in urls if url not in items or items[url].status != "ok"
+        ]
+        if missing:
+            raise self._preview_conflict(
+                "preview_url_missing",
+                t("preview.stale.url_missing").format(urls="、".join(missing)),
+                urls=missing,
+            )
+
+        mismatched = [
+            url for url in urls if content_hashes.get(url) != items[url].content_hash
+        ]
+        if mismatched:
+            raise self._preview_conflict(
+                "preview_hash_mismatch",
+                t("preview.stale.hash_mismatch").format(urls="、".join(mismatched)),
+                urls=mismatched,
+            )
+
+    async def _snapshot_items(
+        self, report_id: str, preview_id: str | None
+    ) -> dict[str, ContentPreviewItem]:
+        """取本次收錄要用的快照內容，逐 URL 索引。
+
+        快照已被更新的預覽取代（preview_id 不符）或整份消失時回空 dict，讓每個
+        URL 各自記為失敗——絕不改用另一份內容頂替，那份 admin 沒看過。
+        """
+        if self._preview_service is None or not preview_id:
+            return {}
+
+        snapshot = await self._preview_service.get_snapshot(report_id)
+        if snapshot is None or snapshot.preview_id != preview_id:
+            return {}
+
+        return {item.url: item for item in snapshot.items if item.status == "ok"}
+
     async def run_ingest(self, report_id: str) -> KnowledgeReport | None:
         """背景執行 approve 登記的 ingest 工作，並將結果寫回報告。"""
         report = await self._repository.find_by_report_id(report_id)
@@ -266,9 +379,31 @@ class KnowledgeReportService:
             if self._ingest_service is None:
                 raise RuntimeError("Ingest service not configured")
 
+            # 讀核准當下綁定的那份快照。SHALL NOT 重新抓取——重抓就等於把
+            # approve 與收錄之間的時間差原封不動放回來。
+            snapshot_items = await self._snapshot_items(report_id, job.preview_id)
+
             all_ok = True
             for url in job.selected_urls:
-                ingest_result = await self._ingest_service.ingest_url(url)
+                item = snapshot_items.get(url)
+                if item is None:
+                    results.append(
+                        IngestJobResult(
+                            url=url,
+                            status="error",
+                            chunk_count=0,
+                            message="核准所綁定的內容快照已不可用，請重新抓取後再核准",
+                        )
+                    )
+                    all_ok = False
+                    continue
+
+                ingest_result = await self._ingest_service.ingest_content(
+                    url,
+                    item.content,
+                    # 頁面標題只當預設值：庫裡既有的策展來源名優先，不被 <title> 蓋掉
+                    default_source_name=item.title or None,
+                )
                 results.append(
                     IngestJobResult(
                         url=ingest_result.url,

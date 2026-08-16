@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -7,7 +8,12 @@ import pytest
 from fastapi import HTTPException
 from pymongo.errors import DuplicateKeyError
 
-from app.models.knowledge_report import IngestJob, KnowledgeReport
+from app.models.knowledge_report import (
+    ContentPreview,
+    ContentPreviewItem,
+    IngestJob,
+    KnowledgeReport,
+)
 from app.repositories.knowledge_report_repository import KnowledgeReportRepository
 from app.services.knowledge_reports.service import (
     INGEST_JOB_STALE_AFTER,
@@ -19,6 +25,9 @@ from app.services.rag.whitelist import UrlPolicy
 ALLOWED_URL = "https://www.hpa.gov.tw/Pages/Detail.aspx?nodeid=1"
 SECOND_ALLOWED_URL = "https://www.cdc.gov.tw/Category/Page/abc"
 BLOCKED_URL = "https://www.google.com/search?q=test"
+PREVIEW_ID = "PV-abc123"
+SNAPSHOT_CONTENT = "高血壓宜低鈉飲食。\n\n規律量測血壓。"
+SNAPSHOT_HASH = hashlib.sha256(SNAPSHOT_CONTENT.encode()).hexdigest()
 
 
 def _sample_report(**overrides) -> KnowledgeReport:
@@ -60,6 +69,9 @@ def mock_repo() -> MagicMock:
 def mock_ingest() -> AsyncMock:
     ingest = MagicMock()
     ingest.ingest_url = AsyncMock(
+        return_value=IngestResult(status="ok", url=ALLOWED_URL, chunk_count=2)
+    )
+    ingest.ingest_content = AsyncMock(
         return_value=IngestResult(status="ok", url=ALLOWED_URL, chunk_count=2)
     )
     return ingest
@@ -138,13 +150,19 @@ async def test_approve_registers_job_without_ingesting(
     mock_repo: MagicMock, mock_ingest: AsyncMock
 ):
     mock_repo.find_by_report_id.return_value = _sample_report()
-    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
 
     result = await service.approve(
         report_id="KR-20260802-AB12",
         selected_urls=[ALLOWED_URL],
         resolution="已更新",
         reviewer_note="ok",
+        preview_id=PREVIEW_ID,
+        content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
     )
 
     assert result.status == "reviewing"
@@ -162,10 +180,16 @@ async def test_approve_registers_job_without_ingesting(
 @pytest.mark.asyncio
 async def test_run_ingest_success(mock_repo: MagicMock, mock_ingest: AsyncMock):
     mock_repo.find_by_report_id.return_value = _sample_report()
-    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
     await service.approve(
         report_id="KR-20260802-AB12",
         selected_urls=[ALLOWED_URL],
+        preview_id=PREVIEW_ID,
+        content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
     )
 
     result = await service.run_ingest("KR-20260802-AB12")
@@ -177,7 +201,11 @@ async def test_run_ingest_success(mock_repo: MagicMock, mock_ingest: AsyncMock):
     assert result.ingest_job.error is None
     assert result.ingest_job.finished_at is not None
     assert len(result.ingest_job.results) == 1
-    mock_ingest.ingest_url.assert_awaited_once_with(ALLOWED_URL)
+    # 背景收錄改讀快照內容，不再自行抓取
+    mock_ingest.ingest_url.assert_not_awaited()
+    mock_ingest.ingest_content.assert_awaited_once_with(
+        ALLOWED_URL, SNAPSHOT_CONTENT, default_source_name="高血壓防治"
+    )
 
 
 @pytest.mark.asyncio
@@ -185,16 +213,22 @@ async def test_run_ingest_failure_stays_reviewing(
     mock_repo: MagicMock, mock_ingest: AsyncMock
 ):
     mock_repo.find_by_report_id.return_value = _sample_report()
-    mock_ingest.ingest_url.return_value = IngestResult(
+    mock_ingest.ingest_content.return_value = IngestResult(
         status="error",
         url=ALLOWED_URL,
         chunk_count=0,
         message="scrape failed",
     )
-    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
     await service.approve(
         report_id="KR-20260802-AB12",
         selected_urls=[ALLOWED_URL],
+        preview_id=PREVIEW_ID,
+        content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
     )
 
     result = await service.run_ingest("KR-20260802-AB12")
@@ -212,12 +246,18 @@ async def test_run_ingest_crash_marks_failed(
     mock_repo: MagicMock, mock_ingest: AsyncMock
 ):
     mock_repo.find_by_report_id.return_value = _sample_report()
-    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
     await service.approve(
         report_id="KR-20260802-AB12",
         selected_urls=[ALLOWED_URL],
+        preview_id=PREVIEW_ID,
+        content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
     )
-    mock_ingest.ingest_url.side_effect = RuntimeError("boom")
+    mock_ingest.ingest_content.side_effect = RuntimeError("boom")
 
     result = await service.run_ingest("KR-20260802-AB12")
 
@@ -234,7 +274,11 @@ async def test_run_ingest_crash_marks_failed(
 async def test_run_ingest_missing_report_returns_none(
     mock_repo: MagicMock, mock_ingest: AsyncMock
 ):
-    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
 
     assert await service.run_ingest("KR-20260802-NONE") is None
     mock_ingest.ingest_url.assert_not_awaited()
@@ -252,7 +296,11 @@ async def test_approve_rejects_running_job(
             started_at=datetime.now(timezone.utc),
         ),
     )
-    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
 
     with pytest.raises(HTTPException) as exc:
         await service.approve(
@@ -280,11 +328,17 @@ async def test_approve_retries_stale_running_job(
             started_at=stale_started_at,
         ),
     )
-    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
 
     result = await service.approve(
         report_id="KR-20260802-AB12",
         selected_urls=[ALLOWED_URL],
+        preview_id=PREVIEW_ID,
+        content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
     )
 
     assert result.ingest_job is not None
@@ -302,11 +356,17 @@ async def test_approve_retries_failed_job(mock_repo: MagicMock, mock_ingest: Asy
             error="scrape failed",
         ),
     )
-    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
 
     result = await service.approve(
         report_id="KR-20260802-AB12",
         selected_urls=[ALLOWED_URL],
+        preview_id=PREVIEW_ID,
+        content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
     )
 
     assert result.ingest_job is not None
@@ -323,11 +383,17 @@ async def test_approve_allows_legacy_job_without_status(
         status="reviewing",
         ingest_job=IngestJob(selected_urls=[ALLOWED_URL]),
     )
-    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
 
     result = await service.approve(
         report_id="KR-20260802-AB12",
         selected_urls=[ALLOWED_URL],
+        preview_id=PREVIEW_ID,
+        content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
     )
 
     assert result.ingest_job is not None
@@ -339,7 +405,11 @@ async def test_approve_rejects_non_whitelist_url(
     mock_repo: MagicMock, mock_ingest: AsyncMock
 ):
     mock_repo.find_by_report_id.return_value = _sample_report()
-    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
 
     with pytest.raises(HTTPException) as exc:
         await service.approve(
@@ -432,12 +502,15 @@ async def test_approve_registers_normalized_urls(
         repository=mock_repo,
         ingest_service=mock_ingest,
         url_policy=UrlPolicy(allowed_suffixes=("gov.tw",)),
+        preview_service=_preview_service(),
     )
     raw_url = "https://www.hpa.gov.tw/Pages/Detail.aspx?nodeid=1&utm_source=line"
 
     result = await service.approve(
         report_id="KR-20260802-AB12",
         selected_urls=[raw_url],
+        preview_id=PREVIEW_ID,
+        content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
     )
 
     assert result.ingest_job is not None
@@ -448,7 +521,11 @@ async def test_approve_registers_normalized_urls(
 
 @pytest.mark.asyncio
 async def test_approve_not_found(mock_repo: MagicMock, mock_ingest: AsyncMock):
-    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
 
     with pytest.raises(HTTPException) as exc:
         await service.approve(
@@ -466,7 +543,11 @@ async def test_approve_returns_409_when_registration_lost(
     # 併發下另一個請求先取得登記，本次條件式更新落空
     mock_repo.find_by_report_id.return_value = _sample_report()
     mock_repo.start_ingest_job.return_value = False
-    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
 
     with pytest.raises(HTTPException) as exc:
         await service.approve(
@@ -487,11 +568,17 @@ async def test_approve_keeps_existing_notes_when_omitted(
         resolution="第一次結論",
         ingest_job=IngestJob(selected_urls=[ALLOWED_URL], status="failed"),
     )
-    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
 
     result = await service.approve(
         report_id="KR-20260802-AB12",
         selected_urls=[ALLOWED_URL],
+        preview_id=PREVIEW_ID,
+        content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
     )
 
     # 重試不帶備註時不得清空前次寫入的內容
@@ -507,12 +594,18 @@ async def test_approve_overwrites_notes_when_provided(
     mock_repo: MagicMock, mock_ingest: AsyncMock
 ):
     mock_repo.find_by_report_id.return_value = _sample_report(reviewer_note="舊備註")
-    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
 
     result = await service.approve(
         report_id="KR-20260802-AB12",
         selected_urls=[ALLOWED_URL],
         reviewer_note="新備註",
+        preview_id=PREVIEW_ID,
+        content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
     )
 
     assert result.reviewer_note == "新備註"
@@ -524,10 +617,16 @@ async def test_run_ingest_discards_result_when_report_changed(
 ):
     # 期間被拒絕或被重新 approve → 條件式寫回不命中
     mock_repo.find_by_report_id.return_value = _sample_report()
-    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
     await service.approve(
         report_id="KR-20260802-AB12",
         selected_urls=[ALLOWED_URL],
+        preview_id=PREVIEW_ID,
+        content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
     )
     mock_repo.finish_ingest_job.return_value = False
 
@@ -539,10 +638,16 @@ async def test_run_ingest_binds_write_to_its_own_job(
     mock_repo: MagicMock, mock_ingest: AsyncMock
 ):
     mock_repo.find_by_report_id.return_value = _sample_report()
-    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
     started = await service.approve(
         report_id="KR-20260802-AB12",
         selected_urls=[ALLOWED_URL],
+        preview_id=PREVIEW_ID,
+        content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
     )
     assert started.ingest_job is not None
 
@@ -558,13 +663,43 @@ async def test_run_ingest_crash_keeps_partial_results(
     mock_repo: MagicMock, mock_ingest: AsyncMock
 ):
     mock_repo.find_by_report_id.return_value = _sample_report()
-    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+    # 兩個 URL 都要在快照裡且抓取成功，否則會在核准階段就被綁定驗證擋下
+    two_url_snapshot = _ready_snapshot(
+        items=[
+            ContentPreviewItem(
+                url=ALLOWED_URL,
+                status="ok",
+                title="高血壓防治",
+                content=SNAPSHOT_CONTENT,
+                content_hash=SNAPSHOT_HASH,
+                char_count=len(SNAPSHOT_CONTENT),
+            ),
+            ContentPreviewItem(
+                url=SECOND_ALLOWED_URL,
+                status="ok",
+                title="疾管署",
+                content=SNAPSHOT_CONTENT,
+                content_hash=SNAPSHOT_HASH,
+                char_count=len(SNAPSHOT_CONTENT),
+            ),
+        ]
+    )
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(two_url_snapshot),
+    )
     await service.approve(
         report_id="KR-20260802-AB12",
         selected_urls=[ALLOWED_URL, SECOND_ALLOWED_URL],
+        preview_id=PREVIEW_ID,
+        content_hashes={
+            ALLOWED_URL: SNAPSHOT_HASH,
+            SECOND_ALLOWED_URL: SNAPSHOT_HASH,
+        },
     )
     # 第一個成功、第二個炸掉
-    mock_ingest.ingest_url.side_effect = [
+    mock_ingest.ingest_content.side_effect = [
         IngestResult(status="ok", url=ALLOWED_URL, chunk_count=2),
         RuntimeError("boom"),
     ]
@@ -781,18 +916,27 @@ async def test_approve_falls_back_to_user_source_urls(
     mock_repo.find_by_report_id.return_value = _sample_report(
         user_source_urls=[ALLOWED_URL]
     )
-    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
 
     result = await service.approve(
         report_id="KR-20260802-AB12",
         selected_urls=[],
+        preview_id=PREVIEW_ID,
+        content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
     )
 
     assert result.ingest_job is not None
     assert result.ingest_job.selected_urls == [ALLOWED_URL]
 
     await service.run_ingest("KR-20260802-AB12")
-    mock_ingest.ingest_url.assert_awaited_once_with(ALLOWED_URL)
+    mock_ingest.ingest_url.assert_not_awaited()
+    mock_ingest.ingest_content.assert_awaited_once_with(
+        ALLOWED_URL, SNAPSHOT_CONTENT, default_source_name="高血壓防治"
+    )
 
 
 @pytest.mark.asyncio
@@ -800,7 +944,11 @@ async def test_approve_empty_selected_and_user_urls_returns_400(
     mock_repo: MagicMock, mock_ingest: AsyncMock
 ):
     mock_repo.find_by_report_id.return_value = _sample_report(user_source_urls=[])
-    service = KnowledgeReportService(repository=mock_repo, ingest_service=mock_ingest)
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
 
     with pytest.raises(HTTPException) as exc:
         await service.approve(
@@ -810,3 +958,298 @@ async def test_approve_empty_selected_and_user_urls_returns_400(
 
     assert exc.value.status_code == 400
     mock_ingest.ingest_url.assert_not_awaited()
+
+
+# --- 核准綁定預覽快照（tasks 5.2／5.3）-------------------------------------
+
+
+def _preview_service(preview=None) -> MagicMock:
+    service = MagicMock()
+    service.get_snapshot = AsyncMock(return_value=preview if preview is not None else _ready_snapshot())
+    return service
+
+
+def _ready_snapshot(**overrides) -> ContentPreview:
+    now = datetime.now(timezone.utc)
+    data = {
+        "preview_id": PREVIEW_ID,
+        "report_id": "KR-20260802-AB12",
+        "status": "ready",
+        "items": [
+            ContentPreviewItem(
+                url=ALLOWED_URL,
+                status="ok",
+                title="高血壓防治",
+                content=SNAPSHOT_CONTENT,
+                content_hash=SNAPSHOT_HASH,
+                char_count=len(SNAPSHOT_CONTENT),
+            )
+        ],
+        "created_at": now,
+        "expires_at": now + timedelta(minutes=60),
+    }
+    data.update(overrides)
+    return ContentPreview(**data)
+
+
+@pytest.mark.asyncio
+async def test_approve_rejects_when_preview_id_missing(
+    mock_repo: MagicMock, mock_ingest: AsyncMock
+):
+    """沒帶 preview_id 就核准 = 核准一個沒看過的東西，沒有這條後路。"""
+    mock_repo.find_by_report_id.return_value = _sample_report()
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.approve(
+            report_id="KR-20260802-AB12", selected_urls=[ALLOWED_URL]
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["code"] == "preview_missing"
+    mock_repo.start_ingest_job.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_approve_rejects_expired_preview(
+    mock_repo: MagicMock, mock_ingest: AsyncMock
+):
+    mock_repo.find_by_report_id.return_value = _sample_report()
+    now = datetime.now(timezone.utc)
+    expired = _ready_snapshot(
+        created_at=now - timedelta(minutes=180), expires_at=now - timedelta(minutes=120)
+    )
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(expired),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.approve(
+            report_id="KR-20260802-AB12",
+            selected_urls=[ALLOWED_URL],
+            preview_id=PREVIEW_ID,
+            content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["code"] == "preview_expired"
+    mock_repo.start_ingest_job.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_approve_rejects_superseded_preview(
+    mock_repo: MagicMock, mock_ingest: AsyncMock
+):
+    """admin 看的是 v1、快照已經被重抓成 v2 時不得放行。"""
+    mock_repo.find_by_report_id.return_value = _sample_report()
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(_ready_snapshot(preview_id="PV-newer")),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.approve(
+            report_id="KR-20260802-AB12",
+            selected_urls=[ALLOWED_URL],
+            preview_id=PREVIEW_ID,
+            content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["code"] == "preview_superseded"
+
+
+@pytest.mark.asyncio
+async def test_approve_rejects_hash_mismatch(
+    mock_repo: MagicMock, mock_ingest: AsyncMock
+):
+    mock_repo.find_by_report_id.return_value = _sample_report()
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.approve(
+            report_id="KR-20260802-AB12",
+            selected_urls=[ALLOWED_URL],
+            preview_id=PREVIEW_ID,
+            content_hashes={ALLOWED_URL: "0" * 64},
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["code"] == "preview_hash_mismatch"
+    assert ALLOWED_URL in exc_info.value.detail["urls"]
+    mock_repo.start_ingest_job.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_approve_rejects_url_absent_from_preview(
+    mock_repo: MagicMock, mock_ingest: AsyncMock
+):
+    mock_repo.find_by_report_id.return_value = _sample_report()
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.approve(
+            report_id="KR-20260802-AB12",
+            selected_urls=[ALLOWED_URL, SECOND_ALLOWED_URL],
+            preview_id=PREVIEW_ID,
+            content_hashes={ALLOWED_URL: SNAPSHOT_HASH, SECOND_ALLOWED_URL: "x" * 64},
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["code"] == "preview_url_missing"
+    assert SECOND_ALLOWED_URL in exc_info.value.detail["urls"]
+
+
+@pytest.mark.asyncio
+async def test_approve_rejects_url_whose_preview_failed(
+    mock_repo: MagicMock, mock_ingest: AsyncMock
+):
+    mock_repo.find_by_report_id.return_value = _sample_report()
+    failed_item = ContentPreviewItem(
+        url=ALLOWED_URL, status="error", message="firecrawl 掛了"
+    )
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(
+            _ready_snapshot(status="failed", items=[failed_item])
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.approve(
+            report_id="KR-20260802-AB12",
+            selected_urls=[ALLOWED_URL],
+            preview_id=PREVIEW_ID,
+            content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["code"] == "preview_url_missing"
+
+
+@pytest.mark.asyncio
+async def test_approve_records_preview_id_on_ingest_job(
+    mock_repo: MagicMock, mock_ingest: AsyncMock
+):
+    """job 記下核准所綁的 preview_id，背景收錄才能確認用的是同一份快照。"""
+    mock_repo.find_by_report_id.return_value = _sample_report()
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=_preview_service(),
+    )
+
+    result = await service.approve(
+        report_id="KR-20260802-AB12",
+        selected_urls=[ALLOWED_URL],
+        preview_id=PREVIEW_ID,
+        content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
+    )
+
+    assert result.ingest_job is not None
+    assert result.ingest_job.preview_id == PREVIEW_ID
+
+
+@pytest.mark.asyncio
+async def test_run_ingest_uses_snapshot_content_and_never_scrapes(
+    mock_repo: MagicMock, mock_ingest: AsyncMock
+):
+    """消除 TOCTOU 的核心：寫進向量庫的位元組就是 admin 看過的那一份。"""
+    mock_repo.find_by_report_id.return_value = _sample_report()
+    preview_service = _preview_service()
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=preview_service,
+    )
+    await service.approve(
+        report_id="KR-20260802-AB12",
+        selected_urls=[ALLOWED_URL],
+        preview_id=PREVIEW_ID,
+        content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
+    )
+
+    result = await service.run_ingest("KR-20260802-AB12")
+
+    assert result is not None
+    assert result.status == "resolved"
+    mock_ingest.ingest_url.assert_not_awaited()
+    mock_ingest.ingest_content.assert_awaited_once_with(
+        ALLOWED_URL, SNAPSHOT_CONTENT, default_source_name="高血壓防治"
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_ingest_fails_when_snapshot_vanished(
+    mock_repo: MagicMock, mock_ingest: AsyncMock
+):
+    """快照不見了就記為失敗，SHALL NOT 改以重新抓取的內容替代。"""
+    mock_repo.find_by_report_id.return_value = _sample_report()
+    preview_service = _preview_service()
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=preview_service,
+    )
+    await service.approve(
+        report_id="KR-20260802-AB12",
+        selected_urls=[ALLOWED_URL],
+        preview_id=PREVIEW_ID,
+        content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
+    )
+    preview_service.get_snapshot = AsyncMock(return_value=None)
+
+    result = await service.run_ingest("KR-20260802-AB12")
+
+    assert result is not None
+    assert result.status != "resolved"
+    assert result.ingest_job is not None
+    assert result.ingest_job.status == "failed"
+    mock_ingest.ingest_content.assert_not_awaited()
+    mock_ingest.ingest_url.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_ingest_fails_when_snapshot_was_replaced(
+    mock_repo: MagicMock, mock_ingest: AsyncMock
+):
+    """期間快照被重抓取代時，本次收錄綁的那一份已不在，同樣記為失敗。"""
+    mock_repo.find_by_report_id.return_value = _sample_report()
+    preview_service = _preview_service()
+    service = KnowledgeReportService(
+        repository=mock_repo,
+        ingest_service=mock_ingest,
+        preview_service=preview_service,
+    )
+    await service.approve(
+        report_id="KR-20260802-AB12",
+        selected_urls=[ALLOWED_URL],
+        preview_id=PREVIEW_ID,
+        content_hashes={ALLOWED_URL: SNAPSHOT_HASH},
+    )
+    preview_service.get_snapshot = AsyncMock(
+        return_value=_ready_snapshot(preview_id="PV-newer")
+    )
+
+    result = await service.run_ingest("KR-20260802-AB12")
+
+    assert result is not None
+    assert result.ingest_job is not None
+    assert result.ingest_job.status == "failed"
+    mock_ingest.ingest_content.assert_not_awaited()

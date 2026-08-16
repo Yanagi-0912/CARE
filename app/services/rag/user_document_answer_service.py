@@ -9,7 +9,10 @@ from langchain_core.documents import Document
 
 from app.i18n.messages import t
 from app.services.gemini import GeminiService
-from app.services.rag.answer_prompts import build_user_document_prompt
+from app.services.rag.answer_prompts import (
+    build_user_document_prompt,
+    wrap_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +49,7 @@ class UserDocumentAnswerService:
 
         context = "\n\n".join(context_lines)
         messages = build_user_document_prompt().format_messages(
-            question=question, context=context
+            question=question, context=wrap_context(context)
         )
         result = await self.gemini_service.chat_model.ainvoke(messages)
         answer_text = result.content or t("rag.generate_fallback")

@@ -13,6 +13,9 @@ from app.db.redis import RedisManager
 from app.repositories.chat_history_repository import build_chat_history_repository
 from app.repositories.consultation_repository import ConsultationRepository
 from app.repositories.family_tree_repository import FamilyTreeRepository
+from app.repositories.knowledge_report_preview_repository import (
+    KnowledgeReportPreviewRepository,
+)
 from app.repositories.knowledge_report_repository import KnowledgeReportRepository
 from app.repositories.medication_repository import (
     MedicationRepository,
@@ -31,6 +34,7 @@ from app.services.medication.prescription_scan_service import PrescriptionScanSe
 from app.services.gemini import GeminiService
 from app.services.guardrail import GuardrailService
 from app.services.history.history_service import LineMessageHistoryService
+from app.services.knowledge_reports.preview_service import ContentPreviewService
 from app.services.knowledge_reports.service import KnowledgeReportService
 from app.services.liff.auth_service import LiffAuthApplicationService
 from app.services.liff.jwt_service import AppJwtService
@@ -187,10 +191,25 @@ if _firecrawl_client is not None and settings.MONGODB_URI and settings.MONGODB_C
     )
 
 _knowledge_report_repository = KnowledgeReportRepository()
+_knowledge_report_preview_repository = KnowledgeReportPreviewRepository()
+# 沒有 Firecrawl 就沒有預覽可抓；服務為 None 時預覽端點回 503，而 approve 的
+# 快照綁定驗證仍然生效（沒有預覽就核准不了），不會退回舊的重抓路徑。
+_content_preview_service = None
+if _firecrawl_client is not None:
+    _content_preview_service = ContentPreviewService(
+        repository=_knowledge_report_preview_repository,
+        web_client=_firecrawl_client,
+        ttl_minutes=settings.KNOWLEDGE_PREVIEW_TTL_MINUTES,
+        max_urls=settings.KNOWLEDGE_PREVIEW_MAX_URLS,
+        return_max_chars=settings.KNOWLEDGE_PREVIEW_RETURN_MAX_CHARS,
+        url_policy=default_url_policy(),
+    )
+
 _knowledge_report_service = KnowledgeReportService(
     repository=_knowledge_report_repository,
     ingest_service=_ingest_service,
     url_policy=default_url_policy(),
+    preview_service=_content_preview_service,
 )
 configure_knowledge_report_tool(_knowledge_report_service)
 
@@ -512,6 +531,13 @@ def get_jwt_service() -> AppJwtService:
 
 def get_knowledge_report_service() -> KnowledgeReportService:
     return _knowledge_report_service
+
+
+def get_content_preview_service() -> ContentPreviewService:
+    """核准前的內容預覽服務；未設定 Firecrawl 時整條預覽路徑不可用。"""
+    if _content_preview_service is None:
+        raise HTTPException(status_code=503, detail="Content preview not configured")
+    return _content_preview_service
 
 
 def get_manual_report_quota() -> int:

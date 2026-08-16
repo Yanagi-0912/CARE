@@ -116,12 +116,17 @@ class FirecrawlClient:
         # （design.md Decision 8 的 fail-open，由呼叫端 log 並決定續行）。
         metadata = data.get("metadata")
         final_url: str | None = None
+        title = ""
         if isinstance(metadata, dict):
             raw_final_url = metadata.get("url") or metadata.get("sourceURL")
             if raw_final_url:
                 final_url = str(raw_final_url)
+            # 標題拿不到就留空字串；它只是 source_name 的預設值，缺了不影響抓取
+            raw_title = metadata.get("title") or metadata.get("ogTitle")
+            if raw_title:
+                title = str(raw_title).strip()
 
-        return ScrapedPage(text=text, final_url=final_url)
+        return ScrapedPage(text=text, final_url=final_url, title=title)
 
     async def scrape(self, url: str) -> str:
         return (await self.scrape_page(url)).text

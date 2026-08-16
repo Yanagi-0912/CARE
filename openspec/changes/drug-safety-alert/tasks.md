@@ -15,16 +15,16 @@
 
 ## 2. 判定規則（純函式，無 I/O）
 
-- [ ] 2.1 新增 `app/services/safety/risk_rules.py`，模組內 SHALL NOT 有任何 I/O、類別或模組層級狀態
-- [ ] 2.2 實作 `detect_foreign_scripts(text: str) -> list[str]`：以 Unicode 區間偵測日文假名（`぀-ゟ`、`゠-ヿ`）、韓文（`가-힯`）、泰文（`฀-๿`）。拉丁字母 SHALL NOT 列入
-- [ ] 2.3 實作 `assess(mention: DrugMention, foreign_scripts: list[str]) -> RiskLevel`，依 spec「風險判定為藥證庫與取得訊號的複合結果」的五條規則
-- [ ] 2.4 實作合法調劑包裝規則：`dispensed_package_markers` 齊備時 `channel` 視為 `medical_institution`，且 `low` 的項目不送訊息。SHALL NOT 影響 `high` 的判定
-- [ ] 2.5 實作 `looks_drug_related(text: str, catalog: DrugCatalogService) -> bool`：小型關鍵詞集合加上藥證庫 n-gram 候選命中。藥證庫**以參數傳入**，SHALL NOT 於模組載入時讀檔
-- [ ] 2.6 實作 `normalize_drug_key(name: str) -> str`，重用 `DrugCatalogService` 既有的正規化，SHALL NOT 另寫一套
-- [ ] 2.7 `tests/unit/services/safety/test_risk_rules.py`（新增）：`detect_foreign_scripts` 的表格測試，含「含平假名 → `ja`」「含片假名 → `ja`」「`LIPITOR 10mg` → 空」「純中文 → 空」「含韓文 → `ko`」
-- [ ] 2.8 `tests/unit/services/safety/test_risk_rules.py` 以 table-driven 窮舉 2.3 的五條規則，**必含指標案例**「合利他命強効錠 EX PLUS + 藥證庫命中 + 日文字符集 → `high`」「藥證庫命中 + 無訊號 → `none`」「藥證庫未命中 + 無訊號 → `low`」
-- [ ] 2.9 `tests/unit/services/safety/test_risk_rules.py` 補 2.4：「藥袋 OCR + 其中一個藥名未命中 → 不送訊息」「調劑包裝訊號 + 日文字符集 → 仍為 `high`」
-- [ ] 2.10 `tests/unit/services/safety/test_risk_rules.py` 補 2.5 的擋下案例（日常問候、天氣、行程）與命中案例（含藥名、含「代購」「保健食品」）
+- [x] 2.1 新增 `app/services/safety/risk_rules.py`，模組內 SHALL NOT 有任何 I/O、類別或模組層級狀態
+- [x] 2.2 實作 `detect_foreign_scripts(text: str) -> list[str]`：以 Unicode 區間偵測日文假名（`぀-ゟ`、`゠-ヿ`）、韓文（`가-힯`）、泰文（`฀-๿`）。拉丁字母 SHALL NOT 列入
+- [x] 2.3 實作 `assess(mention: DrugMention, foreign_scripts: list[str]) -> RiskLevel`，依 spec「風險判定為藥證庫與取得訊號的複合結果」的五條規則
+- [x] 2.4 實作合法調劑包裝規則：`dispensed_package_markers` 齊備時 `channel` 視為 `medical_institution`，且 `low` 的項目不送訊息。SHALL NOT 影響 `high` 的判定
+- [x] 2.5 實作 `looks_drug_related(text: str, catalog: DrugCatalogService) -> bool`：小型關鍵詞集合加上藥證庫 n-gram 候選命中。藥證庫**以參數傳入**，SHALL NOT 於模組載入時讀檔
+- [x] 2.6 實作 `normalize_drug_key(name: str) -> str`，重用 `DrugCatalogService` 既有的正規化，SHALL NOT 另寫一套
+- [x] 2.7 `tests/unit/services/safety/test_risk_rules.py`（新增）：`detect_foreign_scripts` 的表格測試，含「含平假名 → `ja`」「含片假名 → `ja`」「`LIPITOR 10mg` → 空」「純中文 → 空」「含韓文 → `ko`」
+- [x] 2.8 `tests/unit/services/safety/test_risk_rules.py` 以 table-driven 窮舉 2.3 的五條規則，**必含指標案例**「合利他命強効錠 EX PLUS + 藥證庫命中 + 日文字符集 → `high`」「藥證庫命中 + 無訊號 → `none`」「藥證庫未命中 + 無訊號 → `low`」
+- [x] 2.9 `tests/unit/services/safety/test_risk_rules.py` 補 2.4：「藥袋 OCR + 其中一個藥名未命中 → 不送訊息」「調劑包裝訊號 + 日文字符集 → 仍為 `high`」
+- [x] 2.10 `tests/unit/services/safety/test_risk_rules.py` 補 2.5 的擋下案例（日常問候、天氣、行程）與命中案例（含藥名、含「代購」「保健食品」）
 
 ## 3. 抽取服務
 

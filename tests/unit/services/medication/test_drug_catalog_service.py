@@ -75,7 +75,41 @@ def test_same_name_matches_when_threshold_is_lowered():
     match = _service(threshold=0.5).match("脈定錠5毫克")
 
     assert match is not None
-    assert match.license_number == "衛署藥製字第000001號"
+
+
+def test_fuzzy_only_match_verifies_the_name_but_never_pins_a_license():
+    """模糊比對只驗證藥名，永遠不確定是哪一張藥證。
+
+    「脈定錠5毫克」在藥證庫裡一個字面命中都沒有（不是任何鍵、不是任何鍵的
+    子字串、也不含任何鍵），只是跟「脈優錠5毫克」長得像。這種命中足以支撐
+    「模型大概只讀錯一個字，藥名是真的」——這正是模糊比對存在的理由——卻
+    完全不足以指認品項：實測 6,000 筆「真實品名替換一個字」的查詢，修正前
+    有 0.17%（替換數字時 1.6%）比到**同廠牌不同劑量**的另一張藥證且釘上
+    證號，例如「倍理通持續性藥效錠1毫克」→「倍理通持續性藥效錠9毫克」
+    （score 0.917）。證號一釘就解析得出縮圖，長輩會看到一張錯的藥丸照片，
+    而畫面上沒有任何東西能讓他發現不對——貼錯照片比不貼照片危險。
+
+    候選也一併留空：候選機制的安全性建立在「候選皆受藥名約束，錯的候選仍
+    是同名藥品」（design.md 的 Risks），模糊路徑上的候選按定義是別的藥名，
+    這個前提不成立。
+    """
+    match = _service(threshold=0.5).match("脈定錠5毫克")
+
+    assert match is not None, "藥名仍須驗證通過——這是模糊比對唯一的用途"
+    assert match.license_number is None
+    assert match.candidates == []
+
+
+def test_fuzzy_match_still_marks_the_name_as_verified_for_confidence():
+    """釘住「名稱信心度不因模糊路徑不給證號而降級」。
+
+    信心度只看 `match()` 是否為 None（見 `_verify_against_catalog`），
+    因此模糊回收錯讀藥名的能力必須原封不動——本次修正放掉的只有身分。
+    """
+    service = _service(threshold=0.5)
+
+    assert service.match("脈定錠5毫克") is not None
+    assert service.match("這絕對不是一個藥名") is None
 
 
 def test_empty_name_does_not_match():
@@ -355,7 +389,8 @@ def _brute_force_match(
             best_key, best_score = k, score
     if best_key is None or best_score < threshold:
         return None
-    return resolve(by_key[best_key], best_score)
+    # 模糊命中一律不釘證號、不帶候選，見 `_match_by_fuzzy`。
+    return DrugCatalogMatch(None, "", "", best_score, [])
 
 
 def test_index_produces_same_results_as_brute_force_scan():
@@ -419,9 +454,10 @@ def test_index_produces_same_results_as_brute_force_scan():
 
 # ── 證號唯一才可信（決策 1）───────────────────────────────────────────
 #
-# 全庫實測：112,230 個正規化鍵裡有 10,766 個對應到不只一張藥證，涉及
-# 31,387 張（全庫 47%）。以下用「葉酸」模擬這種碰撞：兩張不同藥證的
-# 品名正規化後完全相同。
+# 全庫實測：112,228 個正規化鍵裡有 10,765 個對應到不只一張藥證，涉及
+# 21,250 張不重複藥證（全庫 32.0%；先前寫的「31,387 張、全庫 47%」是把
+# 碰撞鍵上的出現次數當成不重複藥證張數重複計了）。以下用「葉酸」模擬這種
+# 碰撞：兩張不同藥證的品名正規化後完全相同。
 
 FOLIC_ACID_A = DrugCatalogEntry(license_number="衛署藥製字第040001號", name_zh="葉酸")
 FOLIC_ACID_B = DrugCatalogEntry(license_number="衛署藥輸字第040002號", name_zh="葉酸")

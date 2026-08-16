@@ -127,11 +127,13 @@ class _ResolvedCandidate:
     """`_resolve_candidate` 的回傳值。
 
     `license_number` 與 `candidate` 分開追蹤，是因為「這筆藥最終該落地的
-    證號」跟「有沒有候選外觀資料可用」是兩件事：舊式草稿（`candidates`
-    為空、只有 `license_number`，見 `_candidates_by_name`）校驗通過時，
-    證號要保留，但沒有候選物件可以取外觀欄位，這時 `candidate` 是
-    None、`license_number` 卻不是。`discarded` 標記這筆挑選是否因為不在
-    候選清單內而被丟棄，供 `commit()` 記錄與回報，不能靜默發生。
+    證號」跟「有沒有候選外觀資料可用」是兩件事：證號落地時一定伴隨一個
+    真正的 `DrugCandidate`（外觀欄位由它帶入），沒挑選或挑選被丟棄時
+    兩者一起是 None——**不存在「有證號但沒有候選物件」的組合**，那正是
+    舊索引任意挑一張藥證留下的形狀，會讓證號單獨解析出一張沒有任何外觀
+    文字能佐證的照片，見 `_candidates_by_name`。
+    `discarded` 標記這筆挑選是否因為不在候選清單內而被丟棄，供 `commit()`
+    記錄與回報，不能靜默發生。
     """
 
     license_number: Optional[str]
@@ -415,7 +417,7 @@ class PrescriptionScanService:
     @staticmethod
     def _candidates_by_name(
         drugs: list[RecognizedDrug],
-    ) -> dict[str, dict[str, Optional[DrugCandidate]]]:
+    ) -> dict[str, dict[str, DrugCandidate]]:
         """把草稿裡每一筆辨識藥品的候選清單，整理成「藥名 → {證號: 候選}」，
         供 `_resolve_candidate` 查詢使用。
 
@@ -428,27 +430,32 @@ class PrescriptionScanService:
         已經收窄過的清單悄悄擴回聯集，等於讓收窄失效——修改前務必先確認
         候選是否仍可安全合併。
 
-        候選清單為空的藥品（本次 candidates 欄位上線前就存在的草稿，讀回時
-        該欄位預設為空清單，見 `_resolve_candidate` 對舊式草稿的相容說明）
-        額外把既有的 `license_number` 登記為一個合法選項、值為 None——沒有
-        候選物件可用，因此沒有外觀資料，但這仍是候選模型導入之前唯一存在
-        過的「這個藥名對應到哪張證號」的紀錄，同一份 ground truth，只是還
-        沒有候選清單這個表達方式。
+        **合法選項只來自 `drug.candidates`，不含 `drug.license_number`。**
+        曾經在候選清單為空時額外把既有的 `license_number` 登記成合法選項，
+        理由是「那是候選模型導入前的同一份 ground truth」。那個理由是錯的：
+        本次部署前的 `match()` 在正規化鍵碰撞時回傳的是**該鍵上 N 張藥證裡
+        任意的一張**（`setdefault` 只留得下第一筆），而不是驗證過的答案——
+        「感冒液」這種鍵一次就有 41 張。那個任意值正是本 change 要消滅的
+        4.8% 錯配，把它放行等於讓舊索引的瑕疵繞過新的安全邊界，而且它會在
+        讀取時由證號單獨解析出縮圖，畫面上沒有任何外觀文字能跟它牴觸——
+        長輩只會看到一張沒有東西反駁的錯照片。
+        代價是部署前 `PRESCRIPTION_DRAFT_TTL_MINUTES` 內掃描的草稿沒有照片，
+        這正是 spec「照片缺席時的降級」規定的安全退化方向。
         """
-        by_name: dict[str, dict[str, Optional[DrugCandidate]]] = {}
+        by_name: dict[str, dict[str, DrugCandidate]] = {}
         for drug in drugs:
+            # 每個藥名都先建一個（可能是空的）桶：空桶跟「這個藥名根本不在
+            # 草稿裡」是兩件不同的事，`_resolve_candidate` 靠這個差別區分
+            # 「沒得挑」與「挑了清單外的值」。
             bucket = by_name.setdefault(drug.name, {})
-            if drug.candidates:
-                for candidate in drug.candidates:
-                    bucket[candidate.license_number] = candidate
-            elif drug.license_number:
-                bucket.setdefault(drug.license_number, None)
+            for candidate in drug.candidates:
+                bucket[candidate.license_number] = candidate
         return by_name
 
     @staticmethod
     def _resolve_candidate(
         item: CommitDrugItem,
-        candidates_by_name: dict[str, dict[str, Optional[DrugCandidate]]],
+        candidates_by_name: dict[str, dict[str, DrugCandidate]],
     ) -> _ResolvedCandidate:
         """決定這筆藥最終該落地的證號、外觀候選，以及挑選是否被丟棄。
 
@@ -456,22 +463,30 @@ class PrescriptionScanService:
         沒有候選可用——挑選是附加價值，不是提交的必要條件（spec「使用者
         為多候選藥品挑定藥證」）。
 
-        挑選了卻在候選清單裡查不到——藥名從未通過校驗、候選清單裡沒有這個
-        證號，或藥名已被改成候選清單之外的字串——SHALL NOT 拒絕整份提交
-        （spec「提交時接受使用者挑定的藥證」修訂後的理由：候選外的證號實務
-        上只來自用戶端瑕疵，或使用者改名後證號未隨之清空，兩者都不該讓
-        使用者連同已核對過的其他藥品一併失去）。這裡改為丟棄，回傳
-        `discarded=True`，交由 `commit()` 記錄並在回應中揭露——丟棄不能
-        是靜默的。
+        挑選了卻在候選清單裡查不到——候選清單裡沒有這個證號，或藥名已被
+        改成候選清單之外的字串——SHALL NOT 拒絕整份提交（spec「提交時接受
+        使用者挑定的藥證」修訂後的理由：候選外的證號實務上只來自用戶端
+        瑕疵，或使用者改名後證號未隨之清空，兩者都不該讓使用者連同已核對
+        過的其他藥品一併失去）。這裡改為丟棄，回傳 `discarded=True`，交由
+        `commit()` 記錄並在回應中揭露——**丟棄的是使用者做過的挑選，不能
+        靜默發生**。
 
-        查得到時，若對應到一個真正的 `DrugCandidate`，證號與外觀資料一併
-        採用；若只在 `_candidates_by_name` 為舊式草稿建立的相容項目查到
-        （值是 None），證號一樣採用，但沒有外觀資料。
+        但「這個藥名的候選清單是空的」是另一回事，走的是「未挑選」而不是
+        「丟棄」：核對畫面在候選為空時整段外觀區塊都不呈現（見 LIFF 的
+        `DrugCandidateSection`），使用者根本沒有東西可挑，用戶端回傳的
+        證號只是把草稿裡既有的值原樣送回來。這種情形最主要的來源是本次
+        部署前寫入的舊草稿（`candidates` 欄位當時還不存在），那個證號是
+        舊索引在鍵碰撞時任意挑的一張，不可信、必須丟掉（見
+        `_candidates_by_name`），但對使用者揭露「你的挑選被丟棄了」是假的
+        ——他沒有挑過任何東西。因此靜默落成空證號，等同 spec 的「未挑選」。
         """
         if not item.license_number:
             return _ResolvedCandidate(license_number=None, candidate=None, discarded=False)
-        bucket = candidates_by_name.get(item.name, {})
-        if item.license_number not in bucket:
+        bucket = candidates_by_name.get(item.name)
+        if bucket is not None and not bucket:
+            # 這個藥名在草稿裡，但一張候選都沒有——沒得挑，見上面的說明。
+            return _ResolvedCandidate(license_number=None, candidate=None, discarded=False)
+        if bucket is None or item.license_number not in bucket:
             return _ResolvedCandidate(license_number=None, candidate=None, discarded=True)
         return _ResolvedCandidate(
             license_number=item.license_number,

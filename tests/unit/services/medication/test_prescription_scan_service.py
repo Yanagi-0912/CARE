@@ -1386,12 +1386,24 @@ async def test_commit_discards_one_drugs_license_while_the_rest_commit_normally(
 
 
 @pytest.mark.asyncio
-async def test_commit_accepts_the_pre_migration_license_number_when_a_legacy_draft_has_no_candidates():
-    """Fix 2：本次部署前就存在的草稿，讀回時 RecognizedDrug.candidates 是
-    空清單（欄位在那之前不存在，pydantic 補上預設值）——但 license_number
-    當時已經由唯一命中的 match() 決定過，是候選模型導入之前唯一存在過的
-    「這個藥名對應到哪張證號」紀錄，同一份 ground truth，只是還沒有候選
-    清單這個表達方式，不該因為候選清單是空的就把它當成候選外的值丟棄。
+async def test_commit_drops_the_pre_migration_license_number_when_a_legacy_draft_has_no_candidates():
+    """本次部署前就存在的草稿，讀回時 RecognizedDrug.candidates 是空清單
+    （欄位在那之前不存在，pydantic 補上預設值），只留著一個 license_number。
+    **那個證號必須被丟掉。**
+
+    先前這裡放行它，理由寫的是「同一份 ground truth，只是還沒有候選清單
+    這個表達方式」。那個理由是錯的：部署前的 `match()` 在正規化鍵碰撞時，
+    索引以 `setdefault` 只留得下第一筆，回傳的是那個鍵上 N 張藥證裡**任意
+    的一張**（「感冒液」一個鍵就有 41 張），而不是驗證過的答案——那正是本
+    change 要消滅的 4.8% 錯配。放行它等於讓舊索引的瑕疵繞過新的安全邊界，
+    而且讀取時證號會單獨解析出縮圖，畫面上沒有任何外觀文字能跟它牴觸，
+    長輩只會看到一張沒有東西反駁的錯照片。
+
+    丟棄不列入 `discarded_license_medication_ids`：核對畫面在候選為空時
+    整段外觀區塊都不呈現，使用者根本沒有東西可挑，用戶端只是把草稿裡既有
+    的值原樣送回來。告訴他「你的挑選被丟棄了」是假的，這是 spec 的
+    「未挑選」而不是「丟棄」。代價是部署前 TTL window 內的草稿沒有照片，
+    正是 spec「照片缺席時的降級」規定的方向。
 
     直接用一份「沒有 candidates 鍵」的原始 dict 餵給 `PrescriptionDraft(
     **doc)`，模擬從 Mongo 讀回舊文件、pydantic 以預設值補上空清單的真實
@@ -1444,12 +1456,17 @@ async def test_commit_accepts_the_pre_migration_license_number_when_a_legacy_dra
         ),
     )
 
+    # 提交照常成功——照片是附加價值，舊草稿不得因此被拒絕。
     assert len(medications.created) == 1
     created = medications.created[0]
-    assert created.license_number == "衛署藥製字第000001號"
+    # 舊索引任意挑出來的證號不得落地，落地了就會單獨解析出一張錯的縮圖。
+    assert created.license_number is None
     # 沒有候選物件可用（舊式草稿沒有留下外觀資料），外觀欄位維持空。
     assert created.shape == ""
+    # 使用者從來沒有挑過任何東西，不能對他宣稱「你的挑選被丟棄了」。
     assert result.discarded_license_medication_ids == []
+    # 其餘欄位不受影響：這顆 QD 藥照常連結到提醒。
+    assert len(result.reminder_ids) == 1
 
 
 @pytest.mark.asyncio

@@ -24,7 +24,9 @@
    字串」——實測 '普拿疼' 對 '普拿疼錠500毫克' 只有 0.500——含容比對
    繞過這個問題：直接檢查子字串關係。）
 2. 模糊比對：完全比對與含容比對都沒有任何命中時，對候選做
-   SequenceMatcher，取門檻以上的最高分對應的鍵。
+   SequenceMatcher，取門檻以上的最高分對應的鍵。**模糊命中只用來驗證
+   藥名，永遠不確定身分**：回傳的 `license_number` 一律為 None、
+   `candidates` 一律為空，理由見 `_match_by_fuzzy`。
 
 含容比對與模糊比對的候選集合都來自同一份字元 n-gram 反向索引（建構子
 裡建一次），不再對全部鍵做線性掃描——這是修正「模糊比對未命中時卡住
@@ -55,6 +57,12 @@ reverse 命中只能用來**拆掉**已經成立的唯一性（跟 exact 或 for
 湊在一起讓候選變多，例如「潔毒注射液」命中單獨掛證的「注射液」），
 不能單獨**建立**驗證結果：沒有 exact、也沒有 forward 命中時，即使
 reverse 命中非空，`match()` 仍回傳 None，見該方法的判斷式。
+
+同一把尺量下去，**模糊命中的證據力比 reverse 更弱**：查詢字串在全庫
+連一個字面命中都沒有，只是「長得像」某個鍵。它足以支撐藥名驗證（這正
+是模糊比對存在的理由：把模型讀錯一個字的藥名救回來），但完全不足以
+指認身分——所以模糊路徑一律不回傳 `license_number`、也不回傳候選，
+見 `_match_by_fuzzy`。
 """
 
 import json
@@ -193,8 +201,10 @@ class DrugCatalogService:
         self._entries = list(entries)
         self._threshold = threshold
         # 正規化後的鍵 → { license_number → 條目 }。同一條目的中英文品名
-        # 各佔一個鍵。實測全庫 66,478 筆藥證產生 112,230 個鍵，其中 10,766
-        # 個鍵對應到不只一張藥證（涉及全庫 47% 的藥證，見模組文件），
+        # 各佔一個鍵。實測全庫 66,478 筆藥證產生 112,228 個鍵（已扣掉下面
+        # 排除的純標點鍵），其中 10,765 個鍵對應到不只一張藥證，涉及 21,250
+        # 張不重複藥證（**全庫 32.0%**，不是先前寫的 47%——那個數字把碰撞
+        # 鍵上的「鍵×藥證」出現次數當成藥證張數重複計了），
         # 用 setdefault 只留第一筆會讓其餘藥證永遠比對不到——這裡改成
         # 集合，讓碰撞的每一筆都保留、都可觸達；「保留多筆」跟「回傳哪一筆」
         # 是兩件事，後者留給 `match()` 依候選數量決定（見 `_resolve`）。
@@ -471,7 +481,25 @@ class DrugCatalogService:
 
         if best_key is None or best_score < self._threshold:
             return None
-        return self._resolve(self._by_key[best_key].values(), best_score)
+        # 模糊命中只證明「這個字串很像某個真實藥名」，不證明「這個字串**是**
+        # 一個真實藥名」——它在藥證庫裡一個字面命中都沒有。依模組文件開頭
+        # 那條同樣的規則（沒有證明查詢字串是真實品名的命中，不得用來確定
+        # 身分），這裡一律不釘證號、也不帶候選：
+        # - 不釘證號：實測 600 個「真實藥名替換一個中文字」的查詢，有 0.3%
+        #   模糊比到「同廠牌不同劑量」的另一張藥證（'脂瑞妥錠10/20毫克' →
+        #   '脂瑞妥錠10/10毫克'，score 0.909），那是另一顆藥。證號一釘就
+        #   解析得出縮圖，推播與清單會貼上一張錯的藥丸照片，而畫面上沒有
+        #   任何東西能讓長輩發現不對——貼錯照片比不貼照片危險。
+        # - 不帶候選：候選機制的安全性建立在「候選皆受藥名約束，錯的候選
+        #   仍是同名藥品」（design.md 的 Risks），使用者是在同名藥品之間
+        #   挑。模糊路徑上的候選按定義就是**別的藥名**，這個前提不成立，
+        #   不能拿來給使用者挑。
+        # 名稱驗證完全不受影響：`_verify_against_catalog` 只看 `match()`
+        # 是否為 None（prescription_scan_service.py），模糊比對回收錯讀
+        # 藥名的能力原封不動保留，這裡放掉的只有「是哪一張藥證」。
+        return DrugCatalogMatch(
+            license_number=None, name_zh="", name_en="", score=best_score, candidates=[]
+        )
 
     @staticmethod
     def _resolve(entries: Iterable[DrugCatalogEntry], score: float) -> DrugCatalogMatch:

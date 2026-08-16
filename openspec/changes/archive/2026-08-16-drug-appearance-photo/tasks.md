@@ -67,5 +67,5 @@
 - [x] 8.1 後端在乾淨 worktree 執行 `import app.main` 與 `pytest -q` 全綠
 - [x] 8.2 `CARE-LIFF` `npm run test` 與 `npm run build` 全綠
 - [x] 8.3 `openspec validate drug-appearance-photo --strict` 通過
-- [ ] 8.4 實際推一則帶縮圖的提醒到 LINE，確認渲染結果，回填 design.md 的 Open Question（縮圖長寬比）
+- [x] 8.4 實際推一則帶縮圖的提醒到 LINE，確認渲染結果，回填 design.md 的 Open Question（縮圖長寬比）
 - [x] 8.5 以真實藥袋辨識結果觀察候選集合大小分布，回填 design.md 的 Open Question（候選呈現上限與排序準則）

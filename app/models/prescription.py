@@ -134,8 +134,13 @@ class CommitDrugItem(BaseModel):
     # （見 spec「使用者為多候選藥品挑定藥證」：未挑選 SHALL NOT 阻擋提交）。
     # 提交階段不會拿（可能已被使用者改過的）藥名重新比對出新證號——那應該是
     # 下一次掃描的責任；但會反過來驗證帶回的值是否落在草稿當初那筆藥品的
-    # 候選清單內，候選清單是這條路徑上唯一的 ground truth，不在清單內的值
-    # 一律拒絕且不寫入任何東西，見 PrescriptionScanService._resolve_candidate。
+    # 候選清單內，候選清單是這條路徑上唯一的 ground truth。不在清單內的值
+    # SHALL NOT 拒絕整份提交，而是丟棄該證號、這一筆改以空證號建立——候選外
+    # 的值實務上只來自用戶端瑕疵，或使用者改名後證號未隨之清空，兩者都不該
+    # 讓使用者連同已核對過的其他藥品一併失去；丟棄的結果會列在
+    # PrescriptionCommitResult.discarded_license_medication_ids，不是靜默
+    # 發生的，見 PrescriptionScanService._resolve_candidate 與 spec「提交時
+    # 接受使用者挑定的藥證」。
     license_number: Optional[str] = None
     unit_content: Optional[str] = None
     total_quantity: Optional[int] = None
@@ -185,9 +190,18 @@ class PrescriptionCommitResult(BaseModel):
     呼叫端（LIFF）要能據此在核對畫面事先揭露、送出後的訊息也如實反映，
     而不是讓使用者事後才在提醒列表發現多了一則自己沒印象重新開啟的提醒。
     冪等重放時同樣無法可靠回推，此欄位為空。
+
+    discarded_license_medication_ids 是這次提交把哪些藥品挑定的證號丟棄、
+    改以空證號建立（見 PrescriptionScanService._resolve_candidate：挑定的
+    證號不在該筆藥品的候選清單內時，SHALL NOT 拒絕整份提交，而是丟棄該
+    證號，讓其餘藥品照常建立）。丟棄不能是靜默的——使用者明確選過的東西
+    被系統丟掉，若不揭露，他會以為照片會出現而事後困惑，這與
+    reactivated_slots「不能讓使用者事後才發現」是同一個理由。冪等重放時
+    同樣無法可靠回推，此欄位為空。
     """
 
     medication_ids: list[str] = Field(default_factory=list)
     prn_medication_ids: list[str] = Field(default_factory=list)
     reminder_ids: list[str] = Field(default_factory=list)
     reactivated_slots: list[MedicationSlotType] = Field(default_factory=list)
+    discarded_license_medication_ids: list[str] = Field(default_factory=list)

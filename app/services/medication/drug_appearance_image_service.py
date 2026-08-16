@@ -40,6 +40,13 @@ __all__ = ["resolve_drug_appearance_image_url", "thumbnail_filename"]
 
 _HASH_PREFIX_LENGTH = 16
 
+# 已經記錄過「目錄缺席」ERROR 的路徑集合，讓同一個缺席目錄行程存活期間只
+# 大聲記錄一次。這支函式在掃描一筆多候選的藥品時會被逐一候選呼叫（一張
+# 41 候選的藥品就是 41 次），目錄缺席是同一件事只是問了 41 次，不去重會
+# 洗版成 41 行一模一樣的 ERROR，反而讓真正的訊號被稀釋；不同的缺席路徑
+# （例如測試各自的 tmp_path）互不影響，各自仍會記錄一次。
+_warned_missing_dirs: set[str] = set()
+
 
 def thumbnail_filename(license_number: str) -> str:
     """證號 -> 縮圖檔名：sha256 前 16 碼 + .jpg。
@@ -81,11 +88,15 @@ def resolve_drug_appearance_image_url(
         # 大聲記錄：目錄整個缺席時，症狀是「這批藥都沒有照片」，跟外觀
         # 資料集本來就沒收錄長得一模一樣，沒有這則 log 就沒人會發現是
         # 部署漏了 resources/drug_appearance/，而不是資料本身沒有外觀。
-        logger.error(
-            "藥丸縮圖目錄不存在：%s——所有證號都會被視為沒有縮圖，"
-            "請確認這次部署是否已落地 resources/drug_appearance/",
-            resolved_dir,
-        )
+        # 只記一次（見 `_warned_missing_dirs` 的說明），不是每次呼叫都記。
+        dir_key = str(resolved_dir)
+        if dir_key not in _warned_missing_dirs:
+            _warned_missing_dirs.add(dir_key)
+            logger.error(
+                "藥丸縮圖目錄不存在：%s——所有證號都會被視為沒有縮圖，"
+                "請確認這次部署是否已落地 resources/drug_appearance/",
+                resolved_dir,
+            )
         return None
 
     filename = thumbnail_filename(license_number)

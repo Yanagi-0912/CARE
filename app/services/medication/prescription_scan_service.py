@@ -7,6 +7,7 @@
 """
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Optional, Protocol
 
@@ -61,16 +62,6 @@ class DraftExpiredError(Exception):
 
 class SlotsRequiredError(Exception):
     """OTHER 頻次沒有可映射的時段，使用者也沒有指定——拒絕提交，不臆測時段。"""
-
-
-class LicenseNumberNotInCandidatesError(Exception):
-    """使用者帶回的 license_number 不在該筆藥品掃描時的候選清單內。
-
-    候選清單受藥名約束，是這條路徑上唯一的 ground truth；接受清單外的任意
-    證號，等於讓藥丸照片可以指向任何藥品，決策「證號不確定時不得顯示藥丸
-    照片」的安全邊界也就失效了。整批拒絕、不寫入任何東西，見
-    PrescriptionScanService._resolve_candidate。
-    """
 
 
 class TargetNotInFamilyError(Exception):
@@ -129,6 +120,23 @@ class _FamilyTreeRepository(Protocol):
 # resolve_drug_appearance_image_url 這個函式本身傳進來即可（其餘參數
 # 皆有預設值，讀 app.core.config.settings）。
 _AppearanceImageResolver = Callable[[str], Optional[str]]
+
+
+@dataclass(frozen=True)
+class _ResolvedCandidate:
+    """`_resolve_candidate` 的回傳值。
+
+    `license_number` 與 `candidate` 分開追蹤，是因為「這筆藥最終該落地的
+    證號」跟「有沒有候選外觀資料可用」是兩件事：舊式草稿（`candidates`
+    為空、只有 `license_number`，見 `_candidates_by_name`）校驗通過時，
+    證號要保留，但沒有候選物件可以取外觀欄位，這時 `candidate` 是
+    None、`license_number` 卻不是。`discarded` 標記這筆挑選是否因為不在
+    候選清單內而被丟棄，供 `commit()` 記錄與回報，不能靜默發生。
+    """
+
+    license_number: Optional[str]
+    candidate: Optional[DrugCandidate]
+    discarded: bool
 
 
 class PrescriptionScanService:
@@ -283,15 +291,36 @@ class PrescriptionScanService:
             ):
                 raise TargetNotInFamilyError(target_user_id)
 
-        # 先把每一項要建立的藥決定好時段、並驗證挑定的證號（或確認未挑選），
-        # 任何一項需要時段卻沒有、或證號不在候選清單內就整批拒絕——此時還沒
-        # 產生任何 id，也還沒寫入任何東西。
+        # 先把每一項要建立的藥決定好時段（需要時段卻沒有就整批拒絕），並解析
+        # 挑定的證號是否落在候選清單內——這一步 SHALL NOT 拒絕整份提交，見
+        # `_resolve_candidate` 的說明；此時還沒產生任何 id，也還沒寫入任何
+        # 東西。
         candidates_by_name = self._candidates_by_name(draft.recognition.drugs)
         resolved = [
             (item, self._resolve_slots(item), self._resolve_candidate(item, candidates_by_name))
             for item in payload.drugs
             if item.include
         ]
+
+        # 丟棄不能是靜默的：使用者明確選過的東西被系統丟掉，即使不擋提交，
+        # 也要留下痕跡——回應裡的 discarded_license_medication_ids 讓呼叫端
+        # 能告知使用者，這裡的 log 讓後端能觀察到頻率。候選外的證號正常情況
+        # 只來自使用者改名後證號未清除；若同一用戶端反覆出現，代表它沒有
+        # 依照候選清單提交，值得排查——用 WARNING 而非 DEBUG，因為這一步
+        # 拒絕整份提交的舊行為拿掉之後，用戶端瑕疵不會再以 400 現身，記錄
+        # 是後端唯一能觀察到它的地方。
+        discarded_names = [
+            item.name
+            for item, _slots, resolved_candidate in resolved
+            if resolved_candidate.discarded
+        ]
+        if discarded_names:
+            logger.warning(
+                "草稿 %s 提交時有 %d 筆藥品挑定的證號不在候選清單內，已丟棄改以空證號建立：%s",
+                draft_id,
+                len(discarded_names),
+                discarded_names,
+            )
 
         # 提交權必須帶著預先產生好的藥品 id 一起取得，而不是先建立藥品再標記。
         # 「先建立再標記」的話，兩個並行的提交會各自建立一份完整的藥品；
@@ -309,6 +338,9 @@ class PrescriptionScanService:
             return PrescriptionCommitResult(
                 medication_ids=final_medication_ids,
                 prn_medication_ids=self._prn_ids(resolved, final_medication_ids),
+                discarded_license_medication_ids=self._discarded_license_ids(
+                    resolved, final_medication_ids
+                ),
             )
 
         # 取得提交權與實際寫入之間沒有原子性；建立藥品或連結提醒若因暫時性
@@ -319,8 +351,12 @@ class PrescriptionScanService:
         # 下一次重試才能真的重新取得提交權、重新寫入。
         try:
             medications = [
-                self._build_medication(item, candidate, medication_id, target_user_id, user_id)
-                for (item, _slots, candidate), medication_id in zip(resolved, medication_ids)
+                self._build_medication(
+                    item, resolved_candidate, medication_id, target_user_id, user_id
+                )
+                for (item, _slots, resolved_candidate), medication_id in zip(
+                    resolved, medication_ids
+                )
             ]
             await self._medication_repository.create_many(medications)
 
@@ -336,6 +372,7 @@ class PrescriptionScanService:
             prn_medication_ids=self._prn_ids(resolved, medication_ids),
             reminder_ids=reminder_ids,
             reactivated_slots=reactivated_slots,
+            discarded_license_medication_ids=self._discarded_license_ids(resolved, medication_ids),
         )
 
     def _resolve_slots(
@@ -378,47 +415,73 @@ class PrescriptionScanService:
     @staticmethod
     def _candidates_by_name(
         drugs: list[RecognizedDrug],
-    ) -> dict[str, dict[str, DrugCandidate]]:
+    ) -> dict[str, dict[str, Optional[DrugCandidate]]]:
         """把草稿裡每一筆辨識藥品的候選清單，整理成「藥名 → {證號: 候選}」，
         供 `_resolve_candidate` 查詢使用。
 
         同一個藥名理論上不會出現兩筆候選不同的辨識結果——`match()` 對同一個
-        字串永遠算出同一個候選集合——這裡仍以合併而非覆蓋處理，純粹保守；
-        不曾出現在草稿中的藥名對應到空字典，任何非空證號都會在
-        `_resolve_candidate` 被拒絕。
+        字串永遠算出同一個候選集合——這裡仍以合併而非覆蓋處理，純粹保守。
+        **這個假設只在候選清單本身完整反映當時 match() 結果時成立。** 如果
+        未來候選清單會被進一步收窄後再寫回單一 item（例如以顏色／形狀縮小
+        候選，見 spec「候選過多時以外觀屬性漸進收窄」），同名的兩筆
+        RecognizedDrug 可能各自只剩下收窄後的子集合，屆時這裡的合併會把
+        已經收窄過的清單悄悄擴回聯集，等於讓收窄失效——修改前務必先確認
+        候選是否仍可安全合併。
+
+        候選清單為空的藥品（本次 candidates 欄位上線前就存在的草稿，讀回時
+        該欄位預設為空清單，見 `_resolve_candidate` 對舊式草稿的相容說明）
+        額外把既有的 `license_number` 登記為一個合法選項、值為 None——沒有
+        候選物件可用，因此沒有外觀資料，但這仍是候選模型導入之前唯一存在
+        過的「這個藥名對應到哪張證號」的紀錄，同一份 ground truth，只是還
+        沒有候選清單這個表達方式。
         """
-        by_name: dict[str, dict[str, DrugCandidate]] = {}
+        by_name: dict[str, dict[str, Optional[DrugCandidate]]] = {}
         for drug in drugs:
             bucket = by_name.setdefault(drug.name, {})
-            for candidate in drug.candidates:
-                bucket[candidate.license_number] = candidate
+            if drug.candidates:
+                for candidate in drug.candidates:
+                    bucket[candidate.license_number] = candidate
+            elif drug.license_number:
+                bucket.setdefault(drug.license_number, None)
         return by_name
 
     @staticmethod
     def _resolve_candidate(
         item: CommitDrugItem,
-        candidates_by_name: dict[str, dict[str, DrugCandidate]],
-    ) -> Optional[DrugCandidate]:
-        """驗證使用者挑定的證號落在該筆藥品掃描時的候選清單內，回傳對應的候選
-        （含外觀欄位，供 `_build_medication` 直接使用）。
+        candidates_by_name: dict[str, dict[str, Optional[DrugCandidate]]],
+    ) -> _ResolvedCandidate:
+        """決定這筆藥最終該落地的證號、外觀候選，以及挑選是否被丟棄。
 
-        未挑選（`item.license_number` 為空）一律合法，回傳 None——挑選是
-        附加價值，不是提交的必要條件，不得阻擋提交（spec「使用者為多候選
-        藥品挑定藥證」）。挑選了卻查不到對應候選——藥名從未通過校驗、
-        candidates 是空清單，或藥名已被改成候選清單之外的字串——一律視為
-        候選清單為空，任何非空證號都拒絕：候選清單是這條路徑上唯一的
-        ground truth，接受清單外的任意證號等於讓照片可以指向任何藥品。
+        未挑選（`item.license_number` 為空）一律合法：不落地任何證號，也
+        沒有候選可用——挑選是附加價值，不是提交的必要條件（spec「使用者
+        為多候選藥品挑定藥證」）。
+
+        挑選了卻在候選清單裡查不到——藥名從未通過校驗、候選清單裡沒有這個
+        證號，或藥名已被改成候選清單之外的字串——SHALL NOT 拒絕整份提交
+        （spec「提交時接受使用者挑定的藥證」修訂後的理由：候選外的證號實務
+        上只來自用戶端瑕疵，或使用者改名後證號未隨之清空，兩者都不該讓
+        使用者連同已核對過的其他藥品一併失去）。這裡改為丟棄，回傳
+        `discarded=True`，交由 `commit()` 記錄並在回應中揭露——丟棄不能
+        是靜默的。
+
+        查得到時，若對應到一個真正的 `DrugCandidate`，證號與外觀資料一併
+        採用；若只在 `_candidates_by_name` 為舊式草稿建立的相容項目查到
+        （值是 None），證號一樣採用，但沒有外觀資料。
         """
         if not item.license_number:
-            return None
-        candidate = candidates_by_name.get(item.name, {}).get(item.license_number)
-        if candidate is None:
-            raise LicenseNumberNotInCandidatesError(item.name, item.license_number)
-        return candidate
+            return _ResolvedCandidate(license_number=None, candidate=None, discarded=False)
+        bucket = candidates_by_name.get(item.name, {})
+        if item.license_number not in bucket:
+            return _ResolvedCandidate(license_number=None, candidate=None, discarded=True)
+        return _ResolvedCandidate(
+            license_number=item.license_number,
+            candidate=bucket[item.license_number],
+            discarded=False,
+        )
 
     @staticmethod
     def _prn_ids(
-        resolved: list[tuple[CommitDrugItem, list[MedicationSlotType], Optional[DrugCandidate]]],
+        resolved: list[tuple[CommitDrugItem, list[MedicationSlotType], _ResolvedCandidate]],
         medication_ids: list[str],
     ) -> list[str]:
         """從這次的 payload 推算哪些建立出來的藥品屬於 PRN。
@@ -441,14 +504,35 @@ class PrescriptionScanService:
             return []
         return [
             medication_id
-            for (item, _slots, _candidate), medication_id in zip(resolved, medication_ids)
+            for (item, _slots, _resolved_candidate), medication_id in zip(resolved, medication_ids)
             if item.frequency_code == "PRN"
+        ]
+
+    @staticmethod
+    def _discarded_license_ids(
+        resolved: list[tuple[CommitDrugItem, list[MedicationSlotType], _ResolvedCandidate]],
+        medication_ids: list[str],
+    ) -> list[str]:
+        """從這次的 payload 推算哪些建立出來的藥品被丟棄了挑定的證號。
+
+        與 `_prn_ids` 適用同樣的位置對應限制與理由：只有在冪等回放重送的
+        是同一份請求、長度對得上時，`resolved` 與 `medication_ids` 的位置
+        對應才可靠；長度不對時已經沒有依據能從位置猜出哪些 id 對應到被
+        丟棄的證號，寧可誠實回空，也不要讓呼叫端誤以為某顆藥有／沒有被
+        丟棄證號。
+        """
+        if len(medication_ids) != len(resolved):
+            return []
+        return [
+            medication_id
+            for (item, _slots, resolved_candidate), medication_id in zip(resolved, medication_ids)
+            if resolved_candidate.discarded
         ]
 
     @staticmethod
     def _build_medication(
         item: CommitDrugItem,
-        candidate: Optional[DrugCandidate],
+        resolved_candidate: _ResolvedCandidate,
         medication_id: str,
         target_user_id: str,
         creator_user_id: str,
@@ -467,16 +551,24 @@ class PrescriptionScanService:
             if item.duration_days and item.duration_days > 0
             else None
         )
+        candidate = resolved_candidate.candidate
         return Medication(
             id=medication_id,
             user_id=target_user_id,
             created_by_user_id=creator_user_id,
             name=item.name,
             generic_name=item.generic_name,
-            license_number=item.license_number,
-            # 外觀欄位只在挑定的證號通過 `_resolve_candidate` 校驗（candidate
-            # 非 None）時才有值，原樣帶自對應候選——未挑選時 candidate 是
-            # None，維持 Medication 欄位的預設空字串，不臆測外觀。
+            # 從 `_resolved_candidate.license_number` 取值，不直接複製
+            # `item.license_number`——後者是使用者端原始輸入，未挑選是 None、
+            # 但用戶端若傳空字串（""）也會落到這裡，`_resolve_candidate` 已
+            # 把「沒挑選」與「挑了卻不合法／被丟棄」都收斂成 None，這個不變式
+            # 只要在這裡讀 `_resolved_candidate` 就自動成立，不必在這裡另外
+            # 判斷空字串。
+            license_number=resolved_candidate.license_number,
+            # 外觀欄位只在有候選物件可用（candidate 非 None）時才有值，原樣
+            # 帶自對應候選——未挑選、或挑選被丟棄、或只命中舊式草稿的相容
+            # 項目（沒有候選物件）時，candidate 都是 None，維持 Medication
+            # 欄位的預設空字串，不臆測外觀、也不會誤繼承別的候選。
             shape=candidate.shape if candidate else "",
             color=candidate.color if candidate else "",
             score_line=candidate.score_line if candidate else "",
@@ -495,7 +587,7 @@ class PrescriptionScanService:
 
     async def _link_reminders(
         self,
-        resolved: list[tuple[CommitDrugItem, list[MedicationSlotType], Optional[DrugCandidate]]],
+        resolved: list[tuple[CommitDrugItem, list[MedicationSlotType], _ResolvedCandidate]],
         medication_ids: list[str],
         target_user_id: str,
         creator_user_id: str,

@@ -26,7 +26,6 @@ from app.services.medication.prescription_ocr_service import PrescriptionScanErr
 from app.services.medication.prescription_scan_service import (
     DraftExpiredError,
     DraftNotFoundError,
-    LicenseNumberNotInCandidatesError,
     PrescriptionScanService,
     SlotsRequiredError,
     TargetNotInFamilyError,
@@ -280,7 +279,3 @@ async def commit_prescription_draft(
         raise HTTPException(
             status_code=400, detail=f"「{exc}」的頻次無法自動判斷時段，請手動指定"
         )
-    except LicenseNumberNotInCandidatesError:
-        # 候選清單是這條路徑上唯一的 ground truth，不在清單內的證號一律拒絕，
-        # 不寫入任何藥品或提醒——見 LicenseNumberNotInCandidatesError 的說明。
-        raise HTTPException(status_code=400, detail="所挑選的藥證不在候選清單內，請重新選擇")

@@ -74,7 +74,7 @@ git add resources/drug_catalog.json         # 更新內容自己成為一個可�
 ```
 
 腳本會抓「全部藥品許可證資料集」與「藥品外觀資料集」（兩個端點路徑叫 `/json`
-但實際回傳 ZIP），輸出目前約 66,000 筆條目、8.6 MB。
+但實際回傳 ZIP），輸出目前 66,478 筆條目、15.9 MB（16,660,025 bytes）。
 
 **為什麼提交產出物而不是在 build 時產生**：`Dockerfile` 已經 `COPY resources
 ./resources`，提交進去就直接進映像；改成建置時下載會讓每次部署都依賴政府站台

@@ -785,7 +785,7 @@ def test_english_name_with_period_is_not_derailed_by_junk_key():
 # 生效，postings 也永遠不完整才會失真，等於在「近似捷徑不可能失效」
 # 的條件下斷言「索引等於暴力掃描」，這個斷言在那個規模下不可能失敗，
 # 也就掩蓋了上面那個真實漏洞（見 code review）。改用真實藥證庫：
-# 66,478 筆藥證、112,230 個正規化鍵，常見 gram 的 postings 遠超過
+# 66,478 筆藥證、112,228 個可用的正規化鍵，常見 gram 的 postings 遠超過
 # 上限，是這個等價性斷言第一次有機會真正失敗的規模。
 
 

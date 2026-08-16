@@ -158,5 +158,23 @@ class Settings:
         os.getenv("DRUG_CATALOG_MATCH_THRESHOLD", "0.88")
     )
 
+    # 用藥風險偵測。預設關閉：通報家人是不可逆的動作（訊息推出去收不回來，
+    # 收件人是一整個家庭），誤報率必須先以實際訊息觀察過才開。關閉時完全不
+    # 執行抽取、判定與推播，行為與本能力導入前相同。
+    SAFETY_ALERT_ENABLED: bool = os.getenv("SAFETY_ALERT_ENABLED", "false").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    # 同一位使用者對同一個藥名的通報節流視窗（小時）。設成 env 是因為真實的
+    # 重複提問頻率還沒有資料，第一版一定要調（design.md Open Question）。
+    SAFETY_ALERT_DEDUPE_HOURS: int = int(os.getenv("SAFETY_ALERT_DEDUPE_HOURS", "24"))
+    # 抽取呼叫逾時（秒）。本能力是背景旁路，使用者並未在等它的結果，逾時一律
+    # 靜默結束，不通報也不通知使用者。
+    SAFETY_ALERT_TIMEOUT_SECONDS: int = int(
+        os.getenv("SAFETY_ALERT_TIMEOUT_SECONDS", "20")
+    )
+
 
 settings = Settings()

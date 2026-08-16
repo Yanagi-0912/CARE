@@ -116,3 +116,10 @@ class MongoDBManager:
         """
         return cls.get_database()["knowledge_reports"]
 
+    @classmethod
+    def get_safety_alerts_collection(cls):
+        """
+        取得 safety_alerts collection（用藥風險通報的節流紀錄）
+        """
+        return cls.get_database()["safety_alerts"]
+

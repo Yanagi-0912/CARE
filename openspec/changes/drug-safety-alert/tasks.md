@@ -59,15 +59,15 @@
 
 ## 6. Handler 接入與組裝
 
-- [ ] 6.1 `app/dependencies.py` 組裝 `DrugMentionExtractor`、`SafetyAlertService` 與 `SafetyAlertRepository`；重用既有的 `DrugCatalogService` 實例，SHALL NOT 重新載入藥證庫
-- [ ] 6.2 `app/services/line_messaging/handler/message_handler.py` 的 `BaseLineMessageHandler` 新增可選的 `safety_alert_service` 建構子參數，預設 `None`
-- [ ] 6.3 於 `_process_and_reply()` 內，主回覆流程之外以 `asyncio.create_task` 併行呼叫 `check(user_id, user_text)`。此處同時涵蓋文字與圖片兩種輸入
-- [ ] 6.4 任務參考 SHALL 被持有至完成（保留任務集合並於完成時移除），例外 SHALL 於任務內捕捉
-- [ ] 6.5 `SAFETY_ALERT_ENABLED` 為 `false` 或 `safety_alert_service is None` 時 SHALL NOT 建立該任務
-- [ ] 6.6 `app/services/line_messaging/handler/media_handler.py` 的 `LineMediaHandler.__init__` 把 `safety_alert_service` 往 `super().__init__()` 傳。**SHALL NOT 有任何邏輯變更**
-- [ ] 6.7 既有管線回傳錯誤字串時（`media_handler` 會拋 `LineValidationError`），SHALL NOT 進入風險評估
-- [ ] 6.8 `tests/unit/services/line_messaging/test_message_handler.py` 補：以建構子注入 fake service，涵蓋「開關關閉時零呼叫」「開啟時主回覆內容與時序不變」「service 拋例外時主回覆仍送出」
-- [ ] 6.9 `tests/unit/services/line_messaging/test_media_handler.py` 補：「圖片的 OCR 文字有進入 `check()`」「`media_processor_service` 的呼叫參數與次數與變更前完全相同」「既有管線回錯誤字串時零呼叫 `check()`」「檔案的既有 ingest 行為不變」
+- [x] 6.1 `app/dependencies.py` 組裝 `DrugMentionExtractor`、`SafetyAlertService` 與 `SafetyAlertRepository`；重用既有的 `DrugCatalogService` 實例，SHALL NOT 重新載入藥證庫
+- [x] 6.2 `app/services/line_messaging/handler/message_handler.py` 的 `BaseLineMessageHandler` 新增可選的 `safety_alert_service` 建構子參數，預設 `None`
+- [x] 6.3 於 `_process_and_reply()` 內，主回覆流程之外以 `asyncio.create_task` 併行呼叫 `check(user_id, user_text)`。此處同時涵蓋文字與圖片兩種輸入
+- [x] 6.4 任務參考 SHALL 被持有至完成（保留任務集合並於完成時移除），例外 SHALL 於任務內捕捉
+- [x] 6.5 `SAFETY_ALERT_ENABLED` 為 `false` 或 `safety_alert_service is None` 時 SHALL NOT 建立該任務
+- [x] 6.6 `app/services/line_messaging/handler/media_handler.py` 的 `LineMediaHandler.__init__` 把 `safety_alert_service` 往 `super().__init__()` 傳。**SHALL NOT 有任何邏輯變更**
+- [x] 6.7 既有管線回傳錯誤字串時（`media_handler` 會拋 `LineValidationError`），SHALL NOT 進入風險評估
+- [x] 6.8 `tests/unit/services/line_messaging/test_message_handler.py` 補：以建構子注入 fake service，涵蓋「開關關閉時零呼叫」「開啟時主回覆內容與時序不變」「service 拋例外時主回覆仍送出」
+- [x] 6.9 `tests/unit/services/line_messaging/test_media_handler.py` 補：「圖片的 OCR 文字有進入 `check()`」「`media_processor_service` 的呼叫參數與次數與變更前完全相同」「既有管線回錯誤字串時零呼叫 `check()`」「檔案的既有 ingest 行為不變」
 - [ ] 6.10 開啟 `SAFETY_ALERT_ENABLED`，觀察誤報率與 `looks_drug_related` 的命中率
 
 ## 7. 收尾

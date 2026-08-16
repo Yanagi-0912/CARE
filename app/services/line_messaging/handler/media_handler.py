@@ -32,6 +32,7 @@ class LineMediaHandler(BaseLineMessageHandler):
         replier,
         loading_animation_service=None,
         user_document_ingest_service=None,
+        safety_alert_service=None,
     ):
         super().__init__(
             agent,
@@ -39,6 +40,7 @@ class LineMediaHandler(BaseLineMessageHandler):
             user_profile_service,
             replier,
             loading_animation_service,
+            safety_alert_service,
         )
         self._user_document_ingest_service = user_document_ingest_service
 

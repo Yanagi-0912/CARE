@@ -19,6 +19,7 @@ from app.repositories.medication_repository import (
     MedicationReminderRepository,
 )
 from app.repositories.prescription_draft_repository import PrescriptionDraftRepository
+from app.repositories.safety_alert_repository import SafetyAlertRepository
 from app.repositories.user_profile_repository import UserProfileRepository
 from app.services.agent.agent import Agent
 from app.services.consultation.consultation_service import ConsultationService
@@ -28,6 +29,8 @@ from app.services.medication.medication_service import MedicationService
 from app.services.medication.medication_scheduler import start_medication_scheduler
 from app.services.medication.prescription_ocr_service import PrescriptionOcrService
 from app.services.medication.prescription_scan_service import PrescriptionScanService
+from app.services.safety.drug_mention_extractor import DrugMentionExtractor
+from app.services.safety.safety_alert_service import SafetyAlertService
 from app.services.gemini import GeminiService
 from app.services.guardrail import GuardrailService
 from app.services.history.history_service import LineMessageHistoryService
@@ -323,12 +326,42 @@ _facility_detail_handler = LineFacilityDetailHandler(
     medical_service=medical_service,
     replier=_line_replier,
 )
+
+# 藥證庫在啟動時載入一次；load_from_path 內部已經處理檔案缺席或損毀
+# （記錄錯誤、回傳空清單），這裡不需要再包一層 try/except，否則等於在
+# 「不讓應用啟動失敗」這個保證外面又加了一個會讓它啟動失敗的路徑。
+# 藥袋辨識與用藥風險偵測共用這一份，兩邊都不重新載入。
+_drug_catalog_service = DrugCatalogService.load_from_path(
+    settings.DRUG_CATALOG_PATH, threshold=settings.DRUG_CATALOG_MATCH_THRESHOLD
+)
+
+# 用藥風險偵測。組裝本身沒有任何 I/O，因此無條件建好；真正的閘門在下面
+# handler 的注入——SAFETY_ALERT_ENABLED 為 false 時 handler 拿到 None，
+# 整條路徑（抽取、判定、推播）一步都不會執行。
+_drug_mention_extractor = DrugMentionExtractor(
+    gemini_service=_gemini_service,
+    timeout_seconds=settings.SAFETY_ALERT_TIMEOUT_SECONDS,
+)
+_safety_alert_service = SafetyAlertService(
+    extractor=_drug_mention_extractor,
+    catalog_service=_drug_catalog_service,
+    alert_repository=SafetyAlertRepository,
+    family_tree_repository=FamilyTreeRepository,
+    replier=_line_replier,
+    user_profile_service=_user_profile_service,
+    dedupe_hours=settings.SAFETY_ALERT_DEDUPE_HOURS,
+)
+_enabled_safety_alert_service = (
+    _safety_alert_service if settings.SAFETY_ALERT_ENABLED else None
+)
+
 _message_handler = LineMessageHandler(
     agent=_care_agent,
     history_service=_line_history_service,
     user_profile_service=_user_profile_service,
     replier=_line_replier,
     loading_animation_service=_line_loading_animation_service,
+    safety_alert_service=_enabled_safety_alert_service,
 )
 _media_handler = LineMediaHandler(
     agent=_care_agent,
@@ -337,6 +370,7 @@ _media_handler = LineMediaHandler(
     replier=_line_replier,
     loading_animation_service=_line_loading_animation_service,
     user_document_ingest_service=_user_document_ingest_service,
+    safety_alert_service=_enabled_safety_alert_service,
 )
 _location_handler = LineLocationHandler(
     agent=_care_agent,
@@ -348,12 +382,7 @@ _location_handler = LineLocationHandler(
 _family_tree_service = FamilyTreeService()
 _medication_service = MedicationService()
 
-# 藥袋辨識。藥證庫在啟動時載入一次；load_from_path 內部已經處理檔案缺席
-# 或損毀（記錄錯誤、回傳空清單），這裡不需要再包一層 try/except，否則等於
-# 在「不讓應用啟動失敗」這個保證外面又加了一個會讓它啟動失敗的路徑。
-_drug_catalog_service = DrugCatalogService.load_from_path(
-    settings.DRUG_CATALOG_PATH, threshold=settings.DRUG_CATALOG_MATCH_THRESHOLD
-)
+# 藥袋辨識。藥證庫沿用上面已經載入的那一份（見 _drug_catalog_service）。
 _prescription_ocr_service = PrescriptionOcrService(
     gemini_service=_gemini_service,
     timeout_seconds=settings.PRESCRIPTION_SCAN_TIMEOUT_SECONDS,

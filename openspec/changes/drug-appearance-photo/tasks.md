@@ -42,7 +42,7 @@
 - [x] 5.3 提交時驗證帶回的證號在該筆候選清單內；不在清單內 SHALL 丟棄該證號、以空證號建立這一筆（SHALL NOT 拒絕整份提交——候選外的值實務上只來自用戶端瑕疵或改名後未清空，不該連累已核對過的其他藥品），並在回應中點名被丟棄的藥品，不得靜默。候選清單本身為空（部署前寫入的舊草稿）時走「未挑選」而非「丟棄」：使用者根本沒有東西可挑，證號一樣不落地但不對他宣稱「挑選被丟棄」
 - [x] 5.4 未挑選 SHALL NOT 阻擋提交；該筆以 `license_number` 為空建立
 - [x] 5.5 `Medication` 新增外觀欄位（形狀／顏色／刻痕／標註），建立時自藥證庫帶入
-- [x] 5.6 `tests/unit/services/medication/test_prescription_scan_service.py` 補 5.1～5.5，至少含「帶回候選外的證號 → 拒絕且無任何寫入」與「未挑選仍能提交」
+- [x] 5.6 `tests/unit/services/medication/test_prescription_scan_service.py` 補 5.1～5.5，至少含「帶回候選外的證號 → 丟棄該證號、其餘欄位照常寫入，並在 `discarded_license_medication_ids` 點名這一筆」（兩種來源都要測：證號不在該藥名的候選桶內、以及藥名整個不在草稿裡）與「未挑選仍能提交」。候選桶存在但為空（部署前寫入的舊草稿）走「未挑選」而非「丟棄」，不列入 `discarded_license_medication_ids`——與 5.3 一致
 
 ## 6. 推播 Flex 的縮圖列
 

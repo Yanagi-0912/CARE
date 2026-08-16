@@ -1470,6 +1470,56 @@ async def test_commit_drops_the_pre_migration_license_number_when_a_legacy_draft
 
 
 @pytest.mark.asyncio
+async def test_commit_discloses_the_discard_when_the_name_is_absent_from_the_draft():
+    """藥名根本不在草稿裡（改名後證號未隨之清空）：證號要丟掉，而且要
+    **揭露**——`discarded_license_medication_ids` 必須點名這一筆。
+
+    這是「候選桶是空的」與「這個藥名根本不在草稿裡」兩件事的分界：
+    - 桶存在但是空的 → 走「未挑選」，不揭露（上一個測試）。使用者面前
+      根本沒有外觀區塊，說「你的挑選被丟棄了」是假的。
+    - 桶不存在（`candidates_by_name.get(name)` 是 None）→ 走「丟棄」，
+      要揭露。使用者確實挑過東西，只是他接著把藥名改成了別的字串。
+      `_resolve_candidate` 的 docstring 把改名列為這條路徑最主要的
+      真實來源。
+
+    這條路徑先前沒有任何測試覆蓋：把 `_resolve_candidate` 的
+    `if bucket is not None and not bucket:` 改成 `if not bucket:`，
+    全檔仍然全綠——但改完之後這一筆會被當成「未挑選」，
+    `discarded_license_medication_ids` 空著、`commit()` 的 WARNING
+    （它自己的註解稱為「後端唯一能觀察到它的地方」）永遠不會響，
+    用戶端瑕疵就此完全隱形。證號一樣不落地，所以不會貼錯照片；
+    掉的是揭露。
+    """
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(
+        RecognizedDrug(name="某藥", candidates=[_candidate(license_number="L1")])
+    )
+    medications = FakeMedicationRepository()
+    service = _service(
+        drafts=drafts,
+        medications=medications,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    result = await service.commit(
+        "D1",
+        "U_FAMILY",
+        _request(
+            # 藥名被改過，草稿裡沒有這個名字；證號卻還是原本那一筆的。
+            CommitDrugItem(name="改過的藥名", frequency_code="QD", license_number="L1")
+        ),
+    )
+
+    assert len(medications.created) == 1
+    created = medications.created[0]
+    assert created.license_number is None
+    assert created.shape == ""
+    assert result.medication_ids == [created.id]
+    # 承重的斷言：丟棄必須被點名，不得靜默。
+    assert result.discarded_license_medication_ids == [created.id]
+
+
+@pytest.mark.asyncio
 async def test_commit_without_choosing_a_license_still_succeeds():
     """未挑選 SHALL NOT 阻擋提交：該筆以 license_number 為空建立，外觀欄位
     留空，其餘欄位不受影響（spec「使用者為多候選藥品挑定藥證」場景

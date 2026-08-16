@@ -28,13 +28,13 @@
 
 ## 3. 抽取服務
 
-- [ ] 3.1 新增 `app/services/safety/drug_mention_extractor.py` 的 `DrugMentionExtractor`，建構子注入 `gemini_service` 與逾時設定
-- [ ] 3.2 定義輸出 schema：`mentions[]`，每筆含 `raw_name`／`source_text`／`channel`／`dispensed_package_markers`。schema **SHALL NOT 含任何風險或安全性欄位**
-- [ ] 3.3 定義提示詞：輸入可能是使用者打的字，也可能是圖片的 OCR 全文；只記錄文字中實際出現的內容、不判斷安全性、缺漏留空不推測、`raw_name` 保留原文
-- [ ] 3.4 實作 `extract(text) -> list[DrugMention]`
-- [ ] 3.5 `raw_name` 為空的項目一律丟棄；`channel` 為列舉外的值時落回 `unknown`，SHALL NOT 讓整次抽取失敗
-- [ ] 3.6 逾時與所有 Gemini 例外一律轉為回傳空清單並記 log，SHALL NOT 往外拋。log SHALL NOT 含輸入文字內容
-- [ ] 3.7 `tests/unit/services/safety/test_drug_mention_extractor.py`（新增）：以建構子注入 mock gemini_service，涵蓋 3.4～3.6，含「非列舉 channel → `unknown`」「逾時 → 空清單且不拋例外」「無名稱項目被丟棄」「以藥袋 OCR 文字為輸入時抽出 `dispensed_package_markers`」
+- [x] 3.1 新增 `app/services/safety/drug_mention_extractor.py` 的 `DrugMentionExtractor`，建構子注入 `gemini_service` 與逾時設定
+- [x] 3.2 定義輸出 schema：`mentions[]`，每筆含 `raw_name`／`source_text`／`channel`／`dispensed_package_markers`。schema **SHALL NOT 含任何風險或安全性欄位**
+- [x] 3.3 定義提示詞：輸入可能是使用者打的字，也可能是圖片的 OCR 全文；只記錄文字中實際出現的內容、不判斷安全性、缺漏留空不推測、`raw_name` 保留原文
+- [x] 3.4 實作 `extract(text) -> list[DrugMention]`
+- [x] 3.5 `raw_name` 為空的項目一律丟棄；`channel` 為列舉外的值時落回 `unknown`，SHALL NOT 讓整次抽取失敗
+- [x] 3.6 逾時與所有 Gemini 例外一律轉為回傳空清單並記 log，SHALL NOT 往外拋。log SHALL NOT 含輸入文字內容
+- [x] 3.7 `tests/unit/services/safety/test_drug_mention_extractor.py`（新增）：以建構子注入 mock gemini_service，涵蓋 3.4～3.6，含「非列舉 channel → `unknown`」「逾時 → 空清單且不拋例外」「無名稱項目被丟棄」「以藥袋 OCR 文字為輸入時抽出 `dispensed_package_markers`」
 
 ## 4. 節流 repository
 

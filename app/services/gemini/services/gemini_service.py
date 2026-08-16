@@ -60,6 +60,20 @@ class GeminiService:
         # LangChain structured output 理論上應回傳 bool；若不是，視為模型回應格式錯誤。
         raise GeminiSchemaError("AI 服務回應格式異常：預期 boolean")
 
+    async def invoke_structured_output(
+        self,
+        *,
+        prompt: str,
+        json_schema: dict[str, Any],
+    ) -> Any:
+        """以純文字提示詞取得 schema 約束的結構化輸出。"""
+        messages = [HumanMessage(content=prompt)]
+        structured: Runnable = self.chat_model.with_structured_output(
+            json_schema,
+            method="json_schema",
+        )
+        return await _await_with_mapped_gemini_errors(structured.ainvoke(messages))
+
     async def invoke_structured_output_with_image(
         self,
         *,

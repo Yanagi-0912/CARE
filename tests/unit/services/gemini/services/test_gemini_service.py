@@ -60,6 +60,28 @@ async def test_invoke_structured_output_with_image_returns_model_payload(service
 
 
 @pytest.mark.asyncio
+async def test_invoke_structured_output_returns_model_payload(service):
+    with patch(
+        "app.services.gemini.services.gemini_service.ChatGoogleGenerativeAI.with_structured_output"
+    ) as mock_structured:
+        mock_runnable = AsyncMock()
+        mock_runnable.ainvoke.return_value = {"mentions": []}
+        mock_structured.return_value = mock_runnable
+
+        result = await service.invoke_structured_output(
+            prompt="讀這段文字",
+            json_schema={"type": "object"},
+        )
+
+        assert result == {"mentions": []}
+        mock_structured.assert_called_once_with(
+            {"type": "object"}, method="json_schema"
+        )
+        (messages,), _ = mock_runnable.ainvoke.call_args
+        assert messages[0].content == "讀這段文字"
+
+
+@pytest.mark.asyncio
 async def test_invoke_structured_output_with_image_sends_prompt_and_inline_image(service):
     with patch(
         "app.services.gemini.services.gemini_service.ChatGoogleGenerativeAI.with_structured_output"

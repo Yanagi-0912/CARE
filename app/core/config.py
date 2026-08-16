@@ -89,6 +89,34 @@ class Settings:
     )
     RAG_RRF_K: int = int(os.getenv("RAG_RRF_K", "60"))
 
+    # BM25 也比對文章標題。chunk_content 本身不含標題（切塊時被切掉了），
+    # 而 embedding 與 rerank 兩處都會把標題補回文本，只有 BM25 這條腿看不到，
+    # 藥名／疾病名只出現在標題時會整篇漏掉。空字串＝關閉，退回只比對內文。
+    MONGODB_TEXT_TITLE_FIELD: str = os.getenv(
+        "MONGODB_TEXT_TITLE_FIELD", "original_title"
+    )
+    # 這是「降權」不是「加權」——0.3 是在 golden set 上掃出來的，不是猜的。
+    # 標題必須壓得比內文輕，有兩個獨立原因：
+    #   1. 標題是文章層級屬性，同一篇的每個 chunk 共用它。標題一命中，該文章
+    #      「所有」chunk 一起加分，BM25 的 top-k 會被少數幾篇洗版，候選文章數
+    #      驟降（實測 38 篇→25 篇），正確文章反而被自己的鄰居擠出去。
+    #   2. 標題是短欄位，BM25 的長度正規化本來就給它很高的分數；再加權會讓
+    #      「標題字面沾到詞」壓過「內文真的在講這件事」。實測問「心臟病有哪些
+    #      危險因子」時，boost≥1.0 會讓前四名全變成標題含「危險因子」的中風文章。
+    # 掃描結果（--rank-mode vector, top-5, n=22 · hit_rate）：
+    #   關閉 .727／0.1 .773／0.2 .818／**0.3 .864**／0.4 .864／0.5 .773／
+    #   1.0 .727／1.5 .682。平滑單峰，holdout(n=5) 4/5→5/5 同向。
+    #
+    # 但要誠實標註效益的邊界：**接上 Cohere 精排後這個增益就消失了**
+    # （--rank-mode cohere 三個切面的 hit_rate 都是 18/22、15/17、3/5，
+    # 開關前後完全相同，MRR/nDCG 差異落在 Cohere 自身的 run-to-run 噪音內：
+    # 同設定連跑三次 MRR 0.598/0.613/0.590）。原因是 reranker 看得到全部 40
+    # 筆候選，本來就會把那 3 篇救回來。
+    #
+    # 所以留著它的理由不是「線上更準」，而是**降級路徑的保險**：Cohere 逾時
+    # 或 429 時會退回 VectorScoreReranker，那正是這個設定值 +3 hits 的那一層。
+    RAG_TEXT_TITLE_BOOST: float = float(os.getenv("RAG_TEXT_TITLE_BOOST", "0.3"))
+
     # 向量檢索最低分門檻。預設 0.0＝不過濾；過濾職責在 reranker。
     RAG_VECTOR_MIN_SCORE: float = float(os.getenv("RAG_VECTOR_MIN_SCORE", "0.0"))
 

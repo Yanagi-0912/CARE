@@ -125,6 +125,8 @@ if settings.RAG_HYBRID_ENABLED and settings.MONGODB_TEXT_INDEX:
         collection_name=settings.MONGODB_COLLECTION,
         index_name=settings.MONGODB_TEXT_INDEX,
         text_field=settings.MONGODB_TEXT_FIELD,
+        title_field=settings.MONGODB_TEXT_TITLE_FIELD,
+        title_boost=settings.RAG_TEXT_TITLE_BOOST,
         k=settings.RAG_RETRIEVE_CANDIDATES,
     )
     _rag_retriever = HybridRetriever(

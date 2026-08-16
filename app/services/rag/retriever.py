@@ -30,6 +30,9 @@ _NUM_CANDIDATES_MULTIPLIER = 30
 # 見 user_document_retriever.DEFAULT_USER_DOC_MIN_SCORE。
 DEFAULT_MIN_SCORE = 0.0
 
+# BM25 比對標題時的權重。小於 1 是刻意的降權，理由見 config.RAG_TEXT_TITLE_BOOST。
+DEFAULT_TITLE_BOOST = 0.3
+
 VECTOR_SOURCE_NAME = "vector"
 TEXT_SOURCE_NAME = "text"
 
@@ -148,6 +151,12 @@ class MongoAtlasTextRetriever:
     索引必須是 Atlas Search index（與 vector index 是兩個不同的東西），
     且中文語料的 analyzer 必須用 `lucene.cjk`；預設的英文 analyzer 會把
     整句中文當成一個 token，BM25 等於失效。
+
+    設了 `title_field` 就同時比對標題。之所以需要：切塊後的 `chunk_content`
+    不含標題，但 embedding（ETL 用 `主題：{title}\\n內容：{chunk}`）與 rerank
+    （`rerank_document_text`）兩處都會把標題補回文本。只有 BM25 這條腿看不到
+    標題，於是「藥名／疾病名只出現在標題」的文章，稀疏檢索完全命中不了——
+    而罕見精確詞正是 BM25 該補向量之不足的地方。
     """
 
     def __init__(
@@ -158,6 +167,8 @@ class MongoAtlasTextRetriever:
         collection_name: str,
         index_name: str,
         text_field: str = "text",
+        title_field: str | None = None,
+        title_boost: float = DEFAULT_TITLE_BOOST,
         k: int = 10,
     ) -> None:
         self.mongo_uri = mongo_uri
@@ -165,8 +176,36 @@ class MongoAtlasTextRetriever:
         self.collection_name = collection_name
         self.index_name = index_name
         self.text_field = text_field
+        self.title_field = (title_field or "").strip() or None
+        self.title_boost = title_boost
         self.k = k
         self._collection: Any = None
+
+    def _search_stage(self, query: str) -> dict[str, Any]:
+        """`$search` 的內容。有設 title_field 時改用 compound 同時比對標題。
+
+        兩個 clause 都放在 `should`（`minimumShouldMatch: 1`），語意是「內文
+        或標題任一命中即可」。放 `must` 會變成兩者都要命中，比原本更嚴，
+        那不是這個改動的目的。
+        """
+        content_clause = {"text": {"query": query, "path": self.text_field}}
+        if self.title_field is None:
+            return {"index": self.index_name, **content_clause}
+
+        title_clause = {
+            "text": {
+                "query": query,
+                "path": self.title_field,
+                "score": {"boost": {"value": self.title_boost}},
+            }
+        }
+        return {
+            "index": self.index_name,
+            "compound": {
+                "should": [content_clause, title_clause],
+                "minimumShouldMatch": 1,
+            },
+        }
 
     def _ensure_collection(self) -> Any:
         if self._collection is not None:
@@ -194,12 +233,7 @@ class MongoAtlasTextRetriever:
             return []
 
         pipeline = [
-            {
-                "$search": {
-                    "index": self.index_name,
-                    "text": {"query": query, "path": self.text_field},
-                }
-            },
+            {"$search": self._search_stage(query)},
             {"$limit": self.k},
             {
                 "$project": {

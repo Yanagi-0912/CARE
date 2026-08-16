@@ -224,6 +224,45 @@ async def test_text_retriever_builds_search_pipeline():
 
 
 @pytest.mark.asyncio
+async def test_text_retriever_also_matches_title_when_configured():
+    """chunk_content 不含標題，BM25 必須另外比對 original_title。"""
+    retriever = _make_text_retriever(title_field="original_title", title_boost=1.5)
+    collection = _fake_collection([{"_id": 1, "chunk_text": "內容", "score": 3.0}])
+    retriever._collection = collection
+
+    await retriever.ainvoke("退燒藥")
+
+    stage = collection.aggregate.call_args.args[0][0]["$search"]
+    assert "text" not in stage, "設了 title_field 就該改用 compound"
+    assert stage["compound"]["minimumShouldMatch"] == 1
+    assert stage["compound"]["should"] == [
+        {"text": {"query": "退燒藥", "path": "chunk_text"}},
+        {
+            "text": {
+                "query": "退燒藥",
+                "path": "original_title",
+                "score": {"boost": {"value": 1.5}},
+            }
+        },
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("blank", [None, "", "   "])
+async def test_text_retriever_falls_back_to_content_only_without_title_field(blank):
+    """title_field 留空＝關閉標題比對，退回原本的單欄位 $search。"""
+    retriever = _make_text_retriever(title_field=blank)
+    collection = _fake_collection([{"_id": 1, "chunk_text": "內容", "score": 3.0}])
+    retriever._collection = collection
+
+    await retriever.ainvoke("退燒藥")
+
+    stage = collection.aggregate.call_args.args[0][0]["$search"]
+    assert "compound" not in stage
+    assert stage["text"] == {"query": "退燒藥", "path": "chunk_text"}
+
+
+@pytest.mark.asyncio
 async def test_text_retriever_keeps_low_bm25_scores():
     """BM25 分數沒有上界也依語料庫而變，不能套用向量那個 0.5 門檻。"""
     retriever = _make_text_retriever()

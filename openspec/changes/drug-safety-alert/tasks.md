@@ -68,11 +68,11 @@
 - [x] 6.7 既有管線回傳錯誤字串時（`media_handler` 會拋 `LineValidationError`），SHALL NOT 進入風險評估
 - [x] 6.8 `tests/unit/services/line_messaging/test_message_handler.py` 補：以建構子注入 fake service，涵蓋「開關關閉時零呼叫」「開啟時主回覆內容與時序不變」「service 拋例外時主回覆仍送出」
 - [x] 6.9 `tests/unit/services/line_messaging/test_media_handler.py` 補：「圖片的 OCR 文字有進入 `check()`」「`media_processor_service` 的呼叫參數與次數與變更前完全相同」「既有管線回錯誤字串時零呼叫 `check()`」「檔案的既有 ingest 行為不變」
-- [ ] 6.10 開啟 `SAFETY_ALERT_ENABLED`，觀察誤報率與 `looks_drug_related` 的命中率
+- [ ] 6.10（待部署後）開啟 `SAFETY_ALERT_ENABLED`，觀察誤報率與 `looks_drug_related` 的命中率
 
 ## 7. 收尾
 
-- [ ] 7.1 執行 `./init.sh`，`pytest` 全綠
-- [ ] 7.2 `openspec validate drug-safety-alert --strict` 通過
-- [ ] 7.3 確認 `CARE-n8n` 與 `CARE-LIFF` 零改動、`mutimedia_processor.py` 零改動、其既有測試全綠、藥袋掃描三支端點的測試全綠
-- [ ] 7.4 依 6.10 的數據回填 `design.md` 的四個 Open Question（歐美代購的訊號、`low` 這一格是否過於保守、`SAFETY_ALERT_DEDUPE_HOURS` 的值、OCR 前綴是否需要剝除）
+- [x] 7.1 執行 `./init.sh`，`pytest` 全綠
+- [x] 7.2 `openspec validate drug-safety-alert --strict` 通過
+- [x] 7.3 確認 `CARE-n8n` 與 `CARE-LIFF` 零改動、`mutimedia_processor.py` 零改動、其既有測試全綠、藥袋掃描三支端點的測試全綠
+- [ ] 7.4（待 6.10 的數據）依 6.10 的數據回填 `design.md` 的四個 Open Question（歐美代購的訊號、`low` 這一格是否過於保守、`SAFETY_ALERT_DEDUPE_HOURS` 的值、OCR 前綴是否需要剝除）

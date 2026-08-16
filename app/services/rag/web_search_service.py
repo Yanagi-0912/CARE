@@ -12,7 +12,7 @@ from app.services.rag.cannot_answer import (
     answer_preview,
     matched_cannot_answer_marker,
 )
-from app.services.rag.answer_prompts import build_web_prompt
+from app.services.rag.answer_prompts import build_web_prompt, wrap_context
 from app.services.rag.fail_messages import (
     NO_ANSWER_MESSAGE,
     RagFailCode,
@@ -121,7 +121,7 @@ class WebSearchService:
             f"{idx}. {doc.page_content}" for idx, doc in enumerate(docs, start=1)
         )
         messages = build_web_prompt().format_messages(
-            question=question, context=context
+            question=question, context=wrap_context(context)
         )
         result = await self.gemini_service.chat_model.ainvoke(messages)
         answer_text = result.content or t("rag.generate_fallback")

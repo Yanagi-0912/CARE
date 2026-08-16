@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
@@ -9,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.dependencies import (
     CurrentUser,
+    get_content_preview_service,
     get_current_user,
     get_knowledge_report_service,
     get_manual_report_quota,
@@ -16,11 +18,19 @@ from app.dependencies import (
     require_admin_user,
 )
 from app.main import app
-from app.models.knowledge_report import IngestJob, KnowledgeReport
+from app.models.knowledge_report import (
+    ContentPreview,
+    ContentPreviewItem,
+    IngestJob,
+    KnowledgeReport,
+)
+from app.services.knowledge_reports.preview_service import PreviewStart
 
 client = TestClient(app)
 
 ALLOWED_URL = "https://www.hpa.gov.tw/Pages/Detail.aspx?nodeid=1"
+PREVIEW_CONTENT = "高血壓衛教內容"
+PREVIEW_HASH = hashlib.sha256(PREVIEW_CONTENT.encode()).hexdigest()
 
 
 def _sample_report(**overrides) -> KnowledgeReport:
@@ -86,9 +96,50 @@ def mock_service():
     )
     service.run_ingest = AsyncMock(return_value=None)
     service.reject = AsyncMock(return_value=_sample_report(status="rejected"))
+    service.get_for_review = AsyncMock(
+        return_value=_sample_report(user_source_urls=[ALLOWED_URL])
+    )
     app.dependency_overrides[get_knowledge_report_service] = lambda: service
     yield service
     app.dependency_overrides.pop(get_knowledge_report_service, None)
+
+
+def _sample_preview(**overrides) -> ContentPreview:
+    now = datetime(2026, 8, 2, 12, 0, tzinfo=timezone.utc)
+    data = {
+        "preview_id": "PV-1",
+        "report_id": "KR-20260802-AB12",
+        "status": "running",
+        "items": [
+            ContentPreviewItem(
+                url=ALLOWED_URL,
+                status="ok",
+                title="高血壓防治",
+                content=PREVIEW_CONTENT,
+                content_hash=PREVIEW_HASH,
+                char_count=len(PREVIEW_CONTENT),
+            )
+        ],
+        "created_at": now,
+        "expires_at": now + timedelta(minutes=60),
+    }
+    data.update(overrides)
+    return ContentPreview(**data)
+
+
+@pytest.fixture
+def mock_preview_service():
+    service = MagicMock()
+    service.start = AsyncMock(
+        return_value=PreviewStart(
+            preview=_sample_preview(), urls=[ALLOWED_URL], scheduled=True
+        )
+    )
+    service.run = AsyncMock(return_value=True)
+    service.get = AsyncMock(return_value=_sample_preview(status="ready"))
+    app.dependency_overrides[get_content_preview_service] = lambda: service
+    yield service
+    app.dependency_overrides.pop(get_content_preview_service, None)
 
 
 def _valid_create_body(**overrides) -> dict:
@@ -439,10 +490,21 @@ def test_admin_list_rejects_out_of_range_pagination(
     mock_service.list_for_admin.assert_not_awaited()
 
 
+def _approve_body(**overrides) -> dict:
+    """核准的最小合法請求主體：核准的對象是一份具體快照，不是一個網址字串。"""
+    body = {
+        "selected_urls": [ALLOWED_URL],
+        "preview_id": "PV-1",
+        "content_hashes": {ALLOWED_URL: PREVIEW_HASH},
+    }
+    body.update(overrides)
+    return body
+
+
 def test_admin_approve_success_for_admin(mock_service, override_admin_user):
     response = client.post(
         "/api/admin/knowledge-reports/KR-20260802-AB12/approve",
-        json={"selected_urls": [ALLOWED_URL]},
+        json=_approve_body(),
     )
     assert response.status_code == 200
     data = response.json()
@@ -451,11 +513,25 @@ def test_admin_approve_success_for_admin(mock_service, override_admin_user):
     assert data["ingest_job"]["status"] == "running"
 
 
+def test_admin_approve_passes_preview_binding_to_service(
+    mock_service, override_admin_user
+):
+    """綁定參數必須真的傳到 service，否則驗證形同虛設。"""
+    client.post(
+        "/api/admin/knowledge-reports/KR-20260802-AB12/approve",
+        json=_approve_body(),
+    )
+
+    kwargs = mock_service.approve.await_args.kwargs
+    assert kwargs["preview_id"] == "PV-1"
+    assert kwargs["content_hashes"] == {ALLOWED_URL: PREVIEW_HASH}
+
+
 def test_admin_approve_schedules_background_ingest(mock_service, override_admin_user):
     # TestClient 會在回應送出後執行 background task
     response = client.post(
         "/api/admin/knowledge-reports/KR-20260802-AB12/approve",
-        json={"selected_urls": [ALLOWED_URL]},
+        json=_approve_body(),
     )
     assert response.status_code == 200
     mock_service.run_ingest.assert_awaited_once_with("KR-20260802-AB12")
@@ -495,6 +571,136 @@ def test_admin_approve_400_body_shape(mock_service, override_admin_user):
         "url": "https://evil.com/",
         "reason": "not_allowed",
     }
+
+
+def test_admin_preview_returns_202_and_schedules_background_scrape(
+    mock_service, mock_preview_service, override_admin_user
+):
+    """驗證同步完成、抓取排到背景：端點 SHALL NOT 在回應中等外部服務。"""
+    response = client.post(
+        "/api/admin/knowledge-reports/KR-20260802-AB12/preview",
+        json={"urls": [ALLOWED_URL]},
+    )
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "running"
+    mock_preview_service.run.assert_awaited_once_with(
+        report_id="KR-20260802-AB12",
+        preview_id="PV-1",
+        urls=[ALLOWED_URL],
+    )
+
+
+def test_admin_preview_defaults_to_report_source_urls(
+    mock_service, mock_preview_service, override_admin_user
+):
+    client.post(
+        "/api/admin/knowledge-reports/KR-20260802-AB12/preview",
+        json={},
+    )
+
+    assert mock_preview_service.start.await_args.kwargs["urls"] == [ALLOWED_URL]
+
+
+def test_admin_preview_does_not_schedule_when_reusing_ready_preview(
+    mock_service, mock_preview_service, override_admin_user
+):
+    """TTL 內沿用既有預覽時不得再排抓取，否則瀏覽佇列就會重複打外部服務。"""
+    mock_preview_service.start = AsyncMock(
+        return_value=PreviewStart(
+            preview=_sample_preview(status="ready"), urls=[ALLOWED_URL], scheduled=False
+        )
+    )
+
+    response = client.post(
+        "/api/admin/knowledge-reports/KR-20260802-AB12/preview",
+        json={"urls": [ALLOWED_URL]},
+    )
+
+    assert response.status_code == 202
+    mock_preview_service.run.assert_not_awaited()
+
+
+def test_admin_preview_404_when_report_missing(
+    mock_service, mock_preview_service, override_admin_user
+):
+    mock_service.get_for_review = AsyncMock(
+        side_effect=HTTPException(status_code=404, detail="Report not found")
+    )
+
+    response = client.post(
+        "/api/admin/knowledge-reports/KR-20260802-AB12/preview",
+        json={"urls": [ALLOWED_URL]},
+    )
+
+    assert response.status_code == 404
+    mock_preview_service.start.assert_not_awaited()
+
+
+def test_admin_preview_requires_admin_role(mock_service, mock_preview_service):
+    profile_service = MagicMock()
+    profile_service.get_user_profile = AsyncMock(return_value={"role": "user"})
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        line_user_id="U_USER"
+    )
+    app.dependency_overrides[get_user_profile_service] = lambda: profile_service
+
+    response = client.post(
+        "/api/admin/knowledge-reports/KR-20260802-AB12/preview",
+        json={"urls": [ALLOWED_URL]},
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 403
+    mock_preview_service.start.assert_not_awaited()
+
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_user_profile_service, None)
+
+
+def test_admin_get_preview_returns_items(
+    mock_service, mock_preview_service, override_admin_user
+):
+    response = client.get("/api/admin/knowledge-reports/KR-20260802-AB12/preview")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["preview_id"] == "PV-1"
+    item = data["items"][0]
+    assert item["url"] == ALLOWED_URL
+    assert item["status"] == "ok"
+    assert item["content"] == "高血壓衛教內容"
+    assert item["content_hash"] == PREVIEW_HASH
+
+
+def test_admin_get_preview_404_when_absent_or_expired(
+    mock_service, mock_preview_service, override_admin_user
+):
+    mock_preview_service.get = AsyncMock(return_value=None)
+
+    response = client.get("/api/admin/knowledge-reports/KR-20260802-AB12/preview")
+
+    assert response.status_code == 404
+
+
+def test_admin_get_preview_requires_admin_role(mock_service, mock_preview_service):
+    profile_service = MagicMock()
+    profile_service.get_user_profile = AsyncMock(return_value={"role": "user"})
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        line_user_id="U_USER"
+    )
+    app.dependency_overrides[get_user_profile_service] = lambda: profile_service
+
+    response = client.get(
+        "/api/admin/knowledge-reports/KR-20260802-AB12/preview",
+        headers={"Authorization": "Bearer test-token"},
+    )
+
+    assert response.status_code == 403
+    mock_preview_service.get.assert_not_awaited()
+
+    app.dependency_overrides.pop(get_current_user, None)
+    app.dependency_overrides.pop(get_user_profile_service, None)
 
 
 def test_admin_reject_success_for_admin(mock_service, override_admin_user):

@@ -10,7 +10,7 @@ from app.services.rag.cannot_answer import (
     answer_preview,
     matched_cannot_answer_marker,
 )
-from app.services.rag.answer_prompts import build_rag_prompt
+from app.services.rag.answer_prompts import build_rag_prompt, wrap_context
 from app.services.rag.cohere_reranker import Reranker, VectorScoreReranker
 from app.services.rag.fail_messages import (
     NO_ANSWER_MESSAGE,
@@ -190,7 +190,7 @@ class RagAnswerService:
     async def _generate_answer(self, question: str, docs: list[Document]) -> str:
         context = self._build_context(docs)
         messages = build_rag_prompt().format_messages(
-            question=question, context=context
+            question=question, context=wrap_context(context)
         )
         rag_result = await self.gemini_service.chat_model.ainvoke(messages)
         answer_text = rag_result.content or t("rag.generate_fallback")

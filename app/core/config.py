@@ -133,6 +133,20 @@ class Settings:
     KNOWLEDGE_REPORT_MAX_SOURCE_URLS: int = int(
         os.getenv("KNOWLEDGE_REPORT_MAX_SOURCE_URLS", "3")
     )
+    # 核准前的內容預覽。TTL 決定「admin 看過的那份內容」還能當多久的核准依據：
+    # 太短會讓正常審核途中就逾期、太長則失去「你看到的就是現在的內容」的意義。
+    KNOWLEDGE_PREVIEW_TTL_MINUTES: int = int(
+        os.getenv("KNOWLEDGE_PREVIEW_TTL_MINUTES", "60")
+    )
+    # 單次預覽的 URL 數量上限。每個 URL 都是一次外部抓取（Firecrawl 逾時下限
+    # 45 秒），沒有上限時一筆回報就能讓背景工作跑上好幾分鐘並吃掉抓取額度。
+    KNOWLEDGE_PREVIEW_MAX_URLS: int = int(os.getenv("KNOWLEDGE_PREVIEW_MAX_URLS", "5"))
+    # 回傳給前端的原文長度上限。超過就截斷並標示，伺服器端仍保留全文供 ingest；
+    # 這是誠實的做法——改成回傳摘要的話，核准的對象與收錄的對象就不是同一份
+    # 文字，TOCTOU 只是換個形狀重新出現（design.md 決策 3）。
+    KNOWLEDGE_PREVIEW_RETURN_MAX_CHARS: int = int(
+        os.getenv("KNOWLEDGE_PREVIEW_RETURN_MAX_CHARS", "20000")
+    )
     # 藥袋辨識。預設開啟；整條路徑仍可獨立開關，出問題時把它設回 false
     # 即可停用，已建立的藥品與提醒關聯不受影響（推播的藥品區塊在關聯為空或
     # 藥品失效時會自動退回原版面），不需要資料回滾。

@@ -11,6 +11,8 @@ KnowledgeReportStatus = Literal["pending", "reviewing", "resolved", "rejected"]
 KnowledgeReportReason = Literal["outdated", "missing", "other"]
 IngestJobStatus = Literal["running", "succeeded", "failed"]
 KnowledgeReportSource = Literal["manual", "agent_tool", "web_fallback"]
+ContentPreviewStatus = Literal["running", "ready", "failed"]
+ContentPreviewItemStatus = Literal["ok", "empty", "error"]
 
 # 單一 URL 的長度上限。2048 是各家瀏覽器與代理伺服器實務上的共同下限，
 # 超過這個長度的來源網址不是正常的衛教頁面連結。
@@ -30,6 +32,9 @@ class IngestJob(BaseModel):
     selected_urls: list[str] = Field(default_factory=list)
     results: list[IngestJobResult] = Field(default_factory=list)
     error: Optional[str] = None
+    # 核准當下所綁定的預覽快照。背景收錄要靠它確認自己用的是同一份快照，
+    # 期間若被重新抓取取代就不能拿新的那份頂替。None 是本欄位加入前的舊紀錄。
+    preview_id: Optional[str] = Field(default=None, description="核准所綁定的預覽")
     # None 代表本欄位加入前寫下的舊紀錄，一律視為已結束
     status: Optional[IngestJobStatus] = Field(default=None, description="ingest 執行狀態")
     started_at: Optional[datetime] = Field(default=None, description="ingest 開始時間")
@@ -57,6 +62,55 @@ class KnowledgeReport(BaseModel):
     )
     created_at: datetime = Field(..., description="建立時間")
     updated_at: datetime = Field(..., description="最後更新時間")
+
+
+class ContentPreviewItem(BaseModel):
+    """單一 URL 的抓取結果快照。
+
+    `content` 是抓到的原文，不是摘要——admin 核准的必須是「將被切塊的那份
+    文字」本身（design.md 決策 3）。回傳給前端時才依設定截斷並標記
+    `truncated`；伺服器端這份保留全文供 ingest 使用。
+    """
+
+    url: str = Field(..., description="正規化後的來源 URL")
+    status: ContentPreviewItemStatus = Field(..., description="該 URL 的抓取狀態")
+    title: str = Field(default="", description="頁面標題，供 source_name fallback")
+    content: str = Field(default="", description="抓取到的原文")
+    content_hash: str = Field(default="", description="sha256(content)，核准時綁定用")
+    char_count: int = Field(default=0, description="原文字元數（截斷前）")
+    truncated: bool = Field(default=False, description="回傳的 content 是否已被截斷")
+    message: str = Field(default="", description="失敗或空內容的說明")
+
+
+class ContentPreview(BaseModel):
+    """一份回報的內容預覽快照。
+
+    同一筆回報只保留最新一份（repository 以 report_id 為鍵整份取代），
+    逾期由 expires_at 的 TTL 索引清除。
+    """
+
+    preview_id: str = Field(..., description="預覽識別碼 PV-...")
+    report_id: str = Field(..., description="所屬回報編號")
+    status: ContentPreviewStatus = Field(..., description="預覽整體狀態")
+    # 本次預覽涵蓋的 URL，已正規化。呼叫端送出的字串可能帶追蹤參數或大寫主機名，
+    # 而之後每個環節（快照的鍵、核准的 selected_urls、向量庫的 url）都必須是同一
+    # 份字串；不回報的話呼叫端無從得知後端把它的網址改成了什麼。running 狀態下
+    # items 還是空的，這個欄位是當時唯一能說明「在抓哪幾個」的資訊。
+    urls: list[str] = Field(default_factory=list, description="本次預覽的正規化 URL")
+    items: list[ContentPreviewItem] = Field(default_factory=list)
+    created_at: datetime = Field(..., description="建立時間")
+    expires_at: datetime = Field(..., description="逾期時間，TTL 索引依此清除")
+
+
+class StartContentPreviewRequest(BaseModel):
+    urls: list[str] = Field(
+        default_factory=list,
+        description="要預覽的 URL；省略或空則使用報告的 user_source_urls",
+    )
+    force: bool = Field(
+        default=False,
+        description="True 時忽略 TTL 內的既有預覽，強制重新抓取並產生新的 preview_id",
+    )
 
 
 class CreateKnowledgeReportRequest(BaseModel):
@@ -127,6 +181,16 @@ class ApproveKnowledgeReportRequest(BaseModel):
     )
     resolution: Optional[str] = Field(default=None, description="審核結論")
     reviewer_note: Optional[str] = Field(default=None, description="審核者備註")
+    # 型別是 Optional 而非必填，為的是「沒帶」時能回一個講得清楚的 409
+    # （預覽逾期／已被取代／雜湊不符是同一類問題），而不是 pydantic 的 422。
+    # 語意上仍是必要的：service.approve 對 None 一律拒絕，沒有略過預覽的路徑。
+    preview_id: Optional[str] = Field(
+        default=None, description="核准所依據的預覽識別碼"
+    )
+    content_hashes: dict[str, str] = Field(
+        default_factory=dict,
+        description="url → sha256(content)，呼叫端實際檢視過的內容雜湊",
+    )
 
 
 class RejectKnowledgeReportRequest(BaseModel):

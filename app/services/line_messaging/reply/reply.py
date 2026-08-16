@@ -165,6 +165,32 @@ class LineReplier:
             logger.exception("Failed to push LINE Flex message")
             return False
 
+    async def push_text(self, user_id: str, text: str) -> bool:
+        """主動推播純文字訊息。
+
+        背景通知（例如用藥風險提醒）沒有 reply token 可用，也不該佔用主回覆的
+        reply token。純文字而非 Flex：這些訊息是說給當事人聽的一段話，不是卡片。
+        """
+        try:
+            if not user_id or not user_id.strip():
+                raise ValueError("LINE 推播缺少 user_id")
+
+            access_token = self._token_manager.get_token()
+            line_config = Configuration(access_token=access_token)
+            with ApiClient(line_config) as api_client:
+                line_bot_api = MessagingApi(api_client)
+                line_bot_api.push_message(
+                    PushMessageRequest(
+                        to=user_id,
+                        messages=[TextMessage(text=text)],
+                    )
+                )
+            logger.info("Text message pushed to LINE user %s", user_id)
+            return True
+        except Exception:
+            logger.exception("Failed to push LINE text message")
+            return False
+
 
     @staticmethod
     def _try_parse_flex_message(message_text: str) -> Optional[FlexMessage]:

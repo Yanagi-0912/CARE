@@ -45,17 +45,17 @@
 
 ## 5. 通報協調服務與文案
 
-- [ ] 5.1 新增 `app/services/safety/safety_alert_service.py` 的 `SafetyAlertService`，建構子注入 `extractor`／`catalog_service`／`alert_repository`／`family_tree_repository`／`replier`／`user_profile_service`／`dedupe_hours`
-- [ ] 5.2 實作 `check(user_id, text)`：`looks_drug_related` 前置篩選 → `detect_foreign_scripts` → 抽取 → 逐筆 `catalog_service.match()` 補 `catalog_hit`／`license_number` → `assess()` → 分流
-- [ ] 5.3 `none` 不送任何訊息；`low` 只 push 當事人；`high` 先 `try_claim`，取得通報權才 push 族譜成員並 push 當事人（含「已告知家人」）
-- [ ] 5.4 `high` 未取得通報權時 SHALL NOT 推播族譜成員，亦 SHALL NOT 推播當事人
-- [ ] 5.5 族譜為 `None` 或成員為空時，`high` 仍 push 當事人，SHALL NOT 拋例外
-- [ ] 5.6 全流程以 `try/except Exception` 包覆，任何例外記 log 後靜默結束，SHALL NOT 往外拋。log SHALL NOT 含輸入文字或抽取到的姓名與機構
-- [ ] 5.7 SHALL NOT 呼叫任何 medication 相關的 repository 或 service（不建檔）；SHALL NOT 接觸任何影像
-- [ ] 5.8 新增 `app/services/line_messaging/flex/safety_flex.py` 的 `build_family_alert_flex(patient_name, drug_name, risk_reason, language, font_size)`；內容 SHALL 只含姓名、藥名與風險類型說明
-- [ ] 5.9 `app/i18n/messages.py` 新增全部文案：`low` 給當事人、`high` 給當事人（含「已請家人一起看看」）、`high` 給家人的卡片標題與說明；沿用既有多語與字級慣例。給當事人的訊息一律純文字，SHALL NOT 輸出 Markdown（見 `openspec/specs/line-reply-rules/spec.md`）
-- [ ] 5.10 `tests/unit/services/safety/test_safety_alert_service.py`（新增）：以建構子注入全部替身，涵蓋 5.2～5.7，至少含「`none` 零推播」「`low` 只推當事人」「`high` 推全部族譜成員 + 當事人」「`try_claim` 回 `False` 時零推播」「無族譜時仍推當事人」「抽取拋例外時不拋出且零推播」「前置篩選未通過時零呼叫抽取」「全程未觸及 medication repository」
-- [ ] 5.11 `tests/unit/services/line_messaging/test_safety_flex.py`（新增）：卡片含藥名與姓名、**不含**傳入的原始文字、字級與語言參數生效
+- [x] 5.1 新增 `app/services/safety/safety_alert_service.py` 的 `SafetyAlertService`，建構子注入 `extractor`／`catalog_service`／`alert_repository`／`family_tree_repository`／`replier`／`user_profile_service`／`dedupe_hours`
+- [x] 5.2 實作 `check(user_id, text)`：`looks_drug_related` 前置篩選 → `detect_foreign_scripts` → 抽取 → 逐筆 `catalog_service.match()` 補 `catalog_hit`／`license_number` → `assess()` → 分流
+- [x] 5.3 `none` 不送任何訊息；`low` 只 push 當事人；`high` 先 `try_claim`，取得通報權才 push 族譜成員並 push 當事人（含「已告知家人」）
+- [x] 5.4 `high` 未取得通報權時 SHALL NOT 推播族譜成員，亦 SHALL NOT 推播當事人
+- [x] 5.5 族譜為 `None` 或成員為空時，`high` 仍 push 當事人，SHALL NOT 拋例外
+- [x] 5.6 全流程以 `try/except Exception` 包覆，任何例外記 log 後靜默結束，SHALL NOT 往外拋。log SHALL NOT 含輸入文字或抽取到的姓名與機構
+- [x] 5.7 SHALL NOT 呼叫任何 medication 相關的 repository 或 service（不建檔）；SHALL NOT 接觸任何影像
+- [x] 5.8 新增 `app/services/line_messaging/flex/safety_flex.py` 的 `build_family_alert_flex(patient_name, drug_name, risk_reason, language, font_size)`；內容 SHALL 只含姓名、藥名與風險類型說明
+- [x] 5.9 `app/i18n/messages.py` 新增全部文案：`low` 給當事人、`high` 給當事人（含「已請家人一起看看」）、`high` 給家人的卡片標題與說明；沿用既有多語與字級慣例。給當事人的訊息一律純文字，SHALL NOT 輸出 Markdown（見 `openspec/specs/line-reply-rules/spec.md`）
+- [x] 5.10 `tests/unit/services/safety/test_safety_alert_service.py`（新增）：以建構子注入全部替身，涵蓋 5.2～5.7，至少含「`none` 零推播」「`low` 只推當事人」「`high` 推全部族譜成員 + 當事人」「`try_claim` 回 `False` 時零推播」「無族譜時仍推當事人」「抽取拋例外時不拋出且零推播」「前置篩選未通過時零呼叫抽取」「全程未觸及 medication repository」
+- [x] 5.11 `tests/unit/services/line_messaging/test_safety_flex.py`（新增）：卡片含藥名與姓名、**不含**傳入的原始文字、字級與語言參數生效
 
 ## 6. Handler 接入與組裝
 

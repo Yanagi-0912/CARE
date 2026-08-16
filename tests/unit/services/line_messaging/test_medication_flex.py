@@ -3,6 +3,7 @@ import inspect
 from linebot.v3.messaging import FlexMessage
 
 from app.services.line_messaging.flex.medication_flex import (
+    MedicationListEntry,
     build_caregiver_alert_flex,
     build_caregiver_missed_summary_flex,
     build_patient_medication_flex,
@@ -457,6 +458,120 @@ def test_patient_reminder_medication_list_collapses_overflow_to_one_line():
     for hidden in names[5:]:
         assert hidden not in rendered
     assert "另有 3 種藥品" in rendered
+
+
+# ── 藥丸縮圖：證號已確定且有照片時，該列改為「縮圖＋藥名」───────────────
+
+
+def test_patient_reminder_row_with_thumbnail_carries_image():
+    """證號已確定且有落地縮圖時，該列要看得到縮圖節點與對應的藥名。"""
+    msg = build_patient_medication_flex(
+        log_id="L123",
+        slot_type="morning",
+        scheduled_time="08:00",
+        medication_names=[
+            MedicationListEntry(name="脈優", image_url="https://img.example.com/a.jpg")
+        ],
+    )
+    med_block = msg.contents.to_dict()["body"]["contents"][1]
+    rows = med_block["contents"][1:]  # 第一個是標題列
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["type"] == "box"
+    assert row["layout"] == "horizontal"
+    image_node = next(c for c in row["contents"] if c["type"] == "image")
+    assert image_node["url"] == "https://img.example.com/a.jpg"
+    text_node = next(c for c in row["contents"] if c["type"] == "text")
+    assert text_node["text"] == "脈優"
+
+
+def test_patient_reminder_mixed_thumbnail_and_text_rows_layout_intact():
+    """同一時段圖文混排是常態：有縮圖的列變成 box，沒有的維持純文字列，兩者並存。"""
+    msg = build_patient_medication_flex(
+        log_id="L123",
+        slot_type="morning",
+        scheduled_time="08:00",
+        medication_names=[
+            MedicationListEntry(name="脈優", image_url="https://img.example.com/a.jpg"),
+            "利尿劑",  # 證號未確定或無落地縮圖，仍以純文字呈現
+        ],
+    )
+    med_block = msg.contents.to_dict()["body"]["contents"][1]
+    rows = med_block["contents"][1:]
+    assert len(rows) == 2
+
+    with_image, without_image = rows
+    assert with_image["type"] == "box"
+    assert any(c["type"] == "image" for c in with_image["contents"])
+
+    assert without_image["type"] == "text"
+    assert without_image["text"] == "利尿劑"
+
+
+def test_urgent_reminder_row_with_thumbnail_carries_image():
+    """二次催促與首刷提醒共用同一套藥品清單區塊，縮圖同樣要出現。"""
+    msg = build_patient_urgent_reminder_flex(
+        log_id="L123",
+        slot_type="noon",
+        scheduled_time="12:00",
+        medication_names=[
+            MedicationListEntry(name="普拿疼", image_url="https://img.example.com/b.jpg")
+        ],
+    )
+    rendered = msg.contents.to_dict()
+    med_block = rendered["body"]["contents"][1]
+    row = med_block["contents"][1]
+    assert row["type"] == "box"
+    image_node = next(c for c in row["contents"] if c["type"] == "image")
+    assert image_node["url"] == "https://img.example.com/b.jpg"
+
+
+def test_patient_reminder_overflow_collapse_stays_text_only_even_with_thumbnails():
+    """收斂成單行計數的那一列不代表任何一張藥證，即使清單裡混著帶縮圖的藥品，
+    這一行本身也絕不能出現縮圖。
+    """
+    entries = [
+        MedicationListEntry(name=f"藥{i}", image_url=f"https://img.example.com/{i}.jpg")
+        for i in range(8)
+    ]
+    msg = build_patient_medication_flex(
+        log_id="L123",
+        slot_type="morning",
+        scheduled_time="08:00",
+        medication_names=entries,
+    )
+    med_block = msg.contents.to_dict()["body"]["contents"][1]
+    rows = med_block["contents"][1:]
+    assert len(rows) == 6  # 5 顯示 + 1 收斂列
+    for shown_row in rows[:5]:
+        assert shown_row["type"] == "box"  # 前 5 筆都帶縮圖
+    last_row = rows[-1]
+    assert last_row["type"] == "text"
+    assert last_row["text"] == "…另有 3 種藥品"
+
+
+def test_caregiver_alert_flex_never_contains_image():
+    """家屬的逾時警報即使帶藥名，也不得出現任何縮圖節點（spec「家屬卡片不含縮圖」）。"""
+    msg = build_caregiver_alert_flex(
+        patient_name="王小明",
+        slot_type="morning",
+        scheduled_time="08:00",
+        medication_names=["脈優", "利尿劑"],
+    )
+    rendered = str(msg.contents.to_dict())
+    # dict 轉字串後圖片節點會是 "'type': 'image'"（Python repr 用單引號）
+    assert "'type': 'image'" not in rendered
+
+
+def test_caregiver_missed_summary_flex_never_contains_image():
+    """錯過時段的彙整通知同樣不帶任何縮圖——它連 medication_names 參數都沒有，
+    這裡仍明確鎖住輸出裡沒有任何圖片節點。
+    """
+    msg = build_caregiver_missed_summary_flex(
+        [_missed("morning", "08:00"), _missed("noon", "12:00", patient_name="王阿嬤")]
+    )
+    rendered = str(msg.contents.to_dict())
+    assert "'type': 'image'" not in rendered
 
 
 def test_urgent_reminder_empty_medication_list_matches_baseline():

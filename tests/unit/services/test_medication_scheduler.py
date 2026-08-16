@@ -1,9 +1,11 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.models.medication import TAIPEI_TZ, MedicationLog, MedicationReminder
+from app.services.line_messaging.flex.medication_flex import MedicationListEntry
 from app.services.medication.medication_scheduler import (
     MedicationScheduler,
     _TickMedicationNameCache,
@@ -858,6 +860,169 @@ async def test_tick_cache_medication_batch_failure_degrades_to_empty_for_every_l
     medication_col.find.assert_called_once()
 
 
+# ── 縮圖 URL 的解析：沿用同一批查詢，不得新增每筆 log 的額外查詢 ──────────
+#
+# 縮圖解析走 `_TickMedicationNameCache.__init__` 的 `resolve_image_url` 參數
+# 注入（預設是真正的 `resolve_drug_appearance_image_url`），不是全域函式呼叫，
+# 所以這裡可以直接塞一個假解析器，不需要 monkeypatch 掉
+# `drug_appearance_image_service` 模組。
+
+
+def _thumbnail_resolver(url_by_license: dict[str, str]):
+    """假縮圖解析器：介面比照 `resolve_drug_appearance_image_url`
+    （license_number -> URL 或 None），不觸碰檔案系統或 settings。`.calls` 記錄
+    每次呼叫的證號，用來驗證「解析次數是常數、不隨 log 數量增加」。
+    """
+    calls: list[str] = []
+
+    def _resolve(license_number: str) -> Optional[str]:
+        calls.append(license_number)
+        return url_by_license.get(license_number)
+
+    _resolve.calls = calls  # type: ignore[attr-defined]
+    return _resolve
+
+
+@pytest.mark.asyncio
+async def test_tick_cache_thumbnail_resolution_adds_no_per_log_queries():
+    """
+    縮圖解析必須沿用「查規則」「查藥品」同一批結果，不能讓 log 數量拉高查詢
+    次數——形狀比照 test_tick_cache_batches_queries_at_constant_count_regardless_of_log_count，
+    差別只在這裡額外驗證縮圖解析函式本身也只對「不重複的藥品」各呼叫一次
+    （2 種藥），不是每筆 log 各呼叫一次（6 次）。
+    """
+    scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
+    logs = [
+        _log("L1", "REM_1", scheduled_at),
+        _log("L2", "REM_1", scheduled_at),
+        _log("L3", "REM_2", scheduled_at),
+        _log("L4", "REM_2", scheduled_at),
+        _log("L5", "REM_3", scheduled_at),
+        _log("L6", "REM_3", scheduled_at),
+    ]
+    reminder_docs = [
+        {"_id": "REM_1", "creator_user_id": "U_CARE", "user_id": "U_P1", "slot_type": "morning", "scheduled_time": "08:00", "medication_ids": ["M1"]},
+        {"_id": "REM_2", "creator_user_id": "U_CARE", "user_id": "U_P2", "slot_type": "morning", "scheduled_time": "08:00", "medication_ids": ["M2"]},
+        {"_id": "REM_3", "creator_user_id": "U_CARE", "user_id": "U_P3", "slot_type": "morning", "scheduled_time": "08:00", "medication_ids": []},
+    ]
+    medication_docs = [
+        {"_id": "M1", "user_id": "U_P1", "created_by_user_id": "U_CARE", "name": "脈優", "license_number": "LIC-001"},
+        {"_id": "M2", "user_id": "U_P2", "created_by_user_id": "U_CARE", "name": "利尿劑", "license_number": "LIC-002"},
+    ]
+    reminder_col = _find_collection(reminder_docs)
+    medication_col = _find_collection(medication_docs)
+    resolver = _thumbnail_resolver(
+        {"LIC-001": "https://img.example.com/a.jpg", "LIC-002": "https://img.example.com/b.jpg"}
+    )
+
+    cache = _TickMedicationNameCache(logs, resolve_image_url=resolver)
+    results = {
+        log.id: await cache.get_entries(
+            log, reminder_collection=reminder_col, medication_collection=medication_col
+        )
+        for log in logs
+    }
+
+    assert results["L1"] == [
+        MedicationListEntry(name="脈優", image_url="https://img.example.com/a.jpg")
+    ]
+    assert results["L2"] == results["L1"]
+    assert results["L3"] == [
+        MedicationListEntry(name="利尿劑", image_url="https://img.example.com/b.jpg")
+    ]
+    assert results["L4"] == results["L3"]
+    assert results["L5"] == []
+    assert results["L6"] == []
+
+    # 重點斷言：DB 查詢次數是常數，不隨 log 數量增加。
+    reminder_col.find.assert_called_once()
+    medication_col.find.assert_called_once()
+    # 縮圖解析同樣是常數次（只對 2 種不重複的藥各解析一次），不是 6 次。
+    assert resolver.calls == ["LIC-001", "LIC-002"]
+
+
+@pytest.mark.asyncio
+async def test_tick_cache_drug_with_empty_license_number_gets_no_thumbnail():
+    """
+    spec「證號不確定時不得顯示藥丸照片」：license_number 為空字串時一律不得帶出
+    縮圖，且解析函式根本不會被呼叫——不是「呼叫後被判定不能用」，是這裡的把關
+    直接擋下，不讓一個「證號未確定」的藥品有機會被解析出任何 URL。
+    """
+    scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
+    logs = [_log("L1", "REM_1", scheduled_at)]
+    reminder_docs = [
+        {"_id": "REM_1", "creator_user_id": "U_CARE", "user_id": "U_PATIENT", "slot_type": "morning", "scheduled_time": "08:00", "medication_ids": ["M1"]},
+    ]
+    medication_docs = [
+        {"_id": "M1", "user_id": "U_PATIENT", "created_by_user_id": "U_CARE", "name": "脈優", "license_number": ""},
+    ]
+    reminder_col = _find_collection(reminder_docs)
+    medication_col = _find_collection(medication_docs)
+    resolver = _thumbnail_resolver({"": "https://img.example.com/should-not-be-used.jpg"})
+
+    cache = _TickMedicationNameCache(logs, resolve_image_url=resolver)
+    entries = await cache.get_entries(
+        logs[0], reminder_collection=reminder_col, medication_collection=medication_col
+    )
+
+    assert entries == [MedicationListEntry(name="脈優", image_url=None)]
+    assert resolver.calls == []
+
+
+@pytest.mark.asyncio
+async def test_tick_cache_thumbnail_resolution_failure_degrades_without_raising():
+    """
+    縮圖解析失敗（例如底層檔案系統或未來換成的服務丟例外）不能讓整批藥品清單
+    查詢連坐失敗：該筆藥品退化為沒有縮圖，藥名與清單其餘部分照常返回。
+    """
+    scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
+    logs = [_log("L1", "REM_1", scheduled_at)]
+    reminder_docs = [
+        {"_id": "REM_1", "creator_user_id": "U_CARE", "user_id": "U_PATIENT", "slot_type": "morning", "scheduled_time": "08:00", "medication_ids": ["M1"]},
+    ]
+    medication_docs = [
+        {"_id": "M1", "user_id": "U_PATIENT", "created_by_user_id": "U_CARE", "name": "脈優", "license_number": "LIC-001"},
+    ]
+    reminder_col = _find_collection(reminder_docs)
+    medication_col = _find_collection(medication_docs)
+
+    def _raising_resolver(license_number: str) -> Optional[str]:
+        raise RuntimeError("thumbnail service down")
+
+    cache = _TickMedicationNameCache(logs, resolve_image_url=_raising_resolver)
+    entries = await cache.get_entries(
+        logs[0], reminder_collection=reminder_col, medication_collection=medication_col
+    )
+
+    assert entries == [MedicationListEntry(name="脈優", image_url=None)]
+
+
+@pytest.mark.asyncio
+async def test_thumbnail_resolution_failure_does_not_block_the_push(scheduler, mock_replier):
+    """
+    縮圖解析失敗不得吞掉推播——這則提醒仍要送出，只是沒有圖片。
+
+    `_load()` 已經在內部把單一藥品的解析失敗擋下（見上一則測試），這裡從
+    `_send_patient_reminder` 的角度驗證：即使拿到的是「已退化為沒有縮圖」的
+    entries，push_flex 仍然照常被呼叫、回傳成功，不會因為缺了圖片就不送。
+    """
+    scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
+    log = _log("L1", "REM_1", scheduled_at)
+    cache = _TickMedicationNameCache([log])
+    # 模擬 _load() 已經因為縮圖解析失敗而把這筆藥品退化為沒有 image_url。
+    cache._entries_by_log_id = {"L1": [MedicationListEntry(name="脈優", image_url=None)]}
+
+    sent = await scheduler._send_patient_reminder(log, cache)
+
+    assert sent is True
+    mock_replier.push_flex.assert_awaited_once()
+    call_args = mock_replier.push_flex.call_args[0]
+    rendered = str(call_args[1].contents.to_dict())
+    assert "脈優" in rendered
+    # dict 轉字串後圖片節點會是 "'type': 'image'"（Python repr 用單引號）
+    assert "'type': 'image'" not in rendered
+
+
 @pytest.mark.asyncio
 async def test_send_patient_reminder_reads_names_from_shared_cache(scheduler, mock_replier):
     """
@@ -872,7 +1037,7 @@ async def test_send_patient_reminder_reads_names_from_shared_cache(scheduler, mo
     scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
     log = _log("L1", "REM_1", scheduled_at)
     cache = _TickMedicationNameCache([log])
-    cache._names_by_log_id = {"L1": ["脈優"]}
+    cache._entries_by_log_id = {"L1": [MedicationListEntry(name="脈優")]}
 
     sent = await scheduler._send_patient_reminder(log, cache)
 
@@ -888,7 +1053,7 @@ async def test_send_urgent_reminder_reads_names_from_shared_cache(scheduler, moc
     scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
     log = _log("L1", "REM_1", scheduled_at)
     cache = _TickMedicationNameCache([log])
-    cache._names_by_log_id = {"L1": ["普拿疼"]}
+    cache._entries_by_log_id = {"L1": [MedicationListEntry(name="普拿疼")]}
 
     sent = await scheduler._send_urgent_reminder(log, cache)
 
@@ -911,7 +1076,9 @@ async def test_send_caregiver_alert_reads_names_from_shared_cache(
     scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
     log = _log("L1", "REM_1", scheduled_at)
     cache = _TickMedicationNameCache([log])
-    cache._names_by_log_id = {"L1": ["脈優", "利尿劑"]}
+    cache._entries_by_log_id = {
+        "L1": [MedicationListEntry(name="脈優"), MedicationListEntry(name="利尿劑")]
+    }
 
     sent = await scheduler._send_caregiver_alert(log, cache)
 

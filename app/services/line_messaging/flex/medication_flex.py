@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional
+from typing import Any, NamedTuple, Optional, Union
 
 from linebot.v3.messaging import FlexContainer, FlexMessage
 
@@ -75,20 +75,83 @@ def _slot_block(
 MEDICATION_LIST_MAX_ITEMS = 5
 
 
-def _medication_list_rows(names: list[str], language: str | None) -> list[str]:
-    """把藥品名稱收斂成顯示用的文字列；超過上限時最後一行收斂為單行計數。"""
-    shown = names[:MEDICATION_LIST_MAX_ITEMS]
+class MedicationListEntry(NamedTuple):
+    """藥品清單一列的資料：藥名，加上可選的縮圖 URL。
+
+    `image_url` 有值時該列呈現「縮圖＋藥名」，None 時維持純文字列——是否有值
+    完全由呼叫端決定，這裡不做任何「該不該顯示照片」的判斷。呼叫端（排程器的
+    `_TickMedicationNameCache`）只在藥品 `license_number` 已確定且落地縮圖存在
+    時才會帶入非 None 的 `image_url`（spec「證號不確定時不得顯示藥丸照片」）；
+    這支模組收到什麼就照樣呈現，不重複做這個把關，避免把關邏輯分散在兩處。
+    """
+
+    name: str
+    image_url: Optional[str] = None
+
+
+# 呼叫端可以直接傳純字串（既有呼叫方式，等同 image_url=None，家屬卡片與
+# 「已完成」卡片的既有呼叫點都還是這樣傳），也可以傳 MedicationListEntry
+# 帶入縮圖 URL。兩者在同一個清單中混用是常態而非例外：同一時段的藥有的
+# 證號已確定、有的還沒（spec「同時段圖文混排」）。
+MedicationListItem = Union[str, MedicationListEntry]
+
+
+def _as_entry(item: MedicationListItem) -> MedicationListEntry:
+    return item if isinstance(item, MedicationListEntry) else MedicationListEntry(name=item)
+
+
+def _medication_list_rows(
+    items: list[MedicationListItem], language: str | None
+) -> list[MedicationListEntry]:
+    """把藥品清單收斂成顯示用的列；超過上限時最後一行收斂為單行純文字計數。"""
+    entries = [_as_entry(item) for item in items]
+    shown = entries[:MEDICATION_LIST_MAX_ITEMS]
     rows = list(shown)
-    remaining = len(names) - len(shown)
+    remaining = len(entries) - len(shown)
     if remaining > 0:
+        # 收斂後的計數行只是一句提示文字，不代表任何一張藥證，不該也不能帶縮圖。
         rows.append(
-            t("flex.med.medication_list_more", language).format(count=remaining)
+            MedicationListEntry(
+                name=t("flex.med.medication_list_more", language).format(count=remaining)
+            )
         )
     return rows
 
 
+def _medication_row_node(row: MedicationListEntry, ft: theme.FlexTheme) -> dict[str, Any]:
+    """單一藥品列的 Flex 節點：沒有縮圖時是純文字列（結構與本功能導入前逐位元組
+    相同），有縮圖時外包一層水平排列的 box，縮圖與藥名並排。
+    """
+    text_node = {
+        "type": "text",
+        "text": row.name,
+        "size": ft.body,
+        "color": theme.TEXT_MUTED,
+        "wrap": True,
+    }
+    if not row.image_url:
+        return text_node
+    return {
+        "type": "box",
+        "layout": "horizontal",
+        "spacing": "sm",
+        "alignItems": "center",
+        "contents": [
+            {
+                "type": "image",
+                "url": row.image_url,
+                "size": "xxs",
+                "aspectMode": "cover",
+                "aspectRatio": "1:1",
+                "flex": 0,
+            },
+            text_node,
+        ],
+    }
+
+
 def _medication_list_block(
-    medication_names: Optional[list[str]],
+    medication_names: Optional[list[MedicationListItem]],
     ft: theme.FlexTheme,
     language: str | None,
     heading_key: str = "flex.med.medication_list_heading",
@@ -98,7 +161,8 @@ def _medication_list_block(
     `medication_names` 為 None 或空清單時回傳 None，呼叫端據此完全不插入這個
     區塊——既有規則的 medication_ids 皆為空陣列，版面必須與本變更前逐一致，
     不能出現空白的藥品區塊或只有標題沒有內容的殘影。
-    只放藥名：適應症等其他欄位由呼叫端在解析階段就已經濾除，這裡不重複把關。
+    每一列只放藥名（可選再加縮圖）：適應症等其他欄位由呼叫端在解析階段就已經
+    濾除，這裡不重複把關。
 
     `heading_key` 讓四張卡片共用同一套排版與截斷規則，只換標題的時態與語氣
     （應服／已服用／尚未服用）。刻意不為此另開三份幾乎相同的 builder：藥名
@@ -124,16 +188,7 @@ def _medication_list_block(
                 "color": theme.TEXT,
                 "wrap": True,
             },
-            *[
-                {
-                    "type": "text",
-                    "text": row,
-                    "size": ft.body,
-                    "color": theme.TEXT_MUTED,
-                    "wrap": True,
-                }
-                for row in rows
-            ],
+            *[_medication_row_node(row, ft) for row in rows],
         ],
     }
 
@@ -175,7 +230,7 @@ def build_patient_medication_flex(
     scheduled_time: str,
     disabled: bool = False,
     taken_at_str: Optional[str] = None,
-    medication_names: Optional[list[str]] = None,
+    medication_names: Optional[list[MedicationListItem]] = None,
     language: str | None = None,
     font_size: str | None = None,
 ) -> FlexMessage:
@@ -275,7 +330,7 @@ def build_patient_urgent_reminder_flex(
     log_id: str,
     slot_type: str,
     scheduled_time: str,
-    medication_names: Optional[list[str]] = None,
+    medication_names: Optional[list[MedicationListItem]] = None,
     language: str | None = None,
     font_size: str | None = None,
 ) -> FlexMessage:

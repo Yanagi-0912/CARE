@@ -34,7 +34,7 @@ class LineLoadingAnimationService:
             return
 
         try:
-            access_token = self._token_manager.get_token()
+            access_token = await self._token_manager.get_token_async()
             line_config = Configuration(access_token=access_token)
             with ApiClient(line_config) as api_client:
                 line_bot_api = MessagingApi(api_client)

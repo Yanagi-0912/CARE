@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import requests
@@ -38,7 +39,12 @@ class LiffAuthApplicationService:
             )
 
         try:
-            verify_payload = self._line_id_token_service.verify(
+            # verify() 內部是同步的 requests，直接呼叫會鎖住整個事件迴圈——
+            # 單執行緒的 FastAPI 在那段期間無法處理任何其他請求。移到工作執行緒
+            # 執行；例外照樣會從執行緒往外拋，下面的分支不受影響。
+            # 與 tts_service.py:110／:193 及 mutimedia_processor 採同一手法。
+            verify_payload = await asyncio.to_thread(
+                self._line_id_token_service.verify,
                 id_token=id_token,
                 client_id=liff_client_id,
             )
@@ -63,8 +69,14 @@ class LiffAuthApplicationService:
 
         profile = await self._user_profile_service.get_user_profile(line_user_id)
         if not profile:
-            # 新使用者：向 LINE 查一次初始語言（查不到就用預設值），之後不再覆蓋
-            language = self._line_language_service.get_language(line_user_id) or DEFAULT_LANGUAGE
+            # 新使用者：向 LINE 查一次初始語言（查不到就用預設值），之後不再覆蓋。
+            # 同樣是同步 requests，理由見上方 verify() 的說明。
+            language = (
+                await asyncio.to_thread(
+                    self._line_language_service.get_language, line_user_id
+                )
+                or DEFAULT_LANGUAGE
+            )
             await self._user_profile_service.create_default_user_profile(
                 line_id=line_user_id,
                 display_name=display_name,

@@ -63,7 +63,7 @@ class LineReplier:
             if not user_id or not user_id.strip():
                 raise ValueError("LINE 事件缺少 user_id")
 
-            access_token = self._token_manager.get_token()
+            access_token = await self._token_manager.get_token_async()
             message_text = self._normalize_message_text(message_text)
             logger.info(
                 f"{LOGGER_HEADER_TEXT} 準備回覆，user_id=%s, request_location=%s",
@@ -127,7 +127,7 @@ class LineReplier:
             if not reply_token or not reply_token.strip():
                 raise ValueError("LINE 事件缺少 reply_token")
 
-            access_token = self._token_manager.get_token()
+            access_token = await self._token_manager.get_token_async()
             line_config = Configuration(access_token=access_token)
             with ApiClient(line_config) as api_client:
                 line_bot_api = MessagingApi(api_client)
@@ -149,7 +149,7 @@ class LineReplier:
             if not user_id or not user_id.strip():
                 raise ValueError("LINE 推播缺少 user_id")
 
-            access_token = self._token_manager.get_token()
+            access_token = await self._token_manager.get_token_async()
             line_config = Configuration(access_token=access_token)
             with ApiClient(line_config) as api_client:
                 line_bot_api = MessagingApi(api_client)

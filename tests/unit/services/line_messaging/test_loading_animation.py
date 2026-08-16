@@ -8,13 +8,12 @@ from app.services.line_messaging.loading_animation import (
     DEFAULT_LOADING_SECONDS,
     LineLoadingAnimationService,
 )
+from tests.conftest import fake_line_token_manager
 
 
 @pytest.fixture
 def token_manager():
-    tm = MagicMock()
-    tm.get_token.return_value = "test-token"
-    return tm
+    return fake_line_token_manager("test-token")
 
 
 @pytest.mark.asyncio
@@ -60,6 +59,7 @@ async def test_start_skips_empty_chat_id(token_manager):
 async def test_start_swallows_api_errors(token_manager):
     service = LineLoadingAnimationService(token_manager)
     token_manager.get_token.side_effect = RuntimeError("token failed")
+    token_manager.get_token_async.side_effect = RuntimeError("token failed")
 
     # 不應向外拋出
     await service.start("U12345")

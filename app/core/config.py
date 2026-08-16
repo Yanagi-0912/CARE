@@ -5,7 +5,36 @@ from dotenv import load_dotenv
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
 
+# 唯一會關掉背景排程器的角色。判斷寫成「只有明確設成 api 才不跑」，而不是
+# 「只有 all／scheduler 才跑」——兩者對合法值的結果相同，但對打錯字的結果
+# 相反，而這個方向的錯誤代價不對稱：
+#   多跑一份排程器 → 既有的原子搶佔多擋一次（那個機制本來就要應付滾動更新
+#                    期間必然出現的雙實例），使用者無感。
+#   一份都沒跑     → 當下所有服藥時段永久錯過，而 medication-reminders 明訂
+#                    「錯過時段不補推播」，沒有任何補救路徑。
+# 所以未知值一律當成「要跑」。
+_SCHEDULER_OPT_OUT_ROLE = "api"
+
+
+def should_run_schedulers(role: str) -> bool:
+    """這個角色該不該啟動背景排程器。
+
+    抽成純函式而非寫死在 lifespan 裡，是為了讓這個判斷能被窮舉測試——
+    lifespan 本身要建資料庫索引並組裝多個服務，在單元測試裡跑不動。
+    """
+    return role.strip().lower() != _SCHEDULER_OPT_OUT_ROLE
+
 class Settings:
+    # 這個行程扮演的角色，決定 lifespan 要不要啟動背景排程器。
+    #   all       —— API + 排程器都跑（預設，與拆分前完全相同的行為）
+    #   api       —— 只服務請求，不啟動任何排程器
+    #   scheduler —— 只啟動排程器（仍然跑 uvicorn，讓 /health 探針沿用既有設定）
+    #
+    # 預設刻意是 all 而不是 api：部署設定若還沒更新就先上了新版程式碼，
+    # 行為必須與現況一致。反過來預設 api 的話，這種情況下沒有任何行程會跑
+    # 排程器，而用藥提醒「錯過時段不補推播」——漏掉就是永久漏掉，沒有補救。
+    APP_ROLE: str = os.getenv("APP_ROLE", "all").strip().lower() or "all"
+
     # Gemini API 配置
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY")
     MODEL_NAME: str = os.getenv("MODEL_NAME", "gemini-2.5-flash")

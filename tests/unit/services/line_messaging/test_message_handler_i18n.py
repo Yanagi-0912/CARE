@@ -12,6 +12,7 @@ from linebot.v3.webhooks import (
 from app.i18n.messages import t
 from app.services.line_messaging.handler.message_handler import LineMessageHandler
 from app.services.line_messaging.reply.reply import LineReplier
+from tests.conftest import fake_line_token_manager
 
 
 def _text_event(*, user_id: str = "U_EN") -> MessageEvent:
@@ -28,8 +29,7 @@ def _text_event(*, user_id: str = "U_EN") -> MessageEvent:
 
 @pytest.fixture
 def handler():
-    token_manager = MagicMock()
-    token_manager.get_token.return_value = "token"
+    token_manager = fake_line_token_manager("token")
     replier = LineReplier(token_manager=token_manager, tts_service=None)
     profile_service = MagicMock()
     profile_service.get_user_profile = AsyncMock(

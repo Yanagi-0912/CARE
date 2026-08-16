@@ -228,6 +228,18 @@ class Settings:
     DRUG_CATALOG_MATCH_THRESHOLD: float = float(
         os.getenv("DRUG_CATALOG_MATCH_THRESHOLD", "0.88")
     )
+    # 藥丸縮圖同樣是建置期落地的靜態資源（scripts/build_drug_catalog.py
+    # --fetch-images 產出並提交進 repo），執行期不對外連線，見
+    # openspec/changes/drug-appearance-photo/design.md 決策 2、4。
+    DRUG_APPEARANCE_IMAGE_DIR: str = os.getenv(
+        "DRUG_APPEARANCE_IMAGE_DIR", "resources/drug_appearance"
+    )
+    # 對外路徑前綴，比照 TTS_AUDIO_URL_PATH 的作法接在 PUBLIC_BASE_URL 之後。
+    # 檔名本身已是證號的雜湊（不可枚舉、不帶用藥資訊），這段路徑前綴不需要
+    # 也不應該再帶任何識別碼。
+    DRUG_APPEARANCE_IMAGE_URL_PATH: str = os.getenv(
+        "DRUG_APPEARANCE_IMAGE_URL_PATH", "/drug-appearance"
+    )
 
     # 用藥風險偵測。預設開啟，沿用 PRESCRIPTION_SCAN_ENABLED 的形狀：不必在
     # 每個環境各設一次，但出問題時把它設回 false 就能整條停用（設為 false 時

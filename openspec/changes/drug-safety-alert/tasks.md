@@ -38,10 +38,10 @@
 
 ## 4. 節流 repository
 
-- [ ] 4.1 新增 `app/repositories/safety_alert_repository.py`：`ensure_indexes`（`(user_id, drug_key)` 唯一 + `expires_at` TTL `expireAfterSeconds=0`），沿用既有慣例的 `collection: Optional[Any] = None` 參數
-- [ ] 4.2 實作 `try_claim(user_id, drug_key, risk_level, ttl_hours) -> bool`：以 `insert_one` 取得通報權，`DuplicateKeyError` 回 `False`。SHALL NOT 以「先查再寫」實作
-- [ ] 4.3 `app/db/mongodb.py` 的啟動索引流程納入 `safety_alerts` 的兩個索引
-- [ ] 4.4 `tests/unit/repositories/test_safety_alert_repository.py`（新增）：以 `collection=` 傳入 mock，驗證兩個索引的參數、`try_claim` 走的是 `insert_one`、`DuplicateKeyError` 時回 `False` 且不拋例外
+- [x] 4.1 新增 `app/repositories/safety_alert_repository.py`：`ensure_indexes`（`(user_id, drug_key)` 唯一 + `expires_at` TTL `expireAfterSeconds=0`），沿用既有慣例的 `collection: Optional[Any] = None` 參數
+- [x] 4.2 實作 `try_claim(user_id, drug_key, risk_level, ttl_hours) -> bool`：以 `insert_one` 取得通報權，`DuplicateKeyError` 回 `False`。SHALL NOT 以「先查再寫」實作
+- [x] 4.3 `app/db/mongodb.py` 的啟動索引流程納入 `safety_alerts` 的兩個索引
+- [x] 4.4 `tests/unit/repositories/test_safety_alert_repository.py`（新增）：以 `collection=` 傳入 mock，驗證兩個索引的參數、`try_claim` 走的是 `insert_one`、`DuplicateKeyError` 時回 `False` 且不拋例外
 
 ## 5. 通報協調服務與文案
 

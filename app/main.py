@@ -22,6 +22,7 @@ from app.repositories.consultation_repository import ConsultationRepository
 from app.repositories.knowledge_report_repository import KnowledgeReportRepository
 from app.repositories.medication_repository import MedicationLogRepository
 from app.repositories.prescription_draft_repository import PrescriptionDraftRepository
+from app.repositories.safety_alert_repository import SafetyAlertRepository
 from app.services.consultation.scheduler import (
     start_consultation_daily_summary_scheduler,
 )
@@ -49,6 +50,11 @@ async def lifespan(app: FastAPI):
     # 藥袋辨識草稿的 TTL 索引：草稿以 PRESCRIPTION_DRAFT_TTL_MINUTES 為存活
     # 時間，交由資料庫自動清除，應用端不需要另外排程刪除。
     await PrescriptionDraftRepository.ensure_indexes()
+    # 用藥風險通報的節流索引：(user_id, drug_key) 的唯一約束是「同一個藥在
+    # 節流視窗內只通報一次」的唯一保證，通報權就是靠它原子取得；expires_at
+    # 的 TTL 讓視窗自動過期，不需要應用端排程清除。索引與功能開關無關，
+    # 先備好才能在開關打開的當下就是正確行為。
+    await SafetyAlertRepository.ensure_indexes()
     await ensure_user_docs_indexes_on_startup()
 
     # 預載院所名稱索引，供判斷使用者說的「診所／醫院／藥局」是專名還是泛稱。

@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, Callable, List, Optional
 from fastapi import HTTPException
 
 from app.models.family_tree import FamilyTree
@@ -8,6 +8,7 @@ from app.models.medication import (
     DEFAULT_SLOT_TIMES,
     TAIPEI_TZ,
     CreateMedicationReminderRequest,
+    Medication,
     MedicationLog,
     MedicationReminder,
     MedicationReminderWithMedications,
@@ -20,8 +21,17 @@ from app.repositories.medication_repository import (
     MedicationRepository,
     MedicationReminderRepository,
 )
+from app.services.medication.drug_appearance_image_service import (
+    resolve_drug_appearance_image_url,
+)
 
 logger = logging.getLogger(__name__)
+
+# 證號 -> 對外縮圖 URL（查無縮圖回 None）。以純函式簽章注入而非直接依賴
+# drug_appearance_image_service 模組，測試才能餵一個字典查表的假實作，
+# 不必碰檔案系統；與 PrescriptionScanService、MedicationScheduler 同一條
+# 慣例（見兩者的 _AppearanceImageResolver）。
+_AppearanceImageResolver = Callable[[str], Optional[str]]
 
 
 def _today_date_str() -> str:
@@ -38,6 +48,7 @@ class MedicationService:
         medication_repository=MedicationRepository,
         reminder_repository=MedicationReminderRepository,
         log_repository=MedicationLogRepository,
+        appearance_image_resolver: _AppearanceImageResolver = resolve_drug_appearance_image_url,
     ) -> None:
         # 其餘方法沿用既有慣例，直接呼叫 repository 的 staticmethod；
         # 這裡額外開可注入的參數，給 get_user_reminders_with_medications 與
@@ -46,6 +57,7 @@ class MedicationService:
         self._medication_repository = medication_repository
         self._reminder_repository = reminder_repository
         self._log_repository = log_repository
+        self._appearance_image_resolver = appearance_image_resolver
 
     async def create_reminders(
         self, creator_user_id: str, request: CreateMedicationReminderRequest
@@ -130,7 +142,16 @@ class MedicationService:
             {mid for reminder in reminders for mid in reminder.medication_ids}
         )
         medications = await self._medication_repository.find_by_ids(all_medication_ids)
-        medications_by_id = {medication.id: medication for medication in medications}
+        # 縮圖 URL 不是資料庫裡存的值，是讀取當下依證號現算的（見
+        # Medication.thumbnail_url 的欄位註解）——每個藥品只算一次，不論它
+        # 掛在幾筆提醒規則底下，因為這裡是先建好 id -> 藥品的查表，下面組
+        # 每筆提醒的 medications 清單時只是查表，不會重複呼叫解析器。
+        medications_by_id = {
+            medication.id: medication.model_copy(
+                update={"thumbnail_url": self._resolve_thumbnail(medication)}
+            )
+            for medication in medications
+        }
 
         return [
             MedicationReminderWithMedications(
@@ -143,6 +164,27 @@ class MedicationService:
             )
             for reminder in reminders
         ]
+
+    def _resolve_thumbnail(self, medication: Medication) -> Optional[str]:
+        """證號已確定時才嘗試解析縮圖 URL。
+
+        與 MedicationScheduler._resolve_thumbnail 同一條規則：`license_number`
+        為空 SHALL NOT 顯示照片（spec「證號不確定時不得顯示藥丸照片」），把關
+        必須設在這裡，不能指望解析器自己判斷「這個證號是不是已經確定」，它只
+        認檔案存不存在。解析本身出例外不能讓整批查詢連坐失敗，退化成沒有
+        縮圖、文字列照常呈現（spec「照片缺席時的降級」）。
+        """
+        if not medication.license_number:
+            return None
+        try:
+            return self._appearance_image_resolver(medication.license_number)
+        except Exception:
+            logger.exception(
+                "[MedicationService] Failed to resolve drug appearance thumbnail "
+                "for medication %s",
+                medication.id,
+            )
+            return None
 
     async def get_creator_reminders(self, creator_user_id: str) -> List[MedicationReminder]:
         """取得創立者為家人或自己產生的所有用藥提醒"""

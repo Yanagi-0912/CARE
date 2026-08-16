@@ -115,6 +115,13 @@ class Medication(BaseModel):
     mark_one: str = ""
     mark_two: str = ""
     size: str = ""
+    # 縮圖的對外 URL。刻意不落地存進資料庫（欄位在寫入時永遠是 None）——
+    # 縮圖檔案存不存在只有讀取當下才知道，見 MedicationService
+    # get_user_reminders_with_medications 用 resolve_drug_appearance_image_url
+    # 就地解析並以 model_copy 覆寫這個欄位，與 medication_scheduler
+    # 的 _resolve_thumbnail 走同一條規則。查無縮圖或 license_number 未確定
+    # 時為 None，呈現面據此安全地退回純文字（spec「照片缺席時的降級」）。
+    thumbnail_url: Optional[str] = None
     unit_content: Optional[str] = None
     total_quantity: Optional[int] = None
     usage_raw: Optional[str] = None        # 藥袋上的用法原文，供使用者核對

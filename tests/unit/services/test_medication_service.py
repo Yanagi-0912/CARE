@@ -326,6 +326,105 @@ async def test_get_user_reminders_with_medications_empty_when_no_medication_ids(
     assert fake_medications.queried_ids == []
 
 
+@pytest.mark.asyncio
+async def test_get_user_reminders_with_medications_resolves_thumbnail_url():
+    """縮圖 URL 在讀取當下就地解析，不是資料庫裡本來就存的值（見
+    Medication.thumbnail_url 的欄位註解）。只有 license_number 已確定的
+    藥品才會呼叫解析器——這與 medication_scheduler._resolve_thumbnail
+    同一條規則（spec「證號不確定時不得顯示藥丸照片」）。"""
+    fake_medications = FakeMedicationRepository(
+        [
+            Medication(
+                id="M1",
+                user_id="U_SELF",
+                created_by_user_id="U_SELF",
+                name="脈優錠",
+                license_number="LIC-1",
+            ),
+            Medication(
+                id="M2",
+                user_id="U_SELF",
+                created_by_user_id="U_SELF",
+                name="抗生素",
+                license_number=None,
+            ),
+        ]
+    )
+    resolved_urls = {"LIC-1": "https://example.com/drug-appearance/abc.jpg"}
+    calls: list[str] = []
+
+    def fake_resolver(license_number: str):
+        calls.append(license_number)
+        return resolved_urls.get(license_number)
+
+    service = MedicationService(
+        medication_repository=fake_medications, appearance_image_resolver=fake_resolver
+    )
+    fake_collection = _FakeReminderCollection(
+        [
+            {
+                "_id": "R1",
+                "creator_user_id": "U_SELF",
+                "user_id": "U_SELF",
+                "slot_type": "morning",
+                "scheduled_time": "08:00",
+                "medication_ids": ["M1", "M2"],
+            }
+        ]
+    )
+
+    result = await service.get_user_reminders_with_medications(
+        "U_SELF", reminder_collection=fake_collection
+    )
+
+    by_id = {m.id: m for m in result[0].medications}
+    assert by_id["M1"].thumbnail_url == "https://example.com/drug-appearance/abc.jpg"
+    assert by_id["M2"].thumbnail_url is None
+    # license_number 未確定的藥品不該白白呼叫一次解析器。
+    assert calls == ["LIC-1"]
+
+
+@pytest.mark.asyncio
+async def test_get_user_reminders_with_medications_thumbnail_resolution_failure_degrades_to_none():
+    """解析器本身出例外（例如未來換掉實作）不能讓整批查詢連坐失敗，
+    退化成沒有縮圖即可（spec「照片缺席時的降級」）。"""
+    fake_medications = FakeMedicationRepository(
+        [
+            Medication(
+                id="M1",
+                user_id="U_SELF",
+                created_by_user_id="U_SELF",
+                name="脈優錠",
+                license_number="LIC-1",
+            ),
+        ]
+    )
+
+    def broken_resolver(license_number: str):
+        raise RuntimeError("boom")
+
+    service = MedicationService(
+        medication_repository=fake_medications, appearance_image_resolver=broken_resolver
+    )
+    fake_collection = _FakeReminderCollection(
+        [
+            {
+                "_id": "R1",
+                "creator_user_id": "U_SELF",
+                "user_id": "U_SELF",
+                "slot_type": "morning",
+                "scheduled_time": "08:00",
+                "medication_ids": ["M1"],
+            }
+        ]
+    )
+
+    result = await service.get_user_reminders_with_medications(
+        "U_SELF", reminder_collection=fake_collection
+    )
+
+    assert result[0].medications[0].thumbnail_url is None
+
 
 class _FakeActiveMedicationRepository:
     """`list_medication_names_for_log` 用建構子注入的替身。

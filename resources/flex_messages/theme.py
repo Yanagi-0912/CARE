@@ -52,9 +52,17 @@ _SIZE_SCALE: dict[str, dict[str, str]] = {
     # 的長輩不該仍被鎖在固定的最小縮圖上——那樣藥名變大、照片卻原地不動，等於
     # 把「放大字級＝方便閱讀」的訴求做了一半。design.md 決策 6 只定了縮圖來源
     # 檔（160px 正方形、保留比例尺）的尺寸，沒有定推播時的顯示尺寸，因此這裡
-    # 沿用既有的三段字級系統，而不是另訂一個固定值。sm/md/lg 是目前的估計值，
-    # 待 tasks.md 8.4 的真機檢視確認或調整。
-    "thumbnail": {"normal": "sm", "large": "md", "xlarge": "lg"},
+    # 沿用既有的三段字級系統，而不是另訂一個固定值。
+    #
+    # 起點從 sm（80px）改為 xxl：LINE 的 image size 關鍵字對應固定寬度
+    # （sm=80、md=100、lg=120、xl=140、xxl=160、3xl=180、4xl=200），80px 在
+    # 推播裡小到看不出藥丸的顏色與刻痕，等於這張照片不存在。xxl=160px 正好
+    # 等於落地縮圖的原始解析度（scripts/build_drug_catalog.py 的
+    # IMAGE_THUMBNAIL_PX），是「不模糊」的上限；large／xlarge 兩檔略為超出
+    # 原始解析度是刻意的取捨——把字級調大的人多半是視力需求，寧可稍微鬆散
+    # 也不要讓照片原地不動。這兩檔的鬆散程度值得在真機上看一眼再定案
+    # （160px 的來源放到 200px），normal 這檔不受影響。
+    "thumbnail": {"normal": "xxl", "large": "3xl", "xlarge": "4xl"},
 }
 
 

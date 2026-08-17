@@ -646,7 +646,9 @@ def test_patient_reminder_row_with_thumbnail_carries_image():
     assert len(rows) == 1
     row = rows[0]
     assert row["type"] == "box"
-    assert row["layout"] == "horizontal"
+    # 排列方向本身的契約由 test_medication_thumbnail_row_stacks_name_below_image
+    # 負責，這裡只確認「圖與名都在」
+    assert row["layout"] == "vertical"
     image_node = next(c for c in row["contents"] if c["type"] == "image")
     assert image_node["url"] == "https://img.example.com/a.jpg"
     text_node = next(c for c in row["contents"] if c["type"] == "text")
@@ -682,6 +684,65 @@ def test_medication_thumbnail_size_follows_font_size_setting():
 
     # 三種字級設定要各自不同，不能有兩種字級共用同一個縮圖尺寸。
     assert len({normal_size, large_size, xlarge_size}) == 3
+
+
+def test_medication_thumbnail_uses_full_source_resolution_by_default():
+    """預設字級下縮圖要是 xxl（160px），也就是落地縮圖的原始解析度。
+
+    先前是 sm（80px）。那個值連 tasks.md 8.4 的真機檢視都沒做過（見
+    theme._SIZE_SCALE 的註解自承「目前的估計值」），而 80px 在推播裡小到
+    使用者根本看不出藥丸的顏色與刻痕——這個功能的前提就是靠外觀認藥，
+    看不清等於沒有這張照片。
+
+    上限釘在 xxl 而不是更大：resources/drug_appearance 的圖全部是 160×160
+    （scripts/build_drug_catalog.py 的 IMAGE_THUMBNAIL_PX），再放大就只是
+    模糊，不會多出任何可辨識的細節。
+    """
+    msg = build_patient_medication_flex(
+        log_id="L1",
+        slot_type="morning",
+        scheduled_time="08:00",
+        medication_names=[
+            MedicationListEntry(name="脈優", image_url="https://img.example.com/a.jpg")
+        ],
+        font_size="normal",
+    )
+    med_block = msg.contents.to_dict()["body"]["contents"][1]
+    row = med_block["contents"][1]
+    image_node = next(c for c in row["contents"] if c["type"] == "image")
+    assert image_node["size"] == "xxl"
+
+
+def test_medication_thumbnail_row_stacks_name_below_image():
+    """有縮圖的列改為垂直排列：照片一行，藥名另一行。
+
+    bubble 預設是 mega（約 300px 寬），扣掉 body 與藥品區塊各自的 padding
+    之後，一列真正可用的寬度只剩約 220px。照片放到 160px 還要與藥名並排時，
+    藥名只剩 50 幾 px，長藥名會被擠成一行兩三個字的細長條——那比縮圖小更難讀。
+    改成上下排列後照片拿到它需要的寬度，藥名也拿回整列寬度。
+    """
+    msg = build_patient_medication_flex(
+        log_id="L1",
+        slot_type="morning",
+        scheduled_time="08:00",
+        medication_names=[
+            MedicationListEntry(
+                name="ANROKIN TABLETS (CHLORZOXAZONE) 安洛克錠",
+                image_url="https://img.example.com/a.jpg",
+            )
+        ],
+    )
+    med_block = msg.contents.to_dict()["body"]["contents"][1]
+    row = med_block["contents"][1]
+    assert row["type"] == "box"
+    assert row["layout"] == "vertical"
+    # 順序有意義：先看到照片，再看到它是哪一種藥
+    kinds = [c["type"] for c in row["contents"]]
+    assert kinds == ["image", "text"]
+    text_node = row["contents"][1]
+    assert text_node["text"] == "ANROKIN TABLETS (CHLORZOXAZONE) 安洛克錠"
+    # 藥名要能換行，且不得帶 flex 縮限——它現在獨占一整列
+    assert text_node["wrap"] is True
 
 
 def test_patient_reminder_mixed_thumbnail_and_text_rows_layout_intact():

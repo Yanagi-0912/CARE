@@ -120,7 +120,17 @@ def _medication_list_rows(
 
 def _medication_row_node(row: MedicationListEntry, ft: theme.FlexTheme) -> dict[str, Any]:
     """單一藥品列的 Flex 節點：沒有縮圖時是純文字列（結構與本功能導入前逐位元組
-    相同），有縮圖時外包一層水平排列的 box，縮圖與藥名並排。
+    相同），有縮圖時外包一層垂直排列的 box，照片一行、藥名一行。
+
+    排列方向刻意是垂直而非並排。bubble 預設是 mega（約 300px 寬），扣掉 body
+    與藥品區塊各自的 padding 之後，一列真正可用的寬度只剩約 220px；照片放到
+    160px（見 theme._SIZE_SCALE 的 "thumbnail"）還要與藥名並排時，藥名只剩
+    50 幾 px，長藥名會被擠成一行兩三個字的細長條——那比縮圖太小更難讀。上下
+    排列讓兩者各自拿到整列寬度。
+
+    代價是 bubble 變高（最多 5 筆，見 MEDICATION_LIST_MAX_ITEMS）。這是為了
+    「看得清楚手上這顆藥」而接受的取捨：認不出藥的時候，一則精簡但看不清的
+    提醒沒有任何用處。
     """
     text_node = {
         "type": "text",
@@ -133,9 +143,9 @@ def _medication_row_node(row: MedicationListEntry, ft: theme.FlexTheme) -> dict[
         return text_node
     return {
         "type": "box",
-        "layout": "horizontal",
+        "layout": "vertical",
         "spacing": "sm",
-        "alignItems": "center",
+        "margin": "sm",
         "contents": [
             {
                 "type": "image",
@@ -144,9 +154,13 @@ def _medication_row_node(row: MedicationListEntry, ft: theme.FlexTheme) -> dict[
                 # 項）：本功能靠外觀認藥，字級調大的長輩不該仍被鎖在固定的
                 # 最小尺寸，那樣藥名變大、照片卻原地不動。
                 "size": ft.thumbnail,
+                # 來源檔已經是等比縮放後置中補白的 160×160 正方形
+                # （build_drug_catalog.py 的 -gravity center -extent），
+                # 1:1 的框裡 cover 與 contain 等價，不會裁掉保留尺規的留白邊。
                 "aspectMode": "cover",
                 "aspectRatio": "1:1",
-                "flex": 0,
+                # 照片與下方藥名共用同一條左邊界；預設的 center 會讓兩者對不齊。
+                "align": "start",
             },
             text_node,
         ],

@@ -601,12 +601,23 @@ class FakeReminderRepository:
     真的有送到資料層」這件事可以直接斷言。
     """
 
-    def __init__(self, reminder: MedicationReminder):
+    def __init__(
+        self,
+        reminder: MedicationReminder,
+        siblings: list[MedicationReminder] | None = None,
+    ):
         self._reminder = reminder
+        # 同一位使用者名下的其他提醒。改時段時要靠這份清單判斷目標時段是否
+        # 已經有人佔著（「一個時段一份 document」的不變量，見
+        # MedicationReminderRepository.find_or_create_reminder 的說明）。
+        self._siblings = siblings if siblings is not None else [reminder]
         self.received_update: dict | None = None
 
     async def get_reminder_by_id(self, reminder_id: str) -> MedicationReminder:
         return self._reminder
+
+    async def list_reminders_by_user(self, user_id: str) -> list[MedicationReminder]:
+        return [r for r in self._siblings if r.user_id == user_id]
 
     async def update_reminder(self, reminder_id: str, update_data: dict) -> MedicationReminder:
         self.received_update = dict(update_data)
@@ -623,8 +634,12 @@ class FakeLogRepository:
         return self._cancelled
 
 
-def _service_with_fakes(reminder: MedicationReminder, cancelled: int = 0):
-    reminders = FakeReminderRepository(reminder)
+def _service_with_fakes(
+    reminder: MedicationReminder,
+    cancelled: int = 0,
+    siblings: list[MedicationReminder] | None = None,
+):
+    reminders = FakeReminderRepository(reminder, siblings=siblings)
     logs = FakeLogRepository(cancelled=cancelled)
     service = MedicationService(reminder_repository=reminders, log_repository=logs)
     return service, reminders, logs
@@ -710,3 +725,132 @@ async def test_forbidden_disable_does_not_cancel_logs():
 
     assert excinfo.value.status_code == 403
     assert logs.cancelled_reminder_ids == []
+
+
+@pytest.mark.asyncio
+async def test_clearing_end_date_reaches_data_layer():
+    """明確送 end_date=null 必須抵達資料層，這是把療程改回「長期」的唯一途徑。
+
+    先前用 `exclude_none=True` 匯出請求，null 在服務層就被濾掉（資料層再濾
+    一次），使用者一旦設過結束日期就永遠改不回長期——UI 只能反過來擋住這個
+    操作。改用 `exclude_unset=True`：沒帶的欄位仍然不會出現在 update_data
+    裡，「有帶且是 null」與「沒帶」從此是兩件不同的事。
+    """
+    reminder = _reminder().model_copy(update={"end_date": "2026-09-30"})
+    service, reminders, _ = _service_with_fakes(reminder)
+
+    result = await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(end_date=None),
+    )
+
+    assert "end_date" in reminders.received_update
+    assert reminders.received_update["end_date"] is None
+    assert result.end_date is None
+
+
+@pytest.mark.asyncio
+async def test_unset_fields_do_not_reach_data_layer():
+    """`exclude_unset` 的另一半保證：沒帶的欄位不能被當成「清空」送下去。
+
+    這條是上一個測試的反向護欄。若哪天有人把匯出改回 `model_dump()`（不帶
+    任何 exclude），只改 enabled 的請求會連帶把 scheduled_time／start_date
+    一起寫成 null，整筆提醒直接失效。
+    """
+    service, reminders, _ = _service_with_fakes(_reminder(enabled=True), cancelled=0)
+
+    await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(enabled=False),
+    )
+
+    assert set(reminders.received_update) == {"enabled"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["scheduled_time", "start_date", "enabled"])
+async def test_explicit_null_on_non_nullable_field_is_rejected(field: str):
+    """只有 end_date 可以是 null。其餘欄位的 null 一律 400，不得寫進資料庫。
+
+    `exclude_unset` 讓 null 得以通過服務層，代價是「明確送 null」對每個欄位
+    都成立了。scheduled_time 被寫成 null 時排程器的 strptime 會拋錯並被
+    except 吞掉——那筆提醒從此永遠不會觸發，且沒有任何錯誤回饋（見
+    CreateMedicationReminderRequest._validate_slot_times 的同一個顧慮）。
+    寧可在這裡擋成 400。
+    """
+    service, reminders, _ = _service_with_fakes(_reminder())
+
+    with pytest.raises(HTTPException) as excinfo:
+        await service.update_reminder(
+            creator_user_id="U_SELF",
+            reminder_id="R123",
+            request=UpdateMedicationReminderRequest(**{field: None}),
+        )
+
+    assert excinfo.value.status_code == 400
+    assert field in excinfo.value.detail
+    # 擋下的請求不能留下任何副作用
+    assert reminders.received_update is None
+
+
+@pytest.mark.asyncio
+async def test_changing_slot_type_to_free_slot_reaches_data_layer():
+    """時段可以改：這是「時段唯讀但時間可改」造成的矛盾（早上 21:00）的解法。"""
+    service, reminders, _ = _service_with_fakes(_reminder())
+
+    result = await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(slot_type="evening"),
+    )
+
+    assert reminders.received_update["slot_type"] == "evening"
+    assert result.slot_type == "evening"
+
+
+@pytest.mark.asyncio
+async def test_changing_slot_type_to_occupied_slot_is_rejected():
+    """目標時段已經有另一筆提醒時必須擋成 409。
+
+    「同一位使用者的同一個時段永遠只該有一份規則」是排程器不重複推播的前提
+    （見 MedicationReminderRepository.find_or_create_reminder：`{user_id,
+    slot_type}` 上刻意沒有 unique index，因為舊資料可能已有重複，建索引會讓
+    應用起不來）。既然資料庫不擋，改時段這條新路徑就必須自己擋——否則使用者
+    把早上改成晚上，晚上就有兩份規則，那個時段從此每天收到兩則推播。
+    """
+    occupied = MedicationReminder(
+        _id="R456",
+        creator_user_id="U_SELF",
+        user_id="U_SELF",
+        slot_type="evening",
+        scheduled_time="18:00",
+    )
+    target = _reminder()
+    service, reminders, _ = _service_with_fakes(target, siblings=[target, occupied])
+
+    with pytest.raises(HTTPException) as excinfo:
+        await service.update_reminder(
+            creator_user_id="U_SELF",
+            reminder_id="R123",
+            request=UpdateMedicationReminderRequest(slot_type="evening"),
+        )
+
+    assert excinfo.value.status_code == 409
+    assert reminders.received_update is None
+
+
+@pytest.mark.asyncio
+async def test_resending_same_slot_type_is_not_treated_as_conflict():
+    """把時段送成它原本的值不是衝突——佔住那個時段的正是這筆提醒自己。"""
+    target = _reminder()
+    service, reminders, _ = _service_with_fakes(target, siblings=[target])
+
+    await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(slot_type="morning", scheduled_time="07:30"),
+    )
+
+    assert reminders.received_update["scheduled_time"] == "07:30"

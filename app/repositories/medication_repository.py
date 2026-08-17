@@ -265,7 +265,11 @@ class MedicationReminderRepository:
     async def update_reminder(reminder_id: str, update_data: dict) -> Optional[MedicationReminder]:
         col = MongoDBManager.get_medication_reminders_collection()
         now = datetime.now(tz=timezone.utc)
-        update_doc = {k: v for k, v in update_data.items() if v is not None}
+        # 收到什麼就寫什麼，不再過濾 None。過濾 None 是「清空 end_date」失效的
+        # 第二道濾網（第一道在 MedicationService.update_reminder 的 model_dump），
+        # 只修其中一層完全沒有效果。哪些欄位允許 null 由服務層界定並在那裡擋成
+        # 400，這一層不重複做那個判斷——分散在兩處只會讓兩邊都以為對方有擋。
+        update_doc = dict(update_data)
         update_doc["updated_at"] = now
 
         result = await col.update_one({"_id": reminder_id}, {"$set": update_doc})

@@ -678,6 +678,67 @@ async def test_mark_as_taken(override_medication_logs_col):
     assert log.taken_at == now
 
 
+@pytest.mark.asyncio
+async def test_update_reminder_writes_explicit_null_end_date(override_medication_reminders_col):
+    """`end_date=None` 必須真的寫進 $set，才有辦法把療程改回「長期」。
+
+    這裡是同一件事的第二道濾網：服務層改用 exclude_unset 之後，資料層原本
+    還有一行 `{k: v for k, v in update_data.items() if v is not None}` 會把
+    null 再濾掉一次。只修服務層完全沒有效果——兩層都要改，這個測試釘住
+    資料層那一半。
+    """
+    col = MagicMock()
+    col.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
+    col.find_one = AsyncMock(
+        return_value={
+            "_id": "R123",
+            "creator_user_id": "U_SELF",
+            "user_id": "U_SELF",
+            "slot_type": "morning",
+            "scheduled_time": "08:00",
+            "start_date": "2026-08-01",
+            "end_date": None,
+            "enabled": True,
+        }
+    )
+    override_medication_reminders_col(col)
+
+    updated = await MedicationReminderRepository.update_reminder("R123", {"end_date": None})
+
+    assert updated is not None
+    assert updated.end_date is None
+    args, _ = col.update_one.await_args
+    set_doc = args[1]["$set"]
+    assert "end_date" in set_doc
+    assert set_doc["end_date"] is None
+    # updated_at 仍然要被戳一下
+    assert "updated_at" in set_doc
+
+
+@pytest.mark.asyncio
+async def test_update_reminder_keeps_false_values(override_medication_reminders_col):
+    """enabled=False 不能被誤當成「空值」濾掉——關閉提醒靠的就是這個值。"""
+    col = MagicMock()
+    col.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
+    col.find_one = AsyncMock(
+        return_value={
+            "_id": "R123",
+            "creator_user_id": "U_SELF",
+            "user_id": "U_SELF",
+            "slot_type": "morning",
+            "scheduled_time": "08:00",
+            "start_date": "2026-08-01",
+            "enabled": False,
+        }
+    )
+    override_medication_reminders_col(col)
+
+    await MedicationReminderRepository.update_reminder("R123", {"enabled": False})
+
+    args, _ = col.update_one.await_args
+    assert args[1]["$set"]["enabled"] is False
+
+
 # --- 藥品（medications）與提醒的關聯 -------------------------------------
 # 新增的方法一律以 collection= 注入替身，不使用 monkeypatch。
 

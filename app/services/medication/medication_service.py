@@ -193,7 +193,7 @@ class MedicationService:
     async def update_reminder(
         self, creator_user_id: str, reminder_id: str, request: UpdateMedicationReminderRequest
     ) -> MedicationReminder:
-        """更新用藥提醒 (時段時間、起訖日期、啟動狀態)"""
+        """更新用藥提醒 (時段、時間、起訖日期、啟動狀態)"""
         reminder = await self._reminder_repository.get_reminder_by_id(reminder_id)
         if not reminder:
             raise HTTPException(status_code=404, detail="找不到該用藥提醒")
@@ -201,7 +201,43 @@ class MedicationService:
         if reminder.creator_user_id != creator_user_id and reminder.user_id != creator_user_id:
             raise HTTPException(status_code=403, detail="無權限修改此用藥提醒")
 
-        update_data = request.model_dump(exclude_none=True)
+        # `exclude_unset` 而非 `exclude_none`：兩者對「沒帶的欄位」行為相同
+        # （都不會出現在 update_data 裡），差別在「有帶且是 null」。先前用
+        # exclude_none 時 null 在這裡就被濾掉，使用者一旦設過 end_date 就永遠
+        # 改不回「長期」，UI 只能反過來擋住這個操作；改成 exclude_unset 之後
+        # 清空結束日期終於有辦法表達。
+        update_data = request.model_dump(exclude_unset=True)
+
+        # 代價是「明確送 null」對每個欄位都成立了，所以要自己界定哪些欄位的
+        # null 有意義。scheduled_time 被寫成 null 時排程器的 strptime 會拋錯
+        # 並被 except 吞掉——那筆提醒從此永遠不會觸發，且沒有任何錯誤回饋，
+        # 是最糟的失敗方式（靜默地不再提醒吃藥）。寧可在這裡擋成 400。
+        illegal_nulls = sorted(
+            key
+            for key, value in update_data.items()
+            if value is None and key not in UpdateMedicationReminderRequest.NULLABLE_FIELDS
+        )
+        if illegal_nulls:
+            raise HTTPException(
+                status_code=400,
+                detail=f"以下欄位不接受空值：{'、'.join(illegal_nulls)}",
+            )
+
+        # 改時段要先確認目標時段還空著。「同一位使用者的同一個時段永遠只該有
+        # 一份規則」是排程器不重複推播的前提，而 `{user_id, slot_type}` 上刻意
+        # 沒有 unique index（舊資料可能已有重複，建索引會讓應用起不來，見
+        # MedicationReminderRepository.find_or_create_reminder）。資料庫不擋，
+        # 改時段這條路徑就得自己擋——否則把早上改成晚上之後，晚上有兩份規則，
+        # 那個時段從此每天推兩則。
+        new_slot = update_data.get("slot_type")
+        if new_slot and new_slot != reminder.slot_type:
+            siblings = await self._reminder_repository.list_reminders_by_user(reminder.user_id)
+            if any(other.slot_type == new_slot and other.id != reminder_id for other in siblings):
+                raise HTTPException(
+                    status_code=409,
+                    detail="該時段已有另一筆用藥提醒，請先刪除或改用其他時段",
+                )
+
         updated = await self._reminder_repository.update_reminder(reminder_id, update_data)
         if not updated:
             raise HTTPException(status_code=500, detail="更新用藥提醒失敗")

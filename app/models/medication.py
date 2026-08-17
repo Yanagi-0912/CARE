@@ -1,7 +1,7 @@
 import re
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-from typing import List, Literal, Optional
+from typing import ClassVar, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 TAIPEI_TZ = ZoneInfo("Asia/Taipei")
@@ -187,10 +187,24 @@ class CreateMedicationReminderRequest(BaseModel):
 
 
 class UpdateMedicationReminderRequest(BaseModel):
+    """PUT /reminders/{id} 的請求。
+
+    這裡的 Optional 一律是「可以不帶」，**不是**「可以是 null」。服務層以
+    `model_fields_set` 區分兩者：沒帶的欄位不會出現在 update_data 裡，
+    有帶且是 null 的只接受 `end_date`（把療程改回長期的唯一途徑），其餘欄位
+    的 null 一律 400。理由見 `MedicationService.update_reminder`——
+    `scheduled_time` 若被寫成 null，排程器的 strptime 會拋錯並被 except 吞掉，
+    那筆提醒從此永遠不會觸發，且沒有任何錯誤回饋。
+    """
+
+    slot_type: Optional[MedicationSlotType] = None
     scheduled_time: Optional[str] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     enabled: Optional[bool] = None
+
+    # 只有這個欄位的 null 有意義：null = 沒有結束日期 = 長期服用。
+    NULLABLE_FIELDS: ClassVar[frozenset[str]] = frozenset({"end_date"})
 
     @field_validator("scheduled_time")
     @classmethod

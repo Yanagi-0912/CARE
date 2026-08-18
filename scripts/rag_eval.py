@@ -7,6 +7,7 @@
   python scripts/rag_eval.py --rank-mode vector --top-n 5
   python scripts/rag_eval.py --compare-rerank --out /tmp/rag-compare.json
   python scripts/rag_eval.py --fail-under 0.6
+  python scripts/rag_eval.py --with-verdict
 """
 
 from __future__ import annotations
@@ -28,18 +29,26 @@ from dotenv import load_dotenv
 load_dotenv(_PROJECT_ROOT / ".env")
 
 from app.core.config import settings
-from app.dependencies import get_rag_answer_service, get_rag_retriever
+from app.dependencies import (
+    get_claim_verification_service,
+    get_rag_answer_service,
+    get_rag_retriever,
+)
 from app.services.rag.answer_service import dedup_ranked_docs
 from app.services.rag.cohere_reranker import CohereReranker, VectorScoreReranker
 from app.services.rag.eval_scoring import (
     CaseResult,
     EvalCase,
+    VerdictResult,
+    VerdictSummary,
     answer_citation_count,
     load_golden_jsonl,
     score_case_retrieval,
+    score_verdict,
     is_refuse_ok,
     is_source_hit,
     summarize_results,
+    summarize_verdicts,
 )
 
 
@@ -128,6 +137,18 @@ def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         "--compare-rerank",
         action="store_true",
         help="run vector vs cohere top-n side-by-side and print both hit_rates",
+    )
+    parser.add_argument(
+        "--with-verdict",
+        action="store_true",
+        help=(
+            "also verify cases with expected_verdict via "
+            "ClaimVerificationService.verify() and print verdict accuracy / "
+            "mismatch rate. Off by default: each case costs 3 LLM calls "
+            "(normalize, identity check, reasoning rewrite), so this must "
+            "stay opt-in or every routine `rag_eval.py` run gets slower and "
+            "more expensive. Requires CLAIM_VERIFICATION_ENABLED=true."
+        ),
     )
     return parser.parse_args(argv)
 
@@ -250,6 +271,30 @@ def _print_summary(label: str, golden: Path, summary, results, *, with_answer: b
             print(f"citation_coverage: {_fmt(summary.citation_coverage)}")
 
 
+def _print_verdict_summary(summary: VerdictSummary) -> None:
+    """判定正確率／誤配率的報告輸出：claim-verdict-card/specs/rag-eval/spec.md
+    要求印出判定正確率、誤配率、判定錯誤的題目 id（標示相鄰/顛倒）、誤配的
+    題目 id——五項都在這裡逐行印出，缺一都算沒交付這個規格。
+    """
+
+    def _fmt(value: Optional[float]) -> str:
+        return f"{value:.3f}" if value is not None else "n/a"
+
+    print("=== Verdict Summary (--with-verdict) ===")
+    print(f"scored_cases: {summary.scored_cases}")
+    print(f"correct: {summary.correct}")
+    print(f"verdict_accuracy: {_fmt(summary.verdict_accuracy)}")
+    print(f"wrong_ids: {summary.wrong_ids}")
+    print(f"  adjacent (相鄰，序上距離 1，使用者仍被告知說法有問題): {summary.adjacent_wrong_ids}")
+    print(f"  reversed (顛倒，嚴重失效): {summary.reversed_wrong_ids}")
+    print(f"mismatch_cases: {summary.mismatch_cases}")
+    print(f"mismatches: {summary.mismatches}")
+    print(f"mismatch_rate: {_fmt(summary.mismatch_rate)}")
+    print(f"mismatch_ids: {summary.mismatch_ids}")
+    if summary.error_ids:
+        print(f"error_ids: {summary.error_ids}")
+
+
 async def run_eval(
     golden: Path,
     *,
@@ -289,6 +334,58 @@ async def run_eval(
         )
     summary = summarize_results(results)
     return results, summary
+
+
+async def run_verdict_eval(
+    golden: Path,
+    *,
+    split: str = "",
+    claim_verification_service,
+) -> tuple[list[VerdictResult], Optional[VerdictSummary]]:
+    """對有 `expected_verdict` 的題目呼叫 `ClaimVerificationService.verify()`，
+    量判定正確率／誤配率（claim-verdict-card/specs/rag-eval/spec.md）。
+
+    `claim_verification_service` 沒有預設值、必須明確傳入——不像 `run_eval`
+    的 `retriever`／`answer_service` 省略時會自動查全域設定，這裡刻意不做
+    那層隱式 fallback：`CLAIM_VERIFICATION_ENABLED=false` 時「有沒有服務」
+    是呼叫端（`main()`）必須先問清楚、且要能被單元測試決定性覆蓋的事——
+    若這裡也做「省略就查全域」，測試「服務未配置」這條路徑時，結果會依
+    當下 `.env` 的 `CLAIM_VERIFICATION_ENABLED` 而定，同一則測試在不同機器
+    上可能一次過一次不過。傳 `None` 進來單純代表「沒有服務」，回傳
+    `([], None)`，不拋例外，讓 `main()` 印出清楚的跳過訊息。
+
+    每題最多 3 次 LLM 呼叫（主張正規化、同一性驗證、理由改寫）——這是
+    `--with-verdict` 預設關閉的原因，不能讓既有 `rag_eval.py` 的日常跑法
+    變慢變貴。單題呼叫失敗（逾時、例外）不會讓整批中斷：該題記一筆帶
+    `error` 的 `VerdictResult`，`summarize_verdicts` 會把它排除在兩個指標
+    的分母之外，比照 `_eval_one` 對檢索/答案層例外的既有處理方式。
+    """
+    if claim_verification_service is None:
+        return [], None
+
+    cases = load_golden_jsonl(golden)
+    if split:
+        cases = [c for c in cases if c.split == split]
+    verdict_cases = [c for c in cases if c.expected_verdict]
+
+    results: list[VerdictResult] = []
+    for case in verdict_cases:
+        try:
+            verification = await claim_verification_service.verify(case.query)
+        except Exception as exc:  # noqa: BLE001 - 一題失敗不能讓整批中斷
+            results.append(
+                VerdictResult(
+                    id=case.id,
+                    expected_verdict=case.expected_verdict,
+                    actual_verdict="",
+                    applicable=False,
+                    error=f"verify: {type(exc).__name__}: {exc}",
+                )
+            )
+            continue
+        results.append(score_verdict(case, verification.verdict))
+
+    return results, summarize_verdicts(results)
 
 
 async def run_compare_rerank(
@@ -484,12 +581,37 @@ def main(argv: Optional[list[str]] = None) -> int:
         with_answer=args.with_answer,
     )
 
+    verdict_results: list[VerdictResult] = []
+    verdict_summary: Optional[VerdictSummary] = None
+    if args.with_verdict:
+        claim_verification_service = get_claim_verification_service()
+        if claim_verification_service is None:
+            print(
+                "\nwith-verdict: CLAIM_VERIFICATION_ENABLED=false 或 "
+                "ClaimVerificationService 未接線，略過判定正確率／誤配率計分"
+            )
+        else:
+            print()
+            verdict_results, verdict_summary = asyncio.run(
+                run_verdict_eval(
+                    golden,
+                    split=args.split.strip(),
+                    claim_verification_service=claim_verification_service,
+                )
+            )
+            _print_verdict_summary(verdict_summary)
+
     if out_path is not None:
         payload = {
             "summary": summary.to_dict(),
             "rank_mode": args.rank_mode,
             "results": [r.to_dict() for r in results],
         }
+        if verdict_summary is not None:
+            payload["verdict"] = {
+                "summary": verdict_summary.to_dict(),
+                "results": [r.to_dict() for r in verdict_results],
+            }
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),

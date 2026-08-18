@@ -602,6 +602,34 @@ def test_summarize_verdicts_empty_is_none_not_zero_division():
     assert summary.mismatch_rate is None
     assert summary.wrong_ids == []
     assert summary.mismatch_ids == []
+    assert summary.error_ids == []
+
+
+def test_summarize_verdicts_excludes_errored_results_from_both_denominators():
+    """呼叫 ClaimVerificationService 失敗（例如逾時）不該被算成判定錯誤或
+    誤配——那是基礎設施問題，不是查核功能本身的失效，兩者不能混在一起看。
+    """
+    results = [
+        VerdictResult(
+            id="ok", expected_verdict="錯誤", actual_verdict="錯誤",
+            applicable=True, correct=True,
+        ),
+        VerdictResult(
+            id="err-accuracy", expected_verdict="正確", actual_verdict="",
+            applicable=False, error="verify: TimeoutError: boom",
+        ),
+        VerdictResult(
+            id="err-mismatch", expected_verdict="證據不足", actual_verdict="",
+            applicable=False, error="verify: TimeoutError: boom",
+        ),
+    ]
+    summary = summarize_verdicts(results)
+    assert summary.scored_cases == 1
+    assert summary.correct == 1
+    assert summary.mismatch_cases == 0
+    assert summary.error_ids == ["err-accuracy", "err-mismatch"]
+    assert "err-accuracy" not in summary.wrong_ids
+    assert "err-mismatch" not in summary.mismatch_ids
 
 
 def test_real_golden_jsonl_verdict_cases_are_additive_only():
@@ -616,8 +644,137 @@ def test_real_golden_jsonl_verdict_cases_are_additive_only():
     non_verdict_cases = [c for c in cases if not c.expected_verdict]
 
     assert len(non_verdict_cases) == 38  # 既有題目，數量與欄位都不變
-    assert len(verdict_cases) == 12  # Task 8 新增的查核型題目
+    # 12 題（Task 8 初版）+ 1 題（CARE-data 回填 verdict=正確 後追加）
+    assert len(verdict_cases) == 13
     assert all(c.expected_verdict in VALID_VERDICTS for c in verdict_cases)
     # 誤配率唯一量得到東西的母體：brief 要求至少 4 題
     no_evidence = [c for c in verdict_cases if c.expected_verdict == "證據不足"]
     assert len(no_evidence) >= 4
+    # 五種合法判定各至少一題（正確一開始因 TFC 語料庫回填前無資料而缺席，
+    # 回填後補上 verdict-013）
+    assert {c.expected_verdict for c in verdict_cases} == VALID_VERDICTS
+
+
+# --- Task 8 追加：scripts/rag_eval.py 的 --with-verdict 接線 ------------------
+
+
+class _FakeVerification:
+    """鴨子型別對齊 `ClaimVerificationService.verify()` 的回傳值——只需要
+    `.verdict` 屬性，`run_verdict_eval` 不會碰 `VerificationResult` 其他欄位。"""
+
+    def __init__(self, verdict: str) -> None:
+        self.verdict = verdict
+
+
+class _FakeClaimVerificationService:
+    """DI 用假服務：依 query 查表回傳判定，並記錄被呼叫過的 query，方便斷言
+    「沒有 expected_verdict 的題目不會觸發呼叫」。"""
+
+    def __init__(self, verdict_by_query: dict[str, str]) -> None:
+        self._verdict_by_query = verdict_by_query
+        self.calls: list[str] = []
+
+    async def verify(self, query: str) -> _FakeVerification:
+        self.calls.append(query)
+        return _FakeVerification(self._verdict_by_query[query])
+
+
+class _FakeFailingClaimVerificationService:
+    """模擬 verify() 逾時／例外，驗證單題失敗不會讓整批評測中斷。"""
+
+    async def verify(self, query: str) -> _FakeVerification:
+        raise TimeoutError(f"simulated timeout for {query!r}")
+
+
+def _write_verdict_golden(tmp_path: Path) -> Path:
+    golden = tmp_path / "g.jsonl"
+    golden.write_text(
+        "\n".join(
+            json.dumps(row, ensure_ascii=False)
+            for row in [
+                {
+                    "id": "verdict-a",
+                    "query": "聽說X可以治百病，真的嗎？",
+                    "route": "web",
+                    "expected_verdict": "錯誤",
+                },
+                {
+                    "id": "kb-no-verdict",
+                    "query": "高血壓？",
+                    "route": "kb",
+                    "expected_url_substrings": ["hpa.gov"],
+                },
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return golden
+
+
+@pytest.mark.asyncio
+async def test_run_verdict_eval_returns_none_summary_when_service_not_configured(
+    tmp_path: Path,
+):
+    """CLAIM_VERIFICATION_ENABLED=false 或未接線時的核心契約：不拋例外，
+    回傳空結果與 None 摘要，讓呼叫端（main()）決定要印什麼訊息。"""
+    mod = _load_rag_eval_module()
+    golden = _write_verdict_golden(tmp_path)
+
+    results, summary = await mod.run_verdict_eval(
+        golden, claim_verification_service=None
+    )
+    assert results == []
+    assert summary is None
+
+
+@pytest.mark.asyncio
+async def test_run_verdict_eval_only_calls_service_for_cases_with_expected_verdict(
+    tmp_path: Path,
+):
+    mod = _load_rag_eval_module()
+    golden = _write_verdict_golden(tmp_path)
+    service = _FakeClaimVerificationService(
+        {"聽說X可以治百病，真的嗎？": "錯誤"}
+    )
+
+    results, summary = await mod.run_verdict_eval(
+        golden, claim_verification_service=service
+    )
+
+    # 沒有 expected_verdict 的 kb-no-verdict 不該觸發 verify()
+    assert service.calls == ["聽說X可以治百病，真的嗎？"]
+    assert len(results) == 1
+    assert results[0].id == "verdict-a"
+    assert results[0].correct is True
+    assert summary.scored_cases == 1
+    assert summary.verdict_accuracy == 1.0
+
+
+@pytest.mark.asyncio
+async def test_run_verdict_eval_records_error_without_raising_when_verify_fails(
+    tmp_path: Path,
+):
+    mod = _load_rag_eval_module()
+    golden = _write_verdict_golden(tmp_path)
+    service = _FakeFailingClaimVerificationService()
+
+    results, summary = await mod.run_verdict_eval(
+        golden, claim_verification_service=service
+    )
+
+    assert len(results) == 1
+    assert results[0].id == "verdict-a"
+    assert results[0].error is not None
+    assert "TimeoutError" in results[0].error
+    # 失敗的題目不計入判定正確率的分母，不是「判定錯誤」
+    assert summary.scored_cases == 0
+    assert summary.verdict_accuracy is None
+    assert summary.error_ids == ["verdict-a"]
+
+
+def test_with_verdict_flag_defaults_to_false():
+    """coordinator 要求 3：預設不開，不能讓既有 rag_eval.py 跑法變慢變貴。"""
+    mod = _load_rag_eval_module()
+    args = mod._parse_args([])
+    assert args.with_verdict is False

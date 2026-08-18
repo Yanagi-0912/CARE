@@ -582,6 +582,19 @@ def get_rag_answer_service() -> RagAnswerService:
     return _rag_answer_service
 
 
+def get_claim_verification_service() -> ClaimVerificationService | None:
+    """取得查核判定卡服務；`CLAIM_VERIFICATION_ENABLED=false` 時回傳 `None`。
+
+    回傳型別刻意是 `Optional`，不是像 `get_rag_answer_service()` 那樣直接
+    回傳非 None 的服務——`ClaimVerificationService` 是本專案唯一一個「整組
+    可能整個不存在」的服務（見上方 `_claim_verification_service` 建構那段
+    註解），呼叫端（例如 `scripts/rag_eval.py` 的 `--with-verdict`）本來就
+    必須自己判斷「有沒有配置」，讓型別誠實反映這件事，比回傳一個假的
+    服務物件或拋例外更不會被誤用。
+    """
+    return _claim_verification_service
+
+
 def get_user_profile_service() -> UserProfileService:
     return _user_profile_service
 

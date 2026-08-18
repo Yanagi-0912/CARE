@@ -437,6 +437,12 @@ class VerdictResult:
     correct: Optional[bool] = None
     mismatched: Optional[bool] = None
     error_kind: Optional[str] = None  # "相鄰" 或 "顛倒"；僅判定錯誤（非誤配）時有值
+    # 呼叫端（例如 scripts/rag_eval.py 呼叫 ClaimVerificationService.verify）
+    # 取得實際判定失敗時填入的錯誤訊息。score_verdict 純函式本身不會設這個
+    # 欄位——它永遠拿得到 actual_verdict 字面值，不會失敗；只有「取得
+    # actual_verdict」這個 I/O 步驟才可能失敗。非 None 時 summarize_verdicts
+    # 會把這題整個排除在判定正確率與誤配率之外（比照 CaseResult.error 的慣例）。
+    error: Optional[str] = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -496,6 +502,7 @@ class VerdictSummary:
     mismatches: int
     mismatch_rate: Optional[float]
     mismatch_ids: list[str]
+    error_ids: list[str]  # 取得 actual_verdict 失敗的題目；不計入上述任何分母
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -509,8 +516,13 @@ def summarize_verdicts(results: list[VerdictResult]) -> VerdictSummary:
     只算進判定正確率。這是刻意的設計，不是疏漏——brief 記錄的教訓是「誤配
     混進整體正確率會被稀釋看不見」，分母互斥才能讓兩個指標各自誠實反映
     一件事，不會互相稀釋。
+
+    `error` 非 None 的題目（呼叫 ClaimVerificationService 失敗）整題排除，
+    不計入判定正確率或誤配率的任何一個分母——一次 LLM/網路逾時不該被算成
+    「判定錯誤」，那會把基礎設施問題誤記成查核功能本身的失效，比照
+    `summarize_results` 對 `CaseResult.error` 的既有處理方式。
     """
-    applicable = [r for r in results if r.applicable]
+    applicable = [r for r in results if r.applicable and r.error is None]
     accuracy_pop = [r for r in applicable if not r.is_mismatch_case]
     mismatch_pop = [r for r in applicable if r.is_mismatch_case]
 
@@ -532,4 +544,5 @@ def summarize_verdicts(results: list[VerdictResult]) -> VerdictSummary:
         mismatches=mismatches,
         mismatch_rate=(mismatches / mismatch_total) if mismatch_total else None,
         mismatch_ids=[r.id for r in mismatch_pop if r.mismatched],
+        error_ids=[r.id for r in results if r.error],
     )

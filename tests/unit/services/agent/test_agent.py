@@ -128,6 +128,44 @@ async def test_agent_invoke_with_history_already_containing_current_input(mock_l
     assert called_state["messages"][2].content == "C"
 
 
+@pytest.mark.asyncio
+async def test_agent_uses_verify_claim_flex_json_verbatim_as_final_response(
+    mock_llm, mock_guardrail_service
+):
+    """verify_claim 回傳的是要直接送去 LINE 的 Flex JSON（task 7）。工具執行後
+    agent 節點一定會再呼叫一次 LLM 產生「最終回覆」；若放任那一輪的自由文字
+    當成回覆，使用者看到的會是模型描述 JSON 的大白話，不是真正的判定卡。
+
+    比照 open_official_site 的做法：medical_tool_names 這個集合會在
+    Agent.invoke 收尾時，把符合名單的 ToolMessage 內容原封不動當成最終回覆，
+    無視同一輪 LLM 自己說了什麼。這裡鎖住 verify_claim 也在這個名單裡。
+    """
+    from langchain_core.messages import ToolMessage
+
+    agent = Agent(llm=mock_llm, guardrail_service=mock_guardrail_service)
+    flex_json = '{"type": "flex", "altText": "查核判定：錯誤", "contents": {}}'
+    agent._graph = MagicMock()
+    agent._graph.ainvoke = AsyncMock(
+        return_value={
+            "messages": [
+                HumanMessage(content="網傳吃鳳梨心可以溶解血栓，是真的嗎？"),
+                ToolMessage(
+                    content=flex_json,
+                    tool_call_id="1",
+                    name="verify_claim",
+                ),
+                AIMessage(content="這則傳言查核後被認定為錯誤消息。"),
+            ]
+        }
+    )
+
+    response = await agent.invoke(
+        user_input="網傳吃鳳梨心可以溶解血栓，是真的嗎？", messages=None
+    )
+
+    assert response["response"] == flex_json
+
+
 def test_format_user_profile_prompt_builds_expected_header():
     from app.services.agent.utils.nodes import format_user_profile_prompt
 

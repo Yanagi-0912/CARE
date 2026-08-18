@@ -215,6 +215,7 @@ class Agent:
             "lookup_medical_facility",  # 尋找特定醫療院所
             "request_location_quick_reply",  # 分享位置
             "open_official_site",  # 官網／LIFF 入口 Flex
+            "verify_claim",  # 查核判定卡 Flex
         }
         used_tool_names: list[str] = []
         for msg in reversed(result.get("messages", [])):

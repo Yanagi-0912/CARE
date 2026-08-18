@@ -155,6 +155,18 @@ class Settings:
         os.getenv("RAG_RERANK_MAX_CHUNKS_PER_ARTICLE", "2")
     )
 
+    # 查核判定卡總開關。關閉時代理工具集不提供 verify_claim，行為完全回到
+    # 本功能導入前的樣子（claim-verdict-card/design.md Migration Plan），
+    # 不需要任何資料回滾。
+    CLAIM_VERIFICATION_ENABLED: bool = os.getenv(
+        "CLAIM_VERIFICATION_ENABLED", "true"
+    ).lower() in ("1", "true", "yes", "on")
+    # 主張比對的最低相似度門檻。0.9 只是起步用的安全下限，**不是校準值**：
+    # 誤配（把別的主張的判定貼到這則主張上）是這個功能唯一嚴重的失效模式，
+    # 門檻寧缺勿濫，真正生效的數字要等 tasks 1.2 用 TFC 自身的 claim 做
+    # 正負樣本掃描、取誤配率為 0 的最低門檻後才定案（design.md 決策 3）。
+    CLAIM_MATCH_MIN_SCORE: float = float(os.getenv("CLAIM_MATCH_MIN_SCORE", "0.9"))
+
     # Light CRAG（檢索充足性分級；關閉則等同舊行為）
     RAG_CRAG_ENABLED: bool = os.getenv("RAG_CRAG_ENABLED", "true").lower() in (
         "1",

@@ -66,6 +66,9 @@ from app.services.rag import (
     MongoAtlasVectorRetriever,
     RagAnswerService,
 )
+from app.services.rag.claim_verification.matcher import MongoAtlasClaimMatcher
+from app.services.rag.claim_verification.normalizer import GeminiClaimNormalizer
+from app.services.rag.claim_verification.service import ClaimVerificationService
 from app.services.rag.cohere_reranker import CohereReranker, VectorScoreReranker
 from app.services.rag.firecrawl_client import FirecrawlClient
 from app.services.rag.ingest_service import IngestService
@@ -77,6 +80,7 @@ from app.services.rag.query_rewriter import GeminiQueryRewriter
 from app.services.rag.retrieval_grader import GeminiRetrievalGrader
 from app.services.rag.web_search_service import WebSearchService
 from app.services.users.user_profile_service import UserProfileService
+from app.tools.claim_tools import configure_claim_tool
 from app.tools.knowledge_report_tools import configure_knowledge_report_tool
 from app.tools.medical_tools import configure_medical_tools
 from app.tools.official_site_tools import configure_official_site_tool
@@ -308,6 +312,35 @@ if (
     )
 
 configure_user_document_tool(_user_document_answer_service)
+
+# 查核判定卡。matcher 沿用既有的 embedding 索引與 query embeddings，不另建
+# claim 專用索引（claim-verdict-card/design.md 決策 2）；未啟用時不建立
+# 服務也不 configure tool（registry.py 的 verify_claim 靠這個決定要不要
+# 出現在工具清單，見 app/tools/claim_tools.py 的 is_claim_tool_configured）。
+#
+# GeminiClaimNormalizer 與 ClaimVerificationService 都刻意明確傳入
+# gemini_service：兩者的 fail-open 設計會把「忘記注入」靜默降級成
+# 「永遠不正規化」／「永遠用降級理由」而非報錯，漏寫在這裡不會被任何測試
+# 攔下來（Task 3 review 記錄的已知風險）。
+_claim_verification_service: ClaimVerificationService | None = None
+if settings.CLAIM_VERIFICATION_ENABLED:
+    _claim_matcher = MongoAtlasClaimMatcher(
+        embeddings=_query_embeddings,
+        mongo_uri=settings.MONGODB_URI,
+        db_name=settings.MONGODB_DB,
+        collection_name=settings.MONGODB_COLLECTION,
+        index_name=settings.MONGODB_VECTOR_INDEX,
+        min_score=settings.CLAIM_MATCH_MIN_SCORE,
+    )
+    _claim_verification_service = ClaimVerificationService(
+        normalizer=GeminiClaimNormalizer(gemini_service=_gemini_service),
+        matcher=_claim_matcher,
+        gemini_service=_gemini_service,
+        related_retriever=_rag_retriever,
+    )
+    configure_claim_tool(_claim_verification_service)
+else:
+    logger.info("CLAIM_VERIFICATION_ENABLED=false; verify_claim tool not configured")
 
 _care_agent = Agent(
     llm=_gemini_service.chat_model,

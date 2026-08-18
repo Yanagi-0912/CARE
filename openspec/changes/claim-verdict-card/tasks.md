@@ -6,9 +6,9 @@
 
 ## 2. 索引與設定
 
-- [ ] 2.1 Atlas 為 `claim` 欄位建立向量索引；索引定義備份至 `resources/claim_vector_index.json`
-- [ ] 2.2 `app/core/config.py` 與 `.env.example` 新增 `MONGODB_CLAIM_VECTOR_INDEX`、`CLAIM_MATCH_MIN_SCORE`、`CLAIM_VERIFICATION_ENABLED`
-- [ ] 2.3 索引不存在時降級為「證據不足」路徑，不拋錯（對齊 `RAG_HYBRID_ENABLED` 的 fail-open）
+- [ ] 2.1 ~~建立 claim 向量索引~~ **不需要**（design 決策 2）：沿用既有 `MONGODB_VECTOR_INDEX`，在結果中挑 `verdict` 非空者
+- [ ] 2.2 `app/core/config.py` 與 `.env.example` 新增 `CLAIM_MATCH_MIN_SCORE`、`CLAIM_VERIFICATION_ENABLED`
+- [ ] 2.3 檢索失敗時降級為「證據不足」路徑，不拋錯（對齊 `RAG_HYBRID_ENABLED` 的 fail-open）
 
 ## 3. 主張正規化
 
@@ -38,7 +38,7 @@
 
 ## 7. Flex 判定卡
 
-- [ ] 7.1 `app/services/line_messaging/flex/verdict_card.py`：判定、主張、理由、來源連結
+- [ ] 7.1 `app/services/line_messaging/flex/verdict_card.py`：判定、**使用者原問句**、理由、來源連結（design 決策 8：不顯示知識庫的 claim）
 - [ ] 7.2 配色：錯誤／部分錯誤／證據不足／正確用語意色，事實釐清用中性色（design 決策 6）
 - [ ] 7.3 標示判定出自台灣事實查核中心並附原文連結（design 決策 5）
 - [ ] 7.4 `tests/unit/services/line_messaging/flex/test_verdict_card.py`：五種 verdict 的渲染、缺少 url 時的降級、純文字 fallback

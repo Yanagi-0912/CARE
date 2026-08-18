@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import json
 from pathlib import Path
 
@@ -525,6 +526,19 @@ def test_score_verdict_wrong_is_tagged_adjacent():
     assert result.error_kind == "相鄰"
 
 
+def test_score_verdict_raises_on_invalid_actual_verdict():
+    """鎖住 score_verdict／verdict_severity_distance 刻意「拒絕非法值」的
+    契約（見 verdict_severity_distance docstring）——這不是待修的 bug，是
+    scripts/rag_eval.py::run_verdict_eval 現在賴以判斷「該不該把 actual_verdict
+    交給 score_verdict」的安全網基礎：呼叫端必須先驗證 actual_verdict in
+    VALID_VERDICTS，不能指望 score_verdict 自己吞掉壞資料（Code review
+    Finding 3：reviewer 實測 score_verdict(..., "未知判定") 會拋
+    ValueError，若呼叫端沒接住，會讓整個 --with-verdict 未捕捉當掉）。"""
+    case = EvalCase(id="c1", query="q", route="web", expected_verdict="錯誤")
+    with pytest.raises(ValueError):
+        score_verdict(case, "未知判定")
+
+
 def test_score_verdict_wrong_is_tagged_reversed():
     """真假顛倒：期望「正確」、實得「錯誤」，是使用者會被誤導方向的嚴重失效。"""
     case = EvalCase(id="c1", query="q", route="web", expected_verdict="正確")
@@ -645,14 +659,49 @@ def test_real_golden_jsonl_verdict_cases_are_additive_only():
 
     assert len(non_verdict_cases) == 38  # 既有題目，數量與欄位都不變
     # 12 題（Task 8 初版）+ 1 題（CARE-data 回填 verdict=正確 後追加）
-    assert len(verdict_cases) == 13
+    # + 4 題（code review 後補的真正盲測負樣本，verdict-014~017）
+    assert len(verdict_cases) == 17
     assert all(c.expected_verdict in VALID_VERDICTS for c in verdict_cases)
-    # 誤配率唯一量得到東西的母體：brief 要求至少 4 題
+    # 誤配率的母體：brief 給的 4 題（已知會回證據不足）+ 4 題真正盲測
+    # （出題時未跑過系統，--with-verdict 才是它們第一次被驗證）
     no_evidence = [c for c in verdict_cases if c.expected_verdict == "證據不足"]
-    assert len(no_evidence) >= 4
+    assert len(no_evidence) == 8
     # 五種合法判定各至少一題（正確一開始因 TFC 語料庫回填前無資料而缺席，
     # 回填後補上 verdict-013）
     assert {c.expected_verdict for c in verdict_cases} == VALID_VERDICTS
+
+
+# code review Finding 1：query 必須是真正的口語改寫，不能只是原文 claim 換幾個
+# 同義詞——reviewer 用 difflib.SequenceMatcher(None, claim, query).ratio() 抓到
+# 5 題落在 0.59-0.73（幾乎照抄），改寫後的目標區間是 verdict-005/013 那種
+# 0.25-0.35。這裡把「原始 claim」與「相似度上限」都寫死鎖住，避免之後有人
+# 手滑把 query 改回貼近原文卻沒人發現——上限刻意抓在 0.5（比 reviewer 標記的
+# 最低違規值 0.59 還低一截），留一點空間給用詞上無法避免的重疊（人名、疾病
+# 名稱等專有名詞）。
+_VERDICT_QUERY_SIMILARITY_MAX = 0.5
+_ORIGINAL_CLAIMS_FOR_SIMILARITY_CHECK = {
+    "verdict-001": "網傳「多吃九層塔可代替止痛藥，治療關節炎」？",
+    "verdict-002": "網傳「短期多吃綠香蕉能改善夜尿、水腫，減緩腎衰竭」？",
+    "verdict-004": "網傳「心臟病發咬小指穴位能保命」？",
+    "verdict-006": "網傳「流汗是在製造抗癌血清，運動後的血液讓癌細胞不敢長」？",
+    "verdict-007": "網傳「牙線棒反覆使用恐引發心內膜炎」？",
+}
+
+
+def test_real_golden_jsonl_rewritten_verdict_queries_are_not_near_verbatim():
+    golden_path = (
+        Path(__file__).resolve().parents[3] / "evals" / "rag" / "golden.jsonl"
+    )
+    cases_by_id = {
+        c.id: c for c in load_golden_jsonl(golden_path)
+    }
+    for case_id, original_claim in _ORIGINAL_CLAIMS_FOR_SIMILARITY_CHECK.items():
+        query = cases_by_id[case_id].query
+        ratio = difflib.SequenceMatcher(None, original_claim, query).ratio()
+        assert ratio < _VERDICT_QUERY_SIMILARITY_MAX, (
+            f"{case_id}: query 與原始 claim 相似度 {ratio:.3f} 過高，"
+            "疑似只是同義詞替換而非真正口語改寫"
+        )
 
 
 # --- Task 8 追加：scripts/rag_eval.py 的 --with-verdict 接線 ------------------
@@ -770,6 +819,44 @@ async def test_run_verdict_eval_records_error_without_raising_when_verify_fails(
     # 失敗的題目不計入判定正確率的分母，不是「判定錯誤」
     assert summary.scored_cases == 0
     assert summary.verdict_accuracy is None
+    assert summary.error_ids == ["verdict-a"]
+
+
+@pytest.mark.asyncio
+async def test_run_verdict_eval_records_error_without_raising_when_verdict_invalid(
+    tmp_path: Path,
+):
+    """Code review Finding 3 的迴歸測試。
+
+    reviewer 重現過：`score_verdict(case, "未知判定")` 會讓
+    `verdict_severity_distance()` 的 `.index()` 拋 `ValueError`——這是刻意
+    設計（見該函式 docstring），問題出在舊版 `run_verdict_eval` 的
+    try/except 只包住 `verify()`，沒包住緊接著呼叫的 `score_verdict()`，
+    導致 verify() 成功但回傳非法值時，整個 `--with-verdict` 會在 `--out`
+    寫檔前未捕捉地當掉，連同一批已經算好的 hit_rate 都不會被寫出。
+
+    這裡直接重現同一個情境（DI 假服務回傳「未知判定」），斷言 run_verdict_eval
+    不會拋例外，而是把這題記成 error，跟 verify() 本身失敗的既有處理方式一致。
+    """
+    mod = _load_rag_eval_module()
+    golden = _write_verdict_golden(tmp_path)
+    service = _FakeClaimVerificationService(
+        {"聽說X可以治百病，真的嗎？": "未知判定"}
+    )
+
+    results, summary = await mod.run_verdict_eval(
+        golden, claim_verification_service=service
+    )
+
+    assert len(results) == 1
+    assert results[0].id == "verdict-a"
+    assert results[0].applicable is False
+    assert results[0].error is not None
+    assert "未知判定" in results[0].error
+    # 非法值不計入任何一個指標的分母，也不會被誤記成「判定錯誤」或「誤配」
+    assert summary.scored_cases == 0
+    assert summary.verdict_accuracy is None
+    assert summary.mismatch_cases == 0
     assert summary.error_ids == ["verdict-a"]
 
 

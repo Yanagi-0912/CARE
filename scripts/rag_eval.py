@@ -37,6 +37,7 @@ from app.dependencies import (
 from app.services.rag.answer_service import dedup_ranked_docs
 from app.services.rag.cohere_reranker import CohereReranker, VectorScoreReranker
 from app.services.rag.eval_scoring import (
+    VALID_VERDICTS,
     CaseResult,
     EvalCase,
     VerdictResult,
@@ -359,6 +360,16 @@ async def run_verdict_eval(
     變慢變貴。單題呼叫失敗（逾時、例外）不會讓整批中斷：該題記一筆帶
     `error` 的 `VerdictResult`，`summarize_verdicts` 會把它排除在兩個指標
     的分母之外，比照 `_eval_one` 對檢索/答案層例外的既有處理方式。
+
+    `verify()` 成功但回傳的 verdict 不在 `VALID_VERDICTS` 內時，一樣記一筆
+    `error`，不會把值直接交給 `score_verdict()`——`score_verdict` 內部的
+    `verdict_severity_distance()` 對非法值是刻意 `.index()` 拋 `ValueError`
+    （見該函式 docstring：誤配是本功能唯一的嚴重失效模式，非法值不該被靜默
+    分類），這裡的驗證正是那份「呼叫端保證引數合法」契約的實踐者。這個檢查
+    不是防禦性程式設計的空氣——CARE-data 的 `LEGACY_PREFIX_VERDICT` 對照表
+    才剛發生過漏收「正確」前綴、導致 verdict 寫成 `None` 的真實事故
+    （task-8-report.md），資料清洗上游一旦再出錯，這裡就是最後一道不讓整批
+    評測（連同已經算好、還沒來得及寫進 `--out` 的 hit_rate）陪葬的防線。
     """
     if claim_verification_service is None:
         return [], None
@@ -383,7 +394,24 @@ async def run_verdict_eval(
                 )
             )
             continue
-        results.append(score_verdict(case, verification.verdict))
+
+        actual_verdict = verification.verdict
+        if actual_verdict not in VALID_VERDICTS:
+            results.append(
+                VerdictResult(
+                    id=case.id,
+                    expected_verdict=case.expected_verdict,
+                    actual_verdict=actual_verdict,
+                    applicable=False,
+                    error=(
+                        f"invalid verdict from service: {actual_verdict!r} "
+                        f"not in {sorted(VALID_VERDICTS)}"
+                    ),
+                )
+            )
+            continue
+
+        results.append(score_verdict(case, actual_verdict))
 
     return results, summarize_verdicts(results)
 

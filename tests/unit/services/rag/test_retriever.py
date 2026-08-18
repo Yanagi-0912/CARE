@@ -90,6 +90,7 @@ async def test_retriever_returns_documents():
             "source_name": "來源A",
             "url": "https://a.example",
             "original_title": None,
+            "verdict": None,
         },
     )
     assert docs[1].page_content == "B"
@@ -211,6 +212,7 @@ async def test_text_retriever_builds_search_pipeline():
         "source_name": None,
         "url": None,
         "original_title": None,
+        "verdict": None,
     }
 
     pipeline = collection.aggregate.call_args.args[0]
@@ -438,6 +440,63 @@ async def test_vector_retriever_projects_and_exposes_original_title():
     assert docs[0].metadata["original_title"] == "捍「胃」健康 過年聚餐用公筷"
 
 
+# ── verdict 投影（claim-verdict-card 最終 review C1 finding）：查核判定卡
+# 「相關衛教資訊」要能排除 TFC 查核報告，前提是 retriever 本身要先把
+# verdict 投影進 metadata，否則下游無資料可過濾 ──────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_vector_retriever_projects_and_exposes_verdict():
+    retriever, emb = _make_retriever(vector_dim=2)
+    emb.aembed_query = AsyncMock(return_value=[0.1, 0.2])
+
+    fake_cursor = MagicMock()
+    fake_cursor.to_list = AsyncMock(
+        return_value=[
+            {
+                "_id": "tfc-1",
+                "chunk_text": "查核中心訪問多位醫師⋯",
+                "url": "https://tfc.example/1",
+                "original_title": "【錯誤】網傳吃洋蔥可以降血壓？",
+                "verdict": "錯誤",
+                "score": 0.9,
+            }
+        ]
+    )
+    fake_collection = MagicMock()
+    fake_collection.aggregate.return_value = fake_cursor
+    retriever._collection = fake_collection
+
+    docs = await retriever.ainvoke("洋蔥降血壓")
+
+    pipeline = fake_collection.aggregate.call_args.args[0]
+    project_stage = next(s for s in pipeline if "$project" in s)
+    assert project_stage["$project"]["verdict"] == 1
+    assert docs[0].metadata["verdict"] == "錯誤"
+
+
+@pytest.mark.asyncio
+async def test_vector_retriever_verdict_metadata_is_none_for_non_tfc_docs():
+    """闢謠網站／食藥署等一般衛教來源沒有 verdict 欄位，metadata 裡應為
+    None 而非缺 key——下游用 `.get("verdict")` 判斷才不會出錯。"""
+    retriever, emb = _make_retriever(vector_dim=2)
+    emb.aembed_query = AsyncMock(return_value=[0.1, 0.2])
+
+    fake_cursor = MagicMock()
+    fake_cursor.to_list = AsyncMock(
+        return_value=[
+            {"_id": "edu-1", "chunk_text": "高血壓的飲食建議⋯", "score": 0.8}
+        ]
+    )
+    fake_collection = MagicMock()
+    fake_collection.aggregate.return_value = fake_cursor
+    retriever._collection = fake_collection
+
+    docs = await retriever.ainvoke("高血壓飲食")
+
+    assert docs[0].metadata["verdict"] is None
+
+
 @pytest.mark.asyncio
 async def test_text_retriever_projects_and_exposes_original_title():
     retriever = _make_text_retriever()
@@ -461,3 +520,31 @@ async def test_text_retriever_projects_and_exposes_original_title():
     project_stage = next(s for s in pipeline if "$project" in s)
     assert project_stage["$project"]["original_title"] == 1
     assert docs[0].metadata["original_title"] == "捍「胃」健康 過年聚餐用公筷"
+
+
+@pytest.mark.asyncio
+async def test_text_retriever_projects_and_exposes_verdict():
+    """HybridRetriever 同時跑向量與 BM25 兩邊，若只有向量那側投影 verdict，
+    融合結果裡經由 BM25 命中的 TFC 文件仍會漏掉這個 metadata、逃過下游的
+    verdict 過濾。BM25 這側也要能獨立投影出 verdict。"""
+    retriever = _make_text_retriever()
+    collection = _fake_collection(
+        [
+            {
+                "_id": "tfc-1",
+                "chunk_text": "查核中心訪問多位醫師⋯",
+                "url": "https://tfc.example/1",
+                "original_title": "【錯誤】網傳吃洋蔥可以降血壓？",
+                "verdict": "錯誤",
+                "score": 5.0,
+            }
+        ]
+    )
+    retriever._collection = collection
+
+    docs = await retriever.ainvoke("洋蔥降血壓")
+
+    pipeline = collection.aggregate.call_args.args[0]
+    project_stage = next(s for s in pipeline if "$project" in s)
+    assert project_stage["$project"]["verdict"] == 1
+    assert docs[0].metadata["verdict"] == "錯誤"

@@ -13,6 +13,46 @@ from langchain_core.documents import Document
 
 VALID_ROUTES = frozenset({"kb", "refuse", "web"})
 
+# 查核判定卡的五種合法判定（openspec claim-verdict-card/specs/rag-eval/spec.md
+# 原文）。獨立宣告而不從 app.services.rag.claim_verification.service 匯入，
+# 是刻意的：那個模組會牽出 GeminiService／Mongo 的匯入鏈，這裡只需要五個
+# 字串值，不需要跟著背負查核服務的重依賴；也呼應 brief「不要動
+# claim_verification/ 底下任何檔案」的邊界——eval 這端只認字串，不依賴
+# 查核服務的型別。
+VALID_VERDICTS = frozenset({"錯誤", "部分錯誤", "正確", "事實釐清", "證據不足"})
+
+# 未命中已查核主張時的固定判定，與 claim_verification/service.py 的
+# NOT_ENOUGH_EVIDENCE 同值——誤配率只看「這題本該是這個判定，系統卻換成
+# 別的判定」，因此需要這個值來界定誤配母體。
+_NOT_ENOUGH_EVIDENCE = "證據不足"
+
+# 判定嚴重度序（task-8-brief.md 的校準結論）：兩端是「正確」與「錯誤」，
+# 中間依對使用者的誤導程度插入「事實釐清」「證據不足」「部分錯誤」。序上
+# 距離 1 的誤判（例如期望「錯誤」、實得「部分錯誤」）使用者仍被告知該說法
+# 有問題，是可接受的偏差；距離越大代表判定方向被誤導得越嚴重，最極端是
+# 「正確」／「錯誤」兩端顛倒。
+_VERDICT_SEVERITY_ORDER: tuple[str, ...] = (
+    "正確",
+    "事實釐清",
+    "證據不足",
+    "部分錯誤",
+    "錯誤",
+)
+
+
+def verdict_severity_distance(expected: str, actual: str) -> int:
+    """兩個判定在嚴重度序上的距離，供分辨「相鄰誤判」與「顛倒」使用。
+
+    刻意不接受序外的字串：呼叫端（`score_verdict`）保證兩個引數都已通過
+    `VALID_VERDICTS` 檢查，若真的出現非法值，讓 `.index()` 直接拋
+    `ValueError` 比靜默歸類成任一種嚴重度更安全——誤配是本功能唯一的嚴重
+    失效模式，錯誤分類不該被吞掉。
+    """
+    return abs(
+        _VERDICT_SEVERITY_ORDER.index(expected) - _VERDICT_SEVERITY_ORDER.index(actual)
+    )
+
+
 _SOURCE_URL_RE = re.compile(
     r"(?m)^(?:\[[^\]]+\]\s*)?(?:[^：:\n]+[：:]\s*)?(https?://\S+)\s*$"
 )
@@ -30,6 +70,10 @@ class EvalCase:
     must_not_answer: bool = False
     notes: str = ""
     split: str = ""
+    # 可選：查核型題目的期望判定（五種合法值之一，見 VALID_VERDICTS）。
+    # 空字串＝本題不參與判定計分，既有的 hit_rate／MRR／nDCG 完全不受影響——
+    # `has_retrieval_expectations` 與 `score_case_retrieval` 都不看這個欄位。
+    expected_verdict: str = ""
 
     @property
     def has_retrieval_expectations(self) -> bool:
@@ -285,6 +329,13 @@ def load_golden_jsonl(path: Path) -> list[EvalCase]:
                 data, "expected_title_substrings", line_no=line_no, case_id=case_id
             )
 
+            expected_verdict = str(data.get("expected_verdict") or "").strip()
+            if expected_verdict and expected_verdict not in VALID_VERDICTS:
+                raise ValueError(
+                    f"line {line_no} (id={case_id}): "
+                    f"expected_verdict must be one of {sorted(VALID_VERDICTS)}"
+                )
+
             cases.append(
                 EvalCase(
                     id=case_id,
@@ -297,6 +348,7 @@ def load_golden_jsonl(path: Path) -> list[EvalCase]:
                     must_not_answer=bool(data.get("must_not_answer", False)),
                     notes=str(data.get("notes") or ""),
                     split=str(data.get("split") or ""),
+                    expected_verdict=expected_verdict,
                 )
             )
     return cases
@@ -362,5 +414,135 @@ def summarize_results(results: list[CaseResult]) -> EvalSummary:
         citation_coverage=citation_coverage,
         miss_ids=[r.id for r in scored if r.retrieval_hit is False],
         skipped_ids=[r.id for r in results if r.skipped],
+        error_ids=[r.id for r in results if r.error],
+    )
+
+
+@dataclass(frozen=True)
+class VerdictResult:
+    """單題「期望判定」與「系統實際判定」的比對結果。
+
+    誤配（`is_mismatch_case=True`）與一般判定對錯是兩個不重疊的母體——spec
+    明文「誤配 SHALL 單獨計分，SHALL NOT 併入判定正確率」。`correct` 只在
+    `is_mismatch_case=False` 時有意義，`mismatched` 只在 `is_mismatch_case=True`
+    時有意義；`summarize_verdicts` 依 `is_mismatch_case` 把兩者分流到不同
+    分母，同一題不會同時計入判定正確率與誤配率。
+    """
+
+    id: str
+    expected_verdict: str
+    actual_verdict: str
+    applicable: bool
+    is_mismatch_case: bool = False
+    correct: Optional[bool] = None
+    mismatched: Optional[bool] = None
+    error_kind: Optional[str] = None  # "相鄰" 或 "顛倒"；僅判定錯誤（非誤配）時有值
+    # 呼叫端（例如 scripts/rag_eval.py 呼叫 ClaimVerificationService.verify）
+    # 取得實際判定失敗時填入的錯誤訊息。score_verdict 純函式本身不會設這個
+    # 欄位——它永遠拿得到 actual_verdict 字面值，不會失敗；只有「取得
+    # actual_verdict」這個 I/O 步驟才可能失敗。非 None 時 summarize_verdicts
+    # 會把這題整個排除在判定正確率與誤配率之外（比照 CaseResult.error 的慣例）。
+    error: Optional[str] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def score_verdict(case: EvalCase, actual_verdict: str) -> VerdictResult:
+    """比對單一題目的期望判定與系統實際回傳的判定。
+
+    沒有標 `expected_verdict` 的題目回傳 `applicable=False`；呼叫端可以對
+    每一題都呼叫這個函式，不必自己先篩過──`summarize_verdicts` 會濾掉
+    不適用的題目，語意對齊 `score_case_retrieval` 用 `skipped` 表達「本題
+    不參與這項計分」的既有慣例。
+    """
+    expected = case.expected_verdict
+    if not expected:
+        return VerdictResult(
+            id=case.id,
+            expected_verdict="",
+            actual_verdict=actual_verdict,
+            applicable=False,
+        )
+
+    if expected == _NOT_ENOUGH_EVIDENCE:
+        return VerdictResult(
+            id=case.id,
+            expected_verdict=expected,
+            actual_verdict=actual_verdict,
+            applicable=True,
+            is_mismatch_case=True,
+            mismatched=actual_verdict != _NOT_ENOUGH_EVIDENCE,
+        )
+
+    correct = actual_verdict == expected
+    error_kind = None
+    if not correct:
+        distance = verdict_severity_distance(expected, actual_verdict)
+        error_kind = "相鄰" if distance == 1 else "顛倒"
+    return VerdictResult(
+        id=case.id,
+        expected_verdict=expected,
+        actual_verdict=actual_verdict,
+        applicable=True,
+        correct=correct,
+        error_kind=error_kind,
+    )
+
+
+@dataclass(frozen=True)
+class VerdictSummary:
+    scored_cases: int  # 判定正確率分母：有 expected_verdict 且非「證據不足」的題數
+    correct: int
+    verdict_accuracy: Optional[float]
+    wrong_ids: list[str]
+    adjacent_wrong_ids: list[str]
+    reversed_wrong_ids: list[str]
+    mismatch_cases: int  # 誤配率分母：expected_verdict 為「證據不足」的題數
+    mismatches: int
+    mismatch_rate: Optional[float]
+    mismatch_ids: list[str]
+    error_ids: list[str]  # 取得 actual_verdict 失敗的題目；不計入上述任何分母
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def summarize_verdicts(results: list[VerdictResult]) -> VerdictSummary:
+    """彙總判定正確率與誤配率。
+
+    兩個指標的分母互斥（見 `VerdictResult` docstring）：`expected_verdict`
+    為「證據不足」的題目只算進誤配率，其餘有標 `expected_verdict` 的題目
+    只算進判定正確率。這是刻意的設計，不是疏漏——brief 記錄的教訓是「誤配
+    混進整體正確率會被稀釋看不見」，分母互斥才能讓兩個指標各自誠實反映
+    一件事，不會互相稀釋。
+
+    `error` 非 None 的題目（呼叫 ClaimVerificationService 失敗）整題排除，
+    不計入判定正確率或誤配率的任何一個分母——一次 LLM/網路逾時不該被算成
+    「判定錯誤」，那會把基礎設施問題誤記成查核功能本身的失效，比照
+    `summarize_results` 對 `CaseResult.error` 的既有處理方式。
+    """
+    applicable = [r for r in results if r.applicable and r.error is None]
+    accuracy_pop = [r for r in applicable if not r.is_mismatch_case]
+    mismatch_pop = [r for r in applicable if r.is_mismatch_case]
+
+    scored = len(accuracy_pop)
+    correct = sum(1 for r in accuracy_pop if r.correct)
+    wrong = [r for r in accuracy_pop if not r.correct]
+
+    mismatch_total = len(mismatch_pop)
+    mismatches = sum(1 for r in mismatch_pop if r.mismatched)
+
+    return VerdictSummary(
+        scored_cases=scored,
+        correct=correct,
+        verdict_accuracy=(correct / scored) if scored else None,
+        wrong_ids=[r.id for r in wrong],
+        adjacent_wrong_ids=[r.id for r in wrong if r.error_kind == "相鄰"],
+        reversed_wrong_ids=[r.id for r in wrong if r.error_kind == "顛倒"],
+        mismatch_cases=mismatch_total,
+        mismatches=mismatches,
+        mismatch_rate=(mismatches / mismatch_total) if mismatch_total else None,
+        mismatch_ids=[r.id for r in mismatch_pop if r.mismatched],
         error_ids=[r.id for r in results if r.error],
     )

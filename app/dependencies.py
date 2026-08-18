@@ -66,6 +66,10 @@ from app.services.rag import (
     MongoAtlasVectorRetriever,
     RagAnswerService,
 )
+from app.services.rag.claim_verification.identity import GeminiClaimIdentityVerifier
+from app.services.rag.claim_verification.matcher import MongoAtlasClaimMatcher
+from app.services.rag.claim_verification.normalizer import GeminiClaimNormalizer
+from app.services.rag.claim_verification.service import ClaimVerificationService
 from app.services.rag.cohere_reranker import CohereReranker, VectorScoreReranker
 from app.services.rag.firecrawl_client import FirecrawlClient
 from app.services.rag.ingest_service import IngestService
@@ -77,6 +81,7 @@ from app.services.rag.query_rewriter import GeminiQueryRewriter
 from app.services.rag.retrieval_grader import GeminiRetrievalGrader
 from app.services.rag.web_search_service import WebSearchService
 from app.services.users.user_profile_service import UserProfileService
+from app.tools.claim_tools import configure_claim_tool
 from app.tools.knowledge_report_tools import configure_knowledge_report_tool
 from app.tools.medical_tools import configure_medical_tools
 from app.tools.official_site_tools import configure_official_site_tool
@@ -309,6 +314,73 @@ if (
 
 configure_user_document_tool(_user_document_answer_service)
 
+# 查核判定卡。matcher 沿用既有的 embedding 索引、向量欄位與 query
+# embeddings，不另建 claim 專用索引（claim-verdict-card/design.md 決策
+# 2）；未啟用時不建立服務也不 configure tool（registry.py 的 verify_claim
+# 靠這個決定要不要出現在工具清單，見 app/tools/claim_tools.py 的
+# is_claim_tool_configured）。
+#
+# vector_field 明確傳入 settings.MONGODB_VECTOR_FIELD——不能省略：matcher
+# 建構子的 vector_field 預設值雖然也是 "embedding"，但省略等於讓正確與否
+# 繫於「兩處硬寫的常數剛好相同」這個巧合，且會讓這裡看起來像是忘記接線，
+# 而非刻意沿用既有欄位。2026-08-18 對 production Atlas 實測證實：這個
+# 參數當初漏接（連預設值都指向錯的欄位）會讓 $vectorSearch 對純文字的
+# claim 欄位查詢，MongoDB 回 OperationFailure，又被 matcher 的 fail-open
+# 設計吞掉，導致 verify_claim 線上每次都靜默回「證據不足」且不報錯。
+#
+# content_field 明確傳入 settings.MONGODB_TEXT_FIELD——同樣不能省略，理由
+# 與上面 vector_field 完全相同：matcher 建構子的 content_field 預設值是
+# 硬寫的 "chunk_content"，而 config.py 的 MONGODB_TEXT_FIELD 預設值是
+# "text"、.env.example 也寫 "text"。省略等於讓「查得到的判定卡有沒有理由
+# 依據」繫於「.env 裡的值剛好等於這個硬寫常數」這個巧合——目前不炸純粹
+# 因為當下這份 .env 剛好設成 chunk_content。一旦照 .env.example 部署，
+# match.content 會是空字串，_rewrite_reasoning 的 prompt 變成「查核報告
+# 內容：」後面空白，Gemini 只看得到使用者問句，會憑空編出一段「查核報告
+# 怎麼看待這則說法」，貼在標著「判定來源：台灣事實查核中心」的卡片上——
+# 核心約束（判定與理由都要有實際查核依據）被實質破壞（claim-verdict-card
+# 最終 review C2 finding）。matcher.py 另外對空 content 做了執行期防線
+# （視為未命中），這裡的明確傳入是避免一開始就走到那條防線。
+#
+# GeminiClaimNormalizer 與 ClaimVerificationService 都刻意明確傳入
+# gemini_service：兩者的 fail-open 設計會把「忘記注入」靜默降級成
+# 「永遠不正規化」／「永遠用降級理由」而非報錯，漏寫在這裡不會被任何測試
+# 攔下來（Task 3 review 記錄的已知風險）。
+#
+# identity_verifier 的風險方向不同、但一樣真實：ClaimVerificationService
+# 把它設計成可選參數（None 時直接跳過同一性驗證），是為了不動既有測試、
+# 向後相容——代價是如果這裡漏寫 identity_verifier=...，不會有任何
+# TypeError 或例外，效果是同一性驗證整條防線悄悄消失，向量誤配
+# （design.md 決策 9 量到的 65%）原樣回到線上。GeminiClaimIdentityVerifier
+# 本身在兩個依賴都沒給時會 raise（見 identity.py 模組 docstring），但那只
+# 防得住「verifier 建構出來、卻沒接 gemini_service」，防不住「這裡整段
+# 忘記傳 identity_verifier 參數」——兩種疏漏由兩道不同防線各自擋，這裡
+# 必須兩個都接對；tests/unit/test_dependencies.py 另外釘住這裡的接線。
+_claim_verification_service: ClaimVerificationService | None = None
+if settings.CLAIM_VERIFICATION_ENABLED:
+    _claim_matcher = MongoAtlasClaimMatcher(
+        embeddings=_query_embeddings,
+        mongo_uri=settings.MONGODB_URI,
+        db_name=settings.MONGODB_DB,
+        collection_name=settings.MONGODB_COLLECTION,
+        index_name=settings.MONGODB_VECTOR_INDEX,
+        vector_field=settings.MONGODB_VECTOR_FIELD,
+        content_field=settings.MONGODB_TEXT_FIELD,
+        min_score=settings.CLAIM_MATCH_MIN_SCORE,
+    )
+    _claim_identity_verifier = GeminiClaimIdentityVerifier(
+        gemini_service=_gemini_service
+    )
+    _claim_verification_service = ClaimVerificationService(
+        normalizer=GeminiClaimNormalizer(gemini_service=_gemini_service),
+        matcher=_claim_matcher,
+        gemini_service=_gemini_service,
+        related_retriever=_rag_retriever,
+        identity_verifier=_claim_identity_verifier,
+    )
+    configure_claim_tool(_claim_verification_service)
+else:
+    logger.info("CLAIM_VERIFICATION_ENABLED=false; verify_claim tool not configured")
+
 _care_agent = Agent(
     llm=_gemini_service.chat_model,
     guardrail_service=_guardrail_service,
@@ -522,6 +594,19 @@ def get_rag_retriever() -> MongoAtlasVectorRetriever | HybridRetriever:
 def get_rag_answer_service() -> RagAnswerService:
     """取得 RAG 問答服務（知識庫檢索 + 生成）"""
     return _rag_answer_service
+
+
+def get_claim_verification_service() -> ClaimVerificationService | None:
+    """取得查核判定卡服務；`CLAIM_VERIFICATION_ENABLED=false` 時回傳 `None`。
+
+    回傳型別刻意是 `Optional`，不是像 `get_rag_answer_service()` 那樣直接
+    回傳非 None 的服務——`ClaimVerificationService` 是本專案唯一一個「整組
+    可能整個不存在」的服務（見上方 `_claim_verification_service` 建構那段
+    註解），呼叫端（例如 `scripts/rag_eval.py` 的 `--with-verdict`）本來就
+    必須自己判斷「有沒有配置」，讓型別誠實反映這件事，比回傳一個假的
+    服務物件或拋例外更不會被誤用。
+    """
+    return _claim_verification_service
 
 
 def get_user_profile_service() -> UserProfileService:

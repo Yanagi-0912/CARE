@@ -84,3 +84,32 @@ def test_handlers_only_get_the_safety_service_when_the_flag_is_on():
 
     assert handler._message_handler._safety_alert_service is expected
     assert handler._media_handler._safety_alert_service is expected
+
+
+def test_claim_verification_service_is_wired_with_identity_verifier():
+    """Task 10 教訓比照 Task 3 review 記錄的 gemini_service 疏漏：
+    identity_verifier 是可選參數，忘記在這裡注入不會拋任何例外，只會讓
+    同一性驗證整條防線悄悄消失、向量誤配原樣回到線上（design.md 決策 9）。
+    這支測試就是那道「沒有其他測試會攔到」的防線本身。"""
+    if not settings.CLAIM_VERIFICATION_ENABLED:
+        pytest.skip("CLAIM_VERIFICATION_ENABLED is false")
+
+    service = dependencies._claim_verification_service
+    assert service is not None
+    assert service._identity_verifier is dependencies._claim_identity_verifier
+    assert service._identity_verifier is not None
+
+
+def test_claim_matcher_is_wired_with_content_field_from_settings():
+    """C2 finding：matcher 建構子的 content_field 預設值是硬寫的
+    "chunk_content"，與 settings.MONGODB_TEXT_FIELD 的預設值 "text" 不同。
+    這裡曾經完全沒有明確傳入，正確與否繫於「.env 裡的值剛好等於這個硬寫
+    常數」的巧合；一旦照 .env.example 部署，match.content 就會是空字串，
+    導致理由改寫的 prompt 沒有查核報告內容可用。這支測試釘住接線本身，
+    而不是只靠「目前這份 .env 剛好對」的僥倖。"""
+    if not settings.CLAIM_VERIFICATION_ENABLED:
+        pytest.skip("CLAIM_VERIFICATION_ENABLED is false")
+
+    matcher = dependencies._claim_matcher
+    assert matcher is not None
+    assert matcher.content_field == settings.MONGODB_TEXT_FIELD

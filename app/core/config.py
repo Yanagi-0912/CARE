@@ -155,6 +155,22 @@ class Settings:
         os.getenv("RAG_RERANK_MAX_CHUNKS_PER_ARTICLE", "2")
     )
 
+    # 查核判定卡總開關。關閉時代理工具集不提供 verify_claim，行為完全回到
+    # 本功能導入前的樣子（claim-verdict-card/design.md Migration Plan），
+    # 不需要任何資料回滾。
+    CLAIM_VERIFICATION_ENABLED: bool = os.getenv(
+        "CLAIM_VERIFICATION_ENABLED", "true"
+    ).lower() in ("1", "true", "yes", "on")
+    # 主張比對的最低相似度門檻。tasks 1.2 校準（2026-08-18）：30 篇 TFC
+    # 查核報告，每篇由 LLM 改寫成 2 句真實使用者口語問法（共 60 題），
+    # 實測 matcher 命中率：
+    #   0.84 命中率 70%／**0.86 命中率 68%**／0.88 命中率 58%／0.90 命中率 45%
+    # 舊預設 0.9 會讓超過半數已查核謠言查不到。取 0.86：再往上每加 0.02，
+    # 命中率約再掉 10 個百分點，0.86 是命中率明顯下滑前的最後一格，
+    # 兼顧「誤配是唯一嚴重失效模式、門檻寧缺勿濫」（design.md 決策 3）與
+    # 堪用的覆蓋率。
+    CLAIM_MATCH_MIN_SCORE: float = float(os.getenv("CLAIM_MATCH_MIN_SCORE", "0.86"))
+
     # Light CRAG（檢索充足性分級；關閉則等同舊行為）
     RAG_CRAG_ENABLED: bool = os.getenv("RAG_CRAG_ENABLED", "true").lower() in (
         "1",

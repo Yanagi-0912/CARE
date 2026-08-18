@@ -1,3 +1,4 @@
+from app.tools.claim_tools import is_claim_tool_configured, verify_claim
 from app.tools.knowledge_report_tools import submit_knowledge_report
 from app.tools.medical_tools import (
     find_nearby_facilities_by_department,
@@ -22,5 +23,12 @@ def get_all_tools(include_rag_tool: bool = True) -> list:
     ]
     if include_rag_tool:
         tools.extend([get_rag_answer, answer_from_uploaded_document])
+        # verify_claim 與 get_rag_answer 同屬「guardrail 放行後才提供」的知識庫
+        # 工具，因此跟著 include_rag_tool 一起開關；是否配置服務（即
+        # CLAIM_VERIFICATION_ENABLED 這道獨立開關的結果，見
+        # is_claim_tool_configured 的說明）是另一層過濾，兩者皆為真才提供，
+        # 不新增第二個布林參數（YAGNI）。
+        if is_claim_tool_configured():
+            tools.append(verify_claim)
 
     return tools

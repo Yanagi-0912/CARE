@@ -18,10 +18,21 @@
 | `must_not_answer` | | `true`＝應拒答／無資料 |
 | `notes` | | 備註 |
 | `split` | | 可選 `train` / `holdout` |
+| `expected_verdict` | 可選 | 查核判定卡（`verify_claim`）的期望判定，見下方「查核型題目」 |
 
 > 粗標（`hpa.gov`／`衛福部`）會讓 top-5 hit_rate 飽和、看不出精排差異。可用：
 > `python scripts/rag_tighten_golden.py`  
 > 自動收成 `pid=`／關鍵句（偏好向量 mid-rank 的相關 chunk）。仍建議抽樣人工覆核。
+
+### 查核型題目（`expected_verdict`）
+
+`expected_verdict` 是完全獨立於 `expected_url_substrings` 等欄位的另一條計分軸，量的是「查核判定卡回傳的判定對不對」，不是「有沒有撈到文件」。值必須是五種合法判定之一：`錯誤`／`部分錯誤`／`正確`／`事實釐清`／`證據不足`，載入時會檢查，不合法直接報錯。
+
+**不要**同時幫查核型題目填 `expected_url_substrings`：台灣事實查核中心對同一謠言常有多篇查核報告（新舊站都有），綁死一個 URL 會把「配到另一篇同樣正確的報告」誤判成錯——這是 Task 8 校準時踩過的坑，量出過虛高 16% 的假誤判率，改用判定值比對後才發現實際判定正確率是 78%。判定型題目建議把 `route` 標成 `web`，讓既有的 hit_rate/MRR/nDCG 自動排除（比照既有「KB 無可回答文章」題目的慣例），不代表答案來自即時網路搜尋。
+
+`expected_verdict` 為「證據不足」時，代表「這則主張 TFC 沒查過，系統不該命中任何已查核報告」——這類題目是**誤配率**唯一量得到東西的地方，出題時建議寫「TFC 確定沒查過」的說法（例如生活偏方類謠言），並在 `notes` 記下驗證依據。
+
+各判定至少收一題最理想，但實務上取決於已入庫的 TFC 語料庫是否剛好有該判定的文章（例如「正確」判定在 TFC 查核報告中本來就少見，本題庫的 `verdict-013` 是等 CARE-data 回填後才補上的）。
 
 ## 去識別化
 
@@ -83,6 +94,19 @@ python scripts/rag_eval.py --fail-under 0.6
 python scripts/rag_eval.py --split train
 ```
 
+判定正確率／誤配率（需 `CLAIM_VERIFICATION_ENABLED=true`）：
+
+```bash
+python scripts/rag_eval.py --with-verdict
+```
+
+> `--with-verdict` **預設不開**：對每一題有 `expected_verdict` 的題目呼叫
+> `ClaimVerificationService.verify()`，每題 3 次 LLM 呼叫（主張正規化、
+> 同一性驗證、理由改寫），會讓例行跑法變慢、消耗 Gemini 配額，因此獨立成
+> opt-in 旗標，不隨 `python scripts/rag_eval.py` 預設執行。
+> `CLAIM_VERIFICATION_ENABLED=false` 或服務未接線時會印出訊息並跳過這個
+> 區塊，不會報錯中斷其餘計分。
+
 ## 怎麼讀結果
 
 - **hit_rate**：在「有計分」的 kb 題中，檢索（或精排後）結果的 url **或** source_name 命中期望 substring 的比例  
@@ -93,6 +117,16 @@ python scripts/rag_eval.py --split train
 - nDCG 的 IDCG（理想 DCG）以「取回清單自身的 relevance 重排後」計算，**不是**語料庫全體的理想排序 —— golden set 每題只標一個正解來源，沒有窮盡的相關性判準（exhaustive relevance judgments），算不出「全庫理想排序」；同理，本專案**刻意不提供 recall@k**，因為 recall 需要「該題在語料庫中共有幾筆相關文件」這個分母，硬湊出來的分母是假的、會誤導調參方向
 - `--compare-rerank`：看 `hit_rate_delta`、`ndcg@5_delta`、`fixed_by_cohere`、`regressed_by_cohere`
 - **citation_coverage**（需 `--with-answer`）：在「有跑答案層」的題目中（`citation_count` 不為 `None`），答案內至少標出一個有效 `[n]` 引用的比例；分母不含未跑 `--with-answer` 的題目。此指標量測模型是否確實依規範標註引用來源——過低代表 Task 4 的引用 prompt 需再強化。若答案完全沒有標 `[n]`，`_append_sources` 不會附上來源清單，並會記一筆 `citation_missing` log 供追蹤
+
+### `--with-verdict` 的兩個指標（判定正確率／誤配率）
+
+只對有 `expected_verdict` 的題目計分，跟上面 hit_rate 系列的 kb 題完全不共用分母：
+
+- **verdict_accuracy（判定正確率）**：`expected_verdict` 不是「證據不足」的題目中，`ClaimVerificationService.verify()` 回傳的判定與期望判定完全相同的比例
+- **wrong_ids／adjacent_wrong_ids／reversed_wrong_ids**：判定錯誤的題目 id，並依嚴重度序（`正確 < 事實釐清 < 證據不足 < 部分錯誤 < 錯誤`）上的距離分兩類：距離 1 標「相鄰」（例如期望「錯誤」、實得「部分錯誤」——使用者仍被告知該說法有問題，是可接受的偏差）；距離 ≥2 標「顛倒」（使用者會被誤導判斷方向，是嚴重失效，最極端是「正確」／「錯誤」兩端顛倒）。`wrong_ids` 是兩者的聯集，方便總覽
+- **mismatch_rate（誤配率）**：`expected_verdict` 為「證據不足」的題目中，系統卻回傳了其他判定的比例。誤配（把某則主張的判定貼到另一則主張上）是查核判定卡**唯一的嚴重失效模式**，因此獨立計分、**不併入** verdict_accuracy——混進整體正確率會被稀釋看不見（Task 8 校準時的真實教訓：早期誤把「配到的文章 URL 不同」算成誤配，量出 16% 的假訊號，實際上多數是 TFC 對同一謠言的另一篇查核報告；改用判定值後真正的誤配率遠低於此）
+- **mismatch_ids**：誤配的題目 id，人工覆核的第一優先——出現在這裡代表使用者可能拿到「看起來權威、實則張冠李戴」的判定
+- **error_ids**：呼叫 `ClaimVerificationService.verify()` 失敗（逾時、例外）的題目，不計入上述任何分母，避免把基礎設施問題誤記成判定失效
 
 ### 本分支實測結果（本機 2026-08-08，`python scripts/rag_eval.py --rank-mode cohere --top-n 5`，golden set 34 scored cases）
 

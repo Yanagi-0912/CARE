@@ -63,18 +63,33 @@ class _FailingRelatedRetriever:
         raise RuntimeError("vector search unavailable")
 
 
+class _StaticIdentityVerifier:
+    """回傳固定的同一性判斷，並記錄每次呼叫收到的 (user_claim, checked_claim)，
+    供斷言 service 傳的 checked_claim 是否正確做了 claim→title 的 fallback。"""
+
+    def __init__(self, same: bool) -> None:
+        self._same = same
+        self.calls: list[tuple[str, str]] = []
+
+    async def is_same_claim(self, user_claim: str, checked_claim: str) -> bool:
+        self.calls.append((user_claim, checked_claim))
+        return self._same
+
+
 def _make_service(
     *,
     match: ClaimMatch | None,
     claim: str = _NORMALIZED_CLAIM,
     invoke_reasoning: AsyncMock | None = None,
     related_retriever: object | None = None,
+    identity_verifier: object | None = None,
 ) -> ClaimVerificationService:
     return ClaimVerificationService(
         _StaticNormalizer(claim),
         _StaticMatcher(match),
         invoke_reasoning=invoke_reasoning,
         related_retriever=related_retriever,
+        identity_verifier=identity_verifier,
     )
 
 
@@ -214,3 +229,100 @@ async def test_related_info_empty_when_retriever_raises():
     result = await service.verify("網傳喝咖啡會導致骨質疏鬆？")
 
     assert result.related_info == ""
+
+
+# --- 主張同一性驗證（design.md 決策 9）：向量比對命中後，還要通過這道 LLM
+# 驗證才採用該篇判定；三種可能值（True／False／None＝未配置）都要各自釘住。
+
+
+@pytest.mark.asyncio
+async def test_verify_adopts_match_when_identity_verifier_confirms_same_claim():
+    """同一性驗證回 True：採用比對到的 verdict，行為與沒有這道驗證時相同。"""
+    invoke_reasoning = AsyncMock(return_value="理由。")
+    identity_verifier = _StaticIdentityVerifier(same=True)
+    service = _make_service(
+        match=_make_match("錯誤"),
+        invoke_reasoning=invoke_reasoning,
+        identity_verifier=identity_verifier,
+    )
+
+    result = await service.verify(_USER_TEXT)
+
+    assert result.verdict == "錯誤"
+    assert result.matched is True
+
+
+@pytest.mark.asyncio
+async def test_verify_degrades_to_not_enough_evidence_when_identity_verifier_says_different():
+    """同一性驗證回 False：完全走未命中路徑——verdict、matched、related_info
+    三者都要一起變，不能只改 verdict 卻漏改其他兩個欄位。"""
+    docs = [Document(page_content="鳳梨酵素相關衛教資訊。")]
+    identity_verifier = _StaticIdentityVerifier(same=False)
+    service = _make_service(
+        match=_make_match("錯誤"),
+        identity_verifier=identity_verifier,
+        related_retriever=_StaticRelatedRetriever(docs),
+    )
+
+    result = await service.verify(_USER_TEXT)
+
+    assert result.verdict == NOT_ENOUGH_EVIDENCE
+    assert result.matched is False
+    assert "鳳梨酵素相關衛教資訊" in result.related_info
+
+
+@pytest.mark.asyncio
+async def test_verify_skips_identity_check_when_verifier_not_configured():
+    """identity_verifier 為 None 是向後相容的預設值：跳過驗證、直接採用比對
+    命中，行為與導入這道驗證之前完全相同（既有測試不必為此改寫）。"""
+    invoke_reasoning = AsyncMock(return_value="理由。")
+    service = _make_service(
+        match=_make_match("錯誤"),
+        invoke_reasoning=invoke_reasoning,
+        identity_verifier=None,
+    )
+
+    result = await service.verify(_USER_TEXT)
+
+    assert result.verdict == "錯誤"
+    assert result.matched is True
+
+
+@pytest.mark.asyncio
+async def test_verify_falls_back_to_title_when_match_claim_is_blank():
+    """知識庫的 claim 欄位有 35% 裝的是查核結論、部分文章甚至沒有 claim
+    （design.md 決策 8／identity.py 介面說明）。傳給 verifier 的 checked_claim
+    要退回 title，不能傳空字串——空字串幾乎必然被判為「不同主張」，等同
+    每次都誤殺命中。這個 fallback 屬於 service 的職責，不在 verifier 裡。"""
+    identity_verifier = _StaticIdentityVerifier(same=True)
+    match = _make_match("錯誤", claim="")
+    service = _make_service(match=match, identity_verifier=identity_verifier)
+
+    await service.verify(_USER_TEXT)
+
+    assert identity_verifier.calls == [(_NORMALIZED_CLAIM, match.title)]
+
+
+class _MisconfiguredIdentityVerifier:
+    """模擬 dependencies.py 忘記傳 gemini_service／invoke_identity 給
+    GeminiClaimIdentityVerifier 時，真正會拋出的例外（見 identity.py）。"""
+
+    async def is_same_claim(self, user_claim: str, checked_claim: str) -> bool:
+        raise RuntimeError(
+            "GeminiClaimIdentityVerifier requires gemini_service or invoke_identity"
+        )
+
+
+@pytest.mark.asyncio
+async def test_verify_does_not_swallow_identity_verifier_misconfiguration():
+    """service 層刻意不 catch identity_verifier 拋出的例外（見 verify() 內的
+    註解）。這裡直接證明：接線疏漏會以例外原樣穿透 verify()，不會被再吞一次
+    變成一個看似正常的「不同主張」結果——否則 dependencies.py 忘記注入
+    gemini_service 這件事就永遠不會被任何人發現。"""
+    service = _make_service(
+        match=_make_match("錯誤"),
+        identity_verifier=_MisconfiguredIdentityVerifier(),
+    )
+
+    with pytest.raises(RuntimeError):
+        await service.verify(_USER_TEXT)

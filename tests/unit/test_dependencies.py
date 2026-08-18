@@ -84,3 +84,17 @@ def test_handlers_only_get_the_safety_service_when_the_flag_is_on():
 
     assert handler._message_handler._safety_alert_service is expected
     assert handler._media_handler._safety_alert_service is expected
+
+
+def test_claim_verification_service_is_wired_with_identity_verifier():
+    """Task 10 教訓比照 Task 3 review 記錄的 gemini_service 疏漏：
+    identity_verifier 是可選參數，忘記在這裡注入不會拋任何例外，只會讓
+    同一性驗證整條防線悄悄消失、向量誤配原樣回到線上（design.md 決策 9）。
+    這支測試就是那道「沒有其他測試會攔到」的防線本身。"""
+    if not settings.CLAIM_VERIFICATION_ENABLED:
+        pytest.skip("CLAIM_VERIFICATION_ENABLED is false")
+
+    service = dependencies._claim_verification_service
+    assert service is not None
+    assert service._identity_verifier is dependencies._claim_identity_verifier
+    assert service._identity_verifier is not None

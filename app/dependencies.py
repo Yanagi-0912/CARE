@@ -66,6 +66,7 @@ from app.services.rag import (
     MongoAtlasVectorRetriever,
     RagAnswerService,
 )
+from app.services.rag.claim_verification.identity import GeminiClaimIdentityVerifier
 from app.services.rag.claim_verification.matcher import MongoAtlasClaimMatcher
 from app.services.rag.claim_verification.normalizer import GeminiClaimNormalizer
 from app.services.rag.claim_verification.service import ClaimVerificationService
@@ -331,6 +332,16 @@ configure_user_document_tool(_user_document_answer_service)
 # gemini_service：兩者的 fail-open 設計會把「忘記注入」靜默降級成
 # 「永遠不正規化」／「永遠用降級理由」而非報錯，漏寫在這裡不會被任何測試
 # 攔下來（Task 3 review 記錄的已知風險）。
+#
+# identity_verifier 的風險方向不同、但一樣真實：ClaimVerificationService
+# 把它設計成可選參數（None 時直接跳過同一性驗證），是為了不動既有測試、
+# 向後相容——代價是如果這裡漏寫 identity_verifier=...，不會有任何
+# TypeError 或例外，效果是同一性驗證整條防線悄悄消失，向量誤配
+# （design.md 決策 9 量到的 65%）原樣回到線上。GeminiClaimIdentityVerifier
+# 本身在兩個依賴都沒給時會 raise（見 identity.py 模組 docstring），但那只
+# 防得住「verifier 建構出來、卻沒接 gemini_service」，防不住「這裡整段
+# 忘記傳 identity_verifier 參數」——兩種疏漏由兩道不同防線各自擋，這裡
+# 必須兩個都接對；tests/unit/test_dependencies.py 另外釘住這裡的接線。
 _claim_verification_service: ClaimVerificationService | None = None
 if settings.CLAIM_VERIFICATION_ENABLED:
     _claim_matcher = MongoAtlasClaimMatcher(
@@ -342,11 +353,15 @@ if settings.CLAIM_VERIFICATION_ENABLED:
         vector_field=settings.MONGODB_VECTOR_FIELD,
         min_score=settings.CLAIM_MATCH_MIN_SCORE,
     )
+    _claim_identity_verifier = GeminiClaimIdentityVerifier(
+        gemini_service=_gemini_service
+    )
     _claim_verification_service = ClaimVerificationService(
         normalizer=GeminiClaimNormalizer(gemini_service=_gemini_service),
         matcher=_claim_matcher,
         gemini_service=_gemini_service,
         related_retriever=_rag_retriever,
+        identity_verifier=_claim_identity_verifier,
     )
     configure_claim_tool(_claim_verification_service)
 else:

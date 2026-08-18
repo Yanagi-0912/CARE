@@ -7,10 +7,13 @@ specs/claim-verification/spec.md` 明文要求判定 SHALL NOT 由語言模型�
 後的人工結論），未命中固定為 `NOT_ENOUGH_EVIDENCE`。
 
 這不只是實作慣例，型別上也切斷了模型影響判定的路：`_rewrite_reasoning`
-回傳的是 `str`（一段理由文字），`verify()` 裡沒有任何一行把這個字串
-指派給 `verdict`——`verdict` 只會來自 `match.verdict` 或
-`NOT_ENOUGH_EVIDENCE` 這兩個來源，兩者在呼叫語言模型之前就已經定案，
-語言模型的輸出無論寫了什麼都沒有管道能回頭覆寫它。
+回傳的是 `str`（一段理由文字），`identity_verifier.is_same_claim` 回傳的是
+`bool`，`verify()` 裡沒有任何一行把這兩者指派給 `verdict`——`verdict`
+只會來自 `match.verdict` 或 `NOT_ENOUGH_EVIDENCE` 這兩個來源，兩者在呼叫
+語言模型之前就已經定案，語言模型的輸出無論寫了什麼、`is_same_claim` 回
+True 還是 False，都沒有管道能回頭覆寫它——`is_same_claim` 唯一的效果是
+決定要不要「採用」`match`（見 `identity.py` 模組 docstring），一旦不採用，
+就完全走未命中那條早已定案為 `NOT_ENOUGH_EVIDENCE` 的路徑。
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage
 
 from app.services.gemini import GeminiService
+from app.services.rag.claim_verification.identity import ClaimIdentityVerifier
 from app.services.rag.claim_verification.matcher import ClaimMatch, ClaimMatcher
 from app.services.rag.claim_verification.normalizer import ClaimNormalizer
 
@@ -72,16 +76,36 @@ class ClaimVerificationService:
         *,
         invoke_reasoning: Callable[[str], Awaitable[str]] | None = None,
         related_retriever: RelatedInfoRetriever | None = None,
+        identity_verifier: ClaimIdentityVerifier | None = None,
     ) -> None:
         self._normalizer = normalizer
         self._matcher = matcher
         self._gemini = gemini_service
         self._invoke_reasoning = invoke_reasoning
         self._related_retriever = related_retriever
+        # None 時跳過同一性驗證、直接採用比對命中（向後相容既有行為與既有
+        # 測試）。正式環境 SHALL NOT 省略這個參數：dependencies.py 必須實際
+        # 注入已配置好的驗證器，否則向量誤配（design.md 決策 9 量到的 65%）
+        # 會原樣回到線上——省略不會被任何呼叫端的型別或既有測試攔下來，
+        # 純粹是接線紀律的問題。
+        self._identity_verifier = identity_verifier
 
     async def verify(self, user_text: str) -> VerificationResult:
         claim = await self._normalizer.normalize(user_text)
         match = await self._matcher.match(claim)
+
+        if match is not None and self._identity_verifier is not None:
+            # 向量比對命中不代表同一主張（design.md 決策 9）。這裡刻意不
+            # catch identity_verifier 拋出的例外：GeminiClaimIdentityVerifier
+            # 對「呼叫失敗」已經自己 fail-closed 回 False，會不帶例外地走到
+            # 下面的判斷；唯一還會逸散到這裡的例外，是它自己刻意選擇不吞的
+            # 「兩個依賴都沒注入」（見 identity.py 模組 docstring）——那是
+            # dependencies.py 的接線疏漏，應該讓它大聲失敗，不該在這裡被
+            # 再吞一次變成又一層靜默降級。
+            checked_claim = match.claim or match.title
+            same = await self._identity_verifier.is_same_claim(claim, checked_claim)
+            if not same:
+                match = None
 
         if match is None:
             return VerificationResult(

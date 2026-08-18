@@ -161,11 +161,15 @@ class Settings:
     CLAIM_VERIFICATION_ENABLED: bool = os.getenv(
         "CLAIM_VERIFICATION_ENABLED", "true"
     ).lower() in ("1", "true", "yes", "on")
-    # 主張比對的最低相似度門檻。0.9 只是起步用的安全下限，**不是校準值**：
-    # 誤配（把別的主張的判定貼到這則主張上）是這個功能唯一嚴重的失效模式，
-    # 門檻寧缺勿濫，真正生效的數字要等 tasks 1.2 用 TFC 自身的 claim 做
-    # 正負樣本掃描、取誤配率為 0 的最低門檻後才定案（design.md 決策 3）。
-    CLAIM_MATCH_MIN_SCORE: float = float(os.getenv("CLAIM_MATCH_MIN_SCORE", "0.9"))
+    # 主張比對的最低相似度門檻。tasks 1.2 校準（2026-08-18）：30 篇 TFC
+    # 查核報告，每篇由 LLM 改寫成 2 句真實使用者口語問法（共 60 題），
+    # 實測 matcher 命中率：
+    #   0.84 命中率 70%／**0.86 命中率 68%**／0.88 命中率 58%／0.90 命中率 45%
+    # 舊預設 0.9 會讓超過半數已查核謠言查不到。取 0.86：再往上每加 0.02，
+    # 命中率約再掉 10 個百分點，0.86 是命中率明顯下滑前的最後一格，
+    # 兼顧「誤配是唯一嚴重失效模式、門檻寧缺勿濫」（design.md 決策 3）與
+    # 堪用的覆蓋率。
+    CLAIM_MATCH_MIN_SCORE: float = float(os.getenv("CLAIM_MATCH_MIN_SCORE", "0.86"))
 
     # Light CRAG（檢索充足性分級；關閉則等同舊行為）
     RAG_CRAG_ENABLED: bool = os.getenv("RAG_CRAG_ENABLED", "true").lower() in (

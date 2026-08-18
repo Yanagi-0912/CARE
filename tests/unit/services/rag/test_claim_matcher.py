@@ -199,7 +199,7 @@ def test_ensure_collection_requires_index_name():
 
 
 @pytest.mark.asyncio
-async def test_match_builds_vector_search_pipeline_on_claim_field():
+async def test_match_builds_vector_search_pipeline_on_vector_field():
     matcher, emb = _make_matcher(k=5)
     emb.aembed_query = AsyncMock(return_value=[0.1, 0.2, 0.3])
     collection = _fake_collection(
@@ -221,8 +221,51 @@ async def test_match_builds_vector_search_pipeline_on_claim_field():
 
     pipeline = collection.aggregate.call_args.args[0]
     vector_stage = pipeline[0]["$vectorSearch"]
+    # path 預設須為 "embedding"（既有內容向量欄位），不是 "claim"（純文字）
+    # ——2026-08-18 production Atlas 實測：誤指向 "claim" 會讓 MongoDB 回
+    # OperationFailure，並被 match() 的 fail-open 吞成「未命中」不報錯。
     assert vector_stage["index"] == "claim_vector_idx"
-    assert vector_stage["path"] == "claim"
+    assert vector_stage["path"] == "embedding"
     assert vector_stage["queryVector"] == [0.1, 0.2, 0.3]
     assert vector_stage["numCandidates"] == 5 * 30
     assert vector_stage["limit"] == 5
+
+
+@pytest.mark.asyncio
+async def test_match_uses_vector_field_for_search_and_claim_field_for_projection():
+    """迴歸測試（2026-08-18 production Atlas 實測發現的 Critical bug）：
+    最初只有 claim_field 一個參數、預設同時充當 $vectorSearch 的 path 與
+    claim 文字投影欄位，導致 path 誤指向 "claim"（純文字，非向量），
+    MongoDB 回 OperationFailure，又被 match() 的 fail-open 吞成「未命中」，
+    線上因此每次都回「證據不足」且不報錯。這裡用刻意不同的兩個值鎖住：
+    $vectorSearch 的 path 只認 vector_field，ClaimMatch.claim 的內容
+    只認 claim_field，兩者互不影響、缺一不可。"""
+    matcher, emb = _make_matcher(
+        k=5, vector_field="embedding", claim_field="claim_text"
+    )
+    emb.aembed_query = AsyncMock(return_value=[0.1, 0.2, 0.3])
+    collection = _fake_collection(
+        [
+            {
+                "claim_text": "E 主張",
+                "verdict": "錯誤",
+                "verdict_slug": "incorrect",
+                "url": "https://tfc.example/article-e",
+                "original_title": "文章 E",
+                "chunk_content": "E 的內容",
+                "score": 0.9,
+            }
+        ]
+    )
+    matcher._collection = collection
+
+    result = await matcher.match("查詢字串")
+
+    pipeline = collection.aggregate.call_args.args[0]
+    vector_stage = pipeline[0]["$vectorSearch"]
+    project_stage = pipeline[2]["$project"]
+    assert vector_stage["path"] == "embedding"
+    assert project_stage.get("claim_text") == 1
+    assert "embedding" not in project_stage  # 向量欄位本身不該被投影回來
+    assert result is not None
+    assert result.claim == "E 主張"

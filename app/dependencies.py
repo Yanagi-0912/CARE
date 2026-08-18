@@ -313,10 +313,19 @@ if (
 
 configure_user_document_tool(_user_document_answer_service)
 
-# 查核判定卡。matcher 沿用既有的 embedding 索引與 query embeddings，不另建
-# claim 專用索引（claim-verdict-card/design.md 決策 2）；未啟用時不建立
-# 服務也不 configure tool（registry.py 的 verify_claim 靠這個決定要不要
-# 出現在工具清單，見 app/tools/claim_tools.py 的 is_claim_tool_configured）。
+# 查核判定卡。matcher 沿用既有的 embedding 索引、向量欄位與 query
+# embeddings，不另建 claim 專用索引（claim-verdict-card/design.md 決策
+# 2）；未啟用時不建立服務也不 configure tool（registry.py 的 verify_claim
+# 靠這個決定要不要出現在工具清單，見 app/tools/claim_tools.py 的
+# is_claim_tool_configured）。
+#
+# vector_field 明確傳入 settings.MONGODB_VECTOR_FIELD——不能省略：matcher
+# 建構子的 vector_field 預設值雖然也是 "embedding"，但省略等於讓正確與否
+# 繫於「兩處硬寫的常數剛好相同」這個巧合，且會讓這裡看起來像是忘記接線，
+# 而非刻意沿用既有欄位。2026-08-18 對 production Atlas 實測證實：這個
+# 參數當初漏接（連預設值都指向錯的欄位）會讓 $vectorSearch 對純文字的
+# claim 欄位查詢，MongoDB 回 OperationFailure，又被 matcher 的 fail-open
+# 設計吞掉，導致 verify_claim 線上每次都靜默回「證據不足」且不報錯。
 #
 # GeminiClaimNormalizer 與 ClaimVerificationService 都刻意明確傳入
 # gemini_service：兩者的 fail-open 設計會把「忘記注入」靜默降級成
@@ -330,6 +339,7 @@ if settings.CLAIM_VERIFICATION_ENABLED:
         db_name=settings.MONGODB_DB,
         collection_name=settings.MONGODB_COLLECTION,
         index_name=settings.MONGODB_VECTOR_INDEX,
+        vector_field=settings.MONGODB_VECTOR_FIELD,
         min_score=settings.CLAIM_MATCH_MIN_SCORE,
     )
     _claim_verification_service = ClaimVerificationService(

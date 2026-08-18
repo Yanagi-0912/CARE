@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -11,6 +12,7 @@ from langchain_core.documents import Document
 from app.services.rag.claim_verification.matcher import ClaimMatch
 from app.services.rag.claim_verification.service import (
     NOT_ENOUGH_EVIDENCE,
+    NOT_ENOUGH_EVIDENCE_SLUG,
     ClaimVerificationService,
 )
 
@@ -136,7 +138,9 @@ async def test_verify_ignores_verdict_like_text_produced_by_llm():
 
 
 @pytest.mark.asyncio
-async def test_verify_reasoning_degrades_to_report_excerpt_when_rewrite_raises():
+async def test_verify_reasoning_degrades_to_neutral_sentence_when_rewrite_raises():
+    """I2 finding：改寫失敗的 fallback 不得倒出報告原文——matcher 選到的
+    chunk 系統性地是複述謠言的那段，直接摘要可能讀起來像在支持謠言。"""
     invoke_reasoning = AsyncMock(side_effect=RuntimeError("gemini timeout"))
     service = _make_service(
         match=_make_match("錯誤"), invoke_reasoning=invoke_reasoning
@@ -144,12 +148,12 @@ async def test_verify_reasoning_degrades_to_report_excerpt_when_rewrite_raises()
 
     result = await service.verify(_USER_TEXT)
 
-    assert result.reasoning
-    assert "查核中心訪問多位醫師" in result.reasoning
+    assert result.reasoning == "完整查核說明請見下方來源連結。"
+    assert "查核中心訪問多位醫師" not in result.reasoning
 
 
 @pytest.mark.asyncio
-async def test_verify_reasoning_degrades_to_report_excerpt_when_rewrite_returns_blank():
+async def test_verify_reasoning_degrades_to_neutral_sentence_when_rewrite_returns_blank():
     invoke_reasoning = AsyncMock(return_value="   ")
     service = _make_service(
         match=_make_match("錯誤"), invoke_reasoning=invoke_reasoning
@@ -157,7 +161,8 @@ async def test_verify_reasoning_degrades_to_report_excerpt_when_rewrite_returns_
 
     result = await service.verify(_USER_TEXT)
 
-    assert "查核中心訪問多位醫師" in result.reasoning
+    assert result.reasoning == "完整查核說明請見下方來源連結。"
+    assert "查核中心訪問多位醫師" not in result.reasoning
 
 
 @pytest.mark.asyncio
@@ -168,7 +173,76 @@ async def test_verify_degrades_when_neither_gemini_service_nor_invoke_reasoning_
     result = await service.verify(_USER_TEXT)
 
     assert result.verdict == "錯誤"
-    assert "查核中心訪問多位醫師" in result.reasoning
+    assert result.reasoning == "完整查核說明請見下方來源連結。"
+
+
+@pytest.mark.asyncio
+async def test_reasoning_prompt_includes_verdict_as_stance_constraint():
+    """I2 finding：理由改寫過去完全不知道判定是什麼，只能自己猜立場，容易
+    寫成聽起來在附和謠言的中立轉述。這裡鎖住 verdict 字樣確實進了 prompt，
+    讓模型知道該往哪個方向解釋，而不是自己猜。"""
+    invoke_reasoning = AsyncMock(return_value="理由。")
+    service = _make_service(
+        match=_make_match("錯誤"), invoke_reasoning=invoke_reasoning
+    )
+
+    await service.verify(_USER_TEXT)
+
+    prompt = invoke_reasoning.await_args.args[0]
+    assert "錯誤" in prompt
+
+
+@pytest.mark.asyncio
+async def test_reasoning_prompt_does_not_leak_verdict_when_verdict_is_correct():
+    """換一個不會與其他固定措辭字面重疊的判定值，確認立場約束確實是取自
+    match.verdict 這個變數，而不是巧合命中 prompt 裡別的固定文字。"""
+    invoke_reasoning = AsyncMock(return_value="理由。")
+    service = _make_service(
+        match=_make_match("事實釐清"), invoke_reasoning=invoke_reasoning
+    )
+
+    await service.verify(_USER_TEXT)
+
+    prompt = invoke_reasoning.await_args.args[0]
+    assert "事實釐清" in prompt
+
+
+class _ListContentChatModel:
+    """模擬 Gemini 在部分情境回傳 list-of-parts 而非純字串的 `.content`。"""
+
+    def __init__(self, content: object) -> None:
+        self._content = content
+
+    async def ainvoke(self, messages):  # noqa: ANN001 - 對齊 chat_model 介面
+        return SimpleNamespace(content=self._content)
+
+
+class _GeminiServiceStub:
+    """輕量替身：只需要 `.chat_model.ainvoke`，不需要真正的 GeminiService。"""
+
+    def __init__(self, content: object) -> None:
+        self.chat_model = _ListContentChatModel(content)
+
+
+@pytest.mark.asyncio
+async def test_reasoning_flattens_list_of_parts_content_instead_of_repr():
+    """次要 finding 1：_call_reasoning 走 gemini_service（而非 invoke_reasoning
+    這個 DI 捷徑）時，Gemini 的 `.content` 可能是 list-of-parts。舊寫法
+    `str(content)` 會把 Python repr（例如「[{'type': 'text', ...}]」）整包
+    印進理由段；改用與 agent.py 共用的 content_to_text 正確攤平。"""
+    gemini = _GeminiServiceStub(
+        content=[{"type": "text", "text": "查核報告確認此說法缺乏實證。"}]
+    )
+    service = ClaimVerificationService(
+        _StaticNormalizer(),
+        _StaticMatcher(_make_match("錯誤")),
+        gemini_service=gemini,
+    )
+
+    result = await service.verify(_USER_TEXT)
+
+    assert result.reasoning == "查核報告確認此說法缺乏實證。"
+    assert "'type'" not in result.reasoning
 
 
 @pytest.mark.asyncio
@@ -225,6 +299,121 @@ async def test_related_info_empty_when_retriever_not_provided():
 @pytest.mark.asyncio
 async def test_related_info_empty_when_retriever_raises():
     service = _make_service(match=None, related_retriever=_FailingRelatedRetriever())
+
+    result = await service.verify("網傳喝咖啡會導致骨質疏鬆？")
+
+    assert result.related_info == ""
+
+
+# --- C1 finding：「相關衛教資訊」打的是與 matcher 相同的向量索引，未過濾時
+# 幾乎必然把剛才被同一性驗證擋下的 TFC 查核報告本身撈回來，讓判定從呈現層
+# 繞了回來。
+
+
+@pytest.mark.asyncio
+async def test_related_info_excludes_documents_with_verdict():
+    """未命中已經是同一性驗證（或分數不足）擋下的結果；候選裡幾乎必然還
+    包含剛才被擋下的那篇 TFC 報告本身——使用者的主張沒變，最相似的文件
+    排序也不會變。這裡直接鎖住：帶 verdict 的文件不得進入 related_info。"""
+    docs = [
+        Document(
+            page_content="查核中心訪問多位醫師，均表示無實證支持此說法。",
+            metadata={"verdict": "錯誤", "url": "https://tfc.example/blocked"},
+        ),
+        Document(
+            page_content="喝咖啡與骨質流失的實證回顧。",
+            metadata={"verdict": None, "url": "https://edu.example/1"},
+        ),
+    ]
+    service = _make_service(match=None, related_retriever=_StaticRelatedRetriever(docs))
+
+    result = await service.verify("網傳喝咖啡會導致骨質疏鬆？")
+
+    assert "查核中心訪問多位醫師" not in result.related_info
+    assert "喝咖啡與骨質流失的實證回顧" in result.related_info
+
+
+@pytest.mark.asyncio
+async def test_related_info_dedupes_by_url_one_paragraph_per_article():
+    docs = [
+        Document(
+            page_content="第一段（同一篇）。",
+            metadata={"verdict": None, "url": "https://edu.example/1"},
+        ),
+        Document(
+            page_content="第二段（同一篇，不該重複出現）。",
+            metadata={"verdict": None, "url": "https://edu.example/1"},
+        ),
+        Document(
+            page_content="另一篇的內容。",
+            metadata={"verdict": None, "url": "https://edu.example/2"},
+        ),
+    ]
+    service = _make_service(match=None, related_retriever=_StaticRelatedRetriever(docs))
+
+    result = await service.verify("網傳喝咖啡會導致骨質疏鬆？")
+
+    assert "第一段（同一篇）" in result.related_info
+    assert "第二段（同一篇，不該重複出現）" not in result.related_info
+    assert "另一篇的內容" in result.related_info
+
+
+@pytest.mark.asyncio
+async def test_related_info_includes_source_title():
+    """未命中側過去是無來源、無標題的原始 chunk，與命中側「可獨立驗證」
+    的呈現標準不一致——這裡鎖住來源標題確實被帶進 related_info。"""
+    docs = [
+        Document(
+            page_content="咖啡因與骨密度的研究摘要。",
+            metadata={
+                "verdict": None,
+                "url": "https://edu.example/1",
+                "original_title": "咖啡與骨質疏鬆的迷思",
+            },
+        ),
+    ]
+    service = _make_service(match=None, related_retriever=_StaticRelatedRetriever(docs))
+
+    result = await service.verify("網傳喝咖啡會導致骨質疏鬆？")
+
+    assert "咖啡與骨質疏鬆的迷思" in result.related_info
+    assert "咖啡因與骨密度的研究摘要" in result.related_info
+
+
+@pytest.mark.asyncio
+async def test_related_info_stops_at_top_k_after_filtering():
+    """過濾與去重都要發生在「取前 3 筆」之前，而不是先切前 3 筆再過濾——
+    否則排在前面的 TFC 文件會把真正的衛教資訊擠出候選名額之外。"""
+    docs = [
+        Document(
+            page_content=f"應被排除的查核報告 {i}",
+            metadata={"verdict": "錯誤", "url": f"https://tfc.example/{i}"},
+        )
+        for i in range(3)
+    ] + [
+        Document(
+            page_content="真正的衛教資訊。",
+            metadata={"verdict": None, "url": "https://edu.example/1"},
+        )
+    ]
+    service = _make_service(match=None, related_retriever=_StaticRelatedRetriever(docs))
+
+    result = await service.verify("網傳喝咖啡會導致骨質疏鬆？")
+
+    assert "真正的衛教資訊" in result.related_info
+
+
+class _NonListRelatedRetriever:
+    """模擬 ainvoke 回傳非 list（介面變動、測試替身寫錯）。docs 的切片與
+    迭代若還留在 try 外面，TypeError 會逸散出 verify()（次要 finding 2）。"""
+
+    async def ainvoke(self, query: str):
+        return None
+
+
+@pytest.mark.asyncio
+async def test_related_info_empty_when_retriever_returns_non_list():
+    service = _make_service(match=None, related_retriever=_NonListRelatedRetriever())
 
     result = await service.verify("網傳喝咖啡會導致骨質疏鬆？")
 
@@ -300,7 +489,80 @@ async def test_verify_falls_back_to_title_when_match_claim_is_blank():
 
     await service.verify(_USER_TEXT)
 
-    assert identity_verifier.calls == [(_NORMALIZED_CLAIM, match.title)]
+    assert identity_verifier.calls == [(_USER_TEXT, match.title)]
+
+
+@pytest.mark.asyncio
+async def test_verify_checks_identity_against_user_text_not_normalized_claim():
+    """I1 finding：identity 驗證過去比對的是 normalizer 的輸出，但卡片顯示
+    的是 user_text 原文——兩者一旦因正規化漂移（例如否定詞被連同包裝詞一起
+    剝除）而不同義，驗證比對到的就不是卡片實際顯示的那句話，形同沒擋。這裡
+    用刻意不同的 normalized claim 與 user_text 鎖住：is_same_claim 收到的
+    第一個引數必須是 user_text，不是 normalizer 的輸出。"""
+    identity_verifier = _StaticIdentityVerifier(same=True)
+    service = _make_service(
+        match=_make_match("錯誤"),
+        claim="這是刻意不同於 user_text 的正規化結果",
+        identity_verifier=identity_verifier,
+    )
+
+    await service.verify(_USER_TEXT)
+
+    assert identity_verifier.calls[0][0] == _USER_TEXT
+    assert identity_verifier.calls[0][0] != "這是刻意不同於 user_text 的正規化結果"
+
+
+@pytest.mark.asyncio
+async def test_verify_combines_title_and_claim_for_identity_check_when_both_present():
+    """I3 finding：決策 8 已用實測否定 claim 的可靠度（35% 裝的是結論句而非
+    主張句），但過去 checked_claim 只在 claim 為空字串時才退回 title、claim
+    有值時完全不看 title。這裡鎖住兩者都非空時，checked_claim 要同時包含
+    title 與 claim，而不是只取 claim。"""
+    identity_verifier = _StaticIdentityVerifier(same=True)
+    match = _make_match("錯誤")  # _BASE_MATCH 的 title 與 claim 皆非空且不同
+    service = _make_service(match=match, identity_verifier=identity_verifier)
+
+    await service.verify(_USER_TEXT)
+
+    checked_claim = identity_verifier.calls[0][1]
+    assert match.title in checked_claim
+    assert match.claim in checked_claim
+
+
+# --- verdict_slug（I4 finding）：呈現層的配色表改以這個機器鍵為主要依據，
+# service 層要在命中／未命中兩條路徑都正確填入，而不是留著預設空字串。
+
+
+@pytest.mark.asyncio
+async def test_verify_populates_verdict_slug_from_match_when_matched():
+    invoke_reasoning = AsyncMock(return_value="理由。")
+    match = _make_match("錯誤", verdict_slug="incorrect")
+    service = _make_service(match=match, invoke_reasoning=invoke_reasoning)
+
+    result = await service.verify(_USER_TEXT)
+
+    assert result.verdict_slug == "incorrect"
+
+
+@pytest.mark.asyncio
+async def test_verify_populates_not_enough_evidence_slug_when_unmatched():
+    service = _make_service(match=None)
+
+    result = await service.verify(_USER_TEXT)
+
+    assert result.verdict_slug == NOT_ENOUGH_EVIDENCE_SLUG
+
+
+@pytest.mark.asyncio
+async def test_verify_populates_not_enough_evidence_slug_when_identity_check_fails():
+    identity_verifier = _StaticIdentityVerifier(same=False)
+    service = _make_service(
+        match=_make_match("錯誤"), identity_verifier=identity_verifier
+    )
+
+    result = await service.verify(_USER_TEXT)
+
+    assert result.verdict_slug == NOT_ENOUGH_EVIDENCE_SLUG
 
 
 class _MisconfiguredIdentityVerifier:

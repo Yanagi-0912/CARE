@@ -328,6 +328,19 @@ configure_user_document_tool(_user_document_answer_service)
 # claim 欄位查詢，MongoDB 回 OperationFailure，又被 matcher 的 fail-open
 # 設計吞掉，導致 verify_claim 線上每次都靜默回「證據不足」且不報錯。
 #
+# content_field 明確傳入 settings.MONGODB_TEXT_FIELD——同樣不能省略，理由
+# 與上面 vector_field 完全相同：matcher 建構子的 content_field 預設值是
+# 硬寫的 "chunk_content"，而 config.py 的 MONGODB_TEXT_FIELD 預設值是
+# "text"、.env.example 也寫 "text"。省略等於讓「查得到的判定卡有沒有理由
+# 依據」繫於「.env 裡的值剛好等於這個硬寫常數」這個巧合——目前不炸純粹
+# 因為當下這份 .env 剛好設成 chunk_content。一旦照 .env.example 部署，
+# match.content 會是空字串，_rewrite_reasoning 的 prompt 變成「查核報告
+# 內容：」後面空白，Gemini 只看得到使用者問句，會憑空編出一段「查核報告
+# 怎麼看待這則說法」，貼在標著「判定來源：台灣事實查核中心」的卡片上——
+# 核心約束（判定與理由都要有實際查核依據）被實質破壞（claim-verdict-card
+# 最終 review C2 finding）。matcher.py 另外對空 content 做了執行期防線
+# （視為未命中），這裡的明確傳入是避免一開始就走到那條防線。
+#
 # GeminiClaimNormalizer 與 ClaimVerificationService 都刻意明確傳入
 # gemini_service：兩者的 fail-open 設計會把「忘記注入」靜默降級成
 # 「永遠不正規化」／「永遠用降級理由」而非報錯，漏寫在這裡不會被任何測試
@@ -351,6 +364,7 @@ if settings.CLAIM_VERIFICATION_ENABLED:
         collection_name=settings.MONGODB_COLLECTION,
         index_name=settings.MONGODB_VECTOR_INDEX,
         vector_field=settings.MONGODB_VECTOR_FIELD,
+        content_field=settings.MONGODB_TEXT_FIELD,
         min_score=settings.CLAIM_MATCH_MIN_SCORE,
     )
     _claim_identity_verifier = GeminiClaimIdentityVerifier(

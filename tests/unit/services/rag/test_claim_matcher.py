@@ -193,9 +193,16 @@ async def test_match_returns_none_when_aggregate_raises():
 
 
 def test_ensure_collection_requires_index_name():
+    """迴歸測試（I5 finding）：錯誤訊息曾經寫著 MONGODB_CLAIM_VECTOR_INDEX，
+    但那個環境變數在 config.py／.env.example 都不存在（design.md 決策 2
+    已改為沿用既有的 MONGODB_VECTOR_INDEX）。維運照舊訊息去找不存在的
+    設定，正是這條分支已經付過一次代價的失效形態。"""
     matcher, _emb = _make_matcher(index_name="")
-    with pytest.raises(ValueError, match="MONGODB_CLAIM_VECTOR_INDEX"):
+    with pytest.raises(ValueError, match="MONGODB_VECTOR_INDEX"):
         matcher._ensure_collection()
+    with pytest.raises(ValueError) as exc_info:
+        matcher._ensure_collection()
+    assert "MONGODB_CLAIM_VECTOR_INDEX" not in str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -269,3 +276,136 @@ async def test_match_uses_vector_field_for_search_and_claim_field_for_projection
     assert "embedding" not in project_stage  # 向量欄位本身不該被投影回來
     assert result is not None
     assert result.claim == "E 主張"
+
+
+# ── verdict 合法值檢核（I4 finding）：執行期過去沒有任何一處驗證 verdict
+# 屬於 spec 明訂的五個合法值，CARE-data 的前綴對照表出過事故（漏收「正確」
+# 導致 verdict 寫成 None），換一種形狀出錯（誤植空白、TFC 改用詞）時，
+# 非法字串會原樣透傳到呈現層，被 verdict_flex 的配色表誤判成中性灰 ──────
+
+
+@pytest.mark.asyncio
+async def test_match_returns_none_when_verdict_is_not_a_valid_value(caplog):
+    matcher, _emb = _make_matcher(min_score=0.5)
+    matcher._collection = _fake_collection(
+        [
+            {
+                "claim": "F 主張",
+                "verdict": "錯誤 ",  # 尾隨空白：CARE-data 前綴對照表類型的資料異常
+                "verdict_slug": "incorrect",
+                "url": "https://tfc.example/article-f",
+                "original_title": "文章 F",
+                "chunk_content": "F 的內容",
+                "score": 0.9,
+            }
+        ]
+    )
+
+    with caplog.at_level("WARNING"):
+        result = await matcher.match("查詢字串")
+
+    assert result is None
+    assert any(
+        "invalid verdict" in rec.getMessage() for rec in caplog.records
+    ), "非法 verdict 必須留下 log，否則配色反向卻無人發現"
+
+
+@pytest.mark.asyncio
+async def test_match_returns_none_when_verdict_is_unrecognized_string(caplog):
+    """非五個合法值之一的任意字串（例如上游改版用詞、拼字錯誤）同樣要擋下，
+    不是只擋「有尾隨空白」這種特例。"""
+    matcher, _emb = _make_matcher(min_score=0.5)
+    matcher._collection = _fake_collection(
+        [
+            {
+                "claim": "G 主張",
+                "verdict": "誤導",  # 不在五個合法值內
+                "verdict_slug": "misleading",
+                "url": "https://tfc.example/article-g",
+                "original_title": "文章 G",
+                "chunk_content": "G 的內容",
+                "score": 0.9,
+            }
+        ]
+    )
+
+    assert await matcher.match("查詢字串") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "verdict", ["錯誤", "部分錯誤", "正確", "事實釐清", "證據不足"]
+)
+async def test_match_accepts_all_five_valid_verdicts(verdict):
+    matcher, _emb = _make_matcher(min_score=0.5)
+    matcher._collection = _fake_collection(
+        [
+            {
+                "claim": "H 主張",
+                "verdict": verdict,
+                "verdict_slug": "some-slug",
+                "url": "https://tfc.example/article-h",
+                "original_title": "文章 H",
+                "chunk_content": "H 的內容",
+                "score": 0.9,
+            }
+        ]
+    )
+
+    result = await matcher.match("查詢字串")
+
+    assert result is not None
+    assert result.verdict == verdict
+
+
+# ── content 為空視為未命中（C2 finding）：content_field 若接線疏漏（例如
+# dependencies.py 忘記傳 settings.MONGODB_TEXT_FIELD，落到與真實資料不符的
+# 硬寫預設值），match 到的文件會沒有內容可改寫理由。判定沒有依據就不該
+# 發卡片，這裡是最後一道防線 ──────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_match_returns_none_when_content_field_is_blank(caplog):
+    matcher, _emb = _make_matcher(min_score=0.5, content_field="chunk_content")
+    matcher._collection = _fake_collection(
+        [
+            {
+                "claim": "I 主張",
+                "verdict": "錯誤",
+                "verdict_slug": "incorrect",
+                "url": "https://tfc.example/article-i",
+                "original_title": "文章 I",
+                "chunk_content": "",  # content_field 接線疏漏時的典型徵狀
+                "score": 0.9,
+            }
+        ]
+    )
+
+    with caplog.at_level("WARNING"):
+        result = await matcher.match("查詢字串")
+
+    assert result is None
+    assert any("empty content" in rec.getMessage() for rec in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_match_returns_none_when_content_field_is_missing_entirely():
+    """content_field 指向一個資料庫裡根本不存在的欄位名（比空字串更貼近
+    真實的接線疏漏：硬寫的欄位名跟資料庫實際欄位對不上）時，同樣要視為
+    未命中，而不是讓 ClaimMatch.content 帶著空字串繼續往下游流動。"""
+    matcher, _emb = _make_matcher(min_score=0.5, content_field="wrong_field_name")
+    matcher._collection = _fake_collection(
+        [
+            {
+                "claim": "J 主張",
+                "verdict": "錯誤",
+                "verdict_slug": "incorrect",
+                "url": "https://tfc.example/article-j",
+                "original_title": "文章 J",
+                "chunk_content": "真正的內容在這個欄位，但 content_field 指錯了",
+                "score": 0.9,
+            }
+        ]
+    )
+
+    assert await matcher.match("查詢字串") is None

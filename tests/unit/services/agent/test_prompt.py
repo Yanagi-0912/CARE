@@ -59,3 +59,14 @@ def test_build_system_prompt_unknown_language_falls_back_to_zh_tw():
     prompt = build_system_prompt("fr")
     assert "繁體中文" in prompt
     assert t("agent.rag_prefix", "zh-TW") in prompt
+
+
+def test_system_prompt_rule_9_lists_verify_claim_among_flex_verbatim_tools():
+    """次要 finding 3：規則 9 的 Flex 原樣輸出工具清單過去只列了
+    find_nearby_hospitals／find_nearby_facilities_by_department／
+    lookup_medical_facility／open_official_site，沒有 verify_claim——即使
+    agent.py 的 medical_tool_names 機制實際上已經涵蓋 verify_claim（見
+    test_agent.py 的回歸測試），系統提示的文字說明本身仍應完整列出，
+    避免日後有人以「規則 9 已涵蓋」為由精簡掉那段機制。"""
+    assert "verify_claim" in SYSTEM_PROMPT
+    assert "Flex Message" in SYSTEM_PROMPT

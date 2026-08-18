@@ -70,6 +70,38 @@ def test_header_color_matches_verdict_semantics(verdict, matched, expected_color
     assert _header_color(msg) == expected_color
 
 
+def test_header_color_uses_verdict_slug_as_primary_key():
+    """I4 finding：verdict_slug（穩定機器鍵）是配色表的主要依據，不是 verdict
+    的中文顯示字串。刻意讓兩者「打架」以孤立驗證機制：slug 說 correct、
+    文字說錯誤時，色碼要跟著 slug 走——這正是修法要保護的方向，因為中文
+    字串來自 CARE-data 前綴對照表或 TFC 網站用詞，兩者都出過資料異常事故。
+    """
+    result = _result(verdict="錯誤", verdict_slug="correct", matched=True)
+    msg = build_verdict_flex(result)
+    assert _header_color(msg) == theme.STATUS_OPEN
+
+
+def test_header_color_strips_legacy_prefix_from_slug():
+    """CARE-data 舊站遷移文章的 verdict_slug 可能帶 "legacy:" 前綴。"""
+    result = _result(verdict="錯誤", verdict_slug="legacy:錯誤", matched=True)
+    msg = build_verdict_flex(result)
+    assert _header_color(msg) == theme.STATUS_CLOSED
+
+
+def test_header_color_falls_back_to_verdict_text_when_slug_blank():
+    """存量資料或尚未回填 slug 時，仍要能靠中文字串配對出正確顏色——I4 的
+    修法不能讓沒有 slug 的既有資料整批退化成中性灰。"""
+    result = _result(verdict="部分錯誤", verdict_slug="", matched=True)
+    msg = build_verdict_flex(result)
+    assert _header_color(msg) == theme.STATUS_PENDING
+
+
+def test_header_color_falls_back_to_neutral_when_slug_and_text_both_unrecognized():
+    result = _result(verdict="未知判定字串", verdict_slug="unknown-slug", matched=True)
+    msg = build_verdict_flex(result)
+    assert _header_color(msg) == theme.STATUS_UNKNOWN
+
+
 def test_fact_clarification_and_insufficient_evidence_share_neutral_color():
     """design 決策 6：兩者都「不判真偽」，配色必須完全一致，不能是各自湊巧
     算出同一個色碼——這裡直接比較兩張卡片的標頭色，而不是各自跟常數比較。
@@ -204,6 +236,49 @@ def test_extremely_long_related_info_does_not_break_assembly_when_unmatched():
     )
     msg = build_verdict_flex(result)
     assert isinstance(msg, FlexMessage)
+
+
+# ── 9. 空字串防護（C2 finding）：LINE Flex 的 text 元件與 altText 都要求
+# 非空字串，空字串會讓整則訊息在 API 呼叫時被拒收（400），使用者收到完全
+# 的沉默——比顯示一句不完美的預設文字更糟 ──────────────────────────────
+
+
+def test_blank_user_question_is_replaced_with_non_empty_fallback():
+    result = _result(user_question="")
+    msg = build_verdict_flex(result)
+    rendered = msg.contents.to_dict()
+
+    question_text = rendered["body"]["contents"][0]["contents"][1]["text"]
+    assert question_text != ""
+    assert question_text.strip() != ""
+
+
+def test_whitespace_only_user_question_is_replaced_with_non_empty_fallback():
+    """只有空白字元也要視為「沒有內容」，不能讓 LINE 收到全是空白的 text。"""
+    result = _result(user_question="   ")
+    msg = build_verdict_flex(result)
+    rendered = msg.contents.to_dict()
+
+    question_text = rendered["body"]["contents"][0]["contents"][1]["text"]
+    assert question_text.strip() != ""
+
+
+def test_blank_reasoning_is_replaced_with_non_empty_fallback():
+    result = _result(reasoning="")
+    msg = build_verdict_flex(result)
+    rendered = msg.contents.to_dict()
+
+    reasoning_text = rendered["body"]["contents"][1]["text"]
+    assert reasoning_text != ""
+    assert reasoning_text.strip() != ""
+
+
+def test_blank_user_question_does_not_produce_empty_alt_text():
+    result = _result(user_question="", verdict="錯誤")
+    msg = build_verdict_flex(result)
+
+    assert msg.alt_text.strip() != ""
+    assert not msg.alt_text.endswith("｜")
 
 
 # ── 必須遵守：用 FlexTheme 的尺寸，不是寫死字級 ───────────────────────────

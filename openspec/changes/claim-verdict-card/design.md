@@ -136,4 +136,4 @@ TFC 未查核的手寫謠言 + 12 題衛教型問句）：
 
 `CLAIM_VERIFICATION_ENABLED` default true；關閉即完全回到現行行為（代理工具集不含 `verify_claim`），不需要資料回滾。
 
-Atlas 的 `claim` 向量索引需先建立，索引不存在時 `verify_claim` SHALL 降級為「證據不足」路徑而非拋錯——與既有 `RAG_HYBRID_ENABLED` 在文字索引未建時 fail-open 的處置一致。
+沿用既有的 `MONGODB_VECTOR_INDEX`（決策 2：不另建 claim 專用向量索引），不需要額外的索引建置步驟。該設定或其他必要設定（`MONGODB_URI`／`MONGODB_DB`／`MONGODB_COLLECTION`）缺失、或索引本身不存在時，`verify_claim` SHALL 降級為「證據不足」路徑而非拋錯——與既有 `RAG_HYBRID_ENABLED` 在文字索引未建時 fail-open 的處置一致。

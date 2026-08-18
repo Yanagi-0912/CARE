@@ -34,13 +34,15 @@ CARE 是闢謠機器人，但目前對「網傳 X 是真的嗎」這類查核型
 
 ## Impact
 
-- **程式**：新增 `app/services/rag/claim_verification/`、`app/tools/claim_tools.py`、`app/services/line_messaging/flex/verdict_card.py`；修改 `app/tools/registry.py`、`app/dependencies.py`、`app/services/rag/eval_scoring.py`
+- **程式**：新增 `app/services/rag/claim_verification/`、`app/tools/claim_tools.py`、`app/services/line_messaging/flex/verdict_flex.py`；修改 `app/tools/registry.py`、`app/dependencies.py`、`app/services/rag/eval_scoring.py`
 - **資料**：僅讀取 CARE-data 已寫入的 `verdict` / `verdict_slug` / `claim` 欄位，本 change 不改變任何寫入行為
-- **索引**：需在 Atlas 為 `claim` 欄位建立向量索引（見 design.md 決策 2）
+- **索引**：沿用既有 `MONGODB_VECTOR_INDEX`，不另建 `claim` 專用向量索引（見 design.md 決策 2；初稿曾規劃另建索引，實作時發現走不通，詳見該決策的說明）
 - **行為**：非查核型問句完全不受影響；查核型問句在 TFC 未查核過時回「證據不足」，較現行的模糊敘述更保守
-- **測試**：`tests/unit/services/rag/test_claim_verification.py`、`tests/unit/tools/test_claim_tools.py`、`tests/unit/services/line_messaging/flex/test_verdict_card.py`、`tests/unit/eval/test_rag_eval_scoring.py`
-- **設定**：`CLAIM_MATCH_MIN_SCORE`、`MONGODB_CLAIM_VECTOR_INDEX`、`CLAIM_VERIFICATION_ENABLED`（default true）
+- **測試**：`tests/unit/services/rag/test_claim_verification.py`、`tests/unit/tools/test_claim_tools.py`、`tests/unit/services/line_messaging/flex/test_verdict_flex.py`、`tests/unit/eval/test_rag_eval_scoring.py`
+- **設定**：`CLAIM_MATCH_MIN_SCORE`、`CLAIM_VERIFICATION_ENABLED`（default true）
 
 ## 尚未量測的前提
 
 本 change 的價值完全取決於**覆蓋率**——真實謠言問句能命中 TFC 已查核主張的比例。撰稿時 TFC 資料仍在回填（294/約 600 篇），該數字尚未量測。tasks 的第 1 節即為量測，**若覆蓋率低於 30% 應重新評估本 change 的優先序**，而非直接實作。
+
+**結論（tasks 1.1/1.2，2026-08-18 量測，完整數據見 `coverage.md`）**：知識庫回填完成後（TFC 802 篇，判定覆蓋率 100%），覆蓋率（判定正確率）為 **78%**（門檻 0.86），停止條件（< 30%）未觸發，本 change 依計畫繼續實作。門檻校準初版只看正樣本命中率、未看誤配率，後續依 design.md 決策 9 補上同一性驗證後，誤配率由 65% 降至 10%，詳細數字與已知限制見 `coverage.md`。

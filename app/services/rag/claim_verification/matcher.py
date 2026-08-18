@@ -38,6 +38,23 @@ _NUM_CANDIDATES_MULTIPLIER = 30
 # 沒被覆寫時的備援，tasks 1.2 已完成校準，數字與理由見 config.py。
 DEFAULT_CLAIM_MATCH_MIN_SCORE = 0.86
 
+# spec.md「判定值僅得來自已查核來源」明訂的五個合法值。獨立宣告而不從
+# eval_scoring.py 匯入同名的 VALID_VERDICTS，是刻意比照該檔案自己的
+# 理由（見該檔案該常數的註解）：兩邊只需要五個字串值，不需要因此互相
+# 依賴，也不想讓 production 的 matcher 反過來依賴 eval 專用的模組。
+#
+# 這不是防禦性程式設計的空氣：CARE-data 的 LEGACY_PREFIX_VERDICT 對照表
+# 真的漏收過「正確」前綴，讓那些文章的 verdict 欄位被寫成 None（task-8-
+# report.md）。None 會被下面 `_best_verdicted_match` 的 `if not doc.get
+# ("verdict")` 濾掉，但同一類上游資料清洗錯誤換一種形狀出現時——例如
+# 誤植空白、TFC 改用詞、對照表這次漏收的不是整條、而是把值寫錯成其他
+# 非五合法值之一的字串——不會是 falsy，會直接以未知字串的姿態透傳到
+# 呈現層。verdict_flex.py 的配色表只認得五個合法值，未知字串會落到
+# 「事實釐清／證據不足」共用的中性灰（design.md 決策 6 特別保留給「不
+# 判真偽」的顏色），讓一則已被人工判定「錯誤」的謠言以中性色呈現——
+# 視覺語意反向，而且沒有任何 log 能追。
+_VALID_VERDICTS = frozenset({"錯誤", "部分錯誤", "正確", "事實釐清", "證據不足"})
+
 
 @dataclass(frozen=True)
 class ClaimMatch:
@@ -93,7 +110,14 @@ class MongoAtlasClaimMatcher:
                 ("MONGODB_URI", self.mongo_uri),
                 ("MONGODB_DB", self.db_name),
                 ("MONGODB_COLLECTION", self.collection_name),
-                ("MONGODB_CLAIM_VECTOR_INDEX", self.index_name),
+                # 這裡曾經寫成 "MONGODB_CLAIM_VECTOR_INDEX"，是設計初稿
+                # （另建 claim 專用向量索引）留下的名字；design.md 決策 2
+                # 已經改成沿用既有的 MONGODB_VECTOR_INDEX，`.env`／
+                # config.py 都不存在 MONGODB_CLAIM_VECTOR_INDEX 這個變數。
+                # 錯誤訊息沒有同步改，維運照著訊息去找一個不存在的設定，
+                # 正是這條分支已經付過一次代價的失效形態（design.md
+                # Migration Plan 同一個過時名稱也一併訂正）。
+                ("MONGODB_VECTOR_INDEX", self.index_name),
             )
             if not value
         ]
@@ -124,13 +148,42 @@ class MongoAtlasClaimMatcher:
         if score < self.min_score:
             return None
 
+        verdict = str(best.get("verdict") or "")
+        if verdict not in _VALID_VERDICTS:
+            # 上游資料清洗一旦出錯（見 _VALID_VERDICTS 註解的真實事故），這裡
+            # 是最後一道防線：寧可整篇當未命中降級為「證據不足」，也不要讓
+            # 呈現層拿一個非法字串去配色，配出語意相反的中性灰（design.md
+            # 決策 6 專門保留給「不判真偽」的顏色）。當未命中處理、不嘗試在
+            # 候選裡挑下一筆——同一次查詢出現非法 verdict 已是資料異常訊號，
+            # 不該假裝正常繼續配對。
+            logger.warning(
+                "claim match has invalid verdict %r (url=%s), degrading to no match",
+                verdict,
+                best.get("url"),
+            )
+            return None
+
+        content = str(best.get(self.content_field) or "")
+        if not content:
+            # 理由改寫（service.py._rewrite_reasoning）完全靠這個欄位改寫；
+            # 沒有內容就沒有依據可改寫，繼續往下走只會讓語言模型憑空生成一段
+            # 「查核報告怎麼看待這則說法」——那正是決策 1 要杜絕的事（判定
+            # 沒有依據就不該發卡片）。這也是 content_field 接線疏漏（例如
+            # dependencies.py 忘記傳 settings.MONGODB_TEXT_FIELD）的最後一道
+            # 防線。
+            logger.warning(
+                "claim match has empty content (url=%s), degrading to no match",
+                best.get("url"),
+            )
+            return None
+
         return ClaimMatch(
             claim=str(best.get(self.claim_field) or ""),
-            verdict=str(best.get("verdict") or ""),
+            verdict=verdict,
             verdict_slug=str(best.get("verdict_slug") or ""),
             url=str(best.get("url") or ""),
             title=str(best.get("original_title") or ""),
-            content=str(best.get(self.content_field) or ""),
+            content=content,
             score=float(score),
         )
 

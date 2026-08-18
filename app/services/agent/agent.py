@@ -18,6 +18,7 @@ from app.i18n.messages import (
 )
 from app.services.agent.utils.nodes import AgentNodes
 from app.services.agent.utils.state import State
+from app.services.gemini.shared.parser import content_to_text
 from app.tools.registry import get_all_tools
 
 logger = logging.getLogger(__name__)
@@ -49,24 +50,6 @@ def _tool_names_from_state(state: State) -> list[str]:
     return names
 
 
-def _content_to_text(content: Any) -> str:
-    if content is None:
-        return ""
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for part in content:
-            if isinstance(part, str):
-                parts.append(part)
-            elif isinstance(part, dict):
-                parts.append(str(part.get("text") or ""))
-            else:
-                parts.append(str(part))
-        return "".join(parts)
-    return str(content)
-
-
 def summarize_tool_messages(
     messages: list[Any],
     *,
@@ -77,7 +60,7 @@ def summarize_tool_messages(
     for msg in messages or []:
         if not isinstance(msg, ToolMessage):
             continue
-        text = _content_to_text(getattr(msg, "content", ""))
+        text = content_to_text(getattr(msg, "content", ""))
         flat = " ".join(text.split())
         if len(flat) > preview_len:
             preview = flat[:preview_len] + "…"

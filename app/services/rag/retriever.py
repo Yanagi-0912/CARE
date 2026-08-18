@@ -115,6 +115,15 @@ class MongoAtlasVectorRetriever:
                     "source_name": 1,
                     "url": 1,
                     "original_title": 1,
+                    # TFC 查核報告帶 verdict，其餘來源沒有這個欄位。一般 RAG
+                    # 答問路徑（RagAnswerService）不看這個 metadata、行為不變；
+                    # 加這個欄位是為了讓查核判定卡的「相關衛教資訊」區塊
+                    # （claim_verification/service.py 的 _fetch_related_info）
+                    # 能夠排除 TFC 文件——那些帶判定的報告不是衛教資訊
+                    # （design.md 決策 4），過去這裡沒有投影 verdict，
+                    # 下游就算想過濾也無資料可用（claim-verdict-card 最終
+                    # review 的 C1 finding）。
+                    "verdict": 1,
                     "score": {"$meta": "vectorSearchScore"},
                 }
             },
@@ -139,6 +148,7 @@ class MongoAtlasVectorRetriever:
                         "source_name": doc.get("source_name"),
                         "url": doc.get("url"),
                         "original_title": doc.get("original_title"),
+                        "verdict": doc.get("verdict"),
                     },
                 )
             )
@@ -242,6 +252,11 @@ class MongoAtlasTextRetriever:
                     "source_name": 1,
                     "url": 1,
                     "original_title": 1,
+                    # 與 MongoAtlasVectorRetriever 同步投影 verdict，理由見該處
+                    # 註解：HybridRetriever 融合向量與 BM25 兩邊結果，若只有
+                    # 一邊帶 verdict metadata，經過融合後仍可能漏掉沒被過濾到
+                    # 的 TFC 文件。
+                    "verdict": 1,
                     "score": {"$meta": "searchScore"},
                 }
             },
@@ -266,6 +281,7 @@ class MongoAtlasTextRetriever:
                         "source_name": doc.get("source_name"),
                         "url": doc.get("url"),
                         "original_title": doc.get("original_title"),
+                        "verdict": doc.get("verdict"),
                     },
                 )
             )

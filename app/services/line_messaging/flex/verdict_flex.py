@@ -13,14 +13,38 @@ from typing import Any, Optional
 
 from linebot.v3.messaging import FlexContainer, FlexMessage
 
-from app.services.rag.claim_verification.service import VerificationResult
+from app.services.rag.claim_verification.service import (
+    NOT_ENOUGH_EVIDENCE_SLUG,
+    VerificationResult,
+)
 from resources.flex_messages import theme
 
 _TFC_SOURCE_LABEL = "台灣事實查核中心"
 
+# CARE-data 舊站遷移文章的 verdict_slug 可能帶這個前綴（例如 "legacy:錯誤"），
+# 是舊站資料路徑留下的形式，不是本模組自己定義的格式。
+_LEGACY_SLUG_PREFIX = "legacy:"
+
+# verdict_slug（穩定機器鍵）-> 標頭底色，是配色表的主要依據（I4 finding）。
+# 中文顯示字串來自 CARE-data 的前綴對照表或 TFC 網站用詞，兩者都出過資料
+# 異常事故（漏收「正確」前綴導致 verdict 寫成 None、值帶空白），slug 是
+# 系統間約定的機器鍵，較不受這類上游用詞漂移影響——matcher.py 執行期已經
+# 檢核 verdict 屬於五個合法值，這裡是同一道防線在呈現層的延伸。
+_SLUG_COLORS: dict[str, str] = {
+    "incorrect": theme.STATUS_CLOSED,
+    "partially-incorrect": theme.STATUS_PENDING,
+    "correct": theme.STATUS_OPEN,
+    "clarification": theme.STATUS_UNKNOWN,
+    "unproven": theme.STATUS_UNKNOWN,
+    NOT_ENOUGH_EVIDENCE_SLUG: theme.STATUS_UNKNOWN,
+}
+
 # 判定字樣 -> 標頭底色（design 決策 6）。事實釐清／證據不足刻意同色：
-# 兩者都「不判真偽」，紅綠配色在這兩種情境下反而是誤導。
-_VERDICT_COLORS: dict[str, str] = {
+# 兩者都「不判真偽」，紅綠配色在這兩種情境下反而是誤導。這個表只作為
+# verdict_slug 缺漏（存量資料、尚未回填）或無法辨識時的備援，不是主要
+# 依據——中文字串正是 I4 finding 指出會出錯的那一層，不能反過來當第一
+# 順位查找。
+_VERDICT_TEXT_COLORS: dict[str, str] = {
     "錯誤": theme.STATUS_CLOSED,
     "部分錯誤": theme.STATUS_PENDING,
     "正確": theme.STATUS_OPEN,
@@ -32,15 +56,36 @@ _VERDICT_COLORS: dict[str, str] = {
 # 要求「摘要」而非全文，因此摘要後裁切遠比讓推播失敗安全。
 _ALT_TEXT_MAX_LEN = 400
 
+# user_question／reasoning 為空字串時的顯示備援。LINE Flex 的 text 元件與
+# altText 都要求非空字串，空字串會讓整則訊息在 API 呼叫時直接被拒收
+# （400），使用者什麼都收不到——比顯示一句不完美的預設文字更糟（C2
+# finding）。理論上 service.py 目前的實作不會產生空字串（matcher 對空
+# content 已視為未命中、未命中理由是固定句、理由改寫失敗有中性 fallback），
+# 這裡仍防禦性地擋一次：呈現層不該把「上游承諾不會給空字串」當成保證。
+_BLANK_QUESTION_FALLBACK = "（無法取得原始問句內容）"
+_BLANK_REASONING_FALLBACK = "（暫無查核說明，請點選下方連結查看原文）"
 
-def _header(verdict: str, ft: theme.FlexTheme) -> dict[str, Any]:
+
+def _resolve_header_color(verdict: str, verdict_slug: str) -> str:
+    """決定標頭底色：verdict_slug 是主要依據，中文顯示字串只在 slug 缺漏或
+    無法辨識時才當備援（I4 finding）。"""
+    slug = (verdict_slug or "").strip()
+    if slug.startswith(_LEGACY_SLUG_PREFIX):
+        slug = slug[len(_LEGACY_SLUG_PREFIX) :]
+    if slug in _SLUG_COLORS:
+        return _SLUG_COLORS[slug]
+    if slug in _VERDICT_TEXT_COLORS:  # "legacy:錯誤" 剝除前綴後就是中文字串
+        return _VERDICT_TEXT_COLORS[slug]
+    # 不認得的 slug（含空字串）退回中文字串比對，中文字串也認不得時再退回
+    # 中性灰——不能讓整張卡片因缺色碼而組裝失敗。
+    return _VERDICT_TEXT_COLORS.get(verdict, theme.STATUS_UNKNOWN)
+
+
+def _header(verdict: str, verdict_slug: str, ft: theme.FlexTheme) -> dict[str, Any]:
     return {
         "type": "box",
         "layout": "vertical",
-        # 不認得的判定字串防禦性退回中性灰，而非讓整張卡片因缺色碼而組裝失敗——
-        # verdict 理論上只會是 service.py 定義的五種之一，但呈現層不該把上游
-        # 契約沒顧到的壞資料放大成「整張卡片消失」。
-        "backgroundColor": _VERDICT_COLORS.get(verdict, theme.STATUS_UNKNOWN),
+        "backgroundColor": _resolve_header_color(verdict, verdict_slug),
         "paddingAll": "lg",
         "contents": [
             {
@@ -162,11 +207,16 @@ def _footer(button: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _alt_text(result: VerificationResult) -> str:
+def _alt_text(result: VerificationResult, user_question: str) -> str:
     """通知列與不支援 Flex 的環境仍要讀得出判定與問句摘要，因此含判定字樣，
     並裁切至 LINE altText 的官方上限（見 `_ALT_TEXT_MAX_LEN`）。
+
+    `user_question` 是呼叫端已做過空字串防護的版本（見 `build_verdict_flex`），
+    不是 `result.user_question` 原始值——altText 本身因為有「查核判定：」
+    這個固定前綴，即使問句為空也不會整串變成空字串，但沿用同一份防護後的
+    文字仍能避免尾端多一個沒有內容的分隔符號。
     """
-    text = f"查核判定：{result.verdict}｜{result.user_question}"
+    text = f"查核判定：{result.verdict}｜{user_question}"
     return text[:_ALT_TEXT_MAX_LEN]
 
 
@@ -182,9 +232,14 @@ def build_verdict_flex(
     """
     ft = theme.resolve_theme(font_size)
 
+    # 空字串防護見 `_BLANK_QUESTION_FALLBACK`／`_BLANK_REASONING_FALLBACK`
+    # 的模組層註解（C2 finding）。
+    user_question = result.user_question.strip() or _BLANK_QUESTION_FALLBACK
+    reasoning = result.reasoning.strip() or _BLANK_REASONING_FALLBACK
+
     body_contents: list[dict[str, Any]] = [
-        _question_block(result.user_question, ft),
-        _paragraph(result.reasoning, ft, margin="md"),
+        _question_block(user_question, ft),
+        _paragraph(reasoning, ft, margin="md"),
     ]
 
     footer_button: Optional[dict[str, Any]] = None
@@ -196,7 +251,7 @@ def build_verdict_flex(
 
     bubble_dict: dict[str, Any] = {
         "type": "bubble",
-        "header": _header(result.verdict, ft),
+        "header": _header(result.verdict, result.verdict_slug, ft),
         "body": _body(body_contents),
     }
     # footer 整段只在有可用連結時才加入——不是加入一個沒有 action 的 footer，
@@ -205,4 +260,4 @@ def build_verdict_flex(
         bubble_dict["footer"] = _footer(footer_button)
 
     container = FlexContainer.from_dict(bubble_dict)
-    return FlexMessage(altText=_alt_text(result), contents=container)
+    return FlexMessage(altText=_alt_text(result, user_question), contents=container)

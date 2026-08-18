@@ -50,6 +50,15 @@
 - [ ] 8.3 `evals/rag/golden.jsonl` 補查核型題目，含各 verdict 與應未命中的題目
 - [ ] 8.4 `tests/unit/eval/test_rag_eval_scoring.py` 對應測試
 
+## 10. 主張同一性驗證（design 決策 9）
+
+- [ ] 10.1 `app/services/rag/claim_verification/identity.py`：LLM 判斷兩則主張是否同一件事
+- [ ] 10.2 **fail-closed**：例外、逾時、無法解析一律視為不同主張
+- [ ] 10.3 `ClaimVerificationService` 在命中後呼叫，判定為不同主張時走未命中路徑
+- [ ] 10.4 `CLAIM_MATCH_MIN_SCORE` 回到 0.86（決策 9：召回交給門檻，精確交給驗證）
+- [ ] 10.5 測試：同一主張、不同主張、驗證失敗降級、**驗證器不得回傳判定值**
+- [ ] 10.6 以負樣本重測誤配率，結果記入 `coverage.md`
+
 ## 9. 收尾
 
 - [ ] 9.1 `./init.sh` 全綠

@@ -21,13 +21,15 @@ from resources.flex_messages import theme
 
 def _build_flex_map_uri(facility: MedicalFacility) -> str:
     """生成最符合 LINE 導航按鈕規格的 Google Map 連結"""
-    # 優先級:經緯度->名稱->地址
-    if facility.latitude and facility.longitude:
-        query = f"{facility.latitude},{facility.longitude}"
+    # 優先級:地址->經緯度->名稱
+    if facility.address:
+        query = facility.address
+    elif facility.latitude and facility.longitude:
+            query = f"{facility.latitude},{facility.longitude}"
     elif facility.name:
         query = facility.name
-    elif facility.address:
-        query = facility.address
+    
+        
     else:
         query = "醫療院所"
 

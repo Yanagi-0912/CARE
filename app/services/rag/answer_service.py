@@ -31,6 +31,17 @@ RERANK_TOP_N = 5
 CITE_TOP_K = 3
 # 精排後之文章層級去重：同一篇文章最多留幾個 chunk（見 dedup_ranked_docs）
 RERANK_MAX_CHUNKS_PER_ARTICLE = 2
+# CRAG grader 失敗時的數值門檻。0.0＝不設限，維持原行為。
+#
+# 正常路徑的相關性把關全靠 CRAG（grader 判 incorrect 就轉網搜），而
+# RAG_VECTOR_MIN_SCORE 預設是 0.0——也就是說整條管線沒有任何數值下限。
+# grader 本身逾時或配額用盡時，既有的降級是「不分級直接生成」，於是一組
+# 可能毫不相關的 chunk 會被拿去生成醫療答案，而 prompt 裡「內容不足請說
+# 不知道」只是軟約束。
+#
+# 這個門檻只在 grader 失敗那條路徑上生效，正常路徑不受影響——不是要用
+# 數字取代 CRAG，是在 CRAG 不可用時補一張網。
+DEFAULT_DEGRADED_MIN_SCORE = 0.0
 
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 
@@ -61,6 +72,7 @@ class RagAnswerService:
         crag_enabled: bool = False,
         web_search: WebSearchService | None = None,
         web_fallback_enabled: bool = False,
+        degraded_min_score: float = DEFAULT_DEGRADED_MIN_SCORE,
     ) -> None:
         self.gemini_service = gemini_service
         self.retriever = retriever
@@ -72,6 +84,7 @@ class RagAnswerService:
         self.crag_enabled = crag_enabled and grader is not None
         self.web_search = web_search
         self.web_fallback_enabled = bool(web_fallback_enabled and web_search is not None)
+        self.degraded_min_score = degraded_min_score
 
     async def answer(self, user_text: str) -> str:
         ranked = await self._retrieve_and_rerank(user_text)
@@ -85,6 +98,16 @@ class RagAnswerService:
                 logger.exception(
                     "CRAG failed; degrading to generate without grade crag_grade=degraded"
                 )
+                # CRAG 是這條路徑唯一的相關性把關，它失效時不能就這樣放行。
+                # 精排分數是這裡唯一還可信的訊號（Cohere 的 relevance_score
+                # 有明確語意；降級到 VectorScoreReranker 時則是融合後的排名
+                # 分數）。過不了門檻就走與「知識庫無資料」相同的路徑——
+                # 寧可少答，不要拿不相關的內容生成醫療答案。
+                ranked = self._filter_by_degraded_score(ranked)
+                if not ranked:
+                    logger.info("rag_fail code=%s crag_grade=degraded_below_floor",
+                                RagFailCode.KB_EMPTY)
+                    return await self._web_or_no_hits(user_text)
             else:
                 if ranked is None:
                     return await self._web_or_no_hits(user_text)
@@ -102,6 +125,24 @@ class RagAnswerService:
             return rag_fail(RagFailCode.MODEL_REFUSE)
 
         return self._append_sources(kb_answer, ranked)
+
+    def _filter_by_degraded_score(self, docs: list[Document]) -> list[Document]:
+        """只保留精排分數達到門檻的文件。門檻為 0 時原樣回傳。
+
+        分數取 `rerank_score`（Cohere）優先，退回 `score`（向量／RRF 融合）。
+        兩者都沒有時視為不合格：拿不到分數就無從判斷相關性，而這條路徑的
+        前提正是「唯一的把關已經失效」。
+        """
+        if self.degraded_min_score <= 0:
+            return docs
+        kept: list[Document] = []
+        for doc in docs:
+            raw = doc.metadata.get("rerank_score")
+            if not isinstance(raw, (int, float)):
+                raw = doc.metadata.get("score")
+            if isinstance(raw, (int, float)) and float(raw) >= self.degraded_min_score:
+                kept.append(doc)
+        return kept
 
     async def _web_or_no_hits(self, query: str) -> str:
         if not self.web_fallback_enabled or self.web_search is None:

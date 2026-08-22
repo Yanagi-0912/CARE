@@ -149,6 +149,20 @@ class Settings:
     # 向量檢索最低分門檻。預設 0.0＝不過濾；過濾職責在 reranker。
     RAG_VECTOR_MIN_SCORE: float = float(os.getenv("RAG_VECTOR_MIN_SCORE", "0.0"))
 
+    # CRAG grader 失敗時的精排分數門檻。**只在那條降級路徑生效**，正常路徑
+    # 不受影響——不是要用數字取代 CRAG，是在 CRAG 不可用時補一張網。
+    #
+    # 為什麼需要：衛教問答的相關性把關全靠 CRAG（判 incorrect 就轉網搜），
+    # 而 RAG_VECTOR_MIN_SCORE 預設 0.0，等於整條管線沒有數值下限。grader
+    # 逾時或配額用盡時，既有降級是「不分級直接生成」，於是一組可能毫不相關
+    # 的 chunk 會被拿去生成醫療答案，prompt 裡「內容不足請說不知道」只是
+    # 軟約束。查核路徑有 fail-closed 的同一性驗證，衛教路徑過去沒有對應的網。
+    #
+    # 0.3 是保守起步值：Cohere relevance_score 的分佈上，明顯不相關的內容
+    # 多落在 0.2 以下。應以 golden set 校準後再調——調高會讓 grader 失效期間
+    # 更常轉網搜或拒答，調低則失去這張網的意義。
+    RAG_DEGRADED_MIN_SCORE: float = float(os.getenv("RAG_DEGRADED_MIN_SCORE", "0.3"))
+
     # 精排後之文章層級去重：同一篇文章最多留幾個 chunk 進 top-n（避免單一
     # 文章的多個 chunk 擠爆 top-n 名額，犧牲來源多樣性）。
     RAG_RERANK_MAX_CHUNKS_PER_ARTICLE: int = int(

@@ -270,7 +270,7 @@ async def test_match_uses_vector_field_for_search_and_claim_field_for_projection
 
     pipeline = collection.aggregate.call_args.args[0]
     vector_stage = pipeline[0]["$vectorSearch"]
-    project_stage = pipeline[2]["$project"]
+    project_stage = pipeline[1]["$project"]
     assert vector_stage["path"] == "embedding"
     assert project_stage.get("claim_text") == 1
     assert "embedding" not in project_stage  # 向量欄位本身不該被投影回來
@@ -409,3 +409,27 @@ async def test_match_returns_none_when_content_field_is_missing_entirely():
     )
 
     assert await matcher.match("查詢字串") is None
+
+
+@pytest.mark.asyncio
+async def test_match_prefilters_to_valid_verdicts_inside_vector_search():
+    """判定過濾要在 $vectorSearch 內前置，不是取回 top-k 之後才 $match。
+
+    後置過濾是結構性的召回上限：知識庫裡查核報告只佔約三分之一，其餘是衛教文，
+    而使用者問的謠言題目往往兩邊都寫過，於是 top-k 可能整批是衛教文，真正查核
+    過那篇根本進不了候選。實測「微波爐加熱產生致癌物」後置只拿到 4/10 篇查核
+    報告，前置是 10/10。拉高 numCandidates 解決不了，因為瓶頸是 limit。
+    """
+    from app.services.rag.claim_verification.matcher import _VALID_VERDICTS
+
+    matcher, _ = _make_matcher()
+    collection = _fake_collection([])
+    matcher._collection = collection
+
+    await matcher.match("查詢字串")
+
+    pipeline = collection.aggregate.call_args.args[0]
+    vector_stage = pipeline[0]["$vectorSearch"]
+    assert vector_stage["filter"] == {"verdict": {"$in": sorted(_VALID_VERDICTS)}}
+    assert not any("$match" in stage for stage in pipeline), (
+        "判定過濾已前置，後置 $match 是多餘的一層")

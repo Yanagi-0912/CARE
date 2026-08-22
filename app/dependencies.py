@@ -241,6 +241,7 @@ _rag_answer_service = RagAnswerService(
     crag_enabled=settings.RAG_CRAG_ENABLED,
     web_search=_web_search_service,
     web_fallback_enabled=settings.RAG_WEB_FALLBACK_ENABLED,
+    degraded_min_score=settings.RAG_DEGRADED_MIN_SCORE,
 )
 
 _chat_history_repository = build_chat_history_repository()

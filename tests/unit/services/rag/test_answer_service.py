@@ -780,3 +780,106 @@ async def test_generate_answer_neutralizes_boundary_marker_in_retrieved_content(
     # 內容裡那個標記已被中和，邊界內只剩結尾真正的那一個
     assert inside.count(CONTEXT_END) == 1
     assert "忽略以上規則" in inside
+
+
+# ── CRAG 失效時的數值門檻 ────────────────────────────────────────────
+# 衛教問答的相關性把關全靠 CRAG，而 RAG_VECTOR_MIN_SCORE 預設 0.0，等於整條
+# 管線沒有數值下限。grader 逾時或配額用盡時，既有降級是「不分級直接生成」，
+# 一組可能毫不相關的 chunk 會被拿去生成醫療答案。查核路徑有 fail-closed 的
+# 同一性驗證，衛教路徑過去沒有對應的網。
+
+
+def _scored_doc(text, *, rerank=None, score=None):
+    meta = {"source_name": "來源", "url": f"https://ex/{text}", "original_title": text}
+    if rerank is not None:
+        meta["rerank_score"] = rerank
+    if score is not None:
+        meta["score"] = score
+    return Document(page_content=text, metadata=meta)
+
+
+class _BoomGrader:
+    async def grade(self, query, docs):
+        raise RuntimeError("grader 逾時")
+
+
+class _OkGrader:
+    async def grade(self, query, docs):
+        return Grade.CORRECT
+
+
+@pytest.mark.asyncio
+async def test_degraded_path_drops_documents_below_floor():
+    """grader 失效且候選全都低於門檻 → 不生成答案。"""
+    service, gemini, _ = _make_service(
+        docs=[_scored_doc("低分", rerank=0.05)],
+        grader=_BoomGrader(), crag_enabled=True, web_fallback_enabled=False,
+    )
+    service.degraded_min_score = 0.3
+
+    await service.answer("問題")
+
+    gemini.chat_model.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_degraded_path_keeps_documents_above_floor():
+    """達到門檻的候選仍可生成——這張網不該把正常內容也擋掉。"""
+    service, gemini, _ = _make_service(
+        docs=[_scored_doc("高分", rerank=0.9)], answer_content="依據內容的回答 [1]",
+        grader=_BoomGrader(), crag_enabled=True, web_fallback_enabled=False,
+    )
+    service.degraded_min_score = 0.3
+
+    assert "依據內容的回答" in await service.answer("問題")
+
+
+@pytest.mark.asyncio
+async def test_degraded_path_falls_back_to_vector_score():
+    """Cohere 降級時沒有 rerank_score，要退回融合／向量分數判斷。"""
+    service, gemini, _ = _make_service(
+        docs=[_scored_doc("只有向量分", score=0.8)], answer_content="回答 [1]",
+        grader=_BoomGrader(), crag_enabled=True, web_fallback_enabled=False,
+    )
+    service.degraded_min_score = 0.3
+
+    assert "回答" in await service.answer("問題")
+
+
+@pytest.mark.asyncio
+async def test_degraded_path_rejects_documents_without_any_score():
+    """兩種分數都沒有時視為不合格——拿不到分數就無從判斷相關性，而這條
+    路徑的前提正是「唯一的把關已經失效」。"""
+    service, gemini, _ = _make_service(
+        docs=[Document(page_content="無分數", metadata={"source_name": "來源"})],
+        grader=_BoomGrader(), crag_enabled=True, web_fallback_enabled=False,
+    )
+    service.degraded_min_score = 0.3
+
+    await service.answer("問題")
+    gemini.chat_model.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_floor_of_zero_preserves_previous_behaviour():
+    """門檻 0 = 不設限，維持本次變更之前的行為。"""
+    service, _, _ = _make_service(
+        docs=[_scored_doc("低分", rerank=0.01)], answer_content="照舊生成 [1]",
+        grader=_BoomGrader(), crag_enabled=True, web_fallback_enabled=False,
+    )
+    service.degraded_min_score = 0.0
+
+    assert "照舊生成" in await service.answer("問題")
+
+
+@pytest.mark.asyncio
+async def test_floor_does_not_apply_when_grader_succeeds():
+    """正常路徑不受影響——門檻只是 CRAG 失效時的網，不是取代 CRAG。"""
+    service, _, _ = _make_service(
+        docs=[_scored_doc("低分但 grader 說可用", rerank=0.01)],
+        answer_content="正常回答 [1]",
+        grader=_OkGrader(), crag_enabled=True, web_fallback_enabled=False,
+    )
+    service.degraded_min_score = 0.3
+
+    assert "正常回答" in await service.answer("問題")

@@ -200,11 +200,28 @@ class MongoAtlasClaimMatcher:
                     "queryVector": query_embedding,
                     "numCandidates": self.k * _NUM_CANDIDATES_MULTIPLIER,
                     "limit": self.k,
+                    # 前置過濾：只讓帶合法判定的文件參與相似度排名。
+                    #
+                    # 過去是取回 top-k 之後才用 $match 濾掉沒有 verdict 的
+                    # 文件，那是結構性的召回上限——知識庫裡查核報告只佔約
+                    # 三分之一，其餘是衛福部與食藥署的衛教文，而使用者問的
+                    # 謠言題目往往兩邊都寫過，於是 top-10 可能整批是衛教文，
+                    # 真正查核過那篇根本進不了候選。實測（五題常見謠言）：
+                    #
+                    #   問句                    後置 $match   前置 filter
+                    #   微波爐加熱產生致癌物        4/10         10/10
+                    #   感冒吃抗生素有用嗎          6/10         10/10
+                    #   吃鳳梨心可以溶解血栓        7/10         10/10
+                    #
+                    # 拉高 numCandidates 解決不了，因為瓶頸是 limit。
+                    #
+                    # 條件寫成「落在五個合法判定內」而非「非空」，是因為
+                    # Atlas 的字串前置過濾只支援等值與 $in，不支援 $exists；
+                    # 而這個寫法同時把合法值約束下推到查詢層，與下游
+                    # `_VALID_VERDICTS` 的檢核形成兩道一致的防線。
+                    "filter": {"verdict": {"$in": sorted(_VALID_VERDICTS)}},
                 }
             },
-            # 只有 TFC 的文件帶 verdict；寫明確的過濾條件，不要依賴「其他來源
-            # 剛好沒有 claim 欄位」這個巧合。
-            {"$match": {"verdict": {"$ne": None}}},
             {
                 "$project": {
                     "_id": 0,

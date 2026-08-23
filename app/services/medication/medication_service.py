@@ -49,6 +49,7 @@ class MedicationService:
         reminder_repository=MedicationReminderRepository,
         log_repository=MedicationLogRepository,
         appearance_image_resolver: _AppearanceImageResolver = resolve_drug_appearance_image_url,
+        indication_service=None,
     ) -> None:
         # 其餘方法沿用既有慣例，直接呼叫 repository 的 staticmethod；
         # 這裡額外開可注入的參數，給 get_user_reminders_with_medications 與
@@ -58,6 +59,8 @@ class MedicationService:
         self._reminder_repository = reminder_repository
         self._log_repository = log_repository
         self._appearance_image_resolver = appearance_image_resolver
+        # 選填：未注入時仿單欄位一律 None，前端只顯示藥袋讀到的適應症。
+        self._indication_service = indication_service
 
     async def create_reminders(
         self, creator_user_id: str, request: CreateMedicationReminderRequest
@@ -148,7 +151,10 @@ class MedicationService:
         # 每筆提醒的 medications 清單時只是查表，不會重複呼叫解析器。
         medications_by_id = {
             medication.id: medication.model_copy(
-                update={"thumbnail_url": self._resolve_thumbnail(medication)}
+                update={
+                    "thumbnail_url": self._resolve_thumbnail(medication),
+                    **self._resolve_indication(medication),
+                }
             )
             for medication in medications
         }
@@ -164,6 +170,30 @@ class MedicationService:
             )
             for reminder in reminders
         ]
+
+    def _resolve_indication(self, medication) -> dict:
+        """依證號解析仿單適應症，回傳要覆寫到 Medication 上的欄位。
+
+        沒有注入仿單服務、證號未確定、或查無該藥證時一律回 None——證號不確定
+        代表不知道是哪一張藥證，顯示的適應症就可能屬於另一顆藥（與「證號不
+        確定時不得顯示藥丸照片」同一條安全邊界）。
+
+        摘要與原文都帶出去：前端有摘要時顯示摘要、可展開原文；摘要為空時
+        直接顯示原文（spec 的「摘要缺席時的降級」）。
+        """
+        if self._indication_service is None:
+            return {"spc_indication": None, "spc_indication_summary": None}
+        found = self._indication_service.lookup(
+            getattr(medication, "license_number", None)
+        )
+        if found is None:
+            return {"spc_indication": None, "spc_indication_summary": None}
+        return {
+            "spc_indication": found.text,
+            # 空字串（不需要摘要／產不出合格摘要）一律收斂成 None，讓前端
+            # 只判斷一種「沒有摘要」的表示。
+            "spc_indication_summary": found.summary or None,
+        }
 
     def _resolve_thumbnail(self, medication: Medication) -> Optional[str]:
         """證號已確定時才嘗試解析縮圖 URL。

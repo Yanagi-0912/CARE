@@ -122,6 +122,22 @@ class Medication(BaseModel):
     # 的 _resolve_thumbnail 走同一條規則。查無縮圖或 license_number 未確定
     # 時為 None，呈現面據此安全地退回純文字（spec「照片缺席時的降級」）。
     thumbnail_url: Optional[str] = None
+    # 食藥署仿單的適應症。與 thumbnail_url 同一慣例：欄位在寫入時永遠是 None，
+    # 由 MedicationService 於讀取當下依 license_number 就地解析並以 model_copy
+    # 覆寫——仿單資料是建置期產出的靜態檔，跟著藥品文件一起落地只會讓同一份
+    # 內容在資料庫裡複製上萬次，且更新資料集時全部過期。
+    #
+    # 兩個欄位都給前端：`spc_indication_summary` 是給長輩看的濃縮版（可能為
+    # None——不需要摘要或產不出合格摘要時），`spc_indication` 是食藥署原文，
+    # 供展開對照。摘要缺席時前端顯示原文，這是 spec 的「摘要缺席時的降級」。
+    #
+    # 證號未確定時兩者皆為 None：不知道是哪一張藥證，顯示的適應症就可能屬於
+    # 另一顆藥——與「證號不確定時不得顯示藥丸照片」同一條安全邊界。
+    #
+    # **這兩個欄位 SHALL NOT 進入任何推播訊息**：仿單涵蓋該藥證的全部核准
+    # 適應症，揭露範圍比藥袋上那一行更大。
+    spc_indication: Optional[str] = None
+    spc_indication_summary: Optional[str] = None
     unit_content: Optional[str] = None
     total_quantity: Optional[int] = None
     usage_raw: Optional[str] = None        # 藥袋上的用法原文，供使用者核對

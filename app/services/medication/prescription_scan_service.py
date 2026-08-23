@@ -72,6 +72,10 @@ class _OcrService(Protocol):
     async def recognize(self, image_bytes: bytes, mime_type: str) -> RecognitionResult: ...
 
 
+class _IndicationService(Protocol):
+    def compare(self, bag_indication, license_number): ...
+
+
 class _CatalogService(Protocol):
     def match(self, name: str) -> Optional[DrugCatalogMatch]: ...
 
@@ -152,6 +156,7 @@ class PrescriptionScanService:
         family_tree_repository: _FamilyTreeRepository,
         appearance_image_resolver: _AppearanceImageResolver,
         ttl_minutes: int,
+        indication_service: Optional[_IndicationService] = None,
     ) -> None:
         self._ocr_service = ocr_service
         self._catalog_service = catalog_service
@@ -159,6 +164,9 @@ class PrescriptionScanService:
         self._medication_repository = medication_repository
         self._reminder_repository = reminder_repository
         self._family_tree_repository = family_tree_repository
+        # 選填：未注入時比對一律 unchecked，行為與本變更前完全相同。
+        # 單元測試因此不必為了測辨識流程而準備一份仿單資料。
+        self._indication_service = indication_service
         self._appearance_image_resolver = appearance_image_resolver
         self._ttl_minutes = ttl_minutes
 
@@ -177,6 +185,11 @@ class PrescriptionScanService:
         recognition = await self._ocr_service.recognize(image_bytes, mime_type)
 
         all_names_verified = self._verify_against_catalog(recognition)
+
+        # 仿單比對就地記錄在每一筆上。刻意放在信心度計算「之前」，是為了讓
+        # 下面那三行的運算式讀起來就能看出它沒有參與其中——比對結果 SHALL NOT
+        # 影響信心度，理由見 _record_indication_match 的說明。
+        self._record_indication_match(recognition)
 
         all_frequencies_known = bool(recognition.drugs) and all(
             drug.frequency_code != "OTHER" for drug in recognition.drugs
@@ -201,6 +214,26 @@ class PrescriptionScanService:
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=self._ttl_minutes),
         )
         return await self._draft_repository.create(draft)
+
+    def _record_indication_match(self, recognition: RecognitionResult) -> None:
+        """逐筆記錄藥袋適應症與仿單的比對結果。**只記錄，不影響任何判定。**
+
+        沒有注入仿單服務時整個步驟略過，每一筆維持預設的 unchecked——這讓
+        既有測試與未載入仿單資料的環境行為完全不變。
+
+        為什麼不接上信心度：本規則的誤判率尚未以真實藥袋量測過。以「藥袋
+        短語對仿單長文」模擬，誤判率落在 17%~25%；而 scan() 的信心度要求
+        **全部**藥品皆通過，一顆誤判就會讓整份草稿失去一鍵確認——三種藥的
+        藥袋維持高信心的機率僅約 51%。用一個測不準的規則去拆斷已經調校好的
+        確認路徑，付出的代價大於它能擋下的錯誤。待累積真實資料、量出實際
+        誤判率後，再以另一個 change 評估是否接上。
+        """
+        if self._indication_service is None:
+            return
+        for drug in recognition.drugs:
+            drug.indication_match = self._indication_service.compare(
+                drug.indication, drug.license_number
+            )
 
     def _verify_against_catalog(self, recognition: RecognitionResult) -> bool:
         """逐筆用藥證庫校驗辨識出的藥名，就地更新每一筆的信心度與證號。

@@ -31,6 +31,7 @@ from app.services.medication.drug_appearance_image_service import (
     resolve_drug_appearance_image_url,
 )
 from app.services.medication.drug_catalog_service import DrugCatalogService
+from app.services.medication.drug_indication_service import DrugIndicationService
 from app.services.medication.medication_service import MedicationService
 from app.services.medication.medication_scheduler import start_medication_scheduler
 from app.services.medication.prescription_ocr_service import PrescriptionOcrService
@@ -432,6 +433,13 @@ _drug_catalog_service = DrugCatalogService.load_from_path(
     settings.DRUG_CATALOG_PATH, threshold=settings.DRUG_CATALOG_MATCH_THRESHOLD
 )
 
+# 仿單適應症同樣在啟動時載入一次，load_from_path 內部已處理缺席與損毀
+# （記錄錯誤、回傳空服務），這裡不再包一層。藥袋辨識（比對記錄）與用藥清單
+# （呈現）共用這一份，兩邊都不重新載入。
+_drug_indication_service = DrugIndicationService.load_from_path(
+    settings.DRUG_INDICATION_PATH
+)
+
 # 用藥風險偵測。組裝本身沒有任何 I/O，因此無條件建好；真正的閘門在下面
 # handler 的注入——SAFETY_ALERT_ENABLED 為 false 時 handler 拿到 None，
 # 整條路徑（抽取、判定、推播）一步都不會執行。
@@ -477,7 +485,7 @@ _location_handler = LineLocationHandler(
     loading_animation_service=_line_loading_animation_service,
 )
 _family_tree_service = FamilyTreeService()
-_medication_service = MedicationService()
+_medication_service = MedicationService(indication_service=_drug_indication_service)
 
 # 藥袋辨識。藥證庫沿用上面已經載入的那一份（見 _drug_catalog_service）。
 _prescription_ocr_service = PrescriptionOcrService(
@@ -497,6 +505,7 @@ _prescription_scan_service = PrescriptionScanService(
     # app.core.config.settings，正式組裝時不需要額外帶入。
     appearance_image_resolver=resolve_drug_appearance_image_url,
     ttl_minutes=settings.PRESCRIPTION_DRAFT_TTL_MINUTES,
+    indication_service=_drug_indication_service,
 )
 
 _line_event_handler = LineEventHandler(

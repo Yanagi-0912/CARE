@@ -309,3 +309,68 @@ def test_require_magick_uses_real_path_by_default():
             _require_magick()
     else:
         _require_magick()  # 不丟例外
+
+
+# ── CLI 輸出路徑的邊界檢查 ──────────────────────────────────────────
+#
+# 這支腳本的三個輸出路徑（--output／--indication-output／--image-dir）先前
+# 直接進 open()／os.makedirs()／os.replace()／os.remove()，沒有任何驗證。
+# 帶錯的參數（不論是人手誤、CI 設定錯，或由 LLM 組出來的指令）可以讓它在
+# 專案目錄外建檔、覆寫檔案，其中 --image-dir 還會寫進數千個檔案。
+#
+# 檢查刻意只放在 CLI 邊界：函式庫層仍接受任意路徑，測試才能用 tmp_path
+# 直接驗證抓圖與寫檔邏輯（見上方那些測試）。
+
+
+def test_resolve_output_path_accepts_path_inside_project():
+    from scripts.build_drug_catalog import PROJECT_ROOT, resolve_output_path
+
+    resolved = resolve_output_path("resources/drug_catalog.json", argument="--output")
+    assert resolved.startswith(str(PROJECT_ROOT))
+    assert resolved.endswith("drug_catalog.json")
+
+
+def test_resolve_output_path_normalises_relative_segments():
+    """`a/../b` 這種寫法本身合法，收斂後仍在專案內就該放行。"""
+    from scripts.build_drug_catalog import PROJECT_ROOT, resolve_output_path
+
+    resolved = resolve_output_path("resources/../resources/x.json", argument="--output")
+    assert resolved == str(PROJECT_ROOT / "resources" / "x.json")
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "../escaped.json",
+        "../../../../tmp/escaped.json",
+        "/tmp/escaped.json",
+        "/",
+    ],
+)
+def test_resolve_output_path_rejects_paths_outside_project(raw):
+    from scripts.build_drug_catalog import resolve_output_path
+
+    with pytest.raises(ValueError) as excinfo:
+        resolve_output_path(raw, argument="--output")
+    # 錯誤訊息要指名是哪個參數，否則帶三個路徑參數時不知道是哪一個被擋
+    assert "--output" in str(excinfo.value)
+
+
+def test_resolve_output_path_rejects_symlink_escaping_project(tmp_path):
+    """符號連結是繞過字串比對的經典手法：路徑字面上在專案內，實際指向外面。
+
+    因此驗證必須在 resolve()（會跟隨符號連結）之後做，不能只比對字串前綴。
+    """
+    from scripts.build_drug_catalog import PROJECT_ROOT, resolve_output_path
+
+    link = PROJECT_ROOT / "resources" / "_symlink_escape_test"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    link.symlink_to(outside, target_is_directory=True)
+    try:
+        with pytest.raises(ValueError):
+            resolve_output_path(
+                "resources/_symlink_escape_test/x.json", argument="--output"
+            )
+    finally:
+        link.unlink()

@@ -50,6 +50,40 @@ DEFAULT_OUTPUT = "resources/drug_catalog.json"
 DOWNLOAD_TIMEOUT_SECONDS = 180
 
 
+# 這支腳本會建立目錄、寫檔、覆寫與刪除暫存檔，而三個輸出位置全部來自 CLI
+# 參數。帶錯的參數——人手誤、CI 設定錯，或由模型組出來的指令——足以讓它在
+# 專案目錄外動手：`--image-dir /` 會在根目錄寫進數千個縮圖，`--output` 指到
+# 別處則能覆寫任意檔案。因此所有輸出路徑一律收斂到專案目錄內。
+PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+
+def resolve_output_path(raw: str, *, argument: str) -> str:
+    """把 CLI 給的輸出路徑收斂成專案目錄內的絕對路徑，越界就拒絕。
+
+    先 `resolve()` 再比對，兩件事都要：
+
+    - `resolve()` 會把 `..` 收斂掉，因此 `resources/../resources/x.json` 這種
+      合法寫法不會被誤擋；
+    - 它同時會**跟隨符號連結**，這是關鍵——只比對字串前綴的話，一個字面上
+      位於專案內、實際指向外部的連結就能整個繞過檢查。
+
+    刻意只用在 `main()` 的參數解析，不下沉到函式庫層：抓圖與寫檔的函式仍接受
+    任意路徑，測試才能用 `tmp_path` 直接驗證它們。要擋的是「錯的 CLI 參數」，
+    不是「這些函式本身」。
+    """
+    candidate = pathlib.Path(raw).expanduser()
+    if not candidate.is_absolute():
+        candidate = PROJECT_ROOT / candidate
+    resolved = candidate.resolve()
+    if resolved != PROJECT_ROOT and PROJECT_ROOT not in resolved.parents:
+        raise ValueError(
+            f"{argument} 必須指向專案目錄內的位置，"
+            f"但 {raw!r} 收斂後是 {resolved}（專案目錄：{PROJECT_ROOT}）。"
+            "這個限制是為了讓帶錯的參數不會在專案外建檔或覆寫檔案。"
+        )
+    return str(resolved)
+
+
 def read_dataset_zip(payload: bytes) -> list[dict[str, Any]]:
     """解開 export 端點回傳的 ZIP 並解析其中的 JSON。
 
@@ -638,22 +672,36 @@ def main(output_path: Optional[str] = None) -> int:
     )
     args = parser.parse_args()
 
+    # 先驗路徑再做任何 I/O：下載要花好幾分鐘，等寫檔才發現參數不合法，
+    # 使用者已經白等一次，而且此時可能已經建了目錄。
+    output_path_resolved = resolve_output_path(args.output, argument="--output")
+    image_dir_resolved = (
+        resolve_output_path(args.image_dir, argument="--image-dir")
+        if args.fetch_images
+        else None
+    )
+    indication_output_resolved = (
+        resolve_output_path(args.indication_output, argument="--indication-output")
+        if args.fetch_indications
+        else None
+    )
+
     licences = _download(LICENCE_DATASET_URL)
     appearances = _download(APPEARANCE_DATASET_URL)
     entries = build_entries(licences, appearances)
 
-    with open(args.output, "w", encoding="utf-8") as output_file:
+    with open(output_path_resolved, "w", encoding="utf-8") as output_file:
         json.dump(entries, output_file, ensure_ascii=False)
 
-    logger.info("寫入 %s 筆藥證至 %s", len(entries), args.output)
+    logger.info("寫入 %s 筆藥證至 %s", len(entries), output_path_resolved)
 
     if args.fetch_images:
-        fetch_images(entries, args.image_dir)
+        fetch_images(entries, image_dir_resolved)
 
     if args.fetch_indications:
         build_indication_file(
             licences,
-            args.indication_output,
+            indication_output_resolved,
             skip_summaries=args.skip_summaries,
         )
 

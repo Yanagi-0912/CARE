@@ -63,4 +63,4 @@
 
 - [x] 9.1 `./init.sh` 全綠
 - [x] 9.2 更新 `openspec/specs` delta（`claim-verification` 新增、`agent-architecture` 與 `rag-eval` 修改）
-- [ ] 9.3 清楚的 git commit 與 PR
+- [x] 9.3 清楚的 git commit 與 PR（PR #109，2026-08-18 合併）

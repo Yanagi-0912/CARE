@@ -62,15 +62,6 @@
 - **WHEN** 本輪呼叫 `get_rag_answer` 回答醫療識詐問題且工具含參考來源
 - **THEN** 回覆首行為「以下為 RAG 回應：」，末端保留「參考資料來源：」純文字網址
 
-### Requirement: 官網入口 Flex 原樣輸出
-
-當本輪呼叫 `open_official_site` 且工具回傳 LINE Flex Message JSON 時，代理最終回覆 SHALL 原樣輸出該 JSON，嚴禁修改、重寫、摘要或另加問候語／Markdown。
-
-#### Scenario: Tool 回傳 Flex 時原樣輸出
-
-- **WHEN** `open_official_site` 回傳合法 Flex JSON 字串
-- **THEN** 最終送往 LINE 的內容為該 Flex（經既有 reply 解析路徑），代理不得改寫為純文字網址列表
-
 ### Requirement: 依使用者語言設定回覆純文字
 
 系統對使用者的回覆 SHALL 使用該使用者 `settings.language`（經 normalize；未知則 `zh-TW`）對應之語言，且 SHALL 為純文字與一般換行。系統 SHALL NOT 輸出任何 Markdown 語法，包含 `**粗體**`、`# 標題`、以及 `[文字](網址)` 形式的連結。
@@ -84,4 +75,18 @@
 
 - **WHEN** 使用者 `settings.language` 為 `en` 且代理產生一般文字回覆
 - **THEN** 回覆使用英文（而非強制繁體中文）
+
+### Requirement: 工具 Flex 原樣輸出
+
+當本輪呼叫 `open_official_site` 或 `verify_claim` 且工具回傳 LINE Flex Message JSON 時，代理最終回覆 SHALL 原樣輸出該 JSON，嚴禁修改、重寫、摘要或另加問候語／Markdown。
+
+#### Scenario: 官網入口 tool 回傳 Flex 時原樣輸出
+
+- **WHEN** `open_official_site` 回傳合法 Flex JSON 字串
+- **THEN** 最終送往 LINE 的內容為該 Flex（經既有 reply 解析路徑），代理不得改寫為純文字網址列表
+
+#### Scenario: 查核判定卡 tool 回傳 Flex 時原樣輸出
+
+- **WHEN** `verify_claim` 回傳合法 Flex JSON 字串（查核判定卡）
+- **THEN** 最終送往 LINE 的內容為該 Flex（經既有 reply 解析路徑），代理不得改寫為純文字判定摘要或加上額外評論
 

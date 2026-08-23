@@ -225,6 +225,12 @@ app_data/tmp/*
 .firecrawl/
 
 
+# Atlas 索引定義的「修改前」備份（改索引時順手留下的暫存檔，非產物也非設定）
+# 例：resources/care_text_index.before.json、resources/vector_index.before_filter.json
+# 正本是 resources/atlas_text_search_index.json，這些 .before 檔沒有任何程式或
+# 腳本讀取，留在版控裡只會讓人以為它們是有意義的設定。
+resources/*.before*.json
+
 # Cursor local skills & commands
 .cursor/
 

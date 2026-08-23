@@ -59,8 +59,11 @@
 
 ### Modified Capabilities
 
-- `medication-identification`：辨識結果新增仿單比對的記錄欄位；明定該結果 SHALL NOT 影響信心度分級
-- `medication-reminders`：LIFF 藥品呈現新增適應症區塊；明定兩個來源分開呈現且仿單為次要位置
+（無。）
+
+`medication-identification` 不列入：`RecognizedDrug` 雖新增一個記錄比對結果的欄位，但「結構化辨識輸出」規範的是模型該輸出什麼，該欄位由辨識之後的比對步驟填入，不在其約束範圍；「信心度分級決定確認方式」的判定條件也一字不動——本 change 要保證的正是它不變，這條保證寫在 `drug-indication` 內即可。
+
+`medication-reminders` 不列入：它規範的是提醒規則與推播行為，不含 LIFF 的藥品資訊呈現（藥丸照片的呈現規則同樣是放在 `drug-appearance` 而非這裡）。仿單適應症不得進入推播的禁令寫在 `drug-indication` 內，與既有「功能開關與隱私」對藥袋適應症的禁令並存而不覆寫——兩份 MODIFIED 打同一條 Requirement 會在 archive 時互相取代，這是刻意避開的失敗模式。
 
 ## Impact
 

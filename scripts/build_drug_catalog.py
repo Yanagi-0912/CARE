@@ -25,7 +25,9 @@ import hashlib
 import io
 import json
 import logging
+import re
 import os
+import pathlib
 import shutil
 import subprocess
 import threading
@@ -35,6 +37,7 @@ import zipfile
 from typing import Any, Iterable, Optional
 
 import requests
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
@@ -338,8 +341,261 @@ def _download(url: str) -> list[dict[str, Any]]:
     return read_dataset_zip(response.content)
 
 
+# ── 仿單適應症 ──────────────────────────────────────────────────────────
+
+DEFAULT_INDICATION_OUTPUT = "resources/drug_indications.json"
+
+# 「這段原文需不需要摘要」的機械判定。實測整份藥證庫僅 18%（12,172 筆）符合，
+# 其餘 65% 已經是「緩解便祕。」這種可以直接給人看的句子——對它們呼叫模型沒有
+# 收益，只有成本與改壞的風險。見 openspec/changes/drug-indication/design.md
+# 決策 2。
+INDICATION_PLAIN_MAX_CHARS = 40
+_LATIN_RUN = re.compile(r"[A-Za-z]{4,}")
+_NUMBERED_LIST = re.compile(r"(^|\n)\s*[1-9１-９]\s*[.、）)]")
+
+
+def needs_summary(text: str) -> bool:
+    """原文是否需要摘要。
+
+    四個條件任一成立即需要：過長、含換行、夾雜四個以上連續英文字母（藥學名詞
+    與菌株學名的訊號），或含編號清單。這些正是仿單語言的外顯特徵，而不是
+    「這段話難不難懂」的直接量測——後者沒有機械判準，硬做只會得到一條調不動
+    的規則。判準寬鬆一點沒關係：多摘要幾筆的代價只是建置期多幾次呼叫。
+    """
+    if not text:
+        return False
+    return (
+        len(text) > INDICATION_PLAIN_MAX_CHARS
+        or "\n" in text
+        or bool(_LATIN_RUN.search(text))
+        or bool(_NUMBERED_LIST.search(text))
+    )
+
+
+def _text_digest(text: str) -> str:
+    """摘要的冪等鍵：原文的 sha256 前綴。
+
+    資料每 7 日更新但多數條目不變，重跑時原文未變就不該重算摘要——這與
+    `--fetch-images` 的「已存在的縮圖一律跳過」是同一個設計，讓抓取可中斷
+    續跑、日後只處理新增或異動的藥證。
+    """
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def load_existing_indications(path: str) -> dict[str, dict[str, str]]:
+    """讀回上次的產出，供冪等比對。檔案不存在或損毀時當成空的重頭來過——
+    這一步失敗不該讓整個建置中斷，最壞情況只是全部重新摘要一次。"""
+    try:
+        with open(path, "r", encoding="utf-8") as existing_file:
+            data = json.load(existing_file)
+        if isinstance(data, dict):
+            return data
+        logger.warning("既有的 %s 不是物件，忽略並重頭建置", path)
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError) as exc:
+        logger.warning("既有的 %s 無法讀取（%s），忽略並重頭建置", path, exc)
+    return {}
+
+
+def build_indications(
+    licences: Iterable[dict[str, Any]],
+    existing: Optional[dict[str, dict[str, str]]] = None,
+) -> dict[str, dict[str, str]]:
+    """從許可證資料集取出適應症，產出「證號 → {text, summary, summary_of}」。
+
+    以證號去重取第一筆，與 `build_entries` 的去重規則一致。沒有證號或沒有
+    適應症的資料列直接略過——留一個空的 text 進來，只會讓呈現面多一個永遠
+    是空的區塊。
+
+    `existing` 帶入上次的產出時，原文未變的條目會沿用既有的 summary 與
+    summary_of；原文變了則清空 summary，交給摘要步驟重算。**摘要不會憑空
+    保留**：原文改了而摘要沒跟著改，等於拿舊藥的說明去描述新的適應症。
+    """
+    existing = existing or {}
+    result: dict[str, dict[str, str]] = {}
+    for row in licences:
+        license_number = _clean(row.get("許可證字號"))
+        text = _clean(row.get("適應症"))
+        if not license_number or not text or license_number in result:
+            continue
+        digest = _text_digest(text)
+        prior = existing.get(license_number) or {}
+        carried = prior.get("summary", "") if prior.get("summary_of") == digest else ""
+        result[license_number] = {
+            "text": text,
+            "summary": carried,
+            "summary_of": digest,
+        }
+    return result
+
+
+def pending_summary_targets(
+    indications: dict[str, dict[str, str]],
+) -> list[str]:
+    """回傳還需要產生摘要的證號。
+
+    需要摘要（needs_summary）且目前 summary 為空者才算待辦。不需要摘要的
+    條目 summary 恆為空字串，呈現面據此直接顯示原文——空字串在這裡是
+    「不需要」與「產不出來」共用的表示，兩者對呈現面的意義相同（都退回原文），
+    刻意不分成兩種狀態徒增判斷。
+    """
+    return [
+        license_number
+        for license_number, entry in indications.items()
+        if needs_summary(entry.get("text", "")) and not entry.get("summary")
+    ]
+
+
+# 摘要的約束一字不改地寫進 prompt。這幾條不是文風偏好，是安全要求：
+# 摘要會被當成醫療資訊顯示給使用者看，漏掉一個適應症等於告訴他這個藥不能治
+# 那個病；寫成「建議服用」則是系統在給醫療建議。見
+# openspec/changes/drug-indication/specs/drug-indication/spec.md
+# 的「摘要的生成約束」。
+INDICATION_SUMMARY_PROMPT = """你要把一段台灣藥品仿單的「適應症」濃縮成一句話，給不熟悉醫學名詞的長輩看。
+
+規則（違反任何一條就回傳空字串）：
+
+1. 只能濃縮原文已有的內容。不得新增、不得推論、不得用常識補齊。
+2. 不得遺漏原文列出的任何一個適應症。原文列了幾種病，摘要就要涵蓋幾種。
+3. 不得寫成療效保證或用藥建議。不要出現「可以治好」「建議服用」「應該吃」。
+4. 只輸出一句話，不超過 {max_chars} 個字，純中文，不要編號、不要換行、不要標題。
+5. 無法在上述限制下完成時，直接回傳空字串，不要勉強生成。
+
+原文：
+{text}
+
+只輸出摘要本身，不要任何前綴或說明。"""
+
+SUMMARY_TIMEOUT_SECONDS = 60
+SUMMARY_WORKERS = 8
+# 每完成這麼多筆就存檔一次。全量約 1.2 萬筆、耗時以小時計，只在最後寫檔的話
+# 中途一次網路中斷就得全部重跑；定期落地讓 build_indications 的冪等沿用真的
+# 派得上用場（原文未變即帶回既有摘要），下次接著跑而不是從頭。
+SUMMARY_CHECKPOINT_EVERY = 250
+SUMMARY_SLEEP_SECONDS = 0.1
+
+
+def _summary_is_acceptable(summary: str, max_chars: int) -> bool:
+    """把 prompt 的硬性限制在程式端再驗一次。
+
+    模型不一定聽話，而不合格的摘要一旦寫進產出物就會直接顯示給使用者。
+    這裡只驗機械可驗的部分（長度、換行、編號、明顯的建議語氣）——「有沒有
+    遺漏適應症」無法機械驗證，那一條只能靠 prompt 與抽樣人工檢視（見 tasks 3.4）。
+    """
+    if not summary:
+        return False
+    if len(summary) > max_chars or "\n" in summary:
+        return False
+    if _NUMBERED_LIST.search(summary):
+        return False
+    return not any(
+        phrase in summary
+        for phrase in ("建議服用", "可以治好", "應該服用", "請服用", "療效保證")
+    )
+
+
+def summarize_indications(
+    indications: dict[str, dict[str, str]],
+    targets: list[str],
+    max_chars: int,
+    model_name: Optional[str] = None,
+    checkpoint: Optional[Any] = None,
+) -> dict[str, int]:
+    """就地為 `targets` 產生摘要，回傳統計。
+
+    不合格或呼叫失敗一律留空字串，SHALL NOT 寫入不合格的結果——呈現面看到
+    空摘要就退回顯示原文，那是安全的降級；寫進一個漏了適應症的摘要則不是。
+    """
+    if not targets:
+        return {"ok": 0, "rejected": 0, "failed": 0}
+
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        # 明確報錯而非靜默產出空摘要：後者會讓整批「成功完成」卻一個摘要都沒有，
+        # 而外顯症狀（全部顯示原文）看起來像是原文本來就都很短。
+        raise RuntimeError(
+            "缺少 GEMINI_API_KEY，無法產生摘要。"
+            "只要原文不要摘要請加 --skip-summaries。"
+        )
+
+    model = ChatGoogleGenerativeAI(
+        model=model_name or os.getenv("MODEL_NAME", "gemini-2.5-flash"),
+        google_api_key=api_key,
+        timeout=SUMMARY_TIMEOUT_SECONDS,
+    )
+    stat = {"ok": 0, "rejected": 0, "failed": 0}
+
+    def one(license_number: str) -> tuple[str, str, str]:
+        text = indications[license_number]["text"]
+        prompt = INDICATION_SUMMARY_PROMPT.format(max_chars=max_chars, text=text)
+        try:
+            raw = model.invoke(prompt)
+            summary = (getattr(raw, "content", "") or "").strip()
+        except Exception as exc:  # noqa: BLE001 - 建置期批次，單筆失敗不該中斷整批
+            logger.warning("摘要失敗 %s：%s", license_number, exc)
+            return license_number, "", "failed"
+        if not _summary_is_acceptable(summary, max_chars):
+            return license_number, "", "rejected"
+        return license_number, summary, "ok"
+
+    with cf.ThreadPoolExecutor(max_workers=SUMMARY_WORKERS) as pool:
+        for index, (license_number, summary, outcome) in enumerate(
+            pool.map(one, targets), start=1
+        ):
+            indications[license_number]["summary"] = summary
+            stat[outcome] += 1
+            if index % SUMMARY_CHECKPOINT_EVERY == 0:
+                logger.info("摘要進度 %s/%s %s", index, len(targets), stat)
+                if checkpoint is not None:
+                    checkpoint(indications)
+    return stat
+
+
+def build_indication_file(
+    licences: Iterable[dict[str, Any]],
+    output_path: str,
+    skip_summaries: bool = False,
+    max_chars: Optional[int] = None,
+) -> dict[str, dict[str, str]]:
+    """`--fetch-indications` 的實作主體。"""
+    max_chars = max_chars or int(os.getenv("DRUG_INDICATION_SUMMARY_MAX_CHARS", "60"))
+    existing = load_existing_indications(output_path)
+    indications = build_indications(licences, existing)
+    targets = pending_summary_targets(indications)
+    carried = sum(1 for e in indications.values() if e.get("summary"))
+    logger.info(
+        "仿單適應症 %s 筆，需摘要 %s 筆（沿用既有摘要 %s 筆）",
+        len(indications),
+        len(targets),
+        carried,
+    )
+
+    def _write(data: dict[str, dict[str, str]]) -> None:
+        with open(output_path, "w", encoding="utf-8") as output_file:
+            json.dump(data, output_file, ensure_ascii=False)
+
+    if skip_summaries:
+        logger.info("--skip-summaries：略過摘要，呈現面將顯示原文")
+    else:
+        stat = summarize_indications(
+            indications, targets, max_chars, checkpoint=_write
+        )
+        logger.info("摘要完成：%s", stat)
+
+    _write(indications)
+    logger.info("寫入 %s 筆仿單適應症至 %s", len(indications), output_path)
+    return indications
+
+
 def main(output_path: Optional[str] = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    # 本腳本原本零環境相依，--fetch-indications 的摘要步驟才需要 GEMINI_API_KEY。
+    # 明確指定路徑而非 find_dotenv()：後者從呼叫端檔案往上找，以 -m 執行或從
+    # 別的工作目錄呼叫時會找不到，症狀是「金鑰明明設了卻說缺少」。
+    load_dotenv(pathlib.Path(__file__).resolve().parents[1] / ".env")
     parser = argparse.ArgumentParser(description="建置本地藥證庫")
     parser.add_argument("--output", default=output_path or DEFAULT_OUTPUT)
     parser.add_argument(
@@ -356,6 +612,30 @@ def main(output_path: Optional[str] = None) -> int:
         default=DEFAULT_IMAGE_DIR,
         help="縮圖輸出目錄，僅在 --fetch-images 時使用",
     )
+    parser.add_argument(
+        "--fetch-indications",
+        action="store_true",
+        help=(
+            "額外產出仿單適應症（預設關閉）。原文取自已下載的許可證資料集、"
+            "不需額外連線；其中約 18% 過長或夾雜藥學名詞的條目會呼叫 LLM 產生"
+            "摘要，因此需要 GEMINI_API_KEY。原文未變的條目會沿用既有摘要，"
+            "可中斷續跑。未帶此旗標時本腳本行為與加入本功能前完全相同。"
+        ),
+    )
+    parser.add_argument(
+        "--indication-output",
+        default=DEFAULT_INDICATION_OUTPUT,
+        help="仿單適應症輸出路徑，僅在 --fetch-indications 時使用",
+    )
+    parser.add_argument(
+        "--skip-summaries",
+        action="store_true",
+        help=(
+            "僅產出仿單原文，不呼叫 LLM 產生摘要（僅在 --fetch-indications 時"
+            "使用）。摘要為空時呈現面會退回顯示原文，因此這個模式產出的檔案"
+            "本身就是可用的，只是可讀性較差。"
+        ),
+    )
     args = parser.parse_args()
 
     licences = _download(LICENCE_DATASET_URL)
@@ -369,6 +649,13 @@ def main(output_path: Optional[str] = None) -> int:
 
     if args.fetch_images:
         fetch_images(entries, args.image_dir)
+
+    if args.fetch_indications:
+        build_indication_file(
+            licences,
+            args.indication_output,
+            skip_summaries=args.skip_summaries,
+        )
 
     return 0
 

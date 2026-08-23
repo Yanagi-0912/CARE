@@ -11,6 +11,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.services.medication.drug_indication_service import IndicationMatch
 from app.models.medication import MedicationFrequencyCode, MedicationSlotType
 
 # 醫囑頻次。與 Medication 共用同一份定義，避免兩邊各自演化而失去同步。
@@ -87,6 +88,18 @@ class RecognizedDrug(BaseModel):
     # 未經藥證庫校驗一律低信心。視覺模型讀錯形近藥名時自述信心度仍然很高，
     # 只有外部字典能發現該字串不對應任何一張核准藥證。
     name_confidence: ConfidenceLevel = "low"
+    # 藥袋讀出的適應症與該藥證仿單的比對結果。
+    #
+    # **這個欄位 SHALL NOT 影響信心度分級或一鍵確認**，它純粹是記錄——比對
+    # 規則的誤判率尚未以真實藥袋量測過（模擬落在 17%~25%），而信心度要求
+    # 全部藥品皆通過，一顆誤判就會讓整份草稿失去一鍵確認。見
+    # openspec/changes/drug-indication/specs/drug-indication/spec.md
+    # 的「比對結果不得影響信心度」。
+    #
+    # `unchecked` 與 `unrelated` 必須分得開：前者是「沒有依據可比」（藥袋
+    # 沒印適應症、證號未確定、查無該藥證的仿單），後者才是「比過了而且
+    # 對不上」。適應症不是藥袋的法定必載欄位，缺席是常態。
+    indication_match: IndicationMatch = "unchecked"
 
 
 class RecognitionResult(BaseModel):

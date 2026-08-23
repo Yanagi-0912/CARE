@@ -270,6 +270,21 @@ class Settings:
     DRUG_APPEARANCE_IMAGE_URL_PATH: str = os.getenv(
         "DRUG_APPEARANCE_IMAGE_URL_PATH", "/drug-appearance"
     )
+    # 仿單適應症同樣是建置期落地的靜態檔（scripts/build_drug_catalog.py
+    # --fetch-indications 產出），執行期不對外連線。刻意與 drug_catalog.json
+    # 分開：藥證庫的字元 n-gram 反向索引是效能敏感結構，適應症對藥名比對毫無
+    # 貢獻，併入只會讓它與常駐記憶體無謂變大（實測 15.9 MB → 22.2 MB）。
+    # 見 openspec/changes/drug-indication/design.md 決策 1。
+    DRUG_INDICATION_PATH: str = os.getenv(
+        "DRUG_INDICATION_PATH", "resources/drug_indications.json"
+    )
+    # 摘要的字數上限。仿單適應症常涵蓋多個適應症與使用條件，壓得太短會讓
+    # 「須合併其他藥物使用」這類條件被犧牲掉，而摘要 SHALL NOT 遺漏任何一個
+    # 適應症；訂得太寬則失去摘要的意義。這個值只約束建置期的摘要生成，
+    # 不影響原文——原文一律完整保留且可展開。
+    DRUG_INDICATION_SUMMARY_MAX_CHARS: int = int(
+        os.getenv("DRUG_INDICATION_SUMMARY_MAX_CHARS", "60")
+    )
 
     # 用藥風險偵測。預設開啟，沿用 PRESCRIPTION_SCAN_ENABLED 的形狀：不必在
     # 每個環境各設一次，但出問題時把它設回 false 就能整條停用（設為 false 時

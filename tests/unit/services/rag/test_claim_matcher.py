@@ -433,3 +433,65 @@ async def test_match_prefilters_to_valid_verdicts_inside_vector_search():
     assert vector_stage["filter"] == {"verdict": {"$in": sorted(_VALID_VERDICTS)}}
     assert not any("$match" in stage for stage in pipeline), (
         "判定過濾已前置，後置 $match 是多餘的一層")
+
+
+# ── 近乎平手時以發布日期決勝 ──────────────────────────────────────────
+# 實測 8 題常見謠言，有 3 題的前兩名分差小於 0.005，其中「打疫苗會改變DNA」
+# 只差 0.0004（2022 與 2021 的兩篇報告）——那個差距沒有語意意義，誰勝出基本上
+# 是隨機的。與其隨機，不如給使用者較新的那篇。
+
+
+def _row(url, score, published_at, claim="主張"):
+    return {"claim": claim, "verdict": "錯誤", "verdict_slug": "incorrect",
+            "url": url, "original_title": "標題", "chunk_content": "內容",
+            "published_at": published_at, "score": score}
+
+
+@pytest.mark.asyncio
+async def test_near_tie_prefers_more_recent_article():
+    matcher, _ = _make_matcher(min_score=0.0)
+    matcher._collection = _fake_collection([
+        _row("https://tfc/old", 0.9052, "2021-05-01"),
+        _row("https://tfc/new", 0.9050, "2022-06-01"),   # 分數略低但較新
+    ])
+
+    result = await matcher.match("查詢")
+
+    assert result.url == "https://tfc/new", "分差 0.0002 屬平手，應取較新者"
+    assert result.published_at == "2022-06-01"
+
+
+@pytest.mark.asyncio
+async def test_clear_score_gap_is_not_overridden_by_date():
+    """分數差距顯著時代表真的比較相關，日期不該蓋過相關性。"""
+    matcher, _ = _make_matcher(min_score=0.0)
+    matcher._collection = _fake_collection([
+        _row("https://tfc/relevant", 0.92, "2019-01-01"),
+        _row("https://tfc/recent", 0.80, "2026-01-01"),
+    ])
+
+    result = await matcher.match("查詢")
+
+    assert result.url == "https://tfc/relevant"
+
+
+@pytest.mark.asyncio
+async def test_missing_date_loses_the_tie_break():
+    """缺日期者排最後——食藥署那批連日期都沒有，不該因此贏過有日期的。"""
+    matcher, _ = _make_matcher(min_score=0.0)
+    matcher._collection = _fake_collection([
+        _row("https://a/no-date", 0.9001, None),
+        _row("https://b/dated", 0.9000, "2020-01-01"),
+    ])
+
+    result = await matcher.match("查詢")
+
+    assert result.url == "https://b/dated"
+
+
+@pytest.mark.asyncio
+async def test_published_at_is_exposed_on_the_match():
+    matcher, _ = _make_matcher(min_score=0.0)
+    matcher._collection = _fake_collection([_row("https://tfc/x", 0.95, "2024-03-02")])
+
+    assert (await matcher.match("查詢")).published_at == "2024-03-02"

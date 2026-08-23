@@ -75,6 +75,13 @@ class VerificationResult:
     # 檢核）。預設空字串是為了不強迫既有呼叫端（例如既有測試）都要多帶一個
     # 欄位；呈現層對空字串一樣有備援（退回中文字串比對）。
     verdict_slug: str = ""
+    # 查核報告的發布日期。呈現用——讓使用者自己判斷這份查核有多新，
+    # 而不是由系統代為篩掉舊的（查核報告不會過期，謠言會重傳）。
+    #
+    # 有預設值是因為這個欄位本來就可能為空：食藥署公告那 576 篇連同 url
+    # 一起沒有日期，上游 API 結構上不提供。
+    source_published_at: str = ""
+
 
 
 class RelatedInfoRetriever(Protocol):
@@ -156,6 +163,7 @@ class ClaimVerificationService:
                 reasoning=_NO_MATCH_REASONING,
                 source_title="",
                 source_url="",
+                source_published_at="",
                 matched=False,
                 related_info=await self._fetch_related_info(claim),
             )
@@ -170,6 +178,7 @@ class ClaimVerificationService:
             reasoning=reasoning,
             source_title=match.title,
             source_url=match.url,
+            source_published_at=match.published_at,
             matched=True,
             related_info="",
         )

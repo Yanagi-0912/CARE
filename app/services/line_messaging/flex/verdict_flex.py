@@ -146,14 +146,22 @@ def _paragraph(
     }
 
 
-def _source_note(ft: theme.FlexTheme) -> list[dict[str, Any]]:
+def _source_note(ft: theme.FlexTheme, published_at: str = "") -> list[dict[str, Any]]:
     """命中時的來源標示（design 決策 5）：系統是在轉述 TFC 的判定，不是 CARE
     自己查核出來的結論，卡片必須讓使用者看得出這件事——這行文字與 source_url
     是否有值無關，一律要出現。
+
+    有發布日期時一併顯示。刻意只呈現、不由系統依日期篩選：查核報告不會過期，
+    2021 年查核過的謠言在 2026 年重傳時那份報告依然有效，用日期硬篩會擋掉
+    大量仍然正確的答案。這則查核有多新該由使用者自己判斷。
     """
+    label = _TFC_SOURCE_LABEL
+    date = (published_at or "").strip()
+    if date:
+        label = f"{label}（{date} 發布）"
     return [
         theme.divider(),
-        _paragraph(f"判定來源：{_TFC_SOURCE_LABEL}", ft, margin="lg"),
+        _paragraph(f"判定來源：{label}", ft, margin="lg"),
     ]
 
 
@@ -244,7 +252,7 @@ def build_verdict_flex(
 
     footer_button: Optional[dict[str, Any]] = None
     if result.matched:
-        body_contents.extend(_source_note(ft))
+        body_contents.extend(_source_note(ft, result.source_published_at))
         footer_button = _source_button(result.source_url, ft)
     elif result.related_info:
         body_contents.extend(_related_info_block(result.related_info, ft))

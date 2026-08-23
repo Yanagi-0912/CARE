@@ -290,3 +290,44 @@ def test_verdict_flex_follows_font_size_setting():
     normal_size = normal.contents.to_dict()["header"]["contents"][0]["size"]
     xlarge_size = xlarge.contents.to_dict()["header"]["contents"][0]["size"]
     assert normal_size != xlarge_size
+
+
+# ── 發布日期呈現 ─────────────────────────────────────────────────────
+# 刻意只呈現、不由系統依日期篩選：查核報告不會過期，2021 年查核過的謠言在
+# 2026 年重傳時那份報告依然有效，用日期硬篩會擋掉大量仍然正確的答案。
+
+
+def _card_texts(message) -> str:
+    """把整張卡片的所有文字串起來，供內容斷言用。"""
+    import json
+    return json.dumps(message.to_dict(), ensure_ascii=False)
+
+
+def test_publish_date_is_shown_next_to_the_source():
+    message = build_verdict_flex(_result(
+        matched=True, verdict="錯誤", source_url="https://tfc.example/a",
+        source_title="某查核報告", source_published_at="2021-05-01"))
+
+    text = _card_texts(message)
+    assert "2021-05-01" in text
+    assert "判定來源" in text
+
+
+def test_missing_publish_date_renders_without_empty_parentheses():
+    """食藥署那批連日期都沒有；缺日期時不該留下空括號之類的殘跡。"""
+    message = build_verdict_flex(_result(
+        matched=True, verdict="錯誤", source_url="https://tfc.example/a",
+        source_title="某查核報告", source_published_at=""))
+
+    text = _card_texts(message)
+    assert "判定來源" in text
+    assert "（ 發布）" not in text and "（發布）" not in text
+
+
+def test_publish_date_absent_when_unmatched():
+    """未命中時沒有來源，也就不該出現日期。"""
+    message = build_verdict_flex(_result(
+        matched=False, verdict="證據不足", source_url="", source_title="",
+        source_published_at=""))
+
+    assert "判定來源" not in _card_texts(message)

@@ -55,6 +55,17 @@ DEFAULT_CLAIM_MATCH_MIN_SCORE = 0.86
 # 視覺語意反向，而且沒有任何 log 能追。
 _VALID_VERDICTS = frozenset({"錯誤", "部分錯誤", "正確", "事實釐清", "證據不足"})
 
+# 分數差距在這個範圍內視為「一樣相關」，改以發布日期決勝。
+#
+# 為什麼需要：實測 8 題常見謠言，有 3 題的前兩名分差小於 0.005，其中
+# 「打疫苗會改變DNA」只差 0.0004（2022 年與 2021 年的兩篇報告）——那個差距
+# 沒有語意意義，誰勝出基本上是隨機的。與其隨機，不如給使用者較新的那篇。
+#
+# 刻意不做「一律取新」：分數差距顯著時代表真的比較相關，日期不該蓋過相關性。
+# 也刻意不做日期範圍過濾——查核報告不會過期，2021 年查過的謠言 2026 年重傳時
+# 那份報告依然有效，用日期硬篩會擋掉大量仍然正確的答案。
+_SCORE_TIE_EPSILON = 0.005
+
 
 @dataclass(frozen=True)
 class ClaimMatch:
@@ -65,6 +76,7 @@ class ClaimMatch:
     title: str
     content: str
     score: float
+    published_at: str = ""
 
 
 class ClaimMatcher(Protocol):
@@ -185,6 +197,7 @@ class MongoAtlasClaimMatcher:
             title=str(best.get("original_title") or ""),
             content=content,
             score=float(score),
+            published_at=str(best.get("published_at") or ""),
         )
 
     async def _search(self, claim: str) -> list[dict[str, Any]]:
@@ -230,6 +243,7 @@ class MongoAtlasClaimMatcher:
                     "verdict_slug": 1,
                     "url": 1,
                     "original_title": 1,
+                    "published_at": 1,
                     self.content_field: 1,
                     "score": {"$meta": "vectorSearchScore"},
                 }
@@ -259,4 +273,12 @@ class MongoAtlasClaimMatcher:
 
         if not best_by_url:
             return None
-        return max(best_by_url.values(), key=lambda doc: doc["score"])
+
+        candidates = sorted(best_by_url.values(),
+                            key=lambda doc: doc["score"], reverse=True)
+        top_score = candidates[0]["score"]
+        tied = [d for d in candidates if top_score - d["score"] <= _SCORE_TIE_EPSILON]
+        if len(tied) == 1:
+            return tied[0]
+        # 日期是字串（"2026-03-11"），字典序即時間序；缺日期者排最後。
+        return max(tied, key=lambda doc: str(doc.get("published_at") or ""))

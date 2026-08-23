@@ -1,4 +1,5 @@
 import inspect
+import json
 
 from linebot.v3.messaging import FlexMessage
 
@@ -948,3 +949,68 @@ def test_caregiver_missed_summary_flex_carries_no_medication_names():
     summary_card = build_caregiver_missed_summary_flex([_missed("morning", "08:00")])
     rendered = str(summary_card.contents.to_dict())
     assert not any(name in rendered for name in medication_names)
+
+
+# ── 適應症不得進入推播 ──────────────────────────────────────────────
+
+
+_SPC_TEXT = "1.本態性高血壓。2.治療左心室射出分率≦40%之心臟衰竭病患。"
+_BAG_INDICATION = "降血壓"
+
+
+def _flex_json(message) -> str:
+    """把 Flex 訊息整份序列化成字串，供「這段文字有沒有洩漏出去」的比對。
+
+    比對整份序列化結果而不是逐欄檢查：適應症若因為將來某次改版被塞進
+    altText、按鈕 label 或任何巢狀欄位，逐欄檢查會漏掉，整份比對不會。
+    """
+    return json.dumps(
+        {"alt": message.alt_text, "contents": message.contents.to_dict()},
+        ensure_ascii=False,
+    )
+
+
+def test_patient_reminder_never_contains_indication():
+    """推播會出現在通知列與鎖定畫面，可能被非預期的人看到。
+
+    藥袋適應症的禁令是 medication-identification 的既有條文；仿單適應症
+    涵蓋該藥證的**全部**核准適應症，揭露範圍更大，同受此限（見
+    drug-indication spec 的「仿單適應症不得進入推播」）。
+    """
+    message = build_patient_medication_flex(
+        log_id="L1",
+        slot_type="morning",
+        scheduled_time="08:00",
+        medication_names=["脈優錠5毫克", "利尿劑"],
+    )
+    payload = _flex_json(message)
+    assert "脈優錠5毫克" in payload  # 藥名本來就該出現
+    assert _SPC_TEXT not in payload
+    assert _BAG_INDICATION not in payload
+    assert "本態性高血壓" not in payload
+
+
+def test_caregiver_alert_never_contains_indication():
+    """家屬端同樣受限，且這則推播的收件人不是用藥者本人。"""
+    message = build_caregiver_alert_flex(
+        patient_name="王大明",
+        slot_type="morning",
+        scheduled_time="08:00",
+        medication_names=["脈優錠5毫克"],
+    )
+    payload = _flex_json(message)
+    assert _SPC_TEXT not in payload
+    assert _BAG_INDICATION not in payload
+
+
+def test_push_entry_carries_no_indication_field():
+    """守住推播的資料載體本身：它只帶得動藥名與縮圖，帶不動適應症。
+
+    這比逐則訊息檢查文字更根本——只要 MedicationListEntry 沒有適應症欄位，
+    適應症就沒有進入推播的路徑。將來若有人為了「順便顯示一下」而加上該欄位，
+    這個測試會失敗，提醒他那違反 drug-indication spec 的「仿單適應症不得
+    進入推播」與 medication-identification 對藥袋適應症的既有禁令。
+    """
+    from app.services.line_messaging.flex.medication_flex import MedicationListEntry
+
+    assert MedicationListEntry._fields == ("name", "image_url")

@@ -562,3 +562,83 @@ def test_confirm_medication_router(override_current_user):
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "taken"
+
+
+def test_get_reminders_router_exposes_spc_indication_fields(override_current_user):
+    """仿單適應症要真的出現在 API 回應裡，前端才渲染得出那個區塊。
+
+    摘要與原文兩者都要：有摘要時前端顯示摘要、可展開原文；摘要為 None 時
+    直接顯示原文（spec 的「摘要缺席時的降級」）。
+    """
+    fake_medication = Medication(
+        id="M1",
+        user_id="U_TEST_USER",
+        created_by_user_id="U_TEST_USER",
+        name="脈優錠5毫克",
+        license_number="衛署藥製字第000002號",
+        spc_indication="1.本態性高血壓。2.治療左心室射出分率≦40%之心臟衰竭病患。",
+        spc_indication_summary="高血壓、心臟衰竭",
+    )
+    fake_reminder = MedicationReminder(
+        creator_user_id="U_TEST_USER",
+        user_id="U_TEST_USER",
+        slot_type="morning",
+        scheduled_time="08:00",
+        medication_ids=["M1"],
+    )
+
+    class _FakeMedicationService:
+        async def get_user_reminders_with_medications(
+            self, user_id, requester_user_id=None
+        ):
+            reminder_data = fake_reminder.model_dump(by_alias=True)
+            reminder_data["medications"] = [fake_medication]
+            return [MedicationReminderWithMedications(**reminder_data)]
+
+    app.dependency_overrides[get_medication_service] = lambda: _FakeMedicationService()
+    try:
+        response = client.get("/api/medications/reminders")
+        assert response.status_code == 200
+        medication = response.json()[0]["medications"][0]
+        assert medication["spc_indication_summary"] == "高血壓、心臟衰竭"
+        assert medication["spc_indication"].startswith("1.本態性高血壓")
+    finally:
+        app.dependency_overrides.pop(get_medication_service, None)
+
+
+def test_get_reminders_router_omits_spc_indication_when_license_undetermined(
+    override_current_user,
+):
+    """證號未確定時兩個欄位皆為 None——與『證號不確定時不得顯示藥丸照片』
+    同一條安全邊界：不知道是哪一張藥證，顯示的適應症就可能屬於另一顆藥。"""
+    fake_medication = Medication(
+        id="M1",
+        user_id="U_TEST_USER",
+        created_by_user_id="U_TEST_USER",
+        name="普拿疼",
+        license_number=None,
+    )
+    fake_reminder = MedicationReminder(
+        creator_user_id="U_TEST_USER",
+        user_id="U_TEST_USER",
+        slot_type="morning",
+        scheduled_time="08:00",
+        medication_ids=["M1"],
+    )
+
+    class _FakeMedicationService:
+        async def get_user_reminders_with_medications(
+            self, user_id, requester_user_id=None
+        ):
+            reminder_data = fake_reminder.model_dump(by_alias=True)
+            reminder_data["medications"] = [fake_medication]
+            return [MedicationReminderWithMedications(**reminder_data)]
+
+    app.dependency_overrides[get_medication_service] = lambda: _FakeMedicationService()
+    try:
+        response = client.get("/api/medications/reminders")
+        medication = response.json()[0]["medications"][0]
+        assert medication["spc_indication"] is None
+        assert medication["spc_indication_summary"] is None
+    finally:
+        app.dependency_overrides.pop(get_medication_service, None)

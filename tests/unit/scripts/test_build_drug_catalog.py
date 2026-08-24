@@ -374,3 +374,73 @@ def test_resolve_output_path_rejects_symlink_escaping_project(tmp_path):
             )
     finally:
         link.unlink()
+
+
+# ── 配額耗盡時提早中止 ──────────────────────────────────────────────
+#
+# 實測（12,174 筆的全量批次）撞到 Gemini 免費層每日 10,000 次的上限後，
+# 批次仍繼續送出約 2,309 次請求，每一次都拿 429。那些請求不可能成功——
+# 每日配額要等隔天才重置——只是白白拖慢收尾並繼續打對方的服務。
+
+
+class _QuotaExhaustedModel:
+    """前 N 次正常回覆，之後一律拋出配額耗盡。"""
+
+    def __init__(self, ok_before: int):
+        self.ok_before = ok_before
+        self.calls = 0
+
+    def invoke(self, prompt):
+        self.calls += 1
+        if self.calls > self.ok_before:
+            raise RuntimeError(
+                "Error calling model 'gemini-2.5-flash' (RESOURCE_EXHAUSTED): "
+                "429 RESOURCE_EXHAUSTED. Quota exceeded for metric: "
+                "generate_requests_per_model_per_day, limit: 10000"
+            )
+
+        class _Reply:
+            content = "高血壓"
+
+        return _Reply()
+
+
+def test_is_quota_exhausted_recognises_resource_exhausted():
+    from scripts.build_drug_catalog import is_quota_exhausted
+
+    assert is_quota_exhausted(RuntimeError("429 RESOURCE_EXHAUSTED. Quota exceeded"))
+    assert is_quota_exhausted(RuntimeError("... generate_requests_per_model_per_day ..."))
+
+
+def test_is_quota_exhausted_ignores_other_failures():
+    """逾時、連線中斷這類單筆失敗不該中止整批——它們下一筆可能就成功了。"""
+    from scripts.build_drug_catalog import is_quota_exhausted
+
+    assert not is_quota_exhausted(TimeoutError("read timeout"))
+    assert not is_quota_exhausted(RuntimeError("500 INTERNAL"))
+    assert not is_quota_exhausted(RuntimeError("400 INVALID_ARGUMENT"))
+
+
+def test_summarize_stops_early_once_quota_is_exhausted():
+    """配額耗盡後 SHALL NOT 再送出任何請求。
+
+    剩下的目標維持空摘要，呈現面退回顯示原文；下次配額重置後重跑，
+    build_indications 的冪等沿用會讓已完成的部分不必重算。
+    """
+    from scripts.build_drug_catalog import summarize_indications
+
+    indications = {
+        f"L{i}": {"text": "1.本態性高血壓。2.心臟衰竭。", "summary": "", "summary_of": "x"}
+        for i in range(20)
+    }
+    targets = list(indications)
+    model = _QuotaExhaustedModel(ok_before=5)
+
+    stat = summarize_indications(indications, targets, max_chars=60, model=model)
+
+    # 第 6 次拿到配額錯誤即停，不該打完 20 次
+    assert model.calls < len(targets)
+    assert stat["ok"] == 5
+    assert stat["quota_exhausted"] is True
+    # 已完成的保留，未處理的維持空字串（呈現面顯示原文）
+    assert sum(1 for e in indications.values() if e["summary"]) == 5

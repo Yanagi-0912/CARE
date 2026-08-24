@@ -529,20 +529,46 @@ def _summary_is_acceptable(summary: str, max_chars: int) -> bool:
     )
 
 
+# 配額耗盡的訊號。只認「每日配額」這一類——逾時、連線中斷、500 這種單筆
+# 失敗下一筆可能就成功了，不該讓整批停下來。
+_QUOTA_MARKERS = (
+    "RESOURCE_EXHAUSTED",
+    "generate_requests_per_model_per_day",
+    "GenerateRequestsPerDayPerProjectPerModel",
+)
+
+
+def is_quota_exhausted(exc: BaseException) -> bool:
+    """這個例外是不是「今天的配額用完了」。
+
+    用字串比對而非例外型別：langchain 把底層的 google 例外包成自己的型別，
+    比對型別會綁死在某個版本的包裝方式上，改版就失效。訊息裡的
+    RESOURCE_EXHAUSTED 與那兩個 quota metric 名稱是 API 契約的一部分，
+    比包裝型別穩定。
+    """
+    message = str(exc)
+    return any(marker in message for marker in _QUOTA_MARKERS)
+
+
 def summarize_indications(
     indications: dict[str, dict[str, str]],
     targets: list[str],
     max_chars: int,
     model_name: Optional[str] = None,
     checkpoint: Optional[Any] = None,
+    model: Optional[Any] = None,
 ) -> dict[str, int]:
     """就地為 `targets` 產生摘要，回傳統計。
 
     不合格或呼叫失敗一律留空字串，SHALL NOT 寫入不合格的結果——呈現面看到
     空摘要就退回顯示原文，那是安全的降級；寫進一個漏了適應症的摘要則不是。
     """
+    stat = {"ok": 0, "rejected": 0, "failed": 0, "quota_exhausted": False}
     if not targets:
-        return {"ok": 0, "rejected": 0, "failed": 0}
+        return stat
+
+    if model is not None:
+        return _run_summaries(indications, targets, max_chars, model, checkpoint, stat)
 
     from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -560,32 +586,66 @@ def summarize_indications(
         google_api_key=api_key,
         timeout=SUMMARY_TIMEOUT_SECONDS,
     )
-    stat = {"ok": 0, "rejected": 0, "failed": 0}
+    return _run_summaries(indications, targets, max_chars, model, checkpoint, stat)
 
-    def one(license_number: str) -> tuple[str, str, str]:
-        text = indications[license_number]["text"]
-        prompt = INDICATION_SUMMARY_PROMPT.format(max_chars=max_chars, text=text)
-        try:
-            raw = model.invoke(prompt)
-            summary = (getattr(raw, "content", "") or "").strip()
-        except Exception as exc:  # noqa: BLE001 - 建置期批次，單筆失敗不該中斷整批
-            logger.warning("摘要失敗 %s：%s", license_number, exc)
-            return license_number, "", "failed"
-        if not _summary_is_acceptable(summary, max_chars):
-            return license_number, "", "rejected"
-        return license_number, summary, "ok"
 
+def _run_summaries(indications, targets, max_chars, model, checkpoint, stat):
+    """實際跑摘要。與 summarize_indications 分開，讓測試能直接注入假的 model。
+
+    配額耗盡時提早中止：每日配額要等隔天才重置，繼續送出的請求不可能成功，
+    只是白白拖慢收尾並繼續打對方的服務。實測全量批次撞到上限後仍硬打了
+    約 2,309 次，全部拿 429。中止後未處理的目標維持空摘要，呈現面退回顯示
+    原文；下次重跑時 build_indications 的冪等沿用會讓已完成的部分不必重算。
+
+    刻意用循序而非 ThreadPoolExecutor.map：後者要等整批送完才停得下來，
+    偵測到配額耗盡的當下已經多送了一整批。這裡改成小批送出、每批之間檢查，
+    兼顧併發與可中止。
+    """
+    pending = list(targets)
+    index = 0
     with cf.ThreadPoolExecutor(max_workers=SUMMARY_WORKERS) as pool:
-        for index, (license_number, summary, outcome) in enumerate(
-            pool.map(one, targets), start=1
-        ):
-            indications[license_number]["summary"] = summary
-            stat[outcome] += 1
-            if index % SUMMARY_CHECKPOINT_EVERY == 0:
-                logger.info("摘要進度 %s/%s %s", index, len(targets), stat)
-                if checkpoint is not None:
-                    checkpoint(indications)
+        while pending and not stat["quota_exhausted"]:
+            batch, pending = pending[:SUMMARY_WORKERS], pending[SUMMARY_WORKERS:]
+            futures = {
+                pool.submit(_summarize_one, indications, key, max_chars, model): key
+                for key in batch
+            }
+            for future in cf.as_completed(futures):
+                key, summary, outcome, quota_hit = future.result()
+                indications[key]["summary"] = summary
+                stat[outcome] += 1
+                if quota_hit:
+                    stat["quota_exhausted"] = True
+                index += 1
+                if index % SUMMARY_CHECKPOINT_EVERY == 0:
+                    logger.info("摘要進度 %s/%s %s", index, len(targets), stat)
+                    if checkpoint is not None:
+                        checkpoint(indications)
+    if stat["quota_exhausted"]:
+        logger.warning(
+            "配額耗盡，提早中止：已完成 %s 筆，尚有 %s 筆未處理。"
+            "配額重置後重跑同一個指令即可接續（原文未變的條目會沿用既有摘要）。",
+            stat["ok"],
+            len(targets) - index,
+        )
     return stat
+
+
+def _summarize_one(indications, license_number, max_chars, model):
+    """單筆摘要。回傳 (證號, 摘要, 統計鍵, 是否為配額耗盡)。"""
+    text = indications[license_number]["text"]
+    prompt = INDICATION_SUMMARY_PROMPT.format(max_chars=max_chars, text=text)
+    try:
+        raw = model.invoke(prompt)
+        summary = (getattr(raw, "content", "") or "").strip()
+    except Exception as exc:  # noqa: BLE001 - 建置期批次，單筆失敗不該中斷整批
+        if is_quota_exhausted(exc):
+            return license_number, "", "failed", True
+        logger.warning("摘要失敗 %s：%s", license_number, exc)
+        return license_number, "", "failed", False
+    if not _summary_is_acceptable(summary, max_chars):
+        return license_number, "", "rejected", False
+    return license_number, summary, "ok", False
 
 
 def build_indication_file(

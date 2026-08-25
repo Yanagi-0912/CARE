@@ -12,13 +12,15 @@ from app.dependencies import (
     get_consultation_download_token_service,
     get_consultation_service,
     get_current_user,
-    get_family_tree_service,
+    get_family_authorization_service,
 )
 from app.main import app
 from app.models.chat_message import ChatMessage
 from app.models.consultation import ConsultationSummary
 from app.models.family_tree import FamilyMember, FamilyTree
-from app.services.family.family_tree_service import FamilyTreeService
+from app.services.family.family_authorization_service import (
+    FamilyAuthorizationService,
+)
 
 
 class FakeConsultationService:
@@ -73,24 +75,61 @@ def override_consultation_service():
 
 @pytest.fixture()
 def override_family_service():
-    """注入一個只有 get_family_tree 被假掉的真 FamilyTreeService。
+    """注入一個真的 FamilyAuthorizationService，只把 repository 換成假的。
 
-    刻意不用 AsyncMock 整包取代 service：要驗的正是 ensure_family_member 的判斷邏輯，
-    整包 mock 掉的話 403 那條路根本不會被執行，測試就變成只在測 mock 自己。
+    刻意不用 AsyncMock 整包取代 service：要驗的正是授權判定本身，整包 mock
+    掉的話 403 那條路根本不會被執行，測試就變成只在測 mock 自己。
+
+    `member_ids` 沿用原本的意思：「這些人是呼叫者的家人」。授權判定的方向
+    在本 change 之後是反的——看的是**目標擁有者**的族譜裡有沒有呼叫者——
+    因此這裡為每一位 member 各造一份「他的族譜裡有呼叫者」的文件。
+
+    預設 enforcement 關閉（影子模式），族譜成員仍可讀，與變更前行為相同。
+    `tree_reads` 記錄族譜被查了哪些 user_id，用來驗證「查自己不查 DB」。
     """
 
-    def _override(member_ids: list[str], owner_id: str = "U123"):
+    def _override(
+        member_ids: list[str],
+        caller_id: str = "U123",
+        enforcement_enabled: bool = False,
+        roles: dict | None = None,
+        state: str = "shadow",
+    ):
         now = datetime.now(tz=timezone.utc)
-        service = FamilyTreeService()
-        service.get_family_tree = AsyncMock(
-            return_value=FamilyTree(
-                user_id=owner_id,
-                family_members=[FamilyMember(user_id=m) for m in member_ids],
+        roles = roles or {}
+        trees = {
+            member: FamilyTree(
+                user_id=member,
+                family_members=[
+                    FamilyMember(user_id=caller_id, family_role=roles.get(member))
+                ],
+                rbac_migration_state=state,
                 created_at=now,
                 updated_at=now,
             )
+            for member in member_ids
+        }
+
+        class _Trees:
+            def __init__(self):
+                self.reads = []
+
+            async def get_by_user_id(self, user_id):
+                self.reads.append(user_id)
+                return trees.get(user_id)
+
+        class _Delegations:
+            async def has_active_delegation(self, owner_id, delegate_user_id, now=None):
+                return False
+
+        repo = _Trees()
+        service = FamilyAuthorizationService(
+            family_tree_repository=repo,
+            delegation_repository=_Delegations(),
+            enforcement_enabled=enforcement_enabled,
         )
-        app.dependency_overrides[get_family_tree_service] = lambda: service
+        service.tree_reads = repo.reads
+        app.dependency_overrides[get_family_authorization_service] = lambda: service
         return service
 
     yield _override
@@ -225,7 +264,9 @@ def test_get_member_summary_history_allows_family_member(
 
     assert response.status_code == 200
     assert response.json()[0]["summary"] == "5/26 摘要"
-    family_service.get_family_tree.assert_awaited_once_with("U123")
+    # 授權查的是**目標擁有者**的族譜（看他的族譜裡有沒有呼叫者），
+    # 不再是呼叫者自己的族譜。
+    assert family_service.tree_reads == ["U_MEMBER"]
     fake_service.get_all_summaries.assert_awaited_once_with("U_MEMBER")
 
 
@@ -241,7 +282,7 @@ def test_get_member_summary_history_rejects_non_family_member(
     response = client.get("/api/consultations/U_STRANGER/allsummaries")
 
     assert response.status_code == 403
-    assert "非家庭成員" in response.json()["detail"]
+    assert "權限不足" in response.json()["detail"]
     # 授權必須擋在讀取之前，不能先撈出來再決定要不要回傳
     fake_service.get_all_summaries.assert_not_awaited()
 
@@ -262,7 +303,7 @@ def test_get_member_raw_consultations_allows_family_member(
     assert body["line_id"] == "U_MEMBER"
     assert body["view_type"] == "raw"
     assert body["messages"][0]["content"] == "最近頭很痛"
-    family_service.get_family_tree.assert_awaited_once_with("U123")
+    assert family_service.tree_reads == ["U_MEMBER"]
     fake_service.get_raw_view.assert_awaited_once_with("U_MEMBER")
 
 
@@ -278,7 +319,7 @@ def test_get_member_raw_consultations_rejects_non_family_member(
     response = client.get("/api/consultations/U_STRANGER/messages/raw")
 
     assert response.status_code == 403
-    assert "非家庭成員" in response.json()["detail"]
+    assert "權限不足" in response.json()["detail"]
     fake_service.get_raw_view.assert_not_awaited()
 
 
@@ -295,5 +336,7 @@ def test_get_member_raw_consultations_allows_self_without_family_lookup(
     response = client.get("/api/consultations/U123/messages/raw")
 
     assert response.status_code == 200
-    family_service.get_family_tree.assert_not_awaited()
+    # 查自己不解析角色、也不查族譜——一個人對自己資料的權限不需要任何人授予，
+    # 也不該因為族譜讀取失敗而消失。
+    assert family_service.tree_reads == []
     fake_service.get_raw_view.assert_awaited_once_with("U123")

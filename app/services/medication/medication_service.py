@@ -15,7 +15,6 @@ from app.models.medication import (
     UpdateMedicationReminderRequest,
     ensure_aware_utc,
 )
-from app.repositories.family_tree_repository import FamilyTreeRepository
 from app.repositories.medication_repository import (
     MedicationLogRepository,
     MedicationRepository,
@@ -70,11 +69,10 @@ class MedicationService:
         """
         target_user_id = request.user_id
 
-        # 若幫別人設定，驗證目標使用者是否在 creator 的家庭族譜內
-        if creator_user_id != target_user_id:
-            tree = await FamilyTreeRepository.get_by_user_id(creator_user_id)
-            if not tree or not any(m.user_id == target_user_id for m in tree.family_members):
-                raise HTTPException(status_code=400, detail="用藥對象必須是您的家庭成員")
+        # 授權由呼叫端（router）經 FamilyAuthorizationService 判定：為他人建立
+        # 提醒需要對該用藥者的 GENERAL 具備寫入權。這裡刻意**不再**手寫族譜
+        # 檢查——「在族譜裡＝有權」正是本 change 要消滅的語意，留一份在這裡
+        # 就會有人以為它還是授權依據，而它比矩陣寬。
 
         start_date = request.start_date or _today_date_str()
         created_reminders: List[MedicationReminder] = []
@@ -109,10 +107,9 @@ class MedicationService:
         collection: Optional[Any] = None,
     ) -> List[MedicationReminder]:
         """取得特定使用者的所有用藥提醒"""
-        if requester_user_id and requester_user_id != user_id:
-            tree = await FamilyTreeRepository.get_by_user_id(requester_user_id)
-            if not tree or not any(m.user_id == user_id for m in tree.family_members):
-                raise HTTPException(status_code=400, detail="對象必須是您的家庭成員")
+        # 授權同樣由呼叫端經 FamilyAuthorizationService 判定（GENERAL 讀取權），
+        # 這裡不再自行檢查族譜。`requester_user_id` 保留在簽章上供既有呼叫端
+        # 相容，本方法不再依它做任何判斷。
         # 只在真的有人注入 collection 時才多帶這個關鍵字參數：既有呼叫端與既有
         # 測試（斷言呼叫簽名是 list_reminders_by_user(user_id) 這個既定形狀）
         # 完全不受影響，只有新加的 get_user_reminders_with_medications 會用到。
@@ -216,6 +213,17 @@ class MedicationService:
             )
             return None
 
+    async def get_reminder(self, reminder_id: str) -> MedicationReminder:
+        """取得單筆提醒，供呼叫端在授權判定之前得知其用藥者是誰。
+
+        授權需要「目標資料的擁有者」這項輸入，而提醒的擁有者是 `user_id`。
+        呼叫端拿不到它就只能改用 `creator_user_id`——那正是要避免的後門。
+        """
+        reminder = await self._reminder_repository.get_reminder_by_id(reminder_id)
+        if not reminder:
+            raise HTTPException(status_code=404, detail="找不到該用藥提醒")
+        return reminder
+
     async def get_creator_reminders(self, creator_user_id: str) -> List[MedicationReminder]:
         """取得創立者為家人或自己產生的所有用藥提醒"""
         return await MedicationReminderRepository.list_reminders_by_creator(creator_user_id)
@@ -228,8 +236,10 @@ class MedicationService:
         if not reminder:
             raise HTTPException(status_code=404, detail="找不到該用藥提醒")
 
-        if reminder.creator_user_id != creator_user_id and reminder.user_id != creator_user_id:
-            raise HTTPException(status_code=403, detail="無權限修改此用藥提醒")
+        # 授權由呼叫端經 FamilyAuthorizationService 判定，對象是該提醒的
+        # **用藥者**。`creator_user_id` 僅為來源紀錄，SHALL NOT 構成授權依據：
+        # 以建立者作為永久依據，等於任何曾經有權建立的人在權限被收回之後仍
+        # 保有對既有資料的控制——而「收回權限」正是這套授權存在的目的。
 
         # `exclude_unset` 而非 `exclude_none`：兩者對「沒帶的欄位」行為相同
         # （都不會出現在 update_data 裡），差別在「有帶且是 null」。先前用
@@ -298,8 +308,7 @@ class MedicationService:
         if not reminder:
             raise HTTPException(status_code=404, detail="找不到該用藥提醒")
 
-        if reminder.creator_user_id != creator_user_id and reminder.user_id != creator_user_id:
-            raise HTTPException(status_code=403, detail="無權限刪除此用藥提醒")
+        # 授權由呼叫端判定（同 update_reminder）。
 
         return await MedicationReminderRepository.delete_reminder(reminder_id)
 

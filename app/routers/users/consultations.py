@@ -14,7 +14,7 @@ from app.dependencies import (
     get_consultation_download_token_service,
     get_consultation_service,
     get_current_user,
-    get_family_tree_service,
+    get_family_authorization_service,
 )
 from app.models.consultation import (
     ConsultationSummarizeRequest,
@@ -22,7 +22,9 @@ from app.models.consultation import (
     ConsultationSummary,
 )
 from app.services.consultation.consultation_service import ConsultationService
-from app.services.family.family_tree_service import FamilyTreeService
+from app.services.family.family_authorization_service import (
+    FamilyAuthorizationService,
+)
 from app.services.gemini.shared.errors import GeminiHttpError
 from app.services.liff.jwt_service import AppJwtService
 
@@ -203,9 +205,14 @@ async def get_member_summary_history(
     consultation_service: Annotated[
         ConsultationService, Depends(get_consultation_service)
     ],
-    family_service: Annotated[FamilyTreeService, Depends(get_family_tree_service)],
+    authz: Annotated[
+        FamilyAuthorizationService, Depends(get_family_authorization_service)
+    ],
 ) -> list[ConsultationSummary]:
-    await family_service.ensure_family_member(current_user.line_user_id, userId)
+    # PRIVATE 讀取權在**讀取資料之前**判定。對話摘要是三級裡最敏感的，
+    # 「先撈出來再過濾」會讓它在無權的請求脈絡中被實體化——一次記錄外洩或
+    # 例外堆疊就足以把它帶出去。
+    await authz.authorize(current_user.line_user_id, userId, "PRIVATE", "READ")
     try:
         return await consultation_service.get_all_summaries(userId)
     except PyMongoError:
@@ -227,9 +234,12 @@ async def get_member_raw_consultations(
     consultation_service: Annotated[
         ConsultationService, Depends(get_consultation_service)
     ],
-    family_service: Annotated[FamilyTreeService, Depends(get_family_tree_service)],
+    authz: Annotated[
+        FamilyAuthorizationService, Depends(get_family_authorization_service)
+    ],
 ) -> ConsultationViewResponse:
-    await family_service.ensure_family_member(current_user.line_user_id, userId)
+    # 原始逐句對話存於 Redis，授權必須先於讀取（同上）。
+    await authz.authorize(current_user.line_user_id, userId, "PRIVATE", "READ")
     try:
         messages = await consultation_service.get_raw_view(userId)
         return ConsultationViewResponse(

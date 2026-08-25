@@ -204,42 +204,16 @@ def _tree_with(owner_id: str, member_ids: list[str]) -> FamilyTree:
     )
 
 
-@pytest.mark.asyncio
-async def test_ensure_family_member_allows_self_without_query(service):
-    """查自己不查族譜：族譜為空的新使用者也必須讀得到自己的資料。"""
-    with patch.object(service, "get_family_tree", new_callable=AsyncMock) as mock_get:
-        await service.ensure_family_member("U_ME", "U_ME")
-        mock_get.assert_not_awaited()
+def test_ensure_family_member_has_been_removed():
+    """`ensure_family_member` 已刪除，且刻意不保留相容層。
 
+    它的語意是「在族譜裡＝有權」——那正是本次授權改動要消滅的東西，而且它比
+    權限矩陣寬。留一個相容層就會有人繼續用它，於是同一個問題有兩個答案，
+    其中一個永遠是錯的。
 
-@pytest.mark.asyncio
-async def test_ensure_family_member_allows_member(service):
-    with patch.object(service, "get_family_tree", new_callable=AsyncMock) as mock_get:
-        mock_get.return_value = _tree_with("U_ME", ["U_MEMBER"])
-        await service.ensure_family_member("U_ME", "U_MEMBER")
-        mock_get.assert_awaited_once_with("U_ME")
-
-
-@pytest.mark.asyncio
-async def test_ensure_family_member_rejects_stranger_with_403(service):
-    with patch.object(service, "get_family_tree", new_callable=AsyncMock) as mock_get:
-        mock_get.return_value = _tree_with("U_ME", ["U_MEMBER"])
-
-        with pytest.raises(HTTPException) as exc_info:
-            await service.ensure_family_member("U_ME", "U_STRANGER")
-
-        assert exc_info.value.status_code == 403
-        assert "非家庭成員" in exc_info.value.detail
-
-
-@pytest.mark.asyncio
-async def test_ensure_family_member_is_not_symmetric_by_accident(service):
-    """授權只看請求者自己的族譜。對方把我加為家人，不等於我能讀對方的資料。"""
-    with patch.object(service, "get_family_tree", new_callable=AsyncMock) as mock_get:
-        mock_get.return_value = _tree_with("U_ME", [])
-
-        with pytest.raises(HTTPException) as exc_info:
-            await service.ensure_family_member("U_ME", "U_OTHER")
-
-        assert exc_info.value.status_code == 403
-        mock_get.assert_awaited_once_with("U_ME")
+    這四條原本驗的行為（查自己不查庫、成員放行、陌生人 403、不對稱）現在由
+    tests/unit/services/family/test_family_authorization_service.py 與
+    tests/unit/routers/test_endpoint_authorization.py 覆蓋，且方向是新的：
+    看的是**目標擁有者**的族譜，不是請求者的。
+    """
+    assert not hasattr(FamilyTreeService, "ensure_family_member")

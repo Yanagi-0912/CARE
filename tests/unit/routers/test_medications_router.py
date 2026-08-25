@@ -243,6 +243,33 @@ def test_get_reminders_router_includes_resolved_medications(override_current_use
         app.dependency_overrides.pop(get_medication_service, None)
 
 
+class _PermissiveAuthz:
+    """授權一律放行的替身。
+
+    這些測試驗的是端點的**資料路徑**（參數怎麼傳、回應長什麼樣），不是授權
+    本身——授權的行為由 tests/unit/routers/test_medications_authorization.py
+    以真的 FamilyAuthorizationService 覆蓋。不覆寫它的話，端點會拿到正式組裝
+    的服務並真的去連 MongoDB。
+    """
+
+    async def authorize(self, *args, **kwargs):
+        return "OWNER"
+
+    async def can(self, *args, **kwargs):
+        return True
+
+    async def mask_response(self, payload, *args, **kwargs):
+        return payload
+
+
+def _override_authz():
+    from app.dependencies import get_family_authorization_service
+
+    app.dependency_overrides[get_family_authorization_service] = (
+        lambda: _PermissiveAuthz()
+    )
+
+
 def test_get_created_reminders_router(override_current_user):
     """/reminders/created 查的是「誰設定的」，帶入的是登入者本人的 id。"""
     fake_reminder = MedicationReminder(
@@ -256,6 +283,7 @@ def test_get_created_reminders_router(override_current_user):
         new_callable=AsyncMock,
         return_value=[fake_reminder],
     ) as mock_service:
+        _override_authz()
         response = client.get("/api/medications/reminders/created")
         assert response.status_code == 200
         data = response.json()
@@ -495,6 +523,9 @@ def test_commit_endpoint_400_when_target_not_in_family(
         commit_exception=TargetNotInFamilyError("U_STRANGER")
     )
     _override_scan_service(fake_service)
+    # 授權放行，驗的是服務層的縱深防禦（TargetNotInFamilyError → 400）
+    # 仍然成立；授權本身擋下的情境見 test_medications_authorization.py。
+    _override_authz()
 
     response = client.post(
         "/api/medications/prescription-drafts/D1/commit",

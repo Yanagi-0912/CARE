@@ -1728,3 +1728,68 @@ async def test_comparison_receives_bag_indication_and_resolved_license():
     draft = await service.scan(b"image", "image/jpeg", "U_FAMILY")
 
     assert fake.calls == [("降血壓", draft.recognition.drugs[0].license_number)]
+
+
+# ── 姓名比對的候選範圍受寫入權限縮（tasks 8.7／8.14）──────────────────
+
+
+class FakeAuthorizationService:
+    """只回答「操作者對某位對象有沒有 GENERAL 寫入權」。"""
+
+    def __init__(self, writable: set[str]):
+        self._writable = writable
+
+    async def can(self, operator_id, target_owner_id, classification, action):
+        return target_owner_id in self._writable
+
+
+async def test_name_match_skips_members_without_write_permission():
+    """姓名命中但無寫入權時 SHALL NOT 成為預設對象。
+
+    提出一個使用者確認後必定被 403 擋下的建議，只是讓他在藥袋辨識這一步
+    多撞一次牆——長輩的照顧者在這裡已經在對抗光線與字級了。
+    """
+    service = _service(
+        ocr=FakeOcr(_recognition(RecognizedDrug(name="脈優錠5毫克", frequency_code="TID"), patient_name="王大明")),
+        family=FakeFamilyTreeRepository(
+            _tree(FamilyMember(user_id="U_ELDER", display_name="王大明"))
+        ),
+    )
+    service._authorization_service = FakeAuthorizationService(writable=set())
+
+    draft = await service.scan(b"image", "image/jpeg", "U_OPERATOR")
+
+    assert draft.suggested_user_id is None
+
+
+async def test_name_match_keeps_members_with_write_permission():
+    """對照組：有寫入權時仍是預設對象，行為與變更前相同。"""
+    service = _service(
+        ocr=FakeOcr(_recognition(RecognizedDrug(name="脈優錠5毫克", frequency_code="TID"), patient_name="王大明")),
+        family=FakeFamilyTreeRepository(
+            _tree(FamilyMember(user_id="U_ELDER", display_name="王大明"))
+        ),
+    )
+    service._authorization_service = FakeAuthorizationService(writable={"U_ELDER"})
+
+    draft = await service.scan(b"image", "image/jpeg", "U_OPERATOR")
+
+    assert draft.suggested_user_id == "U_ELDER"
+
+
+async def test_name_match_without_authorization_service_keeps_legacy_behaviour():
+    """未注入授權服務時只影響**預設值**，不影響授權。
+
+    真正的閘門在 commit（router 的 authorize 與服務層的
+    TargetNotInFamilyError），這裡放行不等於提交會過。
+    """
+    service = _service(
+        ocr=FakeOcr(_recognition(RecognizedDrug(name="脈優錠5毫克", frequency_code="TID"), patient_name="王大明")),
+        family=FakeFamilyTreeRepository(
+            _tree(FamilyMember(user_id="U_ELDER", display_name="王大明"))
+        ),
+    )
+
+    draft = await service.scan(b"image", "image/jpeg", "U_OPERATOR")
+
+    assert draft.suggested_user_id == "U_ELDER"

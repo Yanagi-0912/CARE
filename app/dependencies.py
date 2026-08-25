@@ -12,6 +12,15 @@ from app.db.mongodb import MongoDBManager
 from app.db.redis import RedisManager
 from app.repositories.chat_history_repository import build_chat_history_repository
 from app.repositories.consultation_repository import ConsultationRepository
+from app.repositories.family_delegation_repository import (
+    FamilyDelegationRepository,
+)
+from app.repositories.family_rbac_metrics_repository import (
+    FamilyRbacMetricsRepository,
+)
+from app.repositories.family_role_audit_repository import (
+    FamilyRoleAuditRepository,
+)
 from app.repositories.family_tree_repository import FamilyTreeRepository
 from app.repositories.knowledge_report_preview_repository import (
     KnowledgeReportPreviewRepository,
@@ -26,6 +35,13 @@ from app.repositories.safety_alert_repository import SafetyAlertRepository
 from app.repositories.user_profile_repository import UserProfileRepository
 from app.services.agent.agent import Agent
 from app.services.consultation.consultation_service import ConsultationService
+from app.services.family.family_authorization_service import (
+    FamilyAuthorizationService,
+)
+from app.services.family.family_delegation_service import (
+    FamilyDelegationService,
+)
+from app.services.family.family_role_service import FamilyRoleService
 from app.services.family.family_tree_service import FamilyTreeService
 from app.services.medication.drug_appearance_image_service import (
     resolve_drug_appearance_image_url,
@@ -447,6 +463,17 @@ _drug_mention_extractor = DrugMentionExtractor(
     gemini_service=_gemini_service,
     timeout_seconds=settings.SAFETY_ALERT_TIMEOUT_SECONDS,
 )
+# 家庭授權的唯一決策點。repository 皆以 staticmethod 群組的形式存在（沿用本
+# 檔案其他組裝一貫的慣例），直接把類別本身傳進去即可。
+_family_authorization_service = FamilyAuthorizationService(
+    family_tree_repository=FamilyTreeRepository,
+    delegation_repository=FamilyDelegationRepository,
+    enforcement_enabled=settings.FAMILY_RBAC_ENFORCED,
+    # 遷移指標的計數器。判準 1（收緊差異比例）與判準 4（受影響擁有者清單）
+    # 的原始資料來源；寫入失敗一律吞掉，不影響授權。
+    metrics_repository=FamilyRbacMetricsRepository,
+)
+
 _safety_alert_service = SafetyAlertService(
     extractor=_drug_mention_extractor,
     catalog_service=_drug_catalog_service,
@@ -455,6 +482,10 @@ _safety_alert_service = SafetyAlertService(
     replier=_line_replier,
     user_profile_service=_user_profile_service,
     dedupe_hours=settings.SAFETY_ALERT_DEDUPE_HOURS,
+    # 通知政策的判定點。高風險通報是唯一繞過 LIFF 授權邊界把健康資訊送出去的
+    # 通道，因此它也要經過同一個決策點——只是走的是 NOTIFICATION_POLICY 這張
+    # 表，不是 PERMISSIONS。
+    authorization_service=_family_authorization_service,
 )
 _enabled_safety_alert_service = (
     _safety_alert_service if settings.SAFETY_ALERT_ENABLED else None
@@ -485,6 +516,17 @@ _location_handler = LineLocationHandler(
     loading_animation_service=_line_loading_animation_service,
 )
 _family_tree_service = FamilyTreeService()
+_family_role_service = FamilyRoleService(
+    authorization_service=_family_authorization_service,
+    family_tree_repository=FamilyTreeRepository,
+    audit_repository=FamilyRoleAuditRepository,
+)
+_family_delegation_service = FamilyDelegationService(
+    delegation_repository=FamilyDelegationRepository,
+    family_tree_repository=FamilyTreeRepository,
+    audit_repository=FamilyRoleAuditRepository,
+    activation_enabled=settings.FAMILY_DELEGATION_ACTIVATION_ENABLED,
+)
 _medication_service = MedicationService(indication_service=_drug_indication_service)
 
 # 藥袋辨識。藥證庫沿用上面已經載入的那一份（見 _drug_catalog_service）。
@@ -495,6 +537,7 @@ _prescription_ocr_service = PrescriptionOcrService(
 # 各 repository 皆以 staticmethod 群組的形式存在（沿用本檔案其他組裝一貫的
 # 慣例），直接把類別本身傳進去即可，不需要另外實例化。
 _prescription_scan_service = PrescriptionScanService(
+    authorization_service=_family_authorization_service,
     ocr_service=_prescription_ocr_service,
     catalog_service=_drug_catalog_service,
     draft_repository=PrescriptionDraftRepository,
@@ -629,6 +672,24 @@ def get_tts_service() -> TTSService:
 
 def get_family_tree_service() -> FamilyTreeService:
     return _family_tree_service
+
+
+def get_family_role_service() -> FamilyRoleService:
+    """家庭角色指派。提權防護的六道檢查都在這支服務裡。"""
+    return _family_role_service
+
+
+def get_family_delegation_service() -> FamilyDelegationService:
+    """委任授權。建立的路徑在核可流程確定之前不對終端使用者開放。"""
+    return _family_delegation_service
+
+
+def get_family_authorization_service() -> FamilyAuthorizationService:
+    """家庭授權的唯一決策點。
+
+    跨使用者的端點一律經由這裡判定，SHALL NOT 自行判斷「他是不是家人」或
+    「他是什麼角色」。"""
+    return _family_authorization_service
 
 
 def get_medication_service() -> MedicationService:

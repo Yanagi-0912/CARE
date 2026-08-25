@@ -36,6 +36,44 @@ class UserProfileData(BaseModel):
     surgery_history: str = Field(..., description="手術病史。空字串代表沒有")
 
 
+class ProxyHealthUpdate(BaseModel):
+    """代理寫入健康資料的請求體（`PUT /api/profiles/{userId}`）。
+
+    與 `UserProfileData` 分開宣告，因為兩條路徑對「必填」的定義相反：
+
+    - `PUT /me/update` 是本人送出整份表單，缺欄位代表表單沒填完，該擋。
+    - 代理寫入是家人補填**部分**欄位，而 `name` 這類欄位**不歸這條路徑管**
+      （見 `PROXY_WRITE_FORBIDDEN_FIELDS`）。沿用 `UserProfileData` 會讓
+      endpoint 要求一個它隨即丟棄的必填欄位——呼叫端唯一的過關方式是送一個
+      假值，那不是驗證，是儀式。
+
+    因此所有欄位皆可省略，並以 `model_dump(exclude_unset=True)` 取出實際帶到
+    的鍵。**未帶到的欄位不會進 `$set`**，資料庫既有的值原封不動。
+
+    不可寫的欄位仍然宣告在這裡而非直接拒收：規格要求「送出含 `display_name`
+    或 `picture_url` 的請求 SHALL NOT 修改這兩個欄位」——是不修改，不是回錯。
+    它們會被 router 剝除並在 `skipped_fields` 回報，呼叫端因此知道自己送了
+    不該送的東西，而不是靜靜地以為寫進去了。
+    """
+
+    gender: Optional[Literal["male", "female", "unknown"]] = Field(default=None)
+    height: Optional[float] = Field(default=None, gt=0, description="身高（公分）")
+    weight: Optional[float] = Field(default=None, gt=0, description="體重（公斤）")
+    age: Optional[int] = Field(default=None, ge=0, le=130, description="年齡")
+    chronic_diseases: Optional[list[str]] = Field(default=None)
+    chronic_custom: Optional[list[str]] = Field(default=None)
+    major_illness_history: Optional[str] = Field(default=None)
+    surgery_history: Optional[str] = Field(default=None)
+
+    # 以下皆為 PROXY_WRITE_FORBIDDEN_FIELDS，收得下但一律不寫入。
+    name: Optional[str] = Field(default=None)
+    display_name: Optional[str] = Field(default=None)
+    picture_url: Optional[str] = Field(default=None)
+    role: Optional[str] = Field(default=None)
+    settings: Optional[Dict[str, Any]] = Field(default=None)
+    line_id: Optional[str] = Field(default=None)
+
+
 class UserSettings(BaseModel):
     """
     使用者介面偏好設定。

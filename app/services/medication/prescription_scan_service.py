@@ -9,7 +9,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Callable, Optional, Protocol
+from typing import Any, Callable, Optional, Protocol
 
 from bson import ObjectId
 
@@ -157,6 +157,7 @@ class PrescriptionScanService:
         appearance_image_resolver: _AppearanceImageResolver,
         ttl_minutes: int,
         indication_service: Optional[_IndicationService] = None,
+        authorization_service: Any = None,
     ) -> None:
         self._ocr_service = ocr_service
         self._catalog_service = catalog_service
@@ -164,6 +165,9 @@ class PrescriptionScanService:
         self._medication_repository = medication_repository
         self._reminder_repository = reminder_repository
         self._family_tree_repository = family_tree_repository
+        # 選填：未注入時姓名比對不做權限篩選（僅影響**預設值**，不影響授權；
+        # 提交的閘門在 router 的 authorize 與下方的 TargetNotInFamilyError）。
+        self._authorization_service = authorization_service
         # 選填：未注入時比對一律 unchecked，行為與本變更前完全相同。
         # 單元測試因此不必為了測辨識流程而準備一份仿單資料。
         self._indication_service = indication_service
@@ -300,8 +304,17 @@ class PrescriptionScanService:
         if tree is None:
             return None
         for member in tree.family_members:
-            if member.display_name == patient_name:
-                return member.user_id
+            if member.display_name != patient_name:
+                continue
+            # 比對範圍限於操作者**代得了**的成員：提出一個使用者確認後必定
+            # 被 403 擋下的建議，只是讓他在藥袋辨識這一步多撞一次牆。真正的
+            # 閘門在 commit，這裡只是不要先給錯的預設值。
+            if self._authorization_service is not None:
+                if not await self._authorization_service.can(
+                    user_id, member.user_id, "GENERAL", "WRITE"
+                ):
+                    continue
+            return member.user_id
         return None
 
     # ── 提交 ────────────────────────────────────────────────────────

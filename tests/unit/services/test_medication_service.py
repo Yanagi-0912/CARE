@@ -88,11 +88,10 @@ async def test_create_reminders_for_family_member(medication_service):
         slots=["noon"],
         start_date="2026-07-26",
     )
+    # 族譜檢查已移出服務層：為他人建立提醒的授權由 router 經
+    # FamilyAuthorizationService 判定（GENERAL 寫入權），拒絕的情境由
+    # tests/unit/routers/test_medications_authorization.py 覆蓋。
     with patch(
-        "app.services.medication.medication_service.FamilyTreeRepository.get_by_user_id",
-        new_callable=AsyncMock,
-        return_value=fake_tree,
-    ), patch(
         "app.services.medication.medication_service.MedicationReminderRepository.create_reminder",
         new_callable=AsyncMock,
         side_effect=lambda r: r,
@@ -105,29 +104,21 @@ async def test_create_reminders_for_family_member(medication_service):
         assert reminders[0].slot_type == "noon"
 
 
-@pytest.mark.asyncio
-async def test_create_reminders_rejects_non_family_member(medication_service):
-    fake_tree = FamilyTree(
-        user_id="U_CARE",
-        family_members=[],
-        created_at="2026-07-26T00:00:00Z",
-        updated_at="2026-07-26T00:00:00Z",
-    )
-    req = CreateMedicationReminderRequest(
-        user_id="U_STRANGER",
-        slots=["morning"],
-    )
-    with patch(
-        "app.services.medication.medication_service.FamilyTreeRepository.get_by_user_id",
-        new_callable=AsyncMock,
-        return_value=fake_tree,
-    ):
-        with pytest.raises(HTTPException) as exc_info:
-            await medication_service.create_reminders(
-                creator_user_id="U_CARE", request=req
-            )
-        assert exc_info.value.status_code == 400
-        assert "用藥對象必須是您的家庭成員" in exc_info.value.detail
+def test_medication_service_no_longer_hand_writes_family_checks():
+    """服務層 SHALL NOT 自行判斷「他是不是家人」。
+
+    「在族譜裡＝有權」正是本次授權改動要消滅的語意，它比權限矩陣寬。留一份
+    在這裡就會有人以為它還是授權依據，於是同一個問題有兩個答案。授權一律由
+    router 經 FamilyAuthorizationService 判定，拒絕的情境由
+    tests/unit/routers/test_medications_authorization.py 覆蓋。
+    """
+    import inspect
+
+    from app.services.medication import medication_service as module
+
+    source = inspect.getsource(module)
+    assert "FamilyTreeRepository" not in source
+    assert "family_members" not in source
 
 
 @pytest.mark.asyncio
@@ -236,24 +227,18 @@ async def test_get_user_reminders_family_permission(medication_service):
         created_at="2026-07-26T00:00:00Z",
         updated_at="2026-07-26T00:00:00Z",
     )
+    # 服務層不再自行判斷族譜；讀取授權（GENERAL 讀取權）由 router 完成。
+    # 這裡只驗它把 user_id 原樣帶到資料層。
     with patch(
-        "app.services.medication.medication_service.FamilyTreeRepository.get_by_user_id",
-        new_callable=AsyncMock,
-        return_value=fake_tree,
-    ), patch(
         "app.services.medication.medication_service.MedicationReminderRepository.list_reminders_by_user",
         new_callable=AsyncMock,
         return_value=[],
     ) as mock_list:
-        # Allowed for family member
-        reminders = await medication_service.get_user_reminders("U_MEMBER", requester_user_id="U_CARE")
+        reminders = await medication_service.get_user_reminders(
+            "U_MEMBER", requester_user_id="U_CARE"
+        )
         assert reminders == []
         mock_list.assert_awaited_once_with("U_MEMBER")
-
-        # Rejected for non-family member
-        with pytest.raises(HTTPException) as exc_info:
-            await medication_service.get_user_reminders("U_STRANGER", requester_user_id="U_CARE")
-        assert exc_info.value.status_code == 400
 
 
 @pytest.mark.asyncio
@@ -709,21 +694,25 @@ async def test_disable_by_patient_who_is_not_creator_also_cancels():
 
 
 @pytest.mark.asyncio
-async def test_forbidden_disable_does_not_cancel_logs():
-    """無權限的關閉請求擋在 403，絕不能先把別人的紀錄註銷掉。"""
-    reminder = _reminder(enabled=True).model_copy(
-        update={"creator_user_id": "U_CARE", "user_id": "U_PATIENT"}
-    )
-    service, _, logs = _service_with_fakes(reminder, cancelled=1)
+async def test_disable_on_missing_reminder_does_not_cancel_logs():
+    """提醒不存在時擋在 404，絕不能先把紀錄註銷掉。
+
+    原本這條測的是「無權限的關閉請求擋在 403」。授權已移到 router（對象是
+    提醒的**用藥者**，不再是建立者），無權的情境由
+    tests/unit/routers/test_medications_authorization.py 覆蓋——那裡驗的是
+    請求根本到不了服務層，因此更早也更完整。這裡保留同一個不變條件的另一面：
+    任何提前結束的路徑都不得留下副作用。
+    """
+    service, _, logs = _service_with_fakes(None, cancelled=1)
 
     with pytest.raises(HTTPException) as excinfo:
         await service.update_reminder(
-            creator_user_id="U_STRANGER",
-            reminder_id="R123",
+            creator_user_id="U_CARE",
+            reminder_id="R404",
             request=UpdateMedicationReminderRequest(enabled=False),
         )
 
-    assert excinfo.value.status_code == 403
+    assert excinfo.value.status_code == 404
     assert logs.cancelled_reminder_ids == []
 
 

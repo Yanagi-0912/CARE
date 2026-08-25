@@ -152,6 +152,23 @@ class FamilyTreeWithPermissions(FamilyTree):
     family_members: List[FamilyMemberWithPermissions] = []
 
 
+class FamilyRoleAssignmentStatus(BaseModel):
+    """引導式角色指派的完成狀態。由後端依族譜資料判定，不採信前端旗標。"""
+
+    owner_id: str
+    is_complete: bool
+    unassigned_member_ids: List[str] = []
+    rbac_migration_state: MigrationState = DEFAULT_MIGRATION_STATE
+
+
+# ── 注意定義順序 ──────────────────────────────────────────────────
+# 這個 class 必須留在 `GetFamilyTreeResponse` **之前**。本檔沒有
+# `from __future__ import annotations`，因此在 Python 3.13 以下，型別註解會在
+# class 建立的當下就求值，前向參照直接 NameError；3.14 起 PEP 649 把註解改成
+# 延後求值，同一份程式碼卻能過。本專案 CI 跑 3.12，開發機可能是 3.14——順序
+# 錯了會在本機全綠、進 CI 才炸，而且錯誤訊息指向的是一堆不相干的測試檔。
+
+
 class GetFamilyTreeResponse(BaseModel):
     family_tree: FamilyTreeWithPermissions
     # 我自己的引導式角色指派狀態。放在族譜回應裡而不是另開一支端點：族譜頁
@@ -290,12 +307,4 @@ class FamilyRoleAuditEntry(BaseModel):
         "role_change"
     )
 
-
-class FamilyRoleAssignmentStatus(BaseModel):
-    """引導式角色指派的完成狀態。由後端依族譜資料判定，不採信前端旗標。"""
-
-    owner_id: str
-    is_complete: bool
-    unassigned_member_ids: List[str] = []
-    rbac_migration_state: MigrationState = DEFAULT_MIGRATION_STATE
 

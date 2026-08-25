@@ -152,3 +152,33 @@ def test_repository_stores_no_thresholds():
     source = inspect.getsource(module)
     for banned in ("threshold", "THRESHOLD", "is_ready", "IS_READY"):
         assert banned not in source, f"計數器不得內建門檻，但出現了 {banned}"
+
+
+# ── 啟動時真的會建索引（tasks 4.x 的隱含前提）──────────────────────
+
+
+def test_startup_creates_indexes_for_every_new_collection():
+    """三份新 collection 的 `ensure_indexes` SHALL 在 lifespan 被呼叫。
+
+    這一條原本漏掉了：三個 repository 都寫了 `ensure_indexes`，但沒有任何地方
+    呼叫，於是索引在正式環境永遠不會存在。
+
+    最嚴重的是 `family_rbac_metrics` 的 owner_id 唯一索引——差異計數是以
+    owner_id 為鍵的 upsert `$inc`，少了唯一約束，併發會生出同一位擁有者的多份
+    文件。那份指標正是決定何時對真實使用者開啟強制的依據，錯的指標比沒有指標
+    更危險。
+
+    以原始碼比對而非啟動整個 app：lifespan 會連資料庫、建索引、載入院所名稱
+    索引並組裝排程器，在單元測試裡跑不動。
+    """
+    import inspect
+
+    from app import main
+
+    source = inspect.getsource(main.lifespan)
+    for repo in (
+        "FamilyDelegationRepository",
+        "FamilyRoleAuditRepository",
+        "FamilyRbacMetricsRepository",
+    ):
+        assert f"{repo}.ensure_indexes()" in source, f"{repo} 的索引不會被建立"

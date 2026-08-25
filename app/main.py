@@ -23,6 +23,9 @@ from app.repositories.consultation_repository import ConsultationRepository
 from app.repositories.knowledge_report_repository import KnowledgeReportRepository
 from app.repositories.medication_repository import MedicationLogRepository
 from app.repositories.prescription_draft_repository import PrescriptionDraftRepository
+from app.repositories.family_delegation_repository import FamilyDelegationRepository
+from app.repositories.family_rbac_metrics_repository import FamilyRbacMetricsRepository
+from app.repositories.family_role_audit_repository import FamilyRoleAuditRepository
 from app.repositories.safety_alert_repository import SafetyAlertRepository
 from app.services.consultation.scheduler import (
     start_consultation_daily_summary_scheduler,
@@ -59,6 +62,13 @@ async def lifespan(app: FastAPI):
     # 的 TTL 讓視窗自動過期，不需要應用端排程清除。索引與功能開關無關，
     # 先備好才能在開關打開的當下就是正確行為。
     await SafetyAlertRepository.ensure_indexes()
+    # 家庭 RBAC 的三份新 collection。`family_rbac_metrics` 的 owner_id 唯一索引
+    # 不只是查詢效率——差異計數是以 owner_id 為鍵的 upsert `$inc`，沒有唯一
+    # 約束時併發會生出同一位擁有者的多份文件，遷移就緒的判讀就是錯的，而那正是
+    # 決定何時對真實使用者開啟強制的依據。
+    await FamilyDelegationRepository.ensure_indexes()
+    await FamilyRoleAuditRepository.ensure_indexes()
+    await FamilyRbacMetricsRepository.ensure_indexes()
     await ensure_user_docs_indexes_on_startup()
 
     # 預載院所名稱索引，供判斷使用者說的「診所／醫院／藥局」是專名還是泛稱。

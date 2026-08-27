@@ -1,0 +1,210 @@
+
+{
+  "type": "bubble",
+  "size": "mega",
+  "header": {
+    "type": "box",
+    "layout": "vertical",
+    "backgroundColor": "#1E7D58",
+    "paddingAll": "20px",
+    "contents": [
+      {
+        "type": "text",
+        "text": "推薦掛號科別",
+        "color": "#FFFFFF",
+        "size": "lg",
+        "weight": "bold"
+      },
+      {
+        "type": "box",
+        "layout": "horizontal",
+        "margin": "md",
+        "contents": [
+          {
+            "type": "text",
+            "text": "家醫科",
+            "size": "3xl",
+            "color": "#FFFFFF",
+            "weight": "bold",
+            "flex": 0
+          },
+          {
+            "type": "text",
+            "text": "(建議優先)",
+            "size": "md",
+            "color": "#D1E7DD",
+            "margin": "md",
+            "weight": "bold",
+            "gravity": "bottom"
+          }
+        ]
+      }
+    ]
+  },
+  "body": {
+    "type": "box",
+    "layout": "vertical",
+    "paddingTop": "20px",
+    "paddingBottom": "20px",
+    "paddingStart": "8px",
+    "paddingEnd": "20px",
+    "spacing": "md",
+    "backgroundColor": "#FAFAFA",
+    "contents": [
+      {
+        "type": "text",
+        "text": "可能科別與評估原因",
+        "size": "md",
+        "color": "#555555",
+        "weight": "bold"
+      },
+      {
+        "type": "box",
+        "layout": "vertical",
+        "spacing": "sm",
+        "backgroundColor": "#E8F5E9",
+        "paddingAll": "16px",
+        "cornerRadius": "8px",
+        "borderWidth": "1px",
+        "borderColor": "#CFE8DC",
+        "contents": [
+          {
+            "type": "text",
+            "text": "1. 家醫科",
+            "size": "xl",
+            "weight": "bold",
+            "color": "#222222",
+            "adjustMode": "shrink-to-fit"
+          },
+          {
+            "type": "text",
+            "text": "理由：綜合症狀評估，適合初診篩檢與整體檢查。",
+            "size": "md",
+            "color": "#333333",
+            "wrap": true,
+            "margin": "xs"
+          }
+        ]
+      },
+      {
+        "type": "box",
+        "layout": "vertical",
+        "spacing": "sm",
+        "backgroundColor": "#FFF8E7",
+        "paddingAll": "16px",
+        "cornerRadius": "8px",
+        "borderWidth": "1px",
+        "borderColor": "#F0E4C4",
+        "contents": [
+          {
+            "type": "text",
+            "text": "2. 心臟內科",
+            "size": "xl",
+            "weight": "bold",
+            "color": "#222222",
+            "adjustMode": "shrink-to-fit"
+          },
+          {
+            "type": "text",
+            "text": "理由：若伴隨胸悶、心悸或血壓偏高情況時建議。",
+            "size": "md",
+            "color": "#333333",
+            "wrap": true,
+            "margin": "xs"
+          }
+        ]
+      },
+      {
+        "type": "box",
+        "layout": "vertical",
+        "spacing": "sm",
+        "backgroundColor": "#E8F5E9",
+        "paddingAll": "16px",
+        "cornerRadius": "8px",
+        "borderWidth": "1px",
+        "borderColor": "#CFE8DC",
+        "contents": [
+          {
+            "type": "text",
+            "text": "3. 神經內科",
+            "size": "xl",
+            "weight": "bold",
+            "color": "#222222",
+            "adjustMode": "shrink-to-fit"
+          },
+          {
+            "type": "text",
+            "text": "理由：若持續頭暈或伴隨手腳麻木感時考慮。",
+            "size": "md",
+            "color": "#333333",
+            "wrap": true,
+            "margin": "xs"
+          }
+        ]
+      },
+      {
+        "type": "separator",
+        "margin": "lg",
+        "color": "#E0E0E0"
+      },
+      {
+        "type": "box",
+        "layout": "vertical",
+        "margin": "md",
+        "spacing": "sm",
+        "contents": [
+          {
+            "type": "text",
+            "text": "參考來源",
+            "size": "sm",
+            "color": "#555555",
+            "weight": "bold"
+          },
+          {
+            "type": "text",
+            "text": "1. XX醫院「該看哪一科」指南",
+            "size": "sm",
+            "color": "#1D6F8A",
+            "weight": "bold",
+            "wrap": true,
+            "action": {
+              "type": "uri",
+              "label": "開啟參考網址1",
+              "uri": "https://example.com"
+            }
+          },
+          {
+            "type": "text",
+            "text": "2. OO醫學會衛教文章",
+            "size": "sm",
+            "color": "#1D6F8A",
+            "weight": "bold",
+            "wrap": true,
+            "margin": "xs",
+            "action": {
+              "type": "uri",
+              "label": "開啟參考網址2",
+              "uri": "https://example.com"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "type": "box",
+    "layout": "vertical",
+    "backgroundColor": "#F0F0F0",
+    "paddingAll": "12px",
+    "contents": [
+      {
+        "type": "text",
+        "text": "免責聲明：本建議僅供參考，若症狀持續或惡化，請務必儘速就醫接受專業診斷。",
+        "size": "sm",
+        "color": "#555555",
+        "weight": "bold",
+        "wrap": true
+      }
+    ]
+  }
+}

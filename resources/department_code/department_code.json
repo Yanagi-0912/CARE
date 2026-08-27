@@ -1,0 +1,452 @@
+{
+  "version": 1,
+  "generated_at": "2026-08-27",
+  "source": {
+    "name": "FuncType CodeSystem（GHD CDM-FHIR）",
+    "url": "https://www.ghd.tw/cdm-fhir/CodeSystem-FuncType.html",
+    "retrieved_at": "2026-08-27",
+    "case_sensitive": true,
+    "system": "https://www.ghd.tw/cdm-fhir/CodeSystem/FuncType"
+  },
+  "purpose": "衛生醫療資料的科別代碼表，附上本專案的對應關係。用途是別名來源與交叉查核，SHALL NOT 用於查詢資料庫。",
+  "usage_rules": [
+    "code 不存在於 medicalFacilities.departments。departments 只存中文字串，因此 code SHALL NOT 出現在任何查詢條件中。",
+    "唯一可用於查詢的值是 canonical，且必須存在於 department_matcher.CANONICAL_DEPARTMENTS。",
+    "本表不是 CANONICAL_DEPARTMENTS 的超集，見 database_only：14 個資料庫實際存在的科別沒有對應代碼，因此 SHALL NOT 用本表取代 CANONICAL_DEPARTMENTS。",
+    "relation 為 unmapped 者刻意不收進別名表，理由見各自的 note。"
+  ],
+  "relation_values": {
+    "exact": "FuncType 的 display 與本專案 canonical 字面相同。",
+    "alias": "display 是 canonical 的次專科或異寫，已收進 DEPARTMENT_ALIASES。",
+    "unmapped": "刻意不對應，理由見 note。"
+  },
+  "stats": {
+    "total": 49,
+    "exact": 24,
+    "alias": 23,
+    "unmapped": 2,
+    "database_only": 14
+  },
+  "codes": [
+    {
+      "code": "00",
+      "display": "不分科",
+      "canonical": "不分科",
+      "relation": "exact"
+    },
+    {
+      "code": "01",
+      "display": "家醫科",
+      "canonical": "家醫科",
+      "relation": "exact"
+    },
+    {
+      "code": "02",
+      "display": "內科",
+      "canonical": "內科",
+      "relation": "exact"
+    },
+    {
+      "code": "03",
+      "display": "外科",
+      "canonical": "外科",
+      "relation": "exact"
+    },
+    {
+      "code": "04",
+      "display": "小兒科",
+      "canonical": "兒科",
+      "relation": "alias"
+    },
+    {
+      "code": "05",
+      "display": "婦產科",
+      "canonical": "婦產科",
+      "relation": "exact"
+    },
+    {
+      "code": "06",
+      "display": "骨科",
+      "canonical": "骨科",
+      "relation": "exact"
+    },
+    {
+      "code": "07",
+      "display": "神經外科",
+      "canonical": "神經外科",
+      "relation": "exact"
+    },
+    {
+      "code": "08",
+      "display": "泌尿科",
+      "canonical": "泌尿科",
+      "relation": "exact"
+    },
+    {
+      "code": "09",
+      "display": "耳鼻喉科",
+      "canonical": "耳鼻喉科",
+      "relation": "exact"
+    },
+    {
+      "code": "10",
+      "display": "眼科",
+      "canonical": "眼科",
+      "relation": "exact"
+    },
+    {
+      "code": "11",
+      "display": "皮膚科",
+      "canonical": "皮膚科",
+      "relation": "exact"
+    },
+    {
+      "code": "12",
+      "display": "神經科",
+      "canonical": "神經科",
+      "relation": "exact"
+    },
+    {
+      "code": "13",
+      "display": "精神科",
+      "canonical": "精神科",
+      "relation": "exact"
+    },
+    {
+      "code": "14",
+      "display": "復健科",
+      "canonical": "復健科",
+      "relation": "exact"
+    },
+    {
+      "code": "15",
+      "display": "整形外科",
+      "canonical": "整形外科",
+      "relation": "exact"
+    },
+    {
+      "code": "22",
+      "display": "急診醫學科",
+      "canonical": "急診醫學科",
+      "relation": "exact"
+    },
+    {
+      "code": "23",
+      "display": "職業醫學科",
+      "canonical": "職業醫學科",
+      "relation": "exact"
+    },
+    {
+      "code": "2A",
+      "display": "結核科",
+      "canonical": "內科",
+      "relation": "alias"
+    },
+    {
+      "code": "2B",
+      "display": "洗腎科",
+      "canonical": "洗腎科",
+      "relation": "exact"
+    },
+    {
+      "code": "40",
+      "display": "牙科",
+      "canonical": "牙科",
+      "relation": "exact"
+    },
+    {
+      "code": "60",
+      "display": "中醫科",
+      "canonical": "中醫一般科",
+      "relation": "alias"
+    },
+    {
+      "code": "81",
+      "display": "麻醉科",
+      "canonical": "麻醉科",
+      "relation": "exact"
+    },
+    {
+      "code": "82",
+      "display": "放射線科",
+      "canonical": "放射線科",
+      "relation": "exact"
+    },
+    {
+      "code": "83",
+      "display": "病理科",
+      "canonical": "病理科",
+      "relation": "exact"
+    },
+    {
+      "code": "84",
+      "display": "核醫科",
+      "canonical": "核子醫學科",
+      "relation": "alias"
+    },
+    {
+      "code": "AA",
+      "display": "消化內科",
+      "canonical": "內科",
+      "relation": "alias"
+    },
+    {
+      "code": "AB",
+      "display": "心臟血管內科",
+      "canonical": "內科",
+      "relation": "alias"
+    },
+    {
+      "code": "AC",
+      "display": "胸腔內科",
+      "canonical": "內科",
+      "relation": "alias"
+    },
+    {
+      "code": "AD",
+      "display": "腎臟內科",
+      "canonical": "內科",
+      "relation": "alias"
+    },
+    {
+      "code": "AE",
+      "display": "風濕免疫科",
+      "canonical": "內科",
+      "relation": "alias"
+    },
+    {
+      "code": "AF",
+      "display": "血液腫瘤科",
+      "canonical": "內科",
+      "relation": "alias"
+    },
+    {
+      "code": "AG",
+      "display": "內分泌科",
+      "canonical": "內科",
+      "relation": "alias"
+    },
+    {
+      "code": "AH",
+      "display": "感染科",
+      "canonical": "內科",
+      "relation": "alias"
+    },
+    {
+      "code": "AI",
+      "display": "潛醫科",
+      "canonical": null,
+      "relation": "unmapped",
+      "note": "潛水醫學／高壓氧。高壓氧中心可設於急診醫學科、職業醫學科或整形外科底下，無單一正解，且流量趨近於零，猜錯的成本大於收錄的效益。"
+    },
+    {
+      "code": "AJ",
+      "display": "胸腔暨重症加護",
+      "canonical": "內科",
+      "relation": "alias"
+    },
+    {
+      "code": "AK",
+      "display": "老人醫學科",
+      "canonical": "家醫科",
+      "relation": "alias"
+    },
+    {
+      "code": "BA",
+      "display": "直腸外科",
+      "canonical": "外科",
+      "relation": "alias"
+    },
+    {
+      "code": "BB",
+      "display": "心臟血管外科",
+      "canonical": "外科",
+      "relation": "alias"
+    },
+    {
+      "code": "BC",
+      "display": "胸腔外科",
+      "canonical": "外科",
+      "relation": "alias"
+    },
+    {
+      "code": "BD",
+      "display": "消化外科",
+      "canonical": "外科",
+      "relation": "alias"
+    },
+    {
+      "code": "CA",
+      "display": "小兒外科",
+      "canonical": "外科",
+      "relation": "alias"
+    },
+    {
+      "code": "CB",
+      "display": "新生兒科",
+      "canonical": "兒科",
+      "relation": "alias"
+    },
+    {
+      "code": "DA",
+      "display": "疼痛科",
+      "canonical": "麻醉科",
+      "relation": "alias"
+    },
+    {
+      "code": "EA",
+      "display": "居家照護",
+      "canonical": null,
+      "relation": "unmapped",
+      "note": "服務類型而非掛號科別。導向門診科別會答非所問，應另案處理居家醫療整合照護。"
+    },
+    {
+      "code": "FA",
+      "display": "放射診斷科",
+      "canonical": "放射診斷科",
+      "relation": "exact"
+    },
+    {
+      "code": "FB",
+      "display": "放射腫瘤科",
+      "canonical": "放射腫瘤科",
+      "relation": "exact"
+    },
+    {
+      "code": "GA",
+      "display": "口腔顏面外科",
+      "canonical": "口腔顎面外科",
+      "relation": "alias"
+    },
+    {
+      "code": "HA",
+      "display": "脊椎骨科",
+      "canonical": "骨科",
+      "relation": "alias"
+    }
+  ],
+  "canonical_to_codes": {
+    "不分科": [
+      "00"
+    ],
+    "中醫一般科": [
+      "60"
+    ],
+    "兒科": [
+      "04",
+      "CB"
+    ],
+    "內科": [
+      "02",
+      "2A",
+      "AA",
+      "AB",
+      "AC",
+      "AD",
+      "AE",
+      "AF",
+      "AG",
+      "AH",
+      "AJ"
+    ],
+    "口腔顎面外科": [
+      "GA"
+    ],
+    "外科": [
+      "03",
+      "BA",
+      "BB",
+      "BC",
+      "BD",
+      "CA"
+    ],
+    "婦產科": [
+      "05"
+    ],
+    "家醫科": [
+      "01",
+      "AK"
+    ],
+    "復健科": [
+      "14"
+    ],
+    "急診醫學科": [
+      "22"
+    ],
+    "放射線科": [
+      "82"
+    ],
+    "放射腫瘤科": [
+      "FB"
+    ],
+    "放射診斷科": [
+      "FA"
+    ],
+    "整形外科": [
+      "15"
+    ],
+    "核子醫學科": [
+      "84"
+    ],
+    "泌尿科": [
+      "08"
+    ],
+    "洗腎科": [
+      "2B"
+    ],
+    "牙科": [
+      "40"
+    ],
+    "病理科": [
+      "83"
+    ],
+    "皮膚科": [
+      "11"
+    ],
+    "眼科": [
+      "10"
+    ],
+    "神經外科": [
+      "07"
+    ],
+    "神經科": [
+      "12"
+    ],
+    "精神科": [
+      "13"
+    ],
+    "耳鼻喉科": [
+      "09"
+    ],
+    "職業醫學科": [
+      "23"
+    ],
+    "骨科": [
+      "06",
+      "HA"
+    ],
+    "麻醉科": [
+      "81",
+      "DA"
+    ]
+  },
+  "database_only": {
+    "note": "存在於 medicalFacilities.departments 但 FuncType 沒有對應代碼的科別。牙科次專科整組缺席，這是本表不能取代 CANONICAL_DEPARTMENTS 的主因。",
+    "values": [
+      "一般精神科",
+      "兒童牙科",
+      "兒童青少年精神科",
+      "家庭牙醫科",
+      "成癮防治科",
+      "牙周病科",
+      "牙醫一般科",
+      "牙髓病科",
+      "特殊需求者口腔醫學科",
+      "臨床病理科",
+      "西醫一般科",
+      "解剖病理科",
+      "贋復補綴牙科",
+      "齒顎矯正科"
+    ]
+  }
+}

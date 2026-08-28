@@ -22,6 +22,7 @@ from app.core.user_font_size import (
     reset_request_font_size,
     set_request_font_size,
 )
+from app.core.user_age import reset_request_age, set_request_age
 from app.core.user_language import (
     DEFAULT_USER_LANGUAGE,
     normalize_user_language,
@@ -163,11 +164,13 @@ class LineEventDispatcher:
         # 下游 handler 只拿得到 user_id，語言與字級改由 ContextVar 傳遞
         lang_token = set_request_language(self._language_from_profile(user_profile))
         font_token = set_request_font_size(self._font_size_from_profile(user_profile))
+        age_token = set_request_age((user_profile or {}).get("age"))
         try:
             await self._dispatch_postback(event, user_id, user_profile)
         finally:
             reset_request_language(lang_token)
             reset_request_font_size(font_token)
+            reset_request_age(age_token)
 
     async def _dispatch_postback(
         self, event: PostbackEvent, user_id: str, user_profile

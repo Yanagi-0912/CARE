@@ -3,16 +3,15 @@
   "status": "unverified",
   "generated_at": "2026-08-27",
   "purpose": "症狀／科別對照的彙整參考。由三家醫院公開的就醫病症對照表整併，科別一律已轉換為 medicalFacilities.departments 實際存在的值，可直接供 find_nearby_facilities_by_department 使用。",
-
   "usage_rules": [
     "本檔 status 為 unverified，尚未經人工審定，SHALL NOT 直接用於線上回覆。",
     "急症判斷一律以 red_flags 為準，且 SHALL 優先於任何 departments 建議；紅旗命中時不得併列門診科別。",
     "canonical 欄位是唯一可用於查詢的值。raw 僅供溯源，SHALL NOT 作為查詢條件。",
     "本檔僅提供就診方向參考，SHALL NOT 作為診斷依據；回覆須含免責與就醫提示。",
     "symptoms[].sources 長度可視為跨院共識強度：3 家皆列 > 2 家 > 單一家。單一來源的條目優先送人工複查。",
-    "多個科別同時列出同一症狀時，代表該症狀本就跨科，SHALL 以多候選呈現，不得擅自擇一。"
+    "多個科別同時列出同一症狀時，代表該症狀本就跨科，SHALL 以多候選呈現，不得擅自擇一。",
+    "symptoms[].origin 為 `project` 者係本專案補列，非來源所載；其 sources 為空陣列，SHALL NOT 宣稱有跨院共識。"
   ],
-
   "sources": {
     "V": {
       "name": "臺北榮民總醫院玉里分院",
@@ -36,29 +35,64 @@
       "level": "醫學中心分院"
     }
   },
-
   "canonical_note": "canonical 取自 db.medicalFacilities.departments 的 44 個 distinct 值（2026-08-27 查）。db_facility_count 為該次統計的院所數，用於評估建議出去的科別使用者是否真的找得到。次專科（腸胃科、心臟科、腎臟科…）在資料庫不存在，一律歸入所屬部定專科，subgroup 欄位保留原本的次專科方向供回覆時說明用。",
-
   "downgrade_rule": {
     "decided_at": "2026-08-27",
     "min_facility_count": 10,
     "rule": "資料庫院所數低於 min_facility_count 的科別 SHALL NOT 作為建議候選，其症狀條目一律併入母科別，並以 downgraded_from 記錄原屬科別。",
     "rationale": "建議一個全台僅個位數院所的科別，使用者接著搜尋時多半查無結果，等於把「找不到」的責任轉嫁給使用者。併入母科別後仍找得到能處理該問題的院所，subgroup 保留原方向供回覆時說明。",
     "applied": [
-      { "from": "兒童青少年精神科", "count": 2, "to": "精神科" },
-      { "from": "兒童牙科", "count": 9, "to": "牙科" },
-      { "from": "牙髓病科", "count": 2, "to": "牙科" },
-      { "from": "牙周病科", "count": 6, "to": "牙科" },
-      { "from": "贋復補綴牙科", "count": 2, "to": "牙科" },
-      { "from": "一般精神科", "count": 2, "to": "精神科" },
-      { "from": "成癮防治科", "count": 2, "to": "精神科" },
-      { "from": "特殊需求者口腔醫學科", "count": 4, "to": "牙科", "decided_at": "2026-08-27", "caveat": "服務對象為身心障礙者，一般牙醫未必具備所需設備與訓練。回覆時 SHALL 建議先去電確認該院所是否能接診，SHALL NOT 直接斷言可就診。" }
+      {
+        "from": "兒童青少年精神科",
+        "count": 2,
+        "to": "精神科"
+      },
+      {
+        "from": "兒童牙科",
+        "count": 9,
+        "to": "牙科"
+      },
+      {
+        "from": "牙髓病科",
+        "count": 2,
+        "to": "牙科"
+      },
+      {
+        "from": "牙周病科",
+        "count": 6,
+        "to": "牙科"
+      },
+      {
+        "from": "贋復補綴牙科",
+        "count": 2,
+        "to": "牙科"
+      },
+      {
+        "from": "一般精神科",
+        "count": 2,
+        "to": "精神科"
+      },
+      {
+        "from": "成癮防治科",
+        "count": 2,
+        "to": "精神科"
+      },
+      {
+        "from": "特殊需求者口腔醫學科",
+        "count": 4,
+        "to": "牙科",
+        "decided_at": "2026-08-27",
+        "caveat": "服務對象為身心障礙者，一般牙醫未必具備所需設備與訓練。回覆時 SHALL 建議先去電確認該院所是否能接診，SHALL NOT 直接斷言可就診。"
+      }
     ],
     "pending": [
-      { "from": "洗腎科", "count": 4, "issue": "低於門檻，但洗腎是特定治療而非門診科別，併入內科會答非所問。本檔目前未收錄此科別，若日後收錄需個別決議。" }
+      {
+        "from": "洗腎科",
+        "count": 4,
+        "issue": "低於門檻，但洗腎是特定治療而非門診科別，併入內科會答非所問。本檔目前未收錄此科別，若日後收錄需個別決議。"
+      }
     ]
   },
-
   "red_flags": {
     "note": "獨立於 departments 之外維護。以下為草稿，除 suicide-risk 外尚未人工定案。emergency 標註 SHALL NOT 由關鍵字比對產生。",
     "default_action": "emergency",
@@ -67,691 +101,4394 @@
     "db_facility_count": 199,
     "action_note": "action 為 emergency 者導向急診就醫；為 crisis 者 SHALL 走危機支持流程並提供專線，SHALL NOT 僅回覆科別名稱，亦 SHALL NOT 只叫使用者自行前往急診。",
     "items": [
-      { "id": "shock", "text": "休克、意識喪失", "sources": ["V"] },
-      { "id": "cardiopulmonary-failure", "text": "急性心肺功能衰竭", "sources": ["V"] },
-      { "id": "altered-consciousness", "text": "意識障礙、昏迷、胡言亂語", "sources": ["V", "Y"] },
-      { "id": "sudden-stroke-signs", "text": "突發的半身不遂、口齒不清、臉部歪斜、單側肢體無力", "sources": ["V", "Y"] },
-      { "id": "massive-bleeding", "text": "大量出血、無法止血的傷口", "sources": ["V"] },
-      { "id": "acute-poisoning", "text": "急性中毒、誤食藥物或化學物質", "sources": ["V", "N"] },
-      { "id": "seizure", "text": "痙攣、抽搐不止", "sources": ["V"] },
-      { "id": "persistent-high-fever", "text": "持續高燒不退", "sources": ["V"] },
-      { "id": "acute-abdomen", "text": "劇烈腹痛、腹部急症（闌尾炎、消化道穿孔、腸阻塞等）", "sources": ["V"] },
-      { "id": "urinary-retention", "text": "超過二十四小時完全無法排尿", "sources": ["V"] },
-      { "id": "severe-trauma", "text": "嚴重車禍或重大外傷", "sources": ["V"] },
-      { "id": "burn-electric", "text": "燒燙傷、觸電", "sources": ["V"] },
-      { "id": "foreign-body", "text": "呼吸道、眼、耳、鼻、咽喉異物", "sources": ["V"], "note": "原文為「呼吸道、眼、耳、鼻、喉內異物」，爬蟲版本曾誤拆為五個獨立條目，導致「眼」單獨對應到急診。" },
-      { "id": "obstetric-bleeding", "text": "流產、陰道大量出血", "sources": ["V"] },
-      { "id": "notifiable-infection", "text": "須立即隔離的流行性傳染病", "sources": ["V"] },
-      { "id": "dyspnea", "text": "呼吸困難、喘不過氣", "sources": ["V"] },
-      { "id": "thunderclap-headache", "text": "突發的劇烈頭痛", "sources": ["V", "Y"] },
-      { "id": "raised-icp", "text": "頭痛合併噴射性嘔吐與視力模糊（顱內壓上升徵象）", "sources": ["Y"] },
-      { "id": "neck-stiffness", "text": "突發的頸部僵硬合併嚴重頭痛", "sources": ["Y"] },
-      { "id": "spinal-trauma", "text": "頭部外傷、脊椎脊髓外傷", "sources": ["Y", "N"] },
-      { "id": "hematemesis", "text": "吐血", "sources": ["N", "Y"] },
-      { "id": "life-threatening-other", "text": "其他經醫師認定有危及生命之虞的狀況", "sources": ["V"] },
+      {
+        "id": "shock",
+        "text": "休克、意識喪失",
+        "sources": [
+          "V"
+        ]
+      },
+      {
+        "id": "cardiopulmonary-failure",
+        "text": "急性心肺功能衰竭",
+        "sources": [
+          "V"
+        ]
+      },
+      {
+        "id": "altered-consciousness",
+        "text": "意識障礙、昏迷、胡言亂語",
+        "sources": [
+          "V",
+          "Y"
+        ]
+      },
+      {
+        "id": "sudden-stroke-signs",
+        "text": "突發的半身不遂、口齒不清、臉部歪斜、單側肢體無力",
+        "sources": [
+          "V",
+          "Y"
+        ]
+      },
+      {
+        "id": "massive-bleeding",
+        "text": "大量出血、無法止血的傷口",
+        "sources": [
+          "V"
+        ]
+      },
+      {
+        "id": "acute-poisoning",
+        "text": "急性中毒、誤食藥物或化學物質",
+        "sources": [
+          "V",
+          "N"
+        ]
+      },
+      {
+        "id": "seizure",
+        "text": "痙攣、抽搐不止",
+        "sources": [
+          "V"
+        ]
+      },
+      {
+        "id": "persistent-high-fever",
+        "text": "持續高燒不退",
+        "sources": [
+          "V"
+        ]
+      },
+      {
+        "id": "acute-abdomen",
+        "text": "劇烈腹痛、腹部急症（闌尾炎、消化道穿孔、腸阻塞等）",
+        "sources": [
+          "V"
+        ]
+      },
+      {
+        "id": "urinary-retention",
+        "text": "超過二十四小時完全無法排尿",
+        "sources": [
+          "V"
+        ]
+      },
+      {
+        "id": "severe-trauma",
+        "text": "嚴重車禍或重大外傷",
+        "sources": [
+          "V"
+        ]
+      },
+      {
+        "id": "burn-electric",
+        "text": "燒燙傷、觸電",
+        "sources": [
+          "V"
+        ]
+      },
+      {
+        "id": "foreign-body",
+        "text": "呼吸道、眼、耳、鼻、咽喉異物",
+        "sources": [
+          "V"
+        ],
+        "note": "原文為「呼吸道、眼、耳、鼻、喉內異物」，爬蟲版本曾誤拆為五個獨立條目，導致「眼」單獨對應到急診。"
+      },
+      {
+        "id": "obstetric-bleeding",
+        "text": "流產、陰道大量出血",
+        "sources": [
+          "V"
+        ]
+      },
+      {
+        "id": "notifiable-infection",
+        "text": "須立即隔離的流行性傳染病",
+        "sources": [
+          "V"
+        ]
+      },
+      {
+        "id": "dyspnea",
+        "text": "呼吸困難、喘不過氣",
+        "sources": [
+          "V"
+        ]
+      },
+      {
+        "id": "thunderclap-headache",
+        "text": "突發的劇烈頭痛",
+        "sources": [
+          "V",
+          "Y"
+        ]
+      },
+      {
+        "id": "raised-icp",
+        "text": "頭痛合併噴射性嘔吐與視力模糊（顱內壓上升徵象）",
+        "sources": [
+          "Y"
+        ]
+      },
+      {
+        "id": "neck-stiffness",
+        "text": "突發的頸部僵硬合併嚴重頭痛",
+        "sources": [
+          "Y"
+        ]
+      },
+      {
+        "id": "spinal-trauma",
+        "text": "頭部外傷、脊椎脊髓外傷",
+        "sources": [
+          "Y",
+          "N"
+        ]
+      },
+      {
+        "id": "hematemesis",
+        "text": "吐血",
+        "sources": [
+          "N",
+          "Y"
+        ]
+      },
+      {
+        "id": "life-threatening-other",
+        "text": "其他經醫師認定有危及生命之虞的狀況",
+        "sources": [
+          "V"
+        ]
+      },
       {
         "id": "suicide-risk",
         "text": "自殺意念、自傷行為，或表達活不下去、不想再撐下去",
-        "sources": ["N"],
+        "sources": [
+          "N"
+        ],
         "action": "crisis",
         "decided_at": "2026-08-27",
         "hotlines": [
-          { "name": "張老師專線", "number": "1980" },
-          { "name": "衛生福利部安心專線", "number": "1925" },
-          { "name": "生命線", "number": "1995" }
+          {
+            "name": "張老師專線",
+            "number": "1980"
+          },
+          {
+            "name": "衛生福利部安心專線",
+            "number": "1925"
+          },
+          {
+            "name": "生命線",
+            "number": "1995"
+          }
         ],
         "note": "原列於精神科的一般症狀條目，2026-08-27 定案升級為 red_flag。命中時 SHALL 提供專線並以支持性語氣回應，SHALL NOT 僅回覆「建議掛精神科」。此條與其他紅旗不同，action 為 crisis 而非 emergency，因此 SHALL NOT 套用急診醫學科的預設導向。"
       }
     ]
   },
-
   "departments": [
     {
       "canonical": "內科",
       "func_code": "02",
       "db_facility_count": 2123,
       "raw": {
-        "V": ["一般內科", "胃腸科（含肝膽）", "腎臟病科"],
-        "N": ["一般內科", "胃腸肝膽內科", "感染科", "胸腔內科", "血液科", "新陳代謝科", "風濕免疫科", "腎臟科", "心臟血管內科", "毒物科", "腫瘤內科"],
-        "Y": ["一般內科", "胃腸肝膽科", "感染科", "胸腔內科", "血液科", "新陳代謝內分泌科", "免疫風濕科", "腎臟內科", "心臟內科", "腫瘤醫學部"]
+        "V": [
+          "一般內科",
+          "胃腸科（含肝膽）",
+          "腎臟病科"
+        ],
+        "N": [
+          "一般內科",
+          "胃腸肝膽內科",
+          "感染科",
+          "胸腔內科",
+          "血液科",
+          "新陳代謝科",
+          "風濕免疫科",
+          "腎臟科",
+          "心臟血管內科",
+          "毒物科",
+          "腫瘤內科"
+        ],
+        "Y": [
+          "一般內科",
+          "胃腸肝膽科",
+          "感染科",
+          "胸腔內科",
+          "血液科",
+          "新陳代謝內分泌科",
+          "免疫風濕科",
+          "腎臟內科",
+          "心臟內科",
+          "腫瘤醫學部"
+        ]
       },
       "symptoms": [
-        { "term": "腹痛", "kind": "symptom", "subgroup": "胃腸肝膽", "sources": ["N", "Y"] },
-        { "term": "腹脹", "kind": "symptom", "subgroup": "胃腸肝膽", "sources": ["V", "N", "Y"] },
-        { "term": "腹瀉", "kind": "symptom", "subgroup": "胃腸肝膽", "sources": ["V", "N"] },
-        { "term": "腹鳴", "kind": "symptom", "subgroup": "胃腸肝膽", "sources": ["V"] },
-        { "term": "便秘", "kind": "symptom", "subgroup": "胃腸肝膽", "sources": ["V"] },
-        { "term": "打嗝", "kind": "symptom", "subgroup": "胃腸肝膽", "sources": ["V"], "note": "來源原文為錯字「打曀」" },
-        { "term": "食慾不振", "kind": "symptom", "subgroup": "胃腸肝膽", "sources": ["V", "N", "Y"] },
-        { "term": "胃酸逆流", "kind": "symptom", "subgroup": "胃腸肝膽", "sources": ["V", "N", "Y"] },
-        { "term": "黑便", "kind": "symptom", "subgroup": "胃腸肝膽", "sources": ["V", "N", "Y"] },
-        { "term": "血便", "kind": "symptom", "subgroup": "胃腸肝膽", "sources": ["Y"] },
-        { "term": "吐血", "kind": "symptom", "subgroup": "胃腸肝膽", "sources": ["N", "Y"], "note": "同時列於 red_flags" },
-        { "term": "吞嚥困難", "kind": "symptom", "subgroup": "胃腸肝膽", "sources": ["Y"], "note": "來源原文為錯字「吞嚥因難」" },
-        { "term": "上吐下瀉", "kind": "symptom", "subgroup": "胃腸肝膽", "sources": ["Y"] },
-        { "term": "皮膚泛黃", "kind": "symptom", "subgroup": "胃腸肝膽", "sources": ["V", "Y"] },
-        { "term": "肝腫大", "kind": "symptom", "subgroup": "胃腸肝膽", "sources": ["V"] },
-        { "term": "肝功能指數異常", "kind": "screening", "subgroup": "胃腸肝膽", "sources": ["N", "Y"] },
-        { "term": "肝膽結石", "kind": "disease", "subgroup": "胃腸肝膽", "sources": ["N", "Y"] },
-        { "term": "胃潰瘍", "kind": "disease", "subgroup": "胃腸肝膽", "sources": ["N", "Y"] },
-        { "term": "B型肝炎", "kind": "disease", "subgroup": "胃腸肝膽", "sources": ["N", "Y"] },
-        { "term": "C型肝炎", "kind": "disease", "subgroup": "胃腸肝膽", "sources": ["Y"] },
-        { "term": "腸胃炎", "kind": "disease", "subgroup": "胃腸肝膽", "sources": ["Y"] },
-        { "term": "大腸癌篩檢", "kind": "screening", "subgroup": "胃腸肝膽", "sources": ["Y"] },
-
-        { "term": "咳嗽", "kind": "symptom", "subgroup": "胸腔", "sources": ["N", "Y"] },
-        { "term": "咳血", "kind": "symptom", "subgroup": "胸腔", "sources": ["N", "Y"] },
-        { "term": "胸悶", "kind": "symptom", "subgroup": "胸腔／心臟", "sources": ["Y"] },
-        { "term": "胸痛", "kind": "symptom", "subgroup": "胸腔／心臟", "sources": ["Y"] },
-        { "term": "氣喘", "kind": "disease", "subgroup": "胸腔", "sources": ["N", "Y"] },
-        { "term": "肺炎", "kind": "disease", "subgroup": "胸腔", "sources": ["N", "Y"] },
-        { "term": "支氣管炎", "kind": "disease", "subgroup": "胸腔", "sources": ["N", "Y"] },
-        { "term": "肺結核", "kind": "disease", "subgroup": "胸腔／感染", "sources": ["N", "Y"] },
-        { "term": "上呼吸道感染", "kind": "disease", "subgroup": "胸腔／感染", "sources": ["N", "Y"] },
-
-        { "term": "發燒", "kind": "symptom", "subgroup": "感染", "sources": ["N", "Y"] },
-        { "term": "不明原因發燒", "kind": "symptom", "subgroup": "感染", "sources": ["N", "Y"] },
-        { "term": "感冒", "kind": "disease", "subgroup": "感染", "sources": ["N", "Y"] },
-        { "term": "泌尿道感染", "kind": "disease", "subgroup": "感染／腎臟", "sources": ["N", "Y"] },
-        { "term": "蜂窩性組織炎", "kind": "disease", "subgroup": "感染", "sources": ["Y"] },
-        { "term": "性病", "kind": "disease", "subgroup": "感染", "sources": ["N", "Y"] },
-
-        { "term": "血尿", "kind": "symptom", "subgroup": "腎臟", "sources": ["V", "N", "Y"] },
-        { "term": "蛋白尿", "kind": "symptom", "subgroup": "腎臟", "sources": ["V", "N", "Y"] },
-        { "term": "水腫", "kind": "symptom", "subgroup": "腎臟", "sources": ["V", "N", "Y"] },
-        { "term": "尿量減少", "kind": "symptom", "subgroup": "腎臟", "sources": ["V", "Y"] },
-        { "term": "多尿", "kind": "symptom", "subgroup": "腎臟", "sources": ["V"] },
-        { "term": "排尿疼痛", "kind": "symptom", "subgroup": "腎臟", "sources": ["Y"] },
-        { "term": "腰痛", "kind": "symptom", "subgroup": "腎臟", "sources": ["V"], "note": "腰痛亦見於骨科與復健科，屬跨科症狀" },
-        { "term": "腎功能不良", "kind": "disease", "subgroup": "腎臟", "sources": ["V", "Y"] },
-        { "term": "尿毒症", "kind": "disease", "subgroup": "腎臟", "sources": ["V", "N"] },
-        { "term": "腎結石", "kind": "disease", "subgroup": "腎臟", "sources": ["N"] },
-        { "term": "電解質異常", "kind": "screening", "subgroup": "腎臟", "sources": ["V", "Y"] },
-
-        { "term": "高血壓", "kind": "disease", "subgroup": "心臟／腎臟", "sources": ["V", "N", "Y"] },
-        { "term": "心悸", "kind": "symptom", "subgroup": "心臟", "sources": ["Y"] },
-        { "term": "心律不整", "kind": "disease", "subgroup": "心臟", "sources": ["N", "Y"] },
-        { "term": "心絞痛", "kind": "symptom", "subgroup": "心臟", "sources": ["N"] },
-        { "term": "心臟衰竭", "kind": "disease", "subgroup": "心臟", "sources": ["V", "N", "Y"] },
-        { "term": "腳腫", "kind": "symptom", "subgroup": "心臟", "sources": ["Y"] },
-        { "term": "間歇跛行", "kind": "symptom", "subgroup": "心臟", "sources": ["Y"] },
-
-        { "term": "糖尿病", "kind": "disease", "subgroup": "新陳代謝內分泌", "sources": ["V", "N", "Y"] },
-        { "term": "高血脂", "kind": "disease", "subgroup": "新陳代謝內分泌", "sources": ["N", "Y"] },
-        { "term": "甲狀腺疾病", "kind": "disease", "subgroup": "新陳代謝內分泌", "sources": ["N", "Y"] },
-        { "term": "肥胖", "kind": "disease", "subgroup": "新陳代謝內分泌", "sources": ["N", "Y"] },
-        { "term": "骨質疏鬆症", "kind": "disease", "subgroup": "新陳代謝內分泌", "sources": ["Y"] },
-
-        { "term": "關節炎", "kind": "disease", "subgroup": "免疫風濕", "sources": ["N", "Y"] },
-        { "term": "痛風", "kind": "disease", "subgroup": "免疫風濕", "sources": ["N", "Y"] },
-        { "term": "僵直性脊椎炎", "kind": "disease", "subgroup": "免疫風濕", "sources": ["N", "Y"] },
-        { "term": "紅斑性狼瘡", "kind": "disease", "subgroup": "免疫風濕", "sources": ["N", "Y"] },
-        { "term": "類風濕性關節炎", "kind": "disease", "subgroup": "免疫風濕", "sources": ["N", "Y"] },
-        { "term": "乾燥症", "kind": "disease", "subgroup": "免疫風濕", "sources": ["Y"] },
-        { "term": "蕁麻疹", "kind": "symptom", "subgroup": "免疫風濕", "sources": ["N", "Y"], "note": "亦見於皮膚科與兒科" },
-
-        { "term": "貧血", "kind": "disease", "subgroup": "血液", "sources": ["N", "Y"] },
-        { "term": "淋巴結腫大", "kind": "symptom", "subgroup": "血液", "sources": ["Y"] },
-        { "term": "白血球異常", "kind": "screening", "subgroup": "血液", "sources": ["Y"] },
-        { "term": "血小板異常", "kind": "screening", "subgroup": "血液", "sources": ["Y"] },
-        { "term": "凝血功能異常", "kind": "screening", "subgroup": "血液", "sources": ["Y"] },
-        { "term": "癌症診療與追蹤", "kind": "service", "subgroup": "腫瘤", "sources": ["N", "Y"] },
-
-        { "term": "疲倦", "kind": "symptom", "subgroup": "一般內科", "sources": ["V"] },
-        { "term": "全身無力", "kind": "symptom", "subgroup": "一般內科", "sources": ["V"] },
-        { "term": "體重不明原因減輕", "kind": "symptom", "subgroup": "一般內科", "sources": ["V", "Y"] },
-        { "term": "檢驗結果異常追蹤", "kind": "service", "subgroup": "一般內科", "sources": ["V", "N", "Y"] },
-        { "term": "慢性病續方與追蹤", "kind": "service", "subgroup": "一般內科", "sources": ["V"] },
-        { "term": "中毒", "kind": "disease", "subgroup": "毒物", "sources": ["N"], "note": "急性中毒屬 red_flags，此處為慢性或後續追蹤" }
+        {
+          "term": "腹痛",
+          "kind": "symptom",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "腹脹",
+          "kind": "symptom",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "腹瀉",
+          "kind": "symptom",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "V",
+            "N"
+          ]
+        },
+        {
+          "term": "腹鳴",
+          "kind": "symptom",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "便秘",
+          "kind": "symptom",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "打嗝",
+          "kind": "symptom",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "V"
+          ],
+          "note": "來源原文為錯字「打曀」"
+        },
+        {
+          "term": "食慾不振",
+          "kind": "symptom",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "胃酸逆流",
+          "kind": "symptom",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "黑便",
+          "kind": "symptom",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "血便",
+          "kind": "symptom",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "吐血",
+          "kind": "symptom",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "N",
+            "Y"
+          ],
+          "note": "同時列於 red_flags"
+        },
+        {
+          "term": "吞嚥困難",
+          "kind": "symptom",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "Y"
+          ],
+          "note": "來源原文為錯字「吞嚥因難」"
+        },
+        {
+          "term": "上吐下瀉",
+          "kind": "symptom",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "皮膚泛黃",
+          "kind": "symptom",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "V",
+            "Y"
+          ]
+        },
+        {
+          "term": "肝腫大",
+          "kind": "symptom",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "肝功能指數異常",
+          "kind": "screening",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "肝膽結石",
+          "kind": "disease",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "胃潰瘍",
+          "kind": "disease",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "B型肝炎",
+          "kind": "disease",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "C型肝炎",
+          "kind": "disease",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "腸胃炎",
+          "kind": "disease",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "大腸癌篩檢",
+          "kind": "screening",
+          "subgroup": "胃腸肝膽",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "咳嗽",
+          "kind": "symptom",
+          "subgroup": "胸腔",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "咳血",
+          "kind": "symptom",
+          "subgroup": "胸腔",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "胸悶",
+          "kind": "symptom",
+          "subgroup": "胸腔／心臟",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "胸痛",
+          "kind": "symptom",
+          "subgroup": "胸腔／心臟",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "氣喘",
+          "kind": "disease",
+          "subgroup": "胸腔",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "肺炎",
+          "kind": "disease",
+          "subgroup": "胸腔",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "支氣管炎",
+          "kind": "disease",
+          "subgroup": "胸腔",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "肺結核",
+          "kind": "disease",
+          "subgroup": "胸腔／感染",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "上呼吸道感染",
+          "kind": "disease",
+          "subgroup": "胸腔／感染",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "發燒",
+          "kind": "symptom",
+          "subgroup": "感染",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "不明原因發燒",
+          "kind": "symptom",
+          "subgroup": "感染",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "感冒",
+          "kind": "disease",
+          "subgroup": "感染",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "泌尿道感染",
+          "kind": "disease",
+          "subgroup": "感染／腎臟",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "蜂窩性組織炎",
+          "kind": "disease",
+          "subgroup": "感染",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "性病",
+          "kind": "disease",
+          "subgroup": "感染",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "血尿",
+          "kind": "symptom",
+          "subgroup": "腎臟",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "蛋白尿",
+          "kind": "symptom",
+          "subgroup": "腎臟",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "水腫",
+          "kind": "symptom",
+          "subgroup": "腎臟",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "尿量減少",
+          "kind": "symptom",
+          "subgroup": "腎臟",
+          "sources": [
+            "V",
+            "Y"
+          ]
+        },
+        {
+          "term": "多尿",
+          "kind": "symptom",
+          "subgroup": "腎臟",
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "排尿疼痛",
+          "kind": "symptom",
+          "subgroup": "腎臟",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "腰痛",
+          "kind": "symptom",
+          "subgroup": "腎臟",
+          "sources": [
+            "V"
+          ],
+          "note": "腰痛亦見於骨科與復健科，屬跨科症狀"
+        },
+        {
+          "term": "腎功能不良",
+          "kind": "disease",
+          "subgroup": "腎臟",
+          "sources": [
+            "V",
+            "Y"
+          ]
+        },
+        {
+          "term": "尿毒症",
+          "kind": "disease",
+          "subgroup": "腎臟",
+          "sources": [
+            "V",
+            "N"
+          ]
+        },
+        {
+          "term": "腎結石",
+          "kind": "disease",
+          "subgroup": "腎臟",
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "電解質異常",
+          "kind": "screening",
+          "subgroup": "腎臟",
+          "sources": [
+            "V",
+            "Y"
+          ]
+        },
+        {
+          "term": "高血壓",
+          "kind": "disease",
+          "subgroup": "心臟／腎臟",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "心悸",
+          "kind": "symptom",
+          "subgroup": "心臟",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "心律不整",
+          "kind": "disease",
+          "subgroup": "心臟",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "心絞痛",
+          "kind": "symptom",
+          "subgroup": "心臟",
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "心臟衰竭",
+          "kind": "disease",
+          "subgroup": "心臟",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "腳腫",
+          "kind": "symptom",
+          "subgroup": "心臟",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "間歇跛行",
+          "kind": "symptom",
+          "subgroup": "心臟",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "糖尿病",
+          "kind": "disease",
+          "subgroup": "新陳代謝內分泌",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "高血脂",
+          "kind": "disease",
+          "subgroup": "新陳代謝內分泌",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "甲狀腺疾病",
+          "kind": "disease",
+          "subgroup": "新陳代謝內分泌",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "肥胖",
+          "kind": "disease",
+          "subgroup": "新陳代謝內分泌",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "骨質疏鬆症",
+          "kind": "disease",
+          "subgroup": "新陳代謝內分泌",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "關節炎",
+          "kind": "disease",
+          "subgroup": "免疫風濕",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "痛風",
+          "kind": "disease",
+          "subgroup": "免疫風濕",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "僵直性脊椎炎",
+          "kind": "disease",
+          "subgroup": "免疫風濕",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "紅斑性狼瘡",
+          "kind": "disease",
+          "subgroup": "免疫風濕",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "類風濕性關節炎",
+          "kind": "disease",
+          "subgroup": "免疫風濕",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "乾燥症",
+          "kind": "disease",
+          "subgroup": "免疫風濕",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "蕁麻疹",
+          "kind": "symptom",
+          "subgroup": "免疫風濕",
+          "sources": [
+            "N",
+            "Y"
+          ],
+          "note": "亦見於皮膚科與兒科"
+        },
+        {
+          "term": "貧血",
+          "kind": "disease",
+          "subgroup": "血液",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "淋巴結腫大",
+          "kind": "symptom",
+          "subgroup": "血液",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "白血球異常",
+          "kind": "screening",
+          "subgroup": "血液",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "血小板異常",
+          "kind": "screening",
+          "subgroup": "血液",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "凝血功能異常",
+          "kind": "screening",
+          "subgroup": "血液",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "癌症診療與追蹤",
+          "kind": "service",
+          "subgroup": "腫瘤",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "疲倦",
+          "kind": "symptom",
+          "subgroup": "一般內科",
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "全身無力",
+          "kind": "symptom",
+          "subgroup": "一般內科",
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "體重不明原因減輕",
+          "kind": "symptom",
+          "subgroup": "一般內科",
+          "sources": [
+            "V",
+            "Y"
+          ]
+        },
+        {
+          "term": "檢驗結果異常追蹤",
+          "kind": "service",
+          "subgroup": "一般內科",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "慢性病續方與追蹤",
+          "kind": "service",
+          "subgroup": "一般內科",
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "中毒",
+          "kind": "disease",
+          "subgroup": "毒物",
+          "sources": [
+            "N"
+          ],
+          "note": "急性中毒屬 red_flags，此處為慢性或後續追蹤"
+        },
+        {
+          "term": "痰多",
+          "kind": "symptom",
+          "subgroup": "胸腔",
+          "sources": [],
+          "origin": "project",
+          "note": "本專案補列。三份來源皆無獨立的「痰」條目，但「喉嚨有痰」「一直有痰」是高頻主訴，缺此條目會讓使用者落到保底建議。分列胸腔與耳鼻喉兩科，因為痰的來源可能在下呼吸道或上呼吸道。"
+        }
       ]
     },
-
     {
       "canonical": "外科",
       "func_code": "03",
       "db_facility_count": 876,
       "raw": {
-        "V": ["一般外科"],
-        "N": ["一般外科", "心臟血管外科", "胸腔外科", "大腸直腸肛門外科", "小兒外科", "腎臟移植外科"],
-        "Y": ["普通外科", "心臟外科", "胸腔外科", "消化外科", "小兒外科", "乳房甲狀腺科", "大腸直腸肛門科"]
+        "V": [
+          "一般外科"
+        ],
+        "N": [
+          "一般外科",
+          "心臟血管外科",
+          "胸腔外科",
+          "大腸直腸肛門外科",
+          "小兒外科",
+          "腎臟移植外科"
+        ],
+        "Y": [
+          "普通外科",
+          "心臟外科",
+          "胸腔外科",
+          "消化外科",
+          "小兒外科",
+          "乳房甲狀腺科",
+          "大腸直腸肛門科"
+        ]
       },
       "symptoms": [
-        { "term": "疝氣", "kind": "disease", "subgroup": "一般外科", "sources": ["V", "N", "Y"] },
-        { "term": "痔瘡", "kind": "disease", "subgroup": "大腸直腸肛門", "sources": ["V", "N", "Y"] },
-        { "term": "便血", "kind": "symptom", "subgroup": "大腸直腸肛門", "sources": ["N", "Y"] },
-        { "term": "脫肛", "kind": "symptom", "subgroup": "大腸直腸肛門", "sources": ["N", "Y"] },
-        { "term": "肛門腫痛", "kind": "symptom", "subgroup": "大腸直腸肛門", "sources": ["N", "Y"] },
-        { "term": "大便失禁", "kind": "symptom", "subgroup": "大腸直腸肛門", "sources": ["N", "Y"] },
-        { "term": "大便習慣改變", "kind": "symptom", "subgroup": "大腸直腸肛門", "sources": ["Y"] },
-        { "term": "大便變細", "kind": "symptom", "subgroup": "大腸直腸肛門", "sources": ["Y"] },
-        { "term": "長期便秘", "kind": "symptom", "subgroup": "大腸直腸肛門", "sources": ["N", "Y"] },
-        { "term": "大腸癌", "kind": "disease", "subgroup": "大腸直腸肛門", "sources": ["N", "Y"] },
-        { "term": "乳房硬塊", "kind": "symptom", "subgroup": "乳房甲狀腺", "sources": ["V", "N", "Y"] },
-        { "term": "乳房疼痛", "kind": "symptom", "subgroup": "乳房甲狀腺", "sources": ["Y"] },
-        { "term": "乳癌", "kind": "disease", "subgroup": "乳房甲狀腺", "sources": ["N", "Y"] },
-        { "term": "甲狀腺結節", "kind": "disease", "subgroup": "乳房甲狀腺", "sources": ["N", "Y"] },
-        { "term": "體表腫瘤", "kind": "symptom", "subgroup": "一般外科", "sources": ["V", "Y"] },
-        { "term": "皮下腫塊", "kind": "symptom", "subgroup": "一般外科", "sources": ["Y"] },
-        { "term": "膿瘍", "kind": "disease", "subgroup": "一般外科", "sources": ["V", "Y"] },
-        { "term": "傷口處理與換藥", "kind": "procedure", "subgroup": "一般外科", "sources": ["V", "N", "Y"] },
-        { "term": "裂傷縫合", "kind": "procedure", "subgroup": "一般外科", "sources": ["N", "Y"] },
-        { "term": "拆線", "kind": "procedure", "subgroup": "一般外科", "sources": ["Y"] },
-        { "term": "雞眼", "kind": "disease", "subgroup": "一般外科", "sources": ["Y"], "note": "亦見於皮膚科" },
-        { "term": "甲溝炎", "kind": "disease", "subgroup": "一般外科", "sources": ["Y"] },
-        { "term": "脂肪瘤", "kind": "disease", "subgroup": "一般外科", "sources": ["Y"] },
-        { "term": "膽結石", "kind": "disease", "subgroup": "消化外科", "sources": ["N", "Y"] },
-        { "term": "腸阻塞", "kind": "disease", "subgroup": "消化外科", "sources": ["N"], "note": "急性腸阻塞屬 red_flags" },
-        { "term": "盲腸炎", "kind": "disease", "subgroup": "消化外科", "sources": ["N", "Y"], "note": "急性闌尾炎屬 red_flags" },
-        { "term": "胃食道逆流", "kind": "disease", "subgroup": "消化外科", "sources": ["Y"] },
-        { "term": "靜脈曲張", "kind": "disease", "subgroup": "心臟血管外科", "sources": ["N", "Y"] },
-        { "term": "洗腎用動靜脈廔管", "kind": "procedure", "subgroup": "心臟血管外科", "sources": ["N", "Y"] },
-        { "term": "氣胸", "kind": "disease", "subgroup": "胸腔外科", "sources": ["Y"] },
-        { "term": "手汗症", "kind": "disease", "subgroup": "胸腔外科", "sources": ["N", "Y"] },
-        { "term": "狐臭", "kind": "disease", "subgroup": "胸腔外科／整形", "sources": ["N", "Y"], "note": "亦見於皮膚科與整形外科" },
-        { "term": "陰囊水腫", "kind": "disease", "subgroup": "小兒外科", "sources": ["N", "Y"], "note": "亦見於泌尿科" },
-        { "term": "隱睪症", "kind": "disease", "subgroup": "小兒外科", "sources": ["V", "N", "Y"] },
-        { "term": "斜頸", "kind": "disease", "subgroup": "小兒外科", "sources": ["N", "Y"] },
-        { "term": "舌繫帶過緊", "kind": "disease", "subgroup": "小兒外科", "sources": ["Y"] },
-        { "term": "漏斗胸", "kind": "disease", "subgroup": "小兒外科", "sources": ["N", "Y"] }
+        {
+          "term": "疝氣",
+          "kind": "disease",
+          "subgroup": "一般外科",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "痔瘡",
+          "kind": "disease",
+          "subgroup": "大腸直腸肛門",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "便血",
+          "kind": "symptom",
+          "subgroup": "大腸直腸肛門",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "脫肛",
+          "kind": "symptom",
+          "subgroup": "大腸直腸肛門",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "肛門腫痛",
+          "kind": "symptom",
+          "subgroup": "大腸直腸肛門",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "大便失禁",
+          "kind": "symptom",
+          "subgroup": "大腸直腸肛門",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "大便習慣改變",
+          "kind": "symptom",
+          "subgroup": "大腸直腸肛門",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "大便變細",
+          "kind": "symptom",
+          "subgroup": "大腸直腸肛門",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "長期便秘",
+          "kind": "symptom",
+          "subgroup": "大腸直腸肛門",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "大腸癌",
+          "kind": "disease",
+          "subgroup": "大腸直腸肛門",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "乳房硬塊",
+          "kind": "symptom",
+          "subgroup": "乳房甲狀腺",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "乳房疼痛",
+          "kind": "symptom",
+          "subgroup": "乳房甲狀腺",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "乳癌",
+          "kind": "disease",
+          "subgroup": "乳房甲狀腺",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "甲狀腺結節",
+          "kind": "disease",
+          "subgroup": "乳房甲狀腺",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "體表腫瘤",
+          "kind": "symptom",
+          "subgroup": "一般外科",
+          "sources": [
+            "V",
+            "Y"
+          ]
+        },
+        {
+          "term": "皮下腫塊",
+          "kind": "symptom",
+          "subgroup": "一般外科",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "膿瘍",
+          "kind": "disease",
+          "subgroup": "一般外科",
+          "sources": [
+            "V",
+            "Y"
+          ]
+        },
+        {
+          "term": "傷口處理與換藥",
+          "kind": "procedure",
+          "subgroup": "一般外科",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "裂傷縫合",
+          "kind": "procedure",
+          "subgroup": "一般外科",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "拆線",
+          "kind": "procedure",
+          "subgroup": "一般外科",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "雞眼",
+          "kind": "disease",
+          "subgroup": "一般外科",
+          "sources": [
+            "Y"
+          ],
+          "note": "亦見於皮膚科"
+        },
+        {
+          "term": "甲溝炎",
+          "kind": "disease",
+          "subgroup": "一般外科",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "脂肪瘤",
+          "kind": "disease",
+          "subgroup": "一般外科",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "膽結石",
+          "kind": "disease",
+          "subgroup": "消化外科",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "腸阻塞",
+          "kind": "disease",
+          "subgroup": "消化外科",
+          "sources": [
+            "N"
+          ],
+          "note": "急性腸阻塞屬 red_flags"
+        },
+        {
+          "term": "盲腸炎",
+          "kind": "disease",
+          "subgroup": "消化外科",
+          "sources": [
+            "N",
+            "Y"
+          ],
+          "note": "急性闌尾炎屬 red_flags"
+        },
+        {
+          "term": "胃食道逆流",
+          "kind": "disease",
+          "subgroup": "消化外科",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "靜脈曲張",
+          "kind": "disease",
+          "subgroup": "心臟血管外科",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "洗腎用動靜脈廔管",
+          "kind": "procedure",
+          "subgroup": "心臟血管外科",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "氣胸",
+          "kind": "disease",
+          "subgroup": "胸腔外科",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "手汗症",
+          "kind": "disease",
+          "subgroup": "胸腔外科",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "狐臭",
+          "kind": "disease",
+          "subgroup": "胸腔外科／整形",
+          "sources": [
+            "N",
+            "Y"
+          ],
+          "note": "亦見於皮膚科與整形外科"
+        },
+        {
+          "term": "陰囊水腫",
+          "kind": "disease",
+          "subgroup": "小兒外科",
+          "sources": [
+            "N",
+            "Y"
+          ],
+          "note": "亦見於泌尿科"
+        },
+        {
+          "term": "隱睪症",
+          "kind": "disease",
+          "subgroup": "小兒外科",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "斜頸",
+          "kind": "disease",
+          "subgroup": "小兒外科",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "舌繫帶過緊",
+          "kind": "disease",
+          "subgroup": "小兒外科",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "漏斗胸",
+          "kind": "disease",
+          "subgroup": "小兒外科",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        }
       ]
     },
-
     {
       "canonical": "神經科",
       "func_code": "12",
       "db_facility_count": 369,
-      "raw": { "V": ["神經內科"], "N": ["神經科"], "Y": ["神經部"] },
+      "raw": {
+        "V": [
+          "神經內科"
+        ],
+        "N": [
+          "神經科"
+        ],
+        "Y": [
+          "神經部"
+        ]
+      },
       "symptoms": [
-        { "term": "頭痛", "kind": "symptom", "subgroup": null, "sources": ["V", "N", "Y"], "note": "突發劇烈頭痛屬 red_flags；亦見於內科、兒科" },
-        { "term": "頭暈", "kind": "symptom", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "暈眩", "kind": "symptom", "subgroup": null, "sources": ["N", "Y"], "note": "亦見於耳鼻喉科" },
-        { "term": "中風", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"], "note": "急性發作屬 red_flags" },
-        { "term": "半身不遂", "kind": "symptom", "subgroup": null, "sources": ["V", "N"], "note": "突發者屬 red_flags" },
-        { "term": "肢體無力", "kind": "symptom", "subgroup": null, "sources": ["V", "N"] },
-        { "term": "四肢麻木", "kind": "symptom", "subgroup": null, "sources": ["V", "N"] },
-        { "term": "手腳顫抖", "kind": "symptom", "subgroup": null, "sources": ["V", "N"] },
-        { "term": "肌肉抽搐", "kind": "symptom", "subgroup": null, "sources": ["N"] },
-        { "term": "肌肉萎縮", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "步態不穩", "kind": "symptom", "subgroup": null, "sources": ["V", "N"], "note": "亦見於骨科" },
-        { "term": "僵硬", "kind": "symptom", "subgroup": null, "sources": ["V"], "note": "亦見於骨科" },
-        { "term": "行動遲緩", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "巴金森氏症", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "癲癇", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"], "note": "發作中屬 red_flags" },
-        { "term": "失智症", "kind": "disease", "subgroup": null, "sources": ["N", "Y"], "note": "亦見於精神科與家醫科" },
-        { "term": "語言障礙", "kind": "symptom", "subgroup": null, "sources": ["V", "N"], "note": "亦見於復健科" },
-        { "term": "失語症", "kind": "symptom", "subgroup": null, "sources": ["N"] },
-        { "term": "複視", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "眼皮下垂", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "眼球運動障礙", "kind": "symptom", "subgroup": null, "sources": ["V", "N"] },
-        { "term": "顏面神經麻痺", "kind": "symptom", "subgroup": null, "sources": ["N"], "note": "亦見於耳鼻喉科" },
-        { "term": "周邊神經病變", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "睡眠障礙", "kind": "symptom", "subgroup": null, "sources": ["Y"], "note": "亦見於精神科" },
-        { "term": "腦炎", "kind": "disease", "subgroup": null, "sources": ["N"] },
-        { "term": "腦膜炎", "kind": "disease", "subgroup": null, "sources": ["N"] },
-        { "term": "肌少症", "kind": "disease", "subgroup": null, "sources": ["Y"], "note": "亦見於家醫科高齡醫學" }
+        {
+          "term": "頭痛",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ],
+          "note": "突發劇烈頭痛屬 red_flags；亦見於內科、兒科"
+        },
+        {
+          "term": "頭暈",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "暈眩",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ],
+          "note": "亦見於耳鼻喉科"
+        },
+        {
+          "term": "中風",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ],
+          "note": "急性發作屬 red_flags"
+        },
+        {
+          "term": "半身不遂",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ],
+          "note": "突發者屬 red_flags"
+        },
+        {
+          "term": "肢體無力",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ]
+        },
+        {
+          "term": "四肢麻木",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ]
+        },
+        {
+          "term": "手腳顫抖",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ]
+        },
+        {
+          "term": "肌肉抽搐",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "肌肉萎縮",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "步態不穩",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ],
+          "note": "亦見於骨科"
+        },
+        {
+          "term": "僵硬",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ],
+          "note": "亦見於骨科"
+        },
+        {
+          "term": "行動遲緩",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "巴金森氏症",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "癲癇",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ],
+          "note": "發作中屬 red_flags"
+        },
+        {
+          "term": "失智症",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ],
+          "note": "亦見於精神科與家醫科"
+        },
+        {
+          "term": "語言障礙",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ],
+          "note": "亦見於復健科"
+        },
+        {
+          "term": "失語症",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "複視",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "眼皮下垂",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "眼球運動障礙",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ]
+        },
+        {
+          "term": "顏面神經麻痺",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ],
+          "note": "亦見於耳鼻喉科"
+        },
+        {
+          "term": "周邊神經病變",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "睡眠障礙",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ],
+          "note": "亦見於精神科"
+        },
+        {
+          "term": "腦炎",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "腦膜炎",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "肌少症",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ],
+          "note": "亦見於家醫科高齡醫學"
+        }
       ]
     },
-
     {
       "canonical": "神經外科",
       "func_code": "07",
       "db_facility_count": 168,
-      "raw": { "V": [], "N": ["腦神經外科"], "Y": ["神經外科"] },
+      "raw": {
+        "V": [],
+        "N": [
+          "腦神經外科"
+        ],
+        "Y": [
+          "神經外科"
+        ]
+      },
       "symptoms": [
-        { "term": "腦瘤", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "顱內出血", "kind": "disease", "subgroup": null, "sources": ["N"], "note": "急性發作屬 red_flags" },
-        { "term": "水腦症", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "頭部外傷", "kind": "disease", "subgroup": null, "sources": ["N", "Y"], "note": "同時列於 red_flags" },
-        { "term": "脊椎脊髓外傷", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "椎間盤突出", "kind": "disease", "subgroup": null, "sources": ["Y"], "note": "亦見於骨科" },
-        { "term": "三叉神經痛", "kind": "symptom", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "坐骨神經痛", "kind": "symptom", "subgroup": null, "sources": ["N", "Y"], "note": "跨骨科、神經科、復健科、神經外科四科" },
-        { "term": "下背痛", "kind": "symptom", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "顏面抽搐", "kind": "symptom", "subgroup": null, "sources": ["N"] },
-        { "term": "腕隧道症候群", "kind": "disease", "subgroup": null, "sources": ["Y"], "note": "亦見於骨科與職業醫學科" },
-        { "term": "手掌多汗症", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] }
+        {
+          "term": "腦瘤",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "顱內出血",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ],
+          "note": "急性發作屬 red_flags"
+        },
+        {
+          "term": "水腦症",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "頭部外傷",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ],
+          "note": "同時列於 red_flags"
+        },
+        {
+          "term": "脊椎脊髓外傷",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "椎間盤突出",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ],
+          "note": "亦見於骨科"
+        },
+        {
+          "term": "三叉神經痛",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "坐骨神經痛",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ],
+          "note": "跨骨科、神經科、復健科、神經外科四科"
+        },
+        {
+          "term": "下背痛",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "顏面抽搐",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "腕隧道症候群",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ],
+          "note": "亦見於骨科與職業醫學科"
+        },
+        {
+          "term": "手掌多汗症",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        }
       ]
     },
-
     {
       "canonical": "骨科",
       "func_code": "06",
       "db_facility_count": 755,
-      "raw": { "V": ["骨科"], "N": ["骨科"], "Y": ["骨科部"] },
+      "raw": {
+        "V": [
+          "骨科"
+        ],
+        "N": [
+          "骨科"
+        ],
+        "Y": [
+          "骨科部"
+        ]
+      },
       "symptoms": [
-        { "term": "骨折", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "脫臼", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "扭傷", "kind": "disease", "subgroup": null, "sources": ["V"] },
-        { "term": "關節腫痛", "kind": "symptom", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "關節退化", "kind": "disease", "subgroup": null, "sources": ["Y"], "note": "亦見於復健科" },
-        { "term": "腰酸背痛", "kind": "symptom", "subgroup": null, "sources": ["V", "Y"], "note": "亦見於家醫科與復健科" },
-        { "term": "肩頸酸痛", "kind": "symptom", "subgroup": null, "sources": ["V"], "note": "亦見於復健科" },
-        { "term": "背部疼痛", "kind": "symptom", "subgroup": null, "sources": ["V", "Y"] },
-        { "term": "四肢酸麻", "kind": "symptom", "subgroup": null, "sources": ["Y"] },
-        { "term": "骨刺", "kind": "disease", "subgroup": null, "sources": ["V", "Y"] },
-        { "term": "脊椎退化狹窄", "kind": "disease", "subgroup": null, "sources": ["V"] },
-        { "term": "脊椎病變", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "運動傷害", "kind": "disease", "subgroup": null, "sources": ["V", "N"], "note": "亦見於復健科與中醫" },
-        { "term": "骨腫瘤", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "骨髓炎", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "扁平足", "kind": "disease", "subgroup": null, "sources": ["V"], "note": "亦見於復健科" },
-        { "term": "長短腿", "kind": "disease", "subgroup": null, "sources": ["V"] },
-        { "term": "腳趾畸形", "kind": "disease", "subgroup": null, "sources": ["V"] },
-        { "term": "兒童骨關節異常", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "手部外科", "kind": "service", "subgroup": null, "sources": ["N", "Y"] }
+        {
+          "term": "骨折",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "脫臼",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "扭傷",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "關節腫痛",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "關節退化",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ],
+          "note": "亦見於復健科"
+        },
+        {
+          "term": "腰酸背痛",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "Y"
+          ],
+          "note": "亦見於家醫科與復健科"
+        },
+        {
+          "term": "肩頸酸痛",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ],
+          "note": "亦見於復健科"
+        },
+        {
+          "term": "背部疼痛",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "Y"
+          ]
+        },
+        {
+          "term": "四肢酸麻",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "骨刺",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "Y"
+          ]
+        },
+        {
+          "term": "脊椎退化狹窄",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "脊椎病變",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "運動傷害",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ],
+          "note": "亦見於復健科與中醫"
+        },
+        {
+          "term": "骨腫瘤",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "骨髓炎",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "扁平足",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ],
+          "note": "亦見於復健科"
+        },
+        {
+          "term": "長短腿",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "腳趾畸形",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "兒童骨關節異常",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "手部外科",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        }
       ]
     },
-
     {
       "canonical": "泌尿科",
       "func_code": "08",
       "db_facility_count": 339,
-      "raw": { "V": ["泌尿外科"], "N": ["泌尿科"], "Y": ["泌尿部"] },
+      "raw": {
+        "V": [
+          "泌尿外科"
+        ],
+        "N": [
+          "泌尿科"
+        ],
+        "Y": [
+          "泌尿部"
+        ]
+      },
       "symptoms": [
-        { "term": "頻尿", "kind": "symptom", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "小便困難", "kind": "symptom", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "排尿障礙", "kind": "symptom", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "尿失禁", "kind": "symptom", "subgroup": null, "sources": ["V", "N"], "note": "女性尿失禁亦見於婦產科" },
-        { "term": "血尿", "kind": "symptom", "subgroup": null, "sources": ["V", "N"], "note": "亦見於內科腎臟方向" },
-        { "term": "泌尿道結石", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "尿路感染", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "膀胱炎", "kind": "disease", "subgroup": null, "sources": ["V"] },
-        { "term": "攝護腺肥大", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "陰囊腫大", "kind": "symptom", "subgroup": null, "sources": ["V", "N"] },
-        { "term": "包皮過長", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "男性不孕症", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "男性性功能障礙", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "泌尿道腫瘤", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "尿道下裂", "kind": "disease", "subgroup": null, "sources": ["V", "N"] },
-        { "term": "男性結紮", "kind": "procedure", "subgroup": null, "sources": ["V"] }
+        {
+          "term": "頻尿",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "小便困難",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "排尿障礙",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "尿失禁",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ],
+          "note": "女性尿失禁亦見於婦產科"
+        },
+        {
+          "term": "血尿",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ],
+          "note": "亦見於內科腎臟方向"
+        },
+        {
+          "term": "泌尿道結石",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "尿路感染",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "膀胱炎",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "攝護腺肥大",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "陰囊腫大",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ]
+        },
+        {
+          "term": "包皮過長",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "男性不孕症",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "男性性功能障礙",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "泌尿道腫瘤",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "尿道下裂",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ]
+        },
+        {
+          "term": "男性結紮",
+          "kind": "procedure",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        }
       ]
     },
-
     {
       "canonical": "婦產科",
       "func_code": "05",
       "db_facility_count": 885,
-      "raw": { "V": ["婦科", "產科"], "N": ["婦產科"], "Y": ["婦產部"] },
+      "raw": {
+        "V": [
+          "婦科",
+          "產科"
+        ],
+        "N": [
+          "婦產科"
+        ],
+        "Y": [
+          "婦產部"
+        ]
+      },
       "symptoms": [
-        { "term": "陰道出血", "kind": "symptom", "subgroup": "婦科", "sources": ["V", "N", "Y"], "note": "大量出血或疑似流產屬 red_flags。爬蟲版本曾誤將本條標為 emergency" },
-        { "term": "白帶", "kind": "symptom", "subgroup": "婦科", "sources": ["V", "N"] },
-        { "term": "陰道分泌物異常", "kind": "symptom", "subgroup": "婦科", "sources": ["N"] },
-        { "term": "下腹痛", "kind": "symptom", "subgroup": "婦科", "sources": ["V", "N"], "note": "女性下腹痛跨婦產科與內外科，屬多候選" },
-        { "term": "月經失調", "kind": "symptom", "subgroup": "婦科", "sources": ["N", "Y"] },
-        { "term": "更年期症狀", "kind": "symptom", "subgroup": "婦科", "sources": ["V", "Y"] },
-        { "term": "尿失禁", "kind": "symptom", "subgroup": "婦科", "sources": ["V", "N", "Y"] },
-        { "term": "骨盆腔脫垂", "kind": "disease", "subgroup": "婦科", "sources": ["Y"] },
-        { "term": "婦科腫瘤", "kind": "disease", "subgroup": "婦科", "sources": ["V", "N", "Y"] },
-        { "term": "子宮頸抹片", "kind": "screening", "subgroup": "婦科", "sources": ["N", "Y"] },
-        { "term": "不孕症", "kind": "disease", "subgroup": "生殖", "sources": ["N", "Y"] },
-        { "term": "避孕諮詢", "kind": "service", "subgroup": "生殖", "sources": ["Y"] },
-        { "term": "產前檢查", "kind": "service", "subgroup": "產科", "sources": ["V", "N", "Y"] },
-        { "term": "產後檢查", "kind": "service", "subgroup": "產科", "sources": ["N"] },
-        { "term": "妊娠劇吐", "kind": "symptom", "subgroup": "產科", "sources": ["V"] },
-        { "term": "高危險妊娠", "kind": "service", "subgroup": "產科", "sources": ["Y"] },
-        { "term": "胎兒超音波", "kind": "screening", "subgroup": "產科", "sources": ["V", "Y"] },
-        { "term": "羊膜穿刺", "kind": "procedure", "subgroup": "產科", "sources": ["Y"] }
+        {
+          "term": "陰道出血",
+          "kind": "symptom",
+          "subgroup": "婦科",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ],
+          "note": "大量出血或疑似流產屬 red_flags。爬蟲版本曾誤將本條標為 emergency"
+        },
+        {
+          "term": "白帶",
+          "kind": "symptom",
+          "subgroup": "婦科",
+          "sources": [
+            "V",
+            "N"
+          ]
+        },
+        {
+          "term": "陰道分泌物異常",
+          "kind": "symptom",
+          "subgroup": "婦科",
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "下腹痛",
+          "kind": "symptom",
+          "subgroup": "婦科",
+          "sources": [
+            "V",
+            "N"
+          ],
+          "note": "女性下腹痛跨婦產科與內外科，屬多候選"
+        },
+        {
+          "term": "月經失調",
+          "kind": "symptom",
+          "subgroup": "婦科",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "更年期症狀",
+          "kind": "symptom",
+          "subgroup": "婦科",
+          "sources": [
+            "V",
+            "Y"
+          ]
+        },
+        {
+          "term": "尿失禁",
+          "kind": "symptom",
+          "subgroup": "婦科",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "骨盆腔脫垂",
+          "kind": "disease",
+          "subgroup": "婦科",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "婦科腫瘤",
+          "kind": "disease",
+          "subgroup": "婦科",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "子宮頸抹片",
+          "kind": "screening",
+          "subgroup": "婦科",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "不孕症",
+          "kind": "disease",
+          "subgroup": "生殖",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "避孕諮詢",
+          "kind": "service",
+          "subgroup": "生殖",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "產前檢查",
+          "kind": "service",
+          "subgroup": "產科",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "產後檢查",
+          "kind": "service",
+          "subgroup": "產科",
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "妊娠劇吐",
+          "kind": "symptom",
+          "subgroup": "產科",
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "高危險妊娠",
+          "kind": "service",
+          "subgroup": "產科",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "胎兒超音波",
+          "kind": "screening",
+          "subgroup": "產科",
+          "sources": [
+            "V",
+            "Y"
+          ]
+        },
+        {
+          "term": "羊膜穿刺",
+          "kind": "procedure",
+          "subgroup": "產科",
+          "sources": [
+            "Y"
+          ]
+        }
       ]
     },
-
     {
       "canonical": "兒科",
       "func_code": "04",
       "db_facility_count": 1586,
-      "raw": { "V": ["15歲以下兒童"], "N": ["小兒科"], "Y": ["小兒部"] },
+      "raw": {
+        "V": [
+          "15歲以下兒童"
+        ],
+        "N": [
+          "小兒科"
+        ],
+        "Y": [
+          "小兒部"
+        ]
+      },
       "age_limit": "15歲以下",
       "age_limit_decided_at": "2026-08-27",
       "age_note": "三家來源界線不一致（玉里 15 歲以下、成大 18 歲(含)以下、台大雲林 18 歲以下），定案採「15 歲以下」。滿 15 歲者的相同症狀 SHALL 改對應成人科別；此界線為本專案自訂，SHALL NOT 宣稱為某醫院的規定。",
       "symptoms": [
-        { "term": "發燒", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "咳嗽", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "慢性咳嗽", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "腹痛", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "腹瀉", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "嘔吐", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "食慾不佳", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "頭痛", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "氣喘", "kind": "disease", "subgroup": null, "sources": ["V", "N"] },
-        { "term": "蕁麻疹", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "鼻炎", "kind": "disease", "subgroup": null, "sources": ["V"] },
-        { "term": "血尿", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "蛋白尿", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "頻尿", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "尿床", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "生長發育遲緩", "kind": "symptom", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "疫苗預防注射", "kind": "service", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "兒童定期健康檢查", "kind": "service", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "新生兒照護", "kind": "service", "subgroup": null, "sources": ["N", "Y"] }
+        {
+          "term": "發燒",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "咳嗽",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "慢性咳嗽",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "腹痛",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "腹瀉",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "嘔吐",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "食慾不佳",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "頭痛",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "氣喘",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ]
+        },
+        {
+          "term": "蕁麻疹",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "鼻炎",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "血尿",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "蛋白尿",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "頻尿",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "尿床",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "生長發育遲緩",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "疫苗預防注射",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "兒童定期健康檢查",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "新生兒照護",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        }
       ]
     },
-
     {
       "canonical": "眼科",
       "func_code": "10",
       "db_facility_count": 918,
-      "raw": { "V": ["眼科"], "N": ["一般眼科", "青光眼科", "眼整形科", "眼角膜科", "斜弱視科", "視網膜科", "眼屈光科", "視神經科", "葡萄膜炎"], "Y": ["眼科部"] },
+      "raw": {
+        "V": [
+          "眼科"
+        ],
+        "N": [
+          "一般眼科",
+          "青光眼科",
+          "眼整形科",
+          "眼角膜科",
+          "斜弱視科",
+          "視網膜科",
+          "眼屈光科",
+          "視神經科",
+          "葡萄膜炎"
+        ],
+        "Y": [
+          "眼科部"
+        ]
+      },
       "symptoms": [
-        { "term": "白內障", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "青光眼", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "乾眼症", "kind": "disease", "subgroup": null, "sources": ["V", "N"] },
-        { "term": "結膜炎", "kind": "disease", "subgroup": null, "sources": ["N"] },
-        { "term": "角膜炎", "kind": "disease", "subgroup": null, "sources": ["N"] },
-        { "term": "視網膜剝離", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "飛蚊症", "kind": "symptom", "subgroup": null, "sources": ["N"] },
-        { "term": "視力模糊", "kind": "symptom", "subgroup": null, "sources": ["N"], "note": "合併頭痛與噴射性嘔吐時屬 red_flags" },
-        { "term": "視野缺損", "kind": "symptom", "subgroup": null, "sources": ["N"] },
-        { "term": "溢淚", "kind": "symptom", "subgroup": null, "sources": ["N"] },
-        { "term": "眼瞼下垂", "kind": "symptom", "subgroup": null, "sources": ["N"] },
-        { "term": "睫毛倒插", "kind": "symptom", "subgroup": null, "sources": ["N"] },
-        { "term": "近視", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "遠視", "kind": "disease", "subgroup": null, "sources": ["N"] },
-        { "term": "散光", "kind": "disease", "subgroup": null, "sources": ["N"] },
-        { "term": "老花", "kind": "disease", "subgroup": null, "sources": ["N"] },
-        { "term": "斜視", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "弱視", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "糖尿病視網膜病變", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "學童視力保健", "kind": "screening", "subgroup": null, "sources": ["V", "N"] },
-        { "term": "驗光配鏡", "kind": "service", "subgroup": null, "sources": ["V"] }
+        {
+          "term": "白內障",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "青光眼",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "乾眼症",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ]
+        },
+        {
+          "term": "結膜炎",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "角膜炎",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "視網膜剝離",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "飛蚊症",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "視力模糊",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ],
+          "note": "合併頭痛與噴射性嘔吐時屬 red_flags"
+        },
+        {
+          "term": "視野缺損",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "溢淚",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "眼瞼下垂",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "睫毛倒插",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "近視",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "遠視",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "散光",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "老花",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "斜視",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "弱視",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "糖尿病視網膜病變",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "學童視力保健",
+          "kind": "screening",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ]
+        },
+        {
+          "term": "驗光配鏡",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        }
       ]
     },
-
     {
       "canonical": "耳鼻喉科",
       "func_code": "09",
       "db_facility_count": 1256,
-      "raw": { "V": [], "N": ["耳鼻喉科"], "Y": ["耳鼻喉部"] },
+      "raw": {
+        "V": [],
+        "N": [
+          "耳鼻喉科"
+        ],
+        "Y": [
+          "耳鼻喉部"
+        ]
+      },
       "symptoms": [
-        { "term": "耳鳴", "kind": "symptom", "subgroup": null, "sources": ["Y"] },
-        { "term": "聽力障礙", "kind": "symptom", "subgroup": null, "sources": ["Y"] },
-        { "term": "暈眩", "kind": "symptom", "subgroup": null, "sources": ["Y"], "note": "亦見於神經科" },
-        { "term": "中耳炎", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "外耳炎", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "中耳積液", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "鼻炎", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "鼻竇炎", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "鼻過敏", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "扁桃腺炎", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "喉嚨痛", "kind": "symptom", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "聲音沙啞", "kind": "symptom", "subgroup": null, "sources": ["Y"] },
-        { "term": "吞嚥困難", "kind": "symptom", "subgroup": null, "sources": ["Y"], "note": "亦見於內科與復健科" },
-        { "term": "打鼾", "kind": "symptom", "subgroup": null, "sources": ["Y"] },
-        { "term": "睡眠呼吸中止症", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "頸部腫塊", "kind": "symptom", "subgroup": null, "sources": ["Y"] },
-        { "term": "口腔潰瘍", "kind": "symptom", "subgroup": null, "sources": ["Y"], "note": "亦見於牙科" },
-        { "term": "顏面神經麻痺", "kind": "symptom", "subgroup": null, "sources": ["Y"] }
+        {
+          "term": "耳鳴",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "聽力障礙",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "暈眩",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ],
+          "note": "亦見於神經科"
+        },
+        {
+          "term": "中耳炎",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "外耳炎",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "中耳積液",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "鼻炎",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "鼻竇炎",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "鼻過敏",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "扁桃腺炎",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "喉嚨痛",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "聲音沙啞",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "吞嚥困難",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ],
+          "note": "亦見於內科與復健科"
+        },
+        {
+          "term": "打鼾",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "睡眠呼吸中止症",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "頸部腫塊",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "口腔潰瘍",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ],
+          "note": "亦見於牙科"
+        },
+        {
+          "term": "顏面神經麻痺",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "痰多",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [],
+          "origin": "project",
+          "note": "本專案補列。三份來源皆無獨立的「痰」條目，但「喉嚨有痰」「一直有痰」是高頻主訴，缺此條目會讓使用者落到保底建議。分列胸腔與耳鼻喉兩科，因為痰的來源可能在下呼吸道或上呼吸道。"
+        },
+        {
+          "term": "流鼻血",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [],
+          "origin": "project",
+          "note": "本專案補列。三份來源皆無鼻出血相關條目，但「流鼻血」是高頻主訴，缺此條目會讓使用者落到保底建議。歸耳鼻喉科。"
+        }
       ]
     },
-
     {
       "canonical": "皮膚科",
       "func_code": "11",
       "db_facility_count": 595,
-      "raw": { "V": [], "N": ["皮膚科"], "Y": ["皮膚部"] },
+      "raw": {
+        "V": [],
+        "N": [
+          "皮膚科"
+        ],
+        "Y": [
+          "皮膚部"
+        ]
+      },
       "symptoms": [
-        { "term": "皮膚紅疹", "kind": "symptom", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "皮膚癢", "kind": "symptom", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "濕疹", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "蕁麻疹", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "青春痘", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "異位性皮膚炎", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "接觸性皮膚炎", "kind": "disease", "subgroup": null, "sources": ["N"] },
-        { "term": "脂漏性皮膚炎", "kind": "disease", "subgroup": null, "sources": ["N"] },
-        { "term": "乾癬", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "香港腳", "kind": "disease", "subgroup": null, "sources": ["N"], "note": "來源列為「癬」" },
-        { "term": "灰指甲", "kind": "disease", "subgroup": null, "sources": ["N"] },
-        { "term": "掉髮", "kind": "symptom", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "白斑", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "疣", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "疱疹", "kind": "disease", "subgroup": null, "sources": ["N"] },
-        { "term": "痣", "kind": "symptom", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "皮膚腫瘤", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "狐臭", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "多汗", "kind": "symptom", "subgroup": null, "sources": ["Y"] },
-        { "term": "富貴手", "kind": "disease", "subgroup": null, "sources": ["N"] },
-        { "term": "疥瘡", "kind": "disease", "subgroup": null, "sources": ["N"] }
+        {
+          "term": "皮膚紅疹",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "皮膚癢",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "濕疹",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "蕁麻疹",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "青春痘",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "異位性皮膚炎",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "接觸性皮膚炎",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "脂漏性皮膚炎",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "乾癬",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "香港腳",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ],
+          "note": "來源列為「癬」"
+        },
+        {
+          "term": "灰指甲",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "掉髮",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "白斑",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "疣",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "疱疹",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "痣",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "皮膚腫瘤",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "狐臭",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "多汗",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "富貴手",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "疥瘡",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        }
       ]
     },
-
     {
       "canonical": "精神科",
       "func_code": "13",
       "db_facility_count": 618,
-      "absorbed": ["兒童青少年精神科（2 筆）", "一般精神科（2 筆）", "成癮防治科（2 筆）"],
-      "raw": { "V": ["精神科"], "N": ["精神科"], "Y": ["精神部（精神科）", "精神部（兒童心智科）"] },
+      "absorbed": [
+        "兒童青少年精神科（2 筆）",
+        "一般精神科（2 筆）",
+        "成癮防治科（2 筆）"
+      ],
+      "raw": {
+        "V": [
+          "精神科"
+        ],
+        "N": [
+          "精神科"
+        ],
+        "Y": [
+          "精神部（精神科）",
+          "精神部（兒童心智科）"
+        ]
+      },
       "symptoms": [
-        { "term": "失眠", "kind": "symptom", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "焦慮", "kind": "symptom", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "情緒低落", "kind": "symptom", "subgroup": null, "sources": ["V", "N"] },
-        { "term": "憂鬱症", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "恐慌症", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "強迫症", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "躁鬱症", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "思覺失調症", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "妄想", "kind": "symptom", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "幻覺", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "精神官能症", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "自律神經失調", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "記憶力減退", "kind": "symptom", "subgroup": null, "sources": ["N", "Y"], "note": "亦見於神經科與家醫科高齡醫學" },
-        { "term": "失智症", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "煩躁不安", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "注意力不集中", "kind": "symptom", "subgroup": null, "sources": ["N"] },
-        { "term": "創傷後壓力反應", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "飲食障礙", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "酒癮", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"], "note": "資料庫另有「成癮防治科」但僅 2 筆，依 downgrade_rule 以精神科為候選" },
-        { "term": "藥癮", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "菸癮戒治", "kind": "service", "subgroup": null, "sources": ["V", "Y"] },
-
-        { "term": "注意力不足過動症", "kind": "disease", "subgroup": "兒童青少年", "sources": ["V", "Y"], "downgraded_from": "兒童青少年精神科" },
-        { "term": "自閉症類群疾患", "kind": "disease", "subgroup": "兒童青少年", "sources": ["V", "Y"], "downgraded_from": "兒童青少年精神科" },
-        { "term": "發展遲緩", "kind": "symptom", "subgroup": "兒童青少年", "sources": ["Y"], "downgraded_from": "兒童青少年精神科" },
-        { "term": "學習障礙", "kind": "symptom", "subgroup": "兒童青少年", "sources": ["Y"], "downgraded_from": "兒童青少年精神科" },
-        { "term": "妥瑞氏症", "kind": "disease", "subgroup": "兒童青少年", "sources": ["Y"], "downgraded_from": "兒童青少年精神科" },
-        { "term": "拒學", "kind": "symptom", "subgroup": "兒童青少年", "sources": ["V"], "downgraded_from": "兒童青少年精神科" },
-        { "term": "兒童情緒與行為問題", "kind": "symptom", "subgroup": "兒童青少年", "sources": ["V", "Y"], "downgraded_from": "兒童青少年精神科" }
+        {
+          "term": "失眠",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "焦慮",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "情緒低落",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ]
+        },
+        {
+          "term": "憂鬱症",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "恐慌症",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "強迫症",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "躁鬱症",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "思覺失調症",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "妄想",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "幻覺",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "精神官能症",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "自律神經失調",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "記憶力減退",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ],
+          "note": "亦見於神經科與家醫科高齡醫學"
+        },
+        {
+          "term": "失智症",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "煩躁不安",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "注意力不集中",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "創傷後壓力反應",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "飲食障礙",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "酒癮",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ],
+          "note": "資料庫另有「成癮防治科」但僅 2 筆，依 downgrade_rule 以精神科為候選"
+        },
+        {
+          "term": "藥癮",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "菸癮戒治",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "Y"
+          ]
+        },
+        {
+          "term": "注意力不足過動症",
+          "kind": "disease",
+          "subgroup": "兒童青少年",
+          "sources": [
+            "V",
+            "Y"
+          ],
+          "downgraded_from": "兒童青少年精神科"
+        },
+        {
+          "term": "自閉症類群疾患",
+          "kind": "disease",
+          "subgroup": "兒童青少年",
+          "sources": [
+            "V",
+            "Y"
+          ],
+          "downgraded_from": "兒童青少年精神科"
+        },
+        {
+          "term": "發展遲緩",
+          "kind": "symptom",
+          "subgroup": "兒童青少年",
+          "sources": [
+            "Y"
+          ],
+          "downgraded_from": "兒童青少年精神科"
+        },
+        {
+          "term": "學習障礙",
+          "kind": "symptom",
+          "subgroup": "兒童青少年",
+          "sources": [
+            "Y"
+          ],
+          "downgraded_from": "兒童青少年精神科"
+        },
+        {
+          "term": "妥瑞氏症",
+          "kind": "disease",
+          "subgroup": "兒童青少年",
+          "sources": [
+            "Y"
+          ],
+          "downgraded_from": "兒童青少年精神科"
+        },
+        {
+          "term": "拒學",
+          "kind": "symptom",
+          "subgroup": "兒童青少年",
+          "sources": [
+            "V"
+          ],
+          "downgraded_from": "兒童青少年精神科"
+        },
+        {
+          "term": "兒童情緒與行為問題",
+          "kind": "symptom",
+          "subgroup": "兒童青少年",
+          "sources": [
+            "V",
+            "Y"
+          ],
+          "downgraded_from": "兒童青少年精神科"
+        }
       ]
     },
-
     {
       "canonical": "復健科",
       "func_code": "14",
       "db_facility_count": 822,
-      "raw": { "V": ["復健科"], "N": ["復健科"], "Y": ["復健部"] },
+      "raw": {
+        "V": [
+          "復健科"
+        ],
+        "N": [
+          "復健科"
+        ],
+        "Y": [
+          "復健部"
+        ]
+      },
       "symptoms": [
-        { "term": "五十肩", "kind": "disease", "subgroup": null, "sources": ["V", "Y"], "note": "亦見於中醫" },
-        { "term": "退化性關節炎", "kind": "disease", "subgroup": null, "sources": ["V", "N"] },
-        { "term": "肌肉韌帶拉傷", "kind": "disease", "subgroup": null, "sources": ["V"] },
-        { "term": "肩頸腰背酸痛", "kind": "symptom", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "關節疼痛", "kind": "symptom", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "坐骨神經痛", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "運動傷害", "kind": "disease", "subgroup": null, "sources": ["V"] },
-        { "term": "中風復健", "kind": "service", "subgroup": null, "sources": ["V", "N", "Y"], "note": "擇期復健，非急症。爬蟲版本曾因含「中風」二字誤標為 emergency" },
-        { "term": "骨科手術後復健", "kind": "service", "subgroup": null, "sources": ["V", "N"] },
-        { "term": "脊髓損傷復健", "kind": "service", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "腦性麻痺", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "小兒麻痺後遺症", "kind": "disease", "subgroup": null, "sources": ["V"] },
-        { "term": "語言治療", "kind": "service", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "吞嚥治療", "kind": "service", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "截肢後復健", "kind": "service", "subgroup": null, "sources": ["N"] },
-        { "term": "兒童發展復健", "kind": "service", "subgroup": null, "sources": ["Y"] },
-        { "term": "職業災害復健", "kind": "service", "subgroup": null, "sources": ["Y"], "note": "亦見於職業醫學科" },
-        { "term": "物理治療", "kind": "service", "subgroup": null, "sources": ["Y"] },
-        { "term": "職能治療", "kind": "service", "subgroup": null, "sources": ["Y"] }
+        {
+          "term": "五十肩",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "Y"
+          ],
+          "note": "亦見於中醫"
+        },
+        {
+          "term": "退化性關節炎",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ]
+        },
+        {
+          "term": "肌肉韌帶拉傷",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "肩頸腰背酸痛",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "關節疼痛",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "坐骨神經痛",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "運動傷害",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "中風復健",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ],
+          "note": "擇期復健，非急症。爬蟲版本曾因含「中風」二字誤標為 emergency"
+        },
+        {
+          "term": "骨科手術後復健",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ]
+        },
+        {
+          "term": "脊髓損傷復健",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "腦性麻痺",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "小兒麻痺後遺症",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "語言治療",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "吞嚥治療",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "截肢後復健",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "兒童發展復健",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "職業災害復健",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ],
+          "note": "亦見於職業醫學科"
+        },
+        {
+          "term": "物理治療",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "職能治療",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        }
       ]
     },
-
     {
       "canonical": "牙科",
       "func_code": "40",
       "db_facility_count": 6981,
-      "absorbed": ["兒童牙科（9 筆）", "牙髓病科（2 筆）", "牙周病科（6 筆）", "贋復補綴牙科（2 筆）", "特殊需求者口腔醫學科（4 筆）"],
-      "not_absorbed": ["齒顎矯正科（19 筆，高於門檻）", "家庭牙醫科（25 筆，高於門檻）", "牙醫一般科（184 筆，高於門檻）"],
-      "raw": { "V": ["牙科"], "N": ["一般牙科", "兒童牙科"], "Y": ["牙科部"] },
+      "absorbed": [
+        "兒童牙科（9 筆）",
+        "牙髓病科（2 筆）",
+        "牙周病科（6 筆）",
+        "贋復補綴牙科（2 筆）",
+        "特殊需求者口腔醫學科（4 筆）"
+      ],
+      "not_absorbed": [
+        "齒顎矯正科（19 筆，高於門檻）",
+        "家庭牙醫科（25 筆，高於門檻）",
+        "牙醫一般科（184 筆，高於門檻）"
+      ],
+      "raw": {
+        "V": [
+          "牙科"
+        ],
+        "N": [
+          "一般牙科",
+          "兒童牙科"
+        ],
+        "Y": [
+          "牙科部"
+        ]
+      },
       "symptoms": [
-        { "term": "蛀牙", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "牙痛", "kind": "symptom", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "補牙", "kind": "procedure", "subgroup": null, "sources": ["V", "N"] },
-        { "term": "拔牙", "kind": "procedure", "subgroup": null, "sources": ["V", "N", "Y"] },
-        { "term": "洗牙", "kind": "procedure", "subgroup": null, "sources": ["V", "N"] },
-        { "term": "根管治療", "kind": "procedure", "subgroup": null, "sources": ["V", "N", "Y"], "note": "資料庫另有「牙髓病科」但僅 2 筆，依 downgrade_rule 以牙科為候選" },
-        { "term": "牙周病", "kind": "disease", "subgroup": null, "sources": ["V", "N", "Y"], "note": "資料庫另有「牙周病科」但僅 6 筆，依 downgrade_rule 以牙科為候選" },
-        { "term": "植牙", "kind": "procedure", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "假牙製作", "kind": "procedure", "subgroup": null, "sources": ["V", "N", "Y"], "note": "資料庫另有「贋復補綴牙科」但僅 2 筆，依 downgrade_rule 以牙科為候選" },
-        { "term": "齒顎矯正", "kind": "procedure", "subgroup": null, "sources": ["N"], "note": "資料庫「齒顎矯正科」19 筆，高於 downgrade_rule 門檻，SHALL 作為第二候選與牙科並列" },
-        { "term": "阻生齒拔除", "kind": "procedure", "subgroup": null, "sources": ["Y"] },
-        { "term": "顳顎關節疼痛", "kind": "symptom", "subgroup": null, "sources": ["V", "N"] },
-        { "term": "口腔潰瘍", "kind": "symptom", "subgroup": null, "sources": ["N"] },
-        { "term": "口腔白斑或紅斑", "kind": "symptom", "subgroup": null, "sources": ["Y"] },
-        { "term": "口腔衛生指導", "kind": "service", "subgroup": null, "sources": ["V"] },
-
-        { "term": "兒童齲齒", "kind": "disease", "subgroup": "兒童牙科", "sources": ["N", "Y"], "downgraded_from": "兒童牙科" },
-        { "term": "換牙異常", "kind": "symptom", "subgroup": "兒童牙科", "sources": ["N"], "downgraded_from": "兒童牙科" },
-        { "term": "兒童齒列不整", "kind": "symptom", "subgroup": "兒童牙科", "sources": ["N"], "downgraded_from": "兒童牙科" },
-        { "term": "兒童口腔保健", "kind": "service", "subgroup": "兒童牙科", "sources": ["V", "N", "Y"], "downgraded_from": "兒童牙科" },
-
-        { "term": "身心障礙者口腔照護", "kind": "service", "subgroup": "特殊需求", "sources": ["Y"], "downgraded_from": "特殊需求者口腔醫學科", "note": "一般牙醫未必具備所需設備與訓練，回覆時 SHALL 建議先去電確認該院所是否能接診" },
-        { "term": "行為合作困難者牙科治療", "kind": "service", "subgroup": "特殊需求", "sources": ["N"], "downgraded_from": "特殊需求者口腔醫學科", "note": "同上，SHALL 提示先行確認" }
+        {
+          "term": "蛀牙",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "牙痛",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "補牙",
+          "kind": "procedure",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ]
+        },
+        {
+          "term": "拔牙",
+          "kind": "procedure",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "洗牙",
+          "kind": "procedure",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ]
+        },
+        {
+          "term": "根管治療",
+          "kind": "procedure",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ],
+          "note": "資料庫另有「牙髓病科」但僅 2 筆，依 downgrade_rule 以牙科為候選"
+        },
+        {
+          "term": "牙周病",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ],
+          "note": "資料庫另有「牙周病科」但僅 6 筆，依 downgrade_rule 以牙科為候選"
+        },
+        {
+          "term": "植牙",
+          "kind": "procedure",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "假牙製作",
+          "kind": "procedure",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ],
+          "note": "資料庫另有「贋復補綴牙科」但僅 2 筆，依 downgrade_rule 以牙科為候選"
+        },
+        {
+          "term": "齒顎矯正",
+          "kind": "procedure",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ],
+          "note": "資料庫「齒顎矯正科」19 筆，高於 downgrade_rule 門檻，SHALL 作為第二候選與牙科並列"
+        },
+        {
+          "term": "阻生齒拔除",
+          "kind": "procedure",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "顳顎關節疼痛",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V",
+            "N"
+          ]
+        },
+        {
+          "term": "口腔潰瘍",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "口腔白斑或紅斑",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "口腔衛生指導",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "兒童齲齒",
+          "kind": "disease",
+          "subgroup": "兒童牙科",
+          "sources": [
+            "N",
+            "Y"
+          ],
+          "downgraded_from": "兒童牙科"
+        },
+        {
+          "term": "換牙異常",
+          "kind": "symptom",
+          "subgroup": "兒童牙科",
+          "sources": [
+            "N"
+          ],
+          "downgraded_from": "兒童牙科"
+        },
+        {
+          "term": "兒童齒列不整",
+          "kind": "symptom",
+          "subgroup": "兒童牙科",
+          "sources": [
+            "N"
+          ],
+          "downgraded_from": "兒童牙科"
+        },
+        {
+          "term": "兒童口腔保健",
+          "kind": "service",
+          "subgroup": "兒童牙科",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ],
+          "downgraded_from": "兒童牙科"
+        },
+        {
+          "term": "身心障礙者口腔照護",
+          "kind": "service",
+          "subgroup": "特殊需求",
+          "sources": [
+            "Y"
+          ],
+          "downgraded_from": "特殊需求者口腔醫學科",
+          "note": "一般牙醫未必具備所需設備與訓練，回覆時 SHALL 建議先去電確認該院所是否能接診"
+        },
+        {
+          "term": "行為合作困難者牙科治療",
+          "kind": "service",
+          "subgroup": "特殊需求",
+          "sources": [
+            "N"
+          ],
+          "downgraded_from": "特殊需求者口腔醫學科",
+          "note": "同上，SHALL 提示先行確認"
+        }
       ]
     },
-
     {
       "canonical": "家醫科",
       "func_code": "01",
       "db_facility_count": 1633,
       "alias_warning": "資料庫另有獨立值「家庭醫學科」275 筆。build_department_query 以 re.escape 產生 regex，查「家醫科」不會命中「家庭醫學科」。兩者醫療上同一科，建議另案處理（見 docs/department-alias-functype-review.md）。",
-      "raw": { "V": [], "N": ["家庭醫學科", "高齡醫學部"], "Y": ["社區及家庭醫學部", "老年醫學部"] },
+      "raw": {
+        "V": [],
+        "N": [
+          "家庭醫學科",
+          "高齡醫學部"
+        ],
+        "Y": [
+          "社區及家庭醫學部",
+          "老年醫學部"
+        ]
+      },
       "symptoms": [
-        { "term": "一般身體不適", "kind": "symptom", "subgroup": "初診分流", "sources": ["N", "Y"], "note": "保底候選：症狀無法歸科時的初診方向" },
-        { "term": "感冒發燒", "kind": "disease", "subgroup": "初診分流", "sources": ["N"] },
-        { "term": "疲倦", "kind": "symptom", "subgroup": "初診分流", "sources": ["N"] },
-        { "term": "失眠", "kind": "symptom", "subgroup": "初診分流", "sources": ["N"] },
-        { "term": "頭痛", "kind": "symptom", "subgroup": "初診分流", "sources": ["N"] },
-        { "term": "腰酸背痛", "kind": "symptom", "subgroup": "初診分流", "sources": ["N"] },
-        { "term": "三高控制", "kind": "service", "subgroup": "慢性病", "sources": ["N"] },
-        { "term": "健康檢查", "kind": "service", "subgroup": "預防保健", "sources": ["N", "Y"] },
-        { "term": "成人疫苗接種", "kind": "service", "subgroup": "預防保健", "sources": ["N", "Y"] },
-        { "term": "戒菸門診", "kind": "service", "subgroup": "預防保健", "sources": ["Y"] },
-        { "term": "減重諮詢", "kind": "service", "subgroup": "預防保健", "sources": ["N", "Y"] },
-        { "term": "檢查異常結果追蹤", "kind": "service", "subgroup": "初診分流", "sources": ["N"] },
-        { "term": "安寧緩和醫療", "kind": "service", "subgroup": "安寧", "sources": ["Y"] },
-        { "term": "多重用藥整合", "kind": "service", "subgroup": "高齡醫學", "sources": ["N", "Y"] },
-        { "term": "反覆跌倒", "kind": "symptom", "subgroup": "高齡醫學", "sources": ["N", "Y"] },
-        { "term": "老年衰弱症", "kind": "disease", "subgroup": "高齡醫學", "sources": ["N", "Y"] },
-        { "term": "老年肌少症", "kind": "disease", "subgroup": "高齡醫學", "sources": ["Y"] },
-        { "term": "譫妄", "kind": "symptom", "subgroup": "高齡醫學", "sources": ["N"] },
-        { "term": "尿失禁", "kind": "symptom", "subgroup": "高齡醫學", "sources": ["N"] },
-        { "term": "營養不良", "kind": "symptom", "subgroup": "高齡醫學", "sources": ["N"] },
-        { "term": "周全性老年評估", "kind": "service", "subgroup": "高齡醫學", "sources": ["N"] },
-        { "term": "長照諮詢", "kind": "service", "subgroup": "高齡醫學", "sources": ["Y"] }
+        {
+          "term": "一般身體不適",
+          "kind": "symptom",
+          "subgroup": "初診分流",
+          "sources": [
+            "N",
+            "Y"
+          ],
+          "note": "保底候選：症狀無法歸科時的初診方向"
+        },
+        {
+          "term": "感冒發燒",
+          "kind": "disease",
+          "subgroup": "初診分流",
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "疲倦",
+          "kind": "symptom",
+          "subgroup": "初診分流",
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "失眠",
+          "kind": "symptom",
+          "subgroup": "初診分流",
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "頭痛",
+          "kind": "symptom",
+          "subgroup": "初診分流",
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "腰酸背痛",
+          "kind": "symptom",
+          "subgroup": "初診分流",
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "三高控制",
+          "kind": "service",
+          "subgroup": "慢性病",
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "健康檢查",
+          "kind": "service",
+          "subgroup": "預防保健",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "成人疫苗接種",
+          "kind": "service",
+          "subgroup": "預防保健",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "戒菸門診",
+          "kind": "service",
+          "subgroup": "預防保健",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "減重諮詢",
+          "kind": "service",
+          "subgroup": "預防保健",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "檢查異常結果追蹤",
+          "kind": "service",
+          "subgroup": "初診分流",
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "安寧緩和醫療",
+          "kind": "service",
+          "subgroup": "安寧",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "多重用藥整合",
+          "kind": "service",
+          "subgroup": "高齡醫學",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "反覆跌倒",
+          "kind": "symptom",
+          "subgroup": "高齡醫學",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "老年衰弱症",
+          "kind": "disease",
+          "subgroup": "高齡醫學",
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "老年肌少症",
+          "kind": "disease",
+          "subgroup": "高齡醫學",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "譫妄",
+          "kind": "symptom",
+          "subgroup": "高齡醫學",
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "尿失禁",
+          "kind": "symptom",
+          "subgroup": "高齡醫學",
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "營養不良",
+          "kind": "symptom",
+          "subgroup": "高齡醫學",
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "周全性老年評估",
+          "kind": "service",
+          "subgroup": "高齡醫學",
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "長照諮詢",
+          "kind": "service",
+          "subgroup": "高齡醫學",
+          "sources": [
+            "Y"
+          ]
+        }
       ]
     },
-
     {
       "canonical": "麻醉科",
       "func_code": "81",
       "db_facility_count": 244,
       "coverage_warning": "244 筆多為醫院層級，診所幾乎不登記麻醉科；且登記麻醉科不代表該院開設疼痛門診。回覆時 SHALL 說明「疼痛科在健保資料中歸類於麻醉科」並建議先去電確認。",
-      "raw": { "V": ["疼痛科"], "N": ["疼痛科"], "Y": ["麻醉部／疼痛科"] },
+      "raw": {
+        "V": [
+          "疼痛科"
+        ],
+        "N": [
+          "疼痛科"
+        ],
+        "Y": [
+          "麻醉部／疼痛科"
+        ]
+      },
       "symptoms": [
-        { "term": "慢性疼痛", "kind": "symptom", "subgroup": "疼痛", "sources": ["V", "N", "Y"] },
-        { "term": "不明原因頑固性疼痛", "kind": "symptom", "subgroup": "疼痛", "sources": ["V", "N", "Y"] },
-        { "term": "癌症疼痛", "kind": "symptom", "subgroup": "疼痛", "sources": ["V", "N", "Y"] },
-        { "term": "神經痛", "kind": "symptom", "subgroup": "疼痛", "sources": ["Y"] },
-        { "term": "長期服用止痛藥", "kind": "symptom", "subgroup": "疼痛", "sources": ["V"] },
-        { "term": "神經阻斷治療", "kind": "procedure", "subgroup": "疼痛", "sources": ["Y"] }
+        {
+          "term": "慢性疼痛",
+          "kind": "symptom",
+          "subgroup": "疼痛",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "不明原因頑固性疼痛",
+          "kind": "symptom",
+          "subgroup": "疼痛",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "癌症疼痛",
+          "kind": "symptom",
+          "subgroup": "疼痛",
+          "sources": [
+            "V",
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "神經痛",
+          "kind": "symptom",
+          "subgroup": "疼痛",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "長期服用止痛藥",
+          "kind": "symptom",
+          "subgroup": "疼痛",
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "神經阻斷治療",
+          "kind": "procedure",
+          "subgroup": "疼痛",
+          "sources": [
+            "Y"
+          ]
+        }
       ]
     },
-
     {
       "canonical": "職業醫學科",
       "func_code": "23",
       "db_facility_count": 103,
-      "raw": { "V": [], "N": ["職業暨環境醫學科"], "Y": ["環境暨職業醫學部"] },
+      "raw": {
+        "V": [],
+        "N": [
+          "職業暨環境醫學科"
+        ],
+        "Y": [
+          "環境暨職業醫學部"
+        ]
+      },
       "symptoms": [
-        { "term": "工作相關身體不適", "kind": "symptom", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "職業傷害", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "職業病診治", "kind": "service", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "腕隧道症候群", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "職業性聽力損失", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "職業性皮膚疾病", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "職業性呼吸道疾病", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "慢性中毒", "kind": "disease", "subgroup": null, "sources": ["N"] },
-        { "term": "過勞相關疾病", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "特殊危害作業健康檢查", "kind": "screening", "subgroup": null, "sources": ["Y"] },
-        { "term": "勞動能力減損鑑定", "kind": "service", "subgroup": null, "sources": ["Y"] },
-        { "term": "母性健康保護諮詢", "kind": "service", "subgroup": null, "sources": ["Y"] }
+        {
+          "term": "工作相關身體不適",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "職業傷害",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "職業病診治",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "腕隧道症候群",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "職業性聽力損失",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "職業性皮膚疾病",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "職業性呼吸道疾病",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "慢性中毒",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "過勞相關疾病",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "特殊危害作業健康檢查",
+          "kind": "screening",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "勞動能力減損鑑定",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "母性健康保護諮詢",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        }
       ]
     },
-
     {
       "canonical": "整形外科",
       "func_code": "15",
       "db_facility_count": 166,
-      "raw": { "V": [], "N": ["整型外科"], "Y": ["整形外科"] },
+      "raw": {
+        "V": [],
+        "N": [
+          "整型外科"
+        ],
+        "Y": [
+          "整形外科"
+        ]
+      },
       "symptoms": [
-        { "term": "燒燙傷後續治療", "kind": "service", "subgroup": null, "sources": ["N", "Y"], "note": "急性燒燙傷屬 red_flags" },
-        { "term": "慢性傷口", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "褥瘡", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "糖尿病足傷口", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "顏面外傷", "kind": "disease", "subgroup": null, "sources": ["N", "Y"] },
-        { "term": "顏面骨折", "kind": "disease", "subgroup": null, "sources": ["Y"] },
-        { "term": "唇顎裂", "kind": "disease", "subgroup": null, "sources": ["N"] },
-        { "term": "乳房重建", "kind": "procedure", "subgroup": null, "sources": ["N"] },
-        { "term": "疤痕重整", "kind": "procedure", "subgroup": null, "sources": ["Y"] },
-        { "term": "醫學美容手術", "kind": "procedure", "subgroup": null, "sources": ["N", "Y"], "note": "多為自費且常設於獨立美容中心，非一般門診" }
+        {
+          "term": "燒燙傷後續治療",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ],
+          "note": "急性燒燙傷屬 red_flags"
+        },
+        {
+          "term": "慢性傷口",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "褥瘡",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "糖尿病足傷口",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "顏面外傷",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ]
+        },
+        {
+          "term": "顏面骨折",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "唇顎裂",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "乳房重建",
+          "kind": "procedure",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "疤痕重整",
+          "kind": "procedure",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "醫學美容手術",
+          "kind": "procedure",
+          "subgroup": null,
+          "sources": [
+            "N",
+            "Y"
+          ],
+          "note": "多為自費且常設於獨立美容中心，非一般門診"
+        }
       ]
     },
-
     {
       "canonical": "放射腫瘤科",
       "func_code": "FB",
       "db_facility_count": 98,
-      "raw": { "V": [], "N": ["放射腫瘤科"], "Y": [] },
+      "raw": {
+        "V": [],
+        "N": [
+          "放射腫瘤科"
+        ],
+        "Y": []
+      },
       "symptoms": [
-        { "term": "惡性腫瘤放射治療", "kind": "service", "subgroup": null, "sources": ["N"] },
-        { "term": "腫瘤治療諮詢", "kind": "service", "subgroup": null, "sources": ["N"] }
+        {
+          "term": "惡性腫瘤放射治療",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "腫瘤治療諮詢",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        }
       ]
     },
-
     {
       "canonical": "中醫一般科",
       "func_code": "60",
       "db_facility_count": 4172,
       "single_source_warning": "僅玉里一家來源，且該院將此科命名為「傳統醫學科」。條目內容偏該院特色，人工審定時須確認是否具跨院通用性。",
-      "raw": { "V": ["傳統醫學科"], "N": [], "Y": [] },
+      "raw": {
+        "V": [
+          "傳統醫學科"
+        ],
+        "N": [],
+        "Y": []
+      },
       "symptoms": [
-        { "term": "針灸", "kind": "procedure", "subgroup": null, "sources": ["V"] },
-        { "term": "體質調理", "kind": "service", "subgroup": null, "sources": ["V"] },
-        { "term": "筋骨痠痛", "kind": "symptom", "subgroup": null, "sources": ["V"] },
-        { "term": "五十肩", "kind": "disease", "subgroup": null, "sources": ["V"] },
-        { "term": "板機指", "kind": "disease", "subgroup": null, "sources": ["V"] },
-        { "term": "運動傷害調理", "kind": "service", "subgroup": null, "sources": ["V"] },
-        { "term": "術後調理", "kind": "service", "subgroup": null, "sources": ["V"] },
-        { "term": "中風後調理", "kind": "service", "subgroup": null, "sources": ["V"] },
-        { "term": "睡眠障礙調理", "kind": "service", "subgroup": null, "sources": ["V"] },
-        { "term": "不孕症體質調理", "kind": "service", "subgroup": null, "sources": ["V"] }
+        {
+          "term": "針灸",
+          "kind": "procedure",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "體質調理",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "筋骨痠痛",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "五十肩",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "板機指",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "運動傷害調理",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "術後調理",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "中風後調理",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "睡眠障礙調理",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        },
+        {
+          "term": "不孕症體質調理",
+          "kind": "service",
+          "subgroup": null,
+          "sources": [
+            "V"
+          ]
+        }
       ]
     }
   ],
-
   "excluded": [
-    { "raw": "居家照護", "source": "FuncType (EA)", "reason": "服務類型而非科別。導向門診科別會答非所問，應另案處理居家醫療整合照護。" },
-    { "raw": "營養室／營養諮詢", "source": "Y", "reason": "非掛號科別，且資料庫無對應值。" },
-    { "raw": "醫學美容中心", "source": "Y", "reason": "自費中心，非健保登記科別；相關需求已由整形外科涵蓋。" },
-    { "raw": "影像醫學部", "source": "Y", "reason": "檢查單位，民眾不會主動掛號，須由其他科別轉介。" },
-    { "raw": "介入醫療門診", "source": "N", "reason": "跨科的治療技術門診，非民眾自行選擇的掛號科別。" },
-    { "raw": "腎臟移植外科", "source": "N", "reason": "需經腎臟科轉介的次專科，直接建議會跳過必要的轉介流程。" },
-    { "raw": "毒物科", "source": "N", "reason": "急性中毒屬 red_flags 路徑；非急性者已由內科涵蓋。" },
-    { "raw": "異常檢驗結果分析及診治", "source": "V", "reason": "科別業務說明句，非症狀條目。已改寫為內科的「檢驗結果異常追蹤」。" }
+    {
+      "raw": "居家照護",
+      "source": "FuncType (EA)",
+      "reason": "服務類型而非科別。導向門診科別會答非所問，應另案處理居家醫療整合照護。"
+    },
+    {
+      "raw": "營養室／營養諮詢",
+      "source": "Y",
+      "reason": "非掛號科別，且資料庫無對應值。"
+    },
+    {
+      "raw": "醫學美容中心",
+      "source": "Y",
+      "reason": "自費中心，非健保登記科別；相關需求已由整形外科涵蓋。"
+    },
+    {
+      "raw": "影像醫學部",
+      "source": "Y",
+      "reason": "檢查單位，民眾不會主動掛號，須由其他科別轉介。"
+    },
+    {
+      "raw": "介入醫療門診",
+      "source": "N",
+      "reason": "跨科的治療技術門診，非民眾自行選擇的掛號科別。"
+    },
+    {
+      "raw": "腎臟移植外科",
+      "source": "N",
+      "reason": "需經腎臟科轉介的次專科，直接建議會跳過必要的轉介流程。"
+    },
+    {
+      "raw": "毒物科",
+      "source": "N",
+      "reason": "急性中毒屬 red_flags 路徑；非急性者已由內科涵蓋。"
+    },
+    {
+      "raw": "異常檢驗結果分析及診治",
+      "source": "V",
+      "reason": "科別業務說明句，非症狀條目。已改寫為內科的「檢驗結果異常追蹤」。"
+    }
   ],
-
   "resolved_questions": [
-    { "question": "兒科的年齡界線三家不一致（15／18／18 歲）", "decision": "採 15 歲以下", "decided_at": "2026-08-27" },
-    { "question": "「自殺意念或行為」是否升為 red_flag", "decision": "升為 red_flag，action 為 crisis，提供張老師專線 1980", "decided_at": "2026-08-27" },
-    { "question": "覆蓋率極低的科別是否降級為母科別", "decision": "是，門檻 10 筆，規則見 downgrade_rule", "decided_at": "2026-08-27" },
-    { "question": "特殊需求者口腔醫學科（4 筆）是否降級", "decision": "降級為牙科，但回覆須提示先去電確認能否接診", "decided_at": "2026-08-27" },
-    { "question": "家醫科／家庭醫學科兩個獨立值如何處理", "decision": "不改資料庫。家庭醫學科 於別名表對應到 家醫科，並由 DEPARTMENT_QUERY_EQUIVALENTS 讓查詢同時涵蓋兩種寫法", "decided_at": "2026-08-27" }
+    {
+      "question": "兒科的年齡界線三家不一致（15／18／18 歲）",
+      "decision": "採 15 歲以下",
+      "decided_at": "2026-08-27"
+    },
+    {
+      "question": "「自殺意念或行為」是否升為 red_flag",
+      "decision": "升為 red_flag，action 為 crisis，提供張老師專線 1980",
+      "decided_at": "2026-08-27"
+    },
+    {
+      "question": "覆蓋率極低的科別是否降級為母科別",
+      "decision": "是，門檻 10 筆，規則見 downgrade_rule",
+      "decided_at": "2026-08-27"
+    },
+    {
+      "question": "特殊需求者口腔醫學科（4 筆）是否降級",
+      "decision": "降級為牙科，但回覆須提示先去電確認能否接診",
+      "decided_at": "2026-08-27"
+    },
+    {
+      "question": "家醫科／家庭醫學科兩個獨立值如何處理",
+      "decision": "不改資料庫。家庭醫學科 於別名表對應到 家醫科，並由 DEPARTMENT_QUERY_EQUIVALENTS 讓查詢同時涵蓋兩種寫法",
+      "decided_at": "2026-08-27"
+    },
+    {
+      "question": "三份來源皆無「痰」相關條目，但那是高頻主訴，要補嗎？",
+      "decision": "補列 `痰多`，同時列於內科（胸腔）與耳鼻喉科，並以 `origin: project`、`sources: []` 標記為本專案自行補列而非來源所載。",
+      "rationale": "不補的代價是「喉嚨有痰要看哪一科」永遠落到保底（家醫科／內科），使用者看到的是「系統無法判斷」。補列後 sources 長度為 0，跨院共識強度自然呈現為最低，回覆不會宣稱有來源支持。"
+    },
+    {
+      "question": "三份來源皆無「流鼻血」條目，要補嗎？",
+      "decision": "補列 `流鼻血` 於耳鼻喉科，以 `origin: project`、`sources: []` 標記。",
+      "rationale": "與 `痰多` 同一類缺口：使用者實測「流鼻血要掛哪科」落到保底，看起來像系統不認得這個症狀，實際是表沒收。"
+    }
   ],
-
   "open_questions": [
     "自殺風險紅旗目前僅列張老師專線 1980（服務時段非全日）。是否併列 24 小時的安心專線 1925 與生命線 1995，以避免深夜命中時使用者找不到人。",
     "牙醫一般科（184 筆）與家庭牙醫科（25 筆）在資料庫是獨立值，「牙科」的 regex 不會命中它們，與家醫科／家庭醫學科屬同類問題，尚未處理。",

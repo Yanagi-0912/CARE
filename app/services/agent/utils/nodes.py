@@ -1,3 +1,5 @@
+import asyncio
+import json
 import logging
 import re
 import time
@@ -19,7 +21,15 @@ from app.services.medical.facility_type_matcher import (
     extract_facility_type_intent,
     normalize_facility_type_text,
 )
+from app.services.medical.symptom_classification.urgency import (
+    NOT_URGENT,
+    URGENCY_EMERGENCY,
+    UrgencyVerdict,
+)
 from app.tools.registry import get_all_tools
+from resources.flex_messages.medical_messages.emergency_condition_flex_message import (
+    build_emergency_condition_flex,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +71,22 @@ _LOCATION_TOOL_NAMES = frozenset(
 def _already_used_location_tools(messages) -> bool:
     return any(
         isinstance(m, ToolMessage) and m.name in _LOCATION_TOOL_NAMES
+        for m in messages
+    )
+
+
+def _already_ran_symptom_suggestion(messages) -> bool:
+    """
+    本輪是否已產生科別建議卡。
+
+    為什麼要擋 force_rag：科別建議卡已經是一份完整的回覆，再補一次 RAG 沒有
+    加到任何東西，卻會多花十幾秒與一次模型呼叫。更嚴重的是 get_rag_answer 的
+    「參考資料來源」後置處理會把來源段落接在最終回覆後面，而最終回覆是 Flex
+    JSON 字串——被接了文字之後就不再是合法 JSON，LINE 端會退化成把整包 JSON
+    當純文字送出。
+    """
+    return any(
+        isinstance(m, ToolMessage) and m.name == "suggest_department_for_symptom"
         for m in messages
     )
 
@@ -581,9 +607,12 @@ def format_user_profile_prompt(user_profile: dict | None) -> str:
 
 
 class AgentNodes:
-    def __init__(self, llm, guardrail_service):
+    def __init__(self, llm, guardrail_service, urgency_classifier=None):
         self._llm = llm
         self._guardrail_service = guardrail_service
+        # 未注入時等同永遠不緊急。讓既有的測試與其他進入點不必全部改簽名，
+        # 但正式路徑一定要注入——沒注入就等於沒有安全檢查。
+        self._urgency_classifier = urgency_classifier
 
     def _resolve_user_language(self, user_profile: dict | None) -> str:
         if not user_profile:
@@ -592,17 +621,60 @@ class AgentNodes:
         return normalize_user_language(settings.get("language"))
 
     async def guardrail_node(self, state: State) -> dict:
-        """Guardrail 判斷：從最新的使用者訊息判斷是否允許 RAG。"""
+        """
+        進 agent 之前的兩項判斷：是否允許 RAG、以及狀況是否緊急。
+
+        兩者併發執行：急迫度判斷擋在所有回覆前面，序列化等於把它的延遲直接
+        加到每一則訊息上。兩個判斷彼此獨立，沒有順序需求。
+
+        急迫度為什麼在這裡而不是做成 tool：
+            做成 tool 就代表「agent 可以選擇不呼叫」，而前一版失敗的原因正是
+            agent 把「我阿公昏迷」判給了 RAG、從未呼叫到帶有安全檢查的工具。
+            安全檢查不能是 agent 的選項，所以它排在 agent 之前。
+        """
         user_input = state["messages"][-1].content
+        language = self._resolve_user_language(state.get("user_profile"))
         t0 = time.perf_counter()
-        allow_rag = await self._guardrail_service.allow_rag_tool(user_input)
+
+        allow_rag, verdict = await asyncio.gather(
+            self._guardrail_service.allow_rag_tool(user_input),
+            self._classify_urgency(user_input, language),
+        )
+
         log_stage(
             logger,
             "guardrail",
             allow_rag=allow_rag,
+            urgency=verdict.level if verdict.is_emergency else None,
             ms=int((time.perf_counter() - t0) * 1000),
         )
-        return {"allow_rag": allow_rag}
+        return {
+            "allow_rag": allow_rag,
+            "urgency": verdict.level,
+            "urgency_display": verdict.display,
+        }
+
+    async def _classify_urgency(self, user_input: str, language: str) -> UrgencyVerdict:
+        if self._urgency_classifier is None:
+            return NOT_URGENT
+        return await self._urgency_classifier.classify(user_input, language=language)
+
+    async def emergency_node(self, state: State) -> dict:
+        """
+        急迫度短路節點。直接產生緊急卡，不進 agent、不跑 RAG、不呼叫任何工具。
+
+        內容是要原樣送往 LINE 的 Flex JSON，因此 agent.py 的後置處理必須整段
+        跳過它——在 Flex JSON 後面接任何文字都會讓它不再是合法 JSON。
+        """
+        verdict = UrgencyVerdict(
+            level=state.get("urgency") or URGENCY_EMERGENCY,
+            display=state.get("urgency_display") or "",
+        )
+        payload = json.dumps(
+            build_emergency_condition_flex(verdict), ensure_ascii=False
+        )
+        log_stage(logger, "emergency_card", display=verdict.display or None)
+        return {"messages": [AIMessage(content=payload)]}
 
     async def agent_node(self, state: State) -> dict:
         """LLM 決策節點：根據 allow_rag 動態綁定工具，讓 LLM 決定回話或呼叫工具。"""
@@ -731,6 +803,7 @@ class AgentNodes:
             and not tool_calls
             and not _already_ran_rag(state["messages"])
             and not _already_used_location_tools(state["messages"])
+            and not _already_ran_symptom_suggestion(state["messages"])
             and not _is_nearby_facility_intent(user_text)
             and not _is_named_facility_lookup(user_text)
             and not _is_official_site_intent(user_text)

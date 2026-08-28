@@ -1,0 +1,155 @@
+{
+  "type": "bubble",
+  "size": "mega",
+  "header": {
+    "type": "box",
+    "layout": "vertical",
+    "backgroundColor": "#C62828",
+    "paddingAll": "20px",
+    "contents": [
+      {
+        "type": "text",
+        "text": "請立即就醫",
+        "size": "xxl",
+        "color": "#FFFFFF",
+        "wrap": true,
+        "weight": "bold"
+      },
+      {
+        "type": "text",
+        "text": "你提到有人失去意識、叫不醒",
+        "size": "sm",
+        "color": "#EEEEEE",
+        "wrap": true,
+        "margin": "md"
+      }
+    ]
+  },
+  "body": {
+    "type": "box",
+    "layout": "vertical",
+    "paddingAll": "20px",
+    "spacing": "md",
+    "backgroundColor": "#FFFFFF",
+    "contents": [
+      {
+        "type": "text",
+        "text": "你描述的狀況可能需要緊急處置，不建議等待一般門診掛號。",
+        "size": "md",
+        "color": "#111111",
+        "wrap": true
+      },
+      {
+        "type": "text",
+        "text": "請儘快前往最近的急診，或撥打 119 請求協助。",
+        "size": "md",
+        "color": "#111111",
+        "wrap": true
+      },
+      {
+        "type": "text",
+        "text": "若身邊有人，請讓對方陪同前往。",
+        "size": "md",
+        "color": "#111111",
+        "wrap": true
+      },
+      {
+        "type": "separator",
+        "margin": "xl"
+      },
+      {
+        "type": "text",
+        "text": "可以馬上撥打",
+        "size": "sm",
+        "color": "#555555",
+        "wrap": true,
+        "margin": "xl"
+      },
+      {
+        "type": "box",
+        "layout": "vertical",
+        "backgroundColor": "#B71C1C",
+        "borderColor": "#B71C1C",
+        "borderWidth": "1px",
+        "cornerRadius": "md",
+        "paddingAll": "lg",
+        "margin": "md",
+        "action": {
+          "type": "uri",
+          "label": "撥打 緊急救護 119",
+          "uri": "tel:119"
+        },
+        "contents": [
+          {
+            "type": "text",
+            "text": "撥打 緊急救護 119",
+            "size": "lg",
+            "color": "#FFFFFF",
+            "wrap": true,
+            "weight": "bold",
+            "align": "center"
+          },
+          {
+            "type": "text",
+            "text": "救護車與消防",
+            "size": "xs",
+            "color": "#EEEEEE",
+            "wrap": true,
+            "margin": "xs",
+            "align": "center"
+          }
+        ]
+      },
+      {
+        "type": "box",
+        "layout": "vertical",
+        "backgroundColor": "#FFFFFF",
+        "borderColor": "#B71C1C",
+        "borderWidth": "1px",
+        "cornerRadius": "md",
+        "paddingAll": "lg",
+        "margin": "md",
+        "action": {
+          "type": "uri",
+          "label": "撥打 警察報案 110",
+          "uri": "tel:110"
+        },
+        "contents": [
+          {
+            "type": "text",
+            "text": "撥打 警察報案 110",
+            "size": "lg",
+            "color": "#B71C1C",
+            "wrap": true,
+            "weight": "bold",
+            "align": "center"
+          },
+          {
+            "type": "text",
+            "text": "意外或人身安全",
+            "size": "xs",
+            "color": "#555555",
+            "wrap": true,
+            "margin": "xs",
+            "align": "center"
+          }
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "type": "box",
+    "layout": "vertical",
+    "paddingAll": "16px",
+    "backgroundColor": "#F4F6F4",
+    "contents": [
+      {
+        "type": "text",
+        "text": "本訊息不是醫療診斷。情況緊急時請以撥打 119 或前往急診為優先。",
+        "size": "xs",
+        "color": "#777777",
+        "wrap": true
+      }
+    ]
+  }
+}

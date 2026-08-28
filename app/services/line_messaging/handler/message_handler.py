@@ -12,6 +12,7 @@ from app.core.user_font_size import (
     reset_request_font_size,
     set_request_font_size,
 )
+from app.core.user_age import reset_request_age, set_request_age
 from app.core.user_language import (
     DEFAULT_USER_LANGUAGE,
     normalize_user_language,
@@ -108,6 +109,9 @@ class BaseLineMessageHandler:
             font_token = set_request_font_size(
                 self._font_size_from_profile(user_profile)
             )
+            # 年齡同理：症狀科別建議要靠它決定該不該給兒科，而那段程式在
+            # LangChain tool 底下，拿不到 user_profile。
+            age_token = set_request_age((user_profile or {}).get("age"))
 
             if self._loading_animation_service is not None:
                 await self._loading_animation_service.start(user_id)
@@ -193,6 +197,7 @@ class BaseLineMessageHandler:
                 reset_request_language(lang_token)
             if font_token is not None:
                 reset_request_font_size(font_token)
+                reset_request_age(age_token)
 
     def _schedule_safety_alert_check(self, user_id: str, user_text: str) -> None:
         """把一次風險評估丟到背景執行。

@@ -18,6 +18,10 @@ from app.i18n.messages import (
 )
 from app.services.agent.utils.nodes import AgentNodes
 from app.services.agent.utils.state import State
+from app.services.medical.symptom_classification.urgency import (
+    URGENCY_EMERGENCY,
+    URGENCY_NONE,
+)
 from app.services.gemini.shared.parser import content_to_text
 from app.tools.registry import get_all_tools
 
@@ -92,10 +96,16 @@ def _log_tool_result_summaries(messages: list[Any], *, ms: int, names: list[str]
     log_stage(logger, "tools_done", names=names, ms=ms)
 
 
+def _urgency_condition(state: State) -> str:
+    """急迫度為 emergency 時繞過 agent，直接走緊急flex message。"""
+    return "emergency" if state.get("urgency") == URGENCY_EMERGENCY else "agent"
+
+
 class Agent:
-    def __init__(self, llm, guardrail_service) -> None:
+    def __init__(self, llm, guardrail_service, urgency_classifier=None) -> None:
         self._llm = llm
         self._guardrail_service = guardrail_service
+        self._urgency_classifier = urgency_classifier
         self._graph = self._build_graph()
 
     def _build_graph(self):
@@ -105,6 +115,7 @@ class Agent:
         nodes = AgentNodes(
             llm=self._llm,
             guardrail_service=self._guardrail_service,
+            urgency_classifier=self._urgency_classifier,
         )
 
         all_tools = get_all_tools(include_rag_tool=True)
@@ -134,11 +145,20 @@ class Agent:
                 raise
 
         builder.add_node("guardrail", nodes.guardrail_node)
+        builder.add_node("emergency", nodes.emergency_node)
         builder.add_node("agent", nodes.agent_node)
         builder.add_node("tools", tools_node)
 
         builder.add_edge(START, "guardrail")
-        builder.add_edge("guardrail", "agent")
+        # 急迫度短路：判定為緊急時直接產卡，不進 agent。安全檢查不能是 agent
+        # 可以選擇不做的事——前一版把它放在工具裡，agent 選了 RAG，檢查就從未
+        # 執行過。
+        builder.add_conditional_edges(
+            "guardrail",
+            _urgency_condition,
+            {"emergency": "emergency", "agent": "agent"},
+        )
+        builder.add_edge("emergency", END)
         builder.add_conditional_edges(
             "agent",
             tools_condition,
@@ -171,6 +191,8 @@ class Agent:
             {
                 "messages": messages,
                 "allow_rag": False,
+                "urgency": URGENCY_NONE,
+                "urgency_display": "",
                 "user_profile": user_profile,
             }
         )
@@ -199,6 +221,10 @@ class Agent:
             "request_location_quick_reply",  # 分享位置
             "open_official_site",  # 官網／LIFF 入口 Flex
             "verify_claim",  # 查核判定卡 Flex
+            # 症狀科別建議卡。除了 Flex JSON 不能被改寫之外，這裡還有安全理由：
+            # 紅旗卡刻意不含任何門診科別，讓模型重寫有可能把「請立即就醫」稀釋
+            # 成「可以考慮掛某某科」，那正是本功能要避免的失效模式。
+            "suggest_department_for_symptom",
         }
         used_tool_names: list[str] = []
         for msg in reversed(result.get("messages", [])):
@@ -225,11 +251,20 @@ class Agent:
             logger.info("[Agent] 醫療工具使用紀錄：%s", used_tool_names)
 
         # 防禦性後置處理：若呼叫了 get_rag_answer，但 AI 的最終回覆中遺漏了「參考資料來源」，則自動由工具輸出中提取並後補。
+        #
+        # 醫療工具供稿時整段跳過：此時 response 是要原樣送往 LINE 的 Flex JSON
+        # 字串，在後面接上來源段落會讓它不再是合法 JSON，reply 端解析失敗後會
+        # 退化成「把整包 JSON 當純文字送出」。醫療工具的輸出本來就不含敘述性
+        # 內容，也沒有來源可補——不該由這段邏輯碰它。
+        # 急迫度短路時 response 已經是緊急卡的 Flex JSON，與醫療工具供稿同理，
+        # 整段後置處理必須跳過。
+        is_emergency = result.get("urgency") == URGENCY_EMERGENCY
         rag_tool_content = None
-        for msg in reversed(result.get("messages", [])):
-            if getattr(msg, "name", None) == "get_rag_answer":
-                rag_tool_content = msg.content
-                break
+        if not used_tool_names and not is_emergency:
+            for msg in reversed(result.get("messages", [])):
+                if getattr(msg, "name", None) == "get_rag_answer":
+                    rag_tool_content = msg.content
+                    break
 
         if rag_tool_content:
             rag_text = (
@@ -256,9 +291,11 @@ class Agent:
                 break
 
         logger.info(
-            "[Agent] 執行完成，response_type=%s, call_request_location=%s",
+            "[Agent] 執行完成，response_type=%s, call_request_location=%s, "
+            "emergency=%s",
             type(response).__name__,
             call_request_location,
+            is_emergency,
         )
 
         return {

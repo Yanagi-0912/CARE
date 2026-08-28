@@ -8,6 +8,7 @@ from app.tools.medical_tools import (
 )
 from app.tools.official_site_tools import open_official_site
 from app.tools.rag_tools import get_rag_answer
+from app.tools.symptom_tools import suggest_department_for_symptom
 from app.tools.user_document_tools import answer_from_uploaded_document
 
 
@@ -20,6 +21,10 @@ def get_all_tools(include_rag_tool: bool = True) -> list:
         request_location_quick_reply,
         submit_knowledge_report,
         open_official_site,
+        # 與院所搜尋同屬醫療工具，不隨 include_rag_tool 開關——「我肚子痛要掛
+        # 哪一科」問的是掛號科別而非查知識庫，guardrail 是否放行 RAG 與這件事
+        # 無關。
+        suggest_department_for_symptom,
     ]
     if include_rag_tool:
         tools.extend([get_rag_answer, answer_from_uploaded_document])

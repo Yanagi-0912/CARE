@@ -244,3 +244,6 @@ resources/*.before*.json
 
 # Subagent-driven development 暫存工作區
 .superpowers/
+
+# 由 scripts/seed_rbac_e2e.py 產生的 E2E curl 清單（內含測試帳號 token，不入版控）
+scripts/e2e_curls.generated.sh

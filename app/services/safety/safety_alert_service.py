@@ -42,6 +42,7 @@ class SafetyAlertService:
         replier: Any,
         user_profile_service: Any = None,
         dedupe_hours: int = 24,
+        authorization_service: Any = None,
     ) -> None:
         self._extractor = extractor
         self._catalog_service = catalog_service
@@ -50,6 +51,9 @@ class SafetyAlertService:
         self._replier = replier
         self._user_profile_service = user_profile_service
         self._dedupe_hours = dedupe_hours
+        # 通知政策的判定點。未注入時退回族譜全員（導入前的行為）——這是
+        # 遷移期的相容路徑，不是預期的正式組態。
+        self._authorization_service = authorization_service
 
     async def check(self, user_id: str, text: str) -> None:
         """對一段文字做一次風險評估。永遠不拋例外。"""
@@ -135,27 +139,38 @@ class SafetyAlertService:
             else "safety.reason.unverified_channel"
         )
 
-        await self._alert_family(user_id, mention, reason_key)
+        notified_anyone = await self._alert_family(user_id, mention, reason_key)
 
         language, _ = await self._resolve_display_prefs(user_id)
+        # 沒有任何合格收件人時 SHALL NOT 聲稱家人已被告知。告訴一位長輩
+        # 「我已經請家人一起看看」而實際上沒有人收到，比不通知更糟——他會
+        # 以為有人正在處理，於是不再自己找醫師。
+        message_key = (
+            "safety.patient.high" if notified_anyone else "safety.patient.high_no_family"
+        )
         await self._replier.push_text(
             user_id,
-            t("safety.patient.high", language).format(
+            t(message_key, language).format(
                 drug=mention.raw_name, reason=t(reason_key, language)
             ),
         )
 
     async def _alert_family(
         self, user_id: str, mention: DrugMention, reason_key: str
-    ) -> None:
-        """通報族譜全員。
+    ) -> bool:
+        """通報合格的收件人，回傳是否真的送出給任何人。
 
-        沒有族譜、成員為空或查詢失敗都不是錯誤路徑的終點：當事人那則仍然要送，
-        因此這裡把例外吃掉而不是往外拋。
+        收件人由**通知政策**決定，不再是族譜全員——`MEMBER` 在 LIFF 裡連長輩
+        的年齡都看不到，卻會在通知列收到他的用藥風險，那不是設計，是這條通道
+        當初沒有授權可用。
+
+        沒有族譜、無合格收件人或查詢失敗都不是錯誤路徑的終點：當事人那則仍然
+        要送（只是換一句不聲稱家人已知情的文案），因此這裡把例外吃掉而不是
+        往外拋。
         """
         member_ids = await self._resolve_family_member_ids(user_id)
         if not member_ids:
-            return
+            return False
 
         patient_name = await self._resolve_patient_name(user_id)
         for member_id in member_ids:
@@ -169,12 +184,29 @@ class SafetyAlertService:
                 font_size=font_size,
             )
             await self._replier.push_flex(member_id, flex)
+        return True
 
     async def _resolve_family_member_ids(self, user_id: str) -> list[str]:
+        """這次通報該送給誰。
+
+        走 `FamilyAuthorizationService.notification_recipients`：通知政策與
+        資料存取授權是**兩套獨立的表**。`CAREGIVER` 收得到通報但看不到對話
+        紀錄，正是這個分離要表達的事——收到通知 SHALL NOT 改變收件人的任何
+        資料存取權，這裡也不會回傳或衍生任何權限。
+
+        該擁有者仍在影子狀態時，那支會回族譜全員（導入前的行為）；收斂只在
+        強制生效後發生。
+
+        查詢失敗一律回空並記 log：對主流程 fail-open、對通報 fail-closed。
+        """
         try:
+            if self._authorization_service is not None:
+                return await self._authorization_service.notification_recipients(
+                    user_id, "high_risk_drug_alert"
+                )
             tree = await self._family_tree_repository.get_by_user_id(user_id)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("族譜查詢失敗，本次不通報家人：%s", type(exc).__name__)
+            logger.warning("收件人判定失敗，本次不通報家人：%s", type(exc).__name__)
             return []
 
         members = getattr(tree, "family_members", None) or []

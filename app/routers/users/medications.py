@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.dependencies import (
     CurrentUser,
     get_current_user,
+    get_family_authorization_service,
     get_medication_service,
     get_prescription_scan_service,
     require_prescription_scan_enabled,
@@ -20,6 +21,9 @@ from app.models.prescription import (
     CommitPrescriptionDraftRequest,
     PrescriptionCommitResult,
     PrescriptionDraft,
+)
+from app.services.family.family_authorization_service import (
+    FamilyAuthorizationService,
 )
 from app.services.medication.medication_service import MedicationService
 from app.services.medication.prescription_ocr_service import PrescriptionScanError
@@ -80,7 +84,13 @@ async def create_reminders(
     req: CreateMedicationReminderRequest,
     current_user: CurrentUser = Depends(get_current_user),
     service: MedicationService = Depends(get_medication_service),
+    authz: FamilyAuthorizationService = Depends(get_family_authorization_service),
 ):
+    # 為他人建立提醒需要對該用藥者的 GENERAL 具備寫入權——MEMBER 只有讀。
+    # 請求主體帶得出 user_id，SHALL NOT 因此構成任何允許的依據。
+    await authz.authorize(
+        current_user.line_user_id, req.user_id, "GENERAL", "WRITE"
+    )
     return await service.create_reminders(
         creator_user_id=current_user.line_user_id, request=req
     )
@@ -101,10 +111,35 @@ async def get_reminders(
     target_user_id: Optional[str] = Query(default=None, description="要查詢的使用者 LINE userId"),
     current_user: CurrentUser = Depends(get_current_user),
     service: MedicationService = Depends(get_medication_service),
+    authz: FamilyAuthorizationService = Depends(get_family_authorization_service),
 ):
-    user_id = target_user_id or current_user.line_user_id
-    return await service.get_user_reminders_with_medications(
-        user_id=user_id, requester_user_id=current_user.line_user_id
+    """取得用藥提醒。
+
+    用藥資料本身是 GENERAL，但**適應症是 SENSITIVE**——它回答的是「這個人
+    為什麼吃這個藥」。因此這是一支混合分類端點：只有 GENERAL 讀取權者拿到
+    200 與完整的藥品、時段，適應症欄位為空，**不是 403**。回 403 會讓他連
+    「長輩早上要吃三種藥」都不知道，而那本來就是他有權知道的。
+
+    遮蔽會遞迴進 `medications`：少了那一步，外層看到該欄位自己登記為 GENERAL
+    就整包放行，適應症會從巢狀結構裡漏出去。
+    """
+    operator_id = current_user.line_user_id
+    user_id = target_user_id or operator_id
+
+    if operator_id == user_id:
+        return await service.get_user_reminders_with_medications(
+            user_id=user_id, requester_user_id=operator_id
+        )
+
+    await authz.authorize(operator_id, user_id, "GENERAL", "READ")
+    reminders = await service.get_user_reminders_with_medications(
+        user_id=user_id, requester_user_id=operator_id
+    )
+    return await authz.mask_response(
+        [r.model_dump(by_alias=False) for r in reminders],
+        "medication_reminder",
+        operator_id,
+        user_id,
     )
 
 
@@ -122,10 +157,25 @@ async def get_reminders(
 async def get_created_reminders(
     current_user: CurrentUser = Depends(get_current_user),
     service: MedicationService = Depends(get_medication_service),
+    authz: FamilyAuthorizationService = Depends(get_family_authorization_service),
 ):
-    return await service.get_creator_reminders(
-        creator_user_id=current_user.line_user_id
-    )
+    """查詢自己開立的提醒。**回應逐筆經過授權判定。**
+
+    這支端點的篩選條件正是 `creator_user_id`，而建立者已不再構成授權依據。
+    若不逐筆判定，一位被降級的使用者仍能從這裡看到他當初為長輩設的全部
+    用藥——授權從前門關掉，卻留了這扇後門。
+    """
+    operator_id = current_user.line_user_id
+    reminders = await service.get_creator_reminders(creator_user_id=operator_id)
+
+    visible = []
+    for reminder in reminders:
+        if reminder.user_id == operator_id:
+            visible.append(reminder)
+            continue
+        if await authz.can(operator_id, reminder.user_id, "GENERAL", "READ"):
+            visible.append(reminder)
+    return visible
 
 
 @router.put(
@@ -140,7 +190,17 @@ async def update_reminder(
     req: UpdateMedicationReminderRequest,
     current_user: CurrentUser = Depends(get_current_user),
     service: MedicationService = Depends(get_medication_service),
+    authz: FamilyAuthorizationService = Depends(get_family_authorization_service),
 ):
+    """修改提醒。授權對象是該提醒的**用藥者**，不是建立者。
+
+    `creator_user_id` 只是來源紀錄：任何人 SHALL NOT 因曾建立某筆資料而自動
+    保有其後續的寫入權，否則「收回權限」這件事就永遠做不到。
+    """
+    reminder = await service.get_reminder(reminder_id)
+    await authz.authorize(
+        current_user.line_user_id, reminder.user_id, "GENERAL", "WRITE"
+    )
     return await service.update_reminder(
         creator_user_id=current_user.line_user_id,
         reminder_id=reminder_id,
@@ -157,7 +217,13 @@ async def delete_reminder(
     reminder_id: str,
     current_user: CurrentUser = Depends(get_current_user),
     service: MedicationService = Depends(get_medication_service),
+    authz: FamilyAuthorizationService = Depends(get_family_authorization_service),
 ):
+    """刪除提醒。授權對象同樣是用藥者，不是建立者（見 update_reminder）。"""
+    reminder = await service.get_reminder(reminder_id)
+    await authz.authorize(
+        current_user.line_user_id, reminder.user_id, "GENERAL", "WRITE"
+    )
     ok = await service.delete_reminder(
         creator_user_id=current_user.line_user_id, reminder_id=reminder_id
     )
@@ -264,7 +330,20 @@ async def commit_prescription_draft(
     payload: CommitPrescriptionDraftRequest,
     current_user: CurrentUser = Depends(get_current_user),
     service: PrescriptionScanService = Depends(get_prescription_scan_service),
+    authz: FamilyAuthorizationService = Depends(get_family_authorization_service),
 ):
+    """提交藥袋辨識草稿。
+
+    授權在**建立任何藥品或規則之前**完成：提交會一次寫入多筆藥品與提醒，
+    寫到一半才發現無權，留下的是半套資料。
+
+    `payload.user_id` 是使用者在核對畫面上確認的用藥對象，帶得出它 SHALL NOT
+    構成任何允許的依據——服務層的 `TargetNotInFamilyError` 仍在，是縱深防禦
+    的第二道，但它的語意（在族譜裡）比矩陣寬，不能當作唯一的閘門。
+    """
+    await authz.authorize(
+        current_user.line_user_id, payload.user_id, "GENERAL", "WRITE"
+    )
     try:
         return await service.commit(draft_id, current_user.line_user_id, payload)
     except DraftNotFoundError:

@@ -75,6 +75,27 @@ class MongoDBManager:
         return cls.get_database()["pending_invitations"]
 
     @classmethod
+    def get_family_delegations_collection(cls):
+        """
+        取得 family_delegations collection（受委任 GUARDIAN 的授權紀錄）
+
+        與 family_trees 分開存放：族譜是擁有者自己維護的成員名單，委任則是
+        「不經擁有者同意就取得其資料權限」的例外路徑，兩者的寫入資格與稽核
+        要求完全不同。混在同一份文件裡，一次族譜更新就可能連帶動到委任。
+        """
+        return cls.get_database()["family_delegations"]
+
+    @classmethod
+    def get_family_role_audit_collection(cls):
+        """
+        取得 family_role_audit collection（角色與委任變更的稽核紀錄）
+
+        僅可追加：指派 GUARDIAN 是本系統唯一「一次點擊就讓某人讀得到長輩全部
+        對話」的操作，事後必須能回答「誰在什麼時候給了誰權限」。
+        """
+        return cls.get_database()["family_role_audit"]
+
+    @classmethod
     def get_consultation_summaries_collection(cls):
         """
         取得 consultation_summaries collection

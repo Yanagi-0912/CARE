@@ -240,6 +240,25 @@ class Settings:
     PRESCRIPTION_SCAN_ENABLED: bool = os.getenv(
         "PRESCRIPTION_SCAN_ENABLED", "true"
     ).lower() in ("1", "true", "yes", "on")
+    # 家庭 RBAC 的全域總閘（kill switch）。預設 **關閉**——本能力比既有行為
+    # 嚴格，切換當下會中斷既有的照顧行為，因此先跑影子模式：照常計算兩種
+    # 判定並記錄差異，但依 legacy 放行，行為與導入前完全相同。
+    #
+    # 開啟後仍不是全體一起強制：強制以**資料擁有者**為邊界逐一啟用（見
+    # FamilyTree.rbac_migration_state），兩者是 AND 關係。這個開關的角色是
+    # 出事時讓全體立刻回到變更前的行為，不必逐一改資料。
+    FAMILY_RBAC_ENFORCED: bool = os.getenv(
+        "FAMILY_RBAC_ENFORCED", "false"
+    ).lower() in ("1", "true", "yes", "on")
+    # 委任授權的**啟用**閘門。預設關閉，且在核可流程（身分驗證、醫療證明、
+    # 法定監護證明）由後續的產品／法務 change 定義之前不得開啟。
+    #
+    # 與 FAMILY_RBAC_ENFORCED 是兩個不同的東西：那個管「授權判定要不要強制」，
+    # 這個管「能不能建立新的委任」。撤銷不受本開關限制——閘門管的是能不能給
+    # 出去，不是能不能收回來。
+    FAMILY_DELEGATION_ACTIVATION_ENABLED: bool = os.getenv(
+        "FAMILY_DELEGATION_ACTIVATION_ENABLED", "false"
+    ).lower() in ("1", "true", "yes", "on")
     PRESCRIPTION_SCAN_MAX_IMAGE_BYTES: int = int(
         os.getenv("PRESCRIPTION_SCAN_MAX_IMAGE_BYTES", str(8 * 1024 * 1024))
     )

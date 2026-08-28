@@ -2,7 +2,15 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
-from app.dependencies import CurrentUser, get_current_user, get_user_profile_service, get_family_tree_service
+from app.dependencies import (
+    CurrentUser,
+    get_current_user,
+    get_user_profile_service,
+    get_family_authorization_service,
+)
+from app.services.family.family_authorization_service import (
+    FamilyAuthorizationService,
+)
 from app.main import app
 from app.models.family_tree import FamilyTree, FamilyMember
 from datetime import datetime, timezone
@@ -18,13 +26,54 @@ def mock_profile_service():
 
 @pytest.fixture()
 def mock_family_service():
-    service = AsyncMock()
+    """真的 FamilyAuthorizationService，只把 repository 換成可設定的假物件。
+
+    授權判定看的是**目標擁有者**的族譜（他的族譜裡有沒有呼叫者），方向與
+    本 change 之前相反，因此 `set_family` 以「這些人是呼叫者的家人」的說法
+    為每一位各造一份文件。
+    """
+
+    class _Trees:
+        def __init__(self):
+            self.trees = {}
+
+        async def get_by_user_id(self, user_id):
+            return self.trees.get(user_id)
+
+    class _Delegations:
+        async def has_active_delegation(self, owner_id, delegate_user_id, now=None):
+            return False
+
+    repo = _Trees()
+    service = FamilyAuthorizationService(
+        family_tree_repository=repo,
+        delegation_repository=_Delegations(),
+        enforcement_enabled=False,
+    )
+
+    def set_family(member_ids, caller_id="U_ME", state="shadow", roles=None):
+        now = datetime.now(timezone.utc)
+        roles = roles or {}
+        repo.trees = {
+            member: FamilyTree(
+                user_id=member,
+                family_members=[
+                    FamilyMember(user_id=caller_id, family_role=roles.get(member))
+                ],
+                rbac_migration_state=state,
+                created_at=now,
+                updated_at=now,
+            )
+            for member in member_ids
+        }
+
+    service.set_family = set_family
     return service
 
 @pytest.fixture()
 def override_services(mock_profile_service, mock_family_service):
     app.dependency_overrides[get_user_profile_service] = lambda: mock_profile_service
-    app.dependency_overrides[get_family_tree_service] = lambda: mock_family_service
+    app.dependency_overrides[get_family_authorization_service] = lambda: mock_family_service
     yield mock_profile_service, mock_family_service
     app.dependency_overrides.clear()
 
@@ -61,14 +110,7 @@ def test_get_family_member_profile_success(client, override_services, override_c
     override_current_user("U_ME")
     mock_profile, mock_family = override_services
 
-    # Mock family tree containing the member
-    now = datetime.now(tz=timezone.utc)
-    mock_family.get_family_tree.return_value = FamilyTree(
-        user_id="U_ME",
-        family_members=[FamilyMember(user_id="U_MEMBER", relationship_type="spouse")],
-        created_at=now,
-        updated_at=now
-    )
+    mock_family.set_family(["U_MEMBER"])
 
     mock_profile.get_user_profile.return_value = {
         "name": "Member Name",
@@ -85,39 +127,25 @@ def test_get_family_member_profile_success(client, override_services, override_c
     response = client.get("/api/profiles/U_MEMBER")
     assert response.status_code == 200
     assert response.json()["name"] == "Member Name"
-    mock_family.get_family_tree.assert_awaited_once_with("U_ME")
     mock_profile.get_user_profile.assert_awaited_once_with("U_MEMBER")
 
 def test_get_unrelated_member_profile_forbidden(client, override_services, override_current_user):
     override_current_user("U_ME")
     mock_profile, mock_family = override_services
 
-    # Mock family tree NOT containing the member
-    now = datetime.now(tz=timezone.utc)
-    mock_family.get_family_tree.return_value = FamilyTree(
-        user_id="U_ME",
-        family_members=[FamilyMember(user_id="U_SOMEONE_ELSE", relationship_type="parent")],
-        created_at=now,
-        updated_at=now
-    )
+    mock_family.set_family(["U_SOMEONE_ELSE"])
 
     response = client.get("/api/profiles/U_STRANGER")
     assert response.status_code == 403
-    assert "非家庭成員" in response.json()["detail"]
-    mock_family.get_family_tree.assert_awaited_once_with("U_ME")
+    assert "權限不足" in response.json()["detail"]
+    # 授權擋在讀取之前，不是先撈出來再決定要不要回傳
     mock_profile.get_user_profile.assert_not_awaited()
 
 def test_get_family_member_profile_not_found(client, override_services, override_current_user):
     override_current_user("U_ME")
     mock_profile, mock_family = override_services
 
-    now = datetime.now(tz=timezone.utc)
-    mock_family.get_family_tree.return_value = FamilyTree(
-        user_id="U_ME",
-        family_members=[FamilyMember(user_id="U_MEMBER", relationship_type="child")],
-        created_at=now,
-        updated_at=now
-    )
+    mock_family.set_family(["U_MEMBER"])
 
     mock_profile.get_user_profile.return_value = None
 

@@ -196,6 +196,48 @@ class Settings:
         "RAG_WEB_FALLBACK_ENABLED", "true"
     ).lower() in ("1", "true", "yes", "on")
 
+    # CRAG 判 ambiguous 後，啟動改寫第二輪的時間預算（秒）。0＝不設限。
+    #
+    # 第二輪要價約 19 秒（rewrite 5.3s ＋ 檢索精排 1.6s ＋ grade 11.8s，實測），
+    # 之後還得再付一次 generate。LINE Loading Animation 上限就是 60 秒
+    # （loading_animation.DEFAULT_LOADING_SECONDS），超過使用者連「還在處理」
+    # 都看不到，所以最壞路徑必須有上界。
+    #
+    # 超時是拿第一輪結果生成，不是轉網搜——網搜比第二輪更慢，為省時間走上
+    # 更慢的路沒有意義。細節見 rag/answer_service.DEFAULT_CRAG_REWRITE_BUDGET_SECONDS。
+    RAG_CRAG_REWRITE_BUDGET_SECONDS: float = float(
+        os.getenv("RAG_CRAG_REWRITE_BUDGET_SECONDS", "12")
+    )
+
+    # 參考來源網址的存活檢查（見 services/rag/link_check.py）。
+    #
+    # 白名單看網域後綴、CRAG 看內容相關性，兩者都不管「這個 url 現在還在
+    # 不在」。庫裡的 url 是 ingest 當下的快照，站台改版或子系統除役之後
+    # 就成了點不開的來源按鈕——實測 sp1.hso.mohw.gov.tw 整台 TCP 不通，
+    # 但它是 gov.tw，白名單一路放行。
+    #
+    # 預設開啟：降級方向是安全的（少顯示連結，不會顯示錯的），而附上打不開
+    # 的來源對衛教問答的傷害大於沒有來源——來源的作用是讓使用者能自己驗證。
+    RAG_LINK_CHECK_ENABLED: bool = os.getenv(
+        "RAG_LINK_CHECK_ENABLED", "true"
+    ).lower() in ("1", "true", "yes", "on")
+    # 逾時掛在使用者等待路徑上（此時已經花掉檢索＋精排＋生成的時間，而 LINE
+    # reply token 上限 30s）。3s 是「多數站台的 HEAD 都該在此之內回應」與
+    # 「不拖垮整輪」之間的取捨，尚未以線上分佈校準——要調的話先看
+    # stage=rag_link_check 的 ms 分佈，不要憑感覺加。
+    RAG_LINK_CHECK_TIMEOUT_SECONDS: float = float(
+        os.getenv("RAG_LINK_CHECK_TIMEOUT_SECONDS", "3")
+    )
+    # 判活的快取久、判死的快取短。判死可能來自對方站台的暫時性故障或我方
+    # 出口網路抖動，短 TTL 是「逾時一律視為不可用」那個保守取捨的補償：
+    # 站台恢復後最多 10 分鐘就會重新顯示連結。
+    RAG_LINK_CHECK_OK_TTL_SECONDS: float = float(
+        os.getenv("RAG_LINK_CHECK_OK_TTL_SECONDS", "86400")
+    )
+    RAG_LINK_CHECK_DEAD_TTL_SECONDS: float = float(
+        os.getenv("RAG_LINK_CHECK_DEAD_TTL_SECONDS", "600")
+    )
+
     # 入庫／核准的來源白名單（逗號分隔的網域後綴）。只有落在此清單的網址能
     # 進向量庫、能被核准。判準見 openspec/changes/harden-url-whitelist/design.md
     # Decision 4：機構層級的權威性、內容穩定可長期存取、無商業銷售動機、

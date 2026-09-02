@@ -1,3 +1,4 @@
+import asyncio
 import sys
 import types
 from unittest.mock import AsyncMock, MagicMock
@@ -35,7 +36,11 @@ from app.services.rag import (
     RagAnswerService,
 )
 from app.services.rag.answer_prompts import CONTEXT_BEGIN, CONTEXT_END
-from app.services.rag.answer_service import cited_indices, dedup_ranked_docs
+from app.services.rag.answer_service import (
+    DEFAULT_CRAG_REWRITE_BUDGET_SECONDS,
+    cited_indices,
+    dedup_ranked_docs,
+)
 from app.services.rag.cohere_reranker import VectorScoreReranker
 from app.services.rag.retrieval_grader import Grade
 
@@ -51,6 +56,8 @@ def _make_service(
     crag_enabled=False,
     web_search=None,
     web_fallback_enabled=True,
+    crag_rewrite_budget_seconds=DEFAULT_CRAG_REWRITE_BUDGET_SECONDS,
+    link_checker=None,
 ):
     gemini_service = MagicMock()
     gemini_service.chat_model = MagicMock()
@@ -70,8 +77,10 @@ def _make_service(
             grader=grader,
             rewriter=rewriter,
             crag_enabled=crag_enabled,
+            crag_rewrite_budget_seconds=crag_rewrite_budget_seconds,
             web_search=web_search,
             web_fallback_enabled=web_fallback_enabled,
+            link_checker=link_checker,
         ),
         gemini_service,
         retriever,
@@ -972,3 +981,215 @@ def test_structured_sources_allow_missing_url(rag_sources_holder):
     refs = get_request_rag_sources()
     assert len(refs) == 1
     assert refs[0].url == ""
+
+
+# --- 來源網址存活檢查（link_check.py）---
+
+DEAD_URL = "https://sp1.hso.mohw.gov.tw/doctor/Often_question/type_detail.php"
+LIVE_URL = "https://www.hpa.gov.tw/foot"
+
+
+class FakeLinkChecker:
+    """把指定網址判死，其餘判活。記錄被查過哪些網址。"""
+
+    def __init__(self, dead=()):
+        self._dead = set(dead)
+        self.checked: list[str] = []
+
+    async def alive(self, urls):
+        urls = list(urls)
+        self.checked.extend(urls)
+        return {url: url not in self._dead for url in urls}
+
+
+def test_append_sources_hides_dead_url_but_keeps_the_source():
+    """降級不是丟棄：編號還在、機構名還在，只是沒有點得下去的網址。"""
+    docs = [_doc(source="衛福部", url=DEAD_URL, title="腳痛常見問題")]
+
+    out = RagAnswerService._append_sources("內容 [1]。", docs, frozenset({DEAD_URL}))
+
+    assert DEAD_URL not in out
+    assert "[1] 衛福部｜腳痛常見問題" in out
+    assert "內容 [1]。" in out
+
+
+def test_append_sources_drops_source_with_dead_url_and_no_fallback_label():
+    """網址死了又沒有來源名與標題可退回，就真的無從顯示——與 metadata
+    全空走同一條既有路徑，引用標記一併從本文移除。"""
+    docs = [_doc(url=DEAD_URL)]
+
+    out = RagAnswerService._append_sources("內容 [1]。", docs, frozenset({DEAD_URL}))
+
+    assert DEAD_URL not in out
+    assert "[1]" not in out
+
+
+def test_append_sources_renumbers_around_dead_source():
+    docs = [_doc(url=DEAD_URL), _doc(source="國健署", url=LIVE_URL)]
+
+    out = RagAnswerService._append_sources("甲 [1] 乙 [2]", docs, frozenset({DEAD_URL}))
+
+    assert f"[1] 國健署：{LIVE_URL}" in out
+    assert "乙 [1]" in out
+
+
+def test_append_sources_without_dead_urls_is_unchanged():
+    """預設空集合＝完全是導入檢查前的行為。"""
+    docs = [_doc(source="衛福部", url=DEAD_URL)]
+
+    assert RagAnswerService._append_sources(
+        "內容 [1]。", docs
+    ) == RagAnswerService._append_sources("內容 [1]。", docs, frozenset())
+
+
+def test_dead_source_url_produces_source_ref_without_url():
+    """呈現層靠空 url 決定不生按鈕（_source_buttons 會略過它）。"""
+    ref = RagAnswerService._source_ref(
+        _doc(source="衛福部", url=DEAD_URL), 1, ""
+    )
+
+    assert ref.url == ""
+    assert ref.label == "衛福部"
+
+
+async def test_answer_hides_dead_citation_end_to_end():
+    docs = [_doc(source="衛福部", url=DEAD_URL, title="腳痛常見問題")]
+    svc, _, _ = _make_service(
+        docs=docs,
+        answer_content="腳痛可能有多種原因 [1]。",
+        link_checker=FakeLinkChecker(dead=[DEAD_URL]),
+    )
+
+    result = await svc.answer("腳痛怎麼辦")
+
+    assert DEAD_URL not in result
+    assert "衛福部｜腳痛常見問題" in result
+
+
+async def test_answer_keeps_live_citation_end_to_end():
+    docs = [_doc(source="國健署", url=LIVE_URL)]
+    svc, _, _ = _make_service(
+        docs=docs,
+        answer_content="請規律運動 [1]。",
+        link_checker=FakeLinkChecker(),
+    )
+
+    assert LIVE_URL in await svc.answer("腳痛怎麼辦")
+
+
+async def test_only_cited_urls_are_checked():
+    """沒被引用的 doc 不會出現在來源清單，為它們付 HTTP 往返是純粹的延遲。"""
+    checker = FakeLinkChecker()
+    docs = [_doc(source="國健署", url=LIVE_URL), _doc(source="衛福部", url=DEAD_URL)]
+    svc, _, _ = _make_service(
+        docs=docs, answer_content="請規律運動 [1]。", link_checker=checker
+    )
+
+    await svc.answer("腳痛怎麼辦")
+
+    assert checker.checked == [LIVE_URL]
+
+
+async def test_answer_shows_all_sources_when_checker_raises():
+    """檢查器故障是我們的問題，不該讓使用者連正常來源都看不到。"""
+
+    class Exploding:
+        async def alive(self, urls):
+            raise RuntimeError("boom")
+
+    svc, _, _ = _make_service(
+        docs=[_doc(source="衛福部", url=DEAD_URL)],
+        answer_content="內容 [1]。",
+        link_checker=Exploding(),
+    )
+
+    assert DEAD_URL in await svc.answer("腳痛怎麼辦")
+
+
+def test_rewrite_budget_exhausted_at_or_past_budget():
+    """邊界：剛好用滿即視為超支。"""
+    service, _, _ = _make_service(
+        docs=[_kb_doc()], crag_rewrite_budget_seconds=12.0
+    )
+    assert service._rewrite_budget_exhausted(11.9) is False
+    assert service._rewrite_budget_exhausted(12.0) is True
+    assert service._rewrite_budget_exhausted(12.1) is True
+
+
+def test_rewrite_budget_zero_means_unlimited():
+    """0＝不設限，沿用本檔其他門檻（RAG_VECTOR_MIN_SCORE 等）的慣例。"""
+    service, _, _ = _make_service(
+        docs=[_kb_doc()], crag_rewrite_budget_seconds=0.0
+    )
+    assert service._rewrite_budget_exhausted(9999.0) is False
+
+
+@pytest.mark.asyncio
+async def test_crag_ambiguous_skips_rewrite_when_budget_exhausted():
+    """預算用完就拿第一輪結果生成——不改寫，也不轉網搜（網搜比第二輪更慢）。"""
+    # 全 mock 的第一輪跑不到 0.1ms，設不出「已經超支」的狀態；讓 grader 真的
+    # 花掉一段時間，才測得到預算是依「已花時間」而非呼叫次數判斷。
+    grader = MagicMock()
+
+    async def _slow_grade(query, docs):
+        await asyncio.sleep(0.02)
+        return Grade.AMBIGUOUS
+
+    grader.grade = AsyncMock(side_effect=_slow_grade)
+    rewriter = MagicMock()
+    rewriter.rewrite = AsyncMock(return_value="不該被呼叫")
+    web_search = MagicMock()
+    web_search.answer = AsyncMock(return_value="不該走網搜")
+
+    service, _, retriever = _make_service(
+        docs=[_kb_doc()],
+        answer_content="用第一輪結果生成 [1]",
+        grader=grader,
+        rewriter=rewriter,
+        crag_enabled=True,
+        web_search=web_search,
+        crag_rewrite_budget_seconds=0.005,
+    )
+    result = await service.answer("高血壓？")
+
+    assert rewriter.rewrite.await_count == 0
+    assert grader.grade.await_count == 1
+    assert web_search.answer.await_count == 0
+    assert retriever.ainvoke.await_count == 1
+    assert "用第一輪結果生成" in result
+    assert "https://www.hpa.gov.tw/a" in result
+
+
+@pytest.mark.asyncio
+async def test_crag_ambiguous_still_rewrites_when_budget_unlimited():
+    """預算設 0 時行為與導入預算前相同。"""
+    first_docs = [_kb_doc("模糊內容")]
+    second_docs = [_kb_doc("精準內容", url="https://www.hpa.gov.tw/b")]
+
+    grader = MagicMock()
+    grader.grade = AsyncMock(side_effect=[Grade.AMBIGUOUS, Grade.CORRECT])
+    rewriter = MagicMock()
+    rewriter.rewrite = AsyncMock(return_value="改寫後的問題")
+
+    gemini_service = MagicMock()
+    gemini_service.chat_model = MagicMock()
+    gemini_service.chat_model.ainvoke = AsyncMock(
+        return_value=AIMessage(content="改寫後回答 [1]")
+    )
+    retriever = MagicMock()
+    retriever.ainvoke = AsyncMock(side_effect=[first_docs, second_docs])
+
+    svc = RagAnswerService(
+        gemini_service=gemini_service,
+        retriever=retriever,
+        reranker=VectorScoreReranker(),
+        grader=grader,
+        rewriter=rewriter,
+        crag_enabled=True,
+        crag_rewrite_budget_seconds=0.0,
+    )
+    result = await svc.answer("高血壓？")
+
+    assert rewriter.rewrite.await_count == 1
+    assert grader.grade.await_count == 2
+    assert "https://www.hpa.gov.tw/b" in result

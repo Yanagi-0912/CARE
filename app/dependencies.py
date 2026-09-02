@@ -95,6 +95,7 @@ from app.services.rag.claim_verification.service import ClaimVerificationService
 from app.services.rag.cohere_reranker import CohereReranker, VectorScoreReranker
 from app.services.rag.firecrawl_client import FirecrawlClient
 from app.services.rag.ingest_service import IngestService
+from app.services.rag.link_check import LinkChecker
 from app.services.rag.whitelist import default_url_policy
 from app.services.rag.user_document_answer_service import UserDocumentAnswerService
 from app.services.rag.user_document_ingest_service import UserDocumentIngestService
@@ -250,10 +251,23 @@ _knowledge_report_service = KnowledgeReportService(
 )
 configure_knowledge_report_tool(_knowledge_report_service)
 
+# 兩條回答路徑共用同一個 checker，快取才是共用的：知識庫路徑查過的網址，
+# 網搜路徑（以及下一輪對話）能直接命中，不必再打一次 HEAD。
+_link_checker = None
+if settings.RAG_LINK_CHECK_ENABLED:
+    _link_checker = LinkChecker(
+        timeout_seconds=settings.RAG_LINK_CHECK_TIMEOUT_SECONDS,
+        ok_ttl_seconds=settings.RAG_LINK_CHECK_OK_TTL_SECONDS,
+        dead_ttl_seconds=settings.RAG_LINK_CHECK_DEAD_TTL_SECONDS,
+    )
+else:
+    logger.info("RAG_LINK_CHECK_ENABLED=false; citation URLs will not be verified")
+
 _web_search_service = WebSearchService(
     gemini_service=_gemini_service,
     web_client=_firecrawl_client,
     on_web_fallback_success=_knowledge_report_service.create_from_web_fallback,
+    link_checker=_link_checker,
 )
 
 _rag_answer_service = RagAnswerService(
@@ -264,10 +278,12 @@ _rag_answer_service = RagAnswerService(
     max_chunks_per_article=settings.RAG_RERANK_MAX_CHUNKS_PER_ARTICLE,
     grader=_rag_grader,
     rewriter=_rag_rewriter,
+    crag_rewrite_budget_seconds=settings.RAG_CRAG_REWRITE_BUDGET_SECONDS,
     crag_enabled=settings.RAG_CRAG_ENABLED,
     web_search=_web_search_service,
     web_fallback_enabled=settings.RAG_WEB_FALLBACK_ENABLED,
     degraded_min_score=settings.RAG_DEGRADED_MIN_SCORE,
+    link_checker=_link_checker,
 )
 
 _chat_history_repository = build_chat_history_repository()

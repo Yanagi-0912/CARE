@@ -1,8 +1,11 @@
 import logging
 import re
+import time
+from typing import Any
 
 from langchain_core.documents import Document
 
+from app.core.request_logging import stage_timer
 from app.services.gemini import GeminiService
 from app.i18n.messages import t
 from app.services.rag.cannot_answer import (
@@ -12,6 +15,7 @@ from app.services.rag.cannot_answer import (
 )
 from app.services.rag.answer_prompts import build_rag_prompt, wrap_context
 from app.services.rag.cohere_reranker import Reranker, VectorScoreReranker
+from app.services.rag.link_check import LinkChecker, dead_urls
 from app.core.rag_sources import SourceRef, set_request_rag_sources
 from app.services.rag.fail_messages import (
     NO_ANSWER_MESSAGE,
@@ -44,6 +48,26 @@ RERANK_MAX_CHUNKS_PER_ARTICLE = 2
 # 數字取代 CRAG，是在 CRAG 不可用時補一張網。
 DEFAULT_DEGRADED_MIN_SCORE = 0.0
 
+# CRAG 判 ambiguous 時，啟動改寫第二輪的時間預算（秒）。0.0＝不設限，
+# 維持導入前的行為。
+#
+# 第二輪是整條管線最貴的一段：實測（gemini-2.5-flash，thinking 預設開啟）
+# rewrite 5.3s ＋ 第二輪檢索精排 1.6s ＋ grade 11.8s ≈ 19s，後面還要再付
+# 一次 generate（3.8-10.2s）。同一題走不走第二輪是 43.6s 與 ~25s 的差別。
+#
+# 為什麼是「用掉多少」而不是「還剩多少」：預算檢查點在第一輪 grade 之後，
+# 那時已經知道這一輪的 grader 有多慢——grader 慢通常代表第二次也會慢，
+# 用已花時間當預測比固定總時限準。
+#
+# 12 秒的來由：第一輪檢索＋精排＋grade 實測 5.0 / 9.1 / 13.9 秒，取在最慢
+# 那題之下，讓它跳過第二輪、其餘兩題不受影響。**這是依三題樣本抓的起點，
+# 不是調校過的值**；要調整請先用 evals/rag/golden.jsonl 量判定品質的變化。
+#
+# 超時的降級是「拿第一輪結果生成」而不是轉網搜：網搜要再打 Firecrawl
+# 搜尋、可能逐頁 scrape、再生成一次，比第二輪更慢——為了省時間而走上更慢
+# 的路是本末倒置。這與既有 rewrite 失敗時 `return ranked` 的降級一致。
+DEFAULT_CRAG_REWRITE_BUDGET_SECONDS = 12.0
+
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 
 
@@ -74,6 +98,8 @@ class RagAnswerService:
         web_search: WebSearchService | None = None,
         web_fallback_enabled: bool = False,
         degraded_min_score: float = DEFAULT_DEGRADED_MIN_SCORE,
+        crag_rewrite_budget_seconds: float = DEFAULT_CRAG_REWRITE_BUDGET_SECONDS,
+        link_checker: LinkChecker | None = None,
     ) -> None:
         self.gemini_service = gemini_service
         self.retriever = retriever
@@ -86,15 +112,29 @@ class RagAnswerService:
         self.web_search = web_search
         self.web_fallback_enabled = bool(web_fallback_enabled and web_search is not None)
         self.degraded_min_score = degraded_min_score
+        self.crag_rewrite_budget_seconds = crag_rewrite_budget_seconds
+        # None＝不檢查來源網址存活，行為與導入前完全相同（見 link_check.py）
+        self.link_checker = link_checker
 
     async def answer(self, user_text: str) -> str:
+        # 總計時的 path 欄位標出這一輪實際走了哪條路——同樣是 40 秒，
+        # 走 kb 與走 web 要查的地方完全不同。
+        with stage_timer(logger, "rag_answer") as timing:
+            return await self._answer(user_text, timing)
+
+    async def _answer(self, user_text: str, timing: dict[str, Any]) -> str:
+        # 預算從這裡起算，涵蓋第一輪檢索、精排與 grade——預算要防的是整體
+        # 延遲，只計 _apply_crag 內部會漏掉前面已經花掉的時間。
+        started = time.perf_counter()
+        timing["path"] = "kb"
         ranked = await self._retrieve_and_rerank(user_text)
         if not ranked:
+            timing["path"] = "web_empty_retrieval"
             return await self._web_or_no_hits(user_text)
 
         if self.crag_enabled:
             try:
-                ranked = await self._apply_crag(user_text, ranked)
+                ranked = await self._apply_crag(user_text, ranked, started=started)
             except Exception:
                 logger.exception(
                     "CRAG failed; degrading to generate without grade crag_grade=degraded"
@@ -104,13 +144,16 @@ class RagAnswerService:
                 # 有明確語意；降級到 VectorScoreReranker 時則是融合後的排名
                 # 分數）。過不了門檻就走與「知識庫無資料」相同的路徑——
                 # 寧可少答，不要拿不相關的內容生成醫療答案。
+                timing["path"] = "kb_crag_degraded"
                 ranked = self._filter_by_degraded_score(ranked)
                 if not ranked:
                     logger.info("rag_fail code=%s crag_grade=degraded_below_floor",
                                 RagFailCode.KB_EMPTY)
+                    timing["path"] = "web_degraded_below_floor"
                     return await self._web_or_no_hits(user_text)
             else:
                 if ranked is None:
+                    timing["path"] = "web_crag_reject"
                     return await self._web_or_no_hits(user_text)
 
         kb_answer = await self._generate_answer(user_text, ranked)
@@ -125,7 +168,8 @@ class RagAnswerService:
             )
             return rag_fail(RagFailCode.MODEL_REFUSE)
 
-        return self._append_sources(kb_answer, ranked)
+        dead = await self._dead_source_urls(kb_answer, ranked, timing)
+        return self._append_sources(kb_answer, ranked, dead)
 
     def _filter_by_degraded_score(self, docs: list[Document]) -> list[Document]:
         """只保留精排分數達到門檻的文件。門檻為 0 時原樣回傳。
@@ -149,7 +193,8 @@ class RagAnswerService:
         if not self.web_fallback_enabled or self.web_search is None:
             return self._fail(RagFailCode.KB_EMPTY)
         try:
-            return await self.web_search.answer(query)
+            with stage_timer(logger, "rag_web_fallback"):
+                return await self.web_search.answer(query)
         except Exception:
             logger.exception("web fallback failed")
             return self._fail(RagFailCode.WEB_ERROR)
@@ -159,23 +204,39 @@ class RagAnswerService:
         logger.info("rag_fail code=%s", code)
         return rag_fail(code)
 
-    async def _retrieve_and_rerank(self, query: str) -> list[Document]:
-        docs = await self.retriever.ainvoke(query)
+    async def _retrieve_and_rerank(
+        self, query: str, *, attempt: str = "first"
+    ) -> list[Document]:
+        # attempt 區分這是第一輪還是 CRAG 改寫後的第二輪：整段檢索＋精排會
+        # 跑兩次，兩次的 ms 分不開就看不出「慢是因為跑了兩遍」。
+        with stage_timer(logger, "rag_retrieve", attempt=attempt) as t_retrieve:
+            docs = await self.retriever.ainvoke(query)
+            t_retrieve["docs"] = len(docs)
         if not docs:
             return []
         # 拿完整排序（不是只拿 top_n）：文章層級去重必須看過全部候選才能
         # 判斷「這篇文章還有沒有更高分的 chunk 沒被算進去」，只截斷後的
         # top_n 會讓去重看不到被擠掉的候選，等於沒去重。
-        ranked = await self.reranker.rerank(query, docs, top_n=len(docs))
+        with stage_timer(
+            logger, "rag_rerank", attempt=attempt, docs_in=len(docs)
+        ) as t_rerank:
+            ranked = await self.reranker.rerank(query, docs, top_n=len(docs))
+            t_rerank["docs_out"] = len(ranked)
         deduped = dedup_ranked_docs(ranked, max_per_article=self.max_chunks_per_article)
         return deduped[: self.rerank_top_n]
 
     async def _apply_crag(
-        self, user_text: str, ranked: list[Document]
+        self, user_text: str, ranked: list[Document], *, started: float
     ) -> list[Document] | None:
-        """回傳可用於生成的 docs；None 表示知識庫不足。"""
+        """回傳可用於生成的 docs；None 表示知識庫不足。
+
+        *started* 是本次 answer 的 `time.perf_counter()` 起點，供改寫第二輪的
+        時間預算判斷（見 DEFAULT_CRAG_REWRITE_BUDGET_SECONDS）。
+        """
         assert self.grader is not None
-        grade = await self.grader.grade(user_text, ranked)
+        with stage_timer(logger, "rag_crag_grade", attempt="first") as t_grade:
+            grade = await self.grader.grade(user_text, ranked)
+            t_grade["grade"] = grade.value
         logger.info("crag_grade=%s", grade.value)
 
         if grade is Grade.CORRECT:
@@ -189,24 +250,44 @@ class RagAnswerService:
             logger.info("crag_grade=ambiguous_no_rewriter")
             return None
 
+        elapsed = time.perf_counter() - started
+        if self._rewrite_budget_exhausted(elapsed):
+            # 拿第一輪的 ranked 生成。grader 說的是「有關但資訊不足」，不是
+            # 「無關」，而 prompt 的「內容不足請說不知道」與 _is_cannot_answer
+            # 仍在後面把關。
+            logger.info(
+                "crag_grade=ambiguous_budget_exhausted elapsed_s=%.1f budget_s=%.1f",
+                elapsed,
+                self.crag_rewrite_budget_seconds,
+            )
+            return ranked
+
         try:
-            rewritten = await self.rewriter.rewrite(user_text, ranked)
+            with stage_timer(logger, "rag_crag_rewrite"):
+                rewritten = await self.rewriter.rewrite(user_text, ranked)
         except Exception:
             logger.exception(
                 "CRAG rewrite failed; degrading to generate crag_grade=rewrite_degraded"
             )
             return ranked
 
-        second = await self._retrieve_and_rerank(rewritten)
+        second = await self._retrieve_and_rerank(rewritten, attempt="rewrite")
         if not second:
             logger.info("crag_grade=ambiguous_exhausted empty_retry")
             return None
 
-        grade2 = await self.grader.grade(rewritten, second)
+        with stage_timer(logger, "rag_crag_grade", attempt="rewrite") as t_grade2:
+            grade2 = await self.grader.grade(rewritten, second)
+            t_grade2["grade"] = grade2.value
         logger.info("crag_grade=%s after_rewrite", grade2.value)
         if grade2 is Grade.CORRECT:
             return second
         return None
+
+    def _rewrite_budget_exhausted(self, elapsed_seconds: float) -> bool:
+        """已花時間是否用完改寫預算。預算 <= 0 視為不設限（沿用本檔其他門檻的慣例）。"""
+        budget = self.crag_rewrite_budget_seconds
+        return budget > 0 and elapsed_seconds >= budget
 
     @staticmethod
     def _build_context(docs: list[Document]) -> str:
@@ -234,7 +315,8 @@ class RagAnswerService:
         messages = build_rag_prompt().format_messages(
             question=question, context=wrap_context(context)
         )
-        rag_result = await self.gemini_service.chat_model.ainvoke(messages)
+        with stage_timer(logger, "rag_generate", docs=len(docs)):
+            rag_result = await self.gemini_service.chat_model.ainvoke(messages)
         answer_text = rag_result.content or t("rag.generate_fallback")
         if not isinstance(answer_text, str):
             answer_text = str(answer_text)
@@ -247,10 +329,59 @@ class RagAnswerService:
         )
 
     @staticmethod
-    def _source_label(doc: Document) -> str | None:
-        """來源顯示字串；無 url 時退回「來源名｜標題」，兩者皆無則回 None。"""
+    def _doc_url(doc: Document) -> str:
+        return str(doc.metadata.get("url") or "").strip()
+
+    @staticmethod
+    def _cited_urls(answer_text: str, docs: list[Document]) -> list[str]:
+        """只取答案真的引用到的那幾筆的網址，依引用順序、去重。
+
+        不查全部 `ranked`：沒被引用的 doc 不會出現在來源清單裡，為它們付
+        HTTP 往返是純粹的延遲，也會用不相干的網址稀釋 LRU 快取。
+        """
+        urls: list[str] = []
+        seen: set[str] = set()
+        for idx in cited_indices(answer_text):
+            if idx < 1 or idx > len(docs):
+                continue
+            url = RagAnswerService._doc_url(docs[idx - 1])
+            if not url or url in seen:
+                continue
+            seen.add(url)
+            urls.append(url)
+        return urls
+
+    async def _dead_source_urls(
+        self, answer_text: str, docs: list[Document], timing: dict[str, Any]
+    ) -> frozenset[str]:
+        """判定哪些被引用的網址現在打不開。關閉或失敗時回空集合。"""
+        if self.link_checker is None:
+            return frozenset()
+        urls = self._cited_urls(answer_text, docs)
+        if not urls:
+            return frozenset()
+        with stage_timer(logger, "rag_link_check", checked=len(urls)) as lc_timing:
+            dead = await dead_urls(self.link_checker, urls)
+            lc_timing["dead"] = len(dead)
+        if dead:
+            # 記下實際被降級的網址：這是 link rot 的唯一可觀測訊號，也是
+            # 之後要不要回頭清庫（重新 ingest 或下架該來源）的依據。
+            logger.info(
+                "citation_link_dead count=%d urls=%s", len(dead), sorted(dead)
+            )
+        timing["dead_citations"] = len(dead)
+        return dead
+
+    @staticmethod
+    def _source_label(doc: Document, url: str | None = None) -> str | None:
+        """來源顯示字串；無 url 時退回「來源名｜標題」，兩者皆無則回 None。
+
+        *url* 為 None 時取 metadata 原值。呼叫端會在網址判定為打不開時改傳
+        空字串——把「死掉的 url」完全等同於「沒有 url」，既有的退回邏輯就
+        原封不動地變成降級路徑，不需要新增一種顯示分支。
+        """
         source = str(doc.metadata.get("source_name") or "").strip()
-        url = str(doc.metadata.get("url") or "").strip()
+        url = RagAnswerService._doc_url(doc) if url is None else url.strip()
         title = str(doc.metadata.get("original_title") or "").strip()
         if url:
             return f"{source}：{url}" if source else url
@@ -259,9 +390,14 @@ class RagAnswerService:
         return None
 
     @staticmethod
-    def _source_key(doc: Document) -> str:
-        """判定「同一個來源」的鍵；有 url 用 url，否則用來源名＋標題。"""
-        url = str(doc.metadata.get("url") or "").strip()
+    def _source_key(doc: Document, url: str | None = None) -> str:
+        """判定「同一個來源」的鍵；有 url 用 url，否則用來源名＋標題。
+
+        *url* 的語意同 `_source_label`。傳空字串進來時去重會退回
+        「來源名＋標題」，與這筆來源在顯示上的身分保持一致——顯示成同一行
+        的兩筆，去重也必須把它們當成同一筆。
+        """
+        url = RagAnswerService._doc_url(doc) if url is None else url.strip()
         if url:
             return f"url:{url}"
         source = str(doc.metadata.get("source_name") or "").strip()
@@ -269,7 +405,7 @@ class RagAnswerService:
         return f"meta:{source}|{title}"
 
     @staticmethod
-    def _source_ref(doc: Document, index: int) -> SourceRef:
+    def _source_ref(doc: Document, index: int, url: str | None = None) -> SourceRef:
         """從 metadata 直接取值組成結構化來源。
 
         刻意不重用 `_source_label` 的輸出：那個字串是給純文字清單看的，
@@ -278,12 +414,27 @@ class RagAnswerService:
         """
         source = str(doc.metadata.get("source_name") or "").strip()
         title = str(doc.metadata.get("original_title") or "").strip()
-        url = str(doc.metadata.get("url") or "").strip()
+        url = RagAnswerService._doc_url(doc) if url is None else url.strip()
         label = source or title or f"來源 {index}"
         return SourceRef(index=index, label=label, url=url)
 
     @staticmethod
-    def _append_sources(answer_text: str, docs: list[Document]) -> str:
+    def _append_sources(
+        answer_text: str,
+        docs: list[Document],
+        dead_urls: frozenset[str] = frozenset(),
+    ) -> str:
+        """組出來源清單。*dead_urls* 中的網址一律降級為「不顯示網址」。
+
+        存活檢查本身在 `_dead_source_urls` 做完才進來，這個函式維持純函式
+        性質（同一組輸入永遠組出同一個輸出），網路 I/O 不混進呈現邏輯裡。
+        預設空集合＝完全是導入檢查前的行為。
+
+        降級不是丟棄：該筆來源仍佔一個編號、仍出現在清單裡，只是退回
+        「來源名｜標題」而沒有網址，呈現層也就不會給它一顆點了打不開的
+        按鈕。這符合 rag-responses「缺 url 不得靜默丟棄」——答案本文的
+        引用標記指得到東西，使用者也看得到我們依據的是哪個機構的資料。
+        """
         cited = cited_indices(answer_text)
         if not cited:
             logger.info("citation_missing docs=%d", len(docs))
@@ -299,10 +450,14 @@ class RagAnswerService:
             if old_idx < 1 or old_idx > len(docs):
                 continue
             doc = docs[old_idx - 1]
-            label = RagAnswerService._source_label(doc)
+            raw_url = RagAnswerService._doc_url(doc)
+            url = "" if raw_url in dead_urls else raw_url
+            label = RagAnswerService._source_label(doc, url)
             if label is None:
+                # 網址死了、又沒有來源名與標題可退回，這筆就真的無從顯示。
+                # 與導入前「metadata 全空」走的是同一條路徑。
                 continue
-            key = RagAnswerService._source_key(doc)
+            key = RagAnswerService._source_key(doc, url)
             existing = key_to_new.get(key)
             if existing is not None:
                 renumber[old_idx] = existing
@@ -314,7 +469,7 @@ class RagAnswerService:
             renumber[old_idx] = new_idx
             source_lines.append(f"[{new_idx}] {label}")
             # 與文字清單同一個迴圈、同一個 new_idx，兩者編號因此不可能漂移。
-            source_refs.append(RagAnswerService._source_ref(doc, new_idx))
+            source_refs.append(RagAnswerService._source_ref(doc, new_idx, url))
 
         def _replace(match: re.Match[str]) -> str:
             mapped = renumber.get(int(match.group(1)))

@@ -103,6 +103,56 @@ def _clean(value: Any) -> str:
     return str(value).strip()
 
 
+# 藥品類別 → 藥事法第 8 條的分級。許可證資料集的「藥品類別」欄有 24 種寫法，
+# 全部對照如下（2026-09-02 實測 72,037 筆，只有 1 筆是空值）。
+#
+# 為什麼要逐一列舉而不是用關鍵字比對：字串規則會出錯。「須經醫師指示使用」
+# 含「醫師」但它是**指示藥**不是處方藥（藥事法第 8 條把指示藥定義為「醫師藥師
+# 藥劑生指示藥品」，食藥署的衛教也明確把這個標示歸為指示藥），單這一格就有
+# 5,842 筆；反過來「製劑原料」「空膠囊」這類根本不是給人服用的成品藥，用關鍵字
+# 比對會落進「其他」而不知道該怎麼辦。
+#
+#   prescription    處方藥——須醫師開立處方箋
+#   otc_guided      指示藥——藥局可買，需醫師或藥事人員指示
+#   otc             成藥——藥性弱、不需指示（甲類限藥局，乙類百貨雜貨店亦可）
+#   not_a_medicine  非成品藥——製劑原料、空膠囊、調劑專用，不會被病人拿在手上
+_DRUG_CLASS_BY_CATEGORY = {
+    "須由醫師處方使用": "prescription",
+    "限由醫師使用": "prescription",
+    "由醫師或檢驗師使用": "prescription",
+    "限由牙醫師使用": "prescription",
+    "本藥須由醫師處方使用(限由皮膚科專科醫師使用)": "prescription",
+    "限由婦產科醫師處方使用": "prescription",
+    "限由醫師及牙醫師使用": "prescription",
+    "本藥限神經專科醫師使用": "prescription",
+    "限麻醉醫師使用": "prescription",
+    "限由中醫師處方使用": "prescription",
+    "限由眼科醫師處方使用": "prescription",
+    "醫師藥師藥劑生指示藥品": "otc_guided",
+    "須經醫師指示使用": "otc_guided",
+    "牙醫師指示使用": "otc_guided",
+    "成藥": "otc",
+    "甲類成藥": "otc",
+    "乙類成藥": "otc",
+    "製劑原料": "not_a_medicine",
+    "自用製劑原料": "not_a_medicine",
+    "原料藥": "not_a_medicine",
+    "空膠囊": "not_a_medicine",
+    "調劑專用": "not_a_medicine",
+    "調劑專用製劑": "not_a_medicine",
+}
+
+
+def classify_drug(category: Optional[str]) -> str:
+    """藥品類別字串 → 分級。認不得的值回空字串，不猜。
+
+    回空字串而非硬歸一類：上游若新增類別（或改寫既有用語），把它猜成處方藥會
+    讓下游少提醒，猜成成藥則會多問使用者一次「還在吃嗎」。兩個方向都不好，
+    不如讓下游看到空值時自己決定要不要處理。
+    """
+    return _DRUG_CLASS_BY_CATEGORY.get((category or "").strip(), "")
+
+
 # 外觀資料集的中文欄名 → 藥證庫條目使用的鍵名，比照既有 license_number／
 # name_zh／name_en 的命名風格。順序即輸出 JSON 的欄位順序。
 _APPEARANCE_FIELD_MAP = {
@@ -169,6 +219,9 @@ def build_entries(
                 "license_number": license_number,
                 "name_zh": name_zh,
                 "name_en": name_en,
+                # 只有許可證資料集帶「藥品類別」；外觀資料集沒有這一欄，
+                # 那些只出現在外觀資料集的品項分級會是空字串。
+                "drug_class": classify_drug(row.get("藥品類別")),
             }
 
     appearance_by_licence = _index_appearance_fields(appearances)

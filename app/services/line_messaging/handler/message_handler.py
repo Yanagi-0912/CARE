@@ -7,6 +7,7 @@ from typing import Optional
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
 from app.core.request_logging import log_stage
+from app.core.rag_sources import reset_request_rag_sources, set_request_rag_sources
 from app.core.user_font_size import (
     normalize_user_font_size,
     reset_request_font_size,
@@ -67,6 +68,7 @@ class BaseLineMessageHandler:
         user_language = DEFAULT_USER_LANGUAGE
         lang_token = None
         font_token = None
+        rag_sources_token = None
 
         try:
             log_stage(
@@ -108,6 +110,9 @@ class BaseLineMessageHandler:
             font_token = set_request_font_size(
                 self._font_size_from_profile(user_profile)
             )
+            # 每輪開頭清空：上一輪的來源殘留下來，會變成這一輪卡片上不屬於
+            # 這個問題的來源按鈕。
+            rag_sources_token = set_request_rag_sources(())
 
             if self._loading_animation_service is not None:
                 await self._loading_animation_service.start(user_id)
@@ -160,6 +165,8 @@ class BaseLineMessageHandler:
                 language=user_language,
                 voice_rate=voice_rate,
                 voice_gender=voice_gender,
+                answer_kind=agent_response.get("answer_kind"),
+                user_question=user_text,
             )
             log_stage(
                 logger,
@@ -193,6 +200,8 @@ class BaseLineMessageHandler:
                 reset_request_language(lang_token)
             if font_token is not None:
                 reset_request_font_size(font_token)
+            if rag_sources_token is not None:
+                reset_request_rag_sources(rag_sources_token)
 
     def _schedule_safety_alert_check(self, user_id: str, user_text: str) -> None:
         """把一次風險評估丟到背景執行。

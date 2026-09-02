@@ -167,3 +167,47 @@ def test_verify_claim_docstring_distinguishes_from_get_rag_answer():
     doc = verify_claim.description or verify_claim.__doc__ or ""
     assert "查證" in doc
     assert "get_rag_answer" in doc
+
+
+def _unmatched_result(related_info: str) -> VerificationResult:
+    return VerificationResult(
+        user_question="網傳蜂蜜可以抗癌",
+        verdict="證據不足",
+        reasoning="台灣事實查核中心目前沒有針對這則說法的查核報告。",
+        source_title="",
+        source_url="",
+        matched=False,
+        related_info=related_info,
+        verdict_slug="not-enough-evidence",
+    )
+
+
+@pytest.mark.asyncio
+async def test_oversized_verdict_card_falls_back_to_text():
+    """related_info 沒有長度上限，塞爆時必須退回純文字而不是送出被拒收的卡片。
+
+    未命中時 related_info 放的是檢索到的衛教文章全文。實測一則 1,136 字的
+    真實卡片已達 10 KB 上限的 79%，再多一篇就會超過；超過時
+    build_verdict_flex 不會拋例外，既有的組裝失敗 fallback 因此不會觸發。
+    """
+    configure_claim_tool(_fake_service(_unmatched_result("衛" * 3000)))
+
+    output = await verify_claim.ainvoke({"query": "網傳蜂蜜可以抗癌"})
+
+    assert not output.strip().startswith("{")
+    assert "判定：證據不足" in output
+    assert "衛衛衛" in output
+
+
+@pytest.mark.asyncio
+async def test_normal_verdict_card_stays_flex():
+    """防線不得誤殺正常大小的卡片。"""
+    configure_claim_tool(
+        _fake_service(_unmatched_result("蜂蜜不需要放冰箱，室溫避光即可。"))
+    )
+
+    output = await verify_claim.ainvoke({"query": "網傳蜂蜜可以抗癌"})
+
+    payload = json.loads(output)
+    assert payload["type"] == "flex"
+    assert payload["contents"]["type"] == "bubble"

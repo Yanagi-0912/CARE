@@ -426,3 +426,89 @@ async def test_agent_node_injects_user_profile_prompt():
     assert "王大明" in system_msg.content
     assert "糖尿病" in system_msg.content
 
+
+
+def _graph_returning(*messages):
+    graph = MagicMock()
+    graph.ainvoke = AsyncMock(return_value={"messages": list(messages)})
+    return graph
+
+
+@pytest.mark.asyncio
+async def test_invoke_reports_rag_answer_kind(mock_llm, mock_guardrail_service):
+    from langchain_core.messages import ToolMessage
+
+    agent = Agent(llm=mock_llm, guardrail_service=mock_guardrail_service)
+    agent._graph = _graph_returning(
+        HumanMessage(content="蜂蜜怎麼保存？"),
+        ToolMessage(content="放室溫即可 [1]。", tool_call_id="1", name="get_rag_answer"),
+        AIMessage(content="放室溫即可。"),
+    )
+
+    result = await agent.invoke(user_input="蜂蜜怎麼保存？", messages=None)
+
+    assert result["answer_kind"] == "rag"
+
+
+@pytest.mark.asyncio
+async def test_invoke_reports_none_for_rag_failure(mock_llm, mock_guardrail_service):
+    """查不到時沒有內容可呈現，不該做成卡片。"""
+    from app.services.rag.fail_messages import RagFailCode, rag_fail
+    from langchain_core.messages import ToolMessage
+
+    agent = Agent(llm=mock_llm, guardrail_service=mock_guardrail_service)
+    agent._graph = _graph_returning(
+        HumanMessage(content="蜂蜜可以治癌症嗎？"),
+        ToolMessage(
+            content=rag_fail(RagFailCode.KB_EMPTY), tool_call_id="1", name="get_rag_answer"
+        ),
+        AIMessage(content="請換個方式描述。"),
+    )
+
+    result = await agent.invoke(user_input="蜂蜜可以治癌症嗎？", messages=None)
+
+    assert result["answer_kind"] is None
+
+
+@pytest.mark.asyncio
+async def test_invoke_reports_none_when_flex_tool_took_over(
+    mock_llm, mock_guardrail_service
+):
+    """verify_claim 已接管 response（內容是 Flex JSON），不得再組一次卡。"""
+    from langchain_core.messages import ToolMessage
+
+    agent = Agent(llm=mock_llm, guardrail_service=mock_guardrail_service)
+    agent._graph = _graph_returning(
+        HumanMessage(content="網傳蜂蜜可以抗癌"),
+        ToolMessage(content="衛教內容 [1]。", tool_call_id="1", name="get_rag_answer"),
+        ToolMessage(
+            content='{"type": "flex", "altText": "判定", "contents": {}}',
+            tool_call_id="2",
+            name="verify_claim",
+        ),
+        AIMessage(content="這則說法尚未查證。"),
+    )
+
+    result = await agent.invoke(user_input="網傳蜂蜜可以抗癌", messages=None)
+
+    assert result["answer_kind"] is None
+
+
+@pytest.mark.asyncio
+async def test_invoke_reports_document_answer_kind(mock_llm, mock_guardrail_service):
+    from langchain_core.messages import ToolMessage
+
+    agent = Agent(llm=mock_llm, guardrail_service=mock_guardrail_service)
+    agent._graph = _graph_returning(
+        HumanMessage(content="這份報告說什麼？"),
+        ToolMessage(
+            content="報告指出血壓偏高 [1]。",
+            tool_call_id="1",
+            name="answer_from_uploaded_document",
+        ),
+        AIMessage(content="報告指出血壓偏高。"),
+    )
+
+    result = await agent.invoke(user_input="這份報告說什麼？", messages=None)
+
+    assert result["answer_kind"] == "document"

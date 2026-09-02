@@ -29,8 +29,15 @@ from linebot.v3.messaging import (
 )
 
 from app.core.config import settings
-from app.i18n.messages import t
+from app.core.rag_sources import get_request_rag_sources
+from app.i18n.messages import strip_rag_prefix, strip_sources_section, t
+from app.services.line_messaging.flex.rag_answer_flex import (
+    build_document_answer_flex,
+    build_rag_answer_flex,
+)
 from app.services.line_messaging.token_manager import LineTokenManager
+from resources.flex_messages.size_guard import fits
+from resources.flex_messages.theme import resolve_theme
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +62,8 @@ class LineReplier:
         language: str | None = None,
         voice_rate: str = "normal",
         voice_gender: str = "female",
+        answer_kind: str | None = None,
+        user_question: str = "",
     ) -> bool:
         """發送 LINE 訊息（包含文字訊息、Flex Message 與選填的 TTS 語音訊息）"""
         try:
@@ -71,26 +80,49 @@ class LineReplier:
                 request_location,
             )
 
-            flex_message = self._try_parse_flex_message(message_text)
-            if flex_message is not None:
+            # 工具自產的 Flex（verify_claim、open_official_site）原樣送出，
+            # 行為完全不變——包括不附加語音。
+            tool_flex = self._try_parse_flex_message(message_text)
+            if tool_flex is not None:
                 logger.info(
-                    f"{LOGGER_HEADER_TEXT} 解析為 Flex Message，將以 Flex 形式回覆"
+                    f"{LOGGER_HEADER_TEXT} 解析為工具 Flex Message，將以 Flex 形式回覆"
                 )
-                messages = [flex_message]
+                messages = [tool_flex]
             else:
-                logger.info(
-                    f"{LOGGER_HEADER_TEXT} 未解析為 Flex Message，將以純文字回覆"
+                answer_card, card_text = self._build_answer_card(
+                    message_text, answer_kind, user_question
                 )
-                text_message = TextMessage(text=message_text)
-                messages = [text_message]
-                await self._append_tts_audio_message(
-                    messages,
-                    message_text,
-                    voice_reply_enabled=voice_reply_enabled,
-                    language=language,
-                    voice_rate=voice_rate,
-                    voice_gender=voice_gender,
-                )
+                if answer_card is not None:
+                    logger.info(
+                        f"{LOGGER_HEADER_TEXT} 已組成 %s 回答卡，將以 Flex 形式回覆",
+                        answer_kind,
+                    )
+                    messages = [answer_card]
+                    # 卡片路徑同樣附加語音：只有純文字分支有語音的話，開了語音
+                    # 回覆的使用者會在 RAG 回覆上靜默失去這個功能。合成用的是
+                    # 組卡前的純文字，不是卡片 JSON。
+                    await self._append_tts_audio_message(
+                        messages,
+                        card_text,
+                        voice_reply_enabled=voice_reply_enabled,
+                        language=language,
+                        voice_rate=voice_rate,
+                        voice_gender=voice_gender,
+                    )
+                else:
+                    logger.info(
+                        f"{LOGGER_HEADER_TEXT} 未組成卡片，將以純文字回覆"
+                    )
+                    text_message = TextMessage(text=message_text)
+                    messages = [text_message]
+                    await self._append_tts_audio_message(
+                        messages,
+                        message_text,
+                        voice_reply_enabled=voice_reply_enabled,
+                        language=language,
+                        voice_rate=voice_rate,
+                        voice_gender=voice_gender,
+                    )
 
             # quickReply 只會顯示在陣列最後一則訊息上，因此統一在此處掛到最後一則，
             # 避免 TTS 語音訊息排在文字訊息之後時，導致 Quick Reply 被 LINE 忽略。
@@ -191,6 +223,48 @@ class LineReplier:
             logger.exception("Failed to push LINE text message")
             return False
 
+
+    def _build_answer_card(
+        self, message_text: str, answer_kind: Optional[str], user_question: str
+    ) -> tuple[Optional[FlexMessage], str]:
+        """把 RAG 回覆組成卡片。
+
+        回傳 `(卡片, 卡片內用的純文字)`；組不出來、太大或 answer_kind 為 None
+        時卡片為 None。純文字一併回傳是給 TTS 用的——朗讀的內容應與卡片一致。
+
+        任何失敗都退回純文字而非拋出：呈現層是最後一步，使用者寧可拿到樸素
+        的文字，也不能拿到空白回覆。
+        """
+        if answer_kind not in ("rag", "document"):
+            return None, message_text
+
+        # 前綴由卡片 header 取代；來源清單移到按鈕，留在內文會重複一次。
+        card_text = strip_sources_section(strip_rag_prefix(message_text)).strip()
+
+        try:
+            ft = resolve_theme()
+            if answer_kind == "rag":
+                card = build_rag_answer_flex(
+                    user_question, card_text, get_request_rag_sources(), ft
+                )
+            else:
+                card = build_document_answer_flex(user_question, card_text, ft)
+
+            if not fits(card.to_dict()["contents"]):
+                logger.warning(
+                    f"{LOGGER_HEADER_TEXT} %s 回答卡超過大小上限，改以純文字回覆",
+                    answer_kind,
+                )
+                return None, message_text
+
+            return card, card_text
+        except Exception:
+            logger.warning(
+                f"{LOGGER_HEADER_TEXT} %s 回答卡組裝失敗，改以純文字回覆",
+                answer_kind,
+                exc_info=True,
+            )
+            return None, message_text
 
     @staticmethod
     def _try_parse_flex_message(message_text: str) -> Optional[FlexMessage]:

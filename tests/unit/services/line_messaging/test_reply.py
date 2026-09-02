@@ -2,6 +2,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from linebot.v3.messaging import FlexMessage, TextMessage
 from linebot.v3.webhooks import (
     DeliveryContext,
     MessageEvent,
@@ -344,3 +345,192 @@ async def test_push_text_sends_a_plain_text_message(replier):
 @pytest.mark.asyncio
 async def test_push_text_returns_false_without_a_user_id(replier):
     assert await replier.push_text("", "訊息") is False
+
+
+@pytest.mark.asyncio
+async def test_rag_answer_kind_sends_flex(replier):
+    from app.core.rag_sources import SourceRef, reset_request_rag_sources, set_request_rag_sources
+
+    token = set_request_rag_sources(
+        [SourceRef(index=1, label="食藥署", url="https://www.fda.gov.tw/b")]
+    )
+    try:
+        ok, messaging_api = await _send_reply(
+            replier,
+            reply_token="rt",
+            message_text=(
+                f"{t('agent.rag_prefix', 'zh-TW')}\n蜂蜜放室溫即可 [1]。\n\n"
+                f"{t('agent.sources_heading', 'zh-TW')}\n"
+                "[1] 食藥署：https://www.fda.gov.tw/b"
+            ),
+            user_id="U1",
+            voice_reply_enabled=False,
+            answer_kind="rag",
+            user_question="蜂蜜怎麼保存？",
+        )
+    finally:
+        reset_request_rag_sources(token)
+
+    assert ok is True
+    sent = messaging_api.reply_message.call_args[0][0].messages
+    assert isinstance(sent[0], FlexMessage)
+
+    rendered = str(sent[0].contents.to_dict())
+    assert "蜂蜜怎麼保存？" in rendered
+    assert t("agent.rag_prefix", "zh-TW") not in rendered, "卡片不得含 RAG 前綴"
+    assert "https://www.fda.gov.tw/b" in rendered, "來源網址應出現在按鈕的 uri"
+    assert rendered.count("https://www.fda.gov.tw/b") == 1, "來源不得同時出現在內文與按鈕"
+
+
+@pytest.mark.asyncio
+async def test_no_answer_kind_still_sends_text(replier):
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text="一般閒聊回覆。",
+        user_id="U1",
+        voice_reply_enabled=False,
+    )
+
+    assert ok is True
+    assert isinstance(
+        messaging_api.reply_message.call_args[0][0].messages[0], TextMessage
+    )
+
+
+@pytest.mark.asyncio
+async def test_oversized_rag_card_falls_back_to_text(replier):
+    """卡片太大時退回純文字，使用者仍拿得到內容。"""
+    long_answer = "衛" * 4000
+
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text=long_answer,
+        user_id="U1",
+        voice_reply_enabled=False,
+        answer_kind="rag",
+        user_question="蜂蜜怎麼保存？",
+    )
+
+    assert ok is True
+    sent = messaging_api.reply_message.call_args[0][0].messages[0]
+    assert isinstance(sent, TextMessage)
+    assert sent.text == long_answer
+
+
+@pytest.mark.asyncio
+async def test_builder_failure_falls_back_to_text(replier, monkeypatch):
+    """builder 拋例外時退回純文字，不得讓使用者拿到空白回覆。
+
+    這裡 patch 的是本模組自己 import 的 builder（呈現層內部細節），
+    不是應用層依賴的注入點，因此不違反「以 DI 傳入 mock」的規則。
+    """
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("builder 壞了")
+
+    monkeypatch.setattr(
+        "app.services.line_messaging.reply.reply.build_rag_answer_flex", _boom
+    )
+
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text="蜂蜜放室溫即可。",
+        user_id="U1",
+        voice_reply_enabled=False,
+        answer_kind="rag",
+        user_question="蜂蜜怎麼保存？",
+    )
+
+    assert ok is True
+    assert isinstance(
+        messaging_api.reply_message.call_args[0][0].messages[0], TextMessage
+    )
+
+
+@pytest.mark.asyncio
+async def test_flex_branch_appends_audio_when_voice_enabled():
+    """開了語音回覆的使用者不該在 RAG 回覆上靜默失去語音。"""
+    fake_tts = FakeTTSService()
+    replier = LineReplier(
+        token_manager=fake_line_token_manager("token"), tts_service=fake_tts
+    )
+
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text=f"{t('agent.rag_prefix', 'zh-TW')}\n蜂蜜放室溫即可。",
+        user_id="U1",
+        voice_reply_enabled=True,
+        answer_kind="rag",
+        user_question="蜂蜜怎麼保存？",
+    )
+
+    assert ok is True
+    sent = messaging_api.reply_message.call_args[0][0].messages
+    assert len(sent) == 2
+    assert isinstance(sent[0], FlexMessage)
+    assert sent[1].original_content_url == "https://example.com/audio.mp3"
+    assert fake_tts.calls[0]["text"] == "蜂蜜放室溫即可。", "朗讀的是組卡前的純文字，且不含前綴"
+
+
+@pytest.mark.asyncio
+async def test_flex_branch_skips_audio_when_voice_disabled():
+    fake_tts = FakeTTSService()
+    replier = LineReplier(
+        token_manager=fake_line_token_manager("token"), tts_service=fake_tts
+    )
+
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text="蜂蜜放室溫即可。",
+        user_id="U1",
+        voice_reply_enabled=False,
+        answer_kind="rag",
+        user_question="蜂蜜怎麼保存？",
+    )
+
+    assert ok is True
+    assert len(messaging_api.reply_message.call_args[0][0].messages) == 1
+    assert fake_tts.calls == []
+
+
+@pytest.mark.asyncio
+async def test_tool_flex_still_has_no_audio():
+    """工具自產的 Flex（判定卡、官網卡）行為不變：本次不為它們新增語音。"""
+    fake_tts = FakeTTSService()
+    replier = LineReplier(
+        token_manager=fake_line_token_manager("token"), tts_service=fake_tts
+    )
+
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text='{"type": "flex", "altText": "判定", "contents": {"type": "bubble"}}',
+        user_id="U1",
+        voice_reply_enabled=True,
+    )
+
+    assert ok is True
+    assert len(messaging_api.reply_message.call_args[0][0].messages) == 1
+    assert fake_tts.calls == []
+
+
+@pytest.mark.asyncio
+async def test_quick_reply_still_on_last_message(replier):
+    """位置 Quick Reply 掛在最後一則的既有行為不得改變。"""
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text="請分享你的位置。",
+        user_id="U1",
+        request_location=True,
+        voice_reply_enabled=False,
+    )
+
+    assert ok is True
+    sent = messaging_api.reply_message.call_args[0][0].messages
+    assert sent[-1].quick_reply is not None

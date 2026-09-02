@@ -206,7 +206,7 @@ PROXY_WRITE_FORBIDDEN_FIELDS: frozenset[str] = frozenset(
 )
 
 # 推播種類。
-NotificationKind = Literal["high_risk_drug_alert"]
+NotificationKind = Literal["high_risk_drug_alert", "otc_medication_added"]
 
 # 通知政策。**與 PERMISSIONS 分開宣告，兩者的變更互不牽動。**
 #
@@ -220,6 +220,14 @@ NotificationKind = Literal["high_risk_drug_alert"]
 # 改變任何資料存取權。
 NOTIFICATION_POLICY: dict[NotificationKind, frozenset[FamilyRole]] = {
     "high_risk_drug_alert": frozenset({"GUARDIAN", "CAREGIVER"}),
+    # 長輩自行加入非處方藥。收件人與高風險通報相同，理由也相同——能收到完整
+    # 訊息（含用途與成分重複說明，皆為 SENSITIVE）的就是這兩個角色。
+    #
+    # MEMBER 刻意不納入，理由不只是權限：他依授權矩陣看不到 SENSITIVE，能收到
+    # 的只有「某人新增了某某藥」，沒有用途也沒有風險說明——那是一則沒有行動
+    # 價值的訊息。持續發送低價值訊息會讓收件人靜音整個帳號，連帶淹沒真正需要
+    # 注意的警報。2026-08 曾因空提醒卡打爆 LINE 月額度，推播成本是實際約束。
+    "otc_medication_added": frozenset({"GUARDIAN", "CAREGIVER"}),
 }
 
 # 每位資料擁有者各自持有的遷移狀態。強制以**擁有者**為邊界逐一啟用，
@@ -268,6 +276,10 @@ def notification_recipient_roles(kind: NotificationKind) -> frozenset[FamilyRole
 
     刻意不落回 `PERMISSIONS`：通知政策與資料存取授權是兩套獨立的表，任何
     「查不到就用讀取權代替」的降級都會讓分離失效。
+
+    政策表未涵蓋的種類直接拋 KeyError：`NotificationKind` 是 Literal，型別
+    檢查已經擋得住拼錯，因此執行期查不到只可能是「新增了推播種類卻忘了加進
+    政策表」——那該在開發期就爆，而不是上線後安靜地不通知任何人。
     """
     return NOTIFICATION_POLICY[kind]
 

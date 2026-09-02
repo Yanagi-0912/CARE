@@ -447,13 +447,13 @@ async def test_misfire_log_only_on_first_creation(
 # ── Regression：推播權搶佔（多實例並存時不重複推播）─────────────────
 
 
-def _pending_log() -> MedicationLog:
+def _pending_log(alert_notify_user_id: str = "U_CARE") -> MedicationLog:
     scheduled_at = datetime(2026, 7, 29, 8, 0, tzinfo=timezone.utc)
     return MedicationLog(
         id="LOG_1",
         reminder_id="REM_1",
         user_id="U_PATIENT",
-        alert_notify_user_id="U_CARE",
+        alert_notify_user_id=alert_notify_user_id,
         slot_type="morning",
         scheduled_at=scheduled_at,
         timeout_at=scheduled_at,
@@ -1221,3 +1221,130 @@ async def test_suppression_uses_injected_repositories_only(
     args, _ = medication_repository.find_active_by_ids.await_args
     assert args[0] == ["MED_0", "MED_1", "MED_2"]
     assert args[1] == "2026-09-01"
+
+
+# ── 通知開關的實際效力 ──────────────────────────────────────────────
+#
+# `notify_reminder` 與 `notify_family` 在 UserSettings 與 LIFF 設定頁上存在
+# 已久，但後端從來沒有讀過——使用者關掉開關，推播照送。這種壞法不報錯、
+# 不留 log，只表現為「我明明關了還是一直收到」。以下每一條都是那件事的
+# 回歸測試。
+
+
+def _profile_with(**settings):
+    base = {"language": "zh-TW", "font_size": "large"}
+    base.update(settings)
+    return {"name": "李老先生", "settings": base}
+
+
+@pytest.mark.asyncio
+async def test_patient_reminder_suppressed_when_notify_reminder_off(
+    scheduler, mock_replier, mock_user_profile_service, log_repository
+):
+    """用藥者關掉「用藥提醒通知」→ T+0 提醒不送。"""
+    mock_user_profile_service.get_user_profile = AsyncMock(
+        return_value=_profile_with(notify_reminder=False)
+    )
+    log = _pending_log()
+
+    sent = await scheduler._send_patient_reminder(log, scheduler._medication_cache([log]))
+
+    mock_replier.push_flex.assert_not_awaited()
+    # 回 True 代表「這個階段已處理完」，不是「送成功」。_dispatch 的合約是
+    # 送失敗就把推播權還回去、下個 tick 重試；關掉通知若回 False，這筆會每
+    # 60 秒重試一次而永遠不會停。
+    assert sent is True
+
+
+@pytest.mark.asyncio
+async def test_patient_reminder_sent_when_notify_reminder_on(
+    scheduler, mock_replier, mock_user_profile_service
+):
+    mock_user_profile_service.get_user_profile = AsyncMock(
+        return_value=_profile_with(notify_reminder=True)
+    )
+    log = _pending_log()
+
+    await scheduler._send_patient_reminder(log, scheduler._medication_cache([log]))
+
+    mock_replier.push_flex.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_patient_reminder_defaults_to_on_when_field_absent(
+    scheduler, mock_replier, mock_user_profile_service
+):
+    """既有使用者的文件沒有這個欄位時視為開啟，不需要 backfill。"""
+    mock_user_profile_service.get_user_profile = AsyncMock(
+        return_value=_profile_with()
+    )
+    log = _pending_log()
+
+    await scheduler._send_patient_reminder(log, scheduler._medication_cache([log]))
+
+    mock_replier.push_flex.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_urgent_reminder_suppressed_when_notify_reminder_off(
+    scheduler, mock_replier, mock_user_profile_service
+):
+    """T+20 催促與 T+0 受同一個開關管——它們是同一件事的兩次。"""
+    mock_user_profile_service.get_user_profile = AsyncMock(
+        return_value=_profile_with(notify_reminder=False)
+    )
+    log = _pending_log()
+
+    sent = await scheduler._send_urgent_reminder(log, scheduler._medication_cache([log]))
+
+    mock_replier.push_flex.assert_not_awaited()
+    assert sent is True
+
+
+@pytest.mark.asyncio
+async def test_caregiver_alert_suppressed_when_family_member_opts_out(
+    scheduler, mock_replier, mock_user_profile_service
+):
+    """T+30 逾時通報看的是**收件人（家屬）**的設定，不是用藥者的。
+
+    每個人只能決定自己收到什麼——用藥者不該替家屬決定要不要被通報，
+    家屬也不該替用藥者關掉提醒。
+    """
+    mock_user_profile_service.get_user_profile = AsyncMock(
+        return_value=_profile_with(notify_family=False)
+    )
+    log = _pending_log(alert_notify_user_id="U_FAMILY")
+
+    sent = await scheduler._send_caregiver_alert(log, scheduler._medication_cache([log]))
+
+    mock_replier.push_flex.assert_not_awaited()
+    assert sent is True
+
+
+@pytest.mark.asyncio
+async def test_caregiver_alert_sent_when_family_opts_in(
+    scheduler, mock_replier, mock_user_profile_service
+):
+    mock_user_profile_service.get_user_profile = AsyncMock(
+        return_value=_profile_with(notify_family=True)
+    )
+    log = _pending_log(alert_notify_user_id="U_FAMILY")
+
+    await scheduler._send_caregiver_alert(log, scheduler._medication_cache([log]))
+
+    mock_replier.push_flex.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_notify_reminder_does_not_gate_caregiver_alert(
+    scheduler, mock_replier, mock_user_profile_service
+):
+    """兩個開關管的是不同的收件人，不得互相影響。"""
+    mock_user_profile_service.get_user_profile = AsyncMock(
+        return_value=_profile_with(notify_reminder=False, notify_family=True)
+    )
+    log = _pending_log(alert_notify_user_id="U_FAMILY")
+
+    await scheduler._send_caregiver_alert(log, scheduler._medication_cache([log]))
+
+    mock_replier.push_flex.assert_awaited()

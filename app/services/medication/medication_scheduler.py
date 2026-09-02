@@ -3,7 +3,7 @@ import logging
 from contextlib import suppress
 from datetime import datetime, timedelta
 from functools import partial
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, NamedTuple, Optional
 
 from app.core import scheduler_heartbeat
 from app.core.user_font_size import (
@@ -48,6 +48,22 @@ HEARTBEAT_NAME = "medication"
 # 預設取 20 分鐘（＝T+20 催促的門檻）：短暫部署造成的延遲仍會正常送達，
 # 超過這個範圍代表整條 T+0／T+20／T+30 時序已經失去意義，補推只會變成連環轟炸。
 DEFAULT_MISFIRE_GRACE_MINUTES = 20
+
+
+class _RecipientPrefs(NamedTuple):
+    """一位收件人的呈現偏好與通知意願。
+
+    `notify_reminder` 與 `notify_family` 在 UserSettings 與 LIFF 設定頁上存在
+    已久，但後端從來沒有讀過它們——使用者把開關關掉，推播照送。UI 對使用者
+    說謊，而這件事不報錯、不留 log，只表現為「我明明關了還是一直收到」，
+    使用者多半會歸咎於自己按錯或直接封鎖官方帳號。這個型別是把它們真正接上
+    的那一步。
+    """
+
+    language: str
+    font_size: str
+    notify_reminder: bool
+    notify_family: bool
 
 
 class _TickMedicationNameCache:
@@ -282,20 +298,44 @@ class MedicationScheduler:
         取得收件人的語言與字級設定。
         排程是背景工作，沒有 request context，因此每則推播都需按收件人各自解析。
         """
+        prefs = await self._resolve_prefs(user_id)
+        return prefs.language, prefs.font_size
+
+    async def _resolve_prefs(self, user_id: str) -> "_RecipientPrefs":
+        """收件人的語言、字級，以及他要不要收這兩類通知。
+
+        三者一次取回：它們來自同一份 profile，分開查會讓每則推播多打一次
+        資料庫，而這是逐筆推播的迴圈，成本會乘上待推播數。
+
+        **開關看的是收件人自己的設定**，不是被通報對象的。每個人只決定自己
+        收到什麼——用藥者不該替家屬決定要不要被通報，家屬也不該替用藥者關掉
+        提醒。
+
+        載入失敗時回傳預設值並視為兩者皆開啟：缺資料時沿用預設，與本專案其他
+        降級方向一致。反過來（失敗即不送）會讓一次資料庫抖動變成整批服藥提醒
+        靜默消失，那是本能力最不該發生的事。
+        """
         if not self._user_profile_service or not user_id:
-            return DEFAULT_USER_LANGUAGE, DEFAULT_USER_FONT_SIZE
+            return _RecipientPrefs(
+                DEFAULT_USER_LANGUAGE, DEFAULT_USER_FONT_SIZE, True, True
+            )
         try:
             profile = await self._user_profile_service.get_user_profile(user_id)
         except Exception:
             logger.exception(
                 "[MedicationScheduler] Failed to load display prefs for user %s", user_id
             )
-            return DEFAULT_USER_LANGUAGE, DEFAULT_USER_FONT_SIZE
+            return _RecipientPrefs(
+                DEFAULT_USER_LANGUAGE, DEFAULT_USER_FONT_SIZE, True, True
+            )
 
         settings = (profile or {}).get("settings") or {}
-        return (
+        return _RecipientPrefs(
             normalize_user_language(settings.get("language")),
             normalize_user_font_size(settings.get("font_size")),
+            # 欄位缺席時視為開啟——既有使用者的文件沒有這兩欄，不需要 backfill。
+            bool(settings.get("notify_reminder", True)),
+            bool(settings.get("notify_family", True)),
         )
 
     async def _dispatch(
@@ -342,7 +382,18 @@ class MedicationScheduler:
     async def _send_patient_reminder(
         self, log: MedicationLog, medication_cache: _TickMedicationNameCache
     ) -> bool:
-        language, font_size = await self._resolve_display_prefs(log.user_id)
+        prefs = await self._resolve_prefs(log.user_id)
+        if not prefs.notify_reminder:
+            # 回 True 而非 False：`_dispatch` 的合約是「送失敗就把推播權還回去，
+            # 下一個 tick 重新搶佔並重試」。關掉通知不是失敗，是這個階段已經
+            # 處理完了——回 False 會讓它每 60 秒重試一次，永遠不會停。
+            logger.info(
+                "[MedicationScheduler] user %s opted out of reminders; skipping %s",
+                log.user_id,
+                log.id,
+            )
+            return True
+        language, font_size = prefs.language, prefs.font_size
         # 用藥者的提醒卡要看得出「哪一顆」，走 get_entries() 帶出縮圖 URL；
         # 家屬警報只需要藥名，見 _send_caregiver_alert 仍是 get()。
         medication_entries = await medication_cache.get_entries(log)
@@ -360,7 +411,11 @@ class MedicationScheduler:
     async def _send_urgent_reminder(
         self, log: MedicationLog, medication_cache: _TickMedicationNameCache
     ) -> bool:
-        language, font_size = await self._resolve_display_prefs(log.user_id)
+        prefs = await self._resolve_prefs(log.user_id)
+        if not prefs.notify_reminder:
+            # T+20 催促與 T+0 提醒是同一件事的兩次，受同一個開關管。
+            return True
+        language, font_size = prefs.language, prefs.font_size
         medication_entries = await medication_cache.get_entries(log)
         urgent_flex = build_patient_urgent_reminder_flex(
             log_id=log.id,
@@ -392,10 +447,21 @@ class MedicationScheduler:
         # 家屬警報同樣是一個 tick 內可能有多筆，逐筆查「規則→藥品」沒有道理。
         medication_names = await medication_cache.get(log)
 
-        # 這則推播的收件人是家屬，語言與字級需取家屬本人的設定
-        language, font_size = await self._resolve_display_prefs(
-            log.alert_notify_user_id
-        )
+        # 這則推播的收件人是家屬，語言、字級與通知意願都取家屬本人的設定。
+        # 用藥者關掉自己的提醒不影響家屬收不收得到逾時通報，反之亦然。
+        prefs = await self._resolve_prefs(log.alert_notify_user_id)
+        if not prefs.notify_family:
+            # 抑制的只有推播。`claim_caregiver_alert` 在搶佔的同一次更新裡就
+            # 已把 status 設為 missed，因此紀錄仍然正確——家屬事後在 LIFF 上
+            # 看得到這個時段錯過了，只是當下不會被推播打擾。
+            logger.info(
+                "[MedicationScheduler] caregiver %s opted out of family alerts; "
+                "skipping %s",
+                log.alert_notify_user_id,
+                log.id,
+            )
+            return True
+        language, font_size = prefs.language, prefs.font_size
         alert_flex = build_caregiver_alert_flex(
             patient_name=patient_name,
             slot_type=log.slot_type,
@@ -478,6 +544,12 @@ class MedicationScheduler:
 
         for caregiver_id, logs in misfired_by_caregiver.items():
             if not caregiver_id:
+                continue
+            # 錯過時段的彙整通知與 T+30 逾時通報是同一類訊息（都是「你關心的
+            # 人漏服了」），受同一個 notify_family 開關管。錯過的時段本身仍以
+            # status=missed 留在資料庫，家屬事後查得到。
+            prefs = await self._resolve_prefs(caregiver_id)
+            if not prefs.notify_family:
                 continue
             try:
                 entries: list[dict[str, str]] = []

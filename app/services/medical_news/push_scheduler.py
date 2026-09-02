@@ -149,6 +149,13 @@ class MedicalNewsPushScheduler:
     async def _push_for_user(
         self, user_id: str, today: str, tier2_pool: list[KbArticle]
     ) -> None:
+        language, font_size, opted_in = await self._resolve_prefs(user_id)
+        if not opted_in:
+            # 在任何查詢與 claim 之前就退出。**不得先 claim 再檢查**：claim 會把
+            # 該則記成「已推給這位使用者」，他日後重新打開開關時，那幾則會被
+            # 當成推過而永遠收不到。
+            return
+
         since = datetime.now(timezone.utc) - timedelta(days=self._max_age_days)
         pushed_refs = await self._delivery_repository.list_pushed_refs(user_id, since)
 
@@ -168,6 +175,8 @@ class MedicalNewsPushScheduler:
                     language=language,
                     font_size=font_size,
                 ),
+                language=language,
+                font_size=font_size,
                 payload={
                     "title": news.title,
                     "summary": news.summary,
@@ -198,6 +207,8 @@ class MedicalNewsPushScheduler:
                 language=language,
                 font_size=font_size,
             ),
+            language=language,
+            font_size=font_size,
             payload={
                 "title": article.title,
                 "summary": article.excerpt,
@@ -250,7 +261,15 @@ class MedicalNewsPushScheduler:
         return None
 
     async def _send(
-        self, user_id: str, news_ref: str, *, tier: int, build, payload: dict
+        self,
+        user_id: str,
+        news_ref: str,
+        *,
+        tier: int,
+        build,
+        payload: dict,
+        language: str,
+        font_size: str,
     ) -> None:
         """先搶後推。
 
@@ -264,7 +283,6 @@ class MedicalNewsPushScheduler:
         ):
             return
 
-        language, font_size = await self._resolve_display_prefs(user_id)
         try:
             flex = build(news_ref, language, font_size)
         except ValueError:
@@ -279,23 +297,32 @@ class MedicalNewsPushScheduler:
         # 騷擾——與用藥提醒的 misfire grace 同一個判斷。
         await self._replier.push_flex(user_id, flex)
 
-    async def _resolve_display_prefs(self, user_id: str) -> tuple[str, str]:
-        """取得收件人的語言與字級。做法逐字沿用 MedicationScheduler：背景工作
-        沒有 request context，每則推播都要按收件人各自解析。"""
+    async def _resolve_prefs(self, user_id: str) -> tuple[str, str, bool]:
+        """語言、字級、以及這位使用者要不要收每日消息卡。
+
+        三者一次取回，因為它們來自同一份 profile——分成兩個方法會讓每則推播
+        多打一次資料庫，而背景工作是逐使用者迴圈，那個成本會乘上使用者數。
+
+        載入失敗時回傳預設值並**視為開啟**：這個方向與其他降級一致（缺資料時
+        沿用預設），而預設本身就是開啟。若改成失敗即不推，一次資料庫抖動就會
+        讓當天全體使用者靜默地收不到東西。
+        """
         if not self._user_profile_service or not user_id:
-            return DEFAULT_USER_LANGUAGE, DEFAULT_USER_FONT_SIZE
+            return DEFAULT_USER_LANGUAGE, DEFAULT_USER_FONT_SIZE, True
         try:
             profile = await self._user_profile_service.get_user_profile(user_id)
         except Exception:
             logger.exception(
                 "[MedicalNewsPushScheduler] 無法載入使用者設定：%s", user_id
             )
-            return DEFAULT_USER_LANGUAGE, DEFAULT_USER_FONT_SIZE
+            return DEFAULT_USER_LANGUAGE, DEFAULT_USER_FONT_SIZE, True
 
         settings = (profile or {}).get("settings") or {}
         return (
             normalize_user_language(settings.get("language")),
             normalize_user_font_size(settings.get("font_size")),
+            # 欄位缺席時視為開啟——既有使用者的文件沒有這一欄，不需要 backfill。
+            bool(settings.get("notify_medical_news", True)),
         )
 
 

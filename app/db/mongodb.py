@@ -149,6 +149,35 @@ class MongoDBManager:
         return cls.get_database()["knowledge_report_previews"]
 
     @classmethod
+    def get_drug_news_collection(cls):
+        """
+        取得 drug_news collection（藥名／成分的近期官方消息索引）
+
+        內容與使用者無關，因此服用同一種藥的所有人共用同一批文件——這是索引服務
+        按藥名而非按人快取的前提（見 openspec/changes/medical-news-push/design.md 決策 2）。
+        """
+        return cls.get_database()["drug_news"]
+
+    @classmethod
+    def get_medical_news_deliveries_collection(cls):
+        """
+        取得 medical_news_deliveries collection（某位使用者收過哪些消息卡）
+
+        它的 (user_id, news_ref) 唯一索引一物二用：既是去重，也是多實例下的推播權
+        搶佔。文件存在本身就代表「已推播」。
+        """
+        return cls.get_database()["medical_news_deliveries"]
+
+    @classmethod
+    def get_medical_news_shares_collection(cls):
+        """
+        取得 medical_news_shares collection（某位收件人被分享過哪些消息）
+
+        防的是「三位家人都按了認同，同一位長輩收到三張一樣的卡」。
+        """
+        return cls.get_database()["medical_news_shares"]
+
+    @classmethod
     def get_safety_alerts_collection(cls):
         """
         取得 safety_alerts collection（用藥風險通報的節流紀錄）

@@ -18,7 +18,7 @@
 
 ## 1. 資料模型與 collection
 
-- [ ] 1.1 `app/models/medical_news.py`：
+- [x] 1.1 `app/models/medical_news.py`：
       - `NewsKind = Literal["drug_news", "kb_article"]`
       - `def make_news_ref(kind: NewsKind, key: str) -> str`——回傳 `f"{kind}:{sha256(key).hexdigest()[:32]}"`。
         雜湊而非原字串：`kb_article` 的 key 是文章 url，Mongo 單一索引鍵上限 1024 bytes，
@@ -33,10 +33,10 @@
         `share_recipient_count: int = 0`
       - `class MedicalNewsShare(BaseModel)`：`recipient_id`、`news_ref`、`sharer_id`、`sent_at`
       - 全部沿用 `model_config = ConfigDict(populate_by_name=True)`，與 `app/models/medication.py` 一致
-- [ ] 1.2 `app/db/mongodb.py`：新增 `get_drug_news_collection()`、
+- [x] 1.2 `app/db/mongodb.py`：新增 `get_drug_news_collection()`、
       `get_medical_news_deliveries_collection()`、`get_medical_news_shares_collection()`，
       形狀比照既有的 `get_medications_collection()`
-- [ ] 1.3 `app/repositories/medical_news_repository.py`，三個 class，方法皆為 `@staticmethod`
+- [x] 1.3 `app/repositories/medical_news_repository.py`，三個 class，方法皆為 `@staticmethod`
       且末參數為 `collection: Optional[Any] = None`（與 `medication_repository.py` 同一慣例，
       測試靠這個參數注入替身）：
       - `DrugNewsRepository.upsert_by_url(news: DrugNews) -> bool`——以 `url` 為鍵，
@@ -55,18 +55,18 @@
         一次建立三個 collection 的索引）——`drug_news` 的 `url` unique 與 `(drug_key, published_at desc)`；
         `medical_news_deliveries` 的 `(user_id, news_ref)` unique；
         `medical_news_shares` 的 `(recipient_id, news_ref)` unique
-- [ ] 1.4 測試 `tests/unit/models/test_medical_news_models.py`
+- [x] 1.4 測試 `tests/unit/models/test_medical_news_models.py`
       - `test_make_news_ref_is_stable_for_same_key`：同一組 (kind, key) 兩次呼叫結果相同
       - `test_make_news_ref_differs_across_kinds`：`drug_news:` 與 `kb_article:` 同 key 不相撞
       - `test_make_news_ref_length_is_bounded`：任意長度 url 產出的 ref 長度固定，不隨輸入成長
-- [ ] 1.5 測試 `tests/unit/repositories/test_medical_news_repository.py`（以 fake collection
+- [x] 1.5 測試 `tests/unit/repositories/test_medical_news_repository.py`（以 fake collection
       物件注入，不 monkey patch）
       - `test_claim_returns_false_on_duplicate_key`：第二次 claim 同一組 (user_id, news_ref)
         回 False——鎖住「推過就不再推」
       - `test_claim_returns_true_on_first_insert`
       - `test_find_by_drug_keys_filters_by_published_at`
       - `test_upsert_by_url_reports_insert_versus_update`
-- [ ] 1.6 commit：`feat(medical-news): 資料模型與 repository`
+- [x] 1.6 commit：`feat(medical-news): 資料模型與 repository`
 
 ## 2. 用藥藥品鍵查詢
 

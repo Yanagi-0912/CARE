@@ -96,6 +96,13 @@ class UserSettings(BaseModel):
     high_contrast: bool = Field(default=True, description="是否啟用高對比模式")
     notify_reminder: bool = Field(default=True, description="是否啟用用藥提醒通知")
     notify_family: bool = Field(default=True, description="是否啟用家人健康通知")
+    # 每日醫療消息卡（medical-news-push）。預設開啟，與其他兩個通知開關一致。
+    #
+    # 既有使用者的文件沒有這個欄位，讀回為缺席；排程端以 `.get(..., True)` 解讀，
+    # 因此不需要 backfill——缺席即等同預設值。
+    notify_medical_news: bool = Field(
+        default=True, description="是否啟用每日醫療消息推播"
+    )
     voice_reply_enabled: bool = Field(default=False, description="是否啟用語音回覆")
     voice_rate: Literal["slow", "normal", "fast"] = Field(
         default="normal",
@@ -120,6 +127,9 @@ class UserSettingsUpdate(BaseModel):
     high_contrast: Optional[bool] = Field(default=None, description="是否啟用高對比模式")
     notify_reminder: Optional[bool] = Field(default=None, description="是否啟用用藥提醒通知")
     notify_family: Optional[bool] = Field(default=None, description="是否啟用家人健康通知")
+    notify_medical_news: Optional[bool] = Field(
+        default=None, description="是否啟用每日醫療消息推播"
+    )
     voice_reply_enabled: Optional[bool] = Field(default=None, description="是否啟用語音回覆")
     voice_rate: Optional[Literal["slow", "normal", "fast"]] = Field(
         default=None,

@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
+import asyncio
+
 import pytest
 
 from app.models.family_tree import FamilyMember, FamilyTree
@@ -175,6 +177,7 @@ def _service(
     family=None,
     appearance_images=None,
     indications=None,
+    otc_alerts=None,
 ):
     return PrescriptionScanService(
         ocr_service=ocr or FakeOcr(RecognitionResult()),
@@ -186,6 +189,7 @@ def _service(
         appearance_image_resolver=appearance_images or FakeAppearanceImageResolver(),
         ttl_minutes=60,
         indication_service=indications,
+        otc_alert_service=otc_alerts,
     )
 
 
@@ -1793,3 +1797,91 @@ async def test_name_match_without_authorization_service_keeps_legacy_behaviour()
     draft = await service.scan(b"image", "image/jpeg", "U_OPERATOR")
 
     assert draft.suggested_user_id == "U_ELDER"
+
+
+class FakeOtcAlertService:
+    def __init__(self, raises: bool = False) -> None:
+        self.calls: list[tuple[str, list[str]]] = []
+        self._raises = raises
+
+    async def check(self, patient_user_id, added_medication_ids):
+        self.calls.append((patient_user_id, list(added_medication_ids)))
+        if self._raises:
+            raise RuntimeError("boom")
+
+
+@pytest.mark.asyncio
+async def test_commit_schedules_the_otc_check_for_the_person_taking_the_drug():
+    """家屬代長輩掃描時，有成分重複風險的是長輩，不是代掃的人。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    alerts = FakeOtcAlertService()
+    service = _service(
+        drafts=drafts,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+        otc_alerts=alerts,
+    )
+
+    result = await service.commit(
+        "D1", "U_FAMILY", _request(CommitDrugItem(name="某藥", frequency_code="QD"))
+    )
+    await asyncio.gather(*service._otc_alert_tasks)
+
+    assert alerts.calls == [("U_PATIENT", result.medication_ids)]
+
+
+@pytest.mark.asyncio
+async def test_commit_succeeds_even_when_the_otc_check_explodes():
+    """偵測是旁路——它失敗不得讓提交失敗，藥已經寫進去了。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    alerts = FakeOtcAlertService(raises=True)
+    service = _service(
+        drafts=drafts,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+        otc_alerts=alerts,
+    )
+
+    result = await service.commit(
+        "D1", "U_FAMILY", _request(CommitDrugItem(name="某藥", frequency_code="QD"))
+    )
+    await asyncio.gather(*service._otc_alert_tasks)
+
+    assert len(result.medication_ids) == 1
+
+
+@pytest.mark.asyncio
+async def test_idempotent_replay_does_not_notify_a_second_time():
+    """重放時再發一次，只會讓家人以為又新增了一盒藥。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    alerts = FakeOtcAlertService()
+    service = _service(
+        drafts=drafts,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+        otc_alerts=alerts,
+    )
+    request = _request(CommitDrugItem(name="某藥", frequency_code="QD"))
+
+    await service.commit("D1", "U_FAMILY", request)
+    await service.commit("D1", "U_FAMILY", request)
+    await asyncio.gather(*service._otc_alert_tasks)
+
+    assert len(alerts.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_commit_without_an_otc_service_behaves_exactly_as_before():
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    service = _service(
+        drafts=drafts,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    result = await service.commit(
+        "D1", "U_FAMILY", _request(CommitDrugItem(name="某藥", frequency_code="QD"))
+    )
+
+    assert len(result.medication_ids) == 1
+    assert service._otc_alert_tasks == set()

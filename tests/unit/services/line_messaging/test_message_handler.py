@@ -47,7 +47,7 @@ def _text_event() -> MessageEvent:
     )
 
 
-def _handler(safety_alert_service=None, replier=None):
+def _handler(safety_alert_service=None, replier=None, agent=None, history_service=None):
     class _Agent:
         async def invoke(self, **kwargs):
             return {"response": "主回覆內容"}
@@ -67,8 +67,8 @@ def _handler(safety_alert_service=None, replier=None):
             return {"settings": {"language": "zh-TW", "voice_reply_enabled": False}}
 
     return LineMessageHandler(
-        agent=_Agent(),
-        history_service=_History(),
+        agent=agent or _Agent(),
+        history_service=history_service or _History(),
         user_profile_service=_Profile(),
         replier=replier or FakeReplier(),
         safety_alert_service=safety_alert_service,
@@ -163,3 +163,96 @@ async def test_safety_check_does_not_delay_the_main_reply():
     release.set()
     await _drain(handler)
     assert service.calls == [(USER_ID, USER_TEXT)]
+
+
+class RecordingAgent:
+    """可指定回傳值的 agent；同時記下呼叫當下看到的 ContextVar 狀態。"""
+
+    def __init__(self, response="蜂蜜放室溫即可 [1]。", answer_kind="rag"):
+        self._response = response
+        self._answer_kind = answer_kind
+        self.seen_sources = None
+
+    async def invoke(self, **kwargs):
+        from app.core.rag_sources import get_request_rag_sources
+
+        self.seen_sources = get_request_rag_sources()
+        return {
+            "response": self._response,
+            "call_request_location": False,
+            "answer_kind": self._answer_kind,
+        }
+
+
+class RecordingHistory:
+    def __init__(self):
+        self.saved = []
+
+    async def load_history(self, **kwargs):
+        return []
+
+    async def save_turn(self, **kwargs):
+        self.saved.append(kwargs)
+
+
+@pytest.mark.asyncio
+async def test_handler_passes_answer_kind_and_question_to_replier():
+    """呈現層要靠這兩個值才組得出卡片。"""
+    replier = FakeReplier()
+    handler = _handler(replier=replier, agent=RecordingAgent())
+
+    await handler.handle(_text_event())
+    await _drain(handler)
+
+    assert replier.replies[0]["answer_kind"] == "rag"
+    assert replier.replies[0]["user_question"] == USER_TEXT
+
+
+@pytest.mark.asyncio
+async def test_handler_saves_plain_text_to_history_not_flex_json():
+    """卡片在呈現層才組，因此存進歷史的必須仍是純文字。
+
+    這正是不走 medical_tool_names 白名單的理由之一：那條路徑會把整包
+    Flex JSON 存成 ai_reply，下一輪 agent 讀到自己上一則回覆是一大坨 JSON。
+    """
+    history = RecordingHistory()
+    handler = _handler(agent=RecordingAgent(), history_service=history)
+
+    await handler.handle(_text_event())
+    await _drain(handler)
+
+    saved = history.saved[0]["ai_reply"]
+    assert saved == "蜂蜜放室溫即可 [1]。"
+    assert not saved.strip().startswith("{")
+
+
+@pytest.mark.asyncio
+async def test_handler_clears_rag_sources_between_turns():
+    """上一輪的來源不得殘留成這一輪的按鈕。"""
+    from app.core.rag_sources import (
+        SourceRef,
+        get_request_rag_sources,
+        reset_request_rag_sources,
+        set_request_rag_sources,
+    )
+
+    leaked = set_request_rag_sources(
+        [SourceRef(index=1, label="上一輪的來源", url="https://example.com/stale")]
+    )
+    try:
+        agent = RecordingAgent(answer_kind=None)
+        handler = _handler(agent=agent)
+
+        await handler.handle(_text_event())
+        await _drain(handler)
+
+        assert agent.seen_sources == (), "進入 agent 前來源必須已清空"
+        # 斷言必須在還原 leaked token 之前：handler 的 finally 應該把
+        # ContextVar 還原成它進來時的值，也就是這裡設的 leaked。
+        assert (
+            get_request_rag_sources()[0].label == "上一輪的來源"
+        ), "handler 必須還原 ContextVar，而不是留在清空狀態"
+    finally:
+        reset_request_rag_sources(leaked)
+
+    assert get_request_rag_sources() == ()

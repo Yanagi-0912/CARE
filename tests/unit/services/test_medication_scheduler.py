@@ -1,15 +1,25 @@
-from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Optional
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 import pytest
 
-from app.models.medication import TAIPEI_TZ, MedicationLog, MedicationReminder
+from app.models.medication import TAIPEI_TZ, Medication, MedicationLog, MedicationReminder
 from app.services.line_messaging.flex.medication_flex import MedicationListEntry
 from app.services.medication.medication_scheduler import (
     MedicationScheduler,
     _TickMedicationNameCache,
 )
+
+
+# ── Fixtures ─────────────────────────────────────────────────────────
+#
+# 三個 repository 一律由建構子注入假物件，不用 unittest.mock.patch 換掉排程器
+# 模組裡 import 進來的名稱（openspec 的測試規則明文禁止後者）。慣例與
+# MedicationService 的 repository 注入一致。
+#
+# 每個 fixture 都給一組「什麼都沒有」的預設值：沒有到期規則、三階查詢全空、
+# 搶佔一律成功。個別測試只覆寫自己關心的那一兩個方法，其餘保持安靜——這讓每
+# 個測試的 setup 只剩下它真正要驗的東西。
 
 
 @pytest.fixture()
@@ -27,16 +37,71 @@ def mock_user_profile_service():
 
 
 @pytest.fixture()
-def scheduler(mock_replier, mock_user_profile_service):
+def reminder_repository():
+    repo = MagicMock()
+    repo.list_active_reminders_up_to_time = AsyncMock(return_value=[])
+    repo.find_by_ids = AsyncMock(return_value=[])
+    return repo
+
+
+@pytest.fixture()
+def log_repository():
+    repo = MagicMock()
+    # 預設把傳進來的 log 原樣回傳並標為「本次才建立」，讓測試可以直接對
+    # upsert_log 收到的 MedicationLog 做斷言。
+    repo.upsert_log = AsyncMock(side_effect=lambda log: (log, True))
+    repo.cancel_pending_by_reminder_ids = AsyncMock(return_value=0)
+    repo.list_pending_patient_reminders = AsyncMock(return_value=[])
+    repo.list_pending_urgent_reminders = AsyncMock(return_value=[])
+    repo.list_pending_caregiver_alerts = AsyncMock(return_value=[])
+    repo.claim_patient_reminder = AsyncMock(return_value=True)
+    repo.claim_patient_urgent_reminder = AsyncMock(return_value=True)
+    repo.claim_caregiver_alert = AsyncMock(return_value=True)
+    repo.release_patient_reminder = AsyncMock(return_value=True)
+    repo.release_patient_urgent_reminder = AsyncMock(return_value=True)
+    repo.release_caregiver_alert = AsyncMock(return_value=True)
+    return repo
+
+
+@pytest.fixture()
+def medication_repository():
+    repo = MagicMock()
+    repo.find_active_by_ids = AsyncMock(return_value=[])
+    return repo
+
+
+@pytest.fixture()
+def scheduler(
+    mock_replier,
+    mock_user_profile_service,
+    reminder_repository,
+    log_repository,
+    medication_repository,
+):
     return MedicationScheduler(
         replier=mock_replier,
         user_profile_service=mock_user_profile_service,
         check_interval_seconds=60,
+        reminder_repository=reminder_repository,
+        log_repository=log_repository,
+        medication_repository=medication_repository,
     )
 
 
+def _rendered(flex_message) -> str:
+    """把送出去的 Flex 攤平成字串，供內容斷言使用。
+
+    斷言真正送出去的訊息，而不是去 mock 掉 flex builder：後者只驗得到
+    「有沒有把某個參數傳下去」，驗不到那個參數最後有沒有出現在使用者眼前。
+    """
+    return str(flex_message.contents.to_dict())
+
+
+# ── 三階遞進推播 ─────────────────────────────────────────────────────
+
+
 @pytest.mark.asyncio
-async def test_process_ticks_t0_initial_reminder(scheduler, mock_replier):
+async def test_process_ticks_t0_initial_reminder(scheduler, mock_replier, log_repository):
     now = datetime(2026, 7, 29, 8, 0, tzinfo=timezone.utc)
     fake_reminder = MedicationReminder(
         id="REM_1",
@@ -57,43 +122,23 @@ async def test_process_ticks_t0_initial_reminder(scheduler, mock_replier):
         status="pending",
         patient_reminder_sent=False,
     )
+    scheduler._reminder_repository.list_active_reminders_up_to_time.return_value = [
+        fake_reminder
+    ]
+    log_repository.upsert_log = AsyncMock(return_value=(fake_log, True))
+    log_repository.list_pending_patient_reminders.return_value = [fake_log]
 
-    with patch(
-        "app.services.medication.medication_scheduler.MedicationReminderRepository.list_active_reminders_up_to_time",
-        new_callable=AsyncMock,
-        return_value=[fake_reminder],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
-        new_callable=AsyncMock,
-        return_value=(fake_log, True),
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.list_pending_patient_reminders",
-        new_callable=AsyncMock,
-        return_value=[fake_log],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.claim_patient_reminder",
-        new_callable=AsyncMock,
-        return_value=True,
-    ) as mock_claim, patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.list_pending_urgent_reminders",
-        new_callable=AsyncMock,
-        return_value=[],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.list_pending_caregiver_alerts",
-        new_callable=AsyncMock,
-        return_value=[],
-    ):
-        await scheduler.process_ticks(now=now)
+    await scheduler.process_ticks(now=now)
 
-        mock_replier.push_flex.assert_awaited_once()
-        call_args = mock_replier.push_flex.call_args[0]
-        assert call_args[0] == "U_PATIENT"
-        assert call_args[1].type == "flex"
-        mock_claim.assert_awaited_once_with("LOG_1")
+    mock_replier.push_flex.assert_awaited_once()
+    call_args = mock_replier.push_flex.call_args[0]
+    assert call_args[0] == "U_PATIENT"
+    assert call_args[1].type == "flex"
+    log_repository.claim_patient_reminder.assert_awaited_once_with("LOG_1")
 
 
 @pytest.mark.asyncio
-async def test_process_ticks_t20_urgent_reminder(scheduler, mock_replier):
+async def test_process_ticks_t20_urgent_reminder(scheduler, mock_replier, log_repository):
     now = datetime(2026, 7, 29, 8, 21, tzinfo=timezone.utc)
     scheduled_at = datetime(2026, 7, 29, 8, 0, tzinfo=timezone.utc)
     fake_log = MedicationLog(
@@ -108,38 +153,17 @@ async def test_process_ticks_t20_urgent_reminder(scheduler, mock_replier):
         patient_reminder_sent=True,
         urgent_reminder_sent=False,
     )
+    log_repository.list_pending_urgent_reminders.return_value = [fake_log]
 
-    with patch(
-        "app.services.medication.medication_scheduler.MedicationReminderRepository.list_active_reminders_up_to_time",
-        new_callable=AsyncMock,
-        return_value=[],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.list_pending_patient_reminders",
-        new_callable=AsyncMock,
-        return_value=[],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.list_pending_urgent_reminders",
-        new_callable=AsyncMock,
-        return_value=[fake_log],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.list_pending_caregiver_alerts",
-        new_callable=AsyncMock,
-        return_value=[],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.claim_patient_urgent_reminder",
-        new_callable=AsyncMock,
-        return_value=True,
-    ) as mock_claim:
-        await scheduler.process_ticks(now=now)
+    await scheduler.process_ticks(now=now)
 
-        mock_replier.push_flex.assert_awaited_once()
-        call_args = mock_replier.push_flex.call_args[0]
-        assert call_args[0] == "U_PATIENT"
-        mock_claim.assert_awaited_once_with("LOG_1")
+    mock_replier.push_flex.assert_awaited_once()
+    assert mock_replier.push_flex.call_args[0][0] == "U_PATIENT"
+    log_repository.claim_patient_urgent_reminder.assert_awaited_once_with("LOG_1")
 
 
 @pytest.mark.asyncio
-async def test_process_ticks_t30_caregiver_alert(scheduler, mock_replier):
+async def test_process_ticks_t30_caregiver_alert(scheduler, mock_replier, log_repository):
     now = datetime(2026, 7, 29, 8, 31, tzinfo=timezone.utc)
     scheduled_at = datetime(2026, 7, 29, 8, 0, tzinfo=timezone.utc)
     timeout_at = datetime(2026, 7, 29, 8, 30, tzinfo=timezone.utc)
@@ -156,41 +180,22 @@ async def test_process_ticks_t30_caregiver_alert(scheduler, mock_replier):
         urgent_reminder_sent=True,
         caregiver_alert_sent=False,
     )
+    log_repository.list_pending_caregiver_alerts.return_value = [fake_log]
 
-    with patch(
-        "app.services.medication.medication_scheduler.MedicationReminderRepository.list_active_reminders_up_to_time",
-        new_callable=AsyncMock,
-        return_value=[],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.list_pending_patient_reminders",
-        new_callable=AsyncMock,
-        return_value=[],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.list_pending_urgent_reminders",
-        new_callable=AsyncMock,
-        return_value=[],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.list_pending_caregiver_alerts",
-        new_callable=AsyncMock,
-        return_value=[fake_log],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.claim_caregiver_alert",
-        new_callable=AsyncMock,
-        return_value=True,
-    ) as mock_claim:
-        await scheduler.process_ticks(now=now)
+    await scheduler.process_ticks(now=now)
 
-        mock_replier.push_flex.assert_awaited_once()
-        call_args = mock_replier.push_flex.call_args[0]
-        assert call_args[0] == "U_CARE"  # Sent to caregiver
-        mock_claim.assert_awaited_once_with("LOG_1")
+    mock_replier.push_flex.assert_awaited_once()
+    assert mock_replier.push_flex.call_args[0][0] == "U_CARE"  # 送給家屬
+    log_repository.claim_caregiver_alert.assert_awaited_once_with("LOG_1")
 
 
 # ── Regression：推播文案的時間必須是台北時間 ──────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_reminder_flex_shows_taipei_time_not_utc(scheduler):
+async def test_reminder_flex_shows_taipei_time_not_utc(
+    scheduler, mock_replier, log_repository
+):
     """
     pymongo 以 naive UTC 讀回 scheduled_at，直接 strftime 會顯示 00:00
     而不是使用者設定的台北 08:00。三個階段的推播文案都必須經過時區轉換。
@@ -209,38 +214,19 @@ async def test_reminder_flex_shows_taipei_time_not_utc(scheduler):
         status="pending",
         patient_reminder_sent=False,
     )
+    log_repository.list_pending_patient_reminders.return_value = [fake_log]
 
-    with patch(
-        "app.services.medication.medication_scheduler.MedicationReminderRepository.list_active_reminders_up_to_time",
-        new_callable=AsyncMock,
-        return_value=[],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.list_pending_patient_reminders",
-        new_callable=AsyncMock,
-        return_value=[fake_log],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.claim_patient_reminder",
-        new_callable=AsyncMock,
-        return_value=True,
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.list_pending_urgent_reminders",
-        new_callable=AsyncMock,
-        return_value=[],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.list_pending_caregiver_alerts",
-        new_callable=AsyncMock,
-        return_value=[],
-    ), patch(
-        "app.services.medication.medication_scheduler.build_patient_medication_flex"
-    ) as mock_build:
-        await scheduler.process_ticks(now=now)
+    await scheduler.process_ticks(now=now)
 
-        mock_build.assert_called_once()
-        assert mock_build.call_args.kwargs["scheduled_time"] == "08:00"
+    rendered = _rendered(mock_replier.push_flex.call_args[0][1])
+    assert "08:00" in rendered
+    assert "00:00" not in rendered
 
 
 @pytest.mark.asyncio
-async def test_caregiver_alert_shows_taipei_time_not_utc(scheduler, mock_replier):
+async def test_caregiver_alert_shows_taipei_time_not_utc(
+    scheduler, mock_replier, log_repository
+):
     now = datetime(2026, 7, 29, 9, 0, tzinfo=TAIPEI_TZ)
     fake_log = MedicationLog(
         id="LOG_1",
@@ -254,120 +240,91 @@ async def test_caregiver_alert_shows_taipei_time_not_utc(scheduler, mock_replier
         patient_reminder_sent=True,
         urgent_reminder_sent=True,
     )
+    log_repository.list_pending_caregiver_alerts.return_value = [fake_log]
 
-    with patch(
-        "app.services.medication.medication_scheduler.MedicationReminderRepository.list_active_reminders_up_to_time",
-        new_callable=AsyncMock,
-        return_value=[],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.list_pending_patient_reminders",
-        new_callable=AsyncMock,
-        return_value=[],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.list_pending_urgent_reminders",
-        new_callable=AsyncMock,
-        return_value=[],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.list_pending_caregiver_alerts",
-        new_callable=AsyncMock,
-        return_value=[fake_log],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.claim_caregiver_alert",
-        new_callable=AsyncMock,
-        return_value=True,
-    ), patch(
-        "app.services.medication.medication_scheduler.build_caregiver_alert_flex"
-    ) as mock_build:
-        await scheduler.process_ticks(now=now)
+    await scheduler.process_ticks(now=now)
 
-        mock_build.assert_called_once()
-        assert mock_build.call_args.kwargs["scheduled_time"] == "08:00"
+    rendered = _rendered(mock_replier.push_flex.call_args[0][1])
+    assert "08:00" in rendered
+    assert "00:00" not in rendered
 
 
 # ── Regression：不為「提醒建立之前」的時段補建 log ──────────────────
 
 
-@contextmanager
-def _only_watch_stage_one():
-    """把三個推播查詢都關掉，只觀察階段 1 是否補建 log。"""
-    prefix = "app.services.medication.medication_scheduler.MedicationLogRepository"
-    with patch(
-        f"{prefix}.list_pending_patient_reminders", new_callable=AsyncMock, return_value=[]
-    ), patch(
-        f"{prefix}.list_pending_urgent_reminders", new_callable=AsyncMock, return_value=[]
-    ), patch(
-        f"{prefix}.list_pending_caregiver_alerts", new_callable=AsyncMock, return_value=[]
-    ):
-        yield
-
-
 @pytest.mark.asyncio
-async def test_no_backfill_for_slot_before_reminder_was_created(scheduler):
+async def test_no_backfill_for_slot_before_reminder_was_created(
+    scheduler, reminder_repository, log_repository
+):
     """
     20:00 新增一筆早上 08:00 的提醒，不該為今天的 08:00 補建 log。
     否則同一個 tick 會連續發出首刷提醒、T+20 催促與 T+30 家屬逾時警報（全是假的）。
     """
     now = datetime(2026, 7, 29, 20, 0, tzinfo=TAIPEI_TZ)
-    reminder = MedicationReminder(
-        id="REM_1",
-        creator_user_id="U_CARE",
-        user_id="U_PATIENT",
-        slot_type="morning",
-        scheduled_time="08:00",
-        start_date="2026-07-29",
-        # 提醒是今天 20:00 才建立的（資料庫讀回為 naive UTC 12:00）
-        created_at=datetime(2026, 7, 29, 12, 0),
-    )
+    reminder_repository.list_active_reminders_up_to_time.return_value = [
+        MedicationReminder(
+            id="REM_1",
+            creator_user_id="U_CARE",
+            user_id="U_PATIENT",
+            slot_type="morning",
+            scheduled_time="08:00",
+            start_date="2026-07-29",
+            # 提醒是今天 20:00 才建立的（資料庫讀回為 naive UTC 12:00）
+            created_at=datetime(2026, 7, 29, 12, 0),
+        )
+    ]
 
-    with patch(
-        "app.services.medication.medication_scheduler.MedicationReminderRepository.list_active_reminders_up_to_time",
-        new_callable=AsyncMock,
-        return_value=[reminder],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
-        new_callable=AsyncMock,
-        side_effect=lambda log: (log, True),
-    ) as mock_upsert, _only_watch_stage_one():
-        await scheduler.process_ticks(now=now)
+    await scheduler.process_ticks(now=now)
 
-        mock_upsert.assert_not_awaited()
+    log_repository.upsert_log.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_backfill_still_happens_for_reminder_created_earlier(scheduler):
+async def test_backfill_still_happens_for_reminder_created_earlier(
+    scheduler, reminder_repository, log_repository
+):
     """停機補建 log 的能力要保留：昨天就建立的提醒，今天仍要補建當日 log。"""
     now = datetime(2026, 7, 29, 20, 0, tzinfo=TAIPEI_TZ)
-    reminder = MedicationReminder(
-        id="REM_1",
-        creator_user_id="U_CARE",
-        user_id="U_PATIENT",
-        slot_type="morning",
-        scheduled_time="08:00",
-        start_date="2026-07-28",
-        created_at=datetime(2026, 7, 28, 1, 0),  # 昨天建立
-    )
+    reminder_repository.list_active_reminders_up_to_time.return_value = [
+        MedicationReminder(
+            id="REM_1",
+            creator_user_id="U_CARE",
+            user_id="U_PATIENT",
+            slot_type="morning",
+            scheduled_time="08:00",
+            start_date="2026-07-28",
+            created_at=datetime(2026, 7, 28, 1, 0),  # 昨天建立
+        )
+    ]
 
-    with patch(
-        "app.services.medication.medication_scheduler.MedicationReminderRepository.list_active_reminders_up_to_time",
-        new_callable=AsyncMock,
-        return_value=[reminder],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
-        new_callable=AsyncMock,
-        side_effect=lambda log: (log, True),
-    ) as mock_upsert, _only_watch_stage_one():
-        await scheduler.process_ticks(now=now)
+    await scheduler.process_ticks(now=now)
 
-        mock_upsert.assert_awaited_once()
-        log_arg = mock_upsert.call_args[0][0]
-        assert log_arg.scheduled_at == datetime(2026, 7, 29, 8, 0, tzinfo=TAIPEI_TZ)
+    log_repository.upsert_log.assert_awaited_once()
+    log_arg = log_repository.upsert_log.call_args[0][0]
+    assert log_arg.scheduled_at == datetime(2026, 7, 29, 8, 0, tzinfo=TAIPEI_TZ)
 
 
 # ── Regression：停機錯過的時段只留紀錄、不補推播 ─────────────────────
 
 
+def _reminder_created_yesterday(
+    slot: str = "morning", scheduled_time: str = "08:00"
+) -> MedicationReminder:
+    return MedicationReminder(
+        id=f"REM_{slot}",
+        creator_user_id="U_CARE",
+        user_id="U_PATIENT",
+        slot_type=slot,
+        scheduled_time=scheduled_time,
+        start_date="2026-07-28",
+        created_at=datetime(2026, 7, 28, 1, 0),
+    )
+
+
 @pytest.mark.asyncio
-async def test_misfired_slot_is_recorded_but_silenced(scheduler):
+async def test_misfired_slot_is_recorded_but_silenced(
+    scheduler, reminder_repository, log_repository
+):
     """
     服務在 08:00 之後才啟動時，早上的時段不該被補推播。
 
@@ -375,64 +332,36 @@ async def test_misfired_slot_is_recorded_but_silenced(scheduler):
     內三個階段依序判定成立：首刷、T+20 催促、T+30 家屬逾時警報一次全發。
     """
     now = datetime(2026, 7, 29, 20, 0, tzinfo=TAIPEI_TZ)
-    reminder = MedicationReminder(
-        id="REM_1",
-        creator_user_id="U_CARE",
-        user_id="U_PATIENT",
-        slot_type="morning",
-        scheduled_time="08:00",
-        start_date="2026-07-28",
-        created_at=datetime(2026, 7, 28, 1, 0),
-    )
+    reminder_repository.list_active_reminders_up_to_time.return_value = [
+        _reminder_created_yesterday()
+    ]
 
-    with patch(
-        "app.services.medication.medication_scheduler.MedicationReminderRepository.list_active_reminders_up_to_time",
-        new_callable=AsyncMock,
-        return_value=[reminder],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
-        new_callable=AsyncMock,
-        side_effect=lambda log: (log, True),
-    ) as mock_upsert, _only_watch_stage_one():
-        await scheduler.process_ticks(now=now)
+    await scheduler.process_ticks(now=now)
 
-        log_arg = mock_upsert.call_args[0][0]
-        # 紀錄仍要留下，讓使用者與家屬事後看得到這一餐沒吃
-        assert log_arg.status == "missed"
-        # 三個旗標全設起，後續 tick 的三個查詢都不會再撈到它
-        assert log_arg.patient_reminder_sent is True
-        assert log_arg.urgent_reminder_sent is True
-        assert log_arg.caregiver_alert_sent is True
+    log_arg = log_repository.upsert_log.call_args[0][0]
+    # 紀錄仍要留下，讓使用者與家屬事後看得到這一餐沒吃
+    assert log_arg.status == "missed"
+    # 三個旗標全設起，後續 tick 的三個查詢都不會再撈到它
+    assert log_arg.patient_reminder_sent is True
+    assert log_arg.urgent_reminder_sent is True
+    assert log_arg.caregiver_alert_sent is True
 
 
 @pytest.mark.asyncio
-async def test_slot_within_grace_window_still_pushes(scheduler):
+async def test_slot_within_grace_window_still_pushes(
+    scheduler, reminder_repository, log_repository
+):
     """短暫部署造成的延遲仍要正常送達：08:00 的時段在 08:15 才建 log，照常推播。"""
     now = datetime(2026, 7, 29, 8, 15, tzinfo=TAIPEI_TZ)
-    reminder = MedicationReminder(
-        id="REM_1",
-        creator_user_id="U_CARE",
-        user_id="U_PATIENT",
-        slot_type="morning",
-        scheduled_time="08:00",
-        start_date="2026-07-28",
-        created_at=datetime(2026, 7, 28, 1, 0),
-    )
+    reminder_repository.list_active_reminders_up_to_time.return_value = [
+        _reminder_created_yesterday()
+    ]
 
-    with patch(
-        "app.services.medication.medication_scheduler.MedicationReminderRepository.list_active_reminders_up_to_time",
-        new_callable=AsyncMock,
-        return_value=[reminder],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
-        new_callable=AsyncMock,
-        side_effect=lambda log: (log, True),
-    ) as mock_upsert, _only_watch_stage_one():
-        await scheduler.process_ticks(now=now)
+    await scheduler.process_ticks(now=now)
 
-        log_arg = mock_upsert.call_args[0][0]
-        assert log_arg.status == "pending"
-        assert log_arg.patient_reminder_sent is False
+    log_arg = log_repository.upsert_log.call_args[0][0]
+    assert log_arg.status == "pending"
+    assert log_arg.patient_reminder_sent is False
 
 
 # ── 停機錯過的時段：依家屬彙整成一則通知 ─────────────────────────────
@@ -441,53 +370,40 @@ async def test_slot_within_grace_window_still_pushes(scheduler):
 def _misfired_reminders() -> list[MedicationReminder]:
     """兩個都早於 grace window 的時段，通報對象同為 U_CARE。"""
     return [
-        MedicationReminder(
-            id=f"REM_{slot}",
-            creator_user_id="U_CARE",
-            user_id="U_PATIENT",
-            slot_type=slot,
-            scheduled_time=time_str,
-            start_date="2026-07-28",
-            created_at=datetime(2026, 7, 28, 1, 0),
-        )
+        _reminder_created_yesterday(slot, time_str)
         for slot, time_str in (("morning", "08:00"), ("noon", "12:00"))
     ]
 
 
 @pytest.mark.asyncio
-async def test_misfired_slots_are_summarised_into_one_message(scheduler, mock_replier):
+async def test_misfired_slots_are_summarised_into_one_message(
+    scheduler, mock_replier, reminder_repository
+):
     """
     停機期間錯過的多個時段，對同一位家屬只發一則彙整通知。
 
     逐則發送的話，停機半天 × 多位家人會在同一個 tick 內變成數十則轟炸。
     """
     now = datetime(2026, 7, 29, 20, 0, tzinfo=TAIPEI_TZ)
+    reminder_repository.list_active_reminders_up_to_time.return_value = (
+        _misfired_reminders()
+    )
 
-    with patch(
-        "app.services.medication.medication_scheduler.MedicationReminderRepository.list_active_reminders_up_to_time",
-        new_callable=AsyncMock,
-        return_value=_misfired_reminders(),
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
-        new_callable=AsyncMock,
-        side_effect=lambda log: (log, True),
-    ), patch(
-        "app.services.medication.medication_scheduler.build_caregiver_missed_summary_flex"
-    ) as mock_build, _only_watch_stage_one():
-        await scheduler.process_ticks(now=now)
+    await scheduler.process_ticks(now=now)
 
-        mock_replier.push_flex.assert_awaited_once()
-        assert mock_replier.push_flex.call_args[0][0] == "U_CARE"
+    mock_replier.push_flex.assert_awaited_once()
+    assert mock_replier.push_flex.call_args[0][0] == "U_CARE"
 
-        entries = mock_build.call_args.kwargs["missed"]
-        # 兩個時段收在同一則裡，且依時間排序
-        assert [e["scheduled_time"] for e in entries] == ["08:00", "12:00"]
-        assert [e["slot_type"] for e in entries] == ["morning", "noon"]
-        assert {e["patient_name"] for e in entries} == {"李老先生"}
+    rendered = _rendered(mock_replier.push_flex.call_args[0][1])
+    # 兩個時段收在同一則裡，且依時間排序
+    assert rendered.index("08:00") < rendered.index("12:00")
+    assert "李老先生" in rendered
 
 
 @pytest.mark.asyncio
-async def test_misfired_summary_not_resent_on_later_ticks(scheduler, mock_replier):
+async def test_misfired_summary_not_resent_on_later_ticks(
+    scheduler, mock_replier, reminder_repository, log_repository
+):
     """
     created=False 代表這筆 log 先前的 tick 就建好了，不能再通知一次。
 
@@ -495,43 +411,40 @@ async def test_misfired_summary_not_resent_on_later_ticks(scheduler, mock_replie
     被同一則通知洗版。
     """
     now = datetime(2026, 7, 29, 20, 0, tzinfo=TAIPEI_TZ)
+    reminder_repository.list_active_reminders_up_to_time.return_value = (
+        _misfired_reminders()
+    )
+    log_repository.upsert_log = AsyncMock(side_effect=lambda log: (log, False))
 
-    with patch(
-        "app.services.medication.medication_scheduler.MedicationReminderRepository.list_active_reminders_up_to_time",
-        new_callable=AsyncMock,
-        return_value=_misfired_reminders(),
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
-        new_callable=AsyncMock,
-        side_effect=lambda log: (log, False),  # 早就建好了
-    ), _only_watch_stage_one():
+    await scheduler.process_ticks(now=now)
+
+    mock_replier.push_flex.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_misfire_log_only_on_first_creation(
+    scheduler, reminder_repository, log_repository, caplog
+):
+    """misfire 訊息只在本次才建立紀錄時印一次。
+
+    is_misfired 每一輪都會對同一個時段重新算成 True；不看 created 就會變成
+    每 60 秒重印一行（一位使用者一天約四千行）。
+    """
+    import logging
+
+    now = datetime(2026, 7, 29, 20, 0, tzinfo=TAIPEI_TZ)
+    reminder_repository.list_active_reminders_up_to_time.return_value = [
+        _reminder_created_yesterday()
+    ]
+    log_repository.upsert_log = AsyncMock(side_effect=lambda log: (log, False))
+
+    with caplog.at_level(logging.INFO):
         await scheduler.process_ticks(now=now)
 
-        mock_replier.push_flex.assert_not_awaited()
+    assert "Misfired slot recorded without push" not in caplog.text
 
 
 # ── Regression：推播權搶佔（多實例並存時不重複推播）─────────────────
-
-
-@contextmanager
-def _only_watch_stage_one_b(pending_logs):
-    """只讓階段 1b（首刷推播）有資料，其餘查詢一律回空。"""
-    reminder_prefix = "app.services.medication.medication_scheduler.MedicationReminderRepository"
-    log_prefix = "app.services.medication.medication_scheduler.MedicationLogRepository"
-    with patch(
-        f"{reminder_prefix}.list_active_reminders_up_to_time",
-        new_callable=AsyncMock,
-        return_value=[],
-    ), patch(
-        f"{log_prefix}.list_pending_patient_reminders",
-        new_callable=AsyncMock,
-        return_value=pending_logs,
-    ), patch(
-        f"{log_prefix}.list_pending_urgent_reminders", new_callable=AsyncMock, return_value=[]
-    ), patch(
-        f"{log_prefix}.list_pending_caregiver_alerts", new_callable=AsyncMock, return_value=[]
-    ):
-        yield
 
 
 def _pending_log() -> MedicationLog:
@@ -550,7 +463,7 @@ def _pending_log() -> MedicationLog:
 
 
 @pytest.mark.asyncio
-async def test_lost_claim_skips_push(scheduler, mock_replier):
+async def test_lost_claim_skips_push(scheduler, mock_replier, log_repository):
     """
     搶不到推播權就不推播。
 
@@ -558,68 +471,51 @@ async def test_lost_claim_skips_push(scheduler, mock_replier):
     未送出的 log；先搶到旗標的那個實例才負責送，否則使用者收到兩則相同提醒。
     """
     now = datetime(2026, 7, 29, 8, 1, tzinfo=timezone.utc)
+    log_repository.list_pending_patient_reminders.return_value = [_pending_log()]
+    log_repository.claim_patient_reminder.return_value = False  # 另一個實例先搶走了
 
-    with _only_watch_stage_one_b([_pending_log()]), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.claim_patient_reminder",
-        new_callable=AsyncMock,
-        return_value=False,  # 另一個實例先搶走了
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.release_patient_reminder",
-        new_callable=AsyncMock,
-    ) as mock_release:
-        await scheduler.process_ticks(now=now)
+    await scheduler.process_ticks(now=now)
 
-        mock_replier.push_flex.assert_not_awaited()
-        # 沒搶到就沒有推播權可還，不能去動別的實例已設起的旗標
-        mock_release.assert_not_awaited()
+    mock_replier.push_flex.assert_not_awaited()
+    # 沒搶到就沒有推播權可還，不能去動別的實例已設起的旗標
+    log_repository.release_patient_reminder.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_push_failure_releases_claim(scheduler, mock_replier):
+async def test_push_failure_releases_claim(scheduler, mock_replier, log_repository):
     """推播失敗要把旗標還原，否則這則提醒永遠不會再被重試。"""
     now = datetime(2026, 7, 29, 8, 1, tzinfo=timezone.utc)
     mock_replier.push_flex = AsyncMock(return_value=False)
+    log_repository.list_pending_patient_reminders.return_value = [_pending_log()]
 
-    with _only_watch_stage_one_b([_pending_log()]), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.claim_patient_reminder",
-        new_callable=AsyncMock,
-        return_value=True,
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.release_patient_reminder",
-        new_callable=AsyncMock,
-    ) as mock_release:
-        await scheduler.process_ticks(now=now)
+    await scheduler.process_ticks(now=now)
 
-        mock_replier.push_flex.assert_awaited_once()
-        mock_release.assert_awaited_once_with("LOG_1")
+    mock_replier.push_flex.assert_awaited_once()
+    log_repository.release_patient_reminder.assert_awaited_once_with("LOG_1")
 
 
 @pytest.mark.asyncio
-async def test_push_exception_releases_claim(scheduler, mock_replier):
+async def test_push_exception_releases_claim(scheduler, mock_replier, log_repository):
     """推播丟例外同樣要還原旗標，並且不能讓整個 tick 中斷。"""
     now = datetime(2026, 7, 29, 8, 1, tzinfo=timezone.utc)
     mock_replier.push_flex = AsyncMock(side_effect=RuntimeError("LINE API down"))
+    log_repository.list_pending_patient_reminders.return_value = [_pending_log()]
 
-    with _only_watch_stage_one_b([_pending_log()]), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.claim_patient_reminder",
-        new_callable=AsyncMock,
-        return_value=True,
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.release_patient_reminder",
-        new_callable=AsyncMock,
-    ) as mock_release:
-        await scheduler.process_ticks(now=now)
+    await scheduler.process_ticks(now=now)
 
-        mock_release.assert_awaited_once_with("LOG_1")
+    log_repository.release_patient_reminder.assert_awaited_once_with("LOG_1")
 
 
-# ── 推播文案的藥品區塊：只在組裝文案時解析，展開路徑不讀 medication_ids ──
+# ── 推播文案的藥品區塊：只在組裝文案時解析，推播路徑不讀 medication_ids ──
 #
 # 這裡刻意不透過 process_ticks 走完整流程來驗證，而是直接測試
-# `_TickMedicationNameCache`：它是新增邏輯唯一讀 medication_ids、也是唯一發出
-# 「查規則」「查藥品」這兩種查詢的地方，且用 collection= 注入假的 collection，
-# 不需要 monkeypatch 掉 MedicationReminderRepository／MedicationRepository
-# 這兩個 static class。
+# `_TickMedicationNameCache`：它是組裝文案時唯一讀 medication_ids、也是唯一
+# 發出「查規則」「查藥品」這兩種查詢的地方。
+#
+# 這一段用 `collection=` 注入假的 Motor collection，走的是比 repository 更底層
+# 的那道縫——刻意保留，因為這些測試要驗的正是查詢本身發了幾次、形狀對不對，
+# 換成假的 repository 就把要驗的東西一起換掉了。上方 process_ticks 的測試則
+# 走建構子注入的假 repository，兩者是不同層級的斷言，不是重複。
 
 
 def _find_collection(docs=None, *, raise_error: Exception | None = None):
@@ -1128,17 +1024,30 @@ async def test_send_caregiver_alert_reads_names_from_shared_cache(
     assert "https://img.example.com" not in rendered
 
 
-def test_process_ticks_expansion_path_does_not_reference_medication_ids():
+def test_push_path_does_not_reference_medication_ids():
     """
-    展開與搶佔路徑不得讀 medication_ids —— 這是排程器既有併發保證（原子搶佔、
-    唯一索引、停機補償）能夠成立的前提，見 openspec 決策。藥名解析已刻意搬到
-    `_TickMedicationNameCache`，只在組裝推播文案時才呼叫；這裡用原始碼掃描
-    鎖住 process_ticks 本體不會再讀這個欄位。
+    推播與搶佔路徑不得讀 medication_ids。
+
+    這條原本寫成「展開路徑也不得讀」，理由是排程器既有的併發保證（原子搶佔、
+    唯一索引、停機補償）都建立在展開判定只看規則本身。那個顧慮沒錯，但它當時
+    換來的代價沒有被算進去：規則的 end_date 一律是 null、藥品的 end_date 才帶
+    療程結束日，展開判定不看藥品，療程結束後就會一直推出沒有藥名的空卡片。
+
+    現在展開判定會讀 medication_ids（見 `_resolve_suppressed_reminder_ids`），
+    而原本要保護的東西改由「判定放在展開階段、不放在推播路徑」來保住：三階
+    查詢都限定 status="pending"，紀錄不存在即三則推播全部停下，搶佔那段完全
+    沒被碰到。所以這裡改成鎖住推播路徑——`_dispatch` 與三支 `_send_*` 仍然
+    不得讀這個欄位。
     """
     import inspect
 
-    source = inspect.getsource(MedicationScheduler.process_ticks)
-    assert "medication_ids" not in source
+    for method in (
+        MedicationScheduler._dispatch,
+        MedicationScheduler._send_patient_reminder,
+        MedicationScheduler._send_urgent_reminder,
+        MedicationScheduler._send_caregiver_alert,
+    ):
+        assert "medication_ids" not in inspect.getsource(method)
 
 
 def test_process_ticks_builds_exactly_one_cache_per_stage_outside_the_loop():
@@ -1154,19 +1063,14 @@ def test_process_ticks_builds_exactly_one_cache_per_stage_outside_the_loop():
     import inspect
 
     source = inspect.getsource(MedicationScheduler.process_ticks)
-    assert source.count("_TickMedicationNameCache(") == 3
+    # 建構改走 self._medication_cache(...)（它把注入的 repository 帶下去），
+    # 所以掃描的對象是那個 helper 的呼叫，不再是 class 名稱本身。
+    assert source.count("self._medication_cache(") == 3
 
-    initial_cache_pos = source.index("_TickMedicationNameCache(pending_initial_logs)")
-    initial_loop_pos = source.index("for log in pending_initial_logs:")
-    assert initial_cache_pos < initial_loop_pos
-
-    urgent_cache_pos = source.index("_TickMedicationNameCache(pending_urgent_logs)")
-    urgent_loop_pos = source.index("for log in pending_urgent_logs:")
-    assert urgent_cache_pos < urgent_loop_pos
-
-    alert_cache_pos = source.index("_TickMedicationNameCache(pending_alert_logs)")
-    alert_loop_pos = source.index("for log in pending_alert_logs:")
-    assert alert_cache_pos < alert_loop_pos
+    for logs_name in ("pending_initial_logs", "pending_urgent_logs", "pending_alert_logs"):
+        cache_pos = source.index(f"self._medication_cache({logs_name})")
+        loop_pos = source.index(f"for log in {logs_name}:")
+        assert cache_pos < loop_pos, logs_name
 
 
 
@@ -1174,8 +1078,8 @@ def test_process_ticks_builds_exactly_one_cache_per_stage_outside_the_loop():
 #
 # 規則的 end_date 由 find_or_create_reminder 一律寫成 None（長期有效），藥品的
 # end_date 則由處方箋療程天數換算。療程結束後兩邊脫鉤：規則照常展開，藥品清單
-# 卻已全數失效，推出去的是一張說不出要吃什麼的空卡片。以下四個測試把「要不要
-# 推」與「今天還有沒有有效的藥」綁在一起，並保住「沒掛藥的舊規則照常推播」。
+# 卻已全數失效，推出去的是一張說不出要吃什麼的空卡片。以下把「要不要推」與
+# 「今天還有沒有有效的藥」綁在一起，並保住「沒掛藥的舊規則照常推播」。
 
 
 def _reminder_with_medications(medication_ids, reminder_id="REM_1"):
@@ -1193,8 +1097,6 @@ def _reminder_with_medications(medication_ids, reminder_id="REM_1"):
 
 
 def _active_medication(medication_id):
-    from app.models.medication import Medication
-
     return Medication(
         id=medication_id,
         user_id="U_PATIENT",
@@ -1205,165 +1107,117 @@ def _active_medication(medication_id):
     )
 
 
-@contextmanager
-def _stage_one_with_active_medications(reminders, active_medications):
-    """只觀察階段 1，並代入 find_active_by_ids 的回傳值。"""
-    reminder_prefix = (
-        "app.services.medication.medication_scheduler.MedicationReminderRepository"
-    )
-    with patch(
-        f"{reminder_prefix}.list_active_reminders_up_to_time",
-        new_callable=AsyncMock,
-        return_value=reminders,
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationRepository.find_active_by_ids",
-        new_callable=AsyncMock,
-        return_value=active_medications,
-    ) as mock_find, _only_watch_stage_one():
-        yield mock_find
-
-
 @pytest.mark.asyncio
-async def test_expired_course_does_not_expand_log(scheduler):
+async def test_expired_course_does_not_expand_log(
+    scheduler, reminder_repository, log_repository
+):
     """掛著藥、但當日一顆有效的都不剩：不展開紀錄，三階推播因此全部停下。"""
     now = datetime(2026, 9, 1, 8, 0, tzinfo=TAIPEI_TZ)
-    reminder = _reminder_with_medications(["MED_1", "MED_2"])
+    reminder_repository.list_active_reminders_up_to_time.return_value = [
+        _reminder_with_medications(["MED_1", "MED_2"])
+    ]
 
-    with _stage_one_with_active_medications([reminder], []), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
-        new_callable=AsyncMock,
-    ) as mock_upsert, patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.cancel_pending_by_reminder_ids",
-        new_callable=AsyncMock,
-        return_value=0,
-    ):
-        await scheduler.process_ticks(now=now)
+    await scheduler.process_ticks(now=now)
 
-    mock_upsert.assert_not_awaited()
+    log_repository.upsert_log.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_reminder_without_linked_medications_still_expands(scheduler):
+async def test_reminder_without_linked_medications_still_expands(
+    scheduler, reminder_repository, log_repository, medication_repository
+):
     """本功能導入前建立的規則 medication_ids 是空陣列，行為必須與過去一致。
 
     要抑制的只有「掛了藥、但藥全部失效」，不是「沒掛藥」——把兩者混為一談會
     讓所有舊規則從此不再推播。
     """
     now = datetime(2026, 9, 1, 8, 0, tzinfo=TAIPEI_TZ)
-    reminder = _reminder_with_medications([])
+    reminder_repository.list_active_reminders_up_to_time.return_value = [
+        _reminder_with_medications([])
+    ]
 
-    with _stage_one_with_active_medications([reminder], []) as mock_find, patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
-        new_callable=AsyncMock,
-        return_value=(MagicMock(), True),
-    ) as mock_upsert:
-        await scheduler.process_ticks(now=now)
+    await scheduler.process_ticks(now=now)
 
-    mock_upsert.assert_awaited_once()
+    log_repository.upsert_log.assert_awaited_once()
     # 沒有任何規則掛藥時，連藥品查詢都不該發出。
-    mock_find.assert_not_awaited()
+    medication_repository.find_active_by_ids.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_partially_expired_course_still_expands(scheduler):
+async def test_partially_expired_course_still_expands(
+    scheduler, reminder_repository, log_repository, medication_repository
+):
     """四顆藥只要還有一顆當日有效，這個時段就照常推播。"""
     now = datetime(2026, 9, 1, 8, 0, tzinfo=TAIPEI_TZ)
-    reminder = _reminder_with_medications(["MED_1", "MED_2"])
+    reminder_repository.list_active_reminders_up_to_time.return_value = [
+        _reminder_with_medications(["MED_1", "MED_2"])
+    ]
+    medication_repository.find_active_by_ids.return_value = [_active_medication("MED_2")]
 
-    with _stage_one_with_active_medications(
-        [reminder], [_active_medication("MED_2")]
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
-        new_callable=AsyncMock,
-        return_value=(MagicMock(), True),
-    ) as mock_upsert:
-        await scheduler.process_ticks(now=now)
+    await scheduler.process_ticks(now=now)
 
-    mock_upsert.assert_awaited_once()
+    log_repository.upsert_log.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_expired_course_cancels_already_expanded_logs(scheduler):
+async def test_expired_course_cancels_already_expanded_logs(
+    scheduler, reminder_repository, log_repository
+):
     """當日已展開、還沒確認的紀錄要作廢，否則 T+20 與 T+30 仍會推空卡片。
 
     作廢範圍只到今天：更早的紀錄當時可能確實有藥，不該被回頭改寫。
     """
     now = datetime(2026, 9, 1, 8, 25, tzinfo=TAIPEI_TZ)
-    reminder = _reminder_with_medications(["MED_1"])
+    reminder_repository.list_active_reminders_up_to_time.return_value = [
+        _reminder_with_medications(["MED_1"])
+    ]
+    log_repository.cancel_pending_by_reminder_ids.return_value = 1
 
-    with _stage_one_with_active_medications([reminder], []), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
-        new_callable=AsyncMock,
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.cancel_pending_by_reminder_ids",
-        new_callable=AsyncMock,
-        return_value=1,
-    ) as mock_cancel:
-        await scheduler.process_ticks(now=now)
+    await scheduler.process_ticks(now=now)
 
-    mock_cancel.assert_awaited_once()
-    args, kwargs = mock_cancel.await_args
+    log_repository.cancel_pending_by_reminder_ids.assert_awaited_once()
+    args, kwargs = log_repository.cancel_pending_by_reminder_ids.await_args
     assert args[0] == ["REM_1"]
     assert kwargs["scheduled_from"] == datetime(2026, 9, 1, 0, 0, tzinfo=TAIPEI_TZ)
 
 
 @pytest.mark.asyncio
-async def test_medication_lookup_failure_does_not_suppress(scheduler):
+async def test_medication_lookup_failure_does_not_suppress(
+    scheduler, reminder_repository, log_repository, medication_repository
+):
     """藥品查詢失敗時不抑制任何規則。
 
     少推一張空卡片，與整批使用者漏掉一次真正該吃的藥相比，後者的代價高得多。
     """
     now = datetime(2026, 9, 1, 8, 0, tzinfo=TAIPEI_TZ)
-    reminder = _reminder_with_medications(["MED_1"])
+    reminder_repository.list_active_reminders_up_to_time.return_value = [
+        _reminder_with_medications(["MED_1"])
+    ]
+    medication_repository.find_active_by_ids.side_effect = RuntimeError("mongo down")
 
-    reminder_prefix = (
-        "app.services.medication.medication_scheduler.MedicationReminderRepository"
-    )
-    with patch(
-        f"{reminder_prefix}.list_active_reminders_up_to_time",
-        new_callable=AsyncMock,
-        return_value=[reminder],
-    ), patch(
-        "app.services.medication.medication_scheduler.MedicationRepository.find_active_by_ids",
-        new_callable=AsyncMock,
-        side_effect=RuntimeError("mongo down"),
-    ), _only_watch_stage_one(), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
-        new_callable=AsyncMock,
-        return_value=(MagicMock(), True),
-    ) as mock_upsert:
-        await scheduler.process_ticks(now=now)
+    await scheduler.process_ticks(now=now)
 
-    mock_upsert.assert_awaited_once()
+    log_repository.upsert_log.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_misfire_log_only_on_first_creation(scheduler, caplog):
-    """misfire 訊息只在本次才建立紀錄時印一次。
+async def test_suppression_uses_injected_repositories_only(
+    scheduler, reminder_repository, medication_repository
+):
+    """抑制判定只透過注入的 repository 取資料，且藥品查詢整批只發一次。
 
-    is_misfired 每一輪都會對同一個時段重新算成 True；不看 created 就會變成
-    每 60 秒重印一行。
+    三個規則共用九顆藥時仍只查一次——這條規則是每 60 秒一輪的迴圈，逐筆查詢
+    會讓查詢次數隨規則數線性增加。
     """
-    import logging
+    now = datetime(2026, 9, 1, 8, 0, tzinfo=TAIPEI_TZ)
+    reminder_repository.list_active_reminders_up_to_time.return_value = [
+        _reminder_with_medications([f"MED_{i}"], reminder_id=f"REM_{i}")
+        for i in range(3)
+    ]
 
-    now = datetime(2026, 9, 1, 9, 0, tzinfo=TAIPEI_TZ)
-    reminder = _reminder_with_medications([])
+    await scheduler.process_ticks(now=now)
 
-    reminder_prefix = (
-        "app.services.medication.medication_scheduler.MedicationReminderRepository"
-    )
-    with patch(
-        f"{reminder_prefix}.list_active_reminders_up_to_time",
-        new_callable=AsyncMock,
-        return_value=[reminder],
-    ), _only_watch_stage_one(), patch(
-        "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
-        new_callable=AsyncMock,
-        return_value=(MagicMock(), False),
-    ), patch.object(
-        scheduler, "_notify_missed_summary", new_callable=AsyncMock
-    ):
-        with caplog.at_level(logging.INFO):
-            await scheduler.process_ticks(now=now)
-
-    assert "Misfired slot recorded without push" not in caplog.text
+    medication_repository.find_active_by_ids.assert_awaited_once()
+    args, _ = medication_repository.find_active_by_ids.await_args
+    assert args[0] == ["MED_0", "MED_1", "MED_2"]
+    assert args[1] == "2026-09-01"

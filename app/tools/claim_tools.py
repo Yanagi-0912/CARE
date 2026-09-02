@@ -7,6 +7,7 @@ from langchain_core.tools import tool
 
 from app.services.line_messaging.flex.verdict_flex import build_verdict_flex
 from app.services.rag.claim_verification.service import VerificationResult
+from resources.flex_messages.size_guard import fits
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +58,8 @@ def _format_verdict_reply(result: VerificationResult) -> str:
     return "\n".join(lines)
 
 
-def _to_flex_message_text(result: VerificationResult) -> str:
-    """把判定卡組成 LINE Flex Message JSON 字串。
+def _to_flex_message_text(result: VerificationResult) -> str | None:
+    """把判定卡組成 LINE Flex Message JSON 字串；超過大小門檻時回傳 None。
 
     格式比照 `official_site_tools.open_official_site`：
     `{"type": "flex", "altText": ..., "contents": {...}}`，這是
@@ -66,9 +67,17 @@ def _to_flex_message_text(result: VerificationResult) -> str:
     形狀。`app/services/agent/agent.py` 的 `medical_tool_names` 另外會把這個
     字串直接當成最終回覆、跳過模型再次改寫（見該處註解），因此這裡的輸出
     格式必須與其他 Flex 工具一致，不能只是「看起來像 JSON」。
+
+    大小檢查在這裡而非 `build_verdict_flex` 裡：退回純文字的決策點在本模組
+    （`_format_verdict_reply` 已是既有的 fallback），builder 維持只負責組裝
+    的單一職責。回傳 None 而非拋例外，是為了讓「太大」與「組裝壞掉」在
+    `verify_claim` 裡分別留下不同的 log——兩者都退回純文字，但成因不同。
     """
     flex_message = build_verdict_flex(result)
-    return json.dumps(flex_message.to_dict(), ensure_ascii=False)
+    payload = flex_message.to_dict()
+    if not fits(payload["contents"]):
+        return None
+    return json.dumps(payload, ensure_ascii=False)
 
 
 @tool
@@ -84,10 +93,21 @@ async def verify_claim(query: str) -> str:
         return "查核判定服務未初始化，請稍後再試。"
     result = await _claim_verification_service.verify(query)
     try:
-        return _to_flex_message_text(result)
+        flex_text = _to_flex_message_text(result)
     except Exception:  # noqa: BLE001
         # Flex 組裝是呈現層的最後一步，任何非預期例外都不該讓使用者拿到堆疊
         # 追蹤或空白回覆；退回 Flex 化之前就存在的純文字格式，判定內容仍能
         # 送到使用者手上。
         logger.warning("判定卡 Flex 組裝失敗，改回純文字格式", exc_info=True)
         return _format_verdict_reply(result)
+
+    if flex_text is None:
+        # 超過 LINE 的 bubble 上限。硬送出去會在 reply_message() 被以 400
+        # 拒收，例外被 reply() 的 except 吞掉後使用者什麼都收不到，比純文字
+        # 糟得多。未命中時 related_info 放的是衛教文章全文，沒有長度上限。
+        logger.warning(
+            "判定卡超過 Flex 大小上限，改回純文字格式，matched=%s", result.matched
+        )
+        return _format_verdict_reply(result)
+
+    return flex_text

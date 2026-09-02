@@ -143,6 +143,37 @@ _DRUG_CLASS_BY_CATEGORY = {
 }
 
 
+# 主成分略述的分隔符。實測 67,975 筆有值的資料全部用這個。
+_INGREDIENT_SEPARATOR = ";;"
+
+# 括號內的補述（鹽類、別名、含量標示）。比對成分時要去掉，否則
+# 「ACETAMINOPHEN」與「ACETAMINOPHEN (PARACETAMOL)」會被當成兩種不同成分。
+_PARENTHETICAL_RE = re.compile(r"\([^)]*\)")
+
+
+def normalize_ingredient(raw: str) -> str:
+    """成分名正規化：去括號補述、統一大寫、收斂空白。
+
+    刻意**不做**模糊比對。藥名相似不代表成分相同，而這裡偽陽性的代價是
+    「對沒有風險的組合發警報」——久了會讓人連真的警報一起忽略。
+    """
+    return re.sub(r"\s+", " ", _PARENTHETICAL_RE.sub("", raw)).strip().upper()
+
+
+def parse_ingredients(raw: Optional[str]) -> list:
+    """主成分略述 → 正規化後的成分清單（去重，保持原順序）。
+
+    順序保持原樣是為了讓輸出可被人眼核對回原始欄位；去重是因為同一成分以
+    不同鹽類形式列出時（正規化後會相同）不該重複計數。
+    """
+    seen: list = []
+    for piece in (raw or "").split(_INGREDIENT_SEPARATOR):
+        name = normalize_ingredient(piece)
+        if name and name not in seen:
+            seen.append(name)
+    return seen
+
+
 def classify_drug(category: Optional[str]) -> str:
     """藥品類別字串 → 分級。認不得的值回空字串，不猜。
 
@@ -222,6 +253,7 @@ def build_entries(
                 # 只有許可證資料集帶「藥品類別」；外觀資料集沒有這一欄，
                 # 那些只出現在外觀資料集的品項分級會是空字串。
                 "drug_class": classify_drug(row.get("藥品類別")),
+                "ingredients": parse_ingredients(row.get("主成分略述")),
             }
 
     appearance_by_licence = _index_appearance_fields(appearances)

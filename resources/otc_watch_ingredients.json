@@ -1,0 +1,80 @@
+{
+  "_readme": [
+    "非處方藥的成分重複監測白名單。只有列在這裡的成分，重複時才會通知使用者與家人。",
+    "",
+    "為什麼要白名單而不是比對全部成分：實測非處方藥最常見的 20 種成分裡，有一半是",
+    "維生素（RIBOFLAVIN 1369、PYRIDOXINE 1090、ASCORBIC ACID 1004、NIACINAMIDE 990、",
+    "CYANOCOBALAMIN 809、THIAMINE 1066、PANTOTHENATE 690、VITAMIN A 373 種品項）。",
+    "兩種綜合感冒藥都含維生素 B2 是常態，報出來沒有臨床意義。全成分比對會讓警報變成",
+    "背景雜訊，淹掉真正該看的那一則——而這個功能的價值完全建立在「發出來的每一則都",
+    "值得看」。",
+    "",
+    "納入標準是兩個條件同時成立：",
+    "  1. 在非處方藥中出現頻率高（重複的機會才存在）",
+    "  2. 已知會累加致害（重複才有意義）",
+    "",
+    "⚠ 初版由資料分析選出，未經藥師審查。每一項的 reason 是納入理由，不是臨床建議。",
+    "  這份清單應該被藥事人員檢視與修正——它決定了什麼情況要驚動全家。",
+    "",
+    "數據來源：食藥署藥品許可證資料集（data.gov.tw dataset 9122），2026-09-02，",
+    "非處方藥 15,191 種。"
+  ],
+  "ingredients": [
+    {
+      "name": "ACETAMINOPHEN",
+      "otc_products": 1858,
+      "reason": "每日總量有明確上限，超過會造成肝損傷。含它的非處方藥有 1,858 種，且多數不叫「止痛藥」——感冒藥、鼻炎藥裡都有。使用者認為「感冒藥」與「止痛藥」是兩回事，因此會同時服用。",
+      "source": "食藥署用藥安全衛教；含量統計來自 dataset 9122"
+    },
+    {
+      "name": "CHLORPHENIRAMINE MALEATE",
+      "otc_products": 2128,
+      "reason": "第一代抗組織胺，加倍會嗜睡、頭暈、口乾。對長者的後果是跌倒。在非處方藥中出現頻率最高（2,128 種），常見於綜合感冒藥與鼻炎藥，兩者同時服用很常見。",
+      "source": "dataset 9122 頻率統計；抗組織胺鎮靜作用為藥理共識"
+    },
+    {
+      "name": "DL-METHYLEPHEDRINE HCL",
+      "otc_products": 1200,
+      "reason": "擬交感神經作用，會升高血壓與心跳。長者常有高血壓或心血管疾病，累加風險明確。常見於止咳與感冒複方。",
+      "source": "dataset 9122 頻率統計"
+    },
+    {
+      "name": "DEXTROMETHORPHAN HBR",
+      "otc_products": 803,
+      "reason": "中樞止咳藥，過量會有嗜睡、頭暈與意識混亂。同時服用兩種止咳／感冒複方是常見情境。",
+      "source": "dataset 9122 頻率統計"
+    },
+    {
+      "name": "CAFFEINE ANHYDROUS",
+      "otc_products": 1323,
+      "reason": "非處方藥中作為止痛複方的增強劑，出現頻率第四高。累加會心悸、失眠、影響血壓。長者對咖啡因的耐受度較低，且往往同時有飲用茶或咖啡的習慣，藥物來源的攝取量容易被忽略。",
+      "source": "dataset 9122 頻率統計"
+    },
+    {
+      "name": "ETHENZAMIDE",
+      "otc_products": 501,
+      "reason": "水楊酸類止痛成分，與其他解熱鎮痛藥併用會增加腸胃道與出血風險。常與 ACETAMINOPHEN 出現在同一複方中，因此可能同時觸發兩項重複。",
+      "source": "dataset 9122 頻率統計"
+    },
+    {
+      "name": "METHYL SALICYLATE",
+      "otc_products": 392,
+      "reason": "外用水楊酸類。大面積使用或與口服水楊酸類併用時具經皮吸收累加風險。列入的理由是它常出現在痠痛貼布與藥膏，使用者不會認為「貼的」也算藥。",
+      "source": "dataset 9122 頻率統計"
+    }
+  ],
+  "explicitly_excluded": [
+    {
+      "names": [
+        "RIBOFLAVIN", "PYRIDOXINE HCL", "ASCORBIC ACID", "NIACINAMIDE",
+        "CYANOCOBALAMIN", "THIAMINE MONONITRATE", "THIAMINE HYDROCHLORIDE",
+        "PANTOTHENATE CALCIUM", "VITAMIN A"
+      ],
+      "reason": "維生素類。在綜合感冒藥與營養補充劑中重複是常態，且水溶性維生素過量多由腎臟排除，重複沒有臨床意義。這些成分佔非處方藥常見成分 top 20 的一半——納入的話警報會被它們淹沒。"
+    },
+    {
+      "names": ["GUAIACOL GLYCERYL ETHER", "L-MENTHOL", "SODIUM BICARBONATE", "ALUMINUM HYDROXIDE DRIED GEL"],
+      "reason": "祛痰劑、薄荷腦、制酸劑。重複的後果多為效果不佳或輕微腸胃不適，不構成需要通知家人的風險等級。"
+    }
+  ]
+}

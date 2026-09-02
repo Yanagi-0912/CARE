@@ -48,6 +48,7 @@ def test_build_entries_maps_licence_and_names():
             "name_zh": "立普妥錠10毫克",
             "name_en": "LIPITOR TABLETS 10MG",
             "drug_class": "",
+            "ingredients": [],
             "image_url": "",
             "shape": "",
             "color": "",
@@ -143,6 +144,7 @@ def test_appearance_fields_map_onto_matching_licence():
             "name_zh": "某藥",
             "name_en": "SOME DRUG",
             "drug_class": "",
+            "ingredients": [],
             "image_url": "https://mcp.fda.gov.tw/some.jpg",
             "shape": "圓形",
             "color": "白色",
@@ -525,3 +527,71 @@ class TestClassifyDrug:
         )
 
         assert entries[0]["drug_class"] == ""
+
+
+# ── 主成分解析 ──────────────────────────────────────────────────────
+# 成分比對用英文學名而非中文品名：普拿疼、斯斯、明通治痛丹的中文品名毫無交集，
+# 主成分都是 ACETAMINOPHEN。
+
+
+class TestParseIngredients:
+    def test_splits_on_double_semicolon(self):
+        from scripts.build_drug_catalog import parse_ingredients
+
+        assert parse_ingredients("A;;B;;C") == ["A", "B", "C"]
+
+    def test_strips_parenthetical_notes(self):
+        """「ACETAMINOPHEN」與「ACETAMINOPHEN (PARACETAMOL)」是同一種成分。
+
+        不去掉括號補述的話，同一成分會因為鹽類或別名標示而被當成兩種，
+        重複偵測就會漏掉。
+        """
+        from scripts.build_drug_catalog import parse_ingredients
+
+        assert parse_ingredients("ACETAMINOPHEN (PARACETAMOL)") == ["ACETAMINOPHEN"]
+        assert parse_ingredients(
+            "BISMUTH SUBNITRATE (BISMUTH NITRATE BASIC)"
+        ) == ["BISMUTH SUBNITRATE"]
+
+    def test_normalizes_case_and_whitespace(self):
+        from scripts.build_drug_catalog import parse_ingredients
+
+        assert parse_ingredients("  acetaminophen  ") == ["ACETAMINOPHEN"]
+        assert parse_ingredients("SODIUM   CHLORIDE") == ["SODIUM CHLORIDE"]
+
+    def test_deduplicates_after_normalization(self):
+        """同一成分以不同鹽類形式列出時，正規化後相同就不該重複計數。"""
+        from scripts.build_drug_catalog import parse_ingredients
+
+        assert parse_ingredients("ACETAMINOPHEN;;ACETAMINOPHEN (PARACETAMOL)") == [
+            "ACETAMINOPHEN"
+        ]
+
+    def test_preserves_original_order(self):
+        """保持原順序讓輸出可被人眼核對回原始欄位。"""
+        from scripts.build_drug_catalog import parse_ingredients
+
+        assert parse_ingredients("Z;;A;;M") == ["Z", "A", "M"]
+
+    def test_empty_input_returns_empty_list(self):
+        from scripts.build_drug_catalog import parse_ingredients
+
+        assert parse_ingredients(None) == []
+        assert parse_ingredients("") == []
+        assert parse_ingredients(";; ;;") == []
+
+    def test_catalog_entry_carries_ingredients(self):
+        from scripts.build_drug_catalog import build_entries
+
+        entries = build_entries(
+            [{"許可證字號": "L1", "中文品名": "感冒膠囊", "英文品名": "COLD CAP",
+              "藥品類別": "醫師藥師藥劑生指示藥品",
+              "主成分略述": "ACETAMINOPHEN;;CHLORPHENIRAMINE MALEATE"}],
+            [],
+        )
+
+        assert entries[0]["ingredients"] == [
+            "ACETAMINOPHEN",
+            "CHLORPHENIRAMINE MALEATE",
+        ]
+        assert entries[0]["drug_class"] == "otc_guided"

@@ -232,3 +232,31 @@ def test_field_classification_has_no_entry_for_unknown_model_field():
         and name not in CROSS_USER_MODELS[resource].model_fields
     ]
     assert not stale, f"登記表指向已不存在的模型欄位：{stale}"
+
+
+# ── 非處方藥通知（otc-ingredient-alert）──────────────────────────────
+
+
+def test_otc_notification_recipients_match_high_risk_alert():
+    """兩種推播的收件人相同，理由也相同：能收到完整訊息的就是這兩個角色。
+
+    完整訊息含用途與成分重複說明，兩者依授權矩陣皆為 SENSITIVE。
+    """
+    from app.models.family_authorization import notification_recipient_roles
+
+    assert notification_recipient_roles("otc_medication_added") == frozenset(
+        {"GUARDIAN", "CAREGIVER"}
+    )
+
+
+def test_member_is_not_a_recipient_of_any_notification():
+    """MEMBER 不在任何推播的收件人內。
+
+    理由不只是權限：他看不到 SENSITIVE，能收到的只有「某人新增了某某藥」，
+    沒有用途也沒有風險說明。持續發送低價值訊息會讓人靜音整個帳號，連帶
+    淹沒真正需要注意的警報。
+    """
+    from app.models.family_authorization import NOTIFICATION_POLICY
+
+    for kind, roles in NOTIFICATION_POLICY.items():
+        assert "MEMBER" not in roles, f"{kind} 不該把 MEMBER 列為收件人"

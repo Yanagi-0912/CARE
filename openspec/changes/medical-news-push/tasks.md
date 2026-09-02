@@ -118,7 +118,7 @@
 
 ## 4. 結構化相關性判定
 
-- [ ] 4.1 `app/services/medical_news/grader.py`，形狀**逐條比照**
+- [x] 4.1 `app/services/medical_news/grader.py`，形狀**逐條比照**
       `app/services/rag/retrieval_grader.py`（同樣的 SCHEMA 常數、Protocol、
       `invoke_*` 注入點三件套）：
       - `NEWS_SCHEMA`：`{is_about_this_drug: bool, concern_kind: enum[recall, safety,
@@ -132,15 +132,15 @@
         與 `GeminiRetrievalGrader.invoke_grade` 同一個角色
       - prompt 明確要求：摘要**必須是中性第三人稱**、不得使用「您」「你的藥」等第二人稱，
         且不得包含任何停藥或調整劑量的建議（design 決策 6 與 5）
-- [ ] 4.2 `judge()` 對不合法輸出（缺欄位、enum 不合法、非 dict）SHALL 拋
+- [x] 4.2 `judge()` 對不合法輸出（缺欄位、enum 不合法、非 dict）SHALL 拋
       `ValueError`，由呼叫端接住並 fail closed。**SHALL NOT 在此處吞掉例外回一個預設值**
       ——那會讓 fail closed 變成 fail open
-- [ ] 4.3 測試 `tests/unit/services/medical_news/test_grader.py`（以 `invoke_judge` 注入）
+- [x] 4.3 測試 `tests/unit/services/medical_news/test_grader.py`（以 `invoke_judge` 注入）
       - `test_judge_parses_structured_payload`
       - `test_judge_raises_on_unknown_concern_kind`
       - `test_judge_raises_on_missing_field`
       - `test_judge_raises_on_non_dict_payload`
-- [ ] 4.4 commit：`feat(medical-news): 結構化相關性判定`
+- [x] 4.4 commit：`feat(medical-news): 結構化相關性判定`
 
 ## 5. 索引服務（每日，與使用者無關）
 

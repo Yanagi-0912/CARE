@@ -328,6 +328,19 @@ class Settings:
     SAFETY_ALERT_TIMEOUT_SECONDS: int = int(
         os.getenv("SAFETY_ALERT_TIMEOUT_SECONDS", "20")
     )
+    # 非處方藥成分重複偵測的總開關。與 SAFETY_ALERT_ENABLED 分開而不共用一個
+    # 旗標：兩者的誤報型態完全不同，任一邊需要緊急關閉時不該連坐另一邊。
+    #
+    # 高風險通報的誤報來自「聊天中提到藥名」的抽取，是語意判斷；這條的誤報來自
+    # 藥證庫的成分欄位與白名單，是資料判斷。實測隨機配對觸發率 3.0%，但真實的
+    # 用藥組合分布與隨機配對不同，上線後的實際打擾頻率仍是未知數——這是唯一的
+    # 煞車。
+    OTC_ALERT_ENABLED: bool = os.getenv("OTC_ALERT_ENABLED", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
 
 settings = Settings()

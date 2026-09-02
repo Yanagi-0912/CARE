@@ -6,6 +6,7 @@
 需要改的地方就越少、越集中。
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -158,6 +159,7 @@ class PrescriptionScanService:
         ttl_minutes: int,
         indication_service: Optional[_IndicationService] = None,
         authorization_service: Any = None,
+        otc_alert_service: Any = None,
     ) -> None:
         self._ocr_service = ocr_service
         self._catalog_service = catalog_service
@@ -168,6 +170,10 @@ class PrescriptionScanService:
         # 選填：未注入時姓名比對不做權限篩選（僅影響**預設值**，不影響授權；
         # 提交的閘門在 router 的 authorize 與下方的 TargetNotInFamilyError）。
         self._authorization_service = authorization_service
+        self._otc_alert_tasks: set[asyncio.Task] = set()
+        # 可選：沒有注入就不做成分偵測。這條通道整個是旁路，缺席時掃描與
+        # 加入提醒的行為完全不變。
+        self._otc_alert_service = otc_alert_service
         # 選填：未注入時比對一律 unchecked，行為與本變更前完全相同。
         # 單元測試因此不必為了測辨識流程而準備一份仿單資料。
         self._indication_service = indication_service
@@ -415,6 +421,11 @@ class PrescriptionScanService:
             await self._draft_repository.release_commit(draft_id, user_id, medication_ids)
             raise
 
+        # 藥已經寫進去了，這步只是旁路：非處方藥的成分重複偵測與家人通知。
+        # 刻意不放在冪等重放那條分支——那次提交若成功過，通知已經發過了，
+        # 重放時再發一次只會讓家人以為又新增了一盒藥。
+        self._schedule_otc_alert(target_user_id, medication_ids)
+
         return PrescriptionCommitResult(
             medication_ids=medication_ids,
             prn_medication_ids=self._prn_ids(resolved, medication_ids),
@@ -422,6 +433,36 @@ class PrescriptionScanService:
             reactivated_slots=reactivated_slots,
             discarded_license_medication_ids=self._discarded_license_ids(resolved, medication_ids),
         )
+
+    def _schedule_otc_alert(self, patient_user_id: str, medication_ids: list[str]) -> None:
+        """把成分重複偵測丟到背景執行。
+
+        使用者正在等提交回應，而偵測要查藥證庫、查現有用藥、推播給每一位家人
+        ——把這些串進同步路徑會讓核對畫面明顯變慢，而它對「這次提交成功了嗎」
+        這個問題沒有任何貢獻。
+
+        例外一律留在任務內部：讓它逸散只會變成 "Task exception was never
+        retrieved"，而且污染主流程的錯誤處理。比照
+        `MessageHandler._schedule_safety_alert_check`。
+
+        通知對象是 `target_user_id`（服藥的人）而不是提交者：家屬代長輩掃描
+        時，有成分重複風險的是長輩，不是代掃的人。
+        """
+        if self._otc_alert_service is None or not patient_user_id or not medication_ids:
+            return
+
+        async def _run() -> None:
+            try:
+                await self._otc_alert_service.check(patient_user_id, medication_ids)
+            except Exception:  # noqa: BLE001 - 背景旁路，例外不得逸散
+                # 這裡刻意不用 logger.exception：traceback 會帶出例外訊息，
+                # 而例外訊息常含查詢參數（藥名、證號）。用藥組合本身即為
+                # 病史的強烈線索。
+                logger.warning("非處方藥成分偵測任務失敗")
+
+        task = asyncio.create_task(_run())
+        self._otc_alert_tasks.add(task)
+        task.add_done_callback(self._otc_alert_tasks.discard)
 
     def _resolve_slots(
         self, item: CommitDrugItem

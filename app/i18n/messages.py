@@ -1445,6 +1445,117 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "แจ้งเตือนความปลอดภัยด้านยาของ {name}",
         "ja": "{name} さんの医薬品安全のお知らせ",
     },
+    # --- 非處方藥成分重複提醒 -------------------------------------------
+    # altText 刻意不帶藥名與用途：它就是通知列與鎖定畫面上顯示的那一行，
+    # 可能被非預期的人看到。藥名與用途留在卡片內容裡——收件人已由通知政策
+    # 收斂為 GUARDIAN／CAREGIVER，他們依授權矩陣本來就看得到 SENSITIVE。
+    "flex.otc.header.overlap": {
+        "zh-TW": "用藥重複提醒",
+        "en": "Duplicate ingredient notice",
+        "id": "Pemberitahuan bahan obat ganda",
+        "vi": "Thông báo trùng hoạt chất",
+        "th": "แจ้งเตือนตัวยาซ้ำ",
+        "ja": "成分重複のお知らせ",
+    },
+    "flex.otc.header.added": {
+        "zh-TW": "新增了用藥提醒",
+        "en": "New medication reminder",
+        "id": "Pengingat obat baru",
+        "vi": "Nhắc thuốc mới",
+        "th": "เพิ่มการเตือนกินยาใหม่",
+        "ja": "服薬リマインダーを追加しました",
+    },
+    "flex.otc.alt.overlap": {
+        "zh-TW": "{name} 的用藥重複提醒",
+        "en": "Duplicate ingredient notice for {name}",
+        "id": "Pemberitahuan bahan obat ganda untuk {name}",
+        "vi": "Thông báo trùng hoạt chất của {name}",
+        "th": "แจ้งเตือนตัวยาซ้ำของ {name}",
+        "ja": "{name} さんの成分重複のお知らせ",
+    },
+    "flex.otc.alt.added": {
+        "zh-TW": "{name} 新增了用藥提醒",
+        "en": "{name} added a medication reminder",
+        "id": "{name} menambahkan pengingat obat",
+        "vi": "{name} đã thêm một nhắc thuốc",
+        "th": "{name} เพิ่มการเตือนกินยา",
+        "ja": "{name} さんが服薬リマインダーを追加しました",
+    },
+    "flex.otc.intro.overlap": {
+        "zh-TW": "剛加入的這個藥，和已經在吃的藥含有相同成分",
+        "en": "just added this medication, which shares an ingredient with one already being taken",
+        "id": "baru menambahkan obat ini, yang memiliki bahan sama dengan obat yang sedang diminum",
+        "vi": "vừa thêm thuốc này, trùng hoạt chất với thuốc đang dùng",
+        "th": "เพิ่งเพิ่มยานี้ ซึ่งมีตัวยาซ้ำกับยาที่กินอยู่",
+        "ja": "この薬を追加しました。すでに飲んでいる薬と同じ成分が含まれています",
+    },
+    "flex.otc.intro.added": {
+        "zh-TW": "剛加入了這個不用處方就能買到的藥",
+        "en": "just added this over-the-counter medication",
+        "id": "baru menambahkan obat bebas ini",
+        "vi": "vừa thêm loại thuốc không kê đơn này",
+        "th": "เพิ่งเพิ่มยาที่ซื้อได้เองชนิดนี้",
+        "ja": "処方箋なしで買えるこの薬を追加しました",
+    },
+    "flex.otc.label.existing": {
+        "zh-TW": "已經在吃",
+        "en": "Already taking",
+        "id": "Sudah diminum",
+        "vi": "Đang dùng",
+        "th": "กินอยู่แล้ว",
+        "ja": "すでに服用中",
+    },
+    "flex.otc.label.shared": {
+        "zh-TW": "相同成分",
+        "en": "Shared ingredient",
+        "id": "Bahan yang sama",
+        "vi": "Hoạt chất trùng",
+        "th": "ตัวยาที่ซ้ำ",
+        "ja": "重複している成分",
+    },
+    "flex.otc.label.indication": {
+        "zh-TW": "用途",
+        "en": "Used for",
+        "id": "Kegunaan",
+        "vi": "Công dụng",
+        "th": "ใช้สำหรับ",
+        "ja": "効能",
+    },
+    "flex.otc.please_check.overlap": {
+        "zh-TW": "同一種成分吃到兩份可能會過量。請找個時間一起看一下，或把兩盒藥拿給藥師確認。當事人也收到了同一則提醒。",
+        "en": "Taking the same ingredient twice can add up to too much. Please take a moment to look at both together, or show the two boxes to a pharmacist. They have received the same notice.",
+        "id": "Bahan yang sama diminum dua kali bisa menjadi berlebihan. Mohon lihat keduanya bersama, atau tunjukkan kedua kotak obat ke apoteker. Yang bersangkutan juga menerima pemberitahuan yang sama.",
+        "vi": "Dùng cùng một hoạt chất hai lần có thể thành quá liều. Xin hãy cùng xem qua cả hai, hoặc mang hai hộp thuốc đến hỏi dược sĩ. Người đó cũng đã nhận được thông báo tương tự.",
+        "th": "การได้รับตัวยาเดียวกันซ้ำอาจเกินขนาด กรุณาหาเวลาดูด้วยกัน หรือนำยาทั้งสองกล่องไปให้เภสัชกรตรวจสอบ เจ้าตัวได้รับการแจ้งเตือนเดียวกันแล้ว",
+        "ja": "同じ成分を二重に飲むと量が多くなりすぎることがあります。お時間のあるときに一緒にご確認いただくか、両方の箱を薬剤師にお見せください。ご本人にも同じ通知が届いています。",
+    },
+    "flex.otc.please_check.added": {
+        "zh-TW": "這類藥不用處方就能買到，很容易和家裡原有的藥重複。若他還在吃別的藥，請留意一下。",
+        "en": "Medications like this can be bought without a prescription, so they easily overlap with what is already at home. If they are taking anything else, please keep an eye on it.",
+        "id": "Obat seperti ini bisa dibeli tanpa resep, sehingga mudah tumpang tindih dengan obat yang sudah ada di rumah. Bila beliau minum obat lain, mohon diperhatikan.",
+        "vi": "Loại thuốc này mua được không cần đơn nên rất dễ trùng với thuốc sẵn có ở nhà. Nếu người đó còn dùng thuốc khác, xin để ý giúp.",
+        "th": "ยาแบบนี้ซื้อได้เองโดยไม่ต้องมีใบสั่งยา จึงซ้ำกับยาที่มีอยู่ที่บ้านได้ง่าย หากท่านกินยาอื่นอยู่ กรุณาช่วยสังเกตด้วย",
+        "ja": "この種の薬は処方箋なしで買えるため、家にある薬と重なりやすいです。ほかにも飲んでいる薬があれば、気にかけてあげてください。",
+    },
+    # 給當事人的訊息。SHALL NOT 給劑量建議、SHALL NOT 指示停藥——那是藥事人員
+    # 的判斷。措辭是「讓家人幫你看一下」而不是「已通報家人」：後者讓長輩覺得
+    # 掃描等於被監控，下次就不掃了，那會連帶失去這個功能想保護的一切。
+    "text.otc.patient.overlap": {
+        "zh-TW": "你剛加入的「{new_drug}」，和已經在吃的「{existing_drug}」含有相同成分（{ingredients}）。\n\n這兩種藥不一定不能一起吃，但最好請藥師看一下。下次經過藥局時，把兩盒藥一起帶去問他就可以了。\n\n也讓家人幫你看一下，比較放心。",
+        "en": "The 「{new_drug}」 you just added shares an ingredient ({ingredients}) with 「{existing_drug}」, which you are already taking.\n\nThat does not necessarily mean they cannot be taken together, but it is best to ask a pharmacist. Next time you pass a pharmacy, bring both boxes and ask.\n\nYour family can take a look with you too.",
+        "id": "「{new_drug}」 yang baru Anda tambahkan memiliki bahan yang sama ({ingredients}) dengan 「{existing_drug}」 yang sedang Anda minum.\n\nItu belum tentu berarti keduanya tidak boleh diminum bersama, tetapi sebaiknya tanyakan ke apoteker. Lain kali saat melewati apotek, bawalah kedua kotak obat dan tanyakan.\n\nKeluarga juga bisa ikut melihatnya bersama Anda.",
+        "vi": "「{new_drug}」 bạn vừa thêm có cùng hoạt chất ({ingredients}) với 「{existing_drug}」 bạn đang dùng.\n\nĐiều đó không hẳn là không thể dùng chung, nhưng nên hỏi dược sĩ. Lần tới đi ngang nhà thuốc, hãy mang cả hai hộp để hỏi.\n\nNgười nhà cũng có thể xem cùng bạn.",
+        "th": "「{new_drug}」 ที่คุณเพิ่งเพิ่ม มีตัวยาซ้ำ ({ingredients}) กับ 「{existing_drug}」 ที่คุณกินอยู่\n\nไม่ได้แปลว่ากินด้วยกันไม่ได้ แต่ควรถามเภสัชกร ครั้งหน้าที่ผ่านร้านยา นำยาทั้งสองกล่องไปถามได้เลย\n\nให้คนที่บ้านช่วยดูด้วยจะอุ่นใจกว่า",
+        "ja": "追加された「{new_drug}」は、すでに飲んでいる「{existing_drug}」と同じ成分（{ingredients}）を含んでいます。\n\n必ずしも一緒に飲めないわけではありませんが、薬剤師に見てもらうのが安心です。今度薬局に立ち寄ったとき、両方の箱を持って聞いてみてください。\n\nご家族にも一緒に見てもらいましょう。",
+    },
+    "text.otc.patient.overlap_solo": {
+        "zh-TW": "你剛加入的「{new_drug}」，和已經在吃的「{existing_drug}」含有相同成分（{ingredients}）。\n\n這兩種藥不一定不能一起吃，但最好請藥師看一下。下次經過藥局時，把兩盒藥一起帶去問他就可以了。",
+        "en": "The 「{new_drug}」 you just added shares an ingredient ({ingredients}) with 「{existing_drug}」, which you are already taking.\n\nThat does not necessarily mean they cannot be taken together, but it is best to ask a pharmacist. Next time you pass a pharmacy, bring both boxes and ask.",
+        "id": "「{new_drug}」 yang baru Anda tambahkan memiliki bahan yang sama ({ingredients}) dengan 「{existing_drug}」 yang sedang Anda minum.\n\nItu belum tentu berarti keduanya tidak boleh diminum bersama, tetapi sebaiknya tanyakan ke apoteker. Lain kali saat melewati apotek, bawalah kedua kotak obat dan tanyakan.",
+        "vi": "「{new_drug}」 bạn vừa thêm có cùng hoạt chất ({ingredients}) với 「{existing_drug}」 bạn đang dùng.\n\nĐiều đó không hẳn là không thể dùng chung, nhưng nên hỏi dược sĩ. Lần tới đi ngang nhà thuốc, hãy mang cả hai hộp để hỏi.",
+        "th": "「{new_drug}」 ที่คุณเพิ่งเพิ่ม มีตัวยาซ้ำ ({ingredients}) กับ 「{existing_drug}」 ที่คุณกินอยู่\n\nไม่ได้แปลว่ากินด้วยกันไม่ได้ แต่ควรถามเภสัชกร ครั้งหน้าที่ผ่านร้านยา นำยาทั้งสองกล่องไปถามได้เลย",
+        "ja": "追加された「{new_drug}」は、すでに飲んでいる「{existing_drug}」と同じ成分（{ingredients}）を含んでいます。\n\n必ずしも一緒に飲めないわけではありませんが、薬剤師に見てもらうのが安心です。今度薬局に立ち寄ったとき、両方の箱を持って聞いてみてください。",
+    },
 }
 
 

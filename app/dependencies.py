@@ -53,6 +53,11 @@ from app.services.medication.medication_scheduler import start_medication_schedu
 from app.services.medication.prescription_ocr_service import PrescriptionOcrService
 from app.services.medication.prescription_scan_service import PrescriptionScanService
 from app.services.safety.drug_mention_extractor import DrugMentionExtractor
+from app.services.safety.ingredient_overlap import (
+    IngredientWatchlist,
+    load_local_action_forms,
+)
+from app.services.safety.otc_alert_service import OtcAlertService
 from app.services.safety.safety_alert_service import SafetyAlertService
 from app.services.gemini import GeminiService
 from app.services.guardrail import GuardrailService
@@ -491,6 +496,27 @@ _enabled_safety_alert_service = (
     _safety_alert_service if settings.SAFETY_ALERT_ENABLED else None
 )
 
+# 非處方藥成分重複偵測。白名單與局部作用劑型清單在啟動時各讀一次檔——它們是
+# 靜態設定，每次偵測重讀只是白花 I/O；讀不到時 IngredientWatchlist 回空清單，
+# 效果是「不偵測任何重複」，與整條路徑對主流程 fail-open 的方向一致。
+_otc_watchlist = IngredientWatchlist.load_from_path()
+_otc_local_action_forms = load_local_action_forms()
+_otc_alert_service = OtcAlertService(
+    catalog_service=_drug_catalog_service,
+    medication_repository=MedicationRepository,
+    reminder_repository=MedicationReminderRepository,
+    replier=_line_replier,
+    watchlist=_otc_watchlist,
+    local_action_forms=_otc_local_action_forms,
+    # 與高風險通報走同一個決策點，只是查 NOTIFICATION_POLICY 裡的另一個種類
+    # （otc_medication_added）。收到通知 SHALL NOT 改變收件人的資料存取權。
+    authorization_service=_family_authorization_service,
+    user_profile_service=_user_profile_service,
+)
+_enabled_otc_alert_service = (
+    _otc_alert_service if settings.OTC_ALERT_ENABLED else None
+)
+
 _message_handler = LineMessageHandler(
     agent=_care_agent,
     history_service=_line_history_service,
@@ -549,6 +575,7 @@ _prescription_scan_service = PrescriptionScanService(
     appearance_image_resolver=resolve_drug_appearance_image_url,
     ttl_minutes=settings.PRESCRIPTION_DRAFT_TTL_MINUTES,
     indication_service=_drug_indication_service,
+    otc_alert_service=_enabled_otc_alert_service,
 )
 
 _line_event_handler = LineEventHandler(

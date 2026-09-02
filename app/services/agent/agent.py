@@ -225,11 +225,21 @@ class Agent:
             logger.info("[Agent] 醫療工具使用紀錄：%s", used_tool_names)
 
         # 防禦性後置處理：若呼叫了 get_rag_answer，但 AI 的最終回覆中遺漏了「參考資料來源」，則自動由工具輸出中提取並後補。
+        #
+        # used_tool_names 非空代表 response 已被上面的醫療工具接管，內容是要原封
+        # 不動送給 LINE 的 Flex JSON。此時後補來源會把文字接在 JSON 尾巴後面，讓
+        # reply.py 的 `_try_parse_flex_message`（要求整串以 "{" 開頭、"}" 結尾）
+        # 解析失敗，整張卡片退化成使用者看得到的一整段裸 JSON——模型同一輪既呼叫
+        # verify_claim 又呼叫 get_rag_answer 時就會踩到。後補來源只對「模型自己寫
+        # 出來的自然語言回覆」有意義，因此這裡以「有沒有被覆寫」為準，而不是回頭
+        # 猜 response 像不像 JSON：覆寫與否正是問題的成因，判斷它才不會漏掉未來
+        # 新增的其他 Flex 工具。
         rag_tool_content = None
-        for msg in reversed(result.get("messages", [])):
-            if getattr(msg, "name", None) == "get_rag_answer":
-                rag_tool_content = msg.content
-                break
+        if not used_tool_names:
+            for msg in reversed(result.get("messages", [])):
+                if getattr(msg, "name", None) == "get_rag_answer":
+                    rag_tool_content = msg.content
+                    break
 
         if rag_tool_content:
             rag_text = (

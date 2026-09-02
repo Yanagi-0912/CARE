@@ -166,6 +166,55 @@ async def test_agent_uses_verify_claim_flex_json_verbatim_as_final_response(
     assert response["response"] == flex_json
 
 
+@pytest.mark.asyncio
+async def test_agent_keeps_flex_json_intact_when_rag_tool_also_ran(
+    mock_llm, mock_guardrail_service
+):
+    """模型同一輪既呼叫 verify_claim 又呼叫 get_rag_answer 時，來源後補不得動到
+    Flex JSON。
+
+    這是線上實際發生過的回歸：medical_tool_names 先把 response 覆寫成判定卡的
+    Flex JSON，接著「後補參考資料來源」那段只檢查有沒有跑過 get_rag_answer，
+    就把來源接在 JSON 尾巴後面。reply.py 的 `_try_parse_flex_message` 要求整串
+    以 "{" 開頭、"}" 結尾才解析，結尾變成 URL 後解析失敗，使用者收到的是一整段
+    裸 JSON 而不是卡片。斷言 response 逐字等於 flex_json，同時鎖住「沒有被接上
+    任何東西」與「結尾仍是 }」這兩件事。
+    """
+    from app.i18n.messages import t
+    from langchain_core.messages import ToolMessage
+
+    agent = Agent(llm=mock_llm, guardrail_service=mock_guardrail_service)
+    flex_json = '{"type": "flex", "altText": "查核判定：證據不足", "contents": {}}'
+    heading = t("agent.sources_heading", "zh-TW")
+    rag_tool_output = f"衛教內容。\n\n{heading}\n[1] 食藥署：https://www.fda.gov.tw/x"
+    agent._graph = MagicMock()
+    agent._graph.ainvoke = AsyncMock(
+        return_value={
+            "messages": [
+                HumanMessage(content="網傳蜂蜜可以抗癌，是真的嗎？"),
+                ToolMessage(
+                    content=rag_tool_output,
+                    tool_call_id="1",
+                    name="get_rag_answer",
+                ),
+                ToolMessage(
+                    content=flex_json,
+                    tool_call_id="2",
+                    name="verify_claim",
+                ),
+                AIMessage(content="這則說法查核中心尚未查證。"),
+            ]
+        }
+    )
+
+    response = await agent.invoke(
+        user_input="網傳蜂蜜可以抗癌，是真的嗎？", messages=None
+    )
+
+    assert response["response"] == flex_json
+    assert heading not in response["response"]
+
+
 def test_format_user_profile_prompt_builds_expected_header():
     from app.services.agent.utils.nodes import format_user_profile_prompt
 

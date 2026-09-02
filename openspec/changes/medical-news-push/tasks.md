@@ -202,7 +202,7 @@
 
 ## 7. 消息卡 Flex builder
 
-- [ ] 7.1 `app/services/line_messaging/flex/medical_news_flex.py`，三支 builder，
+- [x] 7.1 `app/services/line_messaging/flex/medical_news_flex.py`，三支 builder，
       版面語彙沿用 `medication_flex.py`（`_header`／`_body`／`_footer`／`_paragraph`）：
       - `build_tier1_news_flex(*, news_ref, drug_name, title, summary, source_name, url,
         language, font_size) -> dict`——header 文案 `t("news.tier1_header")`
@@ -215,15 +215,15 @@
       - `build_shared_news_flex(*, sharer_name, title, summary, source_name, url,
         language, font_size) -> dict`——header「〈某某〉分享給您」，**無分享按鈕**
         （避免無限轉傳），**不得出現藥名或 Tier 標示**
-- [ ] 7.2 三支 builder 都在最後呼叫 `size_guard.fits()`；不合格時先把 `summary` 截短再試，
+- [x] 7.2 三支 builder 都在最後呼叫 `size_guard.fits()`；不合格時先把 `summary` 截短再試，
       仍不合格則拋 `ValueError`，由呼叫端退回 `push_text`（design 錯誤處理表）
-- [ ] 7.3 固定行動呼籲：Tier 1 卡 body 末行為 `t("news.consult_professional")`
+- [x] 7.3 固定行動呼籲：Tier 1 卡 body 末行為 `t("news.consult_professional")`
       （「請與您的醫師或藥師確認」）。這行是常數文案，不由模型產生
-- [ ] 7.4 `app/i18n/messages.py` 補上 `news.tier1_header`、`news.tier2_header`、
+- [x] 7.4 `app/i18n/messages.py` 補上 `news.tier1_header`、`news.tier2_header`、
       `news.shared_by`、`news.consult_professional`、`news.share_button`、
       `news.shared_ok`、`news.no_family`、`news.share_limit_reached`，
       七種語言比照既有 `meds.*` 的補法
-- [ ] 7.5 測試 `tests/unit/services/line_messaging/flex/test_medical_news_flex.py`
+- [x] 7.5 測試 `tests/unit/services/line_messaging/flex/test_medical_news_flex.py`
       - `test_font_size_scales_all_text_nodes`：三種字級各產一張，逐一斷言 text 節點的
         `size` 與 `theme._SIZE_SCALE` 對應
       - `test_tier2_card_contains_no_drug_name`
@@ -234,7 +234,7 @@
       - `test_oversized_summary_is_truncated_then_fits`
       - `test_indication_fields_never_rendered`：即使呼叫端誤傳 indication 文字，
         builder 的介面上根本沒有該參數——以簽章斷言（`inspect.signature`）鎖住
-- [ ] 7.6 commit：`feat(medical-news): 消息卡 Flex builder`
+- [x] 7.6 commit：`feat(medical-news): 消息卡 Flex builder`
 
 ## 8. 推播排程器（每日，與使用者相關）
 

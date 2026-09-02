@@ -76,8 +76,21 @@ SHALL NOT 為本功能新增搜尋路徑或放寬白名單。
 
 1. **候選在搜尋階段就受限**：site filter + `is_allowed_url`。
 2. **字面比對先於模型**：結果的標題或內文必須真的出現該藥名或成分，使用
-   `DrugCatalogService` 既有的正規化規則，SHALL NOT 做模糊比對。該服務自己的註解已載明
-   「藥名相似不代表成分相同，而這裡偽陽性的代價是⋯」——同一個理由在這裡更強。
+   `normalize_drug_name()` 正規化後比對，SHALL NOT 做模糊比對。
+
+   **這一道是為 recall 而設的成本篩選，不是精確判定**——實作時才確認清楚，此處據實
+   修正。它擋掉的是「與這個藥完全無關的搜尋結果」，省下抓取與 LLM 的錢；「這則消息
+   是不是真的在講這個藥」由第 3 道的 `is_about_this_drug` 回答。
+
+   已知限制：中文沒有詞界，「胃能錠」會命中「欲胃能錠」，而那是別的藥——正是
+   `drug-appearance` spec 所稱的反向含容。此處刻意不修：修它要引入藥證庫做最長匹配，
+   會讓一個純函式模組變成需要載入 15.9 MB 索引的服務，而 grader 看得到完整內文、
+   分得出兩者不同。此限制以
+   `test_mentions_drug_known_false_positive_for_cjk_substring` 明文記錄，不隱藏。
+
+   拉丁字母的鍵則套用詞界比對（`ACID` 不命中 `ACIDOPHILUS`）。中日韓／拉丁的不對稱與
+   `app/services/safety/risk_rules.py` 區分假名與拉丁字母同一個理由：字元層級的規則
+   該由文字系統本身決定。
 3. **LLM 判定使用結構化輸出**：`{is_about_this_drug: bool, concern_kind: recall|safety|
    supply|education|none, summary: str}`。只有 `is_about_this_drug` 為真**且**
    `concern_kind` 不是 `none` 才進 Tier 1。

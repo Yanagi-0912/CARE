@@ -96,7 +96,7 @@
 
 ## 3. 相關性防線（純函式）
 
-- [ ] 3.1 `app/services/medical_news/relevance.py`：
+- [x] 3.1 `app/services/medical_news/relevance.py`：
       - `def mentions_drug(text: str, drug_key: str) -> bool`——以
         `drug_catalog_service.normalize_drug_name()` 正規化兩邊後做子字串比對。
         **SHALL NOT 做模糊比對**：`DrugCatalogService._match_by_fuzzy` 的門檻是為藥袋 OCR
@@ -106,7 +106,7 @@
       - `def violates_output_guard(text: str) -> bool`——命中任一 pattern 即 True
       - `def has_usable_date(published_at: str | None) -> bool`
       - `def is_recent(published_at: str, today: str, max_age_days: int) -> bool`
-- [ ] 3.2 測試 `tests/unit/services/medical_news/test_relevance.py`
+- [x] 3.2 測試 `tests/unit/services/medical_news/test_relevance.py`
       - `test_mentions_drug_matches_after_normalization`：「普拿疼錠500毫克」文字命中「普拿疼」
       - `test_mentions_drug_rejects_similar_but_different_name`：「胃能錠」不命中「欲胃能錠」
         ——鎖住「不得做模糊比對」
@@ -114,7 +114,7 @@
       - `test_violates_output_guard_allows_consult_pharmacist`：「請與您的醫師或藥師確認」為 False
       - `test_has_usable_date_rejects_none_and_blank`
       - `test_is_recent_excludes_beyond_threshold`
-- [ ] 3.3 commit：`feat(medical-news): 相關性與輸出防線純函式`
+- [x] 3.3 commit：`feat(medical-news): 相關性與輸出防線純函式`
 
 ## 4. 結構化相關性判定
 

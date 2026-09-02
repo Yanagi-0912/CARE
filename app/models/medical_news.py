@@ -78,6 +78,11 @@ class MedicalNewsDelivery(BaseModel):
     """某位使用者收過某一則消息的紀錄。
 
     這份文件的存在本身就是「已推播」，因此排程器插入成功才推、插入失敗即跳過。
+
+    **卡片內容一併存在這裡**，而不是分享時回頭查來源。兩個理由：
+    `news_ref` 是雜湊，反解不回 url，分享的 postback 只帶得動它；而且分享卡
+    應該顯示**分享者當時看到的東西**——Tier 2 的知識庫文章可能已因重新切片而
+    消失，Tier 1 的公告也可能被修訂。
     """
 
     model_config = ConfigDict(populate_by_name=True)
@@ -86,6 +91,10 @@ class MedicalNewsDelivery(BaseModel):
     user_id: str
     news_ref: str
     tier: Literal[1, 2]
+    title: str = ""
+    summary: str = ""
+    source_name: str = ""
+    url: str = ""
     pushed_at: datetime
     shared_at: Optional[datetime] = None
     share_recipient_count: int = 0

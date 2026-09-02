@@ -521,6 +521,14 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "รายชื่อครอบครัวของคุณว่างอยู่ กรุณาเชิญสมาชิกก่อน",
         "ja": "ご家族リストが空です。まずご家族を招待してください。",
     },
+    "news.share_expired": {
+        "zh-TW": "這則消息太久了，已經無法分享。",
+        "en": "This item is too old to share.",
+        "id": "Berita ini terlalu lama untuk dibagikan.",
+        "vi": "Tin này đã quá cũ để chia sẻ.",
+        "th": "ข่าวนี้เก่าเกินกว่าจะแชร์ได้",
+        "ja": "このお知らせは古いためシェアできません。",
+    },
     "news.share_limit_reached": {
         "zh-TW": "今天分享的次數已達上限，明天再繼續喔。",
         "en": "You have reached today's sharing limit. Please try again tomorrow.",

@@ -238,7 +238,7 @@
 
 ## 8. 推播排程器（每日，與使用者相關）
 
-- [ ] 8.1 `app/services/medical_news/push_scheduler.py`：`class MedicalNewsPushScheduler`，
+- [x] 8.1 `app/services/medical_news/push_scheduler.py`：`class MedicalNewsPushScheduler`，
       建構子 `(*, replier: LineReplier, user_profile_service: UserProfileService | None,
       kb_digest: KbDigestService, run_time: str,
       drug_news_repository=DrugNewsRepository,
@@ -249,7 +249,7 @@
       心跳 `HEARTBEAT_NAME = "medical_news"`，`expected_interval_seconds = 24*60*60`，
       `tolerance_factor = 1.5`——**與索引排程分開登記**，理由同
       `consultation/scheduler.py` 的註解：合併會讓其中一支停擺被另一支的心跳掩蓋
-- [ ] 8.2 `async def _tick(self)` 的選材順序：
+- [x] 8.2 `async def _tick(self)` 的選材順序：
       1. `UserProfileRepository.list_all_line_ids()` 取**全體**使用者。
          SHALL NOT 只取有 active medication 的使用者——那會讓沒有用藥資料的人
          永遠收不到 Tier 2，而 Tier 2 存在的理由就是他們
@@ -261,13 +261,13 @@
       3. 沒有 Tier 1 命中時，取 `kb_digest.recent_articles()` 第一筆未推過的 → **Tier 2**
       4. `MedicalNewsDeliveryRepository.claim()` 成功才推——這是多實例下的搶佔
       5. 推完即 `return`：**每位使用者每日至多一則**（design 決策 8）
-- [ ] 8.3 `_resolve_display_prefs(user_id)` 逐字沿用 `medication_scheduler.py:280` 的做法
+- [x] 8.3 `_resolve_display_prefs(user_id)` 逐字沿用 `medication_scheduler.py:280` 的做法
       （背景工作沒有 request context，每則推播各自解析語言與字級）
-- [ ] 8.4 推播失敗 SHALL NOT 重試、SHALL NOT 補推。已 `claim` 的紀錄不回滾——
+- [x] 8.4 推播失敗 SHALL NOT 重試、SHALL NOT 補推。已 `claim` 的紀錄不回滾——
       延遲後的消息卡已失去時效意義，補推只是騷擾（比照用藥提醒的 misfire grace）
-- [ ] 8.5 `def start_medical_news_push_scheduler(*, enabled=True, replier, ...)`，
+- [x] 8.5 `def start_medical_news_push_scheduler(*, enabled=True, replier, ...)`，
       簽章與回傳形狀比照 `start_medication_scheduler`
-- [ ] 8.6 測試 `tests/unit/services/medical_news/test_push_scheduler.py`
+- [x] 8.6 測試 `tests/unit/services/medical_news/test_push_scheduler.py`
       - `test_tier1_preferred_over_tier2`
       - `test_falls_back_to_tier2_when_no_drug_news`
       - `test_user_without_medications_still_gets_tier2`
@@ -277,13 +277,13 @@
       - `test_concern_kind_priority_order`：`recall` 勝過同日的 `education`
       - `test_push_failure_is_not_retried`
       - `test_heartbeat_registered_separately_from_index_scheduler`
-- [ ] 8.7 commit：`feat(medical-news): 每日推播排程器`
+- [x] 8.7 commit：`feat(medical-news): 每日推播排程器`
 
 ## 9. 認同分享
 
-- [ ] 9.1 `app/services/medical_news/share_service.py`：`class MedicalNewsShareService`，
+- [x] 9.1 `app/services/medical_news/share_service.py`：`class MedicalNewsShareService`，
       建構子 `(*, replier, family_tree_service, user_profile_service, daily_share_limit: int)`
-- [ ] 9.2 `async def share(self, *, sharer_id: str, news_ref: str, reply_token: str,
+- [x] 9.2 `async def share(self, *, sharer_id: str, news_ref: str, reply_token: str,
       language: str, font_size: str) -> None`：
       1. `count_shares_today()` 已達上限 → 回 `t("news.share_limit_reached")`，不送
       2. 取 `family_tree_service.get_family_tree(sharer_id)` 的 `family_members`。
@@ -293,14 +293,14 @@
       4. 逐位收件人 `MedicalNewsShareRepository.claim()`，成功者才 `push_flex`
          `build_shared_news_flex()`；push 失敗只記 log
       5. `mark_shared()`，回 `t("news.shared_ok")` 帶實際成功筆數
-- [ ] 9.3 分享卡的內容 SHALL 只來自 `DrugNews.title`／`summary`／`source_name`／`url`
+- [x] 9.3 分享卡的內容 SHALL 只來自 `DrugNews.title`／`summary`／`source_name`／`url`
       或 `KbArticle` 的對應欄位。**SHALL NOT 帶入 `drug_key`、藥名或分享者的任何用藥狀態**
       ——這是零洩漏的承重條件（design 決策 6）
-- [ ] 9.4 `app/services/line_messaging/dispatcher/dispatcher.py::_dispatch_postback`
+- [x] 9.4 `app/services/line_messaging/dispatcher/dispatcher.py::_dispatch_postback`
       新增 `elif action == "share_medical_news":` 分支，位置緊接 `already_done` 之後，
       形狀比照既有分支：取 `news_ref = params.get("news_ref", [""])[0]`，
       空值時 `logger.warning` 並 return
-- [ ] 9.5 測試 `tests/unit/services/medical_news/test_share_service.py`
+- [x] 9.5 測試 `tests/unit/services/medical_news/test_share_service.py`
       - `test_shared_card_payload_excludes_drug_name`：Tier 1 的 `DrugNews` 有 `drug_key`，
         斷言傳給 builder 的 kwargs 不含它
       - `test_does_not_call_notification_recipients`：注入的 fake authorization service
@@ -310,10 +310,10 @@
         同一位收件人 → 該收件人只收到一次
       - `test_daily_limit_blocks_further_shares`
       - `test_push_failure_for_one_recipient_does_not_abort_others`
-- [ ] 9.6 測試 `tests/unit/services/line_messaging/test_dispatcher.py` 追加
+- [x] 9.6 測試 `tests/unit/services/line_messaging/test_dispatcher.py` 追加
       - `test_share_medical_news_postback_routes_to_share_service`
       - `test_share_postback_without_news_ref_is_ignored`
-- [ ] 9.7 commit：`feat(medical-news): 認同分享與 postback 接線`
+- [x] 9.7 commit：`feat(medical-news): 認同分享與 postback 接線`
 
 ## 10. 設定與組裝
 

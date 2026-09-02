@@ -15,7 +15,7 @@ from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 
 from app.db.mongodb import MongoDBManager
-from app.models.medical_news import DrugNews
+from app.models.medical_news import DrugNews, MedicalNewsDelivery
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +139,11 @@ class MedicalNewsDeliveryRepository:
         user_id: str,
         news_ref: str,
         tier: int,
+        *,
+        title: str = "",
+        summary: str = "",
+        source_name: str = "",
+        url: str = "",
         collection: Optional[Any] = None,
     ) -> bool:
         """搶下「推這則給這位使用者」的權利。插入成功回 True。
@@ -160,6 +165,10 @@ class MedicalNewsDeliveryRepository:
                     "user_id": user_id,
                     "news_ref": news_ref,
                     "tier": tier,
+                    "title": title,
+                    "summary": summary,
+                    "source_name": source_name,
+                    "url": url,
                     "pushed_at": datetime.now(timezone.utc),
                     "shared_at": None,
                     "share_recipient_count": 0,
@@ -168,6 +177,24 @@ class MedicalNewsDeliveryRepository:
             return True
         except DuplicateKeyError:
             return False
+
+    @staticmethod
+    async def find(
+        user_id: str,
+        news_ref: str,
+        collection: Optional[Any] = None,
+    ) -> Optional[MedicalNewsDelivery]:
+        """取回某位使用者收過的某一則消息，含當時卡片上的內容。
+
+        分享路徑唯一的內容來源：`news_ref` 是雜湊，反解不回 url，因此不可能
+        回頭去查 `drug_news`。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_medical_news_deliveries_collection()
+        doc = await collection.find_one({"user_id": user_id, "news_ref": news_ref})
+        if doc is None:
+            return None
+        return MedicalNewsDelivery(**{**doc, "_id": str(doc["_id"])})
 
     @staticmethod
     async def list_pushed_refs(

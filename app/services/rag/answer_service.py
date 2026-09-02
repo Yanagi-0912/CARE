@@ -12,6 +12,7 @@ from app.services.rag.cannot_answer import (
 )
 from app.services.rag.answer_prompts import build_rag_prompt, wrap_context
 from app.services.rag.cohere_reranker import Reranker, VectorScoreReranker
+from app.core.rag_sources import SourceRef, set_request_rag_sources
 from app.services.rag.fail_messages import (
     NO_ANSWER_MESSAGE,
     NO_HITS_MESSAGE,
@@ -268,15 +269,31 @@ class RagAnswerService:
         return f"meta:{source}|{title}"
 
     @staticmethod
+    def _source_ref(doc: Document, index: int) -> SourceRef:
+        """從 metadata 直接取值組成結構化來源。
+
+        刻意不重用 `_source_label` 的輸出：那個字串是給純文字清單看的，
+        用全形冒號把來源名與網址黏在一起，而來源名本身也可能含冒號，
+        反解回來不可靠。
+        """
+        source = str(doc.metadata.get("source_name") or "").strip()
+        title = str(doc.metadata.get("original_title") or "").strip()
+        url = str(doc.metadata.get("url") or "").strip()
+        label = source or title or f"來源 {index}"
+        return SourceRef(index=index, label=label, url=url)
+
+    @staticmethod
     def _append_sources(answer_text: str, docs: list[Document]) -> str:
         cited = cited_indices(answer_text)
         if not cited:
             logger.info("citation_missing docs=%d", len(docs))
+            set_request_rag_sources(())
             return answer_text
 
         key_to_new: dict[str, int] = {}
         renumber: dict[int, int] = {}
         source_lines: list[str] = []
+        source_refs: list[SourceRef] = []
 
         for old_idx in cited:
             if old_idx < 1 or old_idx > len(docs):
@@ -296,6 +313,8 @@ class RagAnswerService:
             key_to_new[key] = new_idx
             renumber[old_idx] = new_idx
             source_lines.append(f"[{new_idx}] {label}")
+            # 與文字清單同一個迴圈、同一個 new_idx，兩者編號因此不可能漂移。
+            source_refs.append(RagAnswerService._source_ref(doc, new_idx))
 
         def _replace(match: re.Match[str]) -> str:
             mapped = renumber.get(int(match.group(1)))
@@ -307,8 +326,10 @@ class RagAnswerService:
 
         if not source_lines:
             logger.info("citation_unresolved cited=%s docs=%d", cited, len(docs))
+            set_request_rag_sources(())
             return body
 
+        set_request_rag_sources(source_refs)
         heading = t("agent.sources_heading")
         return f"{body}\n\n{heading}\n" + "\n".join(source_lines)
 

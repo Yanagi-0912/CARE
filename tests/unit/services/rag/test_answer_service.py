@@ -883,3 +883,72 @@ async def test_floor_does_not_apply_when_grader_succeeds():
     service.degraded_min_score = 0.3
 
     assert "正常回答" in await service.answer("問題")
+
+
+def _source_doc(source_name: str, title: str, url: str) -> Document:
+    return Document(
+        page_content="內容",
+        metadata={"source_name": source_name, "original_title": title, "url": url},
+    )
+
+
+def test_structured_sources_match_text_numbering():
+    """結構化來源的 index 必須與文字清單的 [n] 逐筆對應。
+
+    答案本文的引用標記指的就是這個編號；兩者各自編號會讓使用者點錯來源。
+    這裡答案先引用第 2 篇再引用第 1 篇，因此重編號後 [1] 是原本的第 2 篇。
+    """
+    from app.core.rag_sources import get_request_rag_sources
+
+    docs = [
+        _source_doc("台灣 e 院", "蜂蜜保存", "https://sp1.hso.mohw.gov.tw/a"),
+        _source_doc("食藥署", "蜂蜜加熱", "https://www.fda.gov.tw/b"),
+    ]
+
+    text = RagAnswerService._append_sources("加熱不會有毒 [2]。放室溫即可 [1]。", docs)
+
+    refs = get_request_rag_sources()
+    assert [r.index for r in refs] == [1, 2]
+    assert [r.label for r in refs] == ["食藥署", "台灣 e 院"]
+    assert [r.url for r in refs] == [
+        "https://www.fda.gov.tw/b",
+        "https://sp1.hso.mohw.gov.tw/a",
+    ]
+    assert "[1] 食藥署" in text
+    assert "[2] 台灣 e 院" in text
+
+
+def test_structured_sources_empty_when_no_citation():
+    """模型沒輸出任何引用編號時不附來源清單，結構化來源也必須清空。"""
+    from app.core.rag_sources import get_request_rag_sources
+
+    docs = [_source_doc("食藥署", "蜂蜜", "https://www.fda.gov.tw/b")]
+
+    RagAnswerService._append_sources("這是一段沒有引用編號的答案。", docs)
+
+    assert get_request_rag_sources() == ()
+
+
+def test_structured_sources_keep_url_verbatim():
+    """網址不得被改寫——line-reply-rules 明文要求。"""
+    from app.core.rag_sources import get_request_rag_sources
+
+    url = "https://www.fda.gov.tw/TC/siteContent.aspx?sid=1234&x=%E4%B8%AD"
+    docs = [_source_doc("食藥署", "蜂蜜", url)]
+
+    RagAnswerService._append_sources("放室溫即可 [1]。", docs)
+
+    assert get_request_rag_sources()[0].url == url
+
+
+def test_structured_sources_allow_missing_url():
+    """缺 url 的來源仍須保留（rag-responses 明文要求不得靜默丟棄）。"""
+    from app.core.rag_sources import get_request_rag_sources
+
+    docs = [_source_doc("食藥署", "蜂蜜保存指引", "")]
+
+    RagAnswerService._append_sources("放室溫即可 [1]。", docs)
+
+    refs = get_request_rag_sources()
+    assert len(refs) == 1
+    assert refs[0].url == ""

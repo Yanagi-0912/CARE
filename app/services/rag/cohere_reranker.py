@@ -8,6 +8,8 @@ from typing import Any, Protocol
 import httpx
 from langchain_core.documents import Document
 
+from app.core.request_logging import stage_timer
+
 logger = logging.getLogger(__name__)
 
 COHERE_RERANK_URL = "https://api.cohere.com/v2/rerank"
@@ -107,12 +109,24 @@ class CohereReranker:
             "Accept": "application/json",
         }
         try:
-            data = await self._http_post(
-                COHERE_RERANK_URL,
-                headers=headers,
-                json=payload,
-                timeout=self._timeout,
-            )
+            # 只圈住 HTTP 呼叫，讓 ms 就是 Cohere 的純延遲（外層 rag_rerank
+            # 含降級）。outcome 預設 error、成功才改寫成 ok：逾時會被下面的
+            # except 吞掉並靜靜降級，少了這個欄位，log 上只看得到「精排花了
+            # 20 秒」，看不出那 20 秒是等到結果還是白等一場逾時。
+            with stage_timer(
+                logger,
+                "cohere_rerank",
+                docs=len(documents),
+                timeout_s=self._timeout,
+                outcome="error",
+            ) as t_api:
+                data = await self._http_post(
+                    COHERE_RERANK_URL,
+                    headers=headers,
+                    json=payload,
+                    timeout=self._timeout,
+                )
+                t_api["outcome"] = "ok"
             results = data.get("results") or []
             out: list[Document] = []
             for rank, item in enumerate(results, start=1):

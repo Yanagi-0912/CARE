@@ -329,5 +329,32 @@ class Settings:
         os.getenv("SAFETY_ALERT_TIMEOUT_SECONDS", "20")
     )
 
+    # ── 每日醫療消息卡（medical-news-push）────────────────────────
+    #
+    # 整條的煞車。理由與 SAFETY_ALERT_ENABLED 相同、程度更強：這是**主動**
+    # 推播，使用者沒有在問問題，而推錯一則「你在吃的藥出問題了」最可能的
+    # 後果是長輩自行停藥。Tier 1 的偽陽性率目前沒有真實流量的數據
+    # （design.md 證據缺口 4），這是唯一不需要 deploy 就救得回來的開關。
+    MEDICAL_NEWS_ENABLED: bool = os.getenv(
+        "MEDICAL_NEWS_ENABLED", "true"
+    ).lower() in ("1", "true", "yes", "on")
+    # 索引排在推播之前數小時：推播要用的是當天剛索引好的內容。兩者若太接近，
+    # 索引還沒跑完推播就開始選材，當天的新消息會全部晚一天才送到。
+    MEDICAL_NEWS_INDEX_TIME: str = os.getenv("MEDICAL_NEWS_INDEX_TIME", "03:00")
+    MEDICAL_NEWS_PUSH_TIME: str = os.getenv("MEDICAL_NEWS_PUSH_TIME", "09:00")
+    # 消息的時效上限（天）。30 天是暫定值——gov.tw 的日期抽取可靠度尚未量測
+    # （design.md 證據缺口 2），這個值一定要依實際命中率調整，故設成 env。
+    MEDICAL_NEWS_MAX_AGE_DAYS: int = int(
+        os.getenv("MEDICAL_NEWS_MAX_AGE_DAYS", "30")
+    )
+    # 每個藥名每次取幾筆搜尋結果。搜尋成本是 O(不重複藥數 × 這個值)。
+    MEDICAL_NEWS_SEARCH_LIMIT: int = int(
+        os.getenv("MEDICAL_NEWS_SEARCH_LIMIT", "5")
+    )
+    # 每位使用者每日的分享次數上限。防的是把族譜當廣播用。
+    MEDICAL_NEWS_DAILY_SHARE_LIMIT: int = int(
+        os.getenv("MEDICAL_NEWS_DAILY_SHARE_LIMIT", "5")
+    )
+
 
 settings = Settings()

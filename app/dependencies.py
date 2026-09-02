@@ -97,6 +97,10 @@ from app.services.rag.user_document_retriever import UserDocumentVectorRetriever
 from app.services.rag.query_rewriter import GeminiQueryRewriter
 from app.services.rag.retrieval_grader import GeminiRetrievalGrader
 from app.services.rag.web_search_service import WebSearchService
+from app.services.medical_news.grader import GeminiNewsGrader
+from app.services.medical_news.index_service import DrugNewsIndexService
+from app.services.medical_news.kb_digest_service import KbDigestService
+from app.services.medical_news.share_service import MedicalNewsShareService
 from app.services.users.user_profile_service import UserProfileService
 from app.tools.claim_tools import configure_claim_tool
 from app.tools.knowledge_report_tools import configure_knowledge_report_tool
@@ -551,6 +555,35 @@ _prescription_scan_service = PrescriptionScanService(
     indication_service=_drug_indication_service,
 )
 
+# ── 每日醫療消息卡（medical-news-push）────────────────────────────────
+#
+# 索引服務需要 Firecrawl；沒有 API key 就沒有搜尋能力，此時服務為 None、
+# 索引排程不啟動，推播仍可照常供應 Tier 2（那條路只讀既有知識庫）。這個
+# 降級方向是刻意的：Tier 1 缺席時使用者仍每天收得到東西。
+_drug_news_index_service = None
+if _firecrawl_client is not None:
+    _drug_news_index_service = DrugNewsIndexService(
+        web_client=_firecrawl_client,
+        grader=GeminiNewsGrader(gemini_service=_gemini_service),
+        max_age_days=settings.MEDICAL_NEWS_MAX_AGE_DAYS,
+        search_limit=settings.MEDICAL_NEWS_SEARCH_LIMIT,
+    )
+
+# Tier 2 讀的是 CARE-data 每日 ETL 維護的同一個 collection，不新增外部依賴。
+_kb_digest_service = None
+if settings.MONGODB_URI and settings.MONGODB_COLLECTION:
+    _kb_digest_service = KbDigestService(
+        collection=MongoDBManager.get_database()[settings.MONGODB_COLLECTION],
+        max_age_days=settings.MEDICAL_NEWS_MAX_AGE_DAYS,
+    )
+
+_medical_news_share_service = MedicalNewsShareService(
+    replier=_line_replier,
+    family_tree_service=_family_tree_service,
+    user_profile_service=_user_profile_service,
+    daily_share_limit=settings.MEDICAL_NEWS_DAILY_SHARE_LIMIT,
+)
+
 _line_event_handler = LineEventHandler(
     message_handler=_message_handler,
     media_handler=_media_handler,
@@ -558,6 +591,7 @@ _line_event_handler = LineEventHandler(
     facility_detail_handler=_facility_detail_handler,
     replier=_line_replier,
     medication_service=_medication_service,
+    medical_news_share_service=_medical_news_share_service,
 )
 
 
@@ -694,6 +728,20 @@ def get_family_authorization_service() -> FamilyAuthorizationService:
 
 def get_medication_service() -> MedicationService:
     return _medication_service
+
+
+def get_drug_news_index_service():
+    """索引服務。沒有 Firecrawl 時為 None，呼叫端據此不啟動索引排程。"""
+    return _drug_news_index_service
+
+
+def get_kb_digest_service():
+    """Tier 2 選材。沒有知識庫連線時為 None。"""
+    return _kb_digest_service
+
+
+def get_medical_news_share_service() -> MedicalNewsShareService:
+    return _medical_news_share_service
 
 
 def get_prescription_scan_service() -> PrescriptionScanService:

@@ -317,46 +317,46 @@
 
 ## 10. 設定與組裝
 
-- [ ] 10.1 `app/core/config.py` 新增（形狀比照既有的 `DRUG_CATALOG_*`）：
+- [x] 10.1 `app/core/config.py` 新增（形狀比照既有的 `DRUG_CATALOG_*`）：
       - `MEDICAL_NEWS_ENABLED`（預設 `"true"`）
       - `MEDICAL_NEWS_INDEX_TIME`（預設 `"03:00"`）
       - `MEDICAL_NEWS_PUSH_TIME`（預設 `"09:00"`）
       - `MEDICAL_NEWS_MAX_AGE_DAYS`（預設 `"30"`）
       - `MEDICAL_NEWS_SEARCH_LIMIT`（預設 `"5"`）
       - `MEDICAL_NEWS_DAILY_SHARE_LIMIT`（預設 `"5"`）
-- [ ] 10.2 `app/dependencies.py`：建立三個 service 的單例並提供
+- [x] 10.2 `app/dependencies.py`：建立三個 service 的單例並提供
       `get_drug_news_index_service()`、`get_kb_digest_service()`、
       `get_medical_news_share_service()`，形狀比照 `get_medication_service()`。
       **唯一組裝點仍是 `dependencies.py`**（`specs/backend-architecture`），
       service 內部不得自行 import 單例
-- [ ] 10.3 `app/main.py` lifespan 的 `if run_schedulers:` 區塊內啟動兩支新排程器，
+- [x] 10.3 `app/main.py` lifespan 的 `if run_schedulers:` 區塊內啟動兩支新排程器，
       並在 `finally` 一併 `stop()`。放在同一個 `run_schedulers` 判斷內，理由與既有
       註解相同：排程器只在扮演 scheduler 角色的行程啟動
-- [ ] 10.4 `LineMessageDispatcher` 建構子注入 `medical_news_share_service`，
+- [x] 10.4 `LineMessageDispatcher` 建構子注入 `medical_news_share_service`，
       預設 `None`（未設定時該 postback 分支只記 log，與 `_medication_service` 為 None
       時的既有處理一致）
-- [ ] 10.5 啟動時呼叫 `medical_news_repository.ensure_indexes()`（模組層函式，見 1.3），位置比照既有的
+- [x] 10.5 啟動時呼叫 `medical_news_repository.ensure_indexes()`（模組層函式，見 1.3），位置比照既有的
       `MedicationLogRepository.ensure_indexes()`
-- [ ] 10.6 測試 `tests/unit/test_dependencies.py` 追加
+- [x] 10.6 測試 `tests/unit/test_dependencies.py` 追加
       - `test_medical_news_services_are_singletons`
       - `test_dispatcher_tolerates_missing_share_service`
-- [ ] 10.7 commit：`feat(medical-news): 設定、組裝與排程啟動`
+- [x] 10.7 commit：`feat(medical-news): 設定、組裝與排程啟動`
 
 ## 11. Spec delta
 
-- [ ] 11.1 `openspec/changes/medical-news-push/specs/medical-news-push/spec.md`，
+- [x] 11.1 `openspec/changes/medical-news-push/specs/medical-news-push/spec.md`，
       條文涵蓋：兩層選材與版面必須可分辨、每人每日至多一則、來源限定官方域、
       無 url 的來源不得產生消息卡、判定失敗 fail closed（**條文須明載與 `rag-crag`
       刻意相反的理由**）、輸出防線兩層且命中即丟棄不改寫、摘要中性第三人稱、
       分享零洩漏、分享收件人不走 `NOTIFICATION_POLICY`、去重與搶佔共用唯一索引、
       `indication` 三個欄位不得進入推播
-- [ ] 11.2 每條 Requirement 至少一個 Scenario，格式比照
+- [x] 11.2 每條 Requirement 至少一個 Scenario，格式比照
       `openspec/specs/medication-reminders/spec.md`
-- [ ] 11.3 commit：`docs(openspec): medical-news-push spec delta`
+- [x] 11.3 commit：`docs(openspec): medical-news-push spec delta`
 
 ## 12. 驗證與收尾
 
-- [ ] 12.1 `./init.sh` 全綠（所有 pytest 通過）
+- [x] 12.1 `./init.sh` 全綠（所有 pytest 通過）
 - [ ] 12.2 到 LINE Official Account Manager 的用量頁面確認本專案目前的方案與實際
       月用量（方案額度本身已查證，見 design 證據缺口 1 的表）。中用量以下不可加購，
       額度耗盡時用藥提醒會靜默失敗——**若逼近上限，正解是升高用量方案，不是把本功能

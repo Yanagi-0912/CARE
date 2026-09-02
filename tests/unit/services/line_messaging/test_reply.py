@@ -349,12 +349,18 @@ async def test_push_text_returns_false_without_a_user_id(replier):
 
 @pytest.mark.asyncio
 async def test_rag_answer_kind_sends_flex(replier):
-    from app.core.rag_sources import SourceRef, reset_request_rag_sources, set_request_rag_sources
-
-    token = set_request_rag_sources(
-        [SourceRef(index=1, label="食藥署", url="https://www.fda.gov.tw/b")]
+    from app.core.rag_sources import (
+        SourceRef,
+        begin_request_rag_sources,
+        reset_request_rag_sources,
+        set_request_rag_sources,
     )
+
+    token = begin_request_rag_sources()
     try:
+        set_request_rag_sources(
+            [SourceRef(index=1, label="食藥署", url="https://www.fda.gov.tw/b")]
+        )
         ok, messaging_api = await _send_reply(
             replier,
             reply_token="rt",

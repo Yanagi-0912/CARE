@@ -892,7 +892,27 @@ def _source_doc(source_name: str, title: str, url: str) -> Document:
     )
 
 
-def test_structured_sources_match_text_numbering():
+@pytest.fixture
+def rag_sources_holder():
+    """開一輪來源 holder。
+
+    `set_request_rag_sources` 是就地改寫，沒有 holder 就靜默忽略——這正是
+    正式路徑的行為（見 app/core/rag_sources.py），測試必須比照開場，否則
+    驗到的是「沒人開場」而不是來源本身。
+    """
+    from app.core.rag_sources import (
+        begin_request_rag_sources,
+        reset_request_rag_sources,
+    )
+
+    token = begin_request_rag_sources()
+    try:
+        yield
+    finally:
+        reset_request_rag_sources(token)
+
+
+def test_structured_sources_match_text_numbering(rag_sources_holder):
     """結構化來源的 index 必須與文字清單的 [n] 逐筆對應。
 
     答案本文的引用標記指的就是這個編號；兩者各自編號會讓使用者點錯來源。
@@ -918,7 +938,7 @@ def test_structured_sources_match_text_numbering():
     assert "[2] 台灣 e 院" in text
 
 
-def test_structured_sources_empty_when_no_citation():
+def test_structured_sources_empty_when_no_citation(rag_sources_holder):
     """模型沒輸出任何引用編號時不附來源清單，結構化來源也必須清空。"""
     from app.core.rag_sources import get_request_rag_sources
 
@@ -929,7 +949,7 @@ def test_structured_sources_empty_when_no_citation():
     assert get_request_rag_sources() == ()
 
 
-def test_structured_sources_keep_url_verbatim():
+def test_structured_sources_keep_url_verbatim(rag_sources_holder):
     """網址不得被改寫——line-reply-rules 明文要求。"""
     from app.core.rag_sources import get_request_rag_sources
 
@@ -941,7 +961,7 @@ def test_structured_sources_keep_url_verbatim():
     assert get_request_rag_sources()[0].url == url
 
 
-def test_structured_sources_allow_missing_url():
+def test_structured_sources_allow_missing_url(rag_sources_holder):
     """缺 url 的來源仍須保留（rag-responses 明文要求不得靜默丟棄）。"""
     from app.core.rag_sources import get_request_rag_sources
 

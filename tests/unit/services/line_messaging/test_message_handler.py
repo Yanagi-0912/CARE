@@ -231,15 +231,17 @@ async def test_handler_clears_rag_sources_between_turns():
     """上一輪的來源不得殘留成這一輪的按鈕。"""
     from app.core.rag_sources import (
         SourceRef,
+        begin_request_rag_sources,
         get_request_rag_sources,
         reset_request_rag_sources,
         set_request_rag_sources,
     )
 
-    leaked = set_request_rag_sources(
-        [SourceRef(index=1, label="上一輪的來源", url="https://example.com/stale")]
-    )
+    leaked = begin_request_rag_sources()
     try:
+        set_request_rag_sources(
+            [SourceRef(index=1, label="上一輪的來源", url="https://example.com/stale")]
+        )
         agent = RecordingAgent(answer_kind=None)
         handler = _handler(agent=agent)
 

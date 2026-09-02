@@ -4,6 +4,7 @@ from typing import Any
 
 from langchain_core.documents import Document
 
+from app.core.rag_sources import SourceRef, set_request_rag_sources
 from app.core.request_context import get_line_user_id
 from app.services.gemini import GeminiService
 from app.i18n.messages import t
@@ -187,7 +188,15 @@ class WebSearchService:
 
     @staticmethod
     def _append_sources(answer_text: str, docs: list[Document]) -> str:
+        """附上純文字來源清單，並把同一組來源交給呈現層做成按鈕。
+
+        結構化來源與文字清單在同一個迴圈產生、共用同一個 display_idx，兩者
+        因此不可能漂移——理由與 RagAnswerService._append_sources 相同。少了
+        這一步，走網搜的回答在卡片路徑上會完全沒有來源：卡片內文的來源清單
+        被 `strip_sources_section` 移除，而按鈕又無從產生。
+        """
         source_lines: list[str] = []
+        source_refs: list[SourceRef] = []
         seen_urls: set[str] = set()
 
         for doc in docs:
@@ -202,8 +211,14 @@ class WebSearchService:
             label = source_name if source_name else url
             web_label = t("rag.web_source_label")
             source_lines.append(f"[{display_idx}] {web_label}：{label}：{url}")
+            source_refs.append(
+                SourceRef(index=display_idx, label=f"{web_label}：{label}", url=url)
+            )
 
         if not source_lines:
+            set_request_rag_sources(())
             return answer_text
+
+        set_request_rag_sources(source_refs)
         heading = t("agent.sources_heading")
         return f"{answer_text}\n\n{heading}\n" + "\n".join(source_lines)

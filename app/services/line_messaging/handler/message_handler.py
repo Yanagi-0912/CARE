@@ -7,7 +7,7 @@ from typing import Optional
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
 from app.core.request_logging import log_stage
-from app.core.rag_sources import reset_request_rag_sources, set_request_rag_sources
+from app.core.rag_sources import begin_request_rag_sources, reset_request_rag_sources
 from app.core.user_font_size import (
     normalize_user_font_size,
     reset_request_font_size,
@@ -110,9 +110,10 @@ class BaseLineMessageHandler:
             font_token = set_request_font_size(
                 self._font_size_from_profile(user_profile)
             )
-            # 每輪開頭清空：上一輪的來源殘留下來，會變成這一輪卡片上不屬於
-            # 這個問題的來源按鈕。
-            rag_sources_token = set_request_rag_sources(())
+            # 每輪開頭建立 holder：上一輪的來源殘留下來，會變成這一輪卡片上
+            # 不屬於這個問題的來源按鈕。必須在 agent 執行之前、於這一層建立，
+            # tool 才改得到同一個物件（見 app/core/rag_sources.py）。
+            rag_sources_token = begin_request_rag_sources()
 
             if self._loading_animation_service is not None:
                 await self._loading_animation_service.start(user_id)

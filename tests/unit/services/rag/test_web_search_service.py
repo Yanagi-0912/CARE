@@ -414,3 +414,68 @@ async def test_answer_create_failure_still_returns_answer():
     assert WEB_ANSWER_PREFIX in result
     assert "https://www.hpa.gov.tw/htn" in result
     on_success.assert_awaited_once()
+
+
+@pytest.fixture
+def rag_sources_holder():
+    """開一輪來源 holder（正式路徑由 message_handler 開場）。"""
+    from app.core.rag_sources import (
+        begin_request_rag_sources,
+        reset_request_rag_sources,
+    )
+
+    token = begin_request_rag_sources()
+    try:
+        yield
+    finally:
+        reset_request_rag_sources(token)
+
+
+@pytest.mark.asyncio
+async def test_web_answer_exposes_structured_sources(rag_sources_holder):
+    """走網搜的回答也要有結構化來源，否則卡片上一顆按鈕都不會有。
+
+    卡片路徑會把內文的來源清單 strip 掉、改用按鈕呈現，來源只剩這一條路。
+    """
+    from app.core.rag_sources import get_request_rag_sources
+
+    web = FakeWebClient(
+        hits=[
+            WebSearchHit(title="國健署高血壓", url="https://www.hpa.gov.tw/htn"),
+            WebSearchHit(title="食藥署血壓藥", url="https://www.fda.gov.tw/bp"),
+        ],
+        pages={
+            "https://www.hpa.gov.tw/htn": "控制血壓要規律量測與低鈉飲食。",
+            "https://www.fda.gov.tw/bp": "血壓藥不可自行停藥。",
+        },
+    )
+    svc, _ = _make_service(
+        answer_content="根據公開網路資料，請規律量測血壓 [1]。",
+        web_client=web,
+    )
+
+    result = await svc.answer("高血壓要注意什麼")
+
+    refs = get_request_rag_sources()
+    assert [r.index for r in refs] == [1, 2]
+    assert [r.url for r in refs] == [
+        "https://www.hpa.gov.tw/htn",
+        "https://www.fda.gov.tw/bp",
+    ]
+    # 按鈕編號必須與文字清單一致，否則使用者點錯來源。
+    for ref in refs:
+        assert f"[{ref.index}] {ref.label}：{ref.url}" in result
+
+
+@pytest.mark.asyncio
+async def test_web_answer_without_usable_url_clears_sources(rag_sources_holder):
+    """沒有可列的來源時要清空，不能留著上一次的殘值。"""
+    from app.core.rag_sources import SourceRef, get_request_rag_sources
+    from app.core.rag_sources import set_request_rag_sources
+
+    set_request_rag_sources(
+        [SourceRef(index=1, label="殘留", url="https://example.com/stale")]
+    )
+
+    assert WebSearchService._append_sources("答案本文。", []) == "答案本文。"
+    assert get_request_rag_sources() == ()

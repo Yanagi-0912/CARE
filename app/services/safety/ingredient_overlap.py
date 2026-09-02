@@ -59,6 +59,14 @@ class IngredientWatchlist:
         return not self._names
 
     @classmethod
+    def _load_payload(cls, path: str) -> dict:
+        try:
+            return json.loads(Path(path).read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("成分白名單載入失敗，本次不偵測重複：%s", type(exc).__name__)
+            return {}
+
+    @classmethod
     def load_from_path(cls, path: str = DEFAULT_WATCHLIST_PATH) -> "IngredientWatchlist":
         """讀白名單檔。讀不到或格式不符時回空清單，不拋錯。
 
@@ -66,14 +74,33 @@ class IngredientWatchlist:
         方向一致：使用者並沒有在等這個結果，一則「偵測失敗」只會造成困惑。
         """
         try:
-            payload = json.loads(Path(path).read_text(encoding="utf-8"))
-            entries = payload.get("ingredients") or []
+            entries = cls._load_payload(path).get("ingredients") or []
             return cls(entry.get("name", "") for entry in entries)
         except Exception as exc:  # noqa: BLE001
-            # log 不帶路徑以外的內容：白名單本身不含個資，但保持與本模組
-            # 其他 log 一致的克制。
-            logger.warning("成分白名單載入失敗，本次不偵測重複：%s", type(exc).__name__)
+            logger.warning("成分白名單解析失敗，本次不偵測重複：%s", type(exc).__name__)
             return cls([])
+
+
+def load_local_action_forms(path: str = DEFAULT_WATCHLIST_PATH) -> frozenset:
+    """不參與比對的劑型（局部作用、全身吸收量可忽略）。
+
+    實測隨機配對時出現「眼藥水 + 止咳糖漿」同時含 CHLORPHENIRAMINE MALEATE
+    而被判為重複——眼藥水是局部使用，這種重複沒有臨床意義，報出來會侵蝕
+    「每一則都值得看」的前提。
+
+    清單只列毫無疑義的局部用藥，**未列出的劑型一律照常比對**。外用不等於不
+    吸收：穿皮貼片與栓劑都是刻意設計成全身吸收的，軟膏的水楊酸類也有經皮
+    吸收累加風險。寧可多報一則局部用藥的重複，也不要因為一條猜出來的規則
+    漏掉真正的過量風險。
+    """
+    payload = IngredientWatchlist._load_payload(path)
+    forms = (payload.get("local_action_dosage_forms") or {}).get("forms") or []
+    return frozenset(f.strip() for f in forms if f and f.strip())
+
+
+def is_local_action(dosage_form: Optional[str], local_forms: frozenset) -> bool:
+    """這個劑型是否為局部作用。認不得的劑型回 False（照常比對）。"""
+    return (dosage_form or "").strip() in local_forms
 
 
 def find_overlap(

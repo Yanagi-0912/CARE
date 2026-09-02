@@ -145,3 +145,58 @@ class TestWatchlistLoading:
         for vitamin in ("RIBOFLAVIN", "ASCORBIC ACID", "NIACINAMIDE",
                         "PYRIDOXINE HCL", "CYANOCOBALAMIN"):
             assert vitamin not in watchlist, f"維生素不該進白名單：{vitamin}"
+
+
+# ── 局部用藥劑型 ────────────────────────────────────────────────────
+# 實測隨機配對時出現「眼藥水 + 止咳糖漿」同時含 CHLORPHENIRAMINE MALEATE
+# 而被判為重複。眼藥水是局部使用，這種重複沒有臨床意義。
+
+
+class TestLocalActionForms:
+    def test_unambiguous_local_forms_are_excluded(self):
+        from app.services.safety.ingredient_overlap import (
+            is_local_action,
+            load_local_action_forms,
+        )
+
+        forms = load_local_action_forms()
+        for form in ("點眼液劑", "點耳液劑", "陰道錠", "含漱劑"):
+            assert is_local_action(form, forms), form
+
+    def test_systemically_absorbed_forms_are_not_excluded(self):
+        """外用不等於不吸收。
+
+        穿皮貼片與栓劑都是刻意設計成全身吸收的；軟膏的水楊酸類也有經皮吸收
+        累加風險（見白名單中 METHYL SALICYLATE 的納入理由）。把它們排除掉會
+        漏掉真正的過量風險。
+        """
+        from app.services.safety.ingredient_overlap import (
+            is_local_action,
+            load_local_action_forms,
+        )
+
+        forms = load_local_action_forms()
+        for form in ("穿皮貼片劑", "栓劑", "軟膏劑", "藥膠布", "錠劑", "糖漿劑"):
+            assert not is_local_action(form, forms), form
+
+    def test_unknown_form_is_compared_normally(self):
+        """認不得的劑型照常比對。
+
+        非處方藥有 100 種以上劑型，清單刻意不窮舉。寧可多報一則局部用藥的
+        重複，也不要因為一條猜出來的規則漏掉真正的過量風險。
+        """
+        from app.services.safety.ingredient_overlap import (
+            is_local_action,
+            load_local_action_forms,
+        )
+
+        forms = load_local_action_forms()
+        assert not is_local_action("某種新劑型", forms)
+        assert not is_local_action("", forms)
+        assert not is_local_action(None, forms)
+
+    def test_missing_file_yields_empty_form_set(self):
+        """讀不到時回空集合，效果是「全部照常比對」——不因設定檔缺席而漏報。"""
+        from app.services.safety.ingredient_overlap import load_local_action_forms
+
+        assert load_local_action_forms("/nonexistent/watch.json") == frozenset()

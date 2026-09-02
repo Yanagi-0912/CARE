@@ -254,6 +254,11 @@ def build_entries(
                 # 那些只出現在外觀資料集的品項分級會是空字串。
                 "drug_class": classify_drug(row.get("藥品類別")),
                 "ingredients": parse_ingredients(row.get("主成分略述")),
+                # 劑型原樣帶過，不在建表階段分類。「哪些劑型會全身吸收」是
+                # 藥理判斷（穿皮貼片與栓劑都是刻意設計成全身吸收的，外用不等於
+                # 不吸收），分類規則放在可被審視的 otc_watch_ingredients.json，
+                # 不埋進建表腳本。
+                "dosage_form": _clean(row.get("劑型")),
             }
 
     appearance_by_licence = _index_appearance_fields(appearances)

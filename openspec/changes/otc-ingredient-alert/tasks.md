@@ -16,9 +16,9 @@
 
 ## 3. 藥證庫服務暴露新欄位
 
-- [ ] 3.1 `DrugCatalogService` 提供 `drug_class` 與 `ingredients` 查詢
-- [ ] 3.2 舊版 catalog 缺欄位時視為「無成分資料」，**不得拋錯**（會讓整個掃描流程掛掉）
-- [ ] 3.3 對應測試
+- [x] 3.1 `DrugCatalogService` 提供 `drug_class` 與 `ingredients` 查詢
+- [x] 3.2 舊版 catalog 缺欄位時視為「無成分資料」，**不得拋錯**（會讓整個掃描流程掛掉）
+- [x] 3.3 對應測試
 
 ## 4. 成分重複偵測
 
@@ -51,7 +51,7 @@
 
 ## 8. 收尾
 
-- [ ] 8.1 重跑建表腳本（**不帶** `--fetch-images`／`--fetch-indications`）並確認 `drug_catalog.json` 兩個新欄位齊全
+- [x] 8.1 重跑建表腳本（**不帶** `--fetch-images`／`--fetch-indications`）並確認 `drug_catalog.json` 兩個新欄位齊全
 - [ ] 8.2 `./init.sh` 全綠
-- [ ] 8.3 以真實資料抽驗：找幾組已知含相同成分的非處方藥，確認偵測得到
+- [x] 8.3 以真實資料抽驗：找幾組已知含相同成分的非處方藥，確認偵測得到
 - [ ] 8.4 清楚的 git commit 與 PR

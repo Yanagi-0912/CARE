@@ -66,15 +66,68 @@
   "explicitly_excluded": [
     {
       "names": [
-        "RIBOFLAVIN", "PYRIDOXINE HCL", "ASCORBIC ACID", "NIACINAMIDE",
-        "CYANOCOBALAMIN", "THIAMINE MONONITRATE", "THIAMINE HYDROCHLORIDE",
-        "PANTOTHENATE CALCIUM", "VITAMIN A"
+        "RIBOFLAVIN",
+        "PYRIDOXINE HCL",
+        "ASCORBIC ACID",
+        "NIACINAMIDE",
+        "CYANOCOBALAMIN",
+        "THIAMINE MONONITRATE",
+        "THIAMINE HYDROCHLORIDE",
+        "PANTOTHENATE CALCIUM",
+        "VITAMIN A"
       ],
       "reason": "維生素類。在綜合感冒藥與營養補充劑中重複是常態，且水溶性維生素過量多由腎臟排除，重複沒有臨床意義。這些成分佔非處方藥常見成分 top 20 的一半——納入的話警報會被它們淹沒。"
     },
     {
-      "names": ["GUAIACOL GLYCERYL ETHER", "L-MENTHOL", "SODIUM BICARBONATE", "ALUMINUM HYDROXIDE DRIED GEL"],
+      "names": [
+        "GUAIACOL GLYCERYL ETHER",
+        "L-MENTHOL",
+        "SODIUM BICARBONATE",
+        "ALUMINUM HYDROXIDE DRIED GEL"
+      ],
       "reason": "祛痰劑、薄荷腦、制酸劑。重複的後果多為效果不佳或輕微腸胃不適，不構成需要通知家人的風險等級。"
     }
-  ]
+  ],
+  "local_action_dosage_forms": {
+    "_readme": [
+      "不參與成分重複比對的劑型：局部作用、全身吸收量可忽略。",
+      "",
+      "為什麼需要這一層：實測隨機配對時出現「益眼乙12眼藥水 + 小兒蜜咳樂糖漿」",
+      "同時含 CHLORPHENIRAMINE MALEATE 而被判為重複。眼藥水是局部使用，全身",
+      "吸收量極低，這種重複沒有臨床意義——報出來會侵蝕「每一則都值得看」的前提。",
+      "",
+      "⚠ 這份清單刻意只列毫無疑義的局部用藥，不試圖窮舉。非處方藥有 100 種以上",
+      "  劑型，把它們正確分成「會不會全身吸收」是藥理判斷：穿皮貼片與栓劑都是",
+      "  刻意設計成全身吸收的，軟膏的水楊酸類也有經皮吸收累加風險（見白名單中",
+      "  METHYL SALICYLATE 的納入理由）。外用不等於不吸收。",
+      "",
+      "  未列出的劑型一律照常比對——寧可多報一則局部用藥的重複，也不要因為",
+      "  一條猜出來的規則漏掉真正的過量風險。這份清單應由藥事人員檢視補充。"
+    ],
+    "forms": [
+      "點眼液劑",
+      "點眼乳劑",
+      "點眼膏劑",
+      "無菌眼用液劑",
+      "點耳液劑",
+      "點耳鼻液劑",
+      "眼耳鼻用液劑",
+      "陰道用乳膏劑",
+      "陰道用凝膠劑",
+      "陰道用灌洗劑",
+      "陰道用藥膜",
+      "陰道錠",
+      "陰道錠劑及乳膏劑",
+      "含漱劑",
+      "口腔噴霧溶液劑",
+      "牙科用凝膠劑",
+      "牙科用液劑",
+      "灌洗劑",
+      "保險套",
+      "診斷用試劑",
+      "試劑",
+      "敷料劑",
+      "含藥紗布"
+    ]
+  }
 }

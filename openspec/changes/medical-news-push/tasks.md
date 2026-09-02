@@ -180,10 +180,10 @@
 
 ## 6. Tier 2 選材（知識庫近期文章）
 
-- [ ] 6.1 `app/services/medical_news/kb_digest_service.py`：
+- [x] 6.1 `app/services/medical_news/kb_digest_service.py`：
       `class KbDigestService`，建構子 `(*, collection, max_age_days: int)`，
       collection 為 `settings.MONGODB_COLLECTION`（`health_articles_chunks`）
-- [ ] 6.2 `async def recent_articles(self, today: str, limit: int) -> list[KbArticle]`：
+- [x] 6.2 `async def recent_articles(self, today: str, limit: int) -> list[KbArticle]`：
       - `KbArticle(NamedTuple)`：`url: str`、`title: str`、`source_name: str`、
         `published_at: str`、`excerpt: str`
       - **SHALL 先以 `url` 收斂為文章再排序**；`url` 為空的來源（食藥署 `DataAction`
@@ -191,14 +191,14 @@
         分享卡尤其（design 決策 3）
       - `excerpt` 取該文章 `chunk_index` 最小的那個 chunk 的前 N 字，**不得任取一個
         chunk**：chunk 是切出來的片段，中段的 chunk 單獨呈現常常是半句話（design 決策 9）
-- [ ] 6.3 測試 `tests/unit/services/medical_news/test_kb_digest_service.py`
+- [x] 6.3 測試 `tests/unit/services/medical_news/test_kb_digest_service.py`
       - `test_chunks_are_collapsed_into_one_article_per_url`：同一 url 的三個 chunk →
         回傳一筆
       - `test_articles_without_url_are_excluded`
       - `test_excerpt_comes_from_first_chunk`
       - `test_results_sorted_by_published_at_desc`
       - `test_articles_older_than_max_age_excluded`
-- [ ] 6.4 commit：`feat(medical-news): Tier 2 知識庫選材`
+- [x] 6.4 commit：`feat(medical-news): Tier 2 知識庫選材`
 
 ## 7. 消息卡 Flex builder
 

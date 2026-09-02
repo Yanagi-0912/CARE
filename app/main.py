@@ -14,6 +14,8 @@ from app.core.upload_limits import MaxUploadSizeMiddleware
 from app.dependencies import (
     get_consultation_service,
     get_chat_history_repository,
+    get_drug_news_index_service,
+    get_kb_digest_service,
     get_line_replier,
     get_user_profile_service,
     preload_facility_name_index,
@@ -27,6 +29,15 @@ from app.repositories.family_delegation_repository import FamilyDelegationReposi
 from app.repositories.family_rbac_metrics_repository import FamilyRbacMetricsRepository
 from app.repositories.family_role_audit_repository import FamilyRoleAuditRepository
 from app.repositories.safety_alert_repository import SafetyAlertRepository
+from app.services.medical_news.index_scheduler import (
+    start_drug_news_index_scheduler,
+)
+from app.services.medical_news.push_scheduler import (
+    start_medical_news_push_scheduler,
+)
+from app.repositories.medical_news_repository import (
+    ensure_indexes as ensure_medical_news_indexes,
+)
 from app.services.consultation.scheduler import (
     start_consultation_daily_summary_scheduler,
 )
@@ -62,6 +73,10 @@ async def lifespan(app: FastAPI):
     # 的 TTL 讓視窗自動過期，不需要應用端排程清除。索引與功能開關無關，
     # 先備好才能在開關打開的當下就是正確行為。
     await SafetyAlertRepository.ensure_indexes()
+    # 三個 collection 的索引一起建。(user_id, news_ref) 與
+    # (recipient_id, news_ref) 兩個唯一索引同時承擔去重與推播權搶佔——
+    # 少了它們，多實例並存時同一則消息會重複推播、家人分享會重複送達。
+    await ensure_medical_news_indexes()
     # 家庭 RBAC 的三份新 collection。`family_rbac_metrics` 的 owner_id 唯一索引
     # 不只是查詢效率——差異計數是以 owner_id 為鍵的 upsert `$inc`，沒有唯一
     # 約束時併發會生出同一位擁有者的多份文件，遷移就緒的判讀就是錯的，而那正是
@@ -90,6 +105,8 @@ async def lifespan(app: FastAPI):
     run_schedulers = should_run_schedulers(settings.APP_ROLE)
     scheduler = None
     medication_scheduler = None
+    news_index_scheduler = None
+    news_push_scheduler = None
 
     if run_schedulers:
         # 啟動每日諮詢摘要排程
@@ -106,6 +123,24 @@ async def lifespan(app: FastAPI):
             replier=get_line_replier(),
             user_profile_service=get_user_profile_service(),
         )
+
+        # 每日醫療消息卡。索引與推播是兩支獨立的排程：成本模型不同（前者是
+        # O(不重複藥數)、後者是 O(使用者數)），失敗模式也不同——政府站台逾時
+        # 會讓索引整輪失敗，但推播照常拿昨天的索引跑。合在一起時前者會拖垮
+        # 後者。兩者的心跳因此也分開登記。
+        news_index_scheduler = start_drug_news_index_scheduler(
+            enabled=settings.MEDICAL_NEWS_ENABLED,
+            index_service=get_drug_news_index_service(),
+            run_time=settings.MEDICAL_NEWS_INDEX_TIME,
+        )
+        news_push_scheduler = start_medical_news_push_scheduler(
+            enabled=settings.MEDICAL_NEWS_ENABLED and get_kb_digest_service() is not None,
+            replier=get_line_replier(),
+            user_profile_service=get_user_profile_service(),
+            kb_digest=get_kb_digest_service(),
+            run_time=settings.MEDICAL_NEWS_PUSH_TIME,
+            max_age_days=settings.MEDICAL_NEWS_MAX_AGE_DAYS,
+        )
     else:
         logger.info(
             "APP_ROLE=%s：本行程不啟動背景排程器（僅服務請求）", settings.APP_ROLE
@@ -120,6 +155,10 @@ async def lifespan(app: FastAPI):
             await scheduler.stop()
         if medication_scheduler is not None:
             await medication_scheduler.stop()
+        if news_index_scheduler is not None:
+            await news_index_scheduler.stop()
+        if news_push_scheduler is not None:
+            await news_push_scheduler.stop()
 
 
 

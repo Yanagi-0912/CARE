@@ -78,6 +78,7 @@ class LineEventDispatcher:
         facility_detail_handler: LineFacilityDetailHandler,
         replier: LineReplier,
         medication_service=None,
+        medical_news_share_service=None,
     ):
         self._message_handler = message_handler
         self._media_handler = media_handler
@@ -85,6 +86,9 @@ class LineEventDispatcher:
         self._facility_detail_handler = facility_detail_handler
         self._replier = replier
         self._medication_service = medication_service
+        # 未設定時該 postback 分支只記 log，與 _medication_service 為 None 時的
+        # 既有處理一致——功能沒開不該讓事件處理拋錯。
+        self._medical_news_share_service = medical_news_share_service
 
 
     async def handle(self, event: MessageEvent) -> None:
@@ -219,6 +223,21 @@ class LineEventDispatcher:
                     voice_reply_enabled=False,
                     language=user_language,
                 )
+        elif action == "share_medical_news":
+            news_ref = params.get("news_ref", [""])[0]
+            if not news_ref:
+                logger.warning("share_medical_news postback missing news_ref")
+                return
+            if self._medical_news_share_service is None:
+                logger.warning("share_medical_news postback but service not configured")
+                return
+            await self._medical_news_share_service.share(
+                sharer_id=user_id,
+                news_ref=news_ref,
+                reply_token=reply_token,
+                language=user_language,
+                font_size=self._font_size_from_profile(user_profile),
+            )
         elif action == "already_done":
             await self._replier.reply(
                 reply_token=reply_token,

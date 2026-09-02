@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import time
@@ -68,6 +69,16 @@ DEFAULT_DEGRADED_MIN_SCORE = 0.0
 # 的路是本末倒置。這與既有 rewrite 失敗時 `return ranked` 的降級一致。
 DEFAULT_CRAG_REWRITE_BUDGET_SECONDS = 12.0
 
+# 投機生成：CRAG 分級期間先把生成跑起來。
+#
+# 分級與生成互不依賴——生成只吃 ranked，分級不改動它——所以兩者可以並行。
+# 實測分級 2.6-7.0s、生成 3.9-9.5s，而 84% 的題目分級結果是 correct、
+# 送去生成的 docs 原封不動，這時等於整段分級時間白賺。
+#
+# 代價是另外 16%（incorrect／ambiguous）會多一次白跑的生成，付的是 token
+# 不是延遲，並讓單次請求的 Gemini 併發從 1 升到 2。要關掉設 false。
+DEFAULT_SPECULATIVE_GENERATE = True
+
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 
 
@@ -100,6 +111,7 @@ class RagAnswerService:
         degraded_min_score: float = DEFAULT_DEGRADED_MIN_SCORE,
         crag_rewrite_budget_seconds: float = DEFAULT_CRAG_REWRITE_BUDGET_SECONDS,
         link_checker: LinkChecker | None = None,
+        speculative_generate: bool = DEFAULT_SPECULATIVE_GENERATE,
     ) -> None:
         self.gemini_service = gemini_service
         self.retriever = retriever
@@ -115,6 +127,8 @@ class RagAnswerService:
         self.crag_rewrite_budget_seconds = crag_rewrite_budget_seconds
         # None＝不檢查來源網址存活，行為與導入前完全相同（見 link_check.py）
         self.link_checker = link_checker
+        # 只有 CRAG 開啟時才有東西可以並行——沒有分級就沒有等待可以填。
+        self.speculative_generate = bool(speculative_generate and self.crag_enabled)
 
     async def answer(self, user_text: str) -> str:
         # 總計時的 path 欄位標出這一輪實際走了哪條路——同樣是 40 秒，
@@ -127,14 +141,37 @@ class RagAnswerService:
         # 延遲，只計 _apply_crag 內部會漏掉前面已經花掉的時間。
         started = time.perf_counter()
         timing["path"] = "kb"
-        ranked = await self._retrieve_and_rerank(user_text)
-        if not ranked:
+        # candidates＝第一輪的 docs；approved＝CRAG 放行的 docs。兩者刻意用不同
+        # 名字：投機生成是否可用，正是靠「這兩個是不是同一個 list」判斷的。
+        candidates = await self._retrieve_and_rerank(user_text)
+        if not candidates:
             timing["path"] = "web_empty_retrieval"
             return await self._web_or_no_hits(user_text)
 
+        speculative = self._start_speculative_generate(user_text, candidates)
+        try:
+            return await self._answer_from(
+                user_text, candidates, speculative, started, timing
+            )
+        finally:
+            # 冪等：正常路徑上任務已被 await，這裡不做事；提早 return 或例外
+            # 逃出時才真正收掉，不留 orphan task。
+            _abandon_task(speculative)
+
+    async def _answer_from(
+        self,
+        user_text: str,
+        candidates: list[Document],
+        speculative: "asyncio.Task[str] | None",
+        started: float,
+        timing: dict[str, Any],
+    ) -> str:
+        approved: list[Document] | None = candidates
         if self.crag_enabled:
             try:
-                ranked = await self._apply_crag(user_text, ranked, started=started)
+                approved = await self._apply_crag(
+                    user_text, candidates, started=started
+                )
             except Exception:
                 logger.exception(
                     "CRAG failed; degrading to generate without grade crag_grade=degraded"
@@ -145,18 +182,21 @@ class RagAnswerService:
                 # 分數）。過不了門檻就走與「知識庫無資料」相同的路徑——
                 # 寧可少答，不要拿不相關的內容生成醫療答案。
                 timing["path"] = "kb_crag_degraded"
-                ranked = self._filter_by_degraded_score(ranked)
-                if not ranked:
+                approved = self._filter_by_degraded_score(candidates)
+                if not approved:
                     logger.info("rag_fail code=%s crag_grade=degraded_below_floor",
                                 RagFailCode.KB_EMPTY)
                     timing["path"] = "web_degraded_below_floor"
                     return await self._web_or_no_hits(user_text)
             else:
-                if ranked is None:
+                if approved is None:
                     timing["path"] = "web_crag_reject"
                     return await self._web_or_no_hits(user_text)
 
-        kb_answer = await self._generate_answer(user_text, ranked)
+        kb_answer = await self._resolve_generate(
+            speculative, user_text, candidates, approved
+        )
+        ranked = approved
         if self._is_cannot_answer(kb_answer):
             marker = matched_cannot_answer_marker(kb_answer, CANNOT_ANSWER_MARKERS)
             preview = answer_preview(kb_answer)
@@ -310,12 +350,55 @@ class RagAnswerService:
             blocks.append(f"{header}\n{doc.page_content}")
         return "\n\n".join(blocks)
 
-    async def _generate_answer(self, question: str, docs: list[Document]) -> str:
+    def _start_speculative_generate(
+        self, user_text: str, docs: list[Document]
+    ) -> "asyncio.Task[str] | None":
+        """在 CRAG 分級開始前就把生成排進事件迴圈。"""
+        if not self.speculative_generate:
+            return None
+        return asyncio.create_task(
+            self._generate_answer(user_text, docs, speculative=True)
+        )
+
+    async def _resolve_generate(
+        self,
+        speculative: "asyncio.Task[str] | None",
+        user_text: str,
+        candidates: list[Document],
+        approved: list[Document],
+    ) -> str:
+        """取用投機結果，或丟棄後以放行的 docs 重新生成。
+
+        判斷用 identity（`approved is candidates`）而非內容比對：CRAG 判
+        `correct` 時原封不動回傳同一個 list，走改寫第二輪時回的是另一個
+        list，降級過濾有門檻時也會建新 list——identity 恰好把「送去生成的
+        docs 有沒有被換掉」問乾淨。
+
+        重點是判錯的方向：identity 為假但內容其實相同時，只是白重生一次，
+        慢一點而已；**不可能**發生「拿未經放行的 docs 生成的答案回給使用
+        者」。這個不對稱是本最佳化能碰醫療答案的前提。
+        """
+        if speculative is None:
+            return await self._generate_answer(user_text, approved)
+        if approved is candidates:
+            logger.info("speculative_generate=hit")
+            return await speculative
+        logger.info("speculative_generate=miss")
+        _abandon_task(speculative)
+        return await self._generate_answer(user_text, approved)
+
+    async def _generate_answer(
+        self, question: str, docs: list[Document], *, speculative: bool = False
+    ) -> str:
         context = self._build_context(docs)
         messages = build_rag_prompt().format_messages(
             question=question, context=wrap_context(context)
         )
-        with stage_timer(logger, "rag_generate", docs=len(docs)):
+        # speculative 欄位是必要的：投機那次與分級並行，它的 ms 會與
+        # rag_crag_grade 重疊，直接拿去和序列版本相加會重複計算。
+        with stage_timer(
+            logger, "rag_generate", docs=len(docs), speculative=speculative or None
+        ):
             rag_result = await self.gemini_service.chat_model.ainvoke(messages)
         answer_text = rag_result.content or t("rag.generate_fallback")
         if not isinstance(answer_text, str):
@@ -487,6 +570,21 @@ class RagAnswerService:
         set_request_rag_sources(source_refs)
         heading = t("agent.sources_heading")
         return f"{body}\n\n{heading}\n" + "\n".join(source_lines)
+
+
+def _abandon_task(task: "asyncio.Task[str] | None") -> None:
+    """收掉不再需要的投機任務。冪等，可安全重複呼叫。
+
+    已完成且帶例外時要主動取出例外，否則 asyncio 會噴
+    "Task exception was never retrieved"——那條路上的失敗本來就要丟棄，
+    不該變成 log 噪音。
+    """
+    if task is None or task.cancelled():
+        return
+    if not task.done():
+        task.cancel()
+        return
+    task.exception()
 
 
 def dedup_ranked_docs(

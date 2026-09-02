@@ -209,6 +209,17 @@ class Settings:
         os.getenv("RAG_CRAG_REWRITE_BUDGET_SECONDS", "12")
     )
 
+    # 投機生成：CRAG 分級期間先把生成跑起來，分級放行同一批 docs 就直接採用。
+    #
+    # 實測分級 2.6-7.0s、生成 3.9-9.5s，且 84% 的題目分級結果為 correct
+    # （golden set 55 題實測），那些題目等於白賺整段分級時間。
+    #
+    # 代價：另外 16% 會多一次白跑的生成（付 token，不付延遲），單次請求的
+    # Gemini 併發從 1 升到 2。撞到配額或速率限制時把這個關掉是第一步。
+    RAG_SPECULATIVE_GENERATE: bool = os.getenv(
+        "RAG_SPECULATIVE_GENERATE", "true"
+    ).lower() in ("1", "true", "yes", "on")
+
     # 參考來源網址的存活檢查（見 services/rag/link_check.py）。
     #
     # 白名單看網域後綴、CRAG 看內容相關性，兩者都不管「這個 url 現在還在
@@ -221,10 +232,20 @@ class Settings:
     RAG_LINK_CHECK_ENABLED: bool = os.getenv(
         "RAG_LINK_CHECK_ENABLED", "true"
     ).lower() in ("1", "true", "yes", "on")
-    # 逾時掛在使用者等待路徑上（此時已經花掉檢索＋精排＋生成的時間，而 LINE
-    # reply token 上限 30s）。3s 是「多數站台的 HEAD 都該在此之內回應」與
-    # 「不拖垮整輪」之間的取捨，尚未以線上分佈校準——要調的話先看
-    # stage=rag_link_check 的 ms 分佈，不要憑感覺加。
+    # **這是單次 HTTP 請求的逾時，不是使用者實際等待的上限。** 一個網址最多
+    # 打四次（HEAD 被擋退 GET、判死後再確認一輪），實測 3s 設定下單一網址
+    # 最壞 6.31s；整批的上限由 LinkChecker 的總預算控制
+    # （timeout×2＋confirm_delay，預設值下 6.5s）。要估使用者等多久看那個。
+    #
+    # 3s 是「多數站台的 HEAD 都該在此之內回應」與「不拖垮整輪」之間的取捨，
+    # 尚未以線上分佈校準——要調的話先看 stage=rag_link_check 的 ms 分佈，
+    # 不要憑感覺加。
+    #
+    # 註：本註解原本寫「LINE reply token 上限 30s」，該數字**未查證**故移除。
+    # 它若為真，影響遠大於本設定：實測整輪（agent＋RAG）有 25.1／43.6／46.2
+    # 秒的樣本，那些回覆會直接送不出去。reply 失敗會走
+    # reply.py 的 `logger.exception("Failed to send LINE message")`，
+    # 要驗證去線上 log 找那筆與 stage=agent_graph 的 ms 對照，不要沿用推測。
     RAG_LINK_CHECK_TIMEOUT_SECONDS: float = float(
         os.getenv("RAG_LINK_CHECK_TIMEOUT_SECONDS", "3")
     )

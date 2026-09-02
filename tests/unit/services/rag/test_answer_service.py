@@ -38,6 +38,7 @@ from app.services.rag import (
 from app.services.rag.answer_prompts import CONTEXT_BEGIN, CONTEXT_END
 from app.services.rag.answer_service import (
     DEFAULT_CRAG_REWRITE_BUDGET_SECONDS,
+    DEFAULT_SPECULATIVE_GENERATE,
     cited_indices,
     dedup_ranked_docs,
 )
@@ -57,6 +58,7 @@ def _make_service(
     web_search=None,
     web_fallback_enabled=True,
     crag_rewrite_budget_seconds=DEFAULT_CRAG_REWRITE_BUDGET_SECONDS,
+    speculative_generate=DEFAULT_SPECULATIVE_GENERATE,
     link_checker=None,
 ):
     gemini_service = MagicMock()
@@ -78,6 +80,7 @@ def _make_service(
             rewriter=rewriter,
             crag_enabled=crag_enabled,
             crag_rewrite_budget_seconds=crag_rewrite_budget_seconds,
+            speculative_generate=speculative_generate,
             web_search=web_search,
             web_fallback_enabled=web_fallback_enabled,
             link_checker=link_checker,
@@ -1193,3 +1196,142 @@ async def test_crag_ambiguous_still_rewrites_when_budget_unlimited():
     assert rewriter.rewrite.await_count == 1
     assert grader.grade.await_count == 2
     assert "https://www.hpa.gov.tw/b" in result
+
+
+def _grader_returning(*grades):
+    g = MagicMock()
+    g.grade = AsyncMock(side_effect=list(grades))
+    return g
+
+
+@pytest.mark.asyncio
+async def test_speculative_generate_starts_before_grading_finishes():
+    """核心保證：生成必須在分級還沒結束前就已經開跑，否則沒有省到任何時間。"""
+    order = []
+
+    async def _slow_grade(query, docs):
+        await asyncio.sleep(0.05)
+        order.append("grade_done")
+        return Grade.CORRECT
+
+    grader = MagicMock()
+    grader.grade = AsyncMock(side_effect=_slow_grade)
+
+    async def _generate(messages):
+        order.append("generate_start")
+        return AIMessage(content="答案 [1]")
+
+    service, gemini_service, _ = _make_service(
+        docs=[_kb_doc()], grader=grader, crag_enabled=True,
+        speculative_generate=True,
+    )
+    gemini_service.chat_model.ainvoke = AsyncMock(side_effect=_generate)
+
+    await service.answer("高血壓？")
+
+    assert order == ["generate_start", "grade_done"], order
+    assert gemini_service.chat_model.ainvoke.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_speculative_result_used_when_crag_approves_same_docs():
+    service, gemini_service, _ = _make_service(
+        docs=[_kb_doc()], answer_content="投機答案 [1]",
+        grader=_grader_returning(Grade.CORRECT), crag_enabled=True,
+        speculative_generate=True,
+    )
+    result = await service.answer("高血壓？")
+    assert "投機答案" in result
+    # 只生成一次：投機那次就是最終採用的那次。
+    assert gemini_service.chat_model.ainvoke.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_speculative_discarded_and_regenerated_after_rewrite():
+    """改寫第二輪換掉了 docs，投機結果必須作廢重生。"""
+    first_docs = [_kb_doc("模糊內容")]
+    second_docs = [_kb_doc("精準內容", url="https://www.hpa.gov.tw/b")]
+
+    gemini_service = MagicMock()
+    gemini_service.chat_model = MagicMock()
+    gemini_service.chat_model.ainvoke = AsyncMock(
+        return_value=AIMessage(content="回答 [1]")
+    )
+    retriever = MagicMock()
+    retriever.ainvoke = AsyncMock(side_effect=[first_docs, second_docs])
+    rewriter = MagicMock()
+    rewriter.rewrite = AsyncMock(return_value="改寫後的問題")
+
+    # 分級必須真的讓出事件迴圈，投機任務才會起跑；AsyncMock 立即回覆時任務
+    # 還沒被排到就被取消了（那其實更省，但不是生產環境會發生的情況）。
+    grades = [Grade.AMBIGUOUS, Grade.CORRECT]
+
+    async def _slow_grade(query, docs):
+        await asyncio.sleep(0.02)
+        return grades.pop(0)
+
+    grader = MagicMock()
+    grader.grade = AsyncMock(side_effect=_slow_grade)
+
+    svc = RagAnswerService(
+        gemini_service=gemini_service, retriever=retriever,
+        reranker=VectorScoreReranker(),
+        grader=grader,
+        rewriter=rewriter, crag_enabled=True,
+        crag_rewrite_budget_seconds=0.0, speculative_generate=True,
+    )
+    result = await svc.answer("高血壓？")
+
+    # 投機一次（第一輪 docs）＋ 重生一次（第二輪 docs）＝ 2
+    assert gemini_service.chat_model.ainvoke.await_count == 2
+    # 最終答案必須掛第二輪的來源，不是被丟棄的那批
+    assert "https://www.hpa.gov.tw/b" in result
+
+
+@pytest.mark.asyncio
+async def test_speculative_discarded_when_crag_rejects():
+    web_search = MagicMock()
+    web_search.answer = AsyncMock(return_value="網搜答案")
+    service, _, _ = _make_service(
+        docs=[_kb_doc()], grader=_grader_returning(Grade.INCORRECT),
+        crag_enabled=True, web_search=web_search, speculative_generate=True,
+    )
+    result = await service.answer("高血壓？")
+    assert result == "網搜答案"
+    assert web_search.answer.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_speculative_disabled_generates_sequentially():
+    """關掉之後行為與導入前相同：分級跑完才生成。"""
+    order = []
+
+    async def _slow_grade(query, docs):
+        await asyncio.sleep(0.05)
+        order.append("grade_done")
+        return Grade.CORRECT
+
+    grader = MagicMock()
+    grader.grade = AsyncMock(side_effect=_slow_grade)
+
+    async def _generate(messages):
+        order.append("generate_start")
+        return AIMessage(content="答案 [1]")
+
+    service, gemini_service, _ = _make_service(
+        docs=[_kb_doc()], grader=grader, crag_enabled=True,
+        speculative_generate=False,
+    )
+    gemini_service.chat_model.ainvoke = AsyncMock(side_effect=_generate)
+
+    await service.answer("高血壓？")
+    assert order == ["grade_done", "generate_start"], order
+
+
+@pytest.mark.asyncio
+async def test_speculative_not_started_without_crag():
+    """沒有分級就沒有等待可以填，不該無謂地改變行為。"""
+    service, _, _ = _make_service(
+        docs=[_kb_doc()], crag_enabled=False, speculative_generate=True
+    )
+    assert service.speculative_generate is False

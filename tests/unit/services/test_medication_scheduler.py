@@ -1168,3 +1168,202 @@ def test_process_ticks_builds_exactly_one_cache_per_stage_outside_the_loop():
     alert_loop_pos = source.index("for log in pending_alert_logs:")
     assert alert_cache_pos < alert_loop_pos
 
+
+
+# ── 療程結束後仍推播空卡片的回歸防護 ────────────────────────────────
+#
+# 規則的 end_date 由 find_or_create_reminder 一律寫成 None（長期有效），藥品的
+# end_date 則由處方箋療程天數換算。療程結束後兩邊脫鉤：規則照常展開，藥品清單
+# 卻已全數失效，推出去的是一張說不出要吃什麼的空卡片。以下四個測試把「要不要
+# 推」與「今天還有沒有有效的藥」綁在一起，並保住「沒掛藥的舊規則照常推播」。
+
+
+def _reminder_with_medications(medication_ids, reminder_id="REM_1"):
+    return MedicationReminder(
+        id=reminder_id,
+        creator_user_id="U_CARE",
+        user_id="U_PATIENT",
+        slot_type="morning",
+        scheduled_time="08:00",
+        start_date="2026-08-17",
+        end_date=None,
+        medication_ids=medication_ids,
+        created_at=datetime(2026, 8, 17, 0, 0),
+    )
+
+
+def _active_medication(medication_id):
+    from app.models.medication import Medication
+
+    return Medication(
+        id=medication_id,
+        user_id="U_PATIENT",
+        created_by_user_id="U_CARE",
+        name="西美胃錠200MG",
+        start_date="2026-08-17",
+        end_date="2026-12-31",
+    )
+
+
+@contextmanager
+def _stage_one_with_active_medications(reminders, active_medications):
+    """只觀察階段 1，並代入 find_active_by_ids 的回傳值。"""
+    reminder_prefix = (
+        "app.services.medication.medication_scheduler.MedicationReminderRepository"
+    )
+    with patch(
+        f"{reminder_prefix}.list_active_reminders_up_to_time",
+        new_callable=AsyncMock,
+        return_value=reminders,
+    ), patch(
+        "app.services.medication.medication_scheduler.MedicationRepository.find_active_by_ids",
+        new_callable=AsyncMock,
+        return_value=active_medications,
+    ) as mock_find, _only_watch_stage_one():
+        yield mock_find
+
+
+@pytest.mark.asyncio
+async def test_expired_course_does_not_expand_log(scheduler):
+    """掛著藥、但當日一顆有效的都不剩：不展開紀錄，三階推播因此全部停下。"""
+    now = datetime(2026, 9, 1, 8, 0, tzinfo=TAIPEI_TZ)
+    reminder = _reminder_with_medications(["MED_1", "MED_2"])
+
+    with _stage_one_with_active_medications([reminder], []), patch(
+        "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
+        new_callable=AsyncMock,
+    ) as mock_upsert, patch(
+        "app.services.medication.medication_scheduler.MedicationLogRepository.cancel_pending_by_reminder_ids",
+        new_callable=AsyncMock,
+        return_value=0,
+    ):
+        await scheduler.process_ticks(now=now)
+
+    mock_upsert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reminder_without_linked_medications_still_expands(scheduler):
+    """本功能導入前建立的規則 medication_ids 是空陣列，行為必須與過去一致。
+
+    要抑制的只有「掛了藥、但藥全部失效」，不是「沒掛藥」——把兩者混為一談會
+    讓所有舊規則從此不再推播。
+    """
+    now = datetime(2026, 9, 1, 8, 0, tzinfo=TAIPEI_TZ)
+    reminder = _reminder_with_medications([])
+
+    with _stage_one_with_active_medications([reminder], []) as mock_find, patch(
+        "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
+        new_callable=AsyncMock,
+        return_value=(MagicMock(), True),
+    ) as mock_upsert:
+        await scheduler.process_ticks(now=now)
+
+    mock_upsert.assert_awaited_once()
+    # 沒有任何規則掛藥時，連藥品查詢都不該發出。
+    mock_find.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_partially_expired_course_still_expands(scheduler):
+    """四顆藥只要還有一顆當日有效，這個時段就照常推播。"""
+    now = datetime(2026, 9, 1, 8, 0, tzinfo=TAIPEI_TZ)
+    reminder = _reminder_with_medications(["MED_1", "MED_2"])
+
+    with _stage_one_with_active_medications(
+        [reminder], [_active_medication("MED_2")]
+    ), patch(
+        "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
+        new_callable=AsyncMock,
+        return_value=(MagicMock(), True),
+    ) as mock_upsert:
+        await scheduler.process_ticks(now=now)
+
+    mock_upsert.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_expired_course_cancels_already_expanded_logs(scheduler):
+    """當日已展開、還沒確認的紀錄要作廢，否則 T+20 與 T+30 仍會推空卡片。
+
+    作廢範圍只到今天：更早的紀錄當時可能確實有藥，不該被回頭改寫。
+    """
+    now = datetime(2026, 9, 1, 8, 25, tzinfo=TAIPEI_TZ)
+    reminder = _reminder_with_medications(["MED_1"])
+
+    with _stage_one_with_active_medications([reminder], []), patch(
+        "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
+        new_callable=AsyncMock,
+    ), patch(
+        "app.services.medication.medication_scheduler.MedicationLogRepository.cancel_pending_by_reminder_ids",
+        new_callable=AsyncMock,
+        return_value=1,
+    ) as mock_cancel:
+        await scheduler.process_ticks(now=now)
+
+    mock_cancel.assert_awaited_once()
+    args, kwargs = mock_cancel.await_args
+    assert args[0] == ["REM_1"]
+    assert kwargs["scheduled_from"] == datetime(2026, 9, 1, 0, 0, tzinfo=TAIPEI_TZ)
+
+
+@pytest.mark.asyncio
+async def test_medication_lookup_failure_does_not_suppress(scheduler):
+    """藥品查詢失敗時不抑制任何規則。
+
+    少推一張空卡片，與整批使用者漏掉一次真正該吃的藥相比，後者的代價高得多。
+    """
+    now = datetime(2026, 9, 1, 8, 0, tzinfo=TAIPEI_TZ)
+    reminder = _reminder_with_medications(["MED_1"])
+
+    reminder_prefix = (
+        "app.services.medication.medication_scheduler.MedicationReminderRepository"
+    )
+    with patch(
+        f"{reminder_prefix}.list_active_reminders_up_to_time",
+        new_callable=AsyncMock,
+        return_value=[reminder],
+    ), patch(
+        "app.services.medication.medication_scheduler.MedicationRepository.find_active_by_ids",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("mongo down"),
+    ), _only_watch_stage_one(), patch(
+        "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
+        new_callable=AsyncMock,
+        return_value=(MagicMock(), True),
+    ) as mock_upsert:
+        await scheduler.process_ticks(now=now)
+
+    mock_upsert.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_misfire_log_only_on_first_creation(scheduler, caplog):
+    """misfire 訊息只在本次才建立紀錄時印一次。
+
+    is_misfired 每一輪都會對同一個時段重新算成 True；不看 created 就會變成
+    每 60 秒重印一行。
+    """
+    import logging
+
+    now = datetime(2026, 9, 1, 9, 0, tzinfo=TAIPEI_TZ)
+    reminder = _reminder_with_medications([])
+
+    reminder_prefix = (
+        "app.services.medication.medication_scheduler.MedicationReminderRepository"
+    )
+    with patch(
+        f"{reminder_prefix}.list_active_reminders_up_to_time",
+        new_callable=AsyncMock,
+        return_value=[reminder],
+    ), _only_watch_stage_one(), patch(
+        "app.services.medication.medication_scheduler.MedicationLogRepository.upsert_log",
+        new_callable=AsyncMock,
+        return_value=(MagicMock(), False),
+    ), patch.object(
+        scheduler, "_notify_missed_summary", new_callable=AsyncMock
+    ):
+        with caplog.at_level(logging.INFO):
+            await scheduler.process_ticks(now=now)
+
+    assert "Misfired slot recorded without push" not in caplog.text

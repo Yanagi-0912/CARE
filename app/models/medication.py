@@ -171,6 +171,16 @@ class MedicationLog(BaseModel):
     patient_reminder_sent: bool = False
     urgent_reminder_sent: bool = False
     caregiver_alert_sent: bool = False
+    # 三個階段各自的推播嘗試次數，由 `release_*` 在推播失敗時累加（見
+    # `MedicationLogRepository` 的「推播重試上限」段落）。分成三個欄位而不是
+    # 一個總數：一個階段耗盡預算不該連帶剝奪後兩個階段的重試機會——T+0 送不出
+    # 去（例如當下網路瞬斷）與 T+30 家屬警報送不出去是兩件獨立的事。
+    #
+    # 本欄位之前寫入的紀錄沒有這些 key，讀回時為 0，與過去行為一致；
+    # 資料庫端則由 `$inc` 自行建立欄位，不需要回填。
+    patient_reminder_attempts: int = 0
+    urgent_reminder_attempts: int = 0
+    caregiver_alert_attempts: int = 0
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

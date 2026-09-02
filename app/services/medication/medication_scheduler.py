@@ -15,6 +15,7 @@ from app.models.medication import (
     TAIPEI_TZ,
     Medication,
     MedicationLog,
+    MedicationReminder,
     ensure_aware_utc,
     to_taipei_hm,
 )
@@ -374,6 +375,61 @@ class MedicationScheduler:
         )
         return await self._replier.push_flex(log.alert_notify_user_id, alert_flex)
 
+    async def _resolve_suppressed_reminder_ids(
+        self, reminders: list["MedicationReminder"], date_str: str
+    ) -> set[str]:
+        """挑出「有掛藥，但當日一顆有效的都不剩」的規則 id。
+
+        規則與藥品各自帶日期區間，卻是由不同的寫入路徑決定的：規則的
+        `end_date` 在 `find_or_create_reminder` 的 `$setOnInsert` 一律是 None
+        （長期有效），藥品的 `end_date` 則由處方箋的療程天數換算。療程結束後
+        兩邊就脫鉤——規則照常每天展開，藥品清單卻已經全數失效，推出去的是一張
+        說不出要吃什麼的空卡片。對高齡使用者而言那比不推更糟。
+
+        修正的方式是讓「這個時段今天要不要推」改由「今天還有沒有有效的藥」
+        推導，而不是由規則自己的日期區間獨立判斷。刻意不改成把療程結束日回寫
+        到規則上：規則是 `(user_id, slot_type)` 唯一的共用容器，同一個 08:00
+        底下會同時掛著這張處方的五天療程、另一張處方的十四天療程、以及慢性病
+        長期用藥（`end_date` 為 None），單一個欄位表達不了這件事；而且
+        `find_or_create_reminder` 在復活規則時本來就會把過期的 `end_date` 清空，
+        回寫的值撐不過下一次同時段的處方提交。
+
+        `medication_ids` 為空的規則不在抑制範圍內：本功能導入前建立的規則都是
+        空陣列，它們本來就沒有藥品清單可言，版面與行為必須與過去一致（見
+        `medication_flex._medication_list_block`）。要抑制的只有「掛了藥、但藥
+        全部失效」這一種，不是「沒掛藥」。
+
+        查詢失敗時回傳空集合，也就是不抑制任何規則：一次藥品查詢失敗不該讓
+        整批使用者當天收不到提醒。少推一張空卡片與漏推一次真正該吃的藥相比，
+        後者的代價高得多。
+        """
+        linked = {
+            reminder.id: reminder.medication_ids
+            for reminder in reminders
+            if reminder.id and reminder.medication_ids
+        }
+        if not linked:
+            return set()
+
+        medication_ids = sorted({mid for ids in linked.values() for mid in ids})
+        try:
+            medications = await MedicationRepository.find_active_by_ids(
+                medication_ids, date_str
+            )
+        except Exception:
+            logger.exception(
+                "[MedicationScheduler] Failed to resolve active medications for "
+                "reminder suppression; proceeding without suppressing any reminder"
+            )
+            return set()
+
+        active_ids = {medication.id for medication in medications}
+        return {
+            reminder_id
+            for reminder_id, ids in linked.items()
+            if not any(mid in active_ids for mid in ids)
+        }
+
     async def _notify_missed_summary(
         self, misfired_by_caregiver: dict[str, list[MedicationLog]]
     ) -> None:
@@ -471,10 +527,50 @@ class MedicationScheduler:
         active_reminders = await MedicationReminderRepository.list_active_reminders_up_to_time(
             max_scheduled_time=current_hm_str, target_date_str=today_date_str
         )
+        # 時段還在、但底下已經沒有任何當日有效的藥：這一輪不為它展開紀錄，
+        # 也把先前已經展開、還沒確認的紀錄作廢（見 _resolve_suppressed_reminder_ids）。
+        suppressed_reminder_ids = await self._resolve_suppressed_reminder_ids(
+            active_reminders, today_date_str
+        )
+        if suppressed_reminder_ids:
+            # 作廢範圍只到今天：規則「今天沒有有效藥品」是今天的判斷，回頭動到
+            # 更早的紀錄會改寫當時確實有藥的事實。日界的算法與下方 scheduled_dt
+            # 一致，兩者必須用同一個時區基準，否則作廢範圍會與展開範圍對不上。
+            today_start = datetime.strptime(today_date_str, "%Y-%m-%d").replace(
+                tzinfo=current_time.tzinfo
+            )
+            try:
+                cancelled = await MedicationLogRepository.cancel_pending_by_reminder_ids(
+                    sorted(suppressed_reminder_ids), scheduled_from=today_start
+                )
+            except Exception:
+                logger.exception(
+                    "[MedicationScheduler] Failed to cancel pending logs for reminders "
+                    "with no active medication"
+                )
+            else:
+                # 只在真的改動了紀錄時才記錄。抑制判定每 60 秒重算一次，無條件
+                # 記錄會讓同一批規則每分鐘重印一行——這正是下方 misfire 訊息
+                # 要避免的問題。有狀態轉換才值得留一行。
+                if cancelled:
+                    logger.info(
+                        "[MedicationScheduler] Cancelled %d pending log(s) across %d "
+                        "reminder(s) with no active medication on %s",
+                        cancelled,
+                        len(suppressed_reminder_ids),
+                        today_date_str,
+                    )
+
         # 本次 tick 才發現的錯過時段，依通報家屬分組，稍後彙整成一則通知。
         misfired_by_caregiver: dict[str, list[MedicationLog]] = {}
         for reminder in active_reminders:
             try:
+                # 沒有有效藥品的時段不展開紀錄——沒有紀錄，後續三個階段的
+                # list_pending_* 就挑不到它，T+0／T+20／T+30 三則推播自然全部
+                # 停下，不需要在推播路徑上多做一次規則的 join。
+                if reminder.id in suppressed_reminder_ids:
+                    continue
+
                 scheduled_dt = datetime.strptime(
                     f"{today_date_str} {reminder.scheduled_time}", "%Y-%m-%d %H:%M"
                 ).replace(tzinfo=current_time.tzinfo)
@@ -492,14 +588,6 @@ class MedicationScheduler:
                 # 中午 12:00 的 log 會在同一個 tick 內被建立，接著三個階段依序判定成立，
                 # 使用者一次收到四則、家屬收到兩則逾時警報。
                 is_misfired = scheduled_dt < misfire_cutoff
-                if is_misfired:
-                    logger.info(
-                        "[MedicationScheduler] Misfired slot recorded without push: "
-                        "reminder=%s scheduled=%s grace=%dmin",
-                        reminder.id,
-                        scheduled_dt.isoformat(),
-                        self._misfire_grace_minutes,
-                    )
 
                 log_data = MedicationLog(
                     reminder_id=reminder.id,
@@ -519,7 +607,20 @@ class MedicationScheduler:
 
                 # 只有「本次才建立」的錯過時段要通知；否則每 60 秒的 tick 都會重算出
                 # 同一批 is_misfired，家屬會被同一則通知洗版。
+                #
+                # 這行 log 也受同一個 created 把關，而且必須放在 upsert 之後：
+                # is_misfired 在每一輪都會對同一個時段重新算成 True，先前把它印在
+                # upsert 之前又不看 created，等於同一個時段每 60 秒重印一次
+                # ——一位使用者一天約四千行。措辭也對齊實情：這裡記錄的是「本次
+                # 才建立、且判定為錯過」的時段，不是每次重新判定的結果。
                 if created and is_misfired:
+                    logger.info(
+                        "[MedicationScheduler] Misfired slot recorded without push: "
+                        "reminder=%s scheduled=%s grace=%dmin",
+                        reminder.id,
+                        scheduled_dt.isoformat(),
+                        self._misfire_grace_minutes,
+                    )
                     misfired_by_caregiver.setdefault(
                         reminder.creator_user_id, []
                     ).append(saved_log)

@@ -640,15 +640,25 @@ async def test_release_caregiver_alert_does_not_clobber_taken(
     使用者可能在推播失敗的空檔按下「已用藥」，那時 status 是 taken。
     """
     col = MagicMock()
+    col.find_one_and_update = AsyncMock(
+        return_value={"_id": "L123", "caregiver_alert_attempts": 1}
+    )
     col.update_one = AsyncMock(return_value=MagicMock(modified_count=1))
     override_medication_logs_col(col)
 
-    await MedicationLogRepository.release_caregiver_alert("L123")
-    args, _ = col.update_one.await_args
+    assert await MedicationLogRepository.release_caregiver_alert("L123") is True
+
+    # status="missed" 的把關落在累加嘗試次數的那一次條件式更新上：不符合條件
+    # 就撈不到文件，後面的還原也不會發生。
+    args, _ = col.find_one_and_update.await_args
     assert args[0] == {
         "_id": "L123",
         "caregiver_alert_sent": True,
         "status": "missed",
+    }
+    set_args, _ = col.update_one.await_args
+    assert set_args[1] == {
+        "$set": {"caregiver_alert_sent": False, "status": "pending"}
     }
 
 
@@ -1091,3 +1101,113 @@ async def test_list_logs_by_user_excludes_cancelled(override_medication_logs_col
     (query,), _ = col.find.call_args
     assert query["user_id"] == "U_SELF"
     assert query["status"] == {"$ne": "cancelled"}
+
+
+# ── 推播重試上限 ────────────────────────────────────────────────────
+#
+# release_* 把旗標還回去讓下一個 tick 重試，這對瞬時故障是對的；但對 LINE 月額度
+# 耗盡的 429 這類不會自行恢復的錯誤，等於每 60 秒重試到月底。以下驗證嘗試次數
+# 會累加、達到上限就放棄，以及缺欄位的舊紀錄不會第一次就被判定為已達上限。
+
+
+@pytest.mark.asyncio
+async def test_release_patient_reminder_increments_and_retries(
+    override_medication_logs_col,
+):
+    col = MagicMock()
+    col.find_one_and_update = AsyncMock(
+        return_value={"_id": "L1", "patient_reminder_attempts": 1}
+    )
+    col.update_one = AsyncMock(return_value=MagicMock(modified_count=1))
+    override_medication_logs_col(col)
+
+    assert await MedicationLogRepository.release_patient_reminder("L1") is True
+
+    inc_args, inc_kwargs = col.find_one_and_update.await_args
+    assert inc_args[0] == {"_id": "L1", "patient_reminder_sent": True}
+    assert inc_args[1] == {"$inc": {"patient_reminder_attempts": 1}}
+    assert inc_kwargs["return_document"] is ReturnDocument.AFTER
+    set_args, _ = col.update_one.await_args
+    assert set_args[1] == {"$set": {"patient_reminder_sent": False}}
+
+
+@pytest.mark.asyncio
+async def test_release_gives_up_at_attempt_cap(override_medication_logs_col):
+    """達到上限就不再還原旗標，該階段就此放棄，不會每 60 秒重試到月底。"""
+    from app.repositories.medication_repository import MAX_PUSH_ATTEMPTS
+
+    col = MagicMock()
+    col.find_one_and_update = AsyncMock(
+        return_value={"_id": "L1", "urgent_reminder_attempts": MAX_PUSH_ATTEMPTS}
+    )
+    col.update_one = AsyncMock(return_value=MagicMock(modified_count=1))
+    override_medication_logs_col(col)
+
+    assert await MedicationLogRepository.release_patient_urgent_reminder("L1") is False
+    col.update_one.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_release_on_legacy_log_without_attempts_field(
+    override_medication_logs_col,
+):
+    """沒有嘗試次數欄位的既有紀錄，第一次失敗仍必須重試。
+
+    這是先 $inc 再判斷、而不是用單一條件式更新的理由：`{"$lt": N}` 對
+    「欄位不存在」不成立，會讓所有既有紀錄第一次就被判定為已達上限。
+    """
+    col = MagicMock()
+    # $inc 對缺席欄位視為 0，回寫後是 1。
+    col.find_one_and_update = AsyncMock(
+        return_value={"_id": "L_OLD", "patient_reminder_attempts": 1}
+    )
+    col.update_one = AsyncMock(return_value=MagicMock(modified_count=1))
+    override_medication_logs_col(col)
+
+    assert await MedicationLogRepository.release_patient_reminder("L_OLD") is True
+
+
+@pytest.mark.asyncio
+async def test_release_returns_false_when_log_no_longer_matches(
+    override_medication_logs_col,
+):
+    """紀錄已不符合還原條件（例如使用者在空檔按下已用藥）時不做任何寫入。"""
+    col = MagicMock()
+    col.find_one_and_update = AsyncMock(return_value=None)
+    col.update_one = AsyncMock(return_value=MagicMock(modified_count=1))
+    override_medication_logs_col(col)
+
+    assert await MedicationLogRepository.release_caregiver_alert("L1") is False
+    col.update_one.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cancel_pending_by_reminder_ids_batches_with_date_floor():
+    col = MagicMock()
+    col.update_many = AsyncMock(return_value=MagicMock(modified_count=3))
+    floor = datetime(2026, 9, 1, 0, 0, tzinfo=timezone.utc)
+
+    result = await MedicationLogRepository.cancel_pending_by_reminder_ids(
+        ["R1", "R2"], scheduled_from=floor, collection=col
+    )
+
+    assert result == 3
+    args, _ = col.update_many.await_args
+    assert args[0] == {
+        "reminder_id": {"$in": ["R1", "R2"]},
+        "status": "pending",
+        "scheduled_at": {"$gte": floor},
+    }
+    assert args[1] == {"$set": {"status": "cancelled"}}
+
+
+@pytest.mark.asyncio
+async def test_cancel_pending_by_reminder_ids_skips_empty_input():
+    """沒有規則要作廢時不發出查詢——這是每 60 秒一次的迴圈上的路徑。"""
+    col = MagicMock()
+    col.update_many = AsyncMock()
+
+    assert await MedicationLogRepository.cancel_pending_by_reminder_ids(
+        [], collection=col
+    ) == 0
+    col.update_many.assert_not_awaited()

@@ -85,12 +85,20 @@ class _TickMedicationNameCache:
         logs: list["MedicationLog"],
         *,
         resolve_image_url: Callable[[str], Optional[str]] = resolve_drug_appearance_image_url,
+        reminder_repository=MedicationReminderRepository,
+        medication_repository=MedicationRepository,
     ) -> None:
         self._logs = logs
         # 可注入的縮圖解析函式：正式路徑用真正的檔案系統查詢，測試可以換一個
         # 會丟例外的假函式，驗證「縮圖解析失敗不能讓推播跟著噴掉」
         # （見 `_resolve_thumbnail`）。
         self._resolve_image_url = resolve_image_url
+        # 可注入的 repository：預設就是真正的那兩個 class（它們的方法都是
+        # staticmethod，傳 class 本身即可當成物件用）。測試據此餵假的
+        # repository，不必用 monkeypatch 換掉別處 import 進來的名稱——
+        # openspec 的測試規則明文禁止後者，慣例與 MedicationService 一致。
+        self._reminder_repository = reminder_repository
+        self._medication_repository = medication_repository
         self._entries_by_log_id: Optional[dict[str, list[MedicationListEntry]]] = None
 
     async def get(
@@ -166,7 +174,7 @@ class _TickMedicationNameCache:
             return {}
 
         try:
-            reminders = await MedicationReminderRepository.find_by_ids(
+            reminders = await self._reminder_repository.find_by_ids(
                 reminder_ids, collection=reminder_collection
             )
         except Exception:
@@ -196,7 +204,7 @@ class _TickMedicationNameCache:
         entries_by_log_id: dict[str, list[MedicationListEntry]] = {}
         for date_str, logs_on_date in logs_by_date.items():
             try:
-                medications = await MedicationRepository.find_active_by_ids(
+                medications = await self._medication_repository.find_active_by_ids(
                     medication_ids, date_str, collection=medication_collection
                 )
             except Exception:
@@ -239,12 +247,35 @@ class MedicationScheduler:
         user_profile_service: Optional[UserProfileService] = None,
         check_interval_seconds: int = 60,
         misfire_grace_minutes: int = DEFAULT_MISFIRE_GRACE_MINUTES,
+        reminder_repository=MedicationReminderRepository,
+        log_repository=MedicationLogRepository,
+        medication_repository=MedicationRepository,
     ) -> None:
         self._replier = replier
         self._user_profile_service = user_profile_service
         self._check_interval_seconds = check_interval_seconds
         self._misfire_grace_minutes = misfire_grace_minutes
+        # 三個 repository 全部走注入，預設就是真正的那三個 class（方法皆為
+        # staticmethod，傳 class 本身即可當成物件用），因此正式路徑的行為與
+        # 注入前完全相同。開這個縫是為了讓測試餵假的 repository，不必用
+        # monkeypatch 換掉本模組 import 進來的名稱——openspec 的測試規則明文
+        # 禁止後者，慣例與 MedicationService 一致。
+        self._reminder_repository = reminder_repository
+        self._log_repository = log_repository
+        self._medication_repository = medication_repository
         self._task: Optional[asyncio.Task] = None
+
+    def _medication_cache(self, logs: list[MedicationLog]) -> _TickMedicationNameCache:
+        """建立一個階段共用的藥名查表，並把注入的 repository 帶下去。
+
+        每個階段建立一次、在該階段的迴圈之外——在迴圈裡逐筆建立會讓批次化
+        形同虛設，因為每個物件只服務一筆 log。
+        """
+        return _TickMedicationNameCache(
+            logs,
+            reminder_repository=self._reminder_repository,
+            medication_repository=self._medication_repository,
+        )
 
     async def _resolve_display_prefs(self, user_id: str) -> tuple[str, str]:
         """
@@ -413,7 +444,7 @@ class MedicationScheduler:
 
         medication_ids = sorted({mid for ids in linked.values() for mid in ids})
         try:
-            medications = await MedicationRepository.find_active_by_ids(
+            medications = await self._medication_repository.find_active_by_ids(
                 medication_ids, date_str
             )
         except Exception:
@@ -524,7 +555,7 @@ class MedicationScheduler:
 
         # ── 階段 1：T+0min 首刷提醒建立與推播 ──────────────────────────
         # 1. 查詢今日所有已到期 (scheduled_time <= current_hm_str) 的活躍提醒並為其 upsert 當日 log
-        active_reminders = await MedicationReminderRepository.list_active_reminders_up_to_time(
+        active_reminders = await self._reminder_repository.list_active_reminders_up_to_time(
             max_scheduled_time=current_hm_str, target_date_str=today_date_str
         )
         # 時段還在、但底下已經沒有任何當日有效的藥：這一輪不為它展開紀錄，
@@ -540,7 +571,7 @@ class MedicationScheduler:
                 tzinfo=current_time.tzinfo
             )
             try:
-                cancelled = await MedicationLogRepository.cancel_pending_by_reminder_ids(
+                cancelled = await self._log_repository.cancel_pending_by_reminder_ids(
                     sorted(suppressed_reminder_ids), scheduled_from=today_start
                 )
             except Exception:
@@ -603,7 +634,7 @@ class MedicationScheduler:
                 )
                 # upsert 是 $setOnInsert，所以只有「第一次建立」會套用上面的靜默標記；
                 # 正常運行中早就建好的 log 不會被這裡蓋掉。
-                saved_log, created = await MedicationLogRepository.upsert_log(log_data)
+                saved_log, created = await self._log_repository.upsert_log(log_data)
 
                 # 只有「本次才建立」的錯過時段要通知；否則每 60 秒的 tick 都會重算出
                 # 同一批 is_misfired，家屬會被同一則通知洗版。
@@ -634,19 +665,19 @@ class MedicationScheduler:
             await self._notify_missed_summary(misfired_by_caregiver)
 
         # 2. 使用 list_pending_patient_reminders 查詢已到期 (scheduled_at <= current_time) 且未發送首刷的紀錄推播
-        pending_initial_logs = await MedicationLogRepository.list_pending_patient_reminders(
+        pending_initial_logs = await self._log_repository.list_pending_patient_reminders(
             threshold_time=current_time
         )
         # 這批 log 共用同一份藥名查表（見 _TickMedicationNameCache）：許多使用者共用
         # 同一個時段（例如 08:00）時，藥名查詢不會隨 log 數量線性增加。這裡只是建立
         # 查表物件本身（不發查詢），迴圈與 _dispatch 的搶佔／推播流程完全不變。
-        initial_medication_cache = _TickMedicationNameCache(pending_initial_logs)
+        initial_medication_cache = self._medication_cache(pending_initial_logs)
         for log in pending_initial_logs:
             await self._dispatch(
                 stage="T+0min initial reminder",
                 log_id=log.id,
-                claim=MedicationLogRepository.claim_patient_reminder,
-                release=MedicationLogRepository.release_patient_reminder,
+                claim=self._log_repository.claim_patient_reminder,
+                release=self._log_repository.release_patient_reminder,
                 send=partial(self._send_patient_reminder, log, initial_medication_cache),
             )
 
@@ -655,31 +686,31 @@ class MedicationScheduler:
         # 說明：採用 $lte (小於等於) 能有效容忍執行秒數偏差或伺服器重啟延遲，絕不漏發。
         #       配合 urgent_reminder_sent 標記與單一 Document 狀態變更，保證不會重複發送。
         urgent_threshold = current_time - timedelta(minutes=20)
-        pending_urgent_logs = await MedicationLogRepository.list_pending_urgent_reminders(
+        pending_urgent_logs = await self._log_repository.list_pending_urgent_reminders(
             threshold_time=urgent_threshold
         )
-        urgent_medication_cache = _TickMedicationNameCache(pending_urgent_logs)
+        urgent_medication_cache = self._medication_cache(pending_urgent_logs)
         for log in pending_urgent_logs:
             await self._dispatch(
                 stage="T+20min urgent reminder",
                 log_id=log.id,
-                claim=MedicationLogRepository.claim_patient_urgent_reminder,
-                release=MedicationLogRepository.release_patient_urgent_reminder,
+                claim=self._log_repository.claim_patient_urgent_reminder,
+                release=self._log_repository.release_patient_urgent_reminder,
                 send=partial(self._send_urgent_reminder, log, urgent_medication_cache),
             )
 
         # ── 階段 3：T+30min 第三次家屬逾時警報 ─────────────────────────
         # 門檻計算：找出 timeout_at <= 當前時間 且狀態仍為 pending (未確認用藥) 的記錄
-        pending_alert_logs = await MedicationLogRepository.list_pending_caregiver_alerts(
+        pending_alert_logs = await self._log_repository.list_pending_caregiver_alerts(
             threshold_time=current_time
         )
-        alert_medication_cache = _TickMedicationNameCache(pending_alert_logs)
+        alert_medication_cache = self._medication_cache(pending_alert_logs)
         for log in pending_alert_logs:
             await self._dispatch(
                 stage="T+30min caregiver alert",
                 log_id=log.id,
-                claim=MedicationLogRepository.claim_caregiver_alert,
-                release=MedicationLogRepository.release_caregiver_alert,
+                claim=self._log_repository.claim_caregiver_alert,
+                release=self._log_repository.release_caregiver_alert,
                 send=partial(self._send_caregiver_alert, log, alert_medication_cache),
             )
 

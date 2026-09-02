@@ -142,6 +142,15 @@
         ]
       },
       {
+        "type": "text",
+        "text": "是否需要搜尋附近內科的醫院或診所？",
+        "size": "lg",
+        "color": "#37474F",
+        "weight": "bold",
+        "wrap": true,
+        "margin": "lg"
+      },
+      {
         "type": "separator",
         "margin": "lg",
         "color": "#E0E0E0"

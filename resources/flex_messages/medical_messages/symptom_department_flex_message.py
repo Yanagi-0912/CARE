@@ -1,24 +1,19 @@
 """
-症狀 → 建議科別的 Flex Message。
+症狀對應建議科別的 Flex Message。
 
 兩種版面，對應 SymptomTriageResult 的兩種 kind：
     suggestion 建議卡。主要科別 + 至多 3 個候選 + 逐條參考來源 + 免責。
     fallback   保底卡。明說系統無法判斷，給初診方向。
 
-緊急狀況不由這裡處理：急迫度判斷擋在整個 agent 之前（urgency.py），判定為
-緊急的訊息根本不會走到這個工具，因此本模組沒有緊急版面。
+字級：
+    文字大小走 theme.resolve_theme()，跟隨 UserSettings.font_size，不寫死。
+    模板裡的 size 是 large 這一檔解析出來的結果，不是唯一合法值。
 
-版面對齊 symptom_department_flex_template.json：
-    這張卡的樣式以模板為準，本模組只負責把文字填進去，不自行決定顏色、間距或
-    字級——所有樣式常數集中在下面的 _TPL_* 與 _CANDIDATE_PALETTE，並由
-    test_symptom_department_flex.py 直接對模板逐節點比對，樣式漂掉會測試失敗。
+多語言（尚未做）：
+    本卡的 UI 文案與 _reason_for() 仍寫死 zh-TW，科別名稱也還沒走
+    app.i18n.messages.department_label()。緊急卡已完成 i18n，這張還沒——
+    優先序如此是因為緊急卡是急救指示，看不懂的代價高得多。
 
-候選卡片為什麼要交替配色：
-    三張同色的卡在小螢幕上會黏成一塊，看不出「這是三個並列的選項」。交替底色
-    讓邊界自己顯現，不必再加分隔線。順序即優先序，但不是輕重之分，因此兩色的
-    明度刻意接近——用色相區隔，不用深淺暗示排名。
-
-用語邊界：一律是「常見的看診方向是…」，不得出現「你應該是…」「你要掛…」。
 """
 
 from __future__ import annotations
@@ -33,6 +28,7 @@ from app.services.medical.symptom_classification.symptom_table import (
     SourceReference,
     load_source_references,
 )
+from resources.flex_messages import theme
 
 ALT_TEXT_SUGGESTION = "建議的看診方向"
 
@@ -60,6 +56,13 @@ _DISCLAIMER = (
     "若症狀持續或惡化，請務必儘速就醫接受專業診斷。"
 )
 
+_NEARBY_PROMPT_COLOR = "#37474F"
+
+# 追問下一步。刻意只是一句話 + 一顆 Quick Reply 按鈕，不主動索取位置：
+
+_NEARBY_PROMPT = "是否需要搜尋附近{department}的醫院或診所？"
+_NEARBY_QUICK_REPLY_TEXT = "搜尋附近的{department}"
+
 _HEADER_TITLE = "推薦掛號科別"
 _TAG_SUGGESTION = "(建議優先)"
 _TAG_FALLBACK = "(不確定時的方向)"
@@ -70,7 +73,7 @@ _SOURCE_LABEL = "參考來源"
 _DEFAULT_PRIMARY = "家醫科"
 
 
-def _header(primary: str, tag: str) -> dict[str, Any]:
+def _header(primary: str, tag: str, ft: theme.FlexTheme) -> dict[str, Any]:
     return {
         "type": "box",
         "layout": "vertical",
@@ -81,7 +84,7 @@ def _header(primary: str, tag: str) -> dict[str, Any]:
                 "type": "text",
                 "text": _HEADER_TITLE,
                 "color": _TPL_ON_HEADER,
-                "size": "lg",
+                "size": ft.body,
                 "weight": "bold",
             },
             {
@@ -92,7 +95,7 @@ def _header(primary: str, tag: str) -> dict[str, Any]:
                     {
                         "type": "text",
                         "text": primary,
-                        "size": "3xl",
+                        "size": ft.title,
                         "color": _TPL_ON_HEADER,
                         "weight": "bold",
                         "flex": 0,
@@ -100,7 +103,7 @@ def _header(primary: str, tag: str) -> dict[str, Any]:
                     {
                         "type": "text",
                         "text": tag,
-                        "size": "md",
+                        "size": ft.caption,
                         "color": _TPL_HEADER_TAG_COLOR,
                         "margin": "md",
                         "weight": "bold",
@@ -112,7 +115,9 @@ def _header(primary: str, tag: str) -> dict[str, Any]:
     }
 
 
-def _candidate_box(index: int, canonical: str, reason: str) -> dict[str, Any]:
+def _candidate_box(
+    index: int, canonical: str, reason: str, ft: theme.FlexTheme
+) -> dict[str, Any]:
     background, border = _CANDIDATE_PALETTE[(index - 1) % len(_CANDIDATE_PALETTE)]
     return {
         "type": "box",
@@ -127,7 +132,7 @@ def _candidate_box(index: int, canonical: str, reason: str) -> dict[str, Any]:
             {
                 "type": "text",
                 "text": f"{index}. {canonical}",
-                "size": "xl",
+                "size": ft.heading,
                 "weight": "bold",
                 "color": _TPL_CANDIDATE_TITLE_COLOR,
                 "adjustMode": "shrink-to-fit",
@@ -135,7 +140,7 @@ def _candidate_box(index: int, canonical: str, reason: str) -> dict[str, Any]:
             {
                 "type": "text",
                 "text": f"理由：{reason}",
-                "size": "md",
+                "size": ft.body,
                 "color": _TPL_CANDIDATE_REASON_COLOR,
                 "wrap": True,
                 "margin": "xs",
@@ -167,11 +172,13 @@ def _reason_for(candidate, matched_term: str | None) -> str:
     return base
 
 
-def _source_item(index: int, reference: SourceReference) -> dict[str, Any]:
+def _source_item(
+    index: int, reference: SourceReference, ft: theme.FlexTheme
+) -> dict[str, Any]:
     node: dict[str, Any] = {
         "type": "text",
         "text": f"{index}. {reference.name}「該看哪一科」對照表",
-        "size": "sm",
+        "size": ft.caption,
         "color": _TPL_SOURCE_LINK_COLOR,
         "weight": "bold",
         "wrap": True,
@@ -188,7 +195,9 @@ def _source_item(index: int, reference: SourceReference) -> dict[str, Any]:
     return node
 
 
-def _source_section(references: tuple[SourceReference, ...]) -> list[dict[str, Any]]:
+def _source_section(
+    references: tuple[SourceReference, ...], ft: theme.FlexTheme
+) -> list[dict[str, Any]]:
     """
     參考來源。逐條列出且各自可點，不把三家醫院擠成一段敘述——來源存在的目的是
     讓使用者能自己去核對，擠成一坨文字等於既點不了也記不住。
@@ -207,12 +216,12 @@ def _source_section(references: tuple[SourceReference, ...]) -> list[dict[str, A
                 {
                     "type": "text",
                     "text": _SOURCE_LABEL,
-                    "size": "sm",
+                    "size": ft.caption,
                     "color": _TPL_LABEL_COLOR,
                     "weight": "bold",
                 },
                 *(
-                    _source_item(index, reference)
+                    _source_item(index, reference, ft)
                     for index, reference in enumerate(references, start=1)
                 ),
             ],
@@ -220,7 +229,36 @@ def _source_section(references: tuple[SourceReference, ...]) -> list[dict[str, A
     ]
 
 
-def _footer() -> dict[str, Any]:
+def _nearby_prompt(primary: str, ft: theme.FlexTheme) -> dict[str, Any]:
+    """候選之下、來源之上的一句追問。搭配 Quick Reply 按鈕使用。"""
+    return {
+        "type": "text",
+        "text": _NEARBY_PROMPT.format(department=primary),
+        "size": ft.body,
+        "color": _NEARBY_PROMPT_COLOR,
+        "weight": "bold",
+        "wrap": True,
+        "margin": "lg",
+    }
+
+
+def _nearby_quick_reply(primary: str) -> dict[str, Any]:
+    """
+    按鈕送出的是明確語句（「搜尋附近的皮膚科」），送出後由既有的
+    `_is_nearby_department_intent()` 直接接住，科別搜尋流程一行都不用改。
+    """
+    text = _NEARBY_QUICK_REPLY_TEXT.format(department=primary)
+    return {
+        "items": [
+            {
+                "type": "action",
+                "action": {"type": "message", "label": text[:20], "text": text},
+            }
+        ]
+    }
+
+
+def _footer(ft: theme.FlexTheme) -> dict[str, Any]:
     return {
         "type": "box",
         "layout": "vertical",
@@ -230,7 +268,7 @@ def _footer() -> dict[str, Any]:
             {
                 "type": "text",
                 "text": _DISCLAIMER,
-                "size": "sm",
+                "size": ft.caption,
                 "color": _TPL_FOOTER_TEXT_COLOR,
                 "weight": "bold",
                 "wrap": True,
@@ -240,7 +278,9 @@ def _footer() -> dict[str, Any]:
 
 
 def _build_suggestion_bubble(
-    result: SymptomTriageResult, references: tuple[SourceReference, ...]
+    result: SymptomTriageResult,
+    references: tuple[SourceReference, ...],
+    ft: theme.FlexTheme,
 ) -> dict[str, Any]:
     is_fallback = result.kind == RESULT_FALLBACK
     primary = result.primary_department or _DEFAULT_PRIMARY
@@ -258,7 +298,7 @@ def _build_suggestion_bubble(
     return {
         "type": "bubble",
         "size": "mega",
-        "header": _header(primary, tag),
+        "header": _header(primary, tag, ft),
         "body": {
             "type": "box",
             "layout": "vertical",
@@ -272,7 +312,7 @@ def _build_suggestion_bubble(
                 {
                     "type": "text",
                     "text": label,
-                    "size": "md",
+                    "size": ft.body,
                     "color": _TPL_LABEL_COLOR,
                     "weight": "bold",
                     "wrap": True,
@@ -282,13 +322,15 @@ def _build_suggestion_bubble(
                         index,
                         candidate.canonical,
                         _reason_for(candidate, result.matched_term),
+                        ft,
                     )
                     for index, candidate in enumerate(result.candidates, start=1)
                 ),
-                *_source_section(references),
+                _nearby_prompt(primary, ft),
+                *_source_section(references, ft),
             ],
         },
-        "footer": _footer(),
+        "footer": _footer(ft),
     }
 
 
@@ -296,14 +338,20 @@ def build_symptom_department_flex(
     result: SymptomTriageResult,
     *,
     references: tuple[SourceReference, ...] | None = None,
+    font_size: str | None = None,
 ) -> dict[str, Any]:
     """組出可直接送往 LINE 的 Flex Message 外層結構。
 
-    references 可注入，測試才能在不讀對照表檔的情況下驗證來源條列。
+    font_size 省略時讀 request-scoped 的 ContextVar（webhook 進來時由 handler
+    依使用者設定寫入）；references 可注入，測試才能在不讀對照表檔的情況下
+    驗證來源條列。
     """
     resolved = load_source_references() if references is None else references
+    ft = theme.resolve_theme(font_size)
+    primary = result.primary_department or _DEFAULT_PRIMARY
     return {
         "type": "flex",
         "altText": ALT_TEXT_SUGGESTION,
-        "contents": _build_suggestion_bubble(result, resolved),
+        "contents": _build_suggestion_bubble(result, resolved, ft),
+        "quickReply": _nearby_quick_reply(primary),
     }

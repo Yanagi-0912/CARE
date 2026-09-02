@@ -5,7 +5,6 @@ import pytest
 from app.services.medical.department_matcher import CANONICAL_DEPARTMENTS
 from app.services.medical.symptom_classification.normalizer import (
     SymptomNormalizer,
-    normalize_text,
 )
 from app.services.medical.symptom_classification.symptom_department_service import (
     FALLBACK_DEPARTMENTS,
@@ -28,15 +27,47 @@ def table():
     return load_symptom_table()
 
 
+# 比對層的替身。
+#
+# 本檔驗的是服務流程——查表、兒科過濾、候選數上限、保底——不是「口語怎麼對到
+# 條目」。初版直接靠真實的別名表達成命中，於是規則層一拆，這裡十五個測試全倒，
+# 而服務邏輯一行都沒動：測試綁在比對實作上，不是綁在它要驗的性質上。
+#
+# 換成替身之後，比對層改成向量、或再換成別的做法，都不會再波及這裡。
+# 比對層自己的正確性由它自己的測試負責。
+_STUB_TERMS: dict[str, str | None] = {
+    "我肚子好痛要掛哪一科": "腹痛",
+    "我肚子痛，要看哪一科": "腹痛",
+    "我肚子痛到站不起來要掛哪一科": "腹痛",
+    "我兒子肚子痛要看哪科": "腹痛",
+    "拉肚子看哪科": "腹瀉",
+    "我牙齒痛要掛什麼科": "牙痛",
+    "眼睛乾要掛哪一科": "乾眼症",
+    "失眠該看什麼科": "失眠",
+    "小孩發燒要掛哪一科": "發燒",
+    "寶寶一直咳要掛哪科": "咳嗽",
+    "尿床要看哪一科": "尿床",
+    "頭痛要掛哪一科": "頭痛",
+    # 比對不到的輸入一律回 None，服務層應走保底
+    "天空是藍色的要掛哪一科": None,
+    "我阿公昏迷要掛哪一科": None,
+}
+
+
+class StubResolver:
+    """照 SymptomResolver 的介面回傳預先指定的條目，不做任何比對。"""
+
+    def __init__(self, mapping: dict[str, str | None] | None = None) -> None:
+        self._mapping = _STUB_TERMS if mapping is None else mapping
+
+    async def resolve(self, text: str) -> str | None:
+        assert text in self._mapping, f"測試未替 {text!r} 指定比對結果"
+        return self._mapping[text]
+
+
 @pytest.fixture
 def service(table):
-    async def never_called(_prompt):
-        raise AssertionError("表已命中時不應呼叫 LLM 兜底")
-
-    return SymptomDepartmentService(
-        table=table,
-        normalizer=SymptomNormalizer(table_terms=table.terms, invoke=never_called),
-    )
+    return SymptomDepartmentService(table=table, normalizer=StubResolver())
 
 
 # ---------------------------------------------------------------- 對照表載入
@@ -75,9 +106,24 @@ def test_load_fails_fast_on_unresolvable_department(tmp_path):
         load_symptom_table(bad)
 
 
-def test_load_reports_unverified_status(table):
-    """目前的表尚未人工審定，這個事實必須是查得到的，不能只存在於註解裡。"""
-    assert table.verified is False
+def test_load_reports_declared_status(table):
+    """
+    表是否經人工審定，必須是程式查得到的事實，不能只存在於註解裡——它決定
+    這張表能不能用於線上回覆（design 決策 11、tasks 2.5）。
+
+    2026-09-02 由 unverified 改為 verified。這個測試守的是「載入器如實反映
+    檔案的宣告」，不是把某個特定值寫死；旗標翻動時應連同 usage_rules 一起改，
+    兩邊不一致才是問題。
+    """
+    import json
+
+    from app.services.medical.symptom_classification.symptom_table import (
+        DEFAULT_TABLE_PATH,
+    )
+
+    declared = json.loads(DEFAULT_TABLE_PATH.read_text(encoding="utf-8"))["status"]
+    assert table.verified is (declared == "verified")
+    assert table.verified is True
 
 
 def test_candidates_sorted_by_cross_source_agreement(table):
@@ -88,19 +134,6 @@ def test_candidates_sorted_by_cross_source_agreement(table):
 
 
 # ---------------------------------------------------------------- 正規化
-
-
-@pytest.mark.parametrize(
-    ("text", "expected"),
-    [
-        ("我肚子好痛要掛哪一科", "肚子好痛"),
-        ("拉肚子看哪科", "拉肚子"),
-        ("請問失眠該看什麼科？", "失眠"),
-        ("我牙齒痛要掛什麼科", "牙齒痛"),
-    ],
-)
-def test_normalize_strips_intent_wrapper(text, expected):
-    assert normalize_text(text) == expected
 
 
 @pytest.mark.asyncio
@@ -267,14 +300,7 @@ def test_flex_payload_survives_line_flex_parsing():
     from linebot.v3.messaging import FlexContainer
 
     loaded = load_symptom_table()
-
-    async def never(_prompt):
-        raise AssertionError("不應呼叫 LLM")
-
-    svc = SymptomDepartmentService(
-        table=loaded,
-        normalizer=SymptomNormalizer(table_terms=loaded.terms, invoke=never),
-    )
+    svc = SymptomDepartmentService(table=loaded, normalizer=StubResolver())
 
     for question in ("我肚子痛，要看哪一科", "天空是藍色的要掛哪一科"):
         result = asyncio.run(svc.suggest(question))

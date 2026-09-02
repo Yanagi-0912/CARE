@@ -63,6 +63,13 @@ from app.services.medical.symptom_classification import (
     UrgencyClassifier,
     load_symptom_table,
 )
+from app.services.medical.symptom_classification.vector_index import (
+    DEFAULT_VECTOR_PATH,
+    EMBEDDING_TASK_TYPE,
+    VECTOR_DIM,
+    SymptomVectorIndex,
+    table_content_hash,
+)
 from app.services.line_messaging.handler.facility_detail_handler import (
     LineFacilityDetailHandler,
 )
@@ -391,10 +398,29 @@ else:
 # 表壞掉時刻意不降級：帶著解析不出科別的對照表提供服務，會產生「系統說查過了
 # 但附近沒有」的回覆，比功能不存在更難察覺（見 symptom_table 模組註解）。
 _symptom_table = load_symptom_table()
+
+# 症狀比對的向量索引。task_type 與維度刻意不沿用 RAG 那組（見 design 決策 12）：
+# RAG 是「問句 → 文件段落」的非對稱檢索，症狀比對是短語對短語的對稱相似度。
+_symptom_embeddings = GoogleGenerativeAIEmbeddings(
+    model=settings.EMBEDDING_MODEL,
+    google_api_key=settings.GEMINI_API_KEY,
+    task_type=EMBEDDING_TASK_TYPE,
+    output_dimensionality=VECTOR_DIM,
+)
+
+# 向量檔缺席或與表不同步時回 None，比對層自動退回 LLM 全表兜底——降級而非中斷。
+# 表改過就要重跑 scripts/build_symptom_vectors.py。
+_symptom_vector_index = SymptomVectorIndex.load(
+    DEFAULT_VECTOR_PATH,
+    expected_hash=table_content_hash(_symptom_table.terms),
+)
+
 _symptom_department_service = SymptomDepartmentService(
     table=_symptom_table,
     normalizer=SymptomNormalizer(
         table_terms=_symptom_table.terms,
+        vector_index=_symptom_vector_index,
+        embed_query=_symptom_embeddings.aembed_query,
         gemini_service=_gemini_service,
     ),
 )

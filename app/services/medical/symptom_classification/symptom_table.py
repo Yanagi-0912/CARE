@@ -54,6 +54,16 @@ class DepartmentCandidate:
     source_count: int
     """幾家來源醫院把這個症狀掛在這一科，用於排序與觀測。"""
 
+    rank: int | None = None
+    """人工指定的臨床優先序，數字小的排前面。省略者一律排在有指定者之後。
+
+    只在來源共識強度（source_count）相同時才生效，因此不會蓋掉「三家都這樣分
+    類」這個客觀事實。存在的理由是 origin=project 的補列條目 source_count 全
+    為 0，排序會退到院所數量——那是「哪一科診所多」，與臨床優先序無關。
+    帶狀皰疹是實例：家醫科 1633 家、皮膚科 595 家，不指定就會把家醫科排到第一，
+    但抗病毒藥有 72 小時黃金期，先掛家醫科再轉診可能錯過。
+    """
+
     note: str | None = None
 
 
@@ -92,8 +102,22 @@ class SymptomTable:
         return self._entries.get(term)
 
 
-def _candidate_sort_key(candidate: DepartmentCandidate) -> tuple[int, int]:
-    return (-candidate.source_count, -candidate.facility_count)
+# 排在最後的 rank，給沒有人工指定的候選。用一個大數而不是 None，是為了讓
+# tuple 比較不必處理 None，同時保證「有指定」永遠贏過「沒指定」。
+_UNRANKED = 1_000_000
+
+
+def _candidate_sort_key(candidate: DepartmentCandidate) -> tuple[int, int, int]:
+    """來源共識 > 人工臨床優先序 > 院所數量。
+
+    人工優先序刻意排在 source_count 之後：跨院共識是觀察到的事實，人工指定
+    是判斷，事實優先於判斷。
+    """
+    return (
+        -candidate.source_count,
+        candidate.rank if candidate.rank is not None else _UNRANKED,
+        -candidate.facility_count,
+    )
 
 
 def load_symptom_table(path: Path | None = None) -> SymptomTable:
@@ -152,6 +176,7 @@ def load_symptom_table(path: Path | None = None) -> SymptomTable:
                     subgroup=symptom.get("subgroup"),
                     facility_count=facility_count,
                     source_count=len(symptom.get("sources") or ()),
+                    rank=symptom.get("rank"),
                     note=symptom.get("note"),
                 )
             )

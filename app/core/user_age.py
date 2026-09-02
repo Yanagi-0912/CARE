@@ -8,10 +8,6 @@ LangChain tool 這類拿不到使用者參數的地方則直接讀 ContextVar。
     症狀本來就大人小孩都會有。少了年齡，成人問「我肚子好痛要掛哪一科」會拿到
     「內科、兒科」——兒科那一項對他毫無意義，卻佔掉了三個候選的其中一個。
 
-為什麼不從訊息裡猜年齡：
-    猜錯的方向不對稱且無法驗證。年齡是使用者自己填的事實（UserSettings.age），
-    直接讀比從「我肚子痛」推論可靠得多。訊息只用來補一種年齡蓋不到的情況：
-    成人帳號幫小孩問（見 symptom_classification.normalizer.mentions_child）。
 """
 
 from __future__ import annotations

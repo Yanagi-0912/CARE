@@ -10,6 +10,149 @@ from app.core.user_language import (
 )
 
 _MESSAGES: dict[str, dict[str, str]] = {
+    # --- 緊急狀況卡片 ---------------------------------------------------
+    #
+    # 這張卡是急救指示，SHALL 全部隨使用者語言切換。混語言比全中文更糟：
+    # 副標（急迫度判斷器產生的 display）本來就會跟著語言走，若其餘文案是中文，
+    # 使用者會以為系統支援他的語言，卻看不懂最關鍵的行動指示。
+    "emergency.alt_text": {
+        "zh-TW": "請立即就醫",
+        "en": "Seek emergency care now",
+        "id": "Segera cari pertolongan medis",
+        "vi": "Hãy đi cấp cứu ngay",
+        "th": "โปรดไปพบแพทย์ทันที",
+        "ja": "すぐに受診してください",
+    },
+    "emergency.headline": {
+        "zh-TW": "請立即就醫",
+        "en": "Seek emergency care now",
+        "id": "Segera cari pertolongan medis",
+        "vi": "Hãy đi cấp cứu ngay",
+        "th": "โปรดไปพบแพทย์ทันที",
+        "ja": "すぐに受診してください",
+    },
+    "emergency.default_display": {
+        "zh-TW": "你描述的狀況可能需要立即處置",
+        "en": "What you described may need immediate care",
+        "id": "Kondisi yang Anda sebutkan mungkin perlu penanganan segera",
+        "vi": "Tình trạng bạn mô tả có thể cần xử trí ngay",
+        "th": "อาการที่คุณอธิบายอาจต้องได้รับการรักษาทันที",
+        "ja": "お話しの状況はすぐの処置が必要かもしれません",
+    },
+    "emergency.body.1": {
+        "zh-TW": "你描述的狀況可能需要緊急處置，不建議等待一般門診掛號。",
+        "en": (
+            "What you described may need emergency care. "
+            "Do not wait for a regular outpatient appointment."
+        ),
+        "id": (
+            "Kondisi yang Anda sebutkan mungkin memerlukan penanganan darurat. "
+            "Jangan menunggu jadwal rawat jalan biasa."
+        ),
+        "vi": (
+            "Tình trạng bạn mô tả có thể cần cấp cứu. "
+            "Không nên chờ đặt lịch khám ngoại trú thông thường."
+        ),
+        "th": (
+            "อาการที่คุณอธิบายอาจต้องได้รับการรักษาฉุกเฉิน "
+            "ไม่ควรรอคิวตรวจผู้ป่วยนอกตามปกติ"
+        ),
+        "ja": (
+            "お話しの状況は緊急の処置が必要な可能性があります。"
+            "通常の外来予約を待たないでください。"
+        ),
+    },
+    "emergency.body.2": {
+        "zh-TW": "請儘快前往最近的急診，或撥打 119 請求協助。",
+        "en": "Go to the nearest emergency room as soon as possible, or call 119 for help.",
+        "id": (
+            "Segera pergi ke unit gawat darurat terdekat, "
+            "atau hubungi 119 untuk meminta bantuan."
+        ),
+        "vi": "Hãy đến phòng cấp cứu gần nhất càng sớm càng tốt, hoặc gọi 119 để được trợ giúp.",
+        "th": "โปรดไปห้องฉุกเฉินที่ใกล้ที่สุดโดยเร็วที่สุด หรือโทร 119 เพื่อขอความช่วยเหลือ",
+        "ja": "できるだけ早く最寄りの救急外来へ行くか、119 に電話して助けを求めてください。",
+    },
+    "emergency.body.3": {
+        "zh-TW": "若身邊有人，請讓對方陪同前往。",
+        "en": "If someone is with you, ask them to go with you.",
+        "id": "Jika ada orang di dekat Anda, mintalah mereka menemani Anda.",
+        "vi": "Nếu có người bên cạnh, hãy nhờ họ đi cùng bạn.",
+        "th": "หากมีคนอยู่ด้วย โปรดขอให้เขาไปเป็นเพื่อน",
+        "ja": "そばに誰かいる場合は、付き添ってもらってください。",
+    },
+    "emergency.hotline_label": {
+        "zh-TW": "可以馬上撥打",
+        "en": "Call now",
+        "id": "Bisa langsung dihubungi",
+        "vi": "Có thể gọi ngay",
+        "th": "โทรได้ทันที",
+        "ja": "すぐに電話できます",
+    },
+    "emergency.call_button": {
+        "zh-TW": "撥打 {name} {number}",
+        "en": "Call {name} {number}",
+        "id": "Hubungi {name} {number}",
+        "vi": "Gọi {name} {number}",
+        "th": "โทร {name} {number}",
+        "ja": "{name} {number} に電話",
+    },
+    "emergency.footer": {
+        "zh-TW": "本訊息不是醫療診斷。情況緊急時請以撥打 119 或前往急診為優先。",
+        "en": (
+            "This message is not a medical diagnosis. In an emergency, "
+            "calling 119 or going to the emergency room comes first."
+        ),
+        "id": (
+            "Pesan ini bukan diagnosis medis. Dalam keadaan darurat, "
+            "utamakan menghubungi 119 atau pergi ke unit gawat darurat."
+        ),
+        "vi": (
+            "Tin nhắn này không phải là chẩn đoán y khoa. Khi khẩn cấp, "
+            "hãy ưu tiên gọi 119 hoặc đến phòng cấp cứu."
+        ),
+        "th": (
+            "ข้อความนี้ไม่ใช่การวินิจฉัยทางการแพทย์ ในกรณีฉุกเฉิน "
+            "ให้โทร 119 หรือไปห้องฉุกเฉินก่อนเป็นอันดับแรก"
+        ),
+        "ja": (
+            "このメッセージは医学的診断ではありません。緊急時は "
+            "119 への通報または救急外来の受診を最優先してください。"
+        ),
+    },
+    # 專線名稱。號碼是台灣的固定值，不翻譯；名稱要讓使用者知道打過去是什麼單位。
+    "emergency.hotline.119": {
+        "zh-TW": "緊急救護",
+        "en": "Emergency Medical Services",
+        "id": "Layanan Gawat Darurat",
+        "vi": "Cấp cứu y tế",
+        "th": "หน่วยแพทย์ฉุกเฉิน",
+        "ja": "救急",
+    },
+    "emergency.hotline.119.note": {
+        "zh-TW": "救護車與消防",
+        "en": "Ambulance and fire service",
+        "id": "Ambulans dan pemadam kebakaran",
+        "vi": "Xe cứu thương và cứu hỏa",
+        "th": "รถพยาบาลและดับเพลิง",
+        "ja": "救急車・消防",
+    },
+    "emergency.hotline.110": {
+        "zh-TW": "警察報案",
+        "en": "Police",
+        "id": "Polisi",
+        "vi": "Cảnh sát",
+        "th": "ตำรวจ",
+        "ja": "警察",
+    },
+    "emergency.hotline.110.note": {
+        "zh-TW": "意外或人身安全",
+        "en": "Accidents or personal safety",
+        "id": "Kecelakaan atau keselamatan pribadi",
+        "vi": "Tai nạn hoặc an toàn cá nhân",
+        "th": "อุบัติเหตุหรือความปลอดภัยส่วนบุคคล",
+        "ja": "事故・身の安全",
+    },
     "rag.fail.KB_EMPTY": {
         "zh-TW": "知識庫目前沒有與此問題相符的資料。請換個方式描述，或必要時就醫。",
         "en": (

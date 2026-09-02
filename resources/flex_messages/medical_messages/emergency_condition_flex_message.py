@@ -1,26 +1,23 @@
 """
 緊急狀況卡片：急迫度判斷為 emergency 時送出的 Flex Message，附可直接撥號的按鈕。
+號碼（119／110）是台灣的固定值不翻譯，但單位名稱要翻，否則使用者不知道打過去是誰接。
 
-為什麼這張卡 SHALL NOT 出現任何門診科別：
-    並陳「可能是內科，但也請留意是否需要急診」等於把判斷責任推回給正在不舒服
-    的人，實質上就是導向門診。這條性質有測試守著。
+字級：
+    文字大小走 theme.resolve_theme()，跟隨 UserSettings.font_size。這張卡的
+    使用者多半處於不好操作手機的狀態，字級設定在這裡比在任何一張卡都重要。
 
-撥號按鈕：
-    action 為 uri、uri 為 tel:數字。LINE 會在點擊時開啟撥號介面。號碼由
-    Hotline.tel_uri 產生，只留數字——全形字元或分隔符會讓某些裝置撥不出去。
 
-版面對齊 emergency_condition_flex_template.json，樣式常數集中在 _TPL_*，
-由 test_emergency_condition_flex.py 直接對模板逐節點比對。
+版面對齊 emergency_condition_flex_template.json（模板以預設語言與 large 字級
+產生），由 test_emergency_condition_flex.py 逐節點比對。
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from app.i18n.messages import t
 from app.services.medical.symptom_classification.urgency import UrgencyVerdict
 from resources.flex_messages import theme
-
-ALT_TEXT_EMERGENCY = "請立即就醫"
 
 # --- 模板樣式常數。改這裡等同改模板，兩邊必須同步（有測試比對）---------------
 _TPL_HEADER_BG = "#C62828"
@@ -28,23 +25,38 @@ _TPL_BUTTON_BG = "#B71C1C"
 _TPL_ON_DARK = "#FFFFFF"
 _TPL_ON_DARK_MUTED = "#EEEEEE"
 
-_HEADLINE = "請立即就醫"
-_DEFAULT_DISPLAY = "你描述的狀況可能需要立即處置"
-
-_BODY_LINES: tuple[str, ...] = (
-    "你描述的狀況可能需要緊急處置，不建議等待一般門診掛號。",
-    "請儘快前往最近的急診，或撥打 119 請求協助。",
-    "若身邊有人，請讓對方陪同前往。",
+_BODY_KEYS: tuple[str, ...] = (
+    "emergency.body.1",
+    "emergency.body.2",
+    "emergency.body.3",
 )
 
-_HOTLINE_LABEL = "可以馬上撥打"
-_FOOTER_TEXT = "本訊息不是醫療診斷。情況緊急時請以撥打 119 或前往急診為優先。"
+
+def alt_text(language: str | None = None) -> str:
+    """LINE 通知列與不支援 Flex 的裝置看到的文字，同樣要跟著語言走。"""
+    return t("emergency.alt_text", language)
+
+
+def _hotline_name(hotline, language: str | None) -> str:
+    """
+    專線名稱以號碼當 key 查翻譯。查不到就退回 Hotline.name 的原文——看得懂
+    中文總比看到一個 i18n key 好（沿用 department_label 的降級原則）。
+    """
+    key = f"emergency.hotline.{hotline.number}"
+    translated = t(key, language)
+    return hotline.name if translated == key else translated
+
+
+def _hotline_note(hotline, language: str | None) -> str:
+    key = f"emergency.hotline.{hotline.number}.note"
+    translated = t(key, language)
+    return hotline.note if translated == key else translated
 
 
 def _text(
     value: str,
     *,
-    size: str = "md",
+    size: str,
     color: str = theme.TEXT,
     weight: str | None = None,
     margin: str | None = None,
@@ -66,12 +78,17 @@ def _text(
     return node
 
 
-def _call_button(hotline, *, primary: bool) -> dict[str, Any]:
+def _call_button(
+    hotline, *, primary: bool, ft: theme.FlexTheme, language: str | None
+) -> dict[str, Any]:
     """
     撥號按鈕。主按鈕實心、次要按鈕淺底加深色字，兩者都保留足夠的點擊面積——
     這張卡的使用者多半處於不好操作手機的狀態。
     """
-    label = f"撥打 {hotline.name} {hotline.number}"
+    label = t("emergency.call_button", language).format(
+        name=_hotline_name(hotline, language), number=hotline.number
+    )
+    note = _hotline_note(hotline, language)
     return {
         "type": "box",
         "layout": "vertical",
@@ -85,7 +102,7 @@ def _call_button(hotline, *, primary: bool) -> dict[str, Any]:
         "contents": [
             _text(
                 label,
-                size="lg",
+                size=ft.button,
                 weight="bold",
                 color=_TPL_ON_DARK if primary else _TPL_BUTTON_BG,
                 align="center",
@@ -93,49 +110,78 @@ def _call_button(hotline, *, primary: bool) -> dict[str, Any]:
             *(
                 [
                     _text(
-                        hotline.note,
-                        size="xs",
+                        note,
+                        size=ft.caption,
                         color=_TPL_ON_DARK_MUTED if primary else theme.TEXT_MUTED,
                         align="center",
                         margin="xs",
                     )
                 ]
-                if hotline.note
+                if note
                 else []
             ),
         ],
     }
 
 
-def _header(display: str) -> dict[str, Any]:
+def _header(display: str, *, ft: theme.FlexTheme, language: str | None) -> dict[str, Any]:
     return {
         "type": "box",
         "layout": "vertical",
         "backgroundColor": _TPL_HEADER_BG,
         "paddingAll": "20px",
         "contents": [
-            _text(_HEADLINE, size="xxl", color=_TPL_ON_DARK, weight="bold"),
-            _text(display, size="sm", color=_TPL_ON_DARK_MUTED, margin="md"),
+            _text(
+                t("emergency.headline", language),
+                size=ft.heading,
+                color=_TPL_ON_DARK,
+                weight="bold",
+            ),
+            _text(display, size=ft.caption, color=_TPL_ON_DARK_MUTED, margin="md"),
         ],
     }
 
 
-def build_emergency_condition_flex(verdict: UrgencyVerdict) -> dict[str, Any]:
-    """把急迫度判斷組成可直接送往 LINE 的 Flex Message 外層結構。"""
-    body_contents: list[dict[str, Any]] = [_text(line) for line in _BODY_LINES]
+def build_emergency_condition_flex(
+    verdict: UrgencyVerdict,
+    *,
+    language: str | None = None,
+    font_size: str | None = None,
+) -> dict[str, Any]:
+    """把急迫度判斷組成可直接送往 LINE 的 Flex Message 外層結構。
+
+    language／font_size 省略時讀 request-scoped 的 ContextVar（webhook 進來時由
+    handler 依使用者設定寫入），所以正常流程不必層層傳參；留著參數是為了讓測試
+    與其他呼叫端能明確指定。
+    """
+    ft = theme.resolve_theme(font_size)
+
+    body_contents: list[dict[str, Any]] = [
+        _text(t(key, language), size=ft.body) for key in _BODY_KEYS
+    ]
 
     if verdict.hotlines:
         body_contents.append({"type": "separator", "margin": "xl"})
         body_contents.append(
-            _text(_HOTLINE_LABEL, size="sm", color=theme.TEXT_MUTED, margin="xl")
+            _text(
+                t("emergency.hotline_label", language),
+                size=ft.caption,
+                color=theme.TEXT_MUTED,
+                margin="xl",
+            )
         )
         for index, hotline in enumerate(verdict.hotlines):
-            body_contents.append(_call_button(hotline, primary=index == 0))
+            body_contents.append(
+                _call_button(
+                    hotline, primary=index == 0, ft=ft, language=language
+                )
+            )
 
+    display = verdict.display or t("emergency.default_display", language)
     bubble = {
         "type": "bubble",
         "size": "mega",
-        "header": _header(verdict.display or _DEFAULT_DISPLAY),
+        "header": _header(display, ft=ft, language=language),
         "body": {
             "type": "box",
             "layout": "vertical",
@@ -149,8 +195,18 @@ def build_emergency_condition_flex(verdict: UrgencyVerdict) -> dict[str, Any]:
             "layout": "vertical",
             "paddingAll": "16px",
             "backgroundColor": theme.SURFACE_ALT,
-            "contents": [_text(_FOOTER_TEXT, size="xs", color=theme.TEXT_FAINT)],
+            "contents": [
+                _text(
+                    t("emergency.footer", language),
+                    size=ft.caption,
+                    color=theme.TEXT_FAINT,
+                )
+            ],
         },
     }
 
-    return {"type": "flex", "altText": ALT_TEXT_EMERGENCY, "contents": bubble}
+    return {
+        "type": "flex",
+        "altText": alt_text(language),
+        "contents": bubble,
+    }

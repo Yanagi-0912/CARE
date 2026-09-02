@@ -18,7 +18,7 @@
       {
         "type": "text",
         "text": "你提到有人失去意識、叫不醒",
-        "size": "sm",
+        "size": "md",
         "color": "#EEEEEE",
         "wrap": true,
         "margin": "md"
@@ -35,21 +35,21 @@
       {
         "type": "text",
         "text": "你描述的狀況可能需要緊急處置，不建議等待一般門診掛號。",
-        "size": "md",
+        "size": "lg",
         "color": "#111111",
         "wrap": true
       },
       {
         "type": "text",
         "text": "請儘快前往最近的急診，或撥打 119 請求協助。",
-        "size": "md",
+        "size": "lg",
         "color": "#111111",
         "wrap": true
       },
       {
         "type": "text",
         "text": "若身邊有人，請讓對方陪同前往。",
-        "size": "md",
+        "size": "lg",
         "color": "#111111",
         "wrap": true
       },
@@ -60,7 +60,7 @@
       {
         "type": "text",
         "text": "可以馬上撥打",
-        "size": "sm",
+        "size": "md",
         "color": "#555555",
         "wrap": true,
         "margin": "xl"
@@ -83,7 +83,7 @@
           {
             "type": "text",
             "text": "撥打 緊急救護 119",
-            "size": "lg",
+            "size": "xl",
             "color": "#FFFFFF",
             "wrap": true,
             "weight": "bold",
@@ -92,7 +92,7 @@
           {
             "type": "text",
             "text": "救護車與消防",
-            "size": "xs",
+            "size": "md",
             "color": "#EEEEEE",
             "wrap": true,
             "margin": "xs",
@@ -118,7 +118,7 @@
           {
             "type": "text",
             "text": "撥打 警察報案 110",
-            "size": "lg",
+            "size": "xl",
             "color": "#B71C1C",
             "wrap": true,
             "weight": "bold",
@@ -127,7 +127,7 @@
           {
             "type": "text",
             "text": "意外或人身安全",
-            "size": "xs",
+            "size": "md",
             "color": "#555555",
             "wrap": true,
             "margin": "xs",
@@ -146,7 +146,7 @@
       {
         "type": "text",
         "text": "本訊息不是醫療診斷。情況緊急時請以撥打 119 或前往急診為優先。",
-        "size": "xs",
+        "size": "md",
         "color": "#777777",
         "wrap": true
       }

@@ -9,6 +9,8 @@ from app.models.medication import MedicationLog, MedicationReminder
 from app.repositories.medication_repository import (
     MedicationLogRepository,
     MedicationReminderRepository,
+    MedicationRepository,
+    _active_date_window,
 )
 
 
@@ -1211,3 +1213,111 @@ async def test_cancel_pending_by_reminder_ids_skips_empty_input():
         [], collection=col
     ) == 0
     col.update_many.assert_not_awaited()
+
+
+# ── medical-news-push：藥品鍵查詢 ──────────────────────────────────
+
+
+def _news_collection(names=None, generics=None, docs=None):
+    from unittest.mock import AsyncMock, MagicMock
+
+    collection = MagicMock()
+
+    async def _distinct(field, query=None):
+        return {"name": list(names or []), "generic_name": list(generics or [])}[field]
+
+    collection.distinct = AsyncMock(side_effect=_distinct)
+    cursor = MagicMock()
+    cursor.to_list = AsyncMock(return_value=list(docs or []))
+    collection.find = MagicMock(return_value=cursor)
+    return collection
+
+
+@pytest.mark.asyncio
+async def test_list_active_drug_keys_unions_name_and_generic_name():
+    collection = _news_collection(
+        names=["普拿疼", "冠脂妥"], generics=["ACETAMINOPHEN", "普拿疼"]
+    )
+
+    keys = await MedicationRepository.list_active_drug_keys(
+        "2026-09-02", collection=collection
+    )
+
+    assert set(keys) == {"普拿疼", "冠脂妥", "ACETAMINOPHEN"}
+
+
+@pytest.mark.asyncio
+async def test_list_active_drug_keys_drops_blank_values():
+    collection = _news_collection(names=["普拿疼", "", None], generics=["  "])
+
+    keys = await MedicationRepository.list_active_drug_keys(
+        "2026-09-02", collection=collection
+    )
+
+    assert keys == ["普拿疼"]
+
+
+@pytest.mark.asyncio
+async def test_list_active_drug_keys_excludes_expired_course():
+    collection = _news_collection(names=[], generics=[])
+
+    await MedicationRepository.list_active_drug_keys(
+        "2026-09-02", collection=collection
+    )
+
+    query = collection.distinct.call_args.args[1]
+    assert query["enabled"] is True
+    assert query["$and"] == _active_date_window("2026-09-02")
+
+
+@pytest.mark.asyncio
+async def test_list_active_drug_keys_has_no_user_filter():
+    """索引服務要的是全體不重複藥名，與是誰在吃無關（design 決策 2）。
+
+    若哪天有人為了「順便」加上 user_id，按藥快取的前提就沒了——快取會退化成
+    按人快取，成本重新變成 O(使用者數)。
+    """
+    collection = _news_collection(names=[], generics=[])
+
+    await MedicationRepository.list_active_drug_keys(
+        "2026-09-02", collection=collection
+    )
+
+    query = collection.distinct.call_args.args[1]
+    assert "user_id" not in query
+
+
+@pytest.mark.asyncio
+async def test_list_active_by_user_respects_date_window():
+    collection = _news_collection(docs=[])
+
+    await MedicationRepository.list_active_by_user(
+        "U1", "2026-09-02", collection=collection
+    )
+
+    query = collection.find.call_args.args[0]
+    assert query["user_id"] == "U1"
+    assert query["enabled"] is True
+    assert query["$and"] == _active_date_window("2026-09-02")
+
+
+@pytest.mark.asyncio
+async def test_list_active_by_user_parses_documents():
+    collection = _news_collection(
+        docs=[
+            {
+                "_id": "m1",
+                "user_id": "U1",
+                "created_by_user_id": "U1",
+                "name": "普拿疼",
+                "start_date": "2026-09-01",
+            }
+        ]
+    )
+
+    result = await MedicationRepository.list_active_by_user(
+        "U1", "2026-09-02", collection=collection
+    )
+
+    assert len(result) == 1
+    assert result[0].name == "普拿疼"

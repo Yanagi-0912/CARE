@@ -70,7 +70,7 @@
 
 ## 2. 用藥藥品鍵查詢
 
-- [ ] 2.1 `app/repositories/medication_repository.py::MedicationRepository` 新增兩個
+- [x] 2.1 `app/repositories/medication_repository.py::MedicationRepository` 新增兩個
       `@staticmethod`：
       - `list_active_drug_keys(date_str: str, collection=None) -> list[str]`——對
         `{"enabled": True, "$and": _active_date_window(date_str)}` 取 `name` 與 `generic_name`
@@ -78,12 +78,21 @@
         藥名，與是誰在吃無關（design 決策 2）
       - `list_active_by_user(user_id: str, date_str: str, collection=None) -> list[Medication]`——
         沿用 `_active_date_window`，與既有的 `find_active_by_ids` 同一個日期濾網
-- [ ] 2.2 測試 `tests/unit/repositories/test_medication_repository.py` 追加
+- [x] 2.1b `app/repositories/user_profile_repository.py::UserProfileRepository` 新增
+      `list_all_line_ids(collection=None) -> list[str]`——回傳全體使用者的 `line_id`。
+      **推播的收件人是全體使用者，不是「有用藥的那批」**：Tier 2 保底的存在理由正是
+      讓沒有用藥資料的人也每天收得到東西。此方法帶 `collection=None` 參數（該檔既有
+      方法沒有這個參數，但新方法比照 `medication_repository.py` 的慣例，測試才不必
+      monkey patch）
+- [x] 2.2 測試 `tests/unit/repositories/test_medication_repository.py` 追加
       - `test_list_active_drug_keys_unions_name_and_generic_name`
       - `test_list_active_drug_keys_excludes_expired_course`：`end_date` 早於當日的藥不出現
       - `test_list_active_drug_keys_has_no_user_filter`：斷言送出的 query 不含 `user_id` 鍵
       - `test_list_active_by_user_respects_date_window`
-- [ ] 2.3 commit：`feat(medical-news): 用藥藥品鍵查詢`
+      - `test_list_all_line_ids_returns_every_user`（於
+        `tests/unit/repositories/test_user_profile_repository.py`）
+      - `test_list_all_line_ids_skips_documents_without_line_id`
+- [x] 2.3 commit：`feat(medical-news): 用藥藥品鍵查詢`
 
 ## 3. 相關性防線（純函式）
 
@@ -241,7 +250,9 @@
       `tolerance_factor = 1.5`——**與索引排程分開登記**，理由同
       `consultation/scheduler.py` 的註解：合併會讓其中一支停擺被另一支的心跳掩蓋
 - [ ] 8.2 `async def _tick(self)` 的選材順序：
-      1. 取當日所有有 active medication 的 `user_id`
+      1. `UserProfileRepository.list_all_line_ids()` 取**全體**使用者。
+         SHALL NOT 只取有 active medication 的使用者——那會讓沒有用藥資料的人
+         永遠收不到 Tier 2，而 Tier 2 存在的理由就是他們
       2. 對每位使用者：`list_active_by_user()` → 藥名集合 →
          `DrugNewsRepository.find_by_drug_keys()` → 濾掉
          `list_pushed_refs()` 已推過的 → 取 `concern_kind` 優先序

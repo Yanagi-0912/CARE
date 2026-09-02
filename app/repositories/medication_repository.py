@@ -350,6 +350,58 @@ class MedicationRepository:
         return created
 
     @staticmethod
+    async def list_active_drug_keys(
+        date_str: str, collection: Optional[Any] = None
+    ) -> List[str]:
+        """當日仍有效的所有藥品，其藥名與學名的不重複聯集。
+
+        **這支查詢刻意不帶 `user_id`。** 每日消息索引要的是「全體使用者總共在吃
+        哪些藥」，與是誰在吃無關——同一個藥名搜出來的官方消息對所有服用者都一樣，
+        因此快取的鍵是藥名而非使用者，成本才會是 O(不重複藥數) 而不是 O(使用者數)
+        （見 openspec/changes/medical-news-push/design.md 決策 2）。加上 user_id
+        會讓這個前提消失。
+
+        `name` 與 `generic_name` 取聯集而非二選一：藥袋上印的常是品牌短名，而官方
+        公告常以成分名發布（「含 ACETAMINOPHEN 之藥品」），兩邊都要能比對得到。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_medications_collection()
+
+        query = {"enabled": True, "$and": _active_date_window(date_str)}
+        names = await collection.distinct("name", query)
+        generics = await collection.distinct("generic_name", query)
+
+        seen: List[str] = []
+        for value in list(names) + list(generics):
+            if not value or not str(value).strip():
+                continue
+            cleaned = str(value).strip()
+            if cleaned not in seen:
+                seen.append(cleaned)
+        return seen
+
+    @staticmethod
+    async def list_active_by_user(
+        user_id: str, date_str: str, collection: Optional[Any] = None
+    ) -> List[Medication]:
+        """某位使用者當日仍有效的藥品。
+
+        日期濾網沿用 `_active_date_window`，與 `find_active_by_ids` 是同一套判定——
+        療程已結束的藥不該讓使用者收到「與您正在服用的藥有關」的消息卡。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_medications_collection()
+
+        query = {
+            "user_id": user_id,
+            "enabled": True,
+            "$and": _active_date_window(date_str),
+        }
+        cursor = collection.find(query)
+        docs = await cursor.to_list(length=None)
+        return [Medication(**{**doc, "_id": str(doc["_id"])}) for doc in docs]
+
+    @staticmethod
     async def find_by_ids(
         medication_ids: List[str], collection: Optional[Any] = None
     ) -> List[Medication]:

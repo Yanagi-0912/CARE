@@ -54,4 +54,4 @@
 - [x] 8.1 重跑建表腳本（**不帶** `--fetch-images`／`--fetch-indications`）並確認 `drug_catalog.json` 兩個新欄位齊全
 - [x] 8.2 `./init.sh` 全綠
 - [x] 8.3 以真實資料抽驗：找幾組已知含相同成分的非處方藥，確認偵測得到
-- [ ] 8.4 清楚的 git commit 與 PR
+- [x] 8.4 清楚的 git commit 與 PR

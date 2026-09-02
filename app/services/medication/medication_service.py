@@ -1,10 +1,11 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Callable, List, Optional
 from fastapi import HTTPException
 
 from app.models.family_tree import FamilyTree
 from app.models.medication import (
+    DEFAULT_MISFIRE_GRACE_MINUTES,
     DEFAULT_SLOT_TIMES,
     TAIPEI_TZ,
     CreateMedicationReminderRequest,
@@ -34,7 +35,11 @@ _AppearanceImageResolver = Callable[[str], Optional[str]]
 
 
 def _today_date_str() -> str:
-    return datetime.now(TAIPEI_TZ).strftime("%Y-%m-%d")
+    return _now_taipei().strftime("%Y-%m-%d")
+
+
+def _now_taipei() -> datetime:
+    return datetime.now(TAIPEI_TZ)
 
 
 class MedicationService:
@@ -49,6 +54,8 @@ class MedicationService:
         log_repository=MedicationLogRepository,
         appearance_image_resolver: _AppearanceImageResolver = resolve_drug_appearance_image_url,
         indication_service=None,
+        misfire_grace_minutes: int = DEFAULT_MISFIRE_GRACE_MINUTES,
+        clock: Callable[[], datetime] = _now_taipei,
     ) -> None:
         # 其餘方法沿用既有慣例，直接呼叫 repository 的 staticmethod；
         # 這裡額外開可注入的參數，給 get_user_reminders_with_medications 與
@@ -58,6 +65,14 @@ class MedicationService:
         self._reminder_repository = reminder_repository
         self._log_repository = log_repository
         self._appearance_image_resolver = appearance_image_resolver
+        # 改排程到已經過去的時刻時要不要先註銷該時刻，門檻與排程器判定「錯過」
+        # 用的是同一個值（見 DEFAULT_MISFIRE_GRACE_MINUTES）。開成參數只為了讓
+        # 測試不必配合真實的 20 分鐘擺弄時間；正式路徑兩邊都用預設值。
+        self._misfire_grace_minutes = misfire_grace_minutes
+        # 台北時間的「現在」。可注入是為了讓改排程那段的測試能固定在一個時刻上
+        # ——它同時要算「今天是哪一天」與「離現在多久」，跟著真實時鐘跑的話，
+        # 測試在午夜前後會算出前一天的日期而飄紅。
+        self._clock = clock
         # 選填：未注入時仿單欄位一律 None，前端只顯示藥袋讀到的適應症。
         self._indication_service = indication_service
 
@@ -299,8 +314,113 @@ class MedicationService:
                     reminder_id,
                     cancelled,
                 )
+        elif (
+            updated.slot_type != reminder.slot_type
+            or updated.scheduled_time != reminder.scheduled_time
+        ):
+            # 改排程與關閉是同一個問題的兩種形態：當日已展開的紀錄是規則在展開
+            # 當下的快照，三階推播只讀紀錄、不回頭確認規則現在長什麼樣。08:05 把
+            # 「早 08:00」改成「中 12:00」，08:20 仍會催「早 服藥未確認」、08:30
+            # 家屬仍會收到他漏吃早上藥的警報——那個時段已經不存在了。
+            #
+            # 用 `updated` 與改動前的 `reminder` 逐欄比對，而不是看 update_data
+            # 有沒有帶那個 key：把欄位原值重送一次不是改動，不該連帶動到紀錄。
+            #
+            # 日界與時刻的基準必須與排程器展開時一致（`process_ticks` 以
+            # `datetime.now(TAIPEI_TZ)` 為準），否則算出來的時刻對不上已展開的
+            # `scheduled_at`，該註銷的沒註銷、該保留的反而被註銷。
+            now_taipei = self._clock()
+            new_scheduled_at = datetime.strptime(
+                f"{now_taipei.strftime('%Y-%m-%d')} {updated.scheduled_time}",
+                "%Y-%m-%d %H:%M",
+            ).replace(tzinfo=TAIPEI_TZ)
+            cancelled, retagged = await self._log_repository.resync_pending_by_reminder(
+                reminder_id,
+                scheduled_at=new_scheduled_at,
+                slot_type=updated.slot_type,
+            )
+            if cancelled or retagged:
+                logger.info(
+                    "[MedicationService] 提醒 %s 改排程為 %s %s，"
+                    "註銷舊時刻的未確認紀錄 %d 筆、改標同時刻的 %d 筆",
+                    reminder_id,
+                    updated.slot_type,
+                    updated.scheduled_time,
+                    cancelled,
+                    retagged,
+                )
+
+            await self._suppress_stale_new_slot(updated, new_scheduled_at, now_taipei)
 
         return updated
+
+    async def _suppress_stale_new_slot(
+        self, reminder: MedicationReminder, scheduled_at: datetime, now: datetime
+    ) -> None:
+        """改排程後，若新時刻今天已經過去太久，先為它寫下一筆 `cancelled`。
+
+        排程器展開紀錄時只看規則現在的 `scheduled_time`，不知道那個時刻是幾分鐘
+        前才被改成這樣的。晚上八點把「晚 18:00」改成「早 08:00」，下一輪 tick 就
+        會為今天 08:00 展開一筆紀錄——超過 misfire grace，它會被記成 `missed` 且
+        不推播，但仍會進「錯過時段的彙整通知」，家屬因此收到一則「他今天漏吃早上
+        的藥」，而那一劑從來不存在。
+
+        搶先寫一筆 `cancelled`，排程器的 `$setOnInsert` 就會變成 no-op（留下紀錄
+        而不是指望它不要展開，理由同「關閉時段規則」：留著才擋得住同一天後續
+        tick 重新展開）。該時刻若已經有紀錄——包括剛剛被改標成新時段的那筆——
+        `$setOnInsert` 同樣不會覆寫，這裡因此只會在「本來就沒有紀錄」時才真的
+        插入，正好是排程器會憑空生出假漏服的那個情形。
+
+        門檻用 misfire grace 而不是「現在」：剛過去幾分鐘的改動仍讓排程器照常
+        展開並立刻推播——使用者把時間往前挪一點，本來就可能是想現在被提醒，那
+        則推播不該消失。超過 grace 才是整條 T+0／T+20／T+30 時序已經失去意義的
+        情形（見 `DEFAULT_MISFIRE_GRACE_MINUTES`）。
+
+        規則已停用時不寫：排程器根本不會為它展開任何東西，寫了只是噪音。
+
+        任何失敗只記錄不往外拋：規則本身已經更新成功了，不該因為這筆防禦性的
+        記帳而讓使用者看到一個失敗的儲存。
+        """
+        if not reminder.enabled:
+            return
+
+        # `now` 由呼叫端傳入而不是在這裡重讀時鐘：新時刻的日期就是用同一個
+        # 「現在」算出來的，兩者若來自兩次讀秒，跨午夜的那一瞬間會拿今天的門檻
+        # 去比昨天的時刻。
+        misfire_cutoff = now - timedelta(minutes=self._misfire_grace_minutes)
+        if scheduled_at >= misfire_cutoff:
+            return
+
+        try:
+            _, created = await self._log_repository.upsert_log(
+                MedicationLog(
+                    reminder_id=reminder.id,
+                    user_id=reminder.user_id,
+                    alert_notify_user_id=reminder.creator_user_id,
+                    slot_type=reminder.slot_type,
+                    scheduled_at=scheduled_at,
+                    # 與排程器的 T+30 對齊。`cancelled` 的紀錄不會被任何推播階段
+                    # 挑中，這個值實際上不會被讀到，但欄位是必填的。
+                    timeout_at=scheduled_at + timedelta(minutes=30),
+                    status="cancelled",
+                )
+            )
+        except Exception:
+            logger.exception(
+                "[MedicationService] 提醒 %s 改排程後，無法為已過去的新時刻 %s 預先註銷",
+                reminder.id,
+                scheduled_at.isoformat(),
+            )
+            return
+
+        if created:
+            logger.info(
+                "[MedicationService] 提醒 %s 的新時刻 %s 今日已過（超過 %d 分鐘的補推期限），"
+                "預先註銷，今日不補提醒",
+                reminder.id,
+                scheduled_at.isoformat(),
+                self._misfire_grace_minutes,
+            )
 
     async def delete_reminder(self, creator_user_id: str, reminder_id: str) -> bool:
         """刪除用藥提醒"""

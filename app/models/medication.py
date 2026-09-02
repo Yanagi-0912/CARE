@@ -10,9 +10,12 @@ TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 HHMM_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 MedicationSlotType = Literal["morning", "noon", "evening", "bedtime"]
-# `cancelled` 是使用者關閉時段規則時，當日已展開但還沒確認的紀錄會落到的狀態。
+# `cancelled` 是規則被使用者主動改動時，當日已展開但還沒確認的紀錄會落到的
+# 狀態：關閉該時段，或把它改到別的時刻（改時段／改提醒時間，見
+# `MedicationLogRepository.resync_pending_by_reminder`）——兩種情形下那筆紀錄
+# 對應的排程都已經不存在了。
 # 它與 `missed` 分開的理由：missed 代表「該吃卻沒吃」，會連帶發出家屬逾時警報、
-# 也會進錯過時段的彙整通知；規則被主動關掉的那一次不該算在使用者頭上。留下
+# 也會進錯過時段的彙整通知；規則被主動改掉的那一次不該算在使用者頭上。留下
 # 紀錄而不是直接刪除，是為了保住「這個時段當天確實展開過」這件事實，避免排程器
 # 在同一天的後續 tick 又把它重新 upsert 回 pending。
 #
@@ -34,6 +37,16 @@ DEFAULT_SLOT_TIMES: dict[str, str] = {
     "evening": "18:00",
     "bedtime": "21:30",
 }
+
+# 錯過多久之後就不再補推播。對應 APScheduler 的 misfire_grace_time。
+# 預設取 20 分鐘（＝T+20 催促的門檻）：短暫部署造成的延遲仍會正常送達，
+# 超過這個範圍代表整條 T+0／T+20／T+30 時序已經失去意義，補推只會變成連環轟炸。
+#
+# 放在模型層是因為有兩個消費者，而且它們必須用同一個值：`MedicationScheduler`
+# 用它判斷展開出來的時段算不算錯過，`MedicationService` 用它判斷「改排程到已經
+# 過去的時刻」要不要先把該時刻註銷掉（見 `update_reminder`）。兩邊一旦分岔，
+# 服務層會擋掉排程器其實還會正常推播的時段，或反過來漏擋。
+DEFAULT_MISFIRE_GRACE_MINUTES = 20
 
 SLOT_DISPLAY_NAMES: dict[str, str] = {
     "morning": "早",

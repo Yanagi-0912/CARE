@@ -12,6 +12,7 @@ from app.core.user_font_size import (
 )
 from app.core.user_language import DEFAULT_USER_LANGUAGE, normalize_user_language
 from app.models.medication import (
+    DEFAULT_MISFIRE_GRACE_MINUTES,
     TAIPEI_TZ,
     Medication,
     MedicationLog,
@@ -43,11 +44,6 @@ logger = logging.getLogger(__name__)
 # 「排程器 pod 是否還健康」最靈敏的訊號——每日諮詢摘要睡到隔天才醒，
 # 停擺一整天都還在它的正常範圍內，當不了 liveness 依據。
 HEARTBEAT_NAME = "medication"
-
-# 錯過多久之後就不再補推播。對應 APScheduler 的 misfire_grace_time。
-# 預設取 20 分鐘（＝T+20 催促的門檻）：短暫部署造成的延遲仍會正常送達，
-# 超過這個範圍代表整條 T+0／T+20／T+30 時序已經失去意義，補推只會變成連環轟炸。
-DEFAULT_MISFIRE_GRACE_MINUTES = 20
 
 
 class _RecipientPrefs(NamedTuple):

@@ -1024,6 +1024,62 @@ async def test_cancel_pending_by_reminder_returns_zero_when_nothing_pending():
 
 
 @pytest.mark.asyncio
+async def test_resync_cancels_the_old_time_and_retags_the_same_time():
+    """改排程後的對齊：舊時刻註銷，同時刻只改時段名稱。
+
+    展開出來的紀錄是規則在展開當下的快照，三階推播只讀紀錄不回頭 join 規則
+    （見 test_push_queries_are_limited_to_pending_status），所以規則改了之後
+    那筆紀錄仍會依舊排程走完催促與家屬警報。兩個查詢的條件必須互斥（$ne 與
+    相等），否則同一筆紀錄會先被註銷又被改標。
+    """
+    new_at = datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc)
+    col = MagicMock()
+    col.update_many = AsyncMock(
+        side_effect=[MagicMock(modified_count=1), MagicMock(modified_count=0)]
+    )
+
+    cancelled, retagged = await MedicationLogRepository.resync_pending_by_reminder(
+        "R123", scheduled_at=new_at, slot_type="noon", collection=col
+    )
+
+    assert (cancelled, retagged) == (1, 0)
+    (cancel_query, cancel_update), _ = col.update_many.call_args_list[0]
+    assert cancel_query["reminder_id"] == "R123"
+    assert cancel_query["status"] == "pending"
+    assert cancel_query["scheduled_at"] == {"$ne": new_at}
+    assert cancel_update["$set"]["status"] == "cancelled"
+
+    (retag_query, retag_update), _ = col.update_many.call_args_list[1]
+    assert retag_query["reminder_id"] == "R123"
+    assert retag_query["status"] == "pending"
+    assert retag_query["scheduled_at"] == new_at
+    assert retag_query["slot_type"] == {"$ne": "noon"}
+    assert retag_update["$set"] == {"slot_type": "noon"}
+
+
+@pytest.mark.asyncio
+async def test_resync_never_touches_taken_or_missed_logs():
+    """對齊同樣只能打中 pending。
+
+    已 taken 是使用者真的吃過藥的事實；已 missed 的家屬警報早就送出去了，事後
+    改寫會讓紀錄與已送達的通知互相矛盾。改個提醒時間不該回頭改動這兩者——這與
+    cancel_pending_by_reminder 是同一條界線。
+    """
+    col = MagicMock()
+    col.update_many = AsyncMock(return_value=MagicMock(modified_count=0))
+
+    await MedicationLogRepository.resync_pending_by_reminder(
+        "R123",
+        scheduled_at=datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc),
+        slot_type="noon",
+        collection=col,
+    )
+
+    for (query, _update), _ in col.update_many.call_args_list:
+        assert query["status"] == "pending"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "method_name",
     [

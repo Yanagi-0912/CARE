@@ -584,6 +584,61 @@ class MedicationLogRepository:
         return result.modified_count
 
     @staticmethod
+    async def resync_pending_by_reminder(
+        reminder_id: str,
+        scheduled_at: datetime,
+        slot_type: str,
+        collection: Optional[Any] = None,
+    ) -> tuple[int, int]:
+        """讓某筆規則當日還沒確認的紀錄對齊改過的排程，回傳 `(註銷數, 改標數)`。
+
+        使用者改時段或改提醒時間時呼叫。展開出來的紀錄是規則在**展開當下**的
+        快照（`slot_type`、`scheduled_at` 都是複製過去的值），三階推播查詢只讀
+        紀錄、不回頭 join 規則（見 `cancel_pending_by_reminder`），所以規則改了
+        之後那筆紀錄仍會依舊排程走完 T+20 催促與 T+30 家屬逾時警報。
+
+        兩種情形要分開處理，因為後果不同：
+
+        - **時刻已經不同**（改了提醒時間，或改時段時時間跟著改）：舊時刻不再
+          是這筆規則的排程，紀錄註銷。新時刻由排程器照常展開成另一筆紀錄
+          ——`upsert_log` 以 `(reminder_id, scheduled_at)` 為唯一識別，時刻不同
+          就是不同的紀錄，不會被這裡的註銷波及。
+        - **時刻相同、只有時段名稱變了**（例如自訂 07:15 的「早」改成「中」）：
+          該吃藥的那一刻沒有變，註銷等於平白吃掉使用者今天的提醒。改標即可
+          ——推播文案的時段字樣取自紀錄的 `slot_type`，不改的話今天仍會推成
+          「早 服藥時間到了」。
+
+        兩個查詢的條件互斥（`$ne` 與相等），不會重複打到同一筆紀錄。狀態一律
+        限定 `pending`：已 `taken` 是使用者真的吃過藥的事實，已 `missed` 的家屬
+        警報早已送出，兩者都不能因為改了規則而被改寫（同
+        `cancel_pending_by_reminder`）。
+
+        註銷側同樣不帶日期條件，理由亦同：紀錄是惰性展開的，`pending` 只會是
+        還在三階推播時間窗內的那一筆。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_medication_logs_collection()
+
+        cancelled = await collection.update_many(
+            {
+                "reminder_id": reminder_id,
+                "status": "pending",
+                "scheduled_at": {"$ne": scheduled_at},
+            },
+            {"$set": {"status": "cancelled"}},
+        )
+        retagged = await collection.update_many(
+            {
+                "reminder_id": reminder_id,
+                "status": "pending",
+                "scheduled_at": scheduled_at,
+                "slot_type": {"$ne": slot_type},
+            },
+            {"$set": {"slot_type": slot_type}},
+        )
+        return cancelled.modified_count, retagged.modified_count
+
+    @staticmethod
     async def cancel_pending_by_reminder_ids(
         reminder_ids: List[str],
         scheduled_from: Optional[datetime] = None,

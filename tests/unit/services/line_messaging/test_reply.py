@@ -505,8 +505,12 @@ async def test_flex_branch_skips_audio_when_voice_disabled():
 
 
 @pytest.mark.asyncio
-async def test_tool_flex_still_has_no_audio():
-    """工具自產的 Flex（判定卡、官網卡）行為不變：本次不為它們新增語音。"""
+async def test_tool_flex_without_speech_text_has_no_audio():
+    """沒附朗讀稿的工具 Flex（例如只有連結按鈕的官網卡）行為不變：無語音。
+
+    卡片 JSON 本身不能拿去合成，所以「沒附稿」與「不想要語音」在這條路徑上
+    是同一件事。
+    """
     fake_tts = FakeTTSService()
     replier = LineReplier(
         token_manager=fake_line_token_manager("token"), tts_service=fake_tts
@@ -515,7 +519,7 @@ async def test_tool_flex_still_has_no_audio():
     ok, messaging_api = await _send_reply(
         replier,
         reply_token="rt",
-        message_text='{"type": "flex", "altText": "判定", "contents": {"type": "bubble"}}',
+        message_text='{"type": "flex", "altText": "官網", "contents": {"type": "bubble"}}',
         user_id="U1",
         voice_reply_enabled=True,
     )
@@ -523,6 +527,92 @@ async def test_tool_flex_still_has_no_audio():
     assert ok is True
     assert len(messaging_api.reply_message.call_args[0][0].messages) == 1
     assert fake_tts.calls == []
+
+
+@pytest.mark.asyncio
+async def test_tool_flex_with_speech_text_appends_audio():
+    """判定卡附了朗讀稿就該有語音——開了語音回覆的使用者不該在闢謠卡上靜默失去它。"""
+    fake_tts = FakeTTSService()
+    replier = LineReplier(
+        token_manager=fake_line_token_manager("token"), tts_service=fake_tts
+    )
+
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text=(
+            '{"type": "flex", "altText": "判定：錯誤", '
+            '"contents": {"type": "bubble"}, '
+            '"speechText": "判定：錯誤\\n蜂蜜不會讓一歲以上的孩子中毒。"}'
+        ),
+        user_id="U1",
+        voice_reply_enabled=True,
+        language="zh-TW",
+        voice_rate="slow",
+        voice_gender="male",
+    )
+
+    assert ok is True
+    sent = messaging_api.reply_message.call_args[0][0].messages
+    assert len(sent) == 2
+    assert isinstance(sent[0], FlexMessage)
+    assert sent[1].original_content_url == "https://example.com/audio.mp3"
+    assert fake_tts.calls == [
+        {
+            "text": "判定：錯誤\n蜂蜜不會讓一歲以上的孩子中毒。",
+            "language": "zh-TW",
+            "voice_rate": "slow",
+            "voice_gender": "male",
+        }
+    ], "朗讀的是工具附的稿，且語音偏好一併帶到"
+
+
+@pytest.mark.asyncio
+async def test_tool_flex_with_speech_text_skips_audio_when_voice_disabled():
+    """關掉語音回覆的使用者不因為工具附了稿就收到音檔。"""
+    fake_tts = FakeTTSService()
+    replier = LineReplier(
+        token_manager=fake_line_token_manager("token"), tts_service=fake_tts
+    )
+
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text=(
+            '{"type": "flex", "altText": "判定：錯誤", '
+            '"contents": {"type": "bubble"}, "speechText": "判定：錯誤"}'
+        ),
+        user_id="U1",
+        voice_reply_enabled=False,
+    )
+
+    assert ok is True
+    assert len(messaging_api.reply_message.call_args[0][0].messages) == 1
+    assert fake_tts.calls == []
+
+
+@pytest.mark.asyncio
+async def test_speech_text_is_not_sent_to_line():
+    """`speechText` 是 replier 與工具之間的私有欄位，不得混進送出的 Flex。"""
+    fake_tts = FakeTTSService()
+    replier = LineReplier(
+        token_manager=fake_line_token_manager("token"), tts_service=fake_tts
+    )
+
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text=(
+            '{"type": "flex", "altText": "判定：錯誤", '
+            '"contents": {"type": "bubble"}, "speechText": "判定：錯誤"}'
+        ),
+        user_id="U1",
+        voice_reply_enabled=True,
+    )
+
+    assert ok is True
+    flex = messaging_api.reply_message.call_args[0][0].messages[0]
+    assert "speechText" not in flex.to_dict()
 
 
 @pytest.mark.asyncio

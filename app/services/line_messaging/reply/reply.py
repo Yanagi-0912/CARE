@@ -82,14 +82,25 @@ class LineReplier:
                 request_location,
             )
 
-            # 工具自產的 Flex（verify_claim、open_official_site）原樣送出，
-            # 行為完全不變——包括不附加語音。
-            tool_flex = self._try_parse_flex_message(message_text)
+            # 工具自產的 Flex（verify_claim、open_official_site）原樣送出。
+            # 語音則看工具有沒有附朗讀稿：卡片 JSON 本身不能拿去合成，而只有
+            # 工具知道哪一段是給耳朵的——判定卡有實質結論所以給，官網卡那種
+            # 只有幾顆連結按鈕的就不給。沒附的維持原本的無語音行為。
+            tool_flex, tool_speech_text = self._try_parse_flex_message(message_text)
             if tool_flex is not None:
                 logger.info(
                     f"{LOGGER_HEADER_TEXT} 解析為工具 Flex Message，將以 Flex 形式回覆"
                 )
                 messages = [tool_flex]
+                if tool_speech_text:
+                    await self._append_tts_audio_message(
+                        messages,
+                        tool_speech_text,
+                        voice_reply_enabled=voice_reply_enabled,
+                        language=language,
+                        voice_rate=voice_rate,
+                        voice_gender=voice_gender,
+                    )
             else:
                 answer_card, card_text = self._build_answer_card(
                     message_text, answer_kind, user_question
@@ -269,32 +280,49 @@ class LineReplier:
             return None, message_text
 
     @staticmethod
-    def _try_parse_flex_message(message_text: str) -> Optional[FlexMessage]:
+    def _try_parse_flex_message(
+        message_text: str,
+    ) -> tuple[Optional[FlexMessage], str]:
+        """解析工具自產的 Flex JSON，回傳 `(卡片, 朗讀稿)`。
+
+        朗讀稿取自選填的頂層鍵 `speechText`，沒有就是空字串。它必須由工具提供
+        而不能由這裡從卡片反解：這條路徑上 replier 拿到的只有 Flex JSON，組卡
+        前的純文字沒有跨過 agent 邊界（對照 `_build_answer_card`，那條路是
+        replier 自己組卡，所以純文字還在手上）。從已組好的卡片節點反解文字是
+        另一個坑，理由同 `rag_sources.SourceRef` 的 docstring。
+
+        `speechText` 只被讀走、不會進到送出的 FlexMessage——LINE 的 payload 裡
+        沒有這個欄位。
+        """
         if not message_text or not isinstance(message_text, str):
-            return None
+            return None, ""
 
         text_strip = message_text.strip()
         if not (text_strip.startswith("{") and text_strip.endswith("}")):
-            return None
+            return None, ""
 
         try:
             data = json.loads(text_strip)
         except json.JSONDecodeError:
             logger.debug(f"{LOGGER_HEADER_TEXT} 文字內容不是有效 JSON，略過 Flex 解析")
-            return None
+            return None, ""
 
         if not isinstance(data, dict):
-            return None
+            return None, ""
 
         if data.get("type") == "flex" and "contents" in data:
             alt_text = data.get("altText") or "醫療院所查詢結果"
             contents = FlexContainer.from_dict(data["contents"])
+            speech_text = data.get("speechText")
+            speech_text = speech_text.strip() if isinstance(speech_text, str) else ""
             logger.info(
-                f"{LOGGER_HEADER_TEXT} Flex JSON 解析成功，altText=%s", alt_text
+                f"{LOGGER_HEADER_TEXT} Flex JSON 解析成功，altText=%s, has_speech=%s",
+                alt_text,
+                bool(speech_text),
             )
-            return FlexMessage(altText=alt_text, contents=contents)
+            return FlexMessage(altText=alt_text, contents=contents), speech_text
 
-        return None
+        return None, ""
 
     @staticmethod
     def _normalize_message_text(message_text: Any) -> str:

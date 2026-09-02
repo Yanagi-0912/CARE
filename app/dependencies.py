@@ -1,11 +1,13 @@
 from dataclasses import dataclass
 import logging
+import time
 
 import jwt  # type: ignore[import-not-found]
 from fastapi import Depends, Header, HTTPException
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 from app.core.config import settings
+from app.core.request_logging import log_stage
 
 logger = logging.getLogger(__name__)
 from app.db.mongodb import MongoDBManager
@@ -720,6 +722,30 @@ def get_query_embeddings() -> GoogleGenerativeAIEmbeddings:
 def get_rag_retriever() -> MongoAtlasVectorRetriever | HybridRetriever:
     """取得 RAG retriever：依 RAG_HYBRID_ENABLED 為純向量或 hybrid（兩者介面相同）"""
     return _rag_retriever
+
+
+async def warm_rag_connections() -> None:
+    """啟動時把 RAG 檢索用的 Mongo 連線先建立起來。
+
+    為什麼需要：retriever 的 client 是首次 `ainvoke` 才懶建的，不在既有的
+    startup 路徑上（lifespan 的 `ensure_indexes` 走的是 `MongoDBManager`
+    那條）。所以每次部署後**第一個問問題的使用者**要獨自承擔建立連線的
+    成本——本機實測約 12 秒（TLS＋拓撲探索＋認證；DNS 只佔 58ms），之後
+    穩態是 50-250ms。這裡先把那一次付掉。
+
+    失敗只記錄不拋：連不上 Mongo 時該讓服務照常啟動、由既有的錯誤路徑
+    處理，而不是讓整個 app 起不來——暖機是最佳化，不是前置條件。
+    """
+    warmup = getattr(_rag_retriever, "warmup", None)
+    if warmup is None:
+        return
+    t0 = time.perf_counter()
+    try:
+        await warmup()
+    except Exception:
+        logger.exception("rag_warmup_failed; first query will pay connection cost")
+        return
+    log_stage(logger, "rag_warmup", ms=int((time.perf_counter() - t0) * 1000))
 
 
 def get_rag_answer_service() -> RagAnswerService:

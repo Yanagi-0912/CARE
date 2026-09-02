@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -20,6 +21,7 @@ from app.dependencies import (
     get_user_profile_service,
     preload_facility_name_index,
     start_medication_scheduler,
+    warm_rag_connections,
 )
 from app.repositories.consultation_repository import ConsultationRepository
 from app.repositories.knowledge_report_repository import KnowledgeReportRepository
@@ -91,6 +93,14 @@ async def lifespan(app: FastAPI):
     # 且意圖判定是同步函式，不適合在其中做非同步查詢。
     await preload_facility_name_index()
 
+    # RAG 檢索連線的暖機。retriever 的 Mongo client 是首次查詢才懶建的，不在
+    # 上面 ensure_indexes 那條路徑上，所以每次部署後第一個問問題的使用者要
+    # 獨自付建立連線的成本（本機實測約 12 秒，之後穩態 50-250ms）。
+    #
+    # 刻意用背景 task 而非 await：擋在 lifespan 裡會讓 readiness probe 晚
+    # 12 秒才通過，滾動更新期間反而更容易出現 502。暖機失敗不影響服務。
+    warm_rag_task = asyncio.create_task(warm_rag_connections())
+
     # 背景排程器只在扮演 scheduler 角色的行程啟動。
     #
     # 拆開的理由：排程器原本與 API 共用同一個事件迴圈，因此 API 的每一次重新
@@ -150,6 +160,9 @@ async def lifespan(app: FastAPI):
         # yield 期間代表 app 正在運行並處理 requests。
         yield
     finally:
+        # 暖機還沒跑完就關機時收掉它，避免留下未處理的 task。
+        if not warm_rag_task.done():
+            warm_rag_task.cancel()
         # shutdown 時取消背景排程 tasks
         if scheduler is not None:
             await scheduler.stop()

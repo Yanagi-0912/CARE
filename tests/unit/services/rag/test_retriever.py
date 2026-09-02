@@ -395,16 +395,19 @@ def test_ensure_collection_creates_motor_collection_once():
 
     from unittest.mock import patch
 
+    # client 改由 app.db.mongo_client 的共用工廠提供（同一個 URI 只建一條
+    # 連線，並統一套用逾時政策），所以 patch 點是那個工廠。本測試要守的
+    # 行為不變：collection 只解析一次、之後重用。
     with patch(
-        "app.services.rag.retriever.AsyncIOMotorClient",
+        "app.services.rag.retriever.get_shared_client",
         return_value=fake_client,
-    ) as mock_motor:
+    ) as mock_client:
         first = retriever._ensure_collection()
         second = retriever._ensure_collection()
 
     assert first is fake_collection
     assert second is fake_collection
-    mock_motor.assert_called_once_with("mongodb://localhost")
+    mock_client.assert_called_once_with("mongodb://localhost")
 
 
 # ── original_title 投影 ───────────────────────────────────────────
@@ -548,3 +551,32 @@ async def test_text_retriever_projects_and_exposes_verdict():
     project_stage = next(s for s in pipeline if "$project" in s)
     assert project_stage["$project"]["verdict"] == 1
     assert docs[0].metadata["verdict"] == "錯誤"
+
+
+@pytest.mark.asyncio
+async def test_warmup_touches_the_connection():
+    """暖機必須真的發出一個操作：Motor 的 client 是懶的，光是建構不會連線，
+    連線要到第一個實際操作才發生（本機實測約 12 秒）。"""
+    retriever, _emb = _make_retriever()
+    fake_collection = MagicMock()
+    fake_collection.database.client.admin.command = AsyncMock(return_value={"ok": 1})
+    retriever._collection = fake_collection
+
+    await retriever.warmup()
+
+    fake_collection.database.client.admin.command.assert_awaited_once_with("ping")
+
+
+@pytest.mark.asyncio
+async def test_hybrid_warmup_reports_failure_without_raising():
+    """暖機是最佳化不是前置條件：一條腿失敗只記錄，不能讓啟動炸掉。"""
+    vector = MagicMock()
+    vector.warmup = AsyncMock(side_effect=RuntimeError("boom"))
+    text = MagicMock()
+    text.warmup = AsyncMock(return_value=None)
+
+    hybrid = HybridRetriever(vector_retriever=vector, text_retriever=text)
+    await hybrid.warmup()
+
+    vector.warmup.assert_awaited_once()
+    text.warmup.assert_awaited_once()

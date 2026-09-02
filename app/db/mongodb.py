@@ -4,6 +4,7 @@ from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from app.core.config import settings
+from app.db.mongo_client import get_shared_client
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,9 @@ class MongoDBManager:
             if not mongodb_url:
                 raise ValueError("未設定 MongoDB_url")
             logger.info("Initializing async MongoDB connection (Motor)...")
-            cls._client = AsyncIOMotorClient(mongodb_url)
+            # 走共用工廠：與 RAG 的兩個 retriever 指向同一個 URI 時共用同一條
+            # 連線，並統一套用逾時政策（見 app/db/mongo_client.py）。
+            cls._client = get_shared_client(mongodb_url)
         return cls._client
 
     @classmethod

@@ -1476,6 +1476,26 @@ def all_sources_headings() -> frozenset[str]:
     return frozenset(t("agent.sources_heading", lang) for lang in SUPPORTED_LANGUAGES)
 
 
+def all_rag_prefixes() -> frozenset[str]:
+    return frozenset(t("agent.rag_prefix", lang) for lang in SUPPORTED_LANGUAGES)
+
+
+def strip_rag_prefix(text: str) -> str:
+    """剝除回覆首行的 RAG 前綴。
+
+    卡片路徑不放前綴：前綴的職責是告知「這段內容有外部資料來源」，卡片以
+    header 與可點的來源按鈕承擔同一職責，再放一行「以下為…」會與 header
+    重複。純文字路徑仍需要它，因為那條路徑沒有任何其他標記。
+
+    只剝除開頭：前綴字樣若出現在答案句中，那是內容的一部分，不能刪。
+    """
+    stripped = text.lstrip()
+    for prefix in all_rag_prefixes():
+        if stripped.startswith(prefix):
+            return stripped[len(prefix) :].lstrip()
+    return text
+
+
 def text_contains_sources_heading(text: str) -> bool:
     return any(heading in text for heading in all_sources_headings())
 

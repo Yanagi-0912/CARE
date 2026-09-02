@@ -47,6 +47,7 @@ def test_build_entries_maps_licence_and_names():
             "license_number": "衛署藥製字第000002號",
             "name_zh": "立普妥錠10毫克",
             "name_en": "LIPITOR TABLETS 10MG",
+            "drug_class": "",
             "image_url": "",
             "shape": "",
             "color": "",
@@ -141,6 +142,7 @@ def test_appearance_fields_map_onto_matching_licence():
             "license_number": "L1",
             "name_zh": "某藥",
             "name_en": "SOME DRUG",
+            "drug_class": "",
             "image_url": "https://mcp.fda.gov.tw/some.jpg",
             "shape": "圓形",
             "color": "白色",
@@ -444,3 +446,82 @@ def test_summarize_stops_early_once_quota_is_exhausted():
     assert stat["quota_exhausted"] is True
     # 已完成的保留，未處理的維持空字串（呈現面顯示原文）
     assert sum(1 for e in indications.values() if e["summary"]) == 5
+
+
+# ── 藥品分級（藥事法第 8 條）────────────────────────────────────────
+# 分級決定下游要不要問使用者「你還在吃嗎」：非處方藥在藥局買得到、通常短期
+# 使用，而藥盒上不印療程天數，留白就會變成永久提醒。
+
+
+class TestClassifyDrug:
+    def test_prescription_categories(self):
+        from scripts.build_drug_catalog import classify_drug
+
+        for category in ("須由醫師處方使用", "限由醫師使用", "限由牙醫師使用",
+                         "本藥須由醫師處方使用(限由皮膚科專科醫師使用)"):
+            assert classify_drug(category) == "prescription", category
+
+    def test_doctor_instructed_is_otc_not_prescription(self):
+        """「須經醫師指示使用」是指示藥，不是處方藥——這是關鍵字比對會出錯的地方。
+
+        它含「醫師」二字，任何「含醫師就算處方藥」的規則都會歸錯，而這一格
+        線上有 5,842 筆。藥事法第 8 條把指示藥定義為「醫師藥師藥劑生指示藥品」，
+        食藥署衛教也明確把這個標示歸為指示藥。
+        """
+        from scripts.build_drug_catalog import classify_drug
+
+        assert classify_drug("須經醫師指示使用") == "otc_guided"
+        assert classify_drug("醫師藥師藥劑生指示藥品") == "otc_guided"
+        assert classify_drug("牙醫師指示使用") == "otc_guided"
+
+    def test_over_the_counter_categories(self):
+        from scripts.build_drug_catalog import classify_drug
+
+        for category in ("成藥", "甲類成藥", "乙類成藥"):
+            assert classify_drug(category) == "otc", category
+
+    def test_non_medicine_categories(self):
+        """製劑原料、空膠囊不是病人會拿在手上的成品藥，線上佔 18.6%。
+
+        歸進任何一個藥品分級都是錯的——下游若把它們當成藥，會對根本不會出現在
+        藥袋裡的東西提問。
+        """
+        from scripts.build_drug_catalog import classify_drug
+
+        for category in ("製劑原料", "自用製劑原料", "原料藥", "空膠囊",
+                         "調劑專用", "調劑專用製劑"):
+            assert classify_drug(category) == "not_a_medicine", category
+
+    def test_unknown_category_returns_empty_not_a_guess(self):
+        """認不得就回空字串，不猜。
+
+        上游若新增類別，猜成處方藥會讓下游少提醒，猜成成藥則會多問一次
+        「還在吃嗎」。兩個方向都不好，不如讓下游看到空值自己決定。
+        """
+        from scripts.build_drug_catalog import classify_drug
+
+        for category in ("未來的新類別", "", None, "   "):
+            assert classify_drug(category) == ""
+
+    def test_catalog_entry_carries_drug_class(self):
+        from scripts.build_drug_catalog import build_entries
+
+        entries = build_entries(
+            [{"許可證字號": "衛部藥製字第000001號", "中文品名": "普拿疼",
+              "英文品名": "PANADOL", "藥品類別": "醫師藥師藥劑生指示藥品"}],
+            [],
+        )
+
+        assert entries[0]["drug_class"] == "otc_guided"
+
+    def test_appearance_only_entry_has_empty_drug_class(self):
+        """只出現在外觀資料集的品項沒有「藥品類別」欄，分級為空字串。"""
+        from scripts.build_drug_catalog import build_entries
+
+        entries = build_entries(
+            [],
+            [{"許可證字號": "衛部藥製字第000002號", "中文品名": "某藥",
+              "英文品名": "SOME DRUG"}],
+        )
+
+        assert entries[0]["drug_class"] == ""

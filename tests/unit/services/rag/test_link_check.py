@@ -4,7 +4,9 @@
 回應算死」與「快取／降級怎麼走」，不是 httpx 本身。
 """
 
+import asyncio
 import ssl
+import time
 
 import httpx
 import pytest
@@ -308,3 +310,94 @@ async def test_timeout_is_not_retried():
 
     assert await checker.alive([GONE]) == {GONE: False}
     assert len(calls) == 1
+
+
+# --- 整批檢查的總預算 ---
+
+
+class _SlowTransport(httpx.AsyncBaseTransport):
+    """HEAD 立刻回 403（觸發 GET fallback），GET 慢——最壞路徑的形狀。"""
+
+    def __init__(self, get_delay: float):
+        self.get_delay = get_delay
+        self.calls: list[str] = []
+
+    async def handle_async_request(self, request):
+        self.calls.append(request.method)
+        if request.method == "HEAD":
+            return httpx.Response(403)
+        await asyncio.sleep(self.get_delay)
+        return httpx.Response(404)
+
+
+async def test_total_budget_caps_the_whole_batch():
+    """單次逾時管不住總時間：一個網址最多打四次 HTTP（HEAD→GET，判死後再
+    確認一輪），而 httpx 的 timeout 是 per-request。實測會累積到宣稱值的
+    兩倍以上，這條路徑掛在使用者等待上，必須有總上限。"""
+    transport = _SlowTransport(get_delay=5.0)
+    client = httpx.AsyncClient(transport=transport, follow_redirects=True)
+    checker = LinkChecker(
+        timeout_seconds=10.0, total_budget_seconds=0.3, http_client=client
+    )
+
+    started = time.perf_counter()
+    result = await checker.alive([GONE])
+    elapsed = time.perf_counter() - started
+    await client.aclose()
+
+    assert elapsed < 2.0
+    # 撞到預算的視為判不出來，不是死——與其他所有不確定情況一致。
+    assert result == {}
+
+
+async def test_budget_keeps_verdicts_that_finished_in_time():
+    """不會因為同批有人慢就整批放棄。"""
+    slow = "https://slow.gov.tw/x"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "slow.gov.tw":
+            raise httpx.ConnectTimeout("timed out", request=request)
+        return httpx.Response(200)
+
+    class _Mixed(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request):
+            if request.url.host == "slow.gov.tw":
+                await asyncio.sleep(5.0)
+                return httpx.Response(200)
+            return httpx.Response(200)
+
+    client = httpx.AsyncClient(transport=_Mixed(), follow_redirects=True)
+    checker = LinkChecker(
+        timeout_seconds=10.0, total_budget_seconds=0.3, http_client=client
+    )
+
+    result = await checker.alive([ALIVE, slow])
+    await client.aclose()
+
+    assert result == {ALIVE: True}
+
+
+async def test_budget_defaults_to_two_timeouts_plus_confirm_delay():
+    """預設要容得下一個網址的正常最壞路徑（HEAD ＋ GET fallback 各一次
+    逾時，再加確認的間隔），病態的第二輪才被擋。"""
+    checker = LinkChecker(timeout_seconds=3.0, confirm_delay_seconds=0.5)
+
+    assert checker._total_budget_seconds == 3.0 * 2 + 0.5
+
+
+async def test_cancelled_url_is_not_cached_as_dead():
+    """被預算砍掉的不能留下判定，否則下一輪會直接命中一個假的結果。"""
+    class _Hang(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request):
+            await asyncio.sleep(5.0)
+            return httpx.Response(404)
+
+    client = httpx.AsyncClient(transport=_Hang(), follow_redirects=True)
+    checker = LinkChecker(
+        timeout_seconds=10.0, total_budget_seconds=0.3, http_client=client
+    )
+
+    await checker.alive([GONE])
+    await client.aclose()
+
+    assert GONE not in checker._cache

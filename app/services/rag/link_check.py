@@ -65,6 +65,20 @@ DEFAULT_MAX_CACHE_ENTRIES = 2048
 # 只對 HTTP 狀態碼判死做這個確認。逾時那條路徑不重試：它已經等滿逾時，
 # 再來一次會讓最壞情況翻倍，而那條路徑的誤判本來就由 DEAD_TTL 補回。
 DEFAULT_CONFIRM_DELAY_SECONDS = 0.5
+# 整批檢查的總上限。None＝由 timeout 推導（見 __init__）。
+#
+# 為什麼單次逾時不夠：一個網址最多會打四次 HTTP——HEAD 被擋就退 GET，
+# 判死後再確認一輪（HEAD＋GET）。而 httpx 的 timeout 是 per-request，
+# 所以「單次 3 秒」實際可以累積到 12 秒以上。實測 HEAD 403 → GET 2.9s
+# → 404 → 確認再一輪 = 6.31s，兩倍於宣稱值。
+#
+# 這條路徑掛在使用者等待上，而整條 RAG 管線目前沒有任何一段有總逾時
+# （另一個 session 實測撞到 rag_retrieve 卡 94 秒才回 0 筆，使用者等
+# 107 秒換一句「查無資料」）。這裡不重複那個失效模式。
+#
+# 超出預算的網址視為「判不出來」而非死——與其他所有不確定情況一致，
+# 照常顯示連結。已完成的判定照常採用，不會因為同批有人慢就整批放棄。
+DEFAULT_TOTAL_BUDGET_SECONDS: float | None = None
 
 # 判死的門檻刻意訂得很高：**只有這兩個狀態碼算「資源確定不存在」**。
 #
@@ -133,6 +147,7 @@ class LinkChecker:
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
         max_cache_entries: int = DEFAULT_MAX_CACHE_ENTRIES,
         confirm_delay_seconds: float = DEFAULT_CONFIRM_DELAY_SECONDS,
+        total_budget_seconds: float | None = DEFAULT_TOTAL_BUDGET_SECONDS,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         self._timeout_seconds = timeout_seconds
@@ -141,6 +156,13 @@ class LinkChecker:
         self._max_concurrency = max(1, max_concurrency)
         self._max_cache_entries = max(1, max_cache_entries)
         self._confirm_delay_seconds = max(0.0, confirm_delay_seconds)
+        # 預設容得下「HEAD ＋ GET fallback」各一次逾時再加確認的間隔，
+        # 也就是一個網址的正常最壞路徑；真正病態的第二輪會被這道閘擋掉。
+        self._total_budget_seconds = (
+            total_budget_seconds
+            if total_budget_seconds is not None
+            else timeout_seconds * 2 + self._confirm_delay_seconds
+        )
         self._http_client = http_client
         # url -> (判定, 到期時間)。判定為 None 代表「查過但判不出來」，
         # 那也值得快取——不然每一輪都會為同一個 TLS 驗證不過的網址重打一次。
@@ -196,10 +218,38 @@ class LinkChecker:
             async with semaphore:
                 return url, await self._check_one(client, url)
 
+        # 依 url 建索引而不是只留一個 list：`asyncio.wait` 回傳的 done 是
+        # 無序 set，直接照它的順序寫快取會讓 LRU 驅逐掉的不是最舊的那筆。
+        # 下面一律依 *urls* 的原順序收集。
+        task_by_url = {url: asyncio.create_task(check(url)) for url in urls}
         try:
-            settled = await asyncio.gather(
-                *(check(url) for url in urls), return_exceptions=True
+            _, pending = await asyncio.wait(
+                task_by_url.values(), timeout=self._total_budget_seconds
             )
+            if pending:
+                # 撞到總預算。取消未完成的，但保留已經有答案的那些——
+                # 被取消的不寫入結果也不寫快取，於是呼叫端當成「判不出來」
+                # 而照常顯示連結（安全方向）。
+                logger.info(
+                    "link_check_budget_exceeded pending=%d of=%d budget=%.1fs",
+                    len(pending),
+                    len(urls),
+                    self._total_budget_seconds,
+                )
+                for task in pending:
+                    task.cancel()
+                # 等取消真正生效再關 client，否則收尾中的請求會撞到
+                # 已關閉的連線池，噴出與這件事無關的例外。
+                await asyncio.gather(*pending, return_exceptions=True)
+            # 不能直接 task.result()：那會把 check() 自己的例外重新拋出來，
+            # 而下面的迴圈本來就要把它當成一筆「判不出來」處理。
+            settled: list[object] = []
+            for url in urls:
+                task = task_by_url[url]
+                if task.cancelled() or not task.done():
+                    continue
+                error = task.exception()
+                settled.append(error if error is not None else task.result())
         finally:
             if owns_client:
                 await client.aclose()
@@ -207,6 +257,8 @@ class LinkChecker:
         out: dict[str, bool] = {}
         now = time.monotonic()
         for item in settled:
+            if item is None:
+                continue
             if isinstance(item, BaseException):
                 # `_check_one` 已經吃掉所有 httpx 例外，走到這裡代表檢查器
                 # 自己出了問題（例如 semaphore 被取消）。那是我們的故障，

@@ -9,10 +9,11 @@ reasoning 與 related_info 卻仍然是繁中，只會生出半中半英的卡�
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from linebot.v3.messaging import FlexContainer, FlexMessage
 
+from app.core.rag_sources import SourceRef
 from app.services.rag.claim_verification.service import (
     NOT_ENOUGH_EVIDENCE_SLUG,
     VerificationResult,
@@ -20,6 +21,7 @@ from app.services.rag.claim_verification.service import (
 from resources.flex_messages import theme
 
 _TFC_SOURCE_LABEL = "台灣事實查核中心"
+_RELATED_SOURCES_LABEL = "資料來源"
 
 # CARE-data 舊站遷移文章的 verdict_slug 可能帶這個前綴（例如 "legacy:錯誤"），
 # 是舊站資料路徑留下的形式，不是本模組自己定義的格式。
@@ -182,16 +184,60 @@ def _source_button(source_url: str, ft: theme.FlexTheme) -> Optional[dict[str, A
     )
 
 
-def _related_info_block(related_info: str, ft: theme.FlexTheme) -> list[dict[str, Any]]:
+def _related_info_block(
+    related_info: str, sources: Sequence[SourceRef], ft: theme.FlexTheme
+) -> list[dict[str, Any]]:
     """未命中時的相關衛教資訊（design 決策 4）。標題與說明都要讓使用者看得出
     這不是這次說法的查核依據，只是資料庫裡查得到的參考資訊，避免「證據不足」
     被誤讀成「這份衛教資訊就是查核結果」。
+
+    出處以「[n] 來源名」的文字清單呈現，**每一筆都列出、含沒有網址的那些**
+    ——rag-responses 明文要求缺 url 的來源不得靜默丟棄，呈現層只是不為它
+    產生按鈕（做法與 rag_answer_flex 一致）。編號與 footer 按鈕上的 [n]
+    對應同一筆，見 `SourceRef.index` 的 docstring。
+
+    免責說明排在出處之前是刻意的：決策 4 擔心的正是使用者把附帶資訊誤讀成
+    查核依據，而「看起來可查證的來源」是最容易造成那種誤讀的元素——先說清楚
+    這不是查核依據，再給來源。
     """
-    return [
+    contents = [
         theme.divider(),
         _paragraph("相關衛教資訊", ft, color=theme.TEXT, weight="bold", margin="lg"),
         _paragraph("僅供參考，非本次說法的查核依據。", ft, color=theme.TEXT_FAINT),
         _paragraph(related_info, ft),
+    ]
+    labels = "、".join(f"[{source.index}] {source.label}" for source in sources)
+    if labels:
+        contents.append(
+            _paragraph(
+                f"{_RELATED_SOURCES_LABEL}：{labels}",
+                ft,
+                color=theme.TEXT_FAINT,
+                size=ft.caption,
+                margin="md",
+            )
+        )
+    return contents
+
+
+def _related_source_buttons(
+    sources: Sequence[SourceRef], ft: theme.FlexTheme
+) -> list[dict[str, Any]]:
+    """相關衛教資訊的可點來源；url 為空者略過。
+
+    略過的是按鈕、不是來源本身——那些來源仍列在 `_related_info_block` 的文字
+    清單裡。這個區分很重要：「食藥署公告」那 576 篇上游結構上就沒有網址，
+    若連列都不列，等於整批來源在呈現層消失。
+
+    空字串 uri 會讓 LINE 拒收整則 Flex Message，理由與做法同 `_source_button`。
+    """
+    return [
+        ft.secondary_button(
+            f"[{source.index}] {source.label}",
+            {"type": "uri", "label": f"[{source.index}]", "uri": source.url},
+        )
+        for source in sources
+        if source.url.strip()
     ]
 
 
@@ -206,12 +252,15 @@ def _body(contents: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _footer(button: dict[str, Any]) -> dict[str, Any]:
+def _footer(buttons: list[dict[str, Any]]) -> dict[str, Any]:
+    """footer 收一到多顆按鈕：命中側只有一顆查核報告連結，未命中側則是
+    相關衛教資訊的來源，數量隨 `_RELATED_INFO_TOP_K` 而定。"""
     return {
         "type": "box",
         "layout": "vertical",
+        "spacing": "sm",
         "paddingAll": "lg",
-        "contents": [button],
+        "contents": buttons,
     }
 
 
@@ -250,12 +299,17 @@ def build_verdict_flex(
         _paragraph(reasoning, ft, margin="md"),
     ]
 
-    footer_button: Optional[dict[str, Any]] = None
+    footer_buttons: list[dict[str, Any]] = []
     if result.matched:
         body_contents.extend(_source_note(ft, result.source_published_at))
-        footer_button = _source_button(result.source_url, ft)
+        matched_button = _source_button(result.source_url, ft)
+        if matched_button is not None:
+            footer_buttons.append(matched_button)
     elif result.related_info:
-        body_contents.extend(_related_info_block(result.related_info, ft))
+        body_contents.extend(
+            _related_info_block(result.related_info, result.related_sources, ft)
+        )
+        footer_buttons.extend(_related_source_buttons(result.related_sources, ft))
 
     bubble_dict: dict[str, Any] = {
         "type": "bubble",
@@ -264,8 +318,10 @@ def build_verdict_flex(
     }
     # footer 整段只在有可用連結時才加入——不是加入一個沒有 action 的 footer，
     # 兩者對 LINE 而言不同：前者才是真正符合「不含任何 action」的版面。
-    if footer_button is not None:
-        bubble_dict["footer"] = _footer(footer_button)
+    # 未命中側的來源全都沒有網址時（例如整批命中「食藥署公告」），這裡同樣
+    # 不產生 footer，但那些來源已經列在 body 的文字清單中，沒有被丟掉。
+    if footer_buttons:
+        bubble_dict["footer"] = _footer(footer_buttons)
 
     container = FlexContainer.from_dict(bubble_dict)
     return FlexMessage(altText=_alt_text(result, user_question), contents=container)

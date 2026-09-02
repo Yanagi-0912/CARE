@@ -3,6 +3,7 @@ import json
 import pytest
 from linebot.v3.messaging import FlexMessage
 
+from app.core.rag_sources import SourceRef
 from app.services.line_messaging.flex.verdict_flex import build_verdict_flex
 from app.services.rag.claim_verification.service import VerificationResult
 from resources.flex_messages import theme
@@ -148,7 +149,9 @@ def test_matched_with_empty_source_url_produces_no_action_and_no_footer():
     assert '"uri": ""' not in json.dumps(rendered, ensure_ascii=False)
 
 
-def test_unmatched_produces_no_action_or_footer():
+def test_unmatched_without_sources_produces_no_action_or_footer():
+    """未命中且一筆出處都沒有（檢索失敗、候選全被 verdict 濾掉）時維持原樣：
+    沒有 footer、沒有 action。有出處的情形見下方 related_sources 的測試。"""
     result = _result(matched=False, verdict="證據不足", source_url="", related_info="衛教資訊內容")
     msg = build_verdict_flex(result)
     rendered = msg.contents.to_dict()
@@ -331,3 +334,97 @@ def test_publish_date_absent_when_unmatched():
         source_published_at=""))
 
     assert "判定來源" not in _card_texts(message)
+
+
+# ── 7. 未命中側的來源呈現（related_sources） ─────────────────────────────
+
+
+def _unmatched(sources: tuple[SourceRef, ...]):
+    return _result(
+        matched=False,
+        verdict="證據不足",
+        source_url="",
+        related_info="檸檬水的營養成分與一般水果類似，並無排毒之特殊功效。",
+        related_sources=sources,
+    )
+
+
+def test_unmatched_lists_sources_and_links_those_with_url():
+    result = _unmatched(
+        (
+            SourceRef(index=1, label="食藥署闢謠專區", url="https://fda.example/1"),
+            SourceRef(index=2, label="衛福部闢謠網站", url="https://mohw.example/2"),
+        )
+    )
+    rendered = build_verdict_flex(result).contents.to_dict()
+    text = str(rendered)
+
+    assert "資料來源" in text
+    assert "[1] 食藥署闢謠專區" in text
+    assert "[2] 衛福部闢謠網站" in text
+
+    actions = _uri_actions(rendered)
+    assert [a["uri"] for a in actions] == [
+        "https://fda.example/1",
+        "https://mohw.example/2",
+    ]
+
+
+def test_unmatched_source_without_url_is_listed_but_gets_no_button():
+    """缺 url 不得靜默丟棄：來源仍列在內文清單裡，只是不做成按鈕。
+    「食藥署公告」那 576 篇上游結構上就沒有網址。"""
+    result = _unmatched(
+        (
+            SourceRef(index=1, label="食藥署公告", url=""),
+            SourceRef(index=2, label="食藥署闢謠專區", url="https://fda.example/2"),
+        )
+    )
+    rendered = build_verdict_flex(result).contents.to_dict()
+    text = str(rendered)
+
+    assert "[1] 食藥署公告" in text
+    assert "[2] 食藥署闢謠專區" in text
+
+    actions = _uri_actions(rendered)
+    assert len(actions) == 1
+    assert actions[0]["uri"] == "https://fda.example/2"
+    # 不能是「有 action、但 uri 是空字串」這種會讓 LINE 拒收整則訊息的錯法
+    assert '"uri": ""' not in json.dumps(rendered, ensure_ascii=False)
+
+
+def test_unmatched_with_only_urlless_sources_lists_them_without_footer():
+    result = _unmatched((SourceRef(index=1, label="食藥署公告", url=""),))
+    rendered = build_verdict_flex(result).contents.to_dict()
+
+    assert "[1] 食藥署公告" in str(rendered)
+    assert _uri_actions(rendered) == []
+    assert "footer" not in rendered
+
+
+def test_unmatched_source_block_keeps_the_not_evidence_disclaimer():
+    """決策 4 的顧慮：可點的來源最容易讓人把附帶資訊誤讀成查核依據。
+    加了來源之後，免責說明必須仍在，而且排在來源之前。"""
+    result = _unmatched(
+        (SourceRef(index=1, label="食藥署闢謠專區", url="https://fda.example/1"),)
+    )
+    body = str(build_verdict_flex(result).contents.to_dict()["body"])
+
+    assert "非本次說法的查核依據" in body
+    assert body.index("非本次說法的查核依據") < body.index("資料來源")
+
+
+def test_matched_side_ignores_related_sources():
+    """命中側只走查核報告連結那條路，就算 related_sources 被誤填也不得
+    多長出按鈕——兩組來源同時出現會讓使用者分不清哪個才是判定依據。"""
+    result = _result(
+        matched=True,
+        related_sources=(
+            SourceRef(index=1, label="不該出現", url="https://edu.example/x"),
+        ),
+    )
+    rendered = build_verdict_flex(result).contents.to_dict()
+
+    actions = _uri_actions(rendered)
+    assert len(actions) == 1
+    assert actions[0]["uri"] == "https://tfc-taiwan.org.tw/fact-check-reports/xxx"
+    assert "不該出現" not in str(rendered)

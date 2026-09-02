@@ -42,8 +42,11 @@ def _format_verdict_reply(result: VerificationResult) -> str:
     例外」這條防線的最後一層（見 `verify_claim` 的 try/except）。
 
     「來源」與「相關衛教資訊」互斥：命中時判定逐字取自 TFC，附上可查證的
-    原文連結；未命中時沒有來源可附，改附一般衛教檢索到的相關資訊，避免
-    「證據不足」變成使用者什麼都拿不到。
+    原文連結；未命中時改附一般衛教檢索到的相關資訊，避免「證據不足」變成
+    使用者什麼都拿不到。
+
+    未命中側的衛教資訊同樣要列出出處。缺 url 的來源只列名稱、不列網址，
+    但不得省略——與 Flex 版一致，也是 rag-responses 對來源呈現的既有要求。
     """
     lines = [
         f"判定：{result.verdict}",
@@ -55,7 +58,34 @@ def _format_verdict_reply(result: VerificationResult) -> str:
         lines.extend(["", f"資料來源：{_TFC_SOURCE_LABEL}", result.source_url])
     elif result.related_info:
         lines.extend(["", "相關衛教資訊：", result.related_info])
+        if result.related_sources:
+            lines.extend(["", "資料來源："])
+            lines.extend(
+                f"[{source.index}] {source.label}：{source.url}"
+                if source.url.strip()
+                else f"[{source.index}] {source.label}"
+                for source in result.related_sources
+            )
     return "\n".join(lines)
+
+
+def _format_verdict_speech(result: VerificationResult) -> str:
+    """判定卡的朗讀稿。
+
+    與 `_format_verdict_reply` 分開而不共用，是因為兩者的讀者不同：純文字
+    fallback 是給眼睛看的，網址與來源清單可以點；朗讀稿是給耳朵的，把一長串
+    URL 念出來只是噪音。因此這裡只留「判定 + 白話理由 + 出處名稱」，網址一律
+    不入稿——卡片上的來源按鈕才是點得到的那個。
+
+    未命中側的 `related_info` 同樣刻意不入稿。那個欄位放的是衛教文章全文、
+    沒有長度上限（見 `verify_claim` 裡大小 fallback 的註解），而 TTS 這條路上
+    沒有任何截斷，整篇念下去會變成數分鐘的音檔與對應的合成成本。使用者要的是
+    「這則是真是假」，那句話在 `verdict` 與 `reasoning` 裡就講完了。
+    """
+    lines = [f"判定：{result.verdict}", result.reasoning]
+    if result.matched:
+        lines.append(f"資料來源：{_TFC_SOURCE_LABEL}")
+    return "\n".join(line for line in lines if line and line.strip())
 
 
 def _to_flex_message_text(result: VerificationResult) -> str | None:
@@ -64,7 +94,7 @@ def _to_flex_message_text(result: VerificationResult) -> str | None:
     格式比照 `official_site_tools.open_official_site`：
     `{"type": "flex", "altText": ..., "contents": {...}}`，這是
     `reply.py._try_parse_flex_message` 認得、會還原成真正 FlexMessage 送出的
-    形狀。`app/services/agent/agent.py` 的 `medical_tool_names` 另外會把這個
+    形狀，另外多帶一個 `speechText` 供語音回覆使用（見下方註解）。`app/services/agent/agent.py` 的 `medical_tool_names` 另外會把這個
     字串直接當成最終回覆、跳過模型再次改寫（見該處註解），因此這裡的輸出
     格式必須與其他 Flex 工具一致，不能只是「看起來像 JSON」。
 
@@ -77,6 +107,15 @@ def _to_flex_message_text(result: VerificationResult) -> str | None:
     payload = flex_message.to_dict()
     if not fits(payload["contents"]):
         return None
+    # 朗讀稿跟著 payload 一起過去，因為 `reply.py` 只收得到這個字串：判定卡是
+    # 工具自己組的，純文字版本不會跨過 agent 邊界（RAG 那條路相反——卡片由
+    # replier 自己組，所以它手上還留著組卡前的文字可以念）。少了這個鍵，開了
+    # 語音回覆的使用者會在判定卡上靜默失去語音，和 RAG 回答卡當初的坑一樣。
+    #
+    # 多一個頂層鍵不影響 `_try_parse_flex_message`（它只讀 type/altText/
+    # contents），也不影響上面的大小檢查——LINE 的 bubble 上限算的是 contents，
+    # 這個鍵在 contents 之外，送出前就被 replier 拆掉了。
+    payload["speechText"] = _format_verdict_speech(result)
     return json.dumps(payload, ensure_ascii=False)
 
 

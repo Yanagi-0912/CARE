@@ -4,7 +4,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.services.rag.claim_verification.service import VerificationResult
-from app.tools.claim_tools import configure_claim_tool, verify_claim
+from app.core.rag_sources import SourceRef
+from app.tools.claim_tools import (
+    _format_verdict_reply,
+    configure_claim_tool,
+    verify_claim,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -72,7 +77,7 @@ async def test_verify_claim_matched_returns_flex_json_with_verdict_question_reas
 
 
 @pytest.mark.asyncio
-async def test_verify_claim_unmatched_returns_flex_with_related_info_and_no_source_action():
+async def test_verify_claim_unmatched_without_sources_has_no_source_action():
     result = VerificationResult(
         user_question="網傳喝檸檬水可以排毒？",
         verdict="證據不足",
@@ -91,11 +96,13 @@ async def test_verify_claim_unmatched_returns_flex_with_related_info_and_no_sour
     assert "證據不足" in payload["altText"]
     assert "相關衛教資訊" in rendered
     assert "檸檬水的營養成分與一般水果類似，並無排毒之特殊功效。" in rendered
-    # 未命中沒有可查證的來源，不得出現來源標題或任何連結按鈕。
+    # 未命中不得出現命中側的「判定來源」標籤——那代表判定轉述自 TFC。
     # 「台灣事實查核中心」一詞仍會合法出現在 reasoning 本文裡（說明「TFC
     # 沒查過這則說法」），因此不能整段禁止出現該詞，只能鎖住「判定來源」
     # 這個屬性標籤本身沒有出現。
     assert "判定來源" not in rendered
+    # 這個案例沒有帶 related_sources（檢索失敗或候選全被濾掉），因此連
+    # 衛教資訊的出處清單也不會出現。有出處的情形見下一條測試。
     assert "資料來源" not in rendered
     assert _uri_actions(payload["contents"]) == []
 
@@ -211,3 +218,141 @@ async def test_normal_verdict_card_stays_flex():
     payload = json.loads(output)
     assert payload["type"] == "flex"
     assert payload["contents"]["type"] == "bubble"
+
+
+@pytest.mark.asyncio
+async def test_verify_claim_unmatched_with_sources_renders_them():
+    """未命中側的衛教資訊要能追回出處：有網址的做成按鈕，沒網址的仍列出。"""
+    result = VerificationResult(
+        user_question="網傳喝檸檬水可以排毒？",
+        verdict="證據不足",
+        reasoning="台灣事實查核中心目前沒有針對這則說法的查核報告。",
+        source_title="",
+        source_url="",
+        matched=False,
+        related_info="檸檬水的營養成分與一般水果類似，並無排毒之特殊功效。",
+        related_sources=(
+            SourceRef(index=1, label="食藥署闢謠專區", url="https://fda.example/1"),
+            SourceRef(index=2, label="食藥署公告", url=""),
+        ),
+    )
+    configure_claim_tool(_fake_service(result))
+
+    output = await verify_claim.ainvoke({"query": "網傳喝檸檬水可以排毒？"})
+
+    payload = json.loads(output)
+    rendered = str(payload["contents"])
+    assert "資料來源" in rendered
+    assert "[1] 食藥署闢謠專區" in rendered
+    assert "[2] 食藥署公告" in rendered
+    # 判定仍不是轉述自 TFC，命中側的標籤不得出現
+    assert "判定來源" not in rendered
+
+    actions = _uri_actions(payload["contents"])
+    assert len(actions) == 1
+    assert actions[0]["uri"] == "https://fda.example/1"
+
+
+def test_plain_text_fallback_lists_related_sources():
+    """Flex 組裝失敗或超過大小上限時退回的純文字版，同樣要帶出處——
+    缺 url 的只列名稱，不得整筆省略。"""
+    result = VerificationResult(
+        user_question="網傳喝檸檬水可以排毒？",
+        verdict="證據不足",
+        reasoning="台灣事實查核中心目前沒有針對這則說法的查核報告。",
+        source_title="",
+        source_url="",
+        matched=False,
+        related_info="檸檬水並無排毒之特殊功效。",
+        related_sources=(
+            SourceRef(index=1, label="食藥署闢謠專區", url="https://fda.example/1"),
+            SourceRef(index=2, label="食藥署公告", url=""),
+        ),
+    )
+
+    text = _format_verdict_reply(result)
+
+    assert "資料來源：" in text
+    assert "[1] 食藥署闢謠專區：https://fda.example/1" in text
+    assert "[2] 食藥署公告" in text
+    # 缺 url 的那筆不得留下空冒號結尾
+    assert "[2] 食藥署公告：" not in text
+    # line-reply-rules：純文字版不得輸出 Markdown
+    assert "**" not in text
+    assert "##" not in text
+
+
+@pytest.mark.asyncio
+async def test_matched_payload_carries_speech_text_without_urls():
+    """判定卡自己附朗讀稿——replier 在這條路徑上拿不到別的可念的東西。"""
+    result = VerificationResult(
+        user_question="網傳吃鳳梨心可以溶解血栓，是真的嗎？",
+        verdict="錯誤",
+        reasoning="查核報告指出這是缺乏醫學根據的說法，血栓需以藥物治療。",
+        source_title="鳳梨心溶血栓查核報告",
+        source_url="https://tfc-taiwan.org.tw/fact-check-reports/xxx",
+        matched=True,
+        related_info="",
+    )
+    configure_claim_tool(_fake_service(result))
+
+    payload = json.loads(
+        await verify_claim.ainvoke({"query": "網傳吃鳳梨心可以溶解血栓，是真的嗎？"})
+    )
+
+    speech = payload["speechText"]
+    assert "判定：錯誤" in speech
+    assert "查核報告指出這是缺乏醫學根據的說法，血栓需以藥物治療。" in speech
+    assert "台灣事實查核中心" in speech
+    # 網址念出來只是噪音；要點的人點卡片上的來源按鈕。
+    assert "https://" not in speech
+
+
+@pytest.mark.asyncio
+async def test_unmatched_speech_text_excludes_related_info():
+    """未命中側的 related_info 不入朗讀稿：那欄位放的是衛教文章全文、沒有長度
+    上限，而 TTS 沒有截斷，整篇念下去是數分鐘的音檔與對應的合成成本。"""
+    # 篇幅刻意只到「卡片還塞得下、但沒人想聽完」的程度：再長會觸發卡片超過
+    # 大小上限的既有 fallback（退回純文字），那是另一條路徑，不是本測試要驗的。
+    long_article = "檸檬水的營養成分與一般水果類似。" * 20
+    result = VerificationResult(
+        user_question="網傳喝檸檬水可以排毒？",
+        verdict="證據不足",
+        reasoning="台灣事實查核中心目前沒有針對這則說法的查核報告。",
+        source_title="",
+        source_url="",
+        matched=False,
+        related_info=long_article,
+        related_sources=(SourceRef(index=1, label="衛教文章", url="https://example.com/a"),),
+    )
+    configure_claim_tool(_fake_service(result))
+
+    payload = json.loads(await verify_claim.ainvoke({"query": "網傳喝檸檬水可以排毒？"}))
+
+    speech = payload["speechText"]
+    assert "判定：證據不足" in speech
+    assert "台灣事實查核中心目前沒有針對這則說法的查核報告。" in speech
+    assert long_article not in speech
+    assert len(speech) < 200
+    # 未命中沒有可轉述的判定來源，不該冒出命中側的來源句。
+    assert "資料來源：" not in speech
+
+
+@pytest.mark.asyncio
+async def test_speech_text_is_outside_the_flex_size_budget():
+    """朗讀稿掛在 contents 之外，不吃 LINE 的 bubble 大小上限。"""
+    result = VerificationResult(
+        user_question="網傳喝檸檬水可以排毒？",
+        verdict="證據不足",
+        reasoning="台灣事實查核中心目前沒有針對這則說法的查核報告。",
+        source_title="",
+        source_url="",
+        matched=False,
+        related_info="檸檬水並無排毒功效。",
+    )
+    configure_claim_tool(_fake_service(result))
+
+    payload = json.loads(await verify_claim.ainvoke({"query": "網傳喝檸檬水可以排毒？"}))
+
+    assert "speechText" in payload
+    assert "speechText" not in str(payload["contents"])

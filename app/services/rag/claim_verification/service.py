@@ -25,6 +25,7 @@ from typing import Awaitable, Callable, Protocol
 from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage
 
+from app.core.rag_sources import SourceRef
 from app.services.gemini import GeminiService
 from app.services.gemini.shared.parser import content_to_text
 from app.services.rag.claim_verification.identity import ClaimIdentityVerifier
@@ -55,7 +56,27 @@ _NO_MATCH_REASONING = (
 _REASONING_FALLBACK = "完整查核說明請見下方來源連結。"
 
 # 未命中時的相關衛教資訊最多取檢索結果前幾筆內容，避免卡片過長。
-_RELATED_INFO_TOP_K = 3
+#
+# 3 → 2 是大小門檻逼出來的。實測條件：三篇候選、每篇一個滿版 chunk
+# （`chunk_size` 上限 500 字），走 `verify()` 的真實路徑量測上線位元組，
+# 門檻為 `size_guard.SAFE_BUBBLE_BYTES`（9,216）：
+#
+#     取 3 筆、無出處（本次變更前）   10,893 bytes  ❌
+#     取 3 筆、含出處                12,500 bytes  ❌
+#     取 2 筆、含出處                 8,993 bytes  ✅
+#
+# 注意第一行：**取 3 筆在滿版情況下本來就已經超標**，不是加上出處才壞的。
+# 也就是說這個值一直偏大，只是過去沒有人量過——那種卡片一路都在退回純文字，
+# 而退回不會有任何錯誤訊息（見 `size_guard` 模組 docstring）。
+#
+# 取 2 筆換到的是整張卡片留在 Flex 版面。方向是刻意的：退回純文字時使用者
+# 失去的是整張卡片的結構（判定標頭、問句區塊、可點來源），比少一段參考資訊
+# 多得多。
+#
+# 餘裕不大（8,993 / 9,216，剩 223 bytes），標題特別長時仍可能超標。那由
+# `fits()` 接住、退回純文字，不會讓使用者收不到訊息。調高這個值之前請重跑
+# 上面那組量測。
+_RELATED_INFO_TOP_K = 2
 
 
 @dataclass(frozen=True)
@@ -81,6 +102,16 @@ class VerificationResult:
     # 有預設值是因為這個欄位本來就可能為空：食藥署公告那 576 篇連同 url
     # 一起沒有日期，上游 API 結構上不提供。
     source_published_at: str = ""
+    # 未命中時 `related_info` 那幾段各自的出處，命中時為空。與 `related_info`
+    # 並存而非取代它：那個字串是給純文字 fallback 與卡片內文用的可讀段落，
+    # 這裡是給呈現層做連結用的結構化資料，兩者用途不同（理由同
+    # `rag_sources.SourceRef` 的 docstring：從已組好的文字反解來源不可靠）。
+    #
+    # 沿用 RAG 答問路徑的 `SourceRef` 而非另立型別，是因為兩邊要遵守的是
+    # 同一條規則——rag-responses 明文要求「缺 url 的來源仍須顯示，不得靜默
+    # 丟棄」。`verify_claim` 未命中側過去完全不呈現來源，是這條規則在專案
+    # 裡唯一沒有對齊的地方。
+    related_sources: tuple[SourceRef, ...] = ()
 
 
 
@@ -156,6 +187,7 @@ class ClaimVerificationService:
                 match = None
 
         if match is None:
+            related_info, related_sources = await self._fetch_related_info(claim)
             return VerificationResult(
                 user_question=user_text,
                 verdict=NOT_ENOUGH_EVIDENCE,
@@ -165,7 +197,8 @@ class ClaimVerificationService:
                 source_url="",
                 source_published_at="",
                 matched=False,
-                related_info=await self._fetch_related_info(claim),
+                related_info=related_info,
+                related_sources=related_sources,
             )
 
         # verdict 在這裡已經定案（逐字取自 match）；下一行呼叫語言模型純粹是
@@ -237,20 +270,35 @@ class ClaimVerificationService:
         # app/services/agent/agent.py 共用的攤平邏輯（次要 finding 1）。
         return content_to_text(result.content)
 
-    async def _fetch_related_info(self, claim: str) -> str:
-        """未命中時找相關衛教資訊。`_related_retriever` 打的是與 matcher
-        相同的向量索引，因此同一批候選裡幾乎必然還包含剛才被同一性驗證
-        擋下、或分數不足以命中的那些 TFC 查核報告本身（C1 finding）：使用者
-        的主張沒變，最相似的文件排序自然也不會變。若不過濾，卡片標頭寫著
-        「證據不足」，下面的「相關衛教資訊」區塊卻可能貼著同一篇查核報告的
-        判定敘述，等於同一性驗證擋下的結論從呈現層繞了回來——這是高頻路徑：
-        任何被 fail-closed 否決的命中都符合這個條件。
+    async def _fetch_related_info(
+        self, claim: str
+    ) -> tuple[str, tuple[SourceRef, ...]]:
+        """未命中時找相關衛教資訊，連同各段的出處一起回傳。
+
+        `_related_retriever` 打的是與 matcher 相同的向量索引，因此同一批
+        候選裡幾乎必然還包含剛才被同一性驗證擋下、或分數不足以命中的那些
+        TFC 查核報告本身（C1 finding）：使用者的主張沒變，最相似的文件排序
+        自然也不會變。若不過濾，卡片標頭寫著「證據不足」，下面的「相關衛教
+        資訊」區塊卻可能貼著同一篇查核報告的判定敘述，等於同一性驗證擋下的
+        結論從呈現層繞了回來——這是高頻路徑：任何被 fail-closed 否決的命中
+        都符合這個條件。
 
         因此這裡排除 `verdict` 非空的文件（decision 4 要的是「衛教資訊」，
-        TFC 查核報告本來就不是衛教文），並以 `url` 去重（同一篇最多一段，
-        理由與 matcher.py 的 url 去重相同：同一篇的多個 chunk 不該把候選
-        名額洗版），同時附上來源標題——未命中側過去是三段無來源、無標題的
-        原始 chunk，與命中側「可獨立驗證」的呈現標準不一致。
+        TFC 查核報告本來就不是衛教文），一篇最多取一段，並附上來源標題與
+        結構化的 `SourceRef`——未命中側過去是三段無來源、無標題的原始 chunk，
+        既與命中側「可獨立驗證」的呈現標準不一致，也違反 rag-responses
+        對來源呈現的既有要求。
+
+        **去重鍵沿用 `RagAnswerService._source_key` 的規則**（url 優先，沒有
+        url 時退回「來源名＋標題」），不是只看 url。舊版把整段去重包在
+        `if url:` 裡，於是沒有網址的來源完全不去重——而「食藥署公告」那 576
+        篇（`scraper_api` 的全站新聞稿 feed）上游結構上就沒有網址，同一篇的
+        多個 chunk 因此可以佔滿 `_RELATED_INFO_TOP_K` 的全部名額，與本函式
+        宣稱的「同一篇最多一段」相反。顯示成同一筆的兩段，去重也必須把它們
+        當成同一筆。
+
+        內容為空的檢查移到去重之前：空 chunk 不該先佔掉那篇文章的去重名額，
+        害同一篇真正有內容的下一段被當成重複而丟掉。
 
         docs 的過濾／切片迴圈整段都在 try 裡（次要 finding 2）：舊版只有
         `ainvoke` 呼叫本身被保護，若 retriever 回傳非 list（介面變動、測試
@@ -258,27 +306,37 @@ class ClaimVerificationService:
         「不能讓查核流程中斷」的既有承諾矛盾。
         """
         if self._related_retriever is None:
-            return ""
+            return "", ()
         try:
             docs = await self._related_retriever.ainvoke(claim)
             excerpts: list[str] = []
-            seen_urls: set[str] = set()
+            sources: list[SourceRef] = []
+            seen_keys: set[str] = set()
             for doc in docs:
                 if doc.metadata.get("verdict"):
                     continue
-                url = str(doc.metadata.get("url") or "").strip()
-                if url:
-                    if url in seen_urls:
-                        continue
-                    seen_urls.add(url)
                 content = (doc.page_content or "").strip()
                 if not content:
                     continue
+                source_name = str(doc.metadata.get("source_name") or "").strip()
                 title = str(doc.metadata.get("original_title") or "").strip()
+                url = str(doc.metadata.get("url") or "").strip()
+                key = f"url:{url}" if url else f"meta:{source_name}|{title}"
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                index = len(sources) + 1
                 excerpts.append(f"{title}\n{content}" if title else content)
+                sources.append(
+                    SourceRef(
+                        index=index,
+                        label=source_name or title or f"來源 {index}",
+                        url=url,
+                    )
+                )
                 if len(excerpts) >= _RELATED_INFO_TOP_K:
                     break
-            return "\n\n".join(excerpts)
+            return "\n\n".join(excerpts), tuple(sources)
         except Exception as exc:  # noqa: BLE001
             # 對齊 matcher/normalizer 的 fail-open：相關資訊只是附加參考，
             # 不是判定依據，抓不到就留白，不能讓查核流程中斷。
@@ -287,4 +345,4 @@ class ClaimVerificationService:
                 exc,
                 exc_info=True,
             )
-            return ""
+            return "", ()

@@ -10,7 +10,7 @@ from langgraph.graph import END, START, StateGraph
 
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from app.core.request_logging import log_stage
+from app.core.request_logging import log_stage, stage_timer
 from app.i18n.messages import (
     split_at_sources_heading,
     strip_sources_section,
@@ -169,13 +169,15 @@ class Agent:
             (user_input or "")[:80],
         )
 
-        result = await self._graph.ainvoke(
-            {
-                "messages": messages,
-                "allow_rag": False,
-                "user_profile": user_profile,
-            }
-        )
+        with stage_timer(logger, "agent_graph") as timing:
+            result = await self._graph.ainvoke(
+                {
+                    "messages": messages,
+                    "allow_rag": False,
+                    "user_profile": user_profile,
+                }
+            )
+            timing["msgs"] = len(result.get("messages") or ())
 
         last_msg = result["messages"][-1]
         response = (

@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import json
 import logging
+
+from app.core.request_logging import stage_timer
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -325,13 +327,21 @@ class LineReplier:
         if not voice_reply_enabled or self._tts_service is None:
             return
 
+        # 合成是在 reply_message 之前被 await 的，所以這段時間**直接加在**
+        # agent＋RAG 之後。實測 4/5 使用者開了語音回覆，這是常態路徑而非
+        # 邊緣，但整條路上只有這一段沒被量過。ok 欄位要分開記：失敗會轉
+        # gTTS 備援或退回純文字，兩者的耗時意義不同。
         try:
-            _audio_bytes, output, duration_ms = await self._tts_service.synthesize(
-                message_text,
-                language=language or "zh-TW",
-                voice_rate=voice_rate,
-                voice_gender=voice_gender,
-            )
+            with stage_timer(
+                logger, "reply_tts", chars=len(message_text or ""), ok="False"
+            ) as t_tts:
+                _audio_bytes, output, duration_ms = await self._tts_service.synthesize(
+                    message_text,
+                    language=language or "zh-TW",
+                    voice_rate=voice_rate,
+                    voice_gender=voice_gender,
+                )
+                t_tts["ok"] = "True"
             audio_url = self._resolve_audio_url(output)
         except Exception:
             logger.exception("TTS generation failed; falling back to text reply.")

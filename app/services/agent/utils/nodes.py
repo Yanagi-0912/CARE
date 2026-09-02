@@ -757,6 +757,13 @@ class AgentNodes:
         log_stage(
             logger,
             "agent_decide",
+            # 同一個 node 一輪會跑兩次：先決定要不要用工具，工具回來後再組最終
+            # 回覆。兩次都記成 agent_decide 就分不開，而兩者的成本差很多——
+            # 實測決定 1.3-1.5s、組回覆 1.8-2.5s。後者是在重寫 get_rag_answer
+            # 已經寫好的答案，agent.py 甚至要防它掉來源或偽造來源。
+            after_tools=any(
+                isinstance(m, ToolMessage) for m in state["messages"]
+            ),
             tools=tool_names,
             call=called or None,
             force_rag=force_rag or None,

@@ -6,6 +6,7 @@ import pytest
 from app.services.rag.claim_verification.service import VerificationResult
 from app.core.rag_sources import SourceRef
 from app.tools.claim_tools import (
+    _TFC_SOURCE_LABEL,
     _format_verdict_reply,
     configure_claim_tool,
     verify_claim,
@@ -309,20 +310,25 @@ async def test_matched_payload_carries_speech_text_without_urls():
 
 
 @pytest.mark.asyncio
-async def test_unmatched_speech_text_excludes_related_info():
-    """未命中側的 related_info 不入朗讀稿：那欄位放的是衛教文章全文、沒有長度
-    上限，而 TTS 沒有截斷，整篇念下去是數分鐘的音檔與對應的合成成本。"""
-    # 篇幅刻意只到「卡片還塞得下、但沒人想聽完」的程度：再長會觸發卡片超過
-    # 大小上限的既有 fallback（退回純文字），那是另一條路徑，不是本測試要驗的。
-    long_article = "檸檬水的營養成分與一般水果類似。" * 20
+async def test_unmatched_speech_text_includes_related_info():
+    """未命中側的 related_info 必須入朗讀稿——那是這張卡唯一的實質內容。
+
+    未命中的 reasoning（`_NO_MATCH_REASONING`）本文就寫著「以下提供相關的
+    衛教資訊供參考」，念完卻不給內容等於語音開空頭支票。卡片是整段渲染的，
+    耳朵拿到的要與眼睛一致。
+    """
+    article = "檸檬水的營養成分與一般水果類似，並無排毒之特殊功效。" * 10
     result = VerificationResult(
         user_question="網傳喝檸檬水可以排毒？",
         verdict="證據不足",
-        reasoning="台灣事實查核中心目前沒有針對這則說法的查核報告。",
+        reasoning=(
+            "台灣事實查核中心目前沒有針對這則說法的查核報告，因此無法給出判定。"
+            "以下提供資料庫中相關的衛教資訊供參考。"
+        ),
         source_title="",
         source_url="",
         matched=False,
-        related_info=long_article,
+        related_info=article,
         related_sources=(SourceRef(index=1, label="衛教文章", url="https://example.com/a"),),
     )
     configure_claim_tool(_fake_service(result))
@@ -331,11 +337,12 @@ async def test_unmatched_speech_text_excludes_related_info():
 
     speech = payload["speechText"]
     assert "判定：證據不足" in speech
-    assert "台灣事實查核中心目前沒有針對這則說法的查核報告。" in speech
-    assert long_article not in speech
-    assert len(speech) < 200
-    # 未命中沒有可轉述的判定來源，不該冒出命中側的來源句。
-    assert "資料來源：" not in speech
+    assert "相關衛教資訊：" in speech
+    assert article in speech, "卡片整段渲染，朗讀稿就該整段給"
+    # 網址仍不入稿：要點的人點卡片上的來源按鈕。
+    assert "https://" not in speech
+    # 未命中沒有可轉述的判定來源，不該冒出命中側的 TFC 來源句。
+    assert f"資料來源：{_TFC_SOURCE_LABEL}" not in speech
 
 
 @pytest.mark.asyncio

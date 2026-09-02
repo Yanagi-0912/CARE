@@ -70,21 +70,32 @@ def _format_verdict_reply(result: VerificationResult) -> str:
 
 
 def _format_verdict_speech(result: VerificationResult) -> str:
-    """判定卡的朗讀稿。
+    """判定卡的朗讀稿：耳朵拿到的內容要與眼睛看到的卡片一致。
 
-    與 `_format_verdict_reply` 分開而不共用，是因為兩者的讀者不同：純文字
-    fallback 是給眼睛看的，網址與來源清單可以點；朗讀稿是給耳朵的，把一長串
-    URL 念出來只是噪音。因此這裡只留「判定 + 白話理由 + 出處名稱」，網址一律
-    不入稿——卡片上的來源按鈕才是點得到的那個。
+    與 `_format_verdict_reply` 分開而不共用，差別只在**網址**：純文字
+    fallback 是給眼睛看的，URL 可以點；把一長串 URL 念出來只是噪音，要點的
+    人點卡片上的來源按鈕。因此網址不入稿，出處只念名稱。
 
-    未命中側的 `related_info` 同樣刻意不入稿。那個欄位放的是衛教文章全文、
-    沒有長度上限（見 `verify_claim` 裡大小 fallback 的註解），而 TTS 這條路上
-    沒有任何截斷，整篇念下去會變成數分鐘的音檔與對應的合成成本。使用者要的是
-    「這則是真是假」，那句話在 `verdict` 與 `reasoning` 裡就講完了。
+    未命中側的 `related_info` 必須入稿。這張卡的全部價值就在那段衛教資訊上
+    ——`_NO_MATCH_REASONING` 本文就寫著「以下提供資料庫中相關的衛教資訊供
+    參考」，念完這句卻不給內容，等於語音自己開了一張空頭支票，比少念一段
+    更糟。卡片是用 `_paragraph(related_info, ft)` 整段渲染的（見
+    `verdict_flex._related_info_block`），朗讀稿跟著給整段才對得上。
+
+    長度是有界的，不是無上限：`_fetch_related_info` 最多取
+    `_RELATED_INFO_TOP_K`（2）段、一篇一段，每段是檢索 chunk（`chunk_size`
+    上限 500 字），所以最壞情況約在千餘字這個量級，與卡片受
+    `SAFE_BUBBLE_BYTES` 約束的上限是同一個。真正的音檔長度取決於語音引擎的
+    語速，本專案沒有量過——`tts_service._get_duration_ms` 裡那個每字 250ms
+    只是讀不到 MP3 metadata 時的估算 fallback，不是實測值，不要拿它當依據。
+    要設上限的話，該設在卡片與朗讀稿共同的源頭（`_RELATED_INFO_TOP_K`），
+    而不是只截朗讀稿——那會把「眼睛與耳朵不一致」這個剛修掉的坑再挖一次。
     """
     lines = [f"判定：{result.verdict}", result.reasoning]
     if result.matched:
         lines.append(f"資料來源：{_TFC_SOURCE_LABEL}")
+    elif result.related_info:
+        lines.extend(["相關衛教資訊：", result.related_info])
     return "\n".join(line for line in lines if line and line.strip())
 
 
@@ -143,7 +154,12 @@ async def verify_claim(query: str) -> str:
     if flex_text is None:
         # 超過 LINE 的 bubble 上限。硬送出去會在 reply_message() 被以 400
         # 拒收，例外被 reply() 的 except 吞掉後使用者什麼都收不到，比純文字
-        # 糟得多。未命中時 related_info 放的是衛教文章全文，沒有長度上限。
+        # 糟得多。會超標的通常是未命中側：related_info 雖然有界（
+        # `_RELATED_INFO_TOP_K` 段 × chunk 上限 500 字），但那個上限是照著
+        # `SAFE_BUBBLE_BYTES` 的餘裕挑的，只剩 223 bytes（見
+        # `claim_verification/service.py` 該常數上方的實測表），標題偏長時
+        # 仍會擠爆。此處原本寫「衛教文章全文、沒有長度上限」，與
+        # `_fetch_related_info` 的實作不符，一併更正。
         logger.warning(
             "判定卡超過 Flex 大小上限，改回純文字格式，matched=%s", result.matched
         )

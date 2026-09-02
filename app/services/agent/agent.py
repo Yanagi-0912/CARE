@@ -19,7 +19,9 @@ from app.i18n.messages import (
 from app.services.agent.utils.nodes import AgentNodes
 from app.services.agent.utils.state import State
 from app.services.gemini.shared.parser import content_to_text
+from app.services.rag.fail_messages import is_rag_fail
 from app.tools.registry import get_all_tools
+from app.tools.user_document_tools import is_document_answer_unavailable
 
 logger = logging.getLogger(__name__)
 
@@ -265,13 +267,37 @@ class Agent:
                 call_request_location = True
                 break
 
+        # 呈現層要知道「這輪是不是有內容可以做成卡片」。判斷放在這裡而非
+        # reply.py，因為只有這裡看得到 ToolMessage。
+        answer_kind: str | None = None
+        if not used_tool_names:
+            # used_tool_names 非空代表 response 已被醫療工具接管、內容是要原封
+            # 不動送出的 Flex JSON，再組一次卡只會壞掉（同「後補來源」那段的
+            # 理由）。
+            for msg in reversed(result.get("messages", [])):
+                name = getattr(msg, "name", None)
+                if name not in ("get_rag_answer", "answer_from_uploaded_document"):
+                    continue
+                content = (
+                    msg.content if isinstance(msg.content, str) else str(msg.content)
+                )
+                if name == "get_rag_answer":
+                    answer_kind = None if is_rag_fail(content) else "rag"
+                else:
+                    answer_kind = (
+                        None if is_document_answer_unavailable(content) else "document"
+                    )
+                break
+
         logger.info(
-            "[Agent] 執行完成，response_type=%s, call_request_location=%s",
+            "[Agent] 執行完成，response_type=%s, call_request_location=%s, answer_kind=%s",
             type(response).__name__,
             call_request_location,
+            answer_kind,
         )
 
         return {
             "response": response,
             "call_request_location": call_request_location,
+            "answer_kind": answer_kind,
         }

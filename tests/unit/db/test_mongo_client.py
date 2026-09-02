@@ -18,7 +18,7 @@ def _clean_cache():
 
 def test_same_uri_reuses_one_client():
     """同一個 URI 只建一條連線——重複建立要各自付一次 TLS＋拓撲探索＋認證，
-    本機實測那個成本約 12 秒，不是省毫秒的問題。"""
+    健康網路下實測約 0.7-0.9 秒／條。"""
     with patch("app.db.mongo_client.AsyncIOMotorClient") as motor:
         motor.side_effect = lambda *a, **k: MagicMock()
         first = get_shared_client("mongodb://localhost/x")
@@ -41,7 +41,7 @@ def test_different_uri_gets_its_own_client():
 
 def test_timeouts_are_applied():
     """socketTimeoutMS 是重點：PyMongo 預設 None＝無限，連上之後對方不回應
-    就永遠掛著。實測撞過一次 rag_retrieve 94 秒後回 0 筆。"""
+    就永遠掛著。這是潛在缺陷，與是否觀測到無關。"""
     with patch("app.db.mongo_client.AsyncIOMotorClient") as motor:
         motor.side_effect = lambda *a, **k: MagicMock()
         get_shared_client("mongodb://localhost/x")
@@ -56,12 +56,18 @@ def test_timeouts_are_applied():
 
 
 def test_timeouts_stay_above_observed_cold_start():
-    """設得比冷啟動成本低會讓每次重啟後的第一個請求必定失敗——把偶發的慢
-    換成穩定的錯。本機實測建立連線約 12 秒，這裡守住那條線。"""
-    observed_cold_start_ms = 12_000
-    assert settings.MONGODB_CONNECT_TIMEOUT_MS > observed_cold_start_ms
-    assert settings.MONGODB_SERVER_SELECTION_TIMEOUT_MS > observed_cold_start_ms
-    assert settings.MONGODB_SOCKET_TIMEOUT_MS > observed_cold_start_ms
+    """逾時必須遠高於建立連線的成本，否則網路稍差就把「慢」變成「錯」。
+
+    門檻取 5 秒：健康網路下建立連線是 0.7-0.9 秒，5 秒留了約 6 倍餘裕給
+    網路品質不佳的開發環境。這個測試原本用 12 秒，那是量測被一條殘留
+    路由污染時的假數字（見 app/db/mongo_client.py 的更正紀錄）——門檻本身
+    是對的，數字是錯的。
+    """
+    # 健康網路下建立連線 0.7-0.9 秒；留約 6 倍餘裕。
+    min_headroom_ms = 5_000
+    assert settings.MONGODB_CONNECT_TIMEOUT_MS > min_headroom_ms
+    assert settings.MONGODB_SERVER_SELECTION_TIMEOUT_MS > min_headroom_ms
+    assert settings.MONGODB_SOCKET_TIMEOUT_MS > min_headroom_ms
 
 
 def test_empty_uri_rejected():

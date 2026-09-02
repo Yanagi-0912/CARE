@@ -95,10 +95,11 @@ async def lifespan(app: FastAPI):
 
     # RAG 檢索連線的暖機。retriever 的 Mongo client 是首次查詢才懶建的，不在
     # 上面 ensure_indexes 那條路徑上，所以每次部署後第一個問問題的使用者要
-    # 獨自付建立連線的成本（本機實測約 12 秒，之後穩態 50-250ms）。
+    # 獨自付建立連線的成本（健康網路下 0.7-0.9 秒，網路不佳時更久）。
     #
-    # 刻意用背景 task 而非 await：擋在 lifespan 裡會讓 readiness probe 晚
-    # 12 秒才通過，滾動更新期間反而更容易出現 502。暖機失敗不影響服務。
+    # 刻意用背景 task 而非 await：擋在 lifespan 裡會讓 readiness probe 等它
+    # 跑完才通過，網路不佳時那可能是數十秒，滾動更新期間反而更容易 502。
+    # 暖機失敗不影響服務。
     warm_rag_task = asyncio.create_task(warm_rag_connections())
 
     # 背景排程器只在扮演 scheduler 角色的行程啟動。

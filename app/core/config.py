@@ -223,12 +223,12 @@ class Settings:
     # MongoDB 連線逾時（見 app/db/mongo_client.py）。
     #
     # 最重要的是 socket：PyMongo 預設 `socketTimeoutMS=None`＝**無限**，
-    # 連線建立後對方不回應就永遠掛著。實測撞過一次 rag_retrieve 94 秒後回
-    # 0 筆，使用者等 107 秒換到「查無資料」。
+    # 連線建立後對方不回應就永遠掛著。這是潛在缺陷，與是否觀測到無關。
     #
-    # 值刻意寬鬆：穩態查詢 50-250ms、冷啟動建立連線約 12 秒，這些數字遠離
-    # 正常分佈。**不可以設得比冷啟動成本低**——那會讓每次重啟後的第一個
-    # 請求必定失敗，把偶發的慢換成穩定的錯。
+    # 值刻意寬鬆：健康網路下建立連線 0.7-0.9 秒、穩態查詢 50-250ms，這些
+    # 數字遠離正常分佈。設得太緊會在網路不佳時把「慢」變成「錯」——開發機
+    # 的網路品質變異很大（本檔曾因一條殘留路由量到 12 秒的假數字，詳見
+    # app/db/mongo_client.py 的更正紀錄）。
     MONGODB_SERVER_SELECTION_TIMEOUT_MS: int = int(
         os.getenv("MONGODB_SERVER_SELECTION_TIMEOUT_MS", "20000")
     )

@@ -144,11 +144,11 @@
 
 ## 5. 索引服務（每日，與使用者無關）
 
-- [ ] 5.1 `app/services/medical_news/index_service.py`：
+- [x] 5.1 `app/services/medical_news/index_service.py`：
       `class DrugNewsIndexService`，建構子
       `(*, web_client: WebSearchClient, grader: NewsGrader, repository=DrugNewsRepository,
       medication_repository=MedicationRepository, max_age_days: int, search_limit: int)`
-- [ ] 5.2 `async def run_once(self, today: str) -> IndexRunResult`，流程：
+- [x] 5.2 `async def run_once(self, today: str) -> IndexRunResult`，流程：
       1. `medication_repository.list_active_drug_keys(today)` 取不重複藥名
       2. 每個藥名組 query `f"{drug_key} 藥品 回收 OR 安全資訊 OR 警訊"`，經
          `whitelist.with_whitelist_site_filter()` 後呼叫 `web_client.search()`
@@ -160,11 +160,11 @@
       7. `relevance.violates_output_guard(summary)` 為真即**整則丟棄，不改寫**
       8. `relevance.has_usable_date()` 為假即丟棄（不進 Tier 1）
       9. `repository.upsert_by_url()` 寫入
-- [ ] 5.3 逐藥品以 `try/except` 包住，單一藥品的搜尋逾時或抓取失敗 SHALL 只跳過該藥、
+- [x] 5.3 逐藥品以 `try/except` 包住，單一藥品的搜尋逾時或抓取失敗 SHALL 只跳過該藥、
       記一筆 log，SHALL NOT 中斷整輪（design 錯誤處理表）
-- [ ] 5.4 `IndexRunResult(NamedTuple)`：`keys_scanned`、`hits_fetched`、`stored`、`skipped`，
+- [x] 5.4 `IndexRunResult(NamedTuple)`：`keys_scanned`、`hits_fetched`、`stored`、`skipped`，
       供 log 與後續量測 Tier 1 命中率（design 證據缺口 3）使用
-- [ ] 5.5 測試 `tests/unit/services/medical_news/test_index_service.py`（注入 fake
+- [x] 5.5 測試 `tests/unit/services/medical_news/test_index_service.py`（注入 fake
       web_client 與 fake grader）
       - `test_non_whitelisted_url_is_dropped_before_scrape`：斷言 fake client 的
         `scrape_page` 未被呼叫
@@ -176,7 +176,7 @@
         `upsert_by_url` 未被呼叫
       - `test_missing_published_at_is_not_stored`
       - `test_search_timeout_does_not_abort_run`
-- [ ] 5.6 commit：`feat(medical-news): 每日索引服務`
+- [x] 5.6 commit：`feat(medical-news): 每日索引服務`
 
 ## 6. Tier 2 選材（知識庫近期文章）
 

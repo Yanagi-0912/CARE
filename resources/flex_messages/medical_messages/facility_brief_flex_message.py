@@ -15,7 +15,7 @@ from app.services.medical.business_hours import (
     BusinessStatus,
     NextOpen,
     has_emergency_department,
-    resolve_business_hours,
+    resolve_clinic_hours,
 )
 from resources.flex_messages import theme
 
@@ -65,13 +65,6 @@ _STATUSES_WITH_NEXT_OPEN = frozenset(
         BusinessStatus.CLOSED_DAY,
     }
 )
-
-def _resolve_clinic_hours(facility: MedicalFacility) -> BusinessHoursResult:
-    #取得「門診」的營業狀態
-    if not has_emergency_department(facility):
-        return resolve_business_hours(facility)
-    return resolve_business_hours(facility.model_copy(update={"departments": None}))
-
 
 def _build_dot_row(text: str, accent: str) -> dict[str, Any]:
     """圓點＋粗體文字的一列，營業狀態與「設有急診」共用同一種樣式。"""
@@ -177,7 +170,7 @@ def _build_status_indicator(
     它是能力標示而非營業狀態，兩者本來就該並存。
     """
     return _build_status_rows(
-        _resolve_clinic_hours(facility),
+        resolve_clinic_hours(facility),
         has_emergency_department(facility),
         language,
     )

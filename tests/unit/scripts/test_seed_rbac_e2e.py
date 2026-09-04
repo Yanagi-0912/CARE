@@ -174,3 +174,32 @@ def test_reminder_creator_is_the_member_on_purpose():
     reminder = seed.build_reminder()
     assert reminder["creator_user_id"] == seed.MEMBER
     assert reminder["user_id"] == seed.OWNER
+
+
+def test_every_seeded_member_has_a_relationship():
+    """稱謂 SHALL 填滿，值 SHALL 是前端認得的 key。
+
+    全填 None 時，族譜頁的成員卡片會顯示「未設定」——那三個字與角色管理對話框
+    的「尚未設定」幾乎一樣，於是「權限明明設定成功了，畫面卻說未設定」變成一個
+    看起來像 bug 的假象，而追一個不存在的問題比追真 bug 更花時間。
+
+    值取自前端的 RELATIONSHIP_LABEL；不在表內的字串會原樣顯示在畫面上。
+    """
+    known = {"parent", "child", "spouse", "sibling", "grandparent", "grandchild", "other"}
+
+    owner_tree = seed.build_owner_tree("enforced")
+    for member in owner_tree["family_members"]:
+        assert member["relationship_type"] in known, member
+
+    for member_id in seed.FAMILY_ROLES:
+        reverse = seed.build_reverse_tree(member_id, "enforced")
+        assert reverse["family_members"][0]["relationship_type"] in known
+
+
+def test_relationships_point_the_right_way():
+    """兩個方向是不同的事實：女兒對阿公是 child，阿公對女兒是 parent。
+
+    共用一份表就會在其中一邊講反話——而族譜頁正是照這個欄位顯示稱謂的。
+    """
+    assert seed.RELATIONSHIPS[seed.GUARDIAN] == "child"
+    assert seed.REVERSE_RELATIONSHIPS[seed.GUARDIAN] == "parent"

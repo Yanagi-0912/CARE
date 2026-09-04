@@ -67,6 +67,26 @@ FAMILY_ROLES = {
     MEMBER: "MEMBER",
 }
 
+# 成員與 OWNER 的稱謂。值必須是前端 RELATIONSHIP_LABEL 認得的 key，否則畫面
+# 會退回顯示原始字串。
+#
+# 這裡原本全填 None，而族譜頁在稱謂未設定時會顯示「未設定」——那三個字與角色
+# 管理對話框的「尚未設定」長得幾乎一樣，於是「權限設定成功了但畫面說未設定」
+# 變成一個看起來像 bug 的假象。測試資料本來就該把不相干的欄位填滿，才不會有
+# 人花時間去追一個不存在的問題。
+RELATIONSHIPS = {
+    GUARDIAN: "child",    # 女兒
+    CAREGIVER: "other",   # 看護：沒有血緣，歸「其他」
+    MEMBER: "sibling",    # 表哥
+}
+
+# OWNER 在成員自己的族譜裡是什麼稱謂。方向相反，因此不是同一份表。
+REVERSE_RELATIONSHIPS = {
+    GUARDIAN: "parent",       # 對女兒來說，阿公是父親
+    CAREGIVER: "other",
+    MEMBER: "sibling",
+}
+
 DISPLAY_NAMES = {
     OWNER: "E2E 阿公",
     GUARDIAN: "E2E 女兒",
@@ -139,7 +159,7 @@ def build_owner_tree(state: str) -> Dict[str, Any]:
         "family_members": [
             {
                 "user_id": member_id,
-                "relationship_type": None,
+                "relationship_type": RELATIONSHIPS[member_id],
                 "display_name": DISPLAY_NAMES[member_id],
                 "picture_url": f"https://example.invalid/{member_id}.png",
                 "is_care_recipient": False,
@@ -173,7 +193,7 @@ def build_reverse_tree(member_id: str, state: str) -> Dict[str, Any]:
         "family_members": [
             {
                 "user_id": OWNER,
-                "relationship_type": None,
+                "relationship_type": REVERSE_RELATIONSHIPS[member_id],
                 "display_name": DISPLAY_NAMES[OWNER],
                 "picture_url": f"https://example.invalid/{OWNER}.png",
                 "is_care_recipient": True,

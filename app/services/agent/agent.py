@@ -18,6 +18,10 @@ from app.i18n.messages import (
 )
 from app.services.agent.utils.nodes import AgentNodes
 from app.services.agent.utils.state import State
+from app.services.medical.symptom_classification.urgency import (
+    URGENCY_EMERGENCY,
+    URGENCY_NONE,
+)
 from app.services.gemini.shared.parser import content_to_text
 from app.services.rag.fail_messages import is_rag_fail
 from app.tools.registry import get_all_tools
@@ -94,10 +98,16 @@ def _log_tool_result_summaries(messages: list[Any], *, ms: int, names: list[str]
     log_stage(logger, "tools_done", names=names, ms=ms)
 
 
+def _urgency_condition(state: State) -> str:
+    """急迫度為 emergency 時繞過 agent，直接走緊急flex message。"""
+    return "emergency" if state.get("urgency") == URGENCY_EMERGENCY else "agent"
+
+
 class Agent:
-    def __init__(self, llm, guardrail_service) -> None:
+    def __init__(self, llm, guardrail_service, urgency_classifier=None) -> None:
         self._llm = llm
         self._guardrail_service = guardrail_service
+        self._urgency_classifier = urgency_classifier
         self._graph = self._build_graph()
 
     def _build_graph(self):
@@ -107,6 +117,7 @@ class Agent:
         nodes = AgentNodes(
             llm=self._llm,
             guardrail_service=self._guardrail_service,
+            urgency_classifier=self._urgency_classifier,
         )
 
         all_tools = get_all_tools(include_rag_tool=True)
@@ -136,11 +147,20 @@ class Agent:
                 raise
 
         builder.add_node("guardrail", nodes.guardrail_node)
+        builder.add_node("emergency", nodes.emergency_node)
         builder.add_node("agent", nodes.agent_node)
         builder.add_node("tools", tools_node)
 
         builder.add_edge(START, "guardrail")
-        builder.add_edge("guardrail", "agent")
+        # 急迫度短路：判定為緊急時直接產卡，不進 agent。安全檢查不能是 agent
+        # 可以選擇不做的事——前一版把它放在工具裡，agent 選了 RAG，檢查就從未
+        # 執行過。
+        builder.add_conditional_edges(
+            "guardrail",
+            _urgency_condition,
+            {"emergency": "emergency", "agent": "agent"},
+        )
+        builder.add_edge("emergency", END)
         builder.add_conditional_edges(
             "agent",
             tools_condition,
@@ -203,6 +223,10 @@ class Agent:
             "request_location_quick_reply",  # 分享位置
             "open_official_site",  # 官網／LIFF 入口 Flex
             "verify_claim",  # 查核判定卡 Flex
+            # 症狀科別建議卡。除了 Flex JSON 不能被改寫之外，這裡還有安全理由：
+            # 紅旗卡刻意不含任何門診科別，讓模型重寫有可能把「請立即就醫」稀釋
+            # 成「可以考慮掛某某科」，那正是本功能要避免的失效模式。
+            "suggest_department_for_symptom",
         }
         used_tool_names: list[str] = []
         for msg in reversed(result.get("messages", [])):

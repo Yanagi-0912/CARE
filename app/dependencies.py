@@ -81,6 +81,19 @@ from app.services.line_messaging.rich_menu_service import RichMenuService
 from app.services.line_messaging.token_manager import LineTokenManager
 from app.services.medical.facility_name_index import configure_facility_names
 from app.services.medical.medical_service import MedicalService, medical_service
+from app.services.medical.symptom_classification import (
+    SymptomDepartmentService,
+    SymptomNormalizer,
+    UrgencyClassifier,
+    load_symptom_table,
+)
+from app.services.medical.symptom_classification.vector_index import (
+    DEFAULT_VECTOR_PATH,
+    EMBEDDING_TASK_TYPE,
+    VECTOR_DIM,
+    SymptomVectorIndex,
+    table_content_hash,
+)
 from app.services.line_messaging.handler.facility_detail_handler import (
     LineFacilityDetailHandler,
 )
@@ -115,6 +128,7 @@ from app.tools.knowledge_report_tools import configure_knowledge_report_tool
 from app.tools.medical_tools import configure_medical_tools
 from app.tools.official_site_tools import configure_official_site_tool
 from app.tools.rag_tools import configure_rag_tool
+from app.tools.symptom_tools import configure_symptom_tool
 from app.tools.user_document_tools import configure_user_document_tool
 from app.tools.web_tools import configure_web_tool
 
@@ -427,9 +441,50 @@ if settings.CLAIM_VERIFICATION_ENABLED:
 else:
     logger.info("CLAIM_VERIFICATION_ENABLED=false; verify_claim tool not configured")
 
+# 表壞掉時刻意不降級：帶著解析不出科別的對照表提供服務，會產生「系統說查過了
+# 但附近沒有」的回覆，比功能不存在更難察覺（見 symptom_table 模組註解）。
+_symptom_table = load_symptom_table()
+
+# 症狀比對的向量索引。task_type 與維度刻意不沿用 RAG 那組（見 design 決策 12）：
+# RAG 是「問句 → 文件段落」的非對稱檢索，症狀比對是短語對短語的對稱相似度。
+_symptom_embeddings = GoogleGenerativeAIEmbeddings(
+    model=settings.EMBEDDING_MODEL,
+    google_api_key=settings.GEMINI_API_KEY,
+    task_type=EMBEDDING_TASK_TYPE,
+    output_dimensionality=VECTOR_DIM,
+)
+
+# 向量檔缺席或與表不同步時回 None，比對層自動退回 LLM 全表兜底——降級而非中斷。
+# 表改過就要重跑 scripts/build_symptom_vectors.py。
+_symptom_vector_index = SymptomVectorIndex.load(
+    DEFAULT_VECTOR_PATH,
+    expected_hash=table_content_hash(_symptom_table.terms),
+)
+
+_symptom_department_service = SymptomDepartmentService(
+    table=_symptom_table,
+    normalizer=SymptomNormalizer(
+        table_terms=_symptom_table.terms,
+        vector_index=_symptom_vector_index,
+        embed_query=_symptom_embeddings.aembed_query,
+        gemini_service=_gemini_service,
+    ),
+)
+configure_symptom_tool(_symptom_department_service)
+
+# 急迫度判斷。刻意與科別建議分開建構：它擋在整個 agent 之前，不屬於任何工具，
+# 也不依賴對照表——對照表壞掉時科別建議可以不上線，安全檢查不行。
+_urgency_classifier = UrgencyClassifier(gemini_service=_gemini_service)
+if not _symptom_table.verified:
+    logger.warning(
+        "症狀對照表尚未經人工審定（status != verified），"
+        "科別建議的正確性未經驗證"
+    )
+
 _care_agent = Agent(
     llm=_gemini_service.chat_model,
     guardrail_service=_guardrail_service,
+    urgency_classifier=_urgency_classifier,
 )
 
 _line_history_service = LineMessageHistoryService(_chat_history_repository)

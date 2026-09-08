@@ -22,6 +22,7 @@ from linebot.v3.messaging import (
     FlexContainer,
     FlexMessage,
     LocationAction,
+    MessageAction,
     MessagingApi,
     PushMessageRequest,
     QuickReply,
@@ -323,6 +324,28 @@ class LineReplier:
             return FlexMessage(altText=alt_text, contents=contents), speech_text
 
         return None, ""
+
+    @staticmethod
+    def _parse_quick_reply(payload: Any) -> Optional[QuickReply]:
+        #把 Flex payload 裡的 quickReply 轉成 SDK 物件。
+        if not isinstance(payload, dict):
+            return None
+        items = []
+        for raw_item in payload.get("items") or ():
+            action = raw_item.get("action") if isinstance(raw_item, dict) else None
+            if not isinstance(action, dict) or action.get("type") != "message":
+                continue
+            label, text = action.get("label"), action.get("text")
+            if not label or not text:
+                continue
+            items.append(QuickReplyItem(action=MessageAction(label=label, text=text)))
+        if not items:
+            if payload:
+                logger.warning(
+                    f"{LOGGER_HEADER_TEXT} quickReply 內容無法解析，已略過：%r", payload
+                )
+            return None
+        return QuickReply(items=items)
 
     @staticmethod
     def _normalize_message_text(message_text: Any) -> str:

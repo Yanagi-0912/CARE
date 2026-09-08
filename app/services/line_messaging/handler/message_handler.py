@@ -13,6 +13,7 @@ from app.core.user_font_size import (
     reset_request_font_size,
     set_request_font_size,
 )
+from app.core.user_age import reset_request_age, set_request_age
 from app.core.user_language import (
     DEFAULT_USER_LANGUAGE,
     normalize_user_language,

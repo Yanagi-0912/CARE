@@ -96,7 +96,11 @@ def _column_bg(day_index: int, day_key: str, today_key: str) -> str:
 
 
 def _table_cell(contents: list[dict[str, Any]], bg_color: str) -> dict[str, Any]:
-    """表格的一格。欄與欄之間不留間距，同一欄的底色才會連成一條直的色帶。"""
+    """表格的一格。欄與欄之間不留間距，同一欄的底色才會連成一條直的色帶。
+
+    每一格的內距必須完全一致：表頭與內容列是各自獨立的 horizontal box，只要有一列
+    的左右內距不同，該列的欄寬就跟其他列對不齊，整張表會錯開。
+    """
     return {
         "type": "box",
         "layout": "vertical",
@@ -119,7 +123,10 @@ def _row_label_cell(
             "weight": "bold",
             "color": theme.BRAND_DARK,
             "align": "center",
-            "wrap": True,
+            # 這一欄放的一律是單一個詞（「門診表」「Schedule」「Afternoon」
+            # 「Lịch khám」），沒有可斷的詞界。開 wrap 只會從字中間硬切成
+            # 「Schedul」＋「e」，不會更好讀；改成不換行、由客戶端縮到剛好。
+            "adjustMode": "shrink-to-fit",
         }
     ]
     if subtitle:
@@ -183,6 +190,8 @@ def _build_clinic_time_rows(
                         "weight": "bold",
                         "color": _TODAY_ACCENT if is_today else theme.BRAND_DARK,
                         "align": "center",
+                        #shrink to fit 讓文字自動縮小到剛好放得下
+                        "adjustMode": "shrink-to-fit",
                     }
                 ],
                 _column_bg(day_index, day_key, today_key),

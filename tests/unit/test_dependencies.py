@@ -113,3 +113,37 @@ def test_claim_matcher_is_wired_with_content_field_from_settings():
     matcher = dependencies._claim_matcher
     assert matcher is not None
     assert matcher.content_field == settings.MONGODB_TEXT_FIELD
+
+
+# ── medical-news-push 的組裝 ────────────────────────────────────────
+
+
+def test_medical_news_share_service_is_singleton():
+    from app.dependencies import get_medical_news_share_service
+
+    assert get_medical_news_share_service() is get_medical_news_share_service()
+
+
+def test_medical_news_services_are_exposed():
+    """三個 getter 都存在。索引與 Tier 2 允許為 None（缺 Firecrawl 或缺知識庫
+    連線時），呼叫端據此不啟動對應的排程——這個降級方向是刻意的：Tier 1
+    缺席時使用者仍每天收得到 Tier 2。"""
+    from app.dependencies import (
+        get_drug_news_index_service,
+        get_kb_digest_service,
+        get_medical_news_share_service,
+    )
+
+    assert get_medical_news_share_service() is not None
+    # 這兩個在測試環境可能為 None，只斷言呼叫不拋錯。
+    get_drug_news_index_service()
+    get_kb_digest_service()
+
+
+def test_dispatcher_receives_share_service():
+    from app.dependencies import get_line_event_handler, get_medical_news_share_service
+
+    dispatcher = get_line_event_handler()
+    assert (
+        dispatcher._medical_news_share_service is get_medical_news_share_service()
+    )

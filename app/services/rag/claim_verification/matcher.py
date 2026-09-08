@@ -55,6 +55,17 @@ DEFAULT_CLAIM_MATCH_MIN_SCORE = 0.86
 # 視覺語意反向，而且沒有任何 log 能追。
 _VALID_VERDICTS = frozenset({"錯誤", "部分錯誤", "正確", "事實釐清", "證據不足"})
 
+# 分數差距在這個範圍內視為「一樣相關」，改以發布日期決勝。
+#
+# 為什麼需要：實測 8 題常見謠言，有 3 題的前兩名分差小於 0.005，其中
+# 「打疫苗會改變DNA」只差 0.0004（2022 年與 2021 年的兩篇報告）——那個差距
+# 沒有語意意義，誰勝出基本上是隨機的。與其隨機，不如給使用者較新的那篇。
+#
+# 刻意不做「一律取新」：分數差距顯著時代表真的比較相關，日期不該蓋過相關性。
+# 也刻意不做日期範圍過濾——查核報告不會過期，2021 年查過的謠言 2026 年重傳時
+# 那份報告依然有效，用日期硬篩會擋掉大量仍然正確的答案。
+_SCORE_TIE_EPSILON = 0.005
+
 
 @dataclass(frozen=True)
 class ClaimMatch:
@@ -65,6 +76,7 @@ class ClaimMatch:
     title: str
     content: str
     score: float
+    published_at: str = ""
 
 
 class ClaimMatcher(Protocol):
@@ -185,6 +197,7 @@ class MongoAtlasClaimMatcher:
             title=str(best.get("original_title") or ""),
             content=content,
             score=float(score),
+            published_at=str(best.get("published_at") or ""),
         )
 
     async def _search(self, claim: str) -> list[dict[str, Any]]:
@@ -200,11 +213,28 @@ class MongoAtlasClaimMatcher:
                     "queryVector": query_embedding,
                     "numCandidates": self.k * _NUM_CANDIDATES_MULTIPLIER,
                     "limit": self.k,
+                    # 前置過濾：只讓帶合法判定的文件參與相似度排名。
+                    #
+                    # 過去是取回 top-k 之後才用 $match 濾掉沒有 verdict 的
+                    # 文件，那是結構性的召回上限——知識庫裡查核報告只佔約
+                    # 三分之一，其餘是衛福部與食藥署的衛教文，而使用者問的
+                    # 謠言題目往往兩邊都寫過，於是 top-10 可能整批是衛教文，
+                    # 真正查核過那篇根本進不了候選。實測（五題常見謠言）：
+                    #
+                    #   問句                    後置 $match   前置 filter
+                    #   微波爐加熱產生致癌物        4/10         10/10
+                    #   感冒吃抗生素有用嗎          6/10         10/10
+                    #   吃鳳梨心可以溶解血栓        7/10         10/10
+                    #
+                    # 拉高 numCandidates 解決不了，因為瓶頸是 limit。
+                    #
+                    # 條件寫成「落在五個合法判定內」而非「非空」，是因為
+                    # Atlas 的字串前置過濾只支援等值與 $in，不支援 $exists；
+                    # 而這個寫法同時把合法值約束下推到查詢層，與下游
+                    # `_VALID_VERDICTS` 的檢核形成兩道一致的防線。
+                    "filter": {"verdict": {"$in": sorted(_VALID_VERDICTS)}},
                 }
             },
-            # 只有 TFC 的文件帶 verdict；寫明確的過濾條件，不要依賴「其他來源
-            # 剛好沒有 claim 欄位」這個巧合。
-            {"$match": {"verdict": {"$ne": None}}},
             {
                 "$project": {
                     "_id": 0,
@@ -213,6 +243,7 @@ class MongoAtlasClaimMatcher:
                     "verdict_slug": 1,
                     "url": 1,
                     "original_title": 1,
+                    "published_at": 1,
                     self.content_field: 1,
                     "score": {"$meta": "vectorSearchScore"},
                 }
@@ -242,4 +273,12 @@ class MongoAtlasClaimMatcher:
 
         if not best_by_url:
             return None
-        return max(best_by_url.values(), key=lambda doc: doc["score"])
+
+        candidates = sorted(best_by_url.values(),
+                            key=lambda doc: doc["score"], reverse=True)
+        top_score = candidates[0]["score"]
+        tied = [d for d in candidates if top_score - d["score"] <= _SCORE_TIE_EPSILON]
+        if len(tied) == 1:
+            return tied[0]
+        # 日期是字串（"2026-03-11"），字典序即時間序；缺日期者排最後。
+        return max(tied, key=lambda doc: str(doc.get("published_at") or ""))

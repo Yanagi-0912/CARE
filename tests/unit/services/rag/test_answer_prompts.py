@@ -80,3 +80,23 @@ def test_wrap_context_neutralizes_begin_marker_inside_content():
 
     assert wrapped.count(CONTEXT_BEGIN) == 1
     assert wrapped.startswith(CONTEXT_BEGIN)
+
+
+@pytest.mark.parametrize(
+    "builder_name",
+    ["build_rag_prompt", "build_user_document_prompt", "build_web_prompt"],
+)
+def test_every_answer_prompt_carries_length_limit(builder_name):
+    """三個生成路徑的輸出都會進卡片，都要受長度約束。"""
+    import app.services.rag.answer_prompts as prompts
+
+    rendered = getattr(prompts, builder_name)("zh-TW").format(question="q", context="c")
+
+    assert str(prompts.ANSWER_MAX_CHARS) in rendered
+
+
+def test_length_limit_leaves_headroom_below_card_capacity():
+    """卡片版型可容納約 1,400 字；上限須留足餘裕，讓降級不成為常態。"""
+    from app.services.rag.answer_prompts import ANSWER_MAX_CHARS
+
+    assert 400 <= ANSWER_MAX_CHARS <= 500

@@ -1,17 +1,28 @@
 from dataclasses import dataclass
 import logging
+import time
 
 import jwt  # type: ignore[import-not-found]
 from fastapi import Depends, Header, HTTPException
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 from app.core.config import settings
+from app.core.request_logging import log_stage
 
 logger = logging.getLogger(__name__)
 from app.db.mongodb import MongoDBManager
 from app.db.redis import RedisManager
 from app.repositories.chat_history_repository import build_chat_history_repository
 from app.repositories.consultation_repository import ConsultationRepository
+from app.repositories.family_delegation_repository import (
+    FamilyDelegationRepository,
+)
+from app.repositories.family_rbac_metrics_repository import (
+    FamilyRbacMetricsRepository,
+)
+from app.repositories.family_role_audit_repository import (
+    FamilyRoleAuditRepository,
+)
 from app.repositories.family_tree_repository import FamilyTreeRepository
 from app.repositories.knowledge_report_preview_repository import (
     KnowledgeReportPreviewRepository,
@@ -26,16 +37,29 @@ from app.repositories.safety_alert_repository import SafetyAlertRepository
 from app.repositories.user_profile_repository import UserProfileRepository
 from app.services.agent.agent import Agent
 from app.services.consultation.consultation_service import ConsultationService
+from app.services.family.family_authorization_service import (
+    FamilyAuthorizationService,
+)
+from app.services.family.family_delegation_service import (
+    FamilyDelegationService,
+)
+from app.services.family.family_role_service import FamilyRoleService
 from app.services.family.family_tree_service import FamilyTreeService
 from app.services.medication.drug_appearance_image_service import (
     resolve_drug_appearance_image_url,
 )
 from app.services.medication.drug_catalog_service import DrugCatalogService
+from app.services.medication.drug_indication_service import DrugIndicationService
 from app.services.medication.medication_service import MedicationService
 from app.services.medication.medication_scheduler import start_medication_scheduler
 from app.services.medication.prescription_ocr_service import PrescriptionOcrService
 from app.services.medication.prescription_scan_service import PrescriptionScanService
 from app.services.safety.drug_mention_extractor import DrugMentionExtractor
+from app.services.safety.ingredient_overlap import (
+    IngredientWatchlist,
+    load_local_action_forms,
+)
+from app.services.safety.otc_alert_service import OtcAlertService
 from app.services.safety.safety_alert_service import SafetyAlertService
 from app.services.gemini import GeminiService
 from app.services.guardrail import GuardrailService
@@ -86,6 +110,7 @@ from app.services.rag.claim_verification.service import ClaimVerificationService
 from app.services.rag.cohere_reranker import CohereReranker, VectorScoreReranker
 from app.services.rag.firecrawl_client import FirecrawlClient
 from app.services.rag.ingest_service import IngestService
+from app.services.rag.link_check import LinkChecker
 from app.services.rag.whitelist import default_url_policy
 from app.services.rag.user_document_answer_service import UserDocumentAnswerService
 from app.services.rag.user_document_ingest_service import UserDocumentIngestService
@@ -93,6 +118,10 @@ from app.services.rag.user_document_retriever import UserDocumentVectorRetriever
 from app.services.rag.query_rewriter import GeminiQueryRewriter
 from app.services.rag.retrieval_grader import GeminiRetrievalGrader
 from app.services.rag.web_search_service import WebSearchService
+from app.services.medical_news.grader import GeminiNewsGrader
+from app.services.medical_news.index_service import DrugNewsIndexService
+from app.services.medical_news.kb_digest_service import KbDigestService
+from app.services.medical_news.share_service import MedicalNewsShareService
 from app.services.users.user_profile_service import UserProfileService
 from app.tools.claim_tools import configure_claim_tool
 from app.tools.knowledge_report_tools import configure_knowledge_report_tool
@@ -238,10 +267,23 @@ _knowledge_report_service = KnowledgeReportService(
 )
 configure_knowledge_report_tool(_knowledge_report_service)
 
+# 兩條回答路徑共用同一個 checker，快取才是共用的：知識庫路徑查過的網址，
+# 網搜路徑（以及下一輪對話）能直接命中，不必再打一次 HEAD。
+_link_checker = None
+if settings.RAG_LINK_CHECK_ENABLED:
+    _link_checker = LinkChecker(
+        timeout_seconds=settings.RAG_LINK_CHECK_TIMEOUT_SECONDS,
+        ok_ttl_seconds=settings.RAG_LINK_CHECK_OK_TTL_SECONDS,
+        dead_ttl_seconds=settings.RAG_LINK_CHECK_DEAD_TTL_SECONDS,
+    )
+else:
+    logger.info("RAG_LINK_CHECK_ENABLED=false; citation URLs will not be verified")
+
 _web_search_service = WebSearchService(
     gemini_service=_gemini_service,
     web_client=_firecrawl_client,
     on_web_fallback_success=_knowledge_report_service.create_from_web_fallback,
+    link_checker=_link_checker,
 )
 
 _rag_answer_service = RagAnswerService(
@@ -252,9 +294,13 @@ _rag_answer_service = RagAnswerService(
     max_chunks_per_article=settings.RAG_RERANK_MAX_CHUNKS_PER_ARTICLE,
     grader=_rag_grader,
     rewriter=_rag_rewriter,
+    crag_rewrite_budget_seconds=settings.RAG_CRAG_REWRITE_BUDGET_SECONDS,
+    speculative_generate=settings.RAG_SPECULATIVE_GENERATE,
     crag_enabled=settings.RAG_CRAG_ENABLED,
     web_search=_web_search_service,
     web_fallback_enabled=settings.RAG_WEB_FALLBACK_ENABLED,
+    degraded_min_score=settings.RAG_DEGRADED_MIN_SCORE,
+    link_checker=_link_checker,
 )
 
 _chat_history_repository = build_chat_history_repository()
@@ -486,6 +532,13 @@ _drug_catalog_service = DrugCatalogService.load_from_path(
     settings.DRUG_CATALOG_PATH, threshold=settings.DRUG_CATALOG_MATCH_THRESHOLD
 )
 
+# 仿單適應症同樣在啟動時載入一次，load_from_path 內部已處理缺席與損毀
+# （記錄錯誤、回傳空服務），這裡不再包一層。藥袋辨識（比對記錄）與用藥清單
+# （呈現）共用這一份，兩邊都不重新載入。
+_drug_indication_service = DrugIndicationService.load_from_path(
+    settings.DRUG_INDICATION_PATH
+)
+
 # 用藥風險偵測。組裝本身沒有任何 I/O，因此無條件建好；真正的閘門在下面
 # handler 的注入——SAFETY_ALERT_ENABLED 為 false 時 handler 拿到 None，
 # 整條路徑（抽取、判定、推播）一步都不會執行。
@@ -493,6 +546,17 @@ _drug_mention_extractor = DrugMentionExtractor(
     gemini_service=_gemini_service,
     timeout_seconds=settings.SAFETY_ALERT_TIMEOUT_SECONDS,
 )
+# 家庭授權的唯一決策點。repository 皆以 staticmethod 群組的形式存在（沿用本
+# 檔案其他組裝一貫的慣例），直接把類別本身傳進去即可。
+_family_authorization_service = FamilyAuthorizationService(
+    family_tree_repository=FamilyTreeRepository,
+    delegation_repository=FamilyDelegationRepository,
+    enforcement_enabled=settings.FAMILY_RBAC_ENFORCED,
+    # 遷移指標的計數器。判準 1（收緊差異比例）與判準 4（受影響擁有者清單）
+    # 的原始資料來源；寫入失敗一律吞掉，不影響授權。
+    metrics_repository=FamilyRbacMetricsRepository,
+)
+
 _safety_alert_service = SafetyAlertService(
     extractor=_drug_mention_extractor,
     catalog_service=_drug_catalog_service,
@@ -501,9 +565,34 @@ _safety_alert_service = SafetyAlertService(
     replier=_line_replier,
     user_profile_service=_user_profile_service,
     dedupe_hours=settings.SAFETY_ALERT_DEDUPE_HOURS,
+    # 通知政策的判定點。高風險通報是唯一繞過 LIFF 授權邊界把健康資訊送出去的
+    # 通道，因此它也要經過同一個決策點——只是走的是 NOTIFICATION_POLICY 這張
+    # 表，不是 PERMISSIONS。
+    authorization_service=_family_authorization_service,
 )
 _enabled_safety_alert_service = (
     _safety_alert_service if settings.SAFETY_ALERT_ENABLED else None
+)
+
+# 非處方藥成分重複偵測。白名單與局部作用劑型清單在啟動時各讀一次檔——它們是
+# 靜態設定，每次偵測重讀只是白花 I/O；讀不到時 IngredientWatchlist 回空清單，
+# 效果是「不偵測任何重複」，與整條路徑對主流程 fail-open 的方向一致。
+_otc_watchlist = IngredientWatchlist.load_from_path()
+_otc_local_action_forms = load_local_action_forms()
+_otc_alert_service = OtcAlertService(
+    catalog_service=_drug_catalog_service,
+    medication_repository=MedicationRepository,
+    reminder_repository=MedicationReminderRepository,
+    replier=_line_replier,
+    watchlist=_otc_watchlist,
+    local_action_forms=_otc_local_action_forms,
+    # 與高風險通報走同一個決策點，只是查 NOTIFICATION_POLICY 裡的另一個種類
+    # （otc_medication_added）。收到通知 SHALL NOT 改變收件人的資料存取權。
+    authorization_service=_family_authorization_service,
+    user_profile_service=_user_profile_service,
+)
+_enabled_otc_alert_service = (
+    _otc_alert_service if settings.OTC_ALERT_ENABLED else None
 )
 
 _message_handler = LineMessageHandler(
@@ -531,7 +620,18 @@ _location_handler = LineLocationHandler(
     loading_animation_service=_line_loading_animation_service,
 )
 _family_tree_service = FamilyTreeService()
-_medication_service = MedicationService()
+_family_role_service = FamilyRoleService(
+    authorization_service=_family_authorization_service,
+    family_tree_repository=FamilyTreeRepository,
+    audit_repository=FamilyRoleAuditRepository,
+)
+_family_delegation_service = FamilyDelegationService(
+    delegation_repository=FamilyDelegationRepository,
+    family_tree_repository=FamilyTreeRepository,
+    audit_repository=FamilyRoleAuditRepository,
+    activation_enabled=settings.FAMILY_DELEGATION_ACTIVATION_ENABLED,
+)
+_medication_service = MedicationService(indication_service=_drug_indication_service)
 
 # 藥袋辨識。藥證庫沿用上面已經載入的那一份（見 _drug_catalog_service）。
 _prescription_ocr_service = PrescriptionOcrService(
@@ -541,6 +641,7 @@ _prescription_ocr_service = PrescriptionOcrService(
 # 各 repository 皆以 staticmethod 群組的形式存在（沿用本檔案其他組裝一貫的
 # 慣例），直接把類別本身傳進去即可，不需要另外實例化。
 _prescription_scan_service = PrescriptionScanService(
+    authorization_service=_family_authorization_service,
     ocr_service=_prescription_ocr_service,
     catalog_service=_drug_catalog_service,
     draft_repository=PrescriptionDraftRepository,
@@ -551,6 +652,37 @@ _prescription_scan_service = PrescriptionScanService(
     # app.core.config.settings，正式組裝時不需要額外帶入。
     appearance_image_resolver=resolve_drug_appearance_image_url,
     ttl_minutes=settings.PRESCRIPTION_DRAFT_TTL_MINUTES,
+    indication_service=_drug_indication_service,
+    otc_alert_service=_enabled_otc_alert_service,
+)
+
+# ── 每日醫療消息卡（medical-news-push）────────────────────────────────
+#
+# 索引服務需要 Firecrawl；沒有 API key 就沒有搜尋能力，此時服務為 None、
+# 索引排程不啟動，推播仍可照常供應 Tier 2（那條路只讀既有知識庫）。這個
+# 降級方向是刻意的：Tier 1 缺席時使用者仍每天收得到東西。
+_drug_news_index_service = None
+if _firecrawl_client is not None:
+    _drug_news_index_service = DrugNewsIndexService(
+        web_client=_firecrawl_client,
+        grader=GeminiNewsGrader(gemini_service=_gemini_service),
+        max_age_days=settings.MEDICAL_NEWS_MAX_AGE_DAYS,
+        search_limit=settings.MEDICAL_NEWS_SEARCH_LIMIT,
+    )
+
+# Tier 2 讀的是 CARE-data 每日 ETL 維護的同一個 collection，不新增外部依賴。
+_kb_digest_service = None
+if settings.MONGODB_URI and settings.MONGODB_COLLECTION:
+    _kb_digest_service = KbDigestService(
+        collection=MongoDBManager.get_database()[settings.MONGODB_COLLECTION],
+        max_age_days=settings.MEDICAL_NEWS_MAX_AGE_DAYS,
+    )
+
+_medical_news_share_service = MedicalNewsShareService(
+    replier=_line_replier,
+    family_tree_service=_family_tree_service,
+    user_profile_service=_user_profile_service,
+    daily_share_limit=settings.MEDICAL_NEWS_DAILY_SHARE_LIMIT,
 )
 
 _line_event_handler = LineEventHandler(
@@ -560,6 +692,7 @@ _line_event_handler = LineEventHandler(
     facility_detail_handler=_facility_detail_handler,
     replier=_line_replier,
     medication_service=_medication_service,
+    medical_news_share_service=_medical_news_share_service,
 )
 
 
@@ -646,6 +779,32 @@ def get_rag_retriever() -> MongoAtlasVectorRetriever | HybridRetriever:
     return _rag_retriever
 
 
+async def warm_rag_connections() -> None:
+    """啟動時把 RAG 檢索用的 Mongo 連線先建立起來。
+
+    為什麼需要：retriever 的 client 是首次 `ainvoke` 才懶建的，不在既有的
+    startup 路徑上（lifespan 的 `ensure_indexes` 走的是 `MongoDBManager`
+    那條）。所以每次部署後**第一個問問題的使用者**要獨自承擔建立連線的
+    成本——健康網路下約 0.7-0.9 秒，網路不佳時更久。這裡先把那一次付掉。
+
+    收益不大（秒級、每次啟動一次），但成本也接近零：背景執行、失敗不影響
+    服務。
+
+    失敗只記錄不拋：連不上 Mongo 時該讓服務照常啟動、由既有的錯誤路徑
+    處理，而不是讓整個 app 起不來——暖機是最佳化，不是前置條件。
+    """
+    warmup = getattr(_rag_retriever, "warmup", None)
+    if warmup is None:
+        return
+    t0 = time.perf_counter()
+    try:
+        await warmup()
+    except Exception:
+        logger.exception("rag_warmup_failed; first query will pay connection cost")
+        return
+    log_stage(logger, "rag_warmup", ms=int((time.perf_counter() - t0) * 1000))
+
+
 def get_rag_answer_service() -> RagAnswerService:
     """取得 RAG 問答服務（知識庫檢索 + 生成）"""
     return _rag_answer_service
@@ -676,8 +835,40 @@ def get_family_tree_service() -> FamilyTreeService:
     return _family_tree_service
 
 
+def get_family_role_service() -> FamilyRoleService:
+    """家庭角色指派。提權防護的六道檢查都在這支服務裡。"""
+    return _family_role_service
+
+
+def get_family_delegation_service() -> FamilyDelegationService:
+    """委任授權。建立的路徑在核可流程確定之前不對終端使用者開放。"""
+    return _family_delegation_service
+
+
+def get_family_authorization_service() -> FamilyAuthorizationService:
+    """家庭授權的唯一決策點。
+
+    跨使用者的端點一律經由這裡判定，SHALL NOT 自行判斷「他是不是家人」或
+    「他是什麼角色」。"""
+    return _family_authorization_service
+
+
 def get_medication_service() -> MedicationService:
     return _medication_service
+
+
+def get_drug_news_index_service():
+    """索引服務。沒有 Firecrawl 時為 None，呼叫端據此不啟動索引排程。"""
+    return _drug_news_index_service
+
+
+def get_kb_digest_service():
+    """Tier 2 選材。沒有知識庫連線時為 None。"""
+    return _kb_digest_service
+
+
+def get_medical_news_share_service() -> MedicalNewsShareService:
+    return _medical_news_share_service
 
 
 def get_prescription_scan_service() -> PrescriptionScanService:

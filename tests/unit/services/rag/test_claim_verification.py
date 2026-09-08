@@ -588,3 +588,198 @@ async def test_verify_does_not_swallow_identity_verifier_misconfiguration():
 
     with pytest.raises(RuntimeError):
         await service.verify(_USER_TEXT)
+
+
+# ── related_sources：未命中側的結構化出處 ────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_related_info_carries_structured_sources():
+    """未命中側的每一段都要能追回出處。label 沿用 RAG 答問路徑的規則
+    （來源名優先、退回標題），index 由 1 起算並與段落順序一致。"""
+    docs = [
+        Document(
+            page_content="咖啡因與骨密度的研究摘要。",
+            metadata={
+                "verdict": None,
+                "url": "https://edu.example/1",
+                "source_name": "食藥署闢謠專區",
+                "original_title": "咖啡與骨質疏鬆的迷思",
+            },
+        ),
+        Document(
+            page_content="鈣質攝取建議。",
+            metadata={
+                "verdict": None,
+                "url": "https://edu.example/2",
+                "source_name": "衛福部闢謠網站",
+                "original_title": "每日鈣質怎麼吃",
+            },
+        ),
+    ]
+    service = _make_service(match=None, related_retriever=_StaticRelatedRetriever(docs))
+
+    result = await service.verify(_USER_TEXT)
+
+    assert [(s.index, s.label, s.url) for s in result.related_sources] == [
+        (1, "食藥署闢謠專區", "https://edu.example/1"),
+        (2, "衛福部闢謠網站", "https://edu.example/2"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_related_source_without_url_is_kept_not_dropped():
+    """「食藥署公告」那批（scraper_api 的全站新聞稿 feed）上游結構上就沒有
+    網址。rag-responses 要求缺 url 的來源仍須顯示，不得靜默丟棄——這裡鎖住
+    它確實留在 related_sources 裡，url 為空字串而非整筆消失。"""
+    docs = [
+        Document(
+            page_content="食藥署提醒民眾勿信偏方。",
+            metadata={
+                "verdict": None,
+                "url": None,
+                "source_name": "食藥署公告",
+                "original_title": "偏方風險說明",
+            },
+        ),
+    ]
+    service = _make_service(match=None, related_retriever=_StaticRelatedRetriever(docs))
+
+    result = await service.verify(_USER_TEXT)
+
+    assert len(result.related_sources) == 1
+    assert result.related_sources[0].label == "食藥署公告"
+    assert result.related_sources[0].url == ""
+    assert "食藥署提醒民眾勿信偏方。" in result.related_info
+
+
+@pytest.mark.asyncio
+async def test_related_info_dedupes_by_source_and_title_when_url_missing():
+    """迴歸測試：舊版把整段去重包在 `if url:` 裡，沒有網址的來源因此完全
+    不去重，同一篇的多個 chunk 可以佔滿全部三個名額——與 docstring 宣稱的
+    「同一篇最多一段」相反，而沒有網址的正是 576 篇的一整個來源。"""
+    docs = [
+        Document(
+            page_content="第一段（同一篇，無網址）。",
+            metadata={
+                "verdict": None,
+                "url": "",
+                "source_name": "食藥署公告",
+                "original_title": "同一篇文章",
+            },
+        ),
+        Document(
+            page_content="第二段（同一篇，不該重複出現）。",
+            metadata={
+                "verdict": None,
+                "url": "",
+                "source_name": "食藥署公告",
+                "original_title": "同一篇文章",
+            },
+        ),
+        Document(
+            page_content="另一篇的內容。",
+            metadata={
+                "verdict": None,
+                "url": "",
+                "source_name": "食藥署公告",
+                "original_title": "另一篇文章",
+            },
+        ),
+    ]
+    service = _make_service(match=None, related_retriever=_StaticRelatedRetriever(docs))
+
+    result = await service.verify(_USER_TEXT)
+
+    assert "第一段（同一篇，無網址）" in result.related_info
+    assert "第二段（同一篇，不該重複出現）" not in result.related_info
+    assert "另一篇的內容" in result.related_info
+    assert len(result.related_sources) == 2
+
+
+@pytest.mark.asyncio
+async def test_blank_chunk_does_not_consume_its_article_dedup_slot():
+    """內容為空的 chunk 不該先佔掉那篇文章的去重名額，害同一篇真正有內容的
+    下一段被當成重複而丟掉。"""
+    docs = [
+        Document(
+            page_content="   ",
+            metadata={
+                "verdict": None,
+                "url": "https://edu.example/1",
+                "source_name": "食藥署闢謠專區",
+            },
+        ),
+        Document(
+            page_content="這一段才是真正的內容。",
+            metadata={
+                "verdict": None,
+                "url": "https://edu.example/1",
+                "source_name": "食藥署闢謠專區",
+            },
+        ),
+    ]
+    service = _make_service(match=None, related_retriever=_StaticRelatedRetriever(docs))
+
+    result = await service.verify(_USER_TEXT)
+
+    assert "這一段才是真正的內容。" in result.related_info
+    assert len(result.related_sources) == 1
+
+
+@pytest.mark.asyncio
+async def test_matched_result_carries_no_related_sources():
+    """命中側的來源走 source_url／source_note 那條路，related_sources 必須
+    保持空——兩者互斥，否則卡片會同時出現查核報告與衛教來源兩組按鈕。"""
+    service = _make_service(match=_make_match("錯誤"))
+
+    result = await service.verify(_USER_TEXT)
+
+    assert result.matched is True
+    assert result.related_sources == ()
+
+
+@pytest.mark.asyncio
+async def test_related_sources_empty_when_retrieval_fails():
+    service = _make_service(match=None, related_retriever=_FailingRelatedRetriever())
+
+    result = await service.verify(_USER_TEXT)
+
+    assert result.related_info == ""
+    assert result.related_sources == ()
+
+
+@pytest.mark.asyncio
+async def test_worst_case_unmatched_card_stays_within_the_size_guard():
+    """`_RELATED_INFO_TOP_K` 與判定卡的大小門檻是綁在一起的：取太多筆會讓
+    卡片超過 `SAFE_BUBBLE_BYTES`，在無聲中退回純文字（退回不會有錯誤訊息，
+    見 size_guard 模組 docstring）。
+
+    這條測試把兩者的關係鎖住——最壞情況是每篇候選都是滿版 chunk
+    （`chunk_size` 上限 500 字）加上長網址。實測取 3 筆時為 12,500 bytes，
+    取 2 筆為 8,993 bytes；門檻 9,216。調高 TOP_K 會直接讓這條紅。
+    """
+    from app.services.line_messaging.flex.verdict_flex import build_verdict_flex
+    from resources.flex_messages.size_guard import fits, wire_bytes
+
+    docs = [
+        Document(
+            page_content="檸" * 500,
+            metadata={
+                "verdict": None,
+                "source_name": "食藥署闢謠專區",
+                "original_title": f"闢謠文章標題 {i}",
+                "url": f"https://www.fda.gov.tw/TC/newsContent.aspx?cid=5049&id={31600 + i}",
+            },
+        )
+        for i in range(5)
+    ]
+    service = _make_service(match=None, related_retriever=_StaticRelatedRetriever(docs))
+
+    result = await service.verify(_USER_TEXT)
+    bubble = build_verdict_flex(result).contents.to_dict()
+
+    assert fits(bubble), (
+        f"最壞情況的判定卡為 {wire_bytes(bubble):,} bytes，超過門檻——"
+        "會在無聲中退回純文字。降低 _RELATED_INFO_TOP_K 或縮短區塊內容。"
+    )

@@ -168,7 +168,7 @@ grace 之內的延遲 SHALL 照常推播，使短暫部署造成的延遲不致�
 
 註銷 SHALL 僅作用於 `pending` 的紀錄。已為 `taken` 者 SHALL NOT 被改寫——那是使用者確實服藥的事實；已為 `missed` 者亦 SHALL NOT 被改寫——家屬警報已送出，事後改為「不算漏吃」會使資料庫與已送達的通知互相矛盾。
 
-註銷 SHALL 於規則更新成功之後才執行；更新失敗時規則仍為啟用，SHALL NOT 作廢當日紀錄。未帶 `enabled` 的更新請求（例如只調整提醒時間）SHALL NOT 註銷任何紀錄。
+註銷 SHALL 於規則更新成功之後才執行；更新失敗時規則仍為啟用，SHALL NOT 作廢當日紀錄。未帶 `enabled` 的更新請求 SHALL NOT 走本節的全面註銷；該請求若改動了排程，當日紀錄的處置見「改排程後當日紀錄的對齊」——那是逐筆對齊，不是把這筆規則今天的紀錄一併作廢。
 
 關閉 SHALL NOT 刪除規則本身，亦 SHALL NOT 停用其關聯藥品。同日再次開啟 SHALL NOT 復原已註銷的紀錄——展開以 `(reminder_id, scheduled_at)` 為唯一識別且僅在插入時寫入初始欄位，已存在的紀錄不會被改回 `pending`，該時段當日因此不再推播。
 
@@ -186,10 +186,10 @@ grace 之內的延遲 SHALL 照常推播，使短暫部署造成的延遲不致�
 - **WHEN** 使用者已按下【已用藥】後才關閉該時段規則
 - **THEN** 該紀錄狀態 SHALL 維持 `taken`
 
-#### Scenario: 只調整提醒時間
+#### Scenario: 只調整提醒時間不走全面註銷
 
 - **WHEN** 更新請求僅帶 `scheduled_time`，未帶 `enabled`
-- **THEN** SHALL NOT 註銷任何當日紀錄
+- **THEN** SHALL NOT 對該規則執行全面註銷；當日紀錄僅依「改排程後當日紀錄的對齊」逐筆處置
 
 #### Scenario: 關閉後才補按已用藥
 
@@ -200,6 +200,57 @@ grace 之內的延遲 SHALL 照常推播，使短暫部署造成的延遲不致�
 
 - **WHEN** 查詢使用者的用藥歷史，其中一筆紀錄狀態為 `cancelled`
 - **THEN** 回傳結果 SHALL NOT 包含該筆紀錄
+
+### Requirement: 改排程後當日紀錄的對齊
+
+更新一筆時段規則且其 `slot_type` 或 `scheduled_time` 實際改變時，系統 SHALL 將該規則當日已展開、狀態仍為 `pending` 的紀錄對齊新的排程：
+
+- `scheduled_at` 與新時刻**不同**者 SHALL 改為 `cancelled`。該時刻已不再是這筆規則的排程，其後續 T+20 催促與 T+30 家屬逾時警報 SHALL NOT 送出。新時刻由排程器照常展開為另一筆紀錄（唯一識別為 `(reminder_id, scheduled_at)`，與被註銷者不同筆）。
+- `scheduled_at` 與新時刻**相同**、僅 `slot_type` 改變者 SHALL 改寫其 `slot_type`，SHALL NOT 註銷。該吃藥的時刻未變，註銷將使使用者當日平白少一次提醒；不改寫則推播文案仍顯示舊時段字樣。
+
+理由：紀錄是規則在展開當下的快照，三階推播的查詢只讀紀錄、不回頭確認規則現況（見「關閉時段規則」）。規則改了而紀錄未對齊時，使用者會在舊時刻被催促、家屬會收到一則指向已不存在時段的漏服警報。
+
+對齊 SHALL 僅作用於 `pending` 的紀錄，`taken` 與 `missed` SHALL NOT 被改寫，理由同關閉路徑。
+
+欄位原值原樣重送 SHALL NOT 視為改變，SHALL NOT 觸發對齊。僅更動起訖日期或 `enabled` 的請求亦 SHALL NOT 觸發。當同一請求將 `enabled` 設為 false 時，SHALL 走關閉路徑（註銷全部未確認紀錄），SHALL NOT 另行對齊——關閉已涵蓋對齊的處置，且該規則當日不再展開新紀錄。
+
+新時刻的計算 SHALL 以台北時間的當日為基準，與排程器展開 `scheduled_at` 的算法一致；兩者基準不一致將使對齊打不中已展開的紀錄。日界與「距現在多久」SHALL 取自同一次讀秒。
+
+當新時刻於當日**已超過補推期限**（`DEFAULT_MISFIRE_GRACE_MINUTES`，與排程器判定錯過時段所用者為同一值）且規則仍為啟用時，系統 SHALL 先於該時刻寫入一筆狀態為 `cancelled` 的紀錄。
+
+理由：排程器展開紀錄時只看規則現在的 `scheduled_time`，無從得知那個時刻是剛才才被改成這樣的。晚間將規則改到當日清晨的時刻時，排程器仍會為該時刻展開紀錄，因超過補推期限而記為 `missed`——雖不推播，卻會進入「錯過時段的彙整通知」，家屬因此收到一則指向從未存在過之劑次的漏服通知。預先寫入使排程器的 `$setOnInsert` 成為 no-op。
+
+此預先註銷 SHALL NOT 覆寫該時刻既有的任何紀錄。門檻 SHALL 為補推期限而非「現在」：新時刻剛過去、仍在補推期限內者 SHALL 照常展開並推播——使用者將時間往前微調，本即可能意在立刻收到提醒。規則已停用時 SHALL NOT 寫入。此寫入失敗 SHALL 僅記錄錯誤，SHALL NOT 使規則更新失敗。
+
+#### Scenario: 改時段後舊時刻不再催促
+
+- **WHEN** 08:00 的「早」紀錄已展開且尚未確認，使用者於 08:05 將該規則改為「中」12:00
+- **THEN** 該紀錄狀態 SHALL 為 `cancelled`，SHALL NOT 於 08:20 催促，家屬 SHALL NOT 於 08:30 收到逾時警報；系統 SHALL 於 12:00 展開新的紀錄照常提醒
+
+#### Scenario: 時刻未變只換時段名稱
+
+- **WHEN** 使用者將自訂於 07:15 的「早」規則改為「中」，時間維持 07:15，且當日 07:15 的紀錄仍為 `pending`
+- **THEN** 該紀錄的 `slot_type` SHALL 改為 `noon`，狀態 SHALL 維持 `pending`，當日提醒 SHALL NOT 消失
+
+#### Scenario: 已確認的紀錄不受改排程影響
+
+- **WHEN** 使用者已按下【已用藥】後才更改該規則的提醒時間
+- **THEN** 該紀錄狀態 SHALL 維持 `taken`
+
+#### Scenario: 改到當日已過久的時刻不生出假漏服
+
+- **WHEN** 使用者於 20:00 將「晚 18:00」的規則改為「早 08:00」
+- **THEN** 系統 SHALL 於當日 08:00 寫入一筆 `cancelled` 紀錄，排程器 SHALL NOT 為該時刻展開新紀錄，家屬 SHALL NOT 收到該時段的錯過彙整通知
+
+#### Scenario: 改到剛過去的時刻仍提醒
+
+- **WHEN** 使用者將提醒時間改為 5 分鐘前的時刻（未超過補推期限）
+- **THEN** SHALL NOT 預先註銷該時刻，排程器 SHALL 照常展開並推播
+
+#### Scenario: 只改日期不動紀錄
+
+- **WHEN** 更新請求僅更動 `end_date`
+- **THEN** SHALL NOT 註銷或改寫任何當日紀錄
 
 ### Requirement: 推播的時區與顯示設定
 

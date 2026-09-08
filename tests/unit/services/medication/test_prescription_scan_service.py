@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
+import asyncio
+
 import pytest
 
 from app.models.family_tree import FamilyMember, FamilyTree
@@ -174,6 +176,8 @@ def _service(
     reminders=None,
     family=None,
     appearance_images=None,
+    indications=None,
+    otc_alerts=None,
 ):
     return PrescriptionScanService(
         ocr_service=ocr or FakeOcr(RecognitionResult()),
@@ -184,6 +188,8 @@ def _service(
         family_tree_repository=family or FakeFamilyTreeRepository(),
         appearance_image_resolver=appearance_images or FakeAppearanceImageResolver(),
         ttl_minutes=60,
+        indication_service=indications,
+        otc_alert_service=otc_alerts,
     )
 
 
@@ -1638,3 +1644,244 @@ async def test_commit_replay_reports_prn_ids_consistently_with_the_original_comm
     # 第二次沒有取得提交權：不該再建立藥品，也不該再呼叫提醒關聯。
     assert len(medications.created) == 2
     assert len(reminders.find_or_create_calls) == 1
+
+
+# ── 仿單適應症比對：只記錄，不影響任何判定 ──────────────────────────
+
+
+class FakeIndicationService:
+    """以固定回傳值餵比對結果（DI，不 monkey patch）。"""
+
+    def __init__(self, verdict: str = "unrelated"):
+        self.verdict = verdict
+        self.calls: list[tuple] = []
+
+    def compare(self, bag_indication, license_number):
+        self.calls.append((bag_indication, license_number))
+        return self.verdict
+
+
+@pytest.mark.asyncio
+async def test_unrelated_indication_still_yields_high_confidence():
+    """spec scenario：判定不相干仍維持高信心。
+
+    這是本能力最重要的一條保證。比對規則的誤判率尚未以真實藥袋量測（模擬
+    落在 17%~25%），而信心度要求全部藥品皆通過——若讓它參與判定，一顆誤判
+    就會讓整份草稿失去一鍵確認。這個測試存在的目的，就是讓將來任何「順手」
+    把 indication_match 接進 all_names_verified 的改動立刻失敗。
+    """
+    drug = RecognizedDrug(name="脈優錠5毫克", frequency_code="TID", indication="降血壓")
+    service = _service(
+        ocr=FakeOcr(_recognition(drug)),
+        catalog=FakeCatalog({"脈優錠5毫克": _match()}),
+        family=FakeFamilyTreeRepository(
+            _tree(FamilyMember(user_id="U_PATIENT", display_name="王大明"))
+        ),
+        indications=FakeIndicationService("unrelated"),
+    )
+
+    draft = await service.scan(b"image", "image/jpeg", "U_FAMILY")
+
+    assert draft.recognition.drugs[0].indication_match == "unrelated"
+    assert draft.confidence_level == "high"
+
+
+@pytest.mark.asyncio
+async def test_unrelated_indication_does_not_change_name_confidence():
+    """spec scenario：不改變名稱信心度。
+
+    名稱信心度只該由藥證庫校驗決定——那是唯一能發現模型錯讀形近藥名的手段。
+    """
+    drug = RecognizedDrug(name="脈優錠5毫克", frequency_code="TID", indication="降血壓")
+    service = _service(
+        ocr=FakeOcr(_recognition(drug)),
+        catalog=FakeCatalog({"脈優錠5毫克": _match()}),
+        indications=FakeIndicationService("unrelated"),
+    )
+
+    draft = await service.scan(b"image", "image/jpeg", "U_FAMILY")
+
+    assert draft.recognition.drugs[0].name_confidence == "high"
+
+
+@pytest.mark.asyncio
+async def test_indication_match_defaults_to_unchecked_without_service():
+    """未注入仿單服務時整個步驟略過，行為與本能力導入前完全相同。"""
+    drug = RecognizedDrug(name="脈優錠5毫克", frequency_code="TID", indication="降血壓")
+    service = _service(
+        ocr=FakeOcr(_recognition(drug)),
+        catalog=FakeCatalog({"脈優錠5毫克": _match()}),
+    )
+
+    draft = await service.scan(b"image", "image/jpeg", "U_FAMILY")
+
+    assert draft.recognition.drugs[0].indication_match == "unchecked"
+
+
+@pytest.mark.asyncio
+async def test_comparison_receives_bag_indication_and_resolved_license():
+    """比對拿到的必須是藥袋讀出的適應症與**校驗後**的證號，不是原始輸入。"""
+    drug = RecognizedDrug(name="脈優錠5毫克", frequency_code="TID", indication="降血壓")
+    fake = FakeIndicationService("consistent")
+    service = _service(
+        ocr=FakeOcr(_recognition(drug)),
+        catalog=FakeCatalog({"脈優錠5毫克": _match()}),
+        indications=fake,
+    )
+
+    draft = await service.scan(b"image", "image/jpeg", "U_FAMILY")
+
+    assert fake.calls == [("降血壓", draft.recognition.drugs[0].license_number)]
+
+
+# ── 姓名比對的候選範圍受寫入權限縮（tasks 8.7／8.14）──────────────────
+
+
+class FakeAuthorizationService:
+    """只回答「操作者對某位對象有沒有 GENERAL 寫入權」。"""
+
+    def __init__(self, writable: set[str]):
+        self._writable = writable
+
+    async def can(self, operator_id, target_owner_id, classification, action):
+        return target_owner_id in self._writable
+
+
+async def test_name_match_skips_members_without_write_permission():
+    """姓名命中但無寫入權時 SHALL NOT 成為預設對象。
+
+    提出一個使用者確認後必定被 403 擋下的建議，只是讓他在藥袋辨識這一步
+    多撞一次牆——長輩的照顧者在這裡已經在對抗光線與字級了。
+    """
+    service = _service(
+        ocr=FakeOcr(_recognition(RecognizedDrug(name="脈優錠5毫克", frequency_code="TID"), patient_name="王大明")),
+        family=FakeFamilyTreeRepository(
+            _tree(FamilyMember(user_id="U_ELDER", display_name="王大明"))
+        ),
+    )
+    service._authorization_service = FakeAuthorizationService(writable=set())
+
+    draft = await service.scan(b"image", "image/jpeg", "U_OPERATOR")
+
+    assert draft.suggested_user_id is None
+
+
+async def test_name_match_keeps_members_with_write_permission():
+    """對照組：有寫入權時仍是預設對象，行為與變更前相同。"""
+    service = _service(
+        ocr=FakeOcr(_recognition(RecognizedDrug(name="脈優錠5毫克", frequency_code="TID"), patient_name="王大明")),
+        family=FakeFamilyTreeRepository(
+            _tree(FamilyMember(user_id="U_ELDER", display_name="王大明"))
+        ),
+    )
+    service._authorization_service = FakeAuthorizationService(writable={"U_ELDER"})
+
+    draft = await service.scan(b"image", "image/jpeg", "U_OPERATOR")
+
+    assert draft.suggested_user_id == "U_ELDER"
+
+
+async def test_name_match_without_authorization_service_keeps_legacy_behaviour():
+    """未注入授權服務時只影響**預設值**，不影響授權。
+
+    真正的閘門在 commit（router 的 authorize 與服務層的
+    TargetNotInFamilyError），這裡放行不等於提交會過。
+    """
+    service = _service(
+        ocr=FakeOcr(_recognition(RecognizedDrug(name="脈優錠5毫克", frequency_code="TID"), patient_name="王大明")),
+        family=FakeFamilyTreeRepository(
+            _tree(FamilyMember(user_id="U_ELDER", display_name="王大明"))
+        ),
+    )
+
+    draft = await service.scan(b"image", "image/jpeg", "U_OPERATOR")
+
+    assert draft.suggested_user_id == "U_ELDER"
+
+
+class FakeOtcAlertService:
+    def __init__(self, raises: bool = False) -> None:
+        self.calls: list[tuple[str, list[str]]] = []
+        self._raises = raises
+
+    async def check(self, patient_user_id, added_medication_ids):
+        self.calls.append((patient_user_id, list(added_medication_ids)))
+        if self._raises:
+            raise RuntimeError("boom")
+
+
+@pytest.mark.asyncio
+async def test_commit_schedules_the_otc_check_for_the_person_taking_the_drug():
+    """家屬代長輩掃描時，有成分重複風險的是長輩，不是代掃的人。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    alerts = FakeOtcAlertService()
+    service = _service(
+        drafts=drafts,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+        otc_alerts=alerts,
+    )
+
+    result = await service.commit(
+        "D1", "U_FAMILY", _request(CommitDrugItem(name="某藥", frequency_code="QD"))
+    )
+    await asyncio.gather(*service._otc_alert_tasks)
+
+    assert alerts.calls == [("U_PATIENT", result.medication_ids)]
+
+
+@pytest.mark.asyncio
+async def test_commit_succeeds_even_when_the_otc_check_explodes():
+    """偵測是旁路——它失敗不得讓提交失敗，藥已經寫進去了。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    alerts = FakeOtcAlertService(raises=True)
+    service = _service(
+        drafts=drafts,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+        otc_alerts=alerts,
+    )
+
+    result = await service.commit(
+        "D1", "U_FAMILY", _request(CommitDrugItem(name="某藥", frequency_code="QD"))
+    )
+    await asyncio.gather(*service._otc_alert_tasks)
+
+    assert len(result.medication_ids) == 1
+
+
+@pytest.mark.asyncio
+async def test_idempotent_replay_does_not_notify_a_second_time():
+    """重放時再發一次，只會讓家人以為又新增了一盒藥。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    alerts = FakeOtcAlertService()
+    service = _service(
+        drafts=drafts,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+        otc_alerts=alerts,
+    )
+    request = _request(CommitDrugItem(name="某藥", frequency_code="QD"))
+
+    await service.commit("D1", "U_FAMILY", request)
+    await service.commit("D1", "U_FAMILY", request)
+    await asyncio.gather(*service._otc_alert_tasks)
+
+    assert len(alerts.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_commit_without_an_otc_service_behaves_exactly_as_before():
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    service = _service(
+        drafts=drafts,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    result = await service.commit(
+        "D1", "U_FAMILY", _request(CommitDrugItem(name="某藥", frequency_code="QD"))
+    )
+
+    assert len(result.medication_ids) == 1
+    assert service._otc_alert_tasks == set()

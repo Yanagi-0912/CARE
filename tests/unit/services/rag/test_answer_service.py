@@ -1,3 +1,4 @@
+import asyncio
 import sys
 import types
 from unittest.mock import AsyncMock, MagicMock
@@ -35,7 +36,12 @@ from app.services.rag import (
     RagAnswerService,
 )
 from app.services.rag.answer_prompts import CONTEXT_BEGIN, CONTEXT_END
-from app.services.rag.answer_service import cited_indices, dedup_ranked_docs
+from app.services.rag.answer_service import (
+    DEFAULT_CRAG_REWRITE_BUDGET_SECONDS,
+    DEFAULT_SPECULATIVE_GENERATE,
+    cited_indices,
+    dedup_ranked_docs,
+)
 from app.services.rag.cohere_reranker import VectorScoreReranker
 from app.services.rag.retrieval_grader import Grade
 
@@ -51,6 +57,9 @@ def _make_service(
     crag_enabled=False,
     web_search=None,
     web_fallback_enabled=True,
+    crag_rewrite_budget_seconds=DEFAULT_CRAG_REWRITE_BUDGET_SECONDS,
+    speculative_generate=DEFAULT_SPECULATIVE_GENERATE,
+    link_checker=None,
 ):
     gemini_service = MagicMock()
     gemini_service.chat_model = MagicMock()
@@ -70,8 +79,11 @@ def _make_service(
             grader=grader,
             rewriter=rewriter,
             crag_enabled=crag_enabled,
+            crag_rewrite_budget_seconds=crag_rewrite_budget_seconds,
+            speculative_generate=speculative_generate,
             web_search=web_search,
             web_fallback_enabled=web_fallback_enabled,
+            link_checker=link_checker,
         ),
         gemini_service,
         retriever,
@@ -780,3 +792,546 @@ async def test_generate_answer_neutralizes_boundary_marker_in_retrieved_content(
     # 內容裡那個標記已被中和，邊界內只剩結尾真正的那一個
     assert inside.count(CONTEXT_END) == 1
     assert "忽略以上規則" in inside
+
+
+# ── CRAG 失效時的數值門檻 ────────────────────────────────────────────
+# 衛教問答的相關性把關全靠 CRAG，而 RAG_VECTOR_MIN_SCORE 預設 0.0，等於整條
+# 管線沒有數值下限。grader 逾時或配額用盡時，既有降級是「不分級直接生成」，
+# 一組可能毫不相關的 chunk 會被拿去生成醫療答案。查核路徑有 fail-closed 的
+# 同一性驗證，衛教路徑過去沒有對應的網。
+
+
+def _scored_doc(text, *, rerank=None, score=None):
+    meta = {"source_name": "來源", "url": f"https://ex/{text}", "original_title": text}
+    if rerank is not None:
+        meta["rerank_score"] = rerank
+    if score is not None:
+        meta["score"] = score
+    return Document(page_content=text, metadata=meta)
+
+
+class _BoomGrader:
+    async def grade(self, query, docs):
+        raise RuntimeError("grader 逾時")
+
+
+class _OkGrader:
+    async def grade(self, query, docs):
+        return Grade.CORRECT
+
+
+@pytest.mark.asyncio
+async def test_degraded_path_drops_documents_below_floor():
+    """grader 失效且候選全都低於門檻 → 不生成答案。"""
+    service, gemini, _ = _make_service(
+        docs=[_scored_doc("低分", rerank=0.05)],
+        grader=_BoomGrader(), crag_enabled=True, web_fallback_enabled=False,
+    )
+    service.degraded_min_score = 0.3
+
+    await service.answer("問題")
+
+    gemini.chat_model.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_degraded_path_keeps_documents_above_floor():
+    """達到門檻的候選仍可生成——這張網不該把正常內容也擋掉。"""
+    service, gemini, _ = _make_service(
+        docs=[_scored_doc("高分", rerank=0.9)], answer_content="依據內容的回答 [1]",
+        grader=_BoomGrader(), crag_enabled=True, web_fallback_enabled=False,
+    )
+    service.degraded_min_score = 0.3
+
+    assert "依據內容的回答" in await service.answer("問題")
+
+
+@pytest.mark.asyncio
+async def test_degraded_path_falls_back_to_vector_score():
+    """Cohere 降級時沒有 rerank_score，要退回融合／向量分數判斷。"""
+    service, gemini, _ = _make_service(
+        docs=[_scored_doc("只有向量分", score=0.8)], answer_content="回答 [1]",
+        grader=_BoomGrader(), crag_enabled=True, web_fallback_enabled=False,
+    )
+    service.degraded_min_score = 0.3
+
+    assert "回答" in await service.answer("問題")
+
+
+@pytest.mark.asyncio
+async def test_degraded_path_rejects_documents_without_any_score():
+    """兩種分數都沒有時視為不合格——拿不到分數就無從判斷相關性，而這條
+    路徑的前提正是「唯一的把關已經失效」。"""
+    service, gemini, _ = _make_service(
+        docs=[Document(page_content="無分數", metadata={"source_name": "來源"})],
+        grader=_BoomGrader(), crag_enabled=True, web_fallback_enabled=False,
+    )
+    service.degraded_min_score = 0.3
+
+    await service.answer("問題")
+    gemini.chat_model.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_floor_of_zero_preserves_previous_behaviour():
+    """門檻 0 = 不設限，維持本次變更之前的行為。"""
+    service, _, _ = _make_service(
+        docs=[_scored_doc("低分", rerank=0.01)], answer_content="照舊生成 [1]",
+        grader=_BoomGrader(), crag_enabled=True, web_fallback_enabled=False,
+    )
+    service.degraded_min_score = 0.0
+
+    assert "照舊生成" in await service.answer("問題")
+
+
+@pytest.mark.asyncio
+async def test_floor_does_not_apply_when_grader_succeeds():
+    """正常路徑不受影響——門檻只是 CRAG 失效時的網，不是取代 CRAG。"""
+    service, _, _ = _make_service(
+        docs=[_scored_doc("低分但 grader 說可用", rerank=0.01)],
+        answer_content="正常回答 [1]",
+        grader=_OkGrader(), crag_enabled=True, web_fallback_enabled=False,
+    )
+    service.degraded_min_score = 0.3
+
+    assert "正常回答" in await service.answer("問題")
+
+
+def _source_doc(source_name: str, title: str, url: str) -> Document:
+    return Document(
+        page_content="內容",
+        metadata={"source_name": source_name, "original_title": title, "url": url},
+    )
+
+
+@pytest.fixture
+def rag_sources_holder():
+    """開一輪來源 holder。
+
+    `set_request_rag_sources` 是就地改寫，沒有 holder 就靜默忽略——這正是
+    正式路徑的行為（見 app/core/rag_sources.py），測試必須比照開場，否則
+    驗到的是「沒人開場」而不是來源本身。
+    """
+    from app.core.rag_sources import (
+        begin_request_rag_sources,
+        reset_request_rag_sources,
+    )
+
+    token = begin_request_rag_sources()
+    try:
+        yield
+    finally:
+        reset_request_rag_sources(token)
+
+
+def test_structured_sources_match_text_numbering(rag_sources_holder):
+    """結構化來源的 index 必須與文字清單的 [n] 逐筆對應。
+
+    答案本文的引用標記指的就是這個編號；兩者各自編號會讓使用者點錯來源。
+    這裡答案先引用第 2 篇再引用第 1 篇，因此重編號後 [1] 是原本的第 2 篇。
+    """
+    from app.core.rag_sources import get_request_rag_sources
+
+    docs = [
+        _source_doc("台灣 e 院", "蜂蜜保存", "https://sp1.hso.mohw.gov.tw/a"),
+        _source_doc("食藥署", "蜂蜜加熱", "https://www.fda.gov.tw/b"),
+    ]
+
+    text = RagAnswerService._append_sources("加熱不會有毒 [2]。放室溫即可 [1]。", docs)
+
+    refs = get_request_rag_sources()
+    assert [r.index for r in refs] == [1, 2]
+    assert [r.label for r in refs] == ["食藥署", "台灣 e 院"]
+    assert [r.url for r in refs] == [
+        "https://www.fda.gov.tw/b",
+        "https://sp1.hso.mohw.gov.tw/a",
+    ]
+    assert "[1] 食藥署" in text
+    assert "[2] 台灣 e 院" in text
+
+
+def test_structured_sources_empty_when_no_citation(rag_sources_holder):
+    """模型沒輸出任何引用編號時不附來源清單，結構化來源也必須清空。"""
+    from app.core.rag_sources import get_request_rag_sources
+
+    docs = [_source_doc("食藥署", "蜂蜜", "https://www.fda.gov.tw/b")]
+
+    RagAnswerService._append_sources("這是一段沒有引用編號的答案。", docs)
+
+    assert get_request_rag_sources() == ()
+
+
+def test_structured_sources_keep_url_verbatim(rag_sources_holder):
+    """網址不得被改寫——line-reply-rules 明文要求。"""
+    from app.core.rag_sources import get_request_rag_sources
+
+    url = "https://www.fda.gov.tw/TC/siteContent.aspx?sid=1234&x=%E4%B8%AD"
+    docs = [_source_doc("食藥署", "蜂蜜", url)]
+
+    RagAnswerService._append_sources("放室溫即可 [1]。", docs)
+
+    assert get_request_rag_sources()[0].url == url
+
+
+def test_structured_sources_allow_missing_url(rag_sources_holder):
+    """缺 url 的來源仍須保留（rag-responses 明文要求不得靜默丟棄）。"""
+    from app.core.rag_sources import get_request_rag_sources
+
+    docs = [_source_doc("食藥署", "蜂蜜保存指引", "")]
+
+    RagAnswerService._append_sources("放室溫即可 [1]。", docs)
+
+    refs = get_request_rag_sources()
+    assert len(refs) == 1
+    assert refs[0].url == ""
+
+
+# --- 來源網址存活檢查（link_check.py）---
+
+DEAD_URL = "https://sp1.hso.mohw.gov.tw/doctor/Often_question/type_detail.php"
+LIVE_URL = "https://www.hpa.gov.tw/foot"
+
+
+class FakeLinkChecker:
+    """把指定網址判死，其餘判活。記錄被查過哪些網址。"""
+
+    def __init__(self, dead=()):
+        self._dead = set(dead)
+        self.checked: list[str] = []
+
+    async def alive(self, urls):
+        urls = list(urls)
+        self.checked.extend(urls)
+        return {url: url not in self._dead for url in urls}
+
+
+def test_append_sources_hides_dead_url_but_keeps_the_source():
+    """降級不是丟棄：編號還在、機構名還在，只是沒有點得下去的網址。"""
+    docs = [_doc(source="衛福部", url=DEAD_URL, title="腳痛常見問題")]
+
+    out = RagAnswerService._append_sources("內容 [1]。", docs, frozenset({DEAD_URL}))
+
+    assert DEAD_URL not in out
+    assert "[1] 衛福部｜腳痛常見問題" in out
+    assert "內容 [1]。" in out
+
+
+def test_append_sources_drops_source_with_dead_url_and_no_fallback_label():
+    """網址死了又沒有來源名與標題可退回，就真的無從顯示——與 metadata
+    全空走同一條既有路徑，引用標記一併從本文移除。"""
+    docs = [_doc(url=DEAD_URL)]
+
+    out = RagAnswerService._append_sources("內容 [1]。", docs, frozenset({DEAD_URL}))
+
+    assert DEAD_URL not in out
+    assert "[1]" not in out
+
+
+def test_append_sources_renumbers_around_dead_source():
+    docs = [_doc(url=DEAD_URL), _doc(source="國健署", url=LIVE_URL)]
+
+    out = RagAnswerService._append_sources("甲 [1] 乙 [2]", docs, frozenset({DEAD_URL}))
+
+    assert f"[1] 國健署：{LIVE_URL}" in out
+    assert "乙 [1]" in out
+
+
+def test_append_sources_without_dead_urls_is_unchanged():
+    """預設空集合＝完全是導入檢查前的行為。"""
+    docs = [_doc(source="衛福部", url=DEAD_URL)]
+
+    assert RagAnswerService._append_sources(
+        "內容 [1]。", docs
+    ) == RagAnswerService._append_sources("內容 [1]。", docs, frozenset())
+
+
+def test_dead_source_url_produces_source_ref_without_url():
+    """呈現層靠空 url 決定不生按鈕（_source_buttons 會略過它）。"""
+    ref = RagAnswerService._source_ref(
+        _doc(source="衛福部", url=DEAD_URL), 1, ""
+    )
+
+    assert ref.url == ""
+    assert ref.label == "衛福部"
+
+
+async def test_answer_hides_dead_citation_end_to_end():
+    docs = [_doc(source="衛福部", url=DEAD_URL, title="腳痛常見問題")]
+    svc, _, _ = _make_service(
+        docs=docs,
+        answer_content="腳痛可能有多種原因 [1]。",
+        link_checker=FakeLinkChecker(dead=[DEAD_URL]),
+    )
+
+    result = await svc.answer("腳痛怎麼辦")
+
+    assert DEAD_URL not in result
+    assert "衛福部｜腳痛常見問題" in result
+
+
+async def test_answer_keeps_live_citation_end_to_end():
+    docs = [_doc(source="國健署", url=LIVE_URL)]
+    svc, _, _ = _make_service(
+        docs=docs,
+        answer_content="請規律運動 [1]。",
+        link_checker=FakeLinkChecker(),
+    )
+
+    assert LIVE_URL in await svc.answer("腳痛怎麼辦")
+
+
+async def test_only_cited_urls_are_checked():
+    """沒被引用的 doc 不會出現在來源清單，為它們付 HTTP 往返是純粹的延遲。"""
+    checker = FakeLinkChecker()
+    docs = [_doc(source="國健署", url=LIVE_URL), _doc(source="衛福部", url=DEAD_URL)]
+    svc, _, _ = _make_service(
+        docs=docs, answer_content="請規律運動 [1]。", link_checker=checker
+    )
+
+    await svc.answer("腳痛怎麼辦")
+
+    assert checker.checked == [LIVE_URL]
+
+
+async def test_answer_shows_all_sources_when_checker_raises():
+    """檢查器故障是我們的問題，不該讓使用者連正常來源都看不到。"""
+
+    class Exploding:
+        async def alive(self, urls):
+            raise RuntimeError("boom")
+
+    svc, _, _ = _make_service(
+        docs=[_doc(source="衛福部", url=DEAD_URL)],
+        answer_content="內容 [1]。",
+        link_checker=Exploding(),
+    )
+
+    assert DEAD_URL in await svc.answer("腳痛怎麼辦")
+
+
+def test_rewrite_budget_exhausted_at_or_past_budget():
+    """邊界：剛好用滿即視為超支。"""
+    service, _, _ = _make_service(
+        docs=[_kb_doc()], crag_rewrite_budget_seconds=12.0
+    )
+    assert service._rewrite_budget_exhausted(11.9) is False
+    assert service._rewrite_budget_exhausted(12.0) is True
+    assert service._rewrite_budget_exhausted(12.1) is True
+
+
+def test_rewrite_budget_zero_means_unlimited():
+    """0＝不設限，沿用本檔其他門檻（RAG_VECTOR_MIN_SCORE 等）的慣例。"""
+    service, _, _ = _make_service(
+        docs=[_kb_doc()], crag_rewrite_budget_seconds=0.0
+    )
+    assert service._rewrite_budget_exhausted(9999.0) is False
+
+
+@pytest.mark.asyncio
+async def test_crag_ambiguous_skips_rewrite_when_budget_exhausted():
+    """預算用完就拿第一輪結果生成——不改寫，也不轉網搜（網搜比第二輪更慢）。"""
+    # 全 mock 的第一輪跑不到 0.1ms，設不出「已經超支」的狀態；讓 grader 真的
+    # 花掉一段時間，才測得到預算是依「已花時間」而非呼叫次數判斷。
+    grader = MagicMock()
+
+    async def _slow_grade(query, docs):
+        await asyncio.sleep(0.02)
+        return Grade.AMBIGUOUS
+
+    grader.grade = AsyncMock(side_effect=_slow_grade)
+    rewriter = MagicMock()
+    rewriter.rewrite = AsyncMock(return_value="不該被呼叫")
+    web_search = MagicMock()
+    web_search.answer = AsyncMock(return_value="不該走網搜")
+
+    service, _, retriever = _make_service(
+        docs=[_kb_doc()],
+        answer_content="用第一輪結果生成 [1]",
+        grader=grader,
+        rewriter=rewriter,
+        crag_enabled=True,
+        web_search=web_search,
+        crag_rewrite_budget_seconds=0.005,
+    )
+    result = await service.answer("高血壓？")
+
+    assert rewriter.rewrite.await_count == 0
+    assert grader.grade.await_count == 1
+    assert web_search.answer.await_count == 0
+    assert retriever.ainvoke.await_count == 1
+    assert "用第一輪結果生成" in result
+    assert "https://www.hpa.gov.tw/a" in result
+
+
+@pytest.mark.asyncio
+async def test_crag_ambiguous_still_rewrites_when_budget_unlimited():
+    """預算設 0 時行為與導入預算前相同。"""
+    first_docs = [_kb_doc("模糊內容")]
+    second_docs = [_kb_doc("精準內容", url="https://www.hpa.gov.tw/b")]
+
+    grader = MagicMock()
+    grader.grade = AsyncMock(side_effect=[Grade.AMBIGUOUS, Grade.CORRECT])
+    rewriter = MagicMock()
+    rewriter.rewrite = AsyncMock(return_value="改寫後的問題")
+
+    gemini_service = MagicMock()
+    gemini_service.chat_model = MagicMock()
+    gemini_service.chat_model.ainvoke = AsyncMock(
+        return_value=AIMessage(content="改寫後回答 [1]")
+    )
+    retriever = MagicMock()
+    retriever.ainvoke = AsyncMock(side_effect=[first_docs, second_docs])
+
+    svc = RagAnswerService(
+        gemini_service=gemini_service,
+        retriever=retriever,
+        reranker=VectorScoreReranker(),
+        grader=grader,
+        rewriter=rewriter,
+        crag_enabled=True,
+        crag_rewrite_budget_seconds=0.0,
+    )
+    result = await svc.answer("高血壓？")
+
+    assert rewriter.rewrite.await_count == 1
+    assert grader.grade.await_count == 2
+    assert "https://www.hpa.gov.tw/b" in result
+
+
+def _grader_returning(*grades):
+    g = MagicMock()
+    g.grade = AsyncMock(side_effect=list(grades))
+    return g
+
+
+@pytest.mark.asyncio
+async def test_speculative_generate_starts_before_grading_finishes():
+    """核心保證：生成必須在分級還沒結束前就已經開跑，否則沒有省到任何時間。"""
+    order = []
+
+    async def _slow_grade(query, docs):
+        await asyncio.sleep(0.05)
+        order.append("grade_done")
+        return Grade.CORRECT
+
+    grader = MagicMock()
+    grader.grade = AsyncMock(side_effect=_slow_grade)
+
+    async def _generate(messages):
+        order.append("generate_start")
+        return AIMessage(content="答案 [1]")
+
+    service, gemini_service, _ = _make_service(
+        docs=[_kb_doc()], grader=grader, crag_enabled=True,
+        speculative_generate=True,
+    )
+    gemini_service.chat_model.ainvoke = AsyncMock(side_effect=_generate)
+
+    await service.answer("高血壓？")
+
+    assert order == ["generate_start", "grade_done"], order
+    assert gemini_service.chat_model.ainvoke.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_speculative_result_used_when_crag_approves_same_docs():
+    service, gemini_service, _ = _make_service(
+        docs=[_kb_doc()], answer_content="投機答案 [1]",
+        grader=_grader_returning(Grade.CORRECT), crag_enabled=True,
+        speculative_generate=True,
+    )
+    result = await service.answer("高血壓？")
+    assert "投機答案" in result
+    # 只生成一次：投機那次就是最終採用的那次。
+    assert gemini_service.chat_model.ainvoke.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_speculative_discarded_and_regenerated_after_rewrite():
+    """改寫第二輪換掉了 docs，投機結果必須作廢重生。"""
+    first_docs = [_kb_doc("模糊內容")]
+    second_docs = [_kb_doc("精準內容", url="https://www.hpa.gov.tw/b")]
+
+    gemini_service = MagicMock()
+    gemini_service.chat_model = MagicMock()
+    gemini_service.chat_model.ainvoke = AsyncMock(
+        return_value=AIMessage(content="回答 [1]")
+    )
+    retriever = MagicMock()
+    retriever.ainvoke = AsyncMock(side_effect=[first_docs, second_docs])
+    rewriter = MagicMock()
+    rewriter.rewrite = AsyncMock(return_value="改寫後的問題")
+
+    # 分級必須真的讓出事件迴圈，投機任務才會起跑；AsyncMock 立即回覆時任務
+    # 還沒被排到就被取消了（那其實更省，但不是生產環境會發生的情況）。
+    grades = [Grade.AMBIGUOUS, Grade.CORRECT]
+
+    async def _slow_grade(query, docs):
+        await asyncio.sleep(0.02)
+        return grades.pop(0)
+
+    grader = MagicMock()
+    grader.grade = AsyncMock(side_effect=_slow_grade)
+
+    svc = RagAnswerService(
+        gemini_service=gemini_service, retriever=retriever,
+        reranker=VectorScoreReranker(),
+        grader=grader,
+        rewriter=rewriter, crag_enabled=True,
+        crag_rewrite_budget_seconds=0.0, speculative_generate=True,
+    )
+    result = await svc.answer("高血壓？")
+
+    # 投機一次（第一輪 docs）＋ 重生一次（第二輪 docs）＝ 2
+    assert gemini_service.chat_model.ainvoke.await_count == 2
+    # 最終答案必須掛第二輪的來源，不是被丟棄的那批
+    assert "https://www.hpa.gov.tw/b" in result
+
+
+@pytest.mark.asyncio
+async def test_speculative_discarded_when_crag_rejects():
+    web_search = MagicMock()
+    web_search.answer = AsyncMock(return_value="網搜答案")
+    service, _, _ = _make_service(
+        docs=[_kb_doc()], grader=_grader_returning(Grade.INCORRECT),
+        crag_enabled=True, web_search=web_search, speculative_generate=True,
+    )
+    result = await service.answer("高血壓？")
+    assert result == "網搜答案"
+    assert web_search.answer.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_speculative_disabled_generates_sequentially():
+    """關掉之後行為與導入前相同：分級跑完才生成。"""
+    order = []
+
+    async def _slow_grade(query, docs):
+        await asyncio.sleep(0.05)
+        order.append("grade_done")
+        return Grade.CORRECT
+
+    grader = MagicMock()
+    grader.grade = AsyncMock(side_effect=_slow_grade)
+
+    async def _generate(messages):
+        order.append("generate_start")
+        return AIMessage(content="答案 [1]")
+
+    service, gemini_service, _ = _make_service(
+        docs=[_kb_doc()], grader=grader, crag_enabled=True,
+        speculative_generate=False,
+    )
+    gemini_service.chat_model.ainvoke = AsyncMock(side_effect=_generate)
+
+    await service.answer("高血壓？")
+    assert order == ["grade_done", "generate_start"], order
+
+
+@pytest.mark.asyncio
+async def test_speculative_not_started_without_crag():
+    """沒有分級就沒有等待可以填，不該無謂地改變行為。"""
+    service, _, _ = _make_service(
+        docs=[_kb_doc()], crag_enabled=False, speculative_generate=True
+    )
+    assert service.speculative_generate is False

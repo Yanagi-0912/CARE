@@ -1,9 +1,11 @@
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import HTTPException
 
 from app.models.family_tree import FamilyMember, FamilyTree
 from app.models.medication import (
+    TAIPEI_TZ,
     CreateMedicationReminderRequest,
     Medication,
     MedicationLog,
@@ -88,11 +90,10 @@ async def test_create_reminders_for_family_member(medication_service):
         slots=["noon"],
         start_date="2026-07-26",
     )
+    # 族譜檢查已移出服務層：為他人建立提醒的授權由 router 經
+    # FamilyAuthorizationService 判定（GENERAL 寫入權），拒絕的情境由
+    # tests/unit/routers/test_medications_authorization.py 覆蓋。
     with patch(
-        "app.services.medication.medication_service.FamilyTreeRepository.get_by_user_id",
-        new_callable=AsyncMock,
-        return_value=fake_tree,
-    ), patch(
         "app.services.medication.medication_service.MedicationReminderRepository.create_reminder",
         new_callable=AsyncMock,
         side_effect=lambda r: r,
@@ -105,29 +106,21 @@ async def test_create_reminders_for_family_member(medication_service):
         assert reminders[0].slot_type == "noon"
 
 
-@pytest.mark.asyncio
-async def test_create_reminders_rejects_non_family_member(medication_service):
-    fake_tree = FamilyTree(
-        user_id="U_CARE",
-        family_members=[],
-        created_at="2026-07-26T00:00:00Z",
-        updated_at="2026-07-26T00:00:00Z",
-    )
-    req = CreateMedicationReminderRequest(
-        user_id="U_STRANGER",
-        slots=["morning"],
-    )
-    with patch(
-        "app.services.medication.medication_service.FamilyTreeRepository.get_by_user_id",
-        new_callable=AsyncMock,
-        return_value=fake_tree,
-    ):
-        with pytest.raises(HTTPException) as exc_info:
-            await medication_service.create_reminders(
-                creator_user_id="U_CARE", request=req
-            )
-        assert exc_info.value.status_code == 400
-        assert "用藥對象必須是您的家庭成員" in exc_info.value.detail
+def test_medication_service_no_longer_hand_writes_family_checks():
+    """服務層 SHALL NOT 自行判斷「他是不是家人」。
+
+    「在族譜裡＝有權」正是本次授權改動要消滅的語意，它比權限矩陣寬。留一份
+    在這裡就會有人以為它還是授權依據，於是同一個問題有兩個答案。授權一律由
+    router 經 FamilyAuthorizationService 判定，拒絕的情境由
+    tests/unit/routers/test_medications_authorization.py 覆蓋。
+    """
+    import inspect
+
+    from app.services.medication import medication_service as module
+
+    source = inspect.getsource(module)
+    assert "FamilyTreeRepository" not in source
+    assert "family_members" not in source
 
 
 @pytest.mark.asyncio
@@ -236,24 +229,18 @@ async def test_get_user_reminders_family_permission(medication_service):
         created_at="2026-07-26T00:00:00Z",
         updated_at="2026-07-26T00:00:00Z",
     )
+    # 服務層不再自行判斷族譜；讀取授權（GENERAL 讀取權）由 router 完成。
+    # 這裡只驗它把 user_id 原樣帶到資料層。
     with patch(
-        "app.services.medication.medication_service.FamilyTreeRepository.get_by_user_id",
-        new_callable=AsyncMock,
-        return_value=fake_tree,
-    ), patch(
         "app.services.medication.medication_service.MedicationReminderRepository.list_reminders_by_user",
         new_callable=AsyncMock,
         return_value=[],
     ) as mock_list:
-        # Allowed for family member
-        reminders = await medication_service.get_user_reminders("U_MEMBER", requester_user_id="U_CARE")
+        reminders = await medication_service.get_user_reminders(
+            "U_MEMBER", requester_user_id="U_CARE"
+        )
         assert reminders == []
         mock_list.assert_awaited_once_with("U_MEMBER")
-
-        # Rejected for non-family member
-        with pytest.raises(HTTPException) as exc_info:
-            await medication_service.get_user_reminders("U_STRANGER", requester_user_id="U_CARE")
-        assert exc_info.value.status_code == 400
 
 
 @pytest.mark.asyncio
@@ -625,23 +612,56 @@ class FakeReminderRepository:
 
 
 class FakeLogRepository:
-    def __init__(self, cancelled: int = 0):
+    def __init__(self, cancelled: int = 0, resynced: tuple[int, int] = (0, 0)):
         self._cancelled = cancelled
+        self._resynced = resynced
         self.cancelled_reminder_ids: list[str] = []
+        # 改排程走的是另一條路徑（對齊而非全部註銷），分開記錄才分得出服務層
+        # 用的是哪一條——關閉是「這筆規則今天不算數了」，改排程是「今天改在
+        # 另一個時刻」，兩者對當日紀錄的處置不同。
+        self.resync_calls: list[dict] = []
+        # 改排程到已經過去的時刻時，服務層會搶先寫一筆 cancelled 佔位，
+        # 免得排程器展開出一筆假的漏服（見 _suppress_stale_new_slot）。
+        self.upserted_logs: list[MedicationLog] = []
 
     async def cancel_pending_by_reminder(self, reminder_id: str) -> int:
         self.cancelled_reminder_ids.append(reminder_id)
         return self._cancelled
+
+    async def resync_pending_by_reminder(
+        self, reminder_id: str, scheduled_at, slot_type: str
+    ) -> tuple[int, int]:
+        self.resync_calls.append(
+            {
+                "reminder_id": reminder_id,
+                "scheduled_at": scheduled_at,
+                "slot_type": slot_type,
+            }
+        )
+        return self._resynced
+
+    async def upsert_log(self, log: MedicationLog) -> tuple[MedicationLog, bool]:
+        self.upserted_logs.append(log)
+        return log, True
+
+
+# 改排程那段同時要算「今天是哪一天」與「離現在多久」。跟著真實時鐘跑的測試
+# 會在午夜前後算出前一天的日期而飄紅，所以固定在一個沒有邊界問題的時刻上。
+FIXED_NOW = datetime(2026, 9, 3, 12, 0, tzinfo=TAIPEI_TZ)
 
 
 def _service_with_fakes(
     reminder: MedicationReminder,
     cancelled: int = 0,
     siblings: list[MedicationReminder] | None = None,
+    resynced: tuple[int, int] = (0, 0),
+    now: datetime = FIXED_NOW,
 ):
     reminders = FakeReminderRepository(reminder, siblings=siblings)
-    logs = FakeLogRepository(cancelled=cancelled)
-    service = MedicationService(reminder_repository=reminders, log_repository=logs)
+    logs = FakeLogRepository(cancelled=cancelled, resynced=resynced)
+    service = MedicationService(
+        reminder_repository=reminders, log_repository=logs, clock=lambda: now
+    )
     return service, reminders, logs
 
 
@@ -677,8 +697,12 @@ async def test_enabling_reminder_does_not_cancel_logs():
 
 
 @pytest.mark.asyncio
-async def test_changing_only_time_does_not_cancel_logs():
-    """只改時間的請求沒有帶 enabled（是 None），不能順手註銷當天的紀錄。"""
+async def test_changing_only_time_resyncs_instead_of_cancelling_everything():
+    """只改時間的請求沒有帶 enabled（是 None），不能走「關閉」那條全部註銷的路。
+
+    但當日已展開的紀錄仍停在舊時刻上，必須對齊——紀錄是展開當下的快照，三階
+    推播只讀紀錄，不改的話 09:00 這筆規則今天仍會依 08:00 催促與發家屬警報。
+    """
     service, reminders, logs = _service_with_fakes(_reminder(enabled=True))
 
     await service.update_reminder(
@@ -689,6 +713,185 @@ async def test_changing_only_time_does_not_cancel_logs():
 
     assert "enabled" not in reminders.received_update
     assert logs.cancelled_reminder_ids == []
+    assert len(logs.resync_calls) == 1
+    call = logs.resync_calls[0]
+    assert call["reminder_id"] == "R123"
+    assert call["slot_type"] == "morning"
+    # 時刻要以台北時間的今天為基準，與排程器展開 scheduled_at 的算法一致，
+    # 否則對不上已展開的那筆紀錄。
+    assert call["scheduled_at"] == FIXED_NOW.replace(hour=9, minute=0)
+
+
+@pytest.mark.asyncio
+async def test_changing_slot_with_same_time_retags_instead_of_cancelling():
+    """時刻沒變、只換時段名稱時，仍以對齊處理，不能把當日的紀錄註銷掉。
+
+    使用者若自訂過時間（例如「早」07:15），把它改成「中」時該吃藥的那一刻並
+    沒有變；註銷等於平白吃掉今天的提醒。repository 端據 scheduled_at 是否相同
+    決定註銷或改標，服務層只負責把新排程交過去。
+    """
+    reminder = _reminder(enabled=True).model_copy(
+        update={"slot_type": "morning", "scheduled_time": "07:15"}
+    )
+    service, _, logs = _service_with_fakes(reminder)
+
+    await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(slot_type="noon"),
+    )
+
+    assert logs.cancelled_reminder_ids == []
+    assert len(logs.resync_calls) == 1
+    call = logs.resync_calls[0]
+    assert call["slot_type"] == "noon"
+    assert call["scheduled_at"] == FIXED_NOW.replace(hour=7, minute=15)
+
+
+@pytest.mark.asyncio
+async def test_updating_dates_only_does_not_touch_logs():
+    """沒有動到排程的更新（例如只改結束日期）不該碰當日的紀錄。"""
+    service, _, logs = _service_with_fakes(_reminder(enabled=True))
+
+    await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(end_date=None),
+    )
+
+    assert logs.cancelled_reminder_ids == []
+    assert logs.resync_calls == []
+
+
+@pytest.mark.asyncio
+async def test_resending_same_schedule_does_not_touch_logs():
+    """把原值原樣重送一次不是改動，不該連帶動到當日的紀錄。"""
+    reminder = _reminder(enabled=True)
+    service, _, logs = _service_with_fakes(reminder)
+
+    await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(
+            slot_type=reminder.slot_type, scheduled_time=reminder.scheduled_time
+        ),
+    )
+
+    assert logs.resync_calls == []
+
+
+@pytest.mark.asyncio
+async def test_disabling_and_changing_schedule_at_once_only_cancels():
+    """同時關閉與改排程時只走關閉：全部註銷已涵蓋對齊要做的事，
+
+    而且規則已經關了，排程器今天不會再為新時刻展開任何紀錄。
+    """
+    service, _, logs = _service_with_fakes(_reminder(enabled=True), cancelled=1)
+
+    await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(enabled=False, scheduled_time="09:00"),
+    )
+
+    assert logs.cancelled_reminder_ids == ["R123"]
+    assert logs.resync_calls == []
+
+
+@pytest.mark.asyncio
+async def test_changing_schedule_to_a_long_past_time_pre_cancels_that_slot():
+    """改到今天已經過去太久的時刻時，先把該時刻註銷，今日不補提醒。
+
+    排程器展開紀錄只看規則現在的 scheduled_time，不知道那個時刻是幾分鐘前才被
+    改成這樣的。晚上八點把「晚 18:00」改成「早 08:00」，下一輪 tick 會為今天
+    08:00 展開一筆紀錄，超過 misfire grace 便記成 missed——不推播，但會進「錯過
+    時段的彙整通知」，家屬收到一則指向從未存在過的劑次的漏服通知。
+    """
+    long_past = FIXED_NOW - timedelta(minutes=90)
+    service, _, logs = _service_with_fakes(_reminder(enabled=True))
+
+    await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(
+            scheduled_time=long_past.strftime("%H:%M")
+        ),
+    )
+
+    assert len(logs.upserted_logs) == 1
+    seeded = logs.upserted_logs[0]
+    assert seeded.status == "cancelled"
+    assert seeded.reminder_id == "R123"
+    assert seeded.scheduled_at == long_past
+
+
+@pytest.mark.asyncio
+async def test_changing_schedule_to_a_just_passed_time_still_reminds_today():
+    """剛過去幾分鐘（還在補推期限內）不預先註銷。
+
+    使用者把時間往前挪一點，本來就可能是想現在被提醒；那則推播不該因為這道
+    防線而消失。門檻是 misfire grace，不是「現在」。
+    """
+    just_passed = (FIXED_NOW - timedelta(minutes=5)).strftime("%H:%M")
+    service, _, logs = _service_with_fakes(_reminder(enabled=True))
+
+    await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(scheduled_time=just_passed),
+    )
+
+    assert logs.upserted_logs == []
+
+
+@pytest.mark.asyncio
+async def test_changing_schedule_to_a_future_time_does_not_pre_cancel():
+    """改到今天還沒到的時刻不預先註銷——那一劑今天照常提醒。"""
+    future = (FIXED_NOW + timedelta(minutes=90)).strftime("%H:%M")
+    service, _, logs = _service_with_fakes(_reminder(enabled=True))
+
+    await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(scheduled_time=future),
+    )
+
+    assert logs.upserted_logs == []
+
+
+@pytest.mark.asyncio
+async def test_disabled_reminder_does_not_get_a_pre_cancelled_log():
+    """規則已停用時不寫佔位紀錄——排程器根本不會為它展開任何東西。"""
+    long_past = (FIXED_NOW - timedelta(minutes=90)).strftime("%H:%M")
+    service, _, logs = _service_with_fakes(_reminder(enabled=False))
+
+    await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(scheduled_time=long_past),
+    )
+
+    assert logs.upserted_logs == []
+
+
+@pytest.mark.asyncio
+async def test_pre_cancel_failure_does_not_fail_the_update():
+    """佔位紀錄寫不進去時，規則的更新仍然成功。
+
+    這筆寫入是防禦性的記帳，不是使用者要求的那件事；讓它把一次成功的儲存變成
+    錯誤，是拿一則可能的假漏服通知去換一個確定的失敗。
+    """
+    long_past = (FIXED_NOW - timedelta(minutes=90)).strftime("%H:%M")
+    service, _, logs = _service_with_fakes(_reminder(enabled=True))
+    logs.upsert_log = AsyncMock(side_effect=RuntimeError("mongo down"))
+
+    result = await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(scheduled_time=long_past),
+    )
+
+    assert result.scheduled_time == long_past
 
 
 @pytest.mark.asyncio
@@ -709,21 +912,25 @@ async def test_disable_by_patient_who_is_not_creator_also_cancels():
 
 
 @pytest.mark.asyncio
-async def test_forbidden_disable_does_not_cancel_logs():
-    """無權限的關閉請求擋在 403，絕不能先把別人的紀錄註銷掉。"""
-    reminder = _reminder(enabled=True).model_copy(
-        update={"creator_user_id": "U_CARE", "user_id": "U_PATIENT"}
-    )
-    service, _, logs = _service_with_fakes(reminder, cancelled=1)
+async def test_disable_on_missing_reminder_does_not_cancel_logs():
+    """提醒不存在時擋在 404，絕不能先把紀錄註銷掉。
+
+    原本這條測的是「無權限的關閉請求擋在 403」。授權已移到 router（對象是
+    提醒的**用藥者**，不再是建立者），無權的情境由
+    tests/unit/routers/test_medications_authorization.py 覆蓋——那裡驗的是
+    請求根本到不了服務層，因此更早也更完整。這裡保留同一個不變條件的另一面：
+    任何提前結束的路徑都不得留下副作用。
+    """
+    service, _, logs = _service_with_fakes(None, cancelled=1)
 
     with pytest.raises(HTTPException) as excinfo:
         await service.update_reminder(
-            creator_user_id="U_STRANGER",
-            reminder_id="R123",
+            creator_user_id="U_CARE",
+            reminder_id="R404",
             request=UpdateMedicationReminderRequest(enabled=False),
         )
 
-    assert excinfo.value.status_code == 403
+    assert excinfo.value.status_code == 404
     assert logs.cancelled_reminder_ids == []
 
 

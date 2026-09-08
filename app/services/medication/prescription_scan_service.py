@@ -6,10 +6,11 @@
 需要改的地方就越少、越集中。
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Callable, Optional, Protocol
+from typing import Any, Callable, Optional, Protocol
 
 from bson import ObjectId
 
@@ -70,6 +71,10 @@ class TargetNotInFamilyError(Exception):
 
 class _OcrService(Protocol):
     async def recognize(self, image_bytes: bytes, mime_type: str) -> RecognitionResult: ...
+
+
+class _IndicationService(Protocol):
+    def compare(self, bag_indication, license_number): ...
 
 
 class _CatalogService(Protocol):
@@ -152,6 +157,9 @@ class PrescriptionScanService:
         family_tree_repository: _FamilyTreeRepository,
         appearance_image_resolver: _AppearanceImageResolver,
         ttl_minutes: int,
+        indication_service: Optional[_IndicationService] = None,
+        authorization_service: Any = None,
+        otc_alert_service: Any = None,
     ) -> None:
         self._ocr_service = ocr_service
         self._catalog_service = catalog_service
@@ -159,6 +167,16 @@ class PrescriptionScanService:
         self._medication_repository = medication_repository
         self._reminder_repository = reminder_repository
         self._family_tree_repository = family_tree_repository
+        # 選填：未注入時姓名比對不做權限篩選（僅影響**預設值**，不影響授權；
+        # 提交的閘門在 router 的 authorize 與下方的 TargetNotInFamilyError）。
+        self._authorization_service = authorization_service
+        self._otc_alert_tasks: set[asyncio.Task] = set()
+        # 可選：沒有注入就不做成分偵測。這條通道整個是旁路，缺席時掃描與
+        # 加入提醒的行為完全不變。
+        self._otc_alert_service = otc_alert_service
+        # 選填：未注入時比對一律 unchecked，行為與本變更前完全相同。
+        # 單元測試因此不必為了測辨識流程而準備一份仿單資料。
+        self._indication_service = indication_service
         self._appearance_image_resolver = appearance_image_resolver
         self._ttl_minutes = ttl_minutes
 
@@ -177,6 +195,11 @@ class PrescriptionScanService:
         recognition = await self._ocr_service.recognize(image_bytes, mime_type)
 
         all_names_verified = self._verify_against_catalog(recognition)
+
+        # 仿單比對就地記錄在每一筆上。刻意放在信心度計算「之前」，是為了讓
+        # 下面那三行的運算式讀起來就能看出它沒有參與其中——比對結果 SHALL NOT
+        # 影響信心度，理由見 _record_indication_match 的說明。
+        self._record_indication_match(recognition)
 
         all_frequencies_known = bool(recognition.drugs) and all(
             drug.frequency_code != "OTHER" for drug in recognition.drugs
@@ -201,6 +224,26 @@ class PrescriptionScanService:
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=self._ttl_minutes),
         )
         return await self._draft_repository.create(draft)
+
+    def _record_indication_match(self, recognition: RecognitionResult) -> None:
+        """逐筆記錄藥袋適應症與仿單的比對結果。**只記錄，不影響任何判定。**
+
+        沒有注入仿單服務時整個步驟略過，每一筆維持預設的 unchecked——這讓
+        既有測試與未載入仿單資料的環境行為完全不變。
+
+        為什麼不接上信心度：本規則的誤判率尚未以真實藥袋量測過。以「藥袋
+        短語對仿單長文」模擬，誤判率落在 17%~25%；而 scan() 的信心度要求
+        **全部**藥品皆通過，一顆誤判就會讓整份草稿失去一鍵確認——三種藥的
+        藥袋維持高信心的機率僅約 51%。用一個測不準的規則去拆斷已經調校好的
+        確認路徑，付出的代價大於它能擋下的錯誤。待累積真實資料、量出實際
+        誤判率後，再以另一個 change 評估是否接上。
+        """
+        if self._indication_service is None:
+            return
+        for drug in recognition.drugs:
+            drug.indication_match = self._indication_service.compare(
+                drug.indication, drug.license_number
+            )
 
     def _verify_against_catalog(self, recognition: RecognitionResult) -> bool:
         """逐筆用藥證庫校驗辨識出的藥名，就地更新每一筆的信心度與證號。
@@ -267,8 +310,17 @@ class PrescriptionScanService:
         if tree is None:
             return None
         for member in tree.family_members:
-            if member.display_name == patient_name:
-                return member.user_id
+            if member.display_name != patient_name:
+                continue
+            # 比對範圍限於操作者**代得了**的成員：提出一個使用者確認後必定
+            # 被 403 擋下的建議，只是讓他在藥袋辨識這一步多撞一次牆。真正的
+            # 閘門在 commit，這裡只是不要先給錯的預設值。
+            if self._authorization_service is not None:
+                if not await self._authorization_service.can(
+                    user_id, member.user_id, "GENERAL", "WRITE"
+                ):
+                    continue
+            return member.user_id
         return None
 
     # ── 提交 ────────────────────────────────────────────────────────
@@ -369,6 +421,11 @@ class PrescriptionScanService:
             await self._draft_repository.release_commit(draft_id, user_id, medication_ids)
             raise
 
+        # 藥已經寫進去了，這步只是旁路：非處方藥的成分重複偵測與家人通知。
+        # 刻意不放在冪等重放那條分支——那次提交若成功過，通知已經發過了，
+        # 重放時再發一次只會讓家人以為又新增了一盒藥。
+        self._schedule_otc_alert(target_user_id, medication_ids)
+
         return PrescriptionCommitResult(
             medication_ids=medication_ids,
             prn_medication_ids=self._prn_ids(resolved, medication_ids),
@@ -376,6 +433,36 @@ class PrescriptionScanService:
             reactivated_slots=reactivated_slots,
             discarded_license_medication_ids=self._discarded_license_ids(resolved, medication_ids),
         )
+
+    def _schedule_otc_alert(self, patient_user_id: str, medication_ids: list[str]) -> None:
+        """把成分重複偵測丟到背景執行。
+
+        使用者正在等提交回應，而偵測要查藥證庫、查現有用藥、推播給每一位家人
+        ——把這些串進同步路徑會讓核對畫面明顯變慢，而它對「這次提交成功了嗎」
+        這個問題沒有任何貢獻。
+
+        例外一律留在任務內部：讓它逸散只會變成 "Task exception was never
+        retrieved"，而且污染主流程的錯誤處理。比照
+        `MessageHandler._schedule_safety_alert_check`。
+
+        通知對象是 `target_user_id`（服藥的人）而不是提交者：家屬代長輩掃描
+        時，有成分重複風險的是長輩，不是代掃的人。
+        """
+        if self._otc_alert_service is None or not patient_user_id or not medication_ids:
+            return
+
+        async def _run() -> None:
+            try:
+                await self._otc_alert_service.check(patient_user_id, medication_ids)
+            except Exception:  # noqa: BLE001 - 背景旁路，例外不得逸散
+                # 這裡刻意不用 logger.exception：traceback 會帶出例外訊息，
+                # 而例外訊息常含查詢參數（藥名、證號）。用藥組合本身即為
+                # 病史的強烈線索。
+                logger.warning("非處方藥成分偵測任務失敗")
+
+        task = asyncio.create_task(_run())
+        self._otc_alert_tasks.add(task)
+        task.add_done_callback(self._otc_alert_tasks.discard)
 
     def _resolve_slots(
         self, item: CommitDrugItem

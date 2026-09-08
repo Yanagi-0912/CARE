@@ -70,6 +70,7 @@ def _make_service(
     answer_content="網路回覆",
     web_client=None,
     on_web_fallback_success=None,
+    link_checker=None,
 ):
     gemini_service = MagicMock()
     gemini_service.chat_model = MagicMock()
@@ -81,9 +82,23 @@ def _make_service(
             gemini_service=gemini_service,
             web_client=web_client,
             on_web_fallback_success=on_web_fallback_success,
+            link_checker=link_checker,
         ),
         gemini_service,
     )
+
+
+class FakeLinkChecker:
+    """把指定網址判死，其餘判活。記錄被查過哪些網址。"""
+
+    def __init__(self, dead=()):
+        self._dead = set(dead)
+        self.checked: list[str] = []
+
+    async def alive(self, urls):
+        urls = list(urls)
+        self.checked.extend(urls)
+        return {url: url not in self._dead for url in urls}
 
 
 @pytest.mark.asyncio
@@ -414,3 +429,140 @@ async def test_answer_create_failure_still_returns_answer():
     assert WEB_ANSWER_PREFIX in result
     assert "https://www.hpa.gov.tw/htn" in result
     on_success.assert_awaited_once()
+
+
+@pytest.fixture
+def rag_sources_holder():
+    """開一輪來源 holder（正式路徑由 message_handler 開場）。"""
+    from app.core.rag_sources import (
+        begin_request_rag_sources,
+        reset_request_rag_sources,
+    )
+
+    token = begin_request_rag_sources()
+    try:
+        yield
+    finally:
+        reset_request_rag_sources(token)
+
+
+@pytest.mark.asyncio
+async def test_web_answer_exposes_structured_sources(rag_sources_holder):
+    """走網搜的回答也要有結構化來源，否則卡片上一顆按鈕都不會有。
+
+    卡片路徑會把內文的來源清單 strip 掉、改用按鈕呈現，來源只剩這一條路。
+    """
+    from app.core.rag_sources import get_request_rag_sources
+
+    web = FakeWebClient(
+        hits=[
+            WebSearchHit(title="國健署高血壓", url="https://www.hpa.gov.tw/htn"),
+            WebSearchHit(title="食藥署血壓藥", url="https://www.fda.gov.tw/bp"),
+        ],
+        pages={
+            "https://www.hpa.gov.tw/htn": "控制血壓要規律量測與低鈉飲食。",
+            "https://www.fda.gov.tw/bp": "血壓藥不可自行停藥。",
+        },
+    )
+    svc, _ = _make_service(
+        answer_content="根據公開網路資料，請規律量測血壓 [1]。",
+        web_client=web,
+    )
+
+    result = await svc.answer("高血壓要注意什麼")
+
+    refs = get_request_rag_sources()
+    assert [r.index for r in refs] == [1, 2]
+    assert [r.url for r in refs] == [
+        "https://www.hpa.gov.tw/htn",
+        "https://www.fda.gov.tw/bp",
+    ]
+    # 按鈕編號必須與文字清單一致，否則使用者點錯來源。
+    for ref in refs:
+        assert f"[{ref.index}] {ref.label}：{ref.url}" in result
+
+
+@pytest.mark.asyncio
+async def test_web_answer_without_usable_url_clears_sources(rag_sources_holder):
+    """沒有可列的來源時要清空，不能留著上一次的殘值。"""
+    from app.core.rag_sources import SourceRef, get_request_rag_sources
+    from app.core.rag_sources import set_request_rag_sources
+
+    set_request_rag_sources(
+        [SourceRef(index=1, label="殘留", url="https://example.com/stale")]
+    )
+
+    assert WebSearchService._append_sources("答案本文。", []) == "答案本文。"
+    assert get_request_rag_sources() == ()
+
+
+# --- 來源網址存活檢查（link_check.py）---
+
+
+@pytest.mark.asyncio
+async def test_dead_url_is_dropped_from_web_sources():
+    """網搜路徑判死的來源整筆不顯示：拿掉連結後只剩搜尋結果標題，
+    對使用者驗證沒有價值（知識庫路徑的機構名才值得單獨保留）。"""
+    dead = "https://sp1.hso.mohw.gov.tw/doctor/Often_question/type_detail.php"
+    web = FakeWebClient(
+        hits=[
+            WebSearchHit(title="衛福部腳痛", url=dead, description="腳痛的常見原因說明。"),
+            WebSearchHit(
+                title="國健署",
+                url="https://www.hpa.gov.tw/foot",
+                description="足部保健的日常照護建議。",
+            ),
+        ],
+    )
+    svc, _ = _make_service(
+        answer_content="請就醫評估。",
+        web_client=web,
+        link_checker=FakeLinkChecker(dead=[dead]),
+    )
+
+    result = await svc.answer("腳痛怎麼辦")
+
+    assert dead not in result
+    assert "[1] 網路：國健署：https://www.hpa.gov.tw/foot" in result
+
+
+@pytest.mark.asyncio
+async def test_dead_url_never_reaches_knowledge_report():
+    """死鏈一旦經回報核准就會 ingest 進庫，成為之後每次引用的死連結。
+    擋在入庫前，比事後在出口層一直降級它便宜。"""
+    dead = "https://sp1.hso.mohw.gov.tw/gone"
+    alive = "https://www.hpa.gov.tw/foot"
+    web = FakeWebClient(
+        hits=[
+            WebSearchHit(title="衛福部", url=dead, description="腳痛的常見原因說明。"),
+            WebSearchHit(title="國健署", url=alive, description="足部保健的照護建議。"),
+        ],
+    )
+    reported = AsyncMock()
+    svc, _ = _make_service(
+        answer_content="請就醫評估。",
+        web_client=web,
+        on_web_fallback_success=reported,
+        link_checker=FakeLinkChecker(dead=[dead]),
+    )
+
+    token = set_line_user_id("U123")
+    try:
+        await svc.answer("腳痛怎麼辦")
+    finally:
+        reset_line_user_id(token)
+
+    reported.assert_awaited_once()
+    assert reported.await_args.kwargs["urls"] == [alive]
+
+
+@pytest.mark.asyncio
+async def test_sources_unchanged_when_link_checker_absent():
+    """未注入 checker 時行為與導入這個功能之前完全相同。"""
+    url = "https://sp1.hso.mohw.gov.tw/gone"
+    web = FakeWebClient(
+        hits=[WebSearchHit(title="衛福部", url=url, description="腳痛的常見原因說明。")]
+    )
+    svc, _ = _make_service(answer_content="請就醫評估。", web_client=web)
+
+    assert url in await svc.answer("腳痛怎麼辦")

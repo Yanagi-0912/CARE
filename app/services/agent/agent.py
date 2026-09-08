@@ -10,7 +10,7 @@ from langgraph.graph import END, START, StateGraph
 
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from app.core.request_logging import log_stage
+from app.core.request_logging import log_stage, stage_timer
 from app.i18n.messages import (
     split_at_sources_heading,
     strip_sources_section,
@@ -23,7 +23,9 @@ from app.services.medical.symptom_classification.urgency import (
     URGENCY_NONE,
 )
 from app.services.gemini.shared.parser import content_to_text
+from app.services.rag.fail_messages import is_rag_fail
 from app.tools.registry import get_all_tools
+from app.tools.user_document_tools import is_document_answer_unavailable
 
 logger = logging.getLogger(__name__)
 
@@ -187,15 +189,15 @@ class Agent:
             (user_input or "")[:80],
         )
 
-        result = await self._graph.ainvoke(
-            {
-                "messages": messages,
-                "allow_rag": False,
-                "urgency": URGENCY_NONE,
-                "urgency_display": "",
-                "user_profile": user_profile,
-            }
-        )
+        with stage_timer(logger, "agent_graph") as timing:
+            result = await self._graph.ainvoke(
+                {
+                    "messages": messages,
+                    "allow_rag": False,
+                    "user_profile": user_profile,
+                }
+            )
+            timing["msgs"] = len(result.get("messages") or ())
 
         last_msg = result["messages"][-1]
         response = (
@@ -252,15 +254,16 @@ class Agent:
 
         # 防禦性後置處理：若呼叫了 get_rag_answer，但 AI 的最終回覆中遺漏了「參考資料來源」，則自動由工具輸出中提取並後補。
         #
-        # 醫療工具供稿時整段跳過：此時 response 是要原樣送往 LINE 的 Flex JSON
-        # 字串，在後面接上來源段落會讓它不再是合法 JSON，reply 端解析失敗後會
-        # 退化成「把整包 JSON 當純文字送出」。醫療工具的輸出本來就不含敘述性
-        # 內容，也沒有來源可補——不該由這段邏輯碰它。
-        # 急迫度短路時 response 已經是緊急卡的 Flex JSON，與醫療工具供稿同理，
-        # 整段後置處理必須跳過。
-        is_emergency = result.get("urgency") == URGENCY_EMERGENCY
+        # used_tool_names 非空代表 response 已被上面的醫療工具接管，內容是要原封
+        # 不動送給 LINE 的 Flex JSON。此時後補來源會把文字接在 JSON 尾巴後面，讓
+        # reply.py 的 `_try_parse_flex_message`（要求整串以 "{" 開頭、"}" 結尾）
+        # 解析失敗，整張卡片退化成使用者看得到的一整段裸 JSON——模型同一輪既呼叫
+        # verify_claim 又呼叫 get_rag_answer 時就會踩到。後補來源只對「模型自己寫
+        # 出來的自然語言回覆」有意義，因此這裡以「有沒有被覆寫」為準，而不是回頭
+        # 猜 response 像不像 JSON：覆寫與否正是問題的成因，判斷它才不會漏掉未來
+        # 新增的其他 Flex 工具。
         rag_tool_content = None
-        if not used_tool_names and not is_emergency:
+        if not used_tool_names:
             for msg in reversed(result.get("messages", [])):
                 if getattr(msg, "name", None) == "get_rag_answer":
                     rag_tool_content = msg.content
@@ -290,15 +293,37 @@ class Agent:
                 call_request_location = True
                 break
 
+        # 呈現層要知道「這輪是不是有內容可以做成卡片」。判斷放在這裡而非
+        # reply.py，因為只有這裡看得到 ToolMessage。
+        answer_kind: str | None = None
+        if not used_tool_names:
+            # used_tool_names 非空代表 response 已被醫療工具接管、內容是要原封
+            # 不動送出的 Flex JSON，再組一次卡只會壞掉（同「後補來源」那段的
+            # 理由）。
+            for msg in reversed(result.get("messages", [])):
+                name = getattr(msg, "name", None)
+                if name not in ("get_rag_answer", "answer_from_uploaded_document"):
+                    continue
+                content = (
+                    msg.content if isinstance(msg.content, str) else str(msg.content)
+                )
+                if name == "get_rag_answer":
+                    answer_kind = None if is_rag_fail(content) else "rag"
+                else:
+                    answer_kind = (
+                        None if is_document_answer_unavailable(content) else "document"
+                    )
+                break
+
         logger.info(
-            "[Agent] 執行完成，response_type=%s, call_request_location=%s, "
-            "emergency=%s",
+            "[Agent] 執行完成，response_type=%s, call_request_location=%s, answer_kind=%s",
             type(response).__name__,
             call_request_location,
-            is_emergency,
+            answer_kind,
         )
 
         return {
             "response": response,
             "call_request_location": call_request_location,
+            "answer_kind": answer_kind,
         }

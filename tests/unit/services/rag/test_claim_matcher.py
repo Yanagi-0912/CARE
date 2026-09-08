@@ -270,7 +270,7 @@ async def test_match_uses_vector_field_for_search_and_claim_field_for_projection
 
     pipeline = collection.aggregate.call_args.args[0]
     vector_stage = pipeline[0]["$vectorSearch"]
-    project_stage = pipeline[2]["$project"]
+    project_stage = pipeline[1]["$project"]
     assert vector_stage["path"] == "embedding"
     assert project_stage.get("claim_text") == 1
     assert "embedding" not in project_stage  # 向量欄位本身不該被投影回來
@@ -409,3 +409,89 @@ async def test_match_returns_none_when_content_field_is_missing_entirely():
     )
 
     assert await matcher.match("查詢字串") is None
+
+
+@pytest.mark.asyncio
+async def test_match_prefilters_to_valid_verdicts_inside_vector_search():
+    """判定過濾要在 $vectorSearch 內前置，不是取回 top-k 之後才 $match。
+
+    後置過濾是結構性的召回上限：知識庫裡查核報告只佔約三分之一，其餘是衛教文，
+    而使用者問的謠言題目往往兩邊都寫過，於是 top-k 可能整批是衛教文，真正查核
+    過那篇根本進不了候選。實測「微波爐加熱產生致癌物」後置只拿到 4/10 篇查核
+    報告，前置是 10/10。拉高 numCandidates 解決不了，因為瓶頸是 limit。
+    """
+    from app.services.rag.claim_verification.matcher import _VALID_VERDICTS
+
+    matcher, _ = _make_matcher()
+    collection = _fake_collection([])
+    matcher._collection = collection
+
+    await matcher.match("查詢字串")
+
+    pipeline = collection.aggregate.call_args.args[0]
+    vector_stage = pipeline[0]["$vectorSearch"]
+    assert vector_stage["filter"] == {"verdict": {"$in": sorted(_VALID_VERDICTS)}}
+    assert not any("$match" in stage for stage in pipeline), (
+        "判定過濾已前置，後置 $match 是多餘的一層")
+
+
+# ── 近乎平手時以發布日期決勝 ──────────────────────────────────────────
+# 實測 8 題常見謠言，有 3 題的前兩名分差小於 0.005，其中「打疫苗會改變DNA」
+# 只差 0.0004（2022 與 2021 的兩篇報告）——那個差距沒有語意意義，誰勝出基本上
+# 是隨機的。與其隨機，不如給使用者較新的那篇。
+
+
+def _row(url, score, published_at, claim="主張"):
+    return {"claim": claim, "verdict": "錯誤", "verdict_slug": "incorrect",
+            "url": url, "original_title": "標題", "chunk_content": "內容",
+            "published_at": published_at, "score": score}
+
+
+@pytest.mark.asyncio
+async def test_near_tie_prefers_more_recent_article():
+    matcher, _ = _make_matcher(min_score=0.0)
+    matcher._collection = _fake_collection([
+        _row("https://tfc/old", 0.9052, "2021-05-01"),
+        _row("https://tfc/new", 0.9050, "2022-06-01"),   # 分數略低但較新
+    ])
+
+    result = await matcher.match("查詢")
+
+    assert result.url == "https://tfc/new", "分差 0.0002 屬平手，應取較新者"
+    assert result.published_at == "2022-06-01"
+
+
+@pytest.mark.asyncio
+async def test_clear_score_gap_is_not_overridden_by_date():
+    """分數差距顯著時代表真的比較相關，日期不該蓋過相關性。"""
+    matcher, _ = _make_matcher(min_score=0.0)
+    matcher._collection = _fake_collection([
+        _row("https://tfc/relevant", 0.92, "2019-01-01"),
+        _row("https://tfc/recent", 0.80, "2026-01-01"),
+    ])
+
+    result = await matcher.match("查詢")
+
+    assert result.url == "https://tfc/relevant"
+
+
+@pytest.mark.asyncio
+async def test_missing_date_loses_the_tie_break():
+    """缺日期者排最後——食藥署那批連日期都沒有，不該因此贏過有日期的。"""
+    matcher, _ = _make_matcher(min_score=0.0)
+    matcher._collection = _fake_collection([
+        _row("https://a/no-date", 0.9001, None),
+        _row("https://b/dated", 0.9000, "2020-01-01"),
+    ])
+
+    result = await matcher.match("查詢")
+
+    assert result.url == "https://b/dated"
+
+
+@pytest.mark.asyncio
+async def test_published_at_is_exposed_on_the_match():
+    matcher, _ = _make_matcher(min_score=0.0)
+    matcher._collection = _fake_collection([_row("https://tfc/x", 0.95, "2024-03-02")])
+
+    assert (await matcher.match("查詢")).published_at == "2024-03-02"

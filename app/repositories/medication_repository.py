@@ -15,6 +15,18 @@ from app.models.medication import (
 
 logger = logging.getLogger(__name__)
 
+# 單一階段的推播嘗試次數上限（含第一次）。超過就放棄，不再把推播權還回去。
+#
+# 為什麼要有上限：`release_*` 把旗標回寫成「未送出」是為了讓下一個 tick 重試，
+# 這對瞬時故障（資料庫瞬斷、LINE 端 5xx）是對的。但有一整類錯誤不會自行恢復
+# ——最典型的是 LINE 月推播額度耗盡的 429——在那種情況下「還回去、下一輪再試」
+# 會變成每 60 秒重試一次、直到月底都不會停，而且每一輪都會重新查 profile、
+# 重組 Flex、再打一次注定失敗的 API。
+#
+# 取 5：涵蓋約 5 分鐘的瞬時故障（tick 間隔 60 秒），仍遠小於 T+20 催促的門檻，
+# 因此一個階段耗盡預算不會延後或吃掉下一個階段的推播時機。
+MAX_PUSH_ATTEMPTS = 5
+
 
 def _today_date_str() -> str:
     return datetime.now(TAIPEI_TZ).strftime("%Y-%m-%d")
@@ -338,6 +350,58 @@ class MedicationRepository:
         return created
 
     @staticmethod
+    async def list_active_drug_keys(
+        date_str: str, collection: Optional[Any] = None
+    ) -> List[str]:
+        """當日仍有效的所有藥品，其藥名與學名的不重複聯集。
+
+        **這支查詢刻意不帶 `user_id`。** 每日消息索引要的是「全體使用者總共在吃
+        哪些藥」，與是誰在吃無關——同一個藥名搜出來的官方消息對所有服用者都一樣，
+        因此快取的鍵是藥名而非使用者，成本才會是 O(不重複藥數) 而不是 O(使用者數)
+        （見 openspec/changes/medical-news-push/design.md 決策 2）。加上 user_id
+        會讓這個前提消失。
+
+        `name` 與 `generic_name` 取聯集而非二選一：藥袋上印的常是品牌短名，而官方
+        公告常以成分名發布（「含 ACETAMINOPHEN 之藥品」），兩邊都要能比對得到。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_medications_collection()
+
+        query = {"enabled": True, "$and": _active_date_window(date_str)}
+        names = await collection.distinct("name", query)
+        generics = await collection.distinct("generic_name", query)
+
+        seen: List[str] = []
+        for value in list(names) + list(generics):
+            if not value or not str(value).strip():
+                continue
+            cleaned = str(value).strip()
+            if cleaned not in seen:
+                seen.append(cleaned)
+        return seen
+
+    @staticmethod
+    async def list_active_by_user(
+        user_id: str, date_str: str, collection: Optional[Any] = None
+    ) -> List[Medication]:
+        """某位使用者當日仍有效的藥品。
+
+        日期濾網沿用 `_active_date_window`，與 `find_active_by_ids` 是同一套判定——
+        療程已結束的藥不該讓使用者收到「與您正在服用的藥有關」的消息卡。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_medications_collection()
+
+        query = {
+            "user_id": user_id,
+            "enabled": True,
+            "$and": _active_date_window(date_str),
+        }
+        cursor = collection.find(query)
+        docs = await cursor.to_list(length=None)
+        return [Medication(**{**doc, "_id": str(doc["_id"])}) for doc in docs]
+
+    @staticmethod
     async def find_by_ids(
         medication_ids: List[str], collection: Optional[Any] = None
     ) -> List[Medication]:
@@ -519,6 +583,89 @@ class MedicationLogRepository:
         )
         return result.modified_count
 
+    @staticmethod
+    async def resync_pending_by_reminder(
+        reminder_id: str,
+        scheduled_at: datetime,
+        slot_type: str,
+        collection: Optional[Any] = None,
+    ) -> tuple[int, int]:
+        """讓某筆規則當日還沒確認的紀錄對齊改過的排程，回傳 `(註銷數, 改標數)`。
+
+        使用者改時段或改提醒時間時呼叫。展開出來的紀錄是規則在**展開當下**的
+        快照（`slot_type`、`scheduled_at` 都是複製過去的值），三階推播查詢只讀
+        紀錄、不回頭 join 規則（見 `cancel_pending_by_reminder`），所以規則改了
+        之後那筆紀錄仍會依舊排程走完 T+20 催促與 T+30 家屬逾時警報。
+
+        兩種情形要分開處理，因為後果不同：
+
+        - **時刻已經不同**（改了提醒時間，或改時段時時間跟著改）：舊時刻不再
+          是這筆規則的排程，紀錄註銷。新時刻由排程器照常展開成另一筆紀錄
+          ——`upsert_log` 以 `(reminder_id, scheduled_at)` 為唯一識別，時刻不同
+          就是不同的紀錄，不會被這裡的註銷波及。
+        - **時刻相同、只有時段名稱變了**（例如自訂 07:15 的「早」改成「中」）：
+          該吃藥的那一刻沒有變，註銷等於平白吃掉使用者今天的提醒。改標即可
+          ——推播文案的時段字樣取自紀錄的 `slot_type`，不改的話今天仍會推成
+          「早 服藥時間到了」。
+
+        兩個查詢的條件互斥（`$ne` 與相等），不會重複打到同一筆紀錄。狀態一律
+        限定 `pending`：已 `taken` 是使用者真的吃過藥的事實，已 `missed` 的家屬
+        警報早已送出，兩者都不能因為改了規則而被改寫（同
+        `cancel_pending_by_reminder`）。
+
+        註銷側同樣不帶日期條件，理由亦同：紀錄是惰性展開的，`pending` 只會是
+        還在三階推播時間窗內的那一筆。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_medication_logs_collection()
+
+        cancelled = await collection.update_many(
+            {
+                "reminder_id": reminder_id,
+                "status": "pending",
+                "scheduled_at": {"$ne": scheduled_at},
+            },
+            {"$set": {"status": "cancelled"}},
+        )
+        retagged = await collection.update_many(
+            {
+                "reminder_id": reminder_id,
+                "status": "pending",
+                "scheduled_at": scheduled_at,
+                "slot_type": {"$ne": slot_type},
+            },
+            {"$set": {"slot_type": slot_type}},
+        )
+        return cancelled.modified_count, retagged.modified_count
+
+    @staticmethod
+    async def cancel_pending_by_reminder_ids(
+        reminder_ids: List[str],
+        scheduled_from: Optional[datetime] = None,
+        collection: Optional[Any] = None,
+    ) -> int:
+        """`cancel_pending_by_reminder` 的批次版；回傳受影響的筆數。
+
+        排程器每一輪都可能需要作廢好幾筆規則底下的紀錄（見
+        `MedicationScheduler.process_ticks` 的「無有效藥品」判定），逐筆呼叫
+        會讓寫入次數隨規則數線性增加，而這是每 60 秒一次的迴圈。
+
+        `scheduled_from` 是可選的下界（含），用來把作廢範圍限制在當日已展開的
+        紀錄。不帶時會作廢該批規則底下所有還沒確認的紀錄——排程器一律會帶，
+        理由是「這個時段今天沒有有效藥品」只是今天的判斷，不該回頭動到更早
+        的紀錄（那些紀錄當時可能確實有藥）。
+
+        條件同樣限定 `status="pending"`，理由見 `cancel_pending_by_reminder`。
+        """
+        if not reminder_ids:
+            return 0
+        if collection is None:
+            collection = MongoDBManager.get_medication_logs_collection()
+        query: dict = {"reminder_id": {"$in": reminder_ids}, "status": "pending"}
+        if scheduled_from is not None:
+            query["scheduled_at"] = {"$gte": scheduled_from}
+        result = await collection.update_many(query, {"$set": {"status": "cancelled"}})
+        return result.modified_count
 
     # ── 推播權搶佔 ────────────────────────────────────────────────────
     #
@@ -546,6 +693,66 @@ class MedicationLogRepository:
     # 搶佔先落地則該筆在當下確實仍未服藥（警報屬實），mark_as_taken 允許 missed
     # 轉 taken，紀錄最終仍收斂成 taken。
 
+    # ── 推播重試上限 ──────────────────────────────────────────────────
+    #
+    # 推播失敗時把旗標還回去，下一個 tick 就會重新搶佔並重試。這對瞬時故障是對的，
+    # 但對不會自行恢復的錯誤（LINE 月額度耗盡的 429、收件人已封鎖官方帳號）則是
+    # 每 60 秒一次、直到月底都不會停的無效重試。
+    #
+    # 所以每個階段各帶一個嘗試次數，由 `_release_push_claim` 在每次還原時累加；
+    # 達到 `MAX_PUSH_ATTEMPTS` 就不再還原旗標，該階段就此放棄。放棄之後旗標維持
+    # 「已送出」，這在資料上確實不精確（其實沒送成功），但真正的替代方案是無限
+    # 重試，那個代價更大；而且嘗試次數本身留在紀錄裡，事後查得出來是放棄還是送達。
+    #
+    # 三個階段各自獨立計次：T+0 耗盡預算不影響 T+20 與 T+30 各自的重試機會。
+
+    @staticmethod
+    async def _release_push_claim(
+        log_id: str,
+        *,
+        stage: str,
+        sent_field: str,
+        attempts_field: str,
+        extra_filter: Optional[dict] = None,
+        extra_set: Optional[dict] = None,
+    ) -> bool:
+        """還原某個階段的推播權，並累加嘗試次數；達到上限時不還原。
+
+        回傳 True 代表旗標已還原、下一個 tick 會重試；False 代表沒有還原
+        （已達上限而放棄，或這筆紀錄已不符合還原條件）。
+
+        先 `$inc` 再視結果決定要不要清掉旗標，分兩次寫入而不是一次
+        條件式更新：`{"$lt": N}` 對「欄位不存在」的舊紀錄不成立，用單一條件式
+        更新會讓所有既有紀錄第一次就被判定為已達上限而直接放棄。`$inc` 沒有
+        這個問題（缺欄位視為 0），因此以它的回傳值當判斷依據。這條路徑只在
+        推播已經失敗時才走到，多一次往返不影響正常流程。
+        """
+        col = MongoDBManager.get_medication_logs_collection()
+        doc = await col.find_one_and_update(
+            {"_id": log_id, sent_field: True, **(extra_filter or {})},
+            {"$inc": {attempts_field: 1}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if doc is None:
+            return False
+
+        attempts = doc.get(attempts_field, 0)
+        if attempts >= MAX_PUSH_ATTEMPTS:
+            logger.error(
+                "[MedicationLogRepository] Giving up %s for log %s after %d attempts; "
+                "the push flag stays set so it will not be retried",
+                stage,
+                log_id,
+                attempts,
+            )
+            return False
+
+        result = await col.update_one(
+            {"_id": log_id},
+            {"$set": {sent_field: False, **(extra_set or {})}},
+        )
+        return result.modified_count > 0
+
     @staticmethod
     async def claim_patient_reminder(log_id: str) -> bool:
         """搶下 T+0min 首刷提醒的推播權，回傳 True 代表本實例取得推播權。"""
@@ -558,13 +765,16 @@ class MedicationLogRepository:
 
     @staticmethod
     async def release_patient_reminder(log_id: str) -> bool:
-        """推播失敗時還原 T+0min 首刷提醒的旗標，讓下一個 tick 重試。"""
-        col = MongoDBManager.get_medication_logs_collection()
-        result = await col.update_one(
-            {"_id": log_id, "patient_reminder_sent": True},
-            {"$set": {"patient_reminder_sent": False}},
+        """推播失敗時還原 T+0min 首刷提醒的旗標，讓下一個 tick 重試。
+
+        重試次數有上限，見上方「推播重試上限」段落。
+        """
+        return await MedicationLogRepository._release_push_claim(
+            log_id,
+            stage="T+0min patient reminder",
+            sent_field="patient_reminder_sent",
+            attempts_field="patient_reminder_attempts",
         )
-        return result.modified_count > 0
 
     @staticmethod
     async def claim_patient_urgent_reminder(log_id: str) -> bool:
@@ -582,13 +792,16 @@ class MedicationLogRepository:
 
     @staticmethod
     async def release_patient_urgent_reminder(log_id: str) -> bool:
-        """推播失敗時還原 T+20min 催促提醒的旗標。"""
-        col = MongoDBManager.get_medication_logs_collection()
-        result = await col.update_one(
-            {"_id": log_id, "urgent_reminder_sent": True},
-            {"$set": {"urgent_reminder_sent": False}},
+        """推播失敗時還原 T+20min 催促提醒的旗標。
+
+        重試次數有上限，見上方「推播重試上限」段落。
+        """
+        return await MedicationLogRepository._release_push_claim(
+            log_id,
+            stage="T+20min urgent reminder",
+            sent_field="urgent_reminder_sent",
+            attempts_field="urgent_reminder_attempts",
         )
-        return result.modified_count > 0
 
     @staticmethod
     async def claim_caregiver_alert(log_id: str) -> bool:
@@ -615,13 +828,19 @@ class MedicationLogRepository:
 
         status 只在仍為 missed 時才回寫 pending：使用者可能在推播失敗的空檔按下
         「已用藥」，那時 status 是 taken，不能被還原動作蓋回去。
+
+        重試次數有上限，見上方「推播重試上限」段落。放棄時 status 維持 missed
+        ——使用者確實沒有在時限內確認服藥，這是事實，不因為通知送不出去而改變；
+        變的只是家屬沒收到通知，那件事記在 `caregiver_alert_attempts` 裡。
         """
-        col = MongoDBManager.get_medication_logs_collection()
-        result = await col.update_one(
-            {"_id": log_id, "caregiver_alert_sent": True, "status": "missed"},
-            {"$set": {"caregiver_alert_sent": False, "status": "pending"}},
+        return await MedicationLogRepository._release_push_claim(
+            log_id,
+            stage="T+30min caregiver alert",
+            sent_field="caregiver_alert_sent",
+            attempts_field="caregiver_alert_attempts",
+            extra_filter={"status": "missed"},
+            extra_set={"status": "pending"},
         )
-        return result.modified_count > 0
 
     @staticmethod
     async def list_pending_patient_reminders(threshold_time: datetime) -> List[MedicationLog]:

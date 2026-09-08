@@ -4,6 +4,7 @@ from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from app.core.config import settings
+from app.db.mongo_client import get_shared_client
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,9 @@ class MongoDBManager:
             if not mongodb_url:
                 raise ValueError("未設定 MongoDB_url")
             logger.info("Initializing async MongoDB connection (Motor)...")
-            cls._client = AsyncIOMotorClient(mongodb_url)
+            # 走共用工廠：與 RAG 的兩個 retriever 指向同一個 URI 時共用同一條
+            # 連線，並統一套用逾時政策（見 app/db/mongo_client.py）。
+            cls._client = get_shared_client(mongodb_url)
         return cls._client
 
     @classmethod
@@ -73,6 +76,27 @@ class MongoDBManager:
         取得 pending_invitations collection
         """
         return cls.get_database()["pending_invitations"]
+
+    @classmethod
+    def get_family_delegations_collection(cls):
+        """
+        取得 family_delegations collection（受委任 GUARDIAN 的授權紀錄）
+
+        與 family_trees 分開存放：族譜是擁有者自己維護的成員名單，委任則是
+        「不經擁有者同意就取得其資料權限」的例外路徑，兩者的寫入資格與稽核
+        要求完全不同。混在同一份文件裡，一次族譜更新就可能連帶動到委任。
+        """
+        return cls.get_database()["family_delegations"]
+
+    @classmethod
+    def get_family_role_audit_collection(cls):
+        """
+        取得 family_role_audit collection（角色與委任變更的稽核紀錄）
+
+        僅可追加：指派 GUARDIAN 是本系統唯一「一次點擊就讓某人讀得到長輩全部
+        對話」的操作，事後必須能回答「誰在什麼時候給了誰權限」。
+        """
+        return cls.get_database()["family_role_audit"]
 
     @classmethod
     def get_consultation_summaries_collection(cls):
@@ -126,6 +150,35 @@ class MongoDBManager:
         TTL 索引沒辦法只清掉一個欄位（design.md 決策 2）。
         """
         return cls.get_database()["knowledge_report_previews"]
+
+    @classmethod
+    def get_drug_news_collection(cls):
+        """
+        取得 drug_news collection（藥名／成分的近期官方消息索引）
+
+        內容與使用者無關，因此服用同一種藥的所有人共用同一批文件——這是索引服務
+        按藥名而非按人快取的前提（見 openspec/changes/medical-news-push/design.md 決策 2）。
+        """
+        return cls.get_database()["drug_news"]
+
+    @classmethod
+    def get_medical_news_deliveries_collection(cls):
+        """
+        取得 medical_news_deliveries collection（某位使用者收過哪些消息卡）
+
+        它的 (user_id, news_ref) 唯一索引一物二用：既是去重，也是多實例下的推播權
+        搶佔。文件存在本身就代表「已推播」。
+        """
+        return cls.get_database()["medical_news_deliveries"]
+
+    @classmethod
+    def get_medical_news_shares_collection(cls):
+        """
+        取得 medical_news_shares collection（某位收件人被分享過哪些消息）
+
+        防的是「三位家人都按了認同，同一位長輩收到三張一樣的卡」。
+        """
+        return cls.get_database()["medical_news_shares"]
 
     @classmethod
     def get_safety_alerts_collection(cls):

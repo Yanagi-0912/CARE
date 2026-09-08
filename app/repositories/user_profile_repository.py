@@ -5,7 +5,7 @@
 
 import logging
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 from app.db.mongodb import MongoDBManager
 
 logger = logging.getLogger(__name__)
@@ -65,6 +65,27 @@ class UserProfileRepository:
         set_fields["updated_at"] = now
         result = await col.update_one({"line_id": line_id}, {"$set": set_fields})
         return result.matched_count > 0
+
+    @staticmethod
+    async def list_all_line_ids(collection: Optional[Any] = None) -> List[str]:
+        """全體使用者的 line_id。
+
+        每日消息卡的收件人是**全體**使用者，不是「有用藥的那批」——Tier 2 保底
+        存在的理由正是讓沒有用藥資料的人也每天收得到東西。
+
+        只投影 `line_id`：使用者文件含健康欄位，為了取一個 id 而把整份文件撈進
+        記憶體是不必要的暴露，資料量大時也是不必要的傳輸。
+
+        本方法帶 `collection` 參數（本檔既有方法沒有），比照
+        `medication_repository.py` 的慣例，讓測試以依賴注入傳入替身而不必
+        monkey patch。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_users_collection()
+
+        cursor = collection.find({}, {"line_id": 1})
+        docs = await cursor.to_list(length=None)
+        return [doc["line_id"] for doc in docs if doc.get("line_id")]
 
     @staticmethod
     async def get_user_profile(line_id: str) -> Optional[Dict[str, Any]]:

@@ -9,7 +9,7 @@ from app.core.request_context import (
     reset_request_id,
     set_request_id,
 )
-from app.core.request_logging import log_done, log_stage, log_start
+from app.core.request_logging import log_done, log_stage, log_start, stage_timer
 
 
 def test_new_request_id_is_short_and_unique():
@@ -60,3 +60,50 @@ def test_request_id_filter_adds_rid_to_log_record():
     )
     assert RequestIdFilter().filter(record) is True
     assert record.rid == "cafebabe"
+
+
+def _stage_messages(caplog, logger_name):
+    return [r.getMessage() for r in caplog.records if r.name == logger_name]
+
+
+def test_stage_timer_emits_ms_and_static_fields(caplog):
+    logger = logging.getLogger("test.stage_timer.basic")
+    with caplog.at_level(logging.INFO, logger=logger.name):
+        with stage_timer(logger, "rag_retrieve", attempt="first"):
+            pass
+
+    messages = _stage_messages(caplog, logger.name)
+    assert len(messages) == 1
+    assert "stage=rag_retrieve" in messages[0]
+    assert "attempt=first" in messages[0]
+    assert "ms=" in messages[0]
+
+
+def test_stage_timer_extra_dict_adds_and_overrides_fields(caplog):
+    """跑完才知道的欄位（命中數、是否降級）要能補上，同鍵時以 extra 為準。"""
+    logger = logging.getLogger("test.stage_timer.extra")
+    with caplog.at_level(logging.INFO, logger=logger.name):
+        with stage_timer(logger, "cohere_rerank", docs=40, outcome="error") as extra:
+            extra["outcome"] = "ok"
+            extra["docs_out"] = 5
+
+    message = _stage_messages(caplog, logger.name)[0]
+    assert "docs=40" in message
+    assert "outcome=ok" in message
+    assert "outcome=error" not in message
+    assert "docs_out=5" in message
+
+
+def test_stage_timer_logs_on_exception_and_reraises(caplog):
+    """逾時與失敗那幾條路正是最該量的，計時器不能只在成功路徑記錄。"""
+    logger = logging.getLogger("test.stage_timer.raise")
+    with caplog.at_level(logging.INFO, logger=logger.name):
+        with pytest.raises(ValueError):
+            with stage_timer(logger, "rag_generate", docs=3) as extra:
+                extra["outcome"] = "error"
+                raise ValueError("boom")
+
+    message = _stage_messages(caplog, logger.name)[0]
+    assert "stage=rag_generate" in message
+    assert "docs=3" in message
+    assert "outcome=error" in message

@@ -133,6 +133,18 @@ class DrugCatalogEntry:
     mark_one: str = ""
     mark_two: str = ""
     size: str = ""
+    # 藥事法第 8 條的分級：prescription／otc_guided／otc／not_a_medicine，
+    # 或空字串（對照表認不得的類別、以及只出現在外觀資料集的品項）。
+    # 空字串在下游一律不觸發成分重複偵測——寧可少偵測，不要對一個我們不知道
+    # 是什麼的東西發警報。
+    drug_class: str = ""
+    # 正規化後的主成分清單（英文學名，已去括號補述）。用學名而非中文品名比對，
+    # 因為普拿疼、斯斯、明通治痛丹的品名毫無交集，主成分都是 ACETAMINOPHEN。
+    #
+    # 預設空 tuple 而非 None：舊版 drug_catalog.json 沒有這個欄位時，呼叫端
+    # 拿到的是「沒有成分資料」而不是型別錯誤。部署順序不保證程式碼與產出物
+    # 同時更新，這裡拋錯會讓整個藥袋掃描掛掉，那比沒有這個功能糟得多。
+    ingredients: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -229,6 +241,11 @@ class DrugCatalogService:
     def __init__(self, entries: Iterable[DrugCatalogEntry], threshold: float):
         self._entries = list(entries)
         self._threshold = threshold
+        # 證號 → 條目。同一證號在來源資料裡只會有一筆（建表腳本以證號去重），
+        # 重複時取第一筆，與 `_index_appearance_fields` 的既有規則一致。
+        self._by_license_number: dict[str, DrugCatalogEntry] = {}
+        for entry in self._entries:
+            self._by_license_number.setdefault(entry.license_number, entry)
         # 正規化後的鍵 → { license_number → 條目 }。同一條目的中英文品名
         # 各佔一個鍵。實測全庫 66,478 筆藥證產生 112,228 個鍵（已扣掉下面
         # 排除的純標點鍵），其中 10,765 個鍵對應到不只一張藥證，涉及 21,250
@@ -274,6 +291,22 @@ class DrugCatalogService:
             else:
                 self._by_prefix.setdefault(key[:2], []).append(key)
 
+    def entry_by_license_number(self, license_number: str) -> Optional[DrugCatalogEntry]:
+        """依許可證字號取條目。查無回 None。
+
+        成分重複偵測需要的是「這張藥證的分級與主成分」，而掃描流程在使用者
+        確認候選之後已經釘定了證號（`_resolved_candidate.license_number`），
+        因此以證號查詢是最直接的路徑。
+
+        刻意不把成分塞進 `DrugCatalogMatch`：那個結構同時用在候選清單上，
+        每一筆候選都帶完整成分只會讓它變胖，而候選階段還沒釘定是哪一張藥證，
+        成分本來就不該在那時被使用。
+        """
+        key = (license_number or "").strip()
+        if not key:
+            return None
+        return self._by_license_number.get(key)
+
     @property
     def is_empty(self) -> bool:
         return not self._entries
@@ -297,6 +330,8 @@ class DrugCatalogService:
                     # `.get(..., "")`：drug_catalog.json 是提交進 repo 的產出物，
                     # 舊 commit 產出的檔案沒有這些鍵，缺鍵時視為空字串而不是
                     # 讓載入失敗——外觀欄位是既有藥證資料的擴充，不是前提。
+                    drug_class=item.get("drug_class", ""),
+                    ingredients=tuple(item.get("ingredients") or ()),
                     image_url=item.get("image_url", ""),
                     shape=item.get("shape", ""),
                     color=item.get("color", ""),

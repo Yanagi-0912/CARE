@@ -73,3 +73,34 @@ async def test_answer_from_uploaded_document_with_docs():
         service.answer.assert_awaited_once_with("U456", "我的血壓如何")
     finally:
         reset_line_user_id(token)
+
+
+def test_no_docs_message_is_unavailable():
+    assert user_document_tools.is_document_answer_unavailable(NO_DOCS_MESSAGE) is True
+
+
+def test_service_and_user_errors_are_unavailable():
+    assert (
+        user_document_tools.is_document_answer_unavailable(
+            user_document_tools.SERVICE_UNAVAILABLE_MESSAGE
+        )
+        is True
+    )
+    assert (
+        user_document_tools.is_document_answer_unavailable(
+            user_document_tools.UNKNOWN_USER_MESSAGE
+        )
+        is True
+    )
+
+
+def test_real_answer_is_available():
+    assert (
+        user_document_tools.is_document_answer_unavailable("報告指出你的血壓偏高 [1]。")
+        is False
+    )
+
+
+def test_blank_is_unavailable():
+    assert user_document_tools.is_document_answer_unavailable("") is True
+    assert user_document_tools.is_document_answer_unavailable(None) is True

@@ -49,7 +49,13 @@ def test_create_invite_success(client, override_family_service, override_current
     response = client.post("/api/family/invites")
     assert response.status_code == 200
     assert response.json()["invite_token"] == "token123"
-    override_family_service.create_invitation.assert_awaited_once_with("U_ME")
+    # 邀請改為可攜帶 owner_id 與 family_role（角色型邀請），因此以具名參數
+    # 呼叫。兩者省略時語意與變更前相同：邀請加入自己的照護圈、角色未指定。
+    override_family_service.create_invitation.assert_awaited_once()
+    kwargs = override_family_service.create_invitation.await_args.kwargs
+    assert kwargs["inviter_id"] == "U_ME"
+    assert kwargs["owner_id"] is None
+    assert kwargs["family_role"] is None
 
 def test_verify_invite_public_access(client, override_family_service):
     # Verify 應該是公開的，不需要 override_current_user
@@ -99,9 +105,34 @@ def test_get_my_tree_success(
     )
     override_family_service.get_family_tree.return_value = mock_tree
 
+    # /api/family/me 現在會一併回報兩個方向的角色與實際生效的權限，因此還要
+    # 覆寫授權與角色服務——否則端點會拿到正式組裝的服務並真的去連 MongoDB。
+    from app.dependencies import (
+        get_family_authorization_service,
+        get_family_role_service,
+    )
+    from app.models.family_tree import FamilyRoleAssignmentStatus
+
+    class _Authz:
+        async def describe_members(self, operator_id, owner_ids, now=None):
+            return {}
+
+    class _Roles:
+        async def assignment_status(self, operator_id, owner_id):
+            return FamilyRoleAssignmentStatus(
+                owner_id=owner_id,
+                is_complete=True,
+                unassigned_member_ids=[],
+                rbac_migration_state="shadow",
+            )
+
+    app.dependency_overrides[get_family_authorization_service] = lambda: _Authz()
+    app.dependency_overrides[get_family_role_service] = lambda: _Roles()
+
     response = client.get("/api/family/me")
     assert response.status_code == 200
     assert response.json()["family_tree"]["user_id"] == "U_ME"
+    assert response.json()["role_assignment"]["is_complete"] is True
     override_family_service.get_family_tree.assert_awaited_once_with("U_ME")
 
 

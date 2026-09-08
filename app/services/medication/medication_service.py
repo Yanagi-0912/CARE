@@ -1,10 +1,11 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Callable, List, Optional
 from fastapi import HTTPException
 
 from app.models.family_tree import FamilyTree
 from app.models.medication import (
+    DEFAULT_MISFIRE_GRACE_MINUTES,
     DEFAULT_SLOT_TIMES,
     TAIPEI_TZ,
     CreateMedicationReminderRequest,
@@ -15,7 +16,6 @@ from app.models.medication import (
     UpdateMedicationReminderRequest,
     ensure_aware_utc,
 )
-from app.repositories.family_tree_repository import FamilyTreeRepository
 from app.repositories.medication_repository import (
     MedicationLogRepository,
     MedicationRepository,
@@ -35,7 +35,11 @@ _AppearanceImageResolver = Callable[[str], Optional[str]]
 
 
 def _today_date_str() -> str:
-    return datetime.now(TAIPEI_TZ).strftime("%Y-%m-%d")
+    return _now_taipei().strftime("%Y-%m-%d")
+
+
+def _now_taipei() -> datetime:
+    return datetime.now(TAIPEI_TZ)
 
 
 class MedicationService:
@@ -49,6 +53,9 @@ class MedicationService:
         reminder_repository=MedicationReminderRepository,
         log_repository=MedicationLogRepository,
         appearance_image_resolver: _AppearanceImageResolver = resolve_drug_appearance_image_url,
+        indication_service=None,
+        misfire_grace_minutes: int = DEFAULT_MISFIRE_GRACE_MINUTES,
+        clock: Callable[[], datetime] = _now_taipei,
     ) -> None:
         # 其餘方法沿用既有慣例，直接呼叫 repository 的 staticmethod；
         # 這裡額外開可注入的參數，給 get_user_reminders_with_medications 與
@@ -58,6 +65,16 @@ class MedicationService:
         self._reminder_repository = reminder_repository
         self._log_repository = log_repository
         self._appearance_image_resolver = appearance_image_resolver
+        # 改排程到已經過去的時刻時要不要先註銷該時刻，門檻與排程器判定「錯過」
+        # 用的是同一個值（見 DEFAULT_MISFIRE_GRACE_MINUTES）。開成參數只為了讓
+        # 測試不必配合真實的 20 分鐘擺弄時間；正式路徑兩邊都用預設值。
+        self._misfire_grace_minutes = misfire_grace_minutes
+        # 台北時間的「現在」。可注入是為了讓改排程那段的測試能固定在一個時刻上
+        # ——它同時要算「今天是哪一天」與「離現在多久」，跟著真實時鐘跑的話，
+        # 測試在午夜前後會算出前一天的日期而飄紅。
+        self._clock = clock
+        # 選填：未注入時仿單欄位一律 None，前端只顯示藥袋讀到的適應症。
+        self._indication_service = indication_service
 
     async def create_reminders(
         self, creator_user_id: str, request: CreateMedicationReminderRequest
@@ -67,11 +84,10 @@ class MedicationService:
         """
         target_user_id = request.user_id
 
-        # 若幫別人設定，驗證目標使用者是否在 creator 的家庭族譜內
-        if creator_user_id != target_user_id:
-            tree = await FamilyTreeRepository.get_by_user_id(creator_user_id)
-            if not tree or not any(m.user_id == target_user_id for m in tree.family_members):
-                raise HTTPException(status_code=400, detail="用藥對象必須是您的家庭成員")
+        # 授權由呼叫端（router）經 FamilyAuthorizationService 判定：為他人建立
+        # 提醒需要對該用藥者的 GENERAL 具備寫入權。這裡刻意**不再**手寫族譜
+        # 檢查——「在族譜裡＝有權」正是本 change 要消滅的語意，留一份在這裡
+        # 就會有人以為它還是授權依據，而它比矩陣寬。
 
         start_date = request.start_date or _today_date_str()
         created_reminders: List[MedicationReminder] = []
@@ -106,10 +122,9 @@ class MedicationService:
         collection: Optional[Any] = None,
     ) -> List[MedicationReminder]:
         """取得特定使用者的所有用藥提醒"""
-        if requester_user_id and requester_user_id != user_id:
-            tree = await FamilyTreeRepository.get_by_user_id(requester_user_id)
-            if not tree or not any(m.user_id == user_id for m in tree.family_members):
-                raise HTTPException(status_code=400, detail="對象必須是您的家庭成員")
+        # 授權同樣由呼叫端經 FamilyAuthorizationService 判定（GENERAL 讀取權），
+        # 這裡不再自行檢查族譜。`requester_user_id` 保留在簽章上供既有呼叫端
+        # 相容，本方法不再依它做任何判斷。
         # 只在真的有人注入 collection 時才多帶這個關鍵字參數：既有呼叫端與既有
         # 測試（斷言呼叫簽名是 list_reminders_by_user(user_id) 這個既定形狀）
         # 完全不受影響，只有新加的 get_user_reminders_with_medications 會用到。
@@ -148,7 +163,10 @@ class MedicationService:
         # 每筆提醒的 medications 清單時只是查表，不會重複呼叫解析器。
         medications_by_id = {
             medication.id: medication.model_copy(
-                update={"thumbnail_url": self._resolve_thumbnail(medication)}
+                update={
+                    "thumbnail_url": self._resolve_thumbnail(medication),
+                    **self._resolve_indication(medication),
+                }
             )
             for medication in medications
         }
@@ -164,6 +182,30 @@ class MedicationService:
             )
             for reminder in reminders
         ]
+
+    def _resolve_indication(self, medication) -> dict:
+        """依證號解析仿單適應症，回傳要覆寫到 Medication 上的欄位。
+
+        沒有注入仿單服務、證號未確定、或查無該藥證時一律回 None——證號不確定
+        代表不知道是哪一張藥證，顯示的適應症就可能屬於另一顆藥（與「證號不
+        確定時不得顯示藥丸照片」同一條安全邊界）。
+
+        摘要與原文都帶出去：前端有摘要時顯示摘要、可展開原文；摘要為空時
+        直接顯示原文（spec 的「摘要缺席時的降級」）。
+        """
+        if self._indication_service is None:
+            return {"spc_indication": None, "spc_indication_summary": None}
+        found = self._indication_service.lookup(
+            getattr(medication, "license_number", None)
+        )
+        if found is None:
+            return {"spc_indication": None, "spc_indication_summary": None}
+        return {
+            "spc_indication": found.text,
+            # 空字串（不需要摘要／產不出合格摘要）一律收斂成 None，讓前端
+            # 只判斷一種「沒有摘要」的表示。
+            "spc_indication_summary": found.summary or None,
+        }
 
     def _resolve_thumbnail(self, medication: Medication) -> Optional[str]:
         """證號已確定時才嘗試解析縮圖 URL。
@@ -186,6 +228,17 @@ class MedicationService:
             )
             return None
 
+    async def get_reminder(self, reminder_id: str) -> MedicationReminder:
+        """取得單筆提醒，供呼叫端在授權判定之前得知其用藥者是誰。
+
+        授權需要「目標資料的擁有者」這項輸入，而提醒的擁有者是 `user_id`。
+        呼叫端拿不到它就只能改用 `creator_user_id`——那正是要避免的後門。
+        """
+        reminder = await self._reminder_repository.get_reminder_by_id(reminder_id)
+        if not reminder:
+            raise HTTPException(status_code=404, detail="找不到該用藥提醒")
+        return reminder
+
     async def get_creator_reminders(self, creator_user_id: str) -> List[MedicationReminder]:
         """取得創立者為家人或自己產生的所有用藥提醒"""
         return await MedicationReminderRepository.list_reminders_by_creator(creator_user_id)
@@ -198,8 +251,10 @@ class MedicationService:
         if not reminder:
             raise HTTPException(status_code=404, detail="找不到該用藥提醒")
 
-        if reminder.creator_user_id != creator_user_id and reminder.user_id != creator_user_id:
-            raise HTTPException(status_code=403, detail="無權限修改此用藥提醒")
+        # 授權由呼叫端經 FamilyAuthorizationService 判定，對象是該提醒的
+        # **用藥者**。`creator_user_id` 僅為來源紀錄，SHALL NOT 構成授權依據：
+        # 以建立者作為永久依據，等於任何曾經有權建立的人在權限被收回之後仍
+        # 保有對既有資料的控制——而「收回權限」正是這套授權存在的目的。
 
         # `exclude_unset` 而非 `exclude_none`：兩者對「沒帶的欄位」行為相同
         # （都不會出現在 update_data 裡），差別在「有帶且是 null」。先前用
@@ -259,8 +314,113 @@ class MedicationService:
                     reminder_id,
                     cancelled,
                 )
+        elif (
+            updated.slot_type != reminder.slot_type
+            or updated.scheduled_time != reminder.scheduled_time
+        ):
+            # 改排程與關閉是同一個問題的兩種形態：當日已展開的紀錄是規則在展開
+            # 當下的快照，三階推播只讀紀錄、不回頭確認規則現在長什麼樣。08:05 把
+            # 「早 08:00」改成「中 12:00」，08:20 仍會催「早 服藥未確認」、08:30
+            # 家屬仍會收到他漏吃早上藥的警報——那個時段已經不存在了。
+            #
+            # 用 `updated` 與改動前的 `reminder` 逐欄比對，而不是看 update_data
+            # 有沒有帶那個 key：把欄位原值重送一次不是改動，不該連帶動到紀錄。
+            #
+            # 日界與時刻的基準必須與排程器展開時一致（`process_ticks` 以
+            # `datetime.now(TAIPEI_TZ)` 為準），否則算出來的時刻對不上已展開的
+            # `scheduled_at`，該註銷的沒註銷、該保留的反而被註銷。
+            now_taipei = self._clock()
+            new_scheduled_at = datetime.strptime(
+                f"{now_taipei.strftime('%Y-%m-%d')} {updated.scheduled_time}",
+                "%Y-%m-%d %H:%M",
+            ).replace(tzinfo=TAIPEI_TZ)
+            cancelled, retagged = await self._log_repository.resync_pending_by_reminder(
+                reminder_id,
+                scheduled_at=new_scheduled_at,
+                slot_type=updated.slot_type,
+            )
+            if cancelled or retagged:
+                logger.info(
+                    "[MedicationService] 提醒 %s 改排程為 %s %s，"
+                    "註銷舊時刻的未確認紀錄 %d 筆、改標同時刻的 %d 筆",
+                    reminder_id,
+                    updated.slot_type,
+                    updated.scheduled_time,
+                    cancelled,
+                    retagged,
+                )
+
+            await self._suppress_stale_new_slot(updated, new_scheduled_at, now_taipei)
 
         return updated
+
+    async def _suppress_stale_new_slot(
+        self, reminder: MedicationReminder, scheduled_at: datetime, now: datetime
+    ) -> None:
+        """改排程後，若新時刻今天已經過去太久，先為它寫下一筆 `cancelled`。
+
+        排程器展開紀錄時只看規則現在的 `scheduled_time`，不知道那個時刻是幾分鐘
+        前才被改成這樣的。晚上八點把「晚 18:00」改成「早 08:00」，下一輪 tick 就
+        會為今天 08:00 展開一筆紀錄——超過 misfire grace，它會被記成 `missed` 且
+        不推播，但仍會進「錯過時段的彙整通知」，家屬因此收到一則「他今天漏吃早上
+        的藥」，而那一劑從來不存在。
+
+        搶先寫一筆 `cancelled`，排程器的 `$setOnInsert` 就會變成 no-op（留下紀錄
+        而不是指望它不要展開，理由同「關閉時段規則」：留著才擋得住同一天後續
+        tick 重新展開）。該時刻若已經有紀錄——包括剛剛被改標成新時段的那筆——
+        `$setOnInsert` 同樣不會覆寫，這裡因此只會在「本來就沒有紀錄」時才真的
+        插入，正好是排程器會憑空生出假漏服的那個情形。
+
+        門檻用 misfire grace 而不是「現在」：剛過去幾分鐘的改動仍讓排程器照常
+        展開並立刻推播——使用者把時間往前挪一點，本來就可能是想現在被提醒，那
+        則推播不該消失。超過 grace 才是整條 T+0／T+20／T+30 時序已經失去意義的
+        情形（見 `DEFAULT_MISFIRE_GRACE_MINUTES`）。
+
+        規則已停用時不寫：排程器根本不會為它展開任何東西，寫了只是噪音。
+
+        任何失敗只記錄不往外拋：規則本身已經更新成功了，不該因為這筆防禦性的
+        記帳而讓使用者看到一個失敗的儲存。
+        """
+        if not reminder.enabled:
+            return
+
+        # `now` 由呼叫端傳入而不是在這裡重讀時鐘：新時刻的日期就是用同一個
+        # 「現在」算出來的，兩者若來自兩次讀秒，跨午夜的那一瞬間會拿今天的門檻
+        # 去比昨天的時刻。
+        misfire_cutoff = now - timedelta(minutes=self._misfire_grace_minutes)
+        if scheduled_at >= misfire_cutoff:
+            return
+
+        try:
+            _, created = await self._log_repository.upsert_log(
+                MedicationLog(
+                    reminder_id=reminder.id,
+                    user_id=reminder.user_id,
+                    alert_notify_user_id=reminder.creator_user_id,
+                    slot_type=reminder.slot_type,
+                    scheduled_at=scheduled_at,
+                    # 與排程器的 T+30 對齊。`cancelled` 的紀錄不會被任何推播階段
+                    # 挑中，這個值實際上不會被讀到，但欄位是必填的。
+                    timeout_at=scheduled_at + timedelta(minutes=30),
+                    status="cancelled",
+                )
+            )
+        except Exception:
+            logger.exception(
+                "[MedicationService] 提醒 %s 改排程後，無法為已過去的新時刻 %s 預先註銷",
+                reminder.id,
+                scheduled_at.isoformat(),
+            )
+            return
+
+        if created:
+            logger.info(
+                "[MedicationService] 提醒 %s 的新時刻 %s 今日已過（超過 %d 分鐘的補推期限），"
+                "預先註銷，今日不補提醒",
+                reminder.id,
+                scheduled_at.isoformat(),
+                self._misfire_grace_minutes,
+            )
 
     async def delete_reminder(self, creator_user_id: str, reminder_id: str) -> bool:
         """刪除用藥提醒"""
@@ -268,8 +428,7 @@ class MedicationService:
         if not reminder:
             raise HTTPException(status_code=404, detail="找不到該用藥提醒")
 
-        if reminder.creator_user_id != creator_user_id and reminder.user_id != creator_user_id:
-            raise HTTPException(status_code=403, detail="無權限刪除此用藥提醒")
+        # 授權由呼叫端判定（同 update_reminder）。
 
         return await MedicationReminderRepository.delete_reminder(reminder_id)
 

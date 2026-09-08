@@ -149,6 +149,20 @@ class Settings:
     # 向量檢索最低分門檻。預設 0.0＝不過濾；過濾職責在 reranker。
     RAG_VECTOR_MIN_SCORE: float = float(os.getenv("RAG_VECTOR_MIN_SCORE", "0.0"))
 
+    # CRAG grader 失敗時的精排分數門檻。**只在那條降級路徑生效**，正常路徑
+    # 不受影響——不是要用數字取代 CRAG，是在 CRAG 不可用時補一張網。
+    #
+    # 為什麼需要：衛教問答的相關性把關全靠 CRAG（判 incorrect 就轉網搜），
+    # 而 RAG_VECTOR_MIN_SCORE 預設 0.0，等於整條管線沒有數值下限。grader
+    # 逾時或配額用盡時，既有降級是「不分級直接生成」，於是一組可能毫不相關
+    # 的 chunk 會被拿去生成醫療答案，prompt 裡「內容不足請說不知道」只是
+    # 軟約束。查核路徑有 fail-closed 的同一性驗證，衛教路徑過去沒有對應的網。
+    #
+    # 0.3 是保守起步值：Cohere relevance_score 的分佈上，明顯不相關的內容
+    # 多落在 0.2 以下。應以 golden set 校準後再調——調高會讓 grader 失效期間
+    # 更常轉網搜或拒答，調低則失去這張網的意義。
+    RAG_DEGRADED_MIN_SCORE: float = float(os.getenv("RAG_DEGRADED_MIN_SCORE", "0.3"))
+
     # 精排後之文章層級去重：同一篇文章最多留幾個 chunk 進 top-n（避免單一
     # 文章的多個 chunk 擠爆 top-n 名額，犧牲來源多樣性）。
     RAG_RERANK_MAX_CHUNKS_PER_ARTICLE: int = int(
@@ -181,6 +195,88 @@ class Settings:
     RAG_WEB_FALLBACK_ENABLED: bool = os.getenv(
         "RAG_WEB_FALLBACK_ENABLED", "true"
     ).lower() in ("1", "true", "yes", "on")
+
+    # CRAG 判 ambiguous 後，啟動改寫第二輪的時間預算（秒）。0＝不設限。
+    #
+    # 第二輪要價約 19 秒（rewrite 5.3s ＋ 檢索精排 1.6s ＋ grade 11.8s，實測），
+    # 之後還得再付一次 generate。LINE Loading Animation 上限就是 60 秒
+    # （loading_animation.DEFAULT_LOADING_SECONDS），超過使用者連「還在處理」
+    # 都看不到，所以最壞路徑必須有上界。
+    #
+    # 超時是拿第一輪結果生成，不是轉網搜——網搜比第二輪更慢，為省時間走上
+    # 更慢的路沒有意義。細節見 rag/answer_service.DEFAULT_CRAG_REWRITE_BUDGET_SECONDS。
+    RAG_CRAG_REWRITE_BUDGET_SECONDS: float = float(
+        os.getenv("RAG_CRAG_REWRITE_BUDGET_SECONDS", "12")
+    )
+
+    # 投機生成：CRAG 分級期間先把生成跑起來，分級放行同一批 docs 就直接採用。
+    #
+    # 實測分級 2.6-7.0s、生成 3.9-9.5s，且 84% 的題目分級結果為 correct
+    # （golden set 55 題實測），那些題目等於白賺整段分級時間。
+    #
+    # 代價：另外 16% 會多一次白跑的生成（付 token，不付延遲），單次請求的
+    # Gemini 併發從 1 升到 2。撞到配額或速率限制時把這個關掉是第一步。
+    RAG_SPECULATIVE_GENERATE: bool = os.getenv(
+        "RAG_SPECULATIVE_GENERATE", "true"
+    ).lower() in ("1", "true", "yes", "on")
+
+    # MongoDB 連線逾時（見 app/db/mongo_client.py）。
+    #
+    # 最重要的是 socket：PyMongo 預設 `socketTimeoutMS=None`＝**無限**，
+    # 連線建立後對方不回應就永遠掛著。這是潛在缺陷，與是否觀測到無關。
+    #
+    # 值刻意寬鬆：健康網路下建立連線 0.7-0.9 秒、穩態查詢 50-250ms，這些
+    # 數字遠離正常分佈。設得太緊會在網路不佳時把「慢」變成「錯」——開發機
+    # 的網路品質變異很大（本檔曾因一條殘留路由量到 12 秒的假數字，詳見
+    # app/db/mongo_client.py 的更正紀錄）。
+    MONGODB_SERVER_SELECTION_TIMEOUT_MS: int = int(
+        os.getenv("MONGODB_SERVER_SELECTION_TIMEOUT_MS", "20000")
+    )
+    MONGODB_CONNECT_TIMEOUT_MS: int = int(
+        os.getenv("MONGODB_CONNECT_TIMEOUT_MS", "20000")
+    )
+    MONGODB_SOCKET_TIMEOUT_MS: int = int(
+        os.getenv("MONGODB_SOCKET_TIMEOUT_MS", "30000")
+    )
+
+    # 參考來源網址的存活檢查（見 services/rag/link_check.py）。
+    #
+    # 白名單看網域後綴、CRAG 看內容相關性，兩者都不管「這個 url 現在還在
+    # 不在」。庫裡的 url 是 ingest 當下的快照，站台改版或子系統除役之後
+    # 就成了點不開的來源按鈕——實測 sp1.hso.mohw.gov.tw 整台 TCP 不通，
+    # 但它是 gov.tw，白名單一路放行。
+    #
+    # 預設開啟：降級方向是安全的（少顯示連結，不會顯示錯的），而附上打不開
+    # 的來源對衛教問答的傷害大於沒有來源——來源的作用是讓使用者能自己驗證。
+    RAG_LINK_CHECK_ENABLED: bool = os.getenv(
+        "RAG_LINK_CHECK_ENABLED", "true"
+    ).lower() in ("1", "true", "yes", "on")
+    # **這是單次 HTTP 請求的逾時，不是使用者實際等待的上限。** 一個網址最多
+    # 打四次（HEAD 被擋退 GET、判死後再確認一輪），實測 3s 設定下單一網址
+    # 最壞 6.31s；整批的上限由 LinkChecker 的總預算控制
+    # （timeout×2＋confirm_delay，預設值下 6.5s）。要估使用者等多久看那個。
+    #
+    # 3s 是「多數站台的 HEAD 都該在此之內回應」與「不拖垮整輪」之間的取捨，
+    # 尚未以線上分佈校準——要調的話先看 stage=rag_link_check 的 ms 分佈，
+    # 不要憑感覺加。
+    #
+    # 註：本註解原本寫「LINE reply token 上限 30s」，該數字**未查證**故移除。
+    # 它若為真，影響遠大於本設定：實測整輪（agent＋RAG）有 25.1／43.6／46.2
+    # 秒的樣本，那些回覆會直接送不出去。reply 失敗會走
+    # reply.py 的 `logger.exception("Failed to send LINE message")`，
+    # 要驗證去線上 log 找那筆與 stage=agent_graph 的 ms 對照，不要沿用推測。
+    RAG_LINK_CHECK_TIMEOUT_SECONDS: float = float(
+        os.getenv("RAG_LINK_CHECK_TIMEOUT_SECONDS", "3")
+    )
+    # 判活的快取久、判死的快取短。判死可能來自對方站台的暫時性故障或我方
+    # 出口網路抖動，短 TTL 是「逾時一律視為不可用」那個保守取捨的補償：
+    # 站台恢復後最多 10 分鐘就會重新顯示連結。
+    RAG_LINK_CHECK_OK_TTL_SECONDS: float = float(
+        os.getenv("RAG_LINK_CHECK_OK_TTL_SECONDS", "86400")
+    )
+    RAG_LINK_CHECK_DEAD_TTL_SECONDS: float = float(
+        os.getenv("RAG_LINK_CHECK_DEAD_TTL_SECONDS", "600")
+    )
 
     # 入庫／核准的來源白名單（逗號分隔的網域後綴）。只有落在此清單的網址能
     # 進向量庫、能被核准。判準見 openspec/changes/harden-url-whitelist/design.md
@@ -226,6 +322,25 @@ class Settings:
     PRESCRIPTION_SCAN_ENABLED: bool = os.getenv(
         "PRESCRIPTION_SCAN_ENABLED", "true"
     ).lower() in ("1", "true", "yes", "on")
+    # 家庭 RBAC 的全域總閘（kill switch）。預設 **關閉**——本能力比既有行為
+    # 嚴格，切換當下會中斷既有的照顧行為，因此先跑影子模式：照常計算兩種
+    # 判定並記錄差異，但依 legacy 放行，行為與導入前完全相同。
+    #
+    # 開啟後仍不是全體一起強制：強制以**資料擁有者**為邊界逐一啟用（見
+    # FamilyTree.rbac_migration_state），兩者是 AND 關係。這個開關的角色是
+    # 出事時讓全體立刻回到變更前的行為，不必逐一改資料。
+    FAMILY_RBAC_ENFORCED: bool = os.getenv(
+        "FAMILY_RBAC_ENFORCED", "false"
+    ).lower() in ("1", "true", "yes", "on")
+    # 委任授權的**啟用**閘門。預設關閉，且在核可流程（身分驗證、醫療證明、
+    # 法定監護證明）由後續的產品／法務 change 定義之前不得開啟。
+    #
+    # 與 FAMILY_RBAC_ENFORCED 是兩個不同的東西：那個管「授權判定要不要強制」，
+    # 這個管「能不能建立新的委任」。撤銷不受本開關限制——閘門管的是能不能給
+    # 出去，不是能不能收回來。
+    FAMILY_DELEGATION_ACTIVATION_ENABLED: bool = os.getenv(
+        "FAMILY_DELEGATION_ACTIVATION_ENABLED", "false"
+    ).lower() in ("1", "true", "yes", "on")
     PRESCRIPTION_SCAN_MAX_IMAGE_BYTES: int = int(
         os.getenv("PRESCRIPTION_SCAN_MAX_IMAGE_BYTES", str(8 * 1024 * 1024))
     )
@@ -256,6 +371,21 @@ class Settings:
     DRUG_APPEARANCE_IMAGE_URL_PATH: str = os.getenv(
         "DRUG_APPEARANCE_IMAGE_URL_PATH", "/drug-appearance"
     )
+    # 仿單適應症同樣是建置期落地的靜態檔（scripts/build_drug_catalog.py
+    # --fetch-indications 產出），執行期不對外連線。刻意與 drug_catalog.json
+    # 分開：藥證庫的字元 n-gram 反向索引是效能敏感結構，適應症對藥名比對毫無
+    # 貢獻，併入只會讓它與常駐記憶體無謂變大（實測 15.9 MB → 22.2 MB）。
+    # 見 openspec/changes/drug-indication/design.md 決策 1。
+    DRUG_INDICATION_PATH: str = os.getenv(
+        "DRUG_INDICATION_PATH", "resources/drug_indications.json"
+    )
+    # 摘要的字數上限。仿單適應症常涵蓋多個適應症與使用條件，壓得太短會讓
+    # 「須合併其他藥物使用」這類條件被犧牲掉，而摘要 SHALL NOT 遺漏任何一個
+    # 適應症；訂得太寬則失去摘要的意義。這個值只約束建置期的摘要生成，
+    # 不影響原文——原文一律完整保留且可展開。
+    DRUG_INDICATION_SUMMARY_MAX_CHARS: int = int(
+        os.getenv("DRUG_INDICATION_SUMMARY_MAX_CHARS", "60")
+    )
 
     # 用藥風險偵測。預設開啟，沿用 PRESCRIPTION_SCAN_ENABLED 的形狀：不必在
     # 每個環境各設一次，但出問題時把它設回 false 就能整條停用（設為 false 時
@@ -279,6 +409,46 @@ class Settings:
     # 靜默結束，不通報也不通知使用者。
     SAFETY_ALERT_TIMEOUT_SECONDS: int = int(
         os.getenv("SAFETY_ALERT_TIMEOUT_SECONDS", "20")
+    )
+    # 非處方藥成分重複偵測的總開關。與 SAFETY_ALERT_ENABLED 分開而不共用一個
+    # 旗標：兩者的誤報型態完全不同，任一邊需要緊急關閉時不該連坐另一邊。
+    #
+    # 高風險通報的誤報來自「聊天中提到藥名」的抽取，是語意判斷；這條的誤報來自
+    # 藥證庫的成分欄位與白名單，是資料判斷。實測隨機配對觸發率 3.0%，但真實的
+    # 用藥組合分布與隨機配對不同，上線後的實際打擾頻率仍是未知數——這是唯一的
+    # 煞車。
+    OTC_ALERT_ENABLED: bool = os.getenv("OTC_ALERT_ENABLED", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+    # ── 每日醫療消息卡（medical-news-push）────────────────────────
+    #
+    # 整條的煞車。理由與 SAFETY_ALERT_ENABLED 相同、程度更強：這是**主動**
+    # 推播，使用者沒有在問問題，而推錯一則「你在吃的藥出問題了」最可能的
+    # 後果是長輩自行停藥。Tier 1 的偽陽性率目前沒有真實流量的數據
+    # （design.md 證據缺口 4），這是唯一不需要 deploy 就救得回來的開關。
+    MEDICAL_NEWS_ENABLED: bool = os.getenv(
+        "MEDICAL_NEWS_ENABLED", "true"
+    ).lower() in ("1", "true", "yes", "on")
+    # 索引排在推播之前數小時：推播要用的是當天剛索引好的內容。兩者若太接近，
+    # 索引還沒跑完推播就開始選材，當天的新消息會全部晚一天才送到。
+    MEDICAL_NEWS_INDEX_TIME: str = os.getenv("MEDICAL_NEWS_INDEX_TIME", "03:00")
+    MEDICAL_NEWS_PUSH_TIME: str = os.getenv("MEDICAL_NEWS_PUSH_TIME", "09:00")
+    # 消息的時效上限（天）。30 天是暫定值——gov.tw 的日期抽取可靠度尚未量測
+    # （design.md 證據缺口 2），這個值一定要依實際命中率調整，故設成 env。
+    MEDICAL_NEWS_MAX_AGE_DAYS: int = int(
+        os.getenv("MEDICAL_NEWS_MAX_AGE_DAYS", "30")
+    )
+    # 每個藥名每次取幾筆搜尋結果。搜尋成本是 O(不重複藥數 × 這個值)。
+    MEDICAL_NEWS_SEARCH_LIMIT: int = int(
+        os.getenv("MEDICAL_NEWS_SEARCH_LIMIT", "5")
+    )
+    # 每位使用者每日的分享次數上限。防的是把族譜當廣播用。
+    MEDICAL_NEWS_DAILY_SHARE_LIMIT: int = int(
+        os.getenv("MEDICAL_NEWS_DAILY_SHARE_LIMIT", "5")
     )
 
 

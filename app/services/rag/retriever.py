@@ -16,7 +16,7 @@ import logging
 from typing import Any
 
 from langchain_core.documents import Document
-from motor.motor_asyncio import AsyncIOMotorClient
+from app.db.mongo_client import get_shared_client
 
 from app.services.rag.rank_fusion import DEFAULT_RRF_K, reciprocal_rank_fusion
 
@@ -83,9 +83,17 @@ class MongoAtlasVectorRetriever:
         if missing:
             raise ValueError(f"Missing {', '.join(missing)}")
 
-        client = AsyncIOMotorClient(self.mongo_uri)
+        client = get_shared_client(self.mongo_uri)
         self._collection = client[self.db_name][self.collection_name]
         return self._collection
+
+    async def warmup(self) -> None:
+        """先把連線建立起來，讓部署後第一個使用者不必獨自付這個成本。
+
+        client 是懶建的，連線要到第一個實際操作才發生（本機實測約 12 秒）。
+        由 `dependencies.warm_rag_connections` 在 startup 呼叫。
+        """
+        await self._ensure_collection().database.client.admin.command("ping")
 
     async def ainvoke(self, query: str) -> list[Document]:
         query_embedding = await self.embeddings.aembed_query(query)
@@ -234,9 +242,17 @@ class MongoAtlasTextRetriever:
         if missing:
             raise ValueError(f"Missing {', '.join(missing)}")
 
-        client = AsyncIOMotorClient(self.mongo_uri)
+        client = get_shared_client(self.mongo_uri)
         self._collection = client[self.db_name][self.collection_name]
         return self._collection
+
+    async def warmup(self) -> None:
+        """先把連線建立起來，讓部署後第一個使用者不必獨自付這個成本。
+
+        client 是懶建的，連線要到第一個實際操作才發生（本機實測約 12 秒）。
+        由 `dependencies.warm_rag_connections` 在 startup 呼叫。
+        """
+        await self._ensure_collection().database.client.admin.command("ping")
 
     async def ainvoke(self, query: str) -> list[Document]:
         if not (query or "").strip():
@@ -308,6 +324,17 @@ class HybridRetriever:
         self.text_retriever = text_retriever
         self.rrf_k = rrf_k
         self.limit = limit
+
+    async def warmup(self) -> None:
+        """兩條腿一起暖。共用 client 之下第二次是瞬間完成，但不假設一定共用。"""
+        results = await asyncio.gather(
+            self.vector_retriever.warmup(),
+            self.text_retriever.warmup(),
+            return_exceptions=True,
+        )
+        for name, result in zip((VECTOR_SOURCE_NAME, TEXT_SOURCE_NAME), results):
+            if isinstance(result, BaseException):
+                logger.warning("rag_warmup_failed source=%s err=%r", name, result)
 
     async def ainvoke(self, query: str) -> list[Document]:
         vector_docs, text_docs = await asyncio.gather(

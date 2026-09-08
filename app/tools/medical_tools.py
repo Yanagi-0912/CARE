@@ -18,6 +18,7 @@ from resources.flex_messages.medical_messages.facility_brief_flex_message import
 from resources.flex_messages.medical_messages.facility_detail_flex_message import (
     generate_facility_detail_flex_message,
 )
+from app.services.medical.search_summary import pharmacy_data_gap_meters
 from app.core.request_context import get_line_user_id
 from app.repositories.user_location_repository import UserLocationRepository
 _medical_service: MedicalService | None = None
@@ -53,30 +54,16 @@ def _furthest_km(result: NearbySearchResult) -> str:
     return str(math.ceil(furthest / 1000))
 
 
-# 藥局「查到了、但荒謬地遠」的判定門檻，沿用搜尋階梯的第一級（5 公里）。
-# 為什麼是這個數字：藥局是「順路領藥、臨時買藥」的生活機能，超過 5 公里已不可能
-# 是使用者心中「附近的藥局」；而第一級距內找得到就代表該地區的收錄密度正常，
-# 唯有必須擴大到第一級之外才找得到，才說明結果是資料缺口撐出來的、而非地理事實。
-# 直接綁定 NEARBY_SEARCH_STEPS[0] 而不另外寫死 5000，是為了讓門檻與搜尋階梯
-# 的定義保持同一個來源，日後調整階梯時不會出現兩套互相矛盾的「附近」。
-PHARMACY_DATA_GAP_METERS = NEARBY_SEARCH_STEPS[0]
-
-
 def _pharmacy_data_gap_note(result: NearbySearchResult) -> str | None:
     """
     查到藥局、但最近一家遠超出生活圈時，回傳「資料有限」的補充說明。
 
-    為什麼需要：資料庫只收錄 116 家藥局，全台實際有數千家。實測台北車站查藥局
-    會回傳 5 家、全部在 18 公里外，且因為湊滿了 5 筆而 satisfied=True，副標走
-    「已擴大範圍找到 5 家」——使用者站在步行範圍內就有數十家藥局的地方，卻拿到
-    一張看起來完全正常的卡片。既有的 location.type.pharmacy_none 只在 0 筆時
-    觸發，涵蓋不到這個其實更常見的情境，因此另外補這一則說明。
+    判定本身在 search_summary.pharmacy_data_gap_meters —— LIFF 的 REST API 也要
+    對同一筆結果做同一個揭露，門檻若各留一份，兩個通道遲早會對同一家藥局講
+    不一樣的話。這裡只負責把距離渲染成 LINE 用的中文字串。
     """
-    match = result.facility_type_match
-    if match is None or match.category != "藥局" or not result.facilities:
-        return None
-    nearest = min((f.distance_meters or 0) for f in result.facilities)
-    if nearest <= PHARMACY_DATA_GAP_METERS:
+    nearest = pharmacy_data_gap_meters(result)
+    if nearest is None:
         return None
     return t("location.type.pharmacy_data_gap").format(
         radius_km=str(math.ceil(nearest / 1000))

@@ -7,6 +7,7 @@ from typing import Optional
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
 from app.core.request_logging import log_stage
+from app.core.rag_sources import begin_request_rag_sources, reset_request_rag_sources
 from app.core.user_font_size import (
     normalize_user_font_size,
     reset_request_font_size,
@@ -68,6 +69,7 @@ class BaseLineMessageHandler:
         user_language = DEFAULT_USER_LANGUAGE
         lang_token = None
         font_token = None
+        rag_sources_token = None
 
         try:
             log_stage(
@@ -109,9 +111,10 @@ class BaseLineMessageHandler:
             font_token = set_request_font_size(
                 self._font_size_from_profile(user_profile)
             )
-            # 年齡同理：症狀科別建議要靠它決定該不該給兒科，而那段程式在
-            # LangChain tool 底下，拿不到 user_profile。
-            age_token = set_request_age((user_profile or {}).get("age"))
+            # 每輪開頭建立 holder：上一輪的來源殘留下來，會變成這一輪卡片上
+            # 不屬於這個問題的來源按鈕。必須在 agent 執行之前、於這一層建立，
+            # tool 才改得到同一個物件（見 app/core/rag_sources.py）。
+            rag_sources_token = begin_request_rag_sources()
 
             if self._loading_animation_service is not None:
                 await self._loading_animation_service.start(user_id)
@@ -164,6 +167,8 @@ class BaseLineMessageHandler:
                 language=user_language,
                 voice_rate=voice_rate,
                 voice_gender=voice_gender,
+                answer_kind=agent_response.get("answer_kind"),
+                user_question=user_text,
             )
             log_stage(
                 logger,
@@ -197,7 +202,8 @@ class BaseLineMessageHandler:
                 reset_request_language(lang_token)
             if font_token is not None:
                 reset_request_font_size(font_token)
-                reset_request_age(age_token)
+            if rag_sources_token is not None:
+                reset_request_rag_sources(rag_sources_token)
 
     def _schedule_safety_alert_check(self, user_id: str, user_text: str) -> None:
         """把一次風險評估丟到背景執行。

@@ -10,9 +10,12 @@ TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 HHMM_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 MedicationSlotType = Literal["morning", "noon", "evening", "bedtime"]
-# `cancelled` 是使用者關閉時段規則時，當日已展開但還沒確認的紀錄會落到的狀態。
+# `cancelled` 是規則被使用者主動改動時，當日已展開但還沒確認的紀錄會落到的
+# 狀態：關閉該時段，或把它改到別的時刻（改時段／改提醒時間，見
+# `MedicationLogRepository.resync_pending_by_reminder`）——兩種情形下那筆紀錄
+# 對應的排程都已經不存在了。
 # 它與 `missed` 分開的理由：missed 代表「該吃卻沒吃」，會連帶發出家屬逾時警報、
-# 也會進錯過時段的彙整通知；規則被主動關掉的那一次不該算在使用者頭上。留下
+# 也會進錯過時段的彙整通知；規則被主動改掉的那一次不該算在使用者頭上。留下
 # 紀錄而不是直接刪除，是為了保住「這個時段當天確實展開過」這件事實，避免排程器
 # 在同一天的後續 tick 又把它重新 upsert 回 pending。
 #
@@ -34,6 +37,16 @@ DEFAULT_SLOT_TIMES: dict[str, str] = {
     "evening": "18:00",
     "bedtime": "21:30",
 }
+
+# 錯過多久之後就不再補推播。對應 APScheduler 的 misfire_grace_time。
+# 預設取 20 分鐘（＝T+20 催促的門檻）：短暫部署造成的延遲仍會正常送達，
+# 超過這個範圍代表整條 T+0／T+20／T+30 時序已經失去意義，補推只會變成連環轟炸。
+#
+# 放在模型層是因為有兩個消費者，而且它們必須用同一個值：`MedicationScheduler`
+# 用它判斷展開出來的時段算不算錯過，`MedicationService` 用它判斷「改排程到已經
+# 過去的時刻」要不要先把該時刻註銷掉（見 `update_reminder`）。兩邊一旦分岔，
+# 服務層會擋掉排程器其實還會正常推播的時段，或反過來漏擋。
+DEFAULT_MISFIRE_GRACE_MINUTES = 20
 
 SLOT_DISPLAY_NAMES: dict[str, str] = {
     "morning": "早",
@@ -122,6 +135,22 @@ class Medication(BaseModel):
     # 的 _resolve_thumbnail 走同一條規則。查無縮圖或 license_number 未確定
     # 時為 None，呈現面據此安全地退回純文字（spec「照片缺席時的降級」）。
     thumbnail_url: Optional[str] = None
+    # 食藥署仿單的適應症。與 thumbnail_url 同一慣例：欄位在寫入時永遠是 None，
+    # 由 MedicationService 於讀取當下依 license_number 就地解析並以 model_copy
+    # 覆寫——仿單資料是建置期產出的靜態檔，跟著藥品文件一起落地只會讓同一份
+    # 內容在資料庫裡複製上萬次，且更新資料集時全部過期。
+    #
+    # 兩個欄位都給前端：`spc_indication_summary` 是給長輩看的濃縮版（可能為
+    # None——不需要摘要或產不出合格摘要時），`spc_indication` 是食藥署原文，
+    # 供展開對照。摘要缺席時前端顯示原文，這是 spec 的「摘要缺席時的降級」。
+    #
+    # 證號未確定時兩者皆為 None：不知道是哪一張藥證，顯示的適應症就可能屬於
+    # 另一顆藥——與「證號不確定時不得顯示藥丸照片」同一條安全邊界。
+    #
+    # **這兩個欄位 SHALL NOT 進入任何推播訊息**：仿單涵蓋該藥證的全部核准
+    # 適應症，揭露範圍比藥袋上那一行更大。
+    spc_indication: Optional[str] = None
+    spc_indication_summary: Optional[str] = None
     unit_content: Optional[str] = None
     total_quantity: Optional[int] = None
     usage_raw: Optional[str] = None        # 藥袋上的用法原文，供使用者核對
@@ -155,6 +184,16 @@ class MedicationLog(BaseModel):
     patient_reminder_sent: bool = False
     urgent_reminder_sent: bool = False
     caregiver_alert_sent: bool = False
+    # 三個階段各自的推播嘗試次數，由 `release_*` 在推播失敗時累加（見
+    # `MedicationLogRepository` 的「推播重試上限」段落）。分成三個欄位而不是
+    # 一個總數：一個階段耗盡預算不該連帶剝奪後兩個階段的重試機會——T+0 送不出
+    # 去（例如當下網路瞬斷）與 T+30 家屬警報送不出去是兩件獨立的事。
+    #
+    # 本欄位之前寫入的紀錄沒有這些 key，讀回時為 0，與過去行為一致；
+    # 資料庫端則由 `$inc` 自行建立欄位，不需要回填。
+    patient_reminder_attempts: int = 0
+    urgent_reminder_attempts: int = 0
+    caregiver_alert_attempts: int = 0
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

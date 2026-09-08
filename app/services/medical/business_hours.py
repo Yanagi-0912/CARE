@@ -119,6 +119,23 @@ def has_emergency_department(facility: MedicalFacility) -> bool:
     return False
 
 
+def resolve_clinic_hours(facility: MedicalFacility) -> BusinessHoursResult:
+    """
+    取得「門診」的營業狀態 —— 也就是把急診豁免拿掉之後，這家院所現在到底開不開。
+
+    為什麼要有這一層：resolve_business_hours 讓急診壓過一切狀態（見該函式的優先序），
+    這對「能不能去」的篩選是對的，但對呈現是不夠的 —— 一家設有急診的醫院門診
+    可能正在午休，使用者需要同時看到「設有急診」與「午休中」兩件事。把 departments
+    清空後重跑，得到的就是純粹的門診狀態，急診則由 has_emergency_department 另外標示。
+
+    原本這段寫在 Flex 訊息模組裡，LIFF 的 REST API 也要用同一套判斷，
+    留在呈現層等於逼第二個通道複製一份。
+    """
+    if not has_emergency_department(facility):
+        return resolve_business_hours(facility)
+    return resolve_business_hours(facility.model_copy(update={"departments": None}))
+
+
 def _is_date_bound_note(note: str) -> bool:
     """註記是否綁定特定日期（如「春節假期2／17~2／22休診」）。"""
     return bool(_DATE_PATTERN_RE.search(note))

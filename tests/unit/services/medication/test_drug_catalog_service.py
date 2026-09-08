@@ -959,3 +959,86 @@ def test_index_matches_brute_force_at_real_catalog_scale():
             f"只有 reverse 命中，match() 卻回傳非 None——reverse-only "
             f"不該單獨建立驗證結果"
         )
+
+
+# ── 分級與主成分欄位（otc-ingredient-alert）──────────────────────────
+
+
+def test_entry_defaults_tolerate_catalog_without_new_fields():
+    """舊版 drug_catalog.json 沒有這兩個欄位時，要拿到「沒有資料」而非型別錯誤。
+
+    部署順序不保證程式碼與產出物同時更新。這裡拋錯會讓整個藥袋掃描掛掉，
+    那比沒有這個功能糟得多。
+    """
+    entry = DrugCatalogEntry(license_number="L1", name_zh="某藥")
+
+    assert entry.drug_class == ""
+    assert entry.ingredients == ()
+
+
+def test_load_from_path_reads_class_and_ingredients(tmp_path):
+    import json
+
+    path = tmp_path / "catalog.json"
+    path.write_text(
+        json.dumps([
+            {"license_number": "L1", "name_zh": "感冒膠囊", "name_en": "COLD CAP",
+             "drug_class": "otc_guided",
+             "ingredients": ["ACETAMINOPHEN", "CHLORPHENIRAMINE MALEATE"]},
+        ]),
+        encoding="utf-8",
+    )
+
+    service = DrugCatalogService.load_from_path(str(path), threshold=0.8)
+    entry = service.entry_by_license_number("L1")
+
+    assert entry is not None
+    assert entry.drug_class == "otc_guided"
+    assert entry.ingredients == ("ACETAMINOPHEN", "CHLORPHENIRAMINE MALEATE")
+
+
+def test_load_from_path_survives_entries_missing_new_fields(tmp_path):
+    """舊版產出物載入時不得拋錯，兩個欄位視為空。"""
+    import json
+
+    path = tmp_path / "old_catalog.json"
+    path.write_text(
+        json.dumps([{"license_number": "L1", "name_zh": "舊資料", "name_en": "OLD"}]),
+        encoding="utf-8",
+    )
+
+    service = DrugCatalogService.load_from_path(str(path), threshold=0.8)
+    entry = service.entry_by_license_number("L1")
+
+    assert entry is not None
+    assert entry.drug_class == ""
+    assert entry.ingredients == ()
+
+
+def test_ingredients_null_in_json_becomes_empty_tuple(tmp_path):
+    """欄位存在但值為 null（上游沒有主成分資料）也要收斂成空 tuple。"""
+    import json
+
+    path = tmp_path / "null_catalog.json"
+    path.write_text(
+        json.dumps([{"license_number": "L1", "name_zh": "無成分",
+                     "drug_class": "otc", "ingredients": None}]),
+        encoding="utf-8",
+    )
+
+    service = DrugCatalogService.load_from_path(str(path), threshold=0.8)
+
+    assert service.entry_by_license_number("L1").ingredients == ()
+
+
+def test_entry_by_license_number_returns_none_for_unknown(tmp_path):
+    import json
+
+    path = tmp_path / "c.json"
+    path.write_text(json.dumps([{"license_number": "L1", "name_zh": "某藥"}]),
+                    encoding="utf-8")
+    service = DrugCatalogService.load_from_path(str(path), threshold=0.8)
+
+    assert service.entry_by_license_number("不存在") is None
+    assert service.entry_by_license_number("") is None
+    assert service.entry_by_license_number("  ") is None

@@ -107,7 +107,7 @@ def test_build_department_query_uses_regex_for_dirty_data():
     髒資料（多為醫學中心）。精確比對會漏掉它們，因此必須用 regex。
     """
     query = build_department_query("內科")
-    assert query == {"departments": {"$regex": "內科", "$options": "i"}}
+    assert query == {"departments": {"$regex": "內科|不分科|西醫一般科", "$options": "i"}}
 
     dirty_value = "家醫科、內科、外科、兒科、婦產科、骨科、神經外科"
     import re
@@ -209,7 +209,7 @@ def test_family_medicine_is_not_a_canonical_value():
     """
     assert "家庭醫學科" not in CANONICAL_DEPARTMENTS
     assert build_department_query("家醫科") == {
-        "departments": {"$regex": "家醫科", "$options": "i"}
+        "departments": {"$regex": "家醫科|不分科|西醫一般科", "$options": "i"}
     }
 
 

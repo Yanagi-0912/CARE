@@ -14,6 +14,9 @@ from app.core.user_font_size import (
     set_request_font_size,
 )
 from app.core.user_age import reset_request_age, set_request_age
+from app.services.safety.emergency_alert_service import (
+    notify_patient_family_was_told,
+)
 from app.core.user_language import (
     DEFAULT_USER_LANGUAGE,
     normalize_user_language,
@@ -44,6 +47,7 @@ class BaseLineMessageHandler:
         replier: LineReplier,
         loading_animation_service=None,
         safety_alert_service=None,
+        emergency_family_alert_service=None,
     ):
         self._agent = agent
         self._history_service = history_service
@@ -53,6 +57,7 @@ class BaseLineMessageHandler:
         # 功能關閉時 dependencies 根本不會組出這個服務，這裡就是 None，
         # 整條路徑一步都不會執行（見 app/dependencies.py 的組裝）。
         self._safety_alert_service = safety_alert_service
+        self._emergency_family_alert_service = emergency_family_alert_service
         # 併行任務要被持有參考直到完成，否則可能在跑完之前就被 GC 回收。
         self._safety_alert_tasks: set[asyncio.Task] = set()
 
@@ -69,6 +74,7 @@ class BaseLineMessageHandler:
         user_language = DEFAULT_USER_LANGUAGE
         lang_token = None
         font_token = None
+        age_token = None
         rag_sources_token = None
 
         try:
@@ -111,6 +117,9 @@ class BaseLineMessageHandler:
             font_token = set_request_font_size(
                 self._font_size_from_profile(user_profile)
             )
+            # 年齡同理：症狀科別建議要靠它決定該不該給兒科，而那段程式在
+            # LangChain tool 底下，拿不到 user_profile。
+            age_token = set_request_age((user_profile or {}).get("age"))
             # 每輪開頭建立 holder：上一輪的來源殘留下來，會變成這一輪卡片上
             # 不屬於這個問題的來源按鈕。必須在 agent 執行之前、於這一層建立，
             # tool 才改得到同一個物件（見 app/core/rag_sources.py）。
@@ -153,6 +162,17 @@ class BaseLineMessageHandler:
                 "line.fallback_ununderstood", language=user_language
             )
             call_request_location = agent_response.get("call_request_location", False)
+
+            # 判定為緊急時通報家人。刻意排在回覆之前排程、但不 await——當事人
+            # 那張紅卡是最該先到的東西，查族譜與逐一推播全部串在前面就是讓
+            # 正在出事的人多等好幾秒。
+            if agent_response.get("emergency"):
+                self._schedule_emergency_family_alert(
+                    user_id,
+                    agent_response.get("emergency_reason") or "",
+                    user_language,
+                    patient_words=user_text,
+                )
             voice_reply_enabled = self._parse_voice_reply_enabled(user_profile)
             voice_rate = self._parse_voice_rate(user_profile)
             voice_gender = self._parse_voice_gender(user_profile)
@@ -202,6 +222,8 @@ class BaseLineMessageHandler:
                 reset_request_language(lang_token)
             if font_token is not None:
                 reset_request_font_size(font_token)
+            if age_token is not None:
+                reset_request_age(age_token)
             if rag_sources_token is not None:
                 reset_request_rag_sources(rag_sources_token)
 
@@ -219,6 +241,36 @@ class BaseLineMessageHandler:
                 await self._safety_alert_service.check(user_id, user_text)
             except Exception:  # noqa: BLE001 - 背景旁路，例外不得逸散
                 logger.exception("用藥風險評估任務失敗")
+
+        task = asyncio.create_task(_run())
+        self._safety_alert_tasks.add(task)
+        task.add_done_callback(self._safety_alert_tasks.discard)
+
+    def _schedule_emergency_family_alert(
+        self, user_id: str, reason: str, language: str, *, patient_words: str = ""
+    ) -> None:
+        """把一次家人通報丟到背景執行，與主回覆併行。
+
+        通報成功後才回頭告訴當事人「家人已經知道了」——紅卡在通報之前就送出去
+        了，組卡當下還不知道通報會不會成功，與其在卡上寫一句可能不成立的話，
+        不如事後補一則（見 emergency_alert_service 的模組註解）。
+
+        失敗一律留在任務內部，理由同 _schedule_safety_alert_check。
+        """
+        if self._emergency_family_alert_service is None or not user_id:
+            return
+
+        async def _run() -> None:
+            try:
+                sent = await self._emergency_family_alert_service.notify(
+                    user_id, reason, patient_words
+                )
+                if sent:
+                    await notify_patient_family_was_told(
+                        self._replier, user_id, language
+                    )
+            except Exception:  # noqa: BLE001 - 背景旁路，例外不得逸散
+                logger.exception("緊急狀況家人通報任務失敗")
 
         task = asyncio.create_task(_run())
         self._safety_alert_tasks.add(task)

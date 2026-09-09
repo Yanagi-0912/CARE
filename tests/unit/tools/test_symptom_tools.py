@@ -41,7 +41,7 @@ def _suggestion(*names):
         matched_term="腹痛",
         candidates=tuple(
             DepartmentCandidate(
-                canonical=name, subgroup=None, facility_count=100, source_count=2
+                canonical=name, subgroup=None, facility_count=100, sources=("V", "N")
             )
             for name in names
         ),
@@ -112,15 +112,15 @@ async def test_uninitialized_service_returns_message_not_exception():
             kind=RESULT_SUGGESTION,
             user_input="x",
             matched_term="腹痛",
-            candidates=(DepartmentCandidate("內科", "胃腸肝膽", 100, 3),),
+            candidates=(DepartmentCandidate("內科", "胃腸肝膽", 100, ("V", "N", "Y")),),
         ),
         SymptomTriageResult(
             kind=RESULT_FALLBACK,
             user_input="x",
             fallback_reason="無法對應到已知的症狀條目",
             candidates=(
-                DepartmentCandidate("家醫科", None, 0, 0),
-                DepartmentCandidate("內科", None, 0, 0),
+                DepartmentCandidate("家醫科", None, 0, ()),
+                DepartmentCandidate("內科", None, 0, ()),
             ),
         ),
     ],
@@ -144,13 +144,13 @@ def test_plain_reply_never_contains_emergency_content():
             kind=RESULT_SUGGESTION,
             user_input="x",
             matched_term="腹痛",
-            candidates=(DepartmentCandidate("內科", None, 100, 3),),
+            candidates=(DepartmentCandidate("內科", None, 100, ("V", "N", "Y")),),
         ),
         SymptomTriageResult(
             kind=RESULT_FALLBACK,
             user_input="x",
             fallback_reason="無法對應到已知的症狀條目",
-            candidates=(DepartmentCandidate("家醫科", None, 0, 0),),
+            candidates=(DepartmentCandidate("家醫科", None, 0, ()),),
         ),
     ):
         text = symptom_tools._format_plain_reply(result)

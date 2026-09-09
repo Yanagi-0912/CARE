@@ -316,12 +316,23 @@ class LineReplier:
             contents = FlexContainer.from_dict(data["contents"])
             speech_text = data.get("speechText")
             speech_text = speech_text.strip() if isinstance(speech_text, str) else ""
+            # 工具以純 dict 描述 quickReply（科別建議卡的「附近哪裡有○○科」），
+            # SDK 需要的是物件。少了這行轉換，按鈕會被無聲丟掉——卡片照常送出、
+            # 按鈕不出現、也沒有任何錯誤訊息。
+            quick_reply = LineReplier._parse_quick_reply(data.get("quickReply"))
             logger.info(
-                f"{LOGGER_HEADER_TEXT} Flex JSON 解析成功，altText=%s, has_speech=%s",
+                f"{LOGGER_HEADER_TEXT} Flex JSON 解析成功，altText=%s, has_speech=%s, "
+                "has_quick_reply=%s",
                 alt_text,
                 bool(speech_text),
+                quick_reply is not None,
             )
-            return FlexMessage(altText=alt_text, contents=contents), speech_text
+            return (
+                FlexMessage(
+                    altText=alt_text, contents=contents, quickReply=quick_reply
+                ),
+                speech_text,
+            )
 
         return None, ""
 

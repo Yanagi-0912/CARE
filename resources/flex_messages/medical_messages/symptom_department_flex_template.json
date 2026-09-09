@@ -68,16 +68,45 @@
         "borderColor": "#CFE8DC",
         "contents": [
           {
-            "type": "text",
-            "text": "1. 家醫科",
-            "size": "xl",
-            "weight": "bold",
-            "color": "#222222",
-            "adjustMode": "shrink-to-fit"
+            "type": "box",
+            "layout": "horizontal",
+            "spacing": "sm",
+            "alignItems": "center",
+            "contents": [
+              {
+                "type": "text",
+                "text": "1. 內科",
+                "size": "xl",
+                "weight": "bold",
+                "color": "#222222",
+                "adjustMode": "shrink-to-fit",
+                "flex": 0
+              },
+              {
+                "type": "box",
+                "layout": "vertical",
+                "flex": 0,
+                "backgroundColor": "#1E7D58",
+                "cornerRadius": "14px",
+                "paddingAll": "4px",
+                "paddingStart": "10px",
+                "paddingEnd": "10px",
+                "contents": [
+                  {
+                    "type": "text",
+                    "text": "胃腸肝膽",
+                    "size": "sm",
+                    "color": "#FFFFFF",
+                    "weight": "bold",
+                    "align": "center"
+                  }
+                ]
+              }
+            ]
           },
           {
             "type": "text",
-            "text": "理由：綜合症狀評估，適合初診篩檢與整體檢查。",
+            "text": "理由：嘔吐在這類分科中通常由內科的胃腸肝膽方向處理。",
             "size": "md",
             "color": "#333333",
             "wrap": true,

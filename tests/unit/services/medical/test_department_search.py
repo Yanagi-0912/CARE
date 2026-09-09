@@ -101,7 +101,7 @@ async def test_queries_database_once_with_max_radius():
     assert len(repository.calls) == 1
     call = repository.calls[0]
     assert call["radius_meters"] == NEARBY_SEARCH_STEPS[-1] == 50_000
-    assert call["query"] == {"departments": {"$regex": "內科", "$options": "i"}}
+    assert call["query"] == {"departments": {"$regex": "內科|不分科|西醫一般科", "$options": "i"}}
 
 
 @pytest.mark.asyncio

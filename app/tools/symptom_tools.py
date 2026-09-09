@@ -47,7 +47,9 @@ def _format_plain_reply(result: SymptomTriageResult) -> str:
 
     lines = [header, intro]
     for index, candidate in enumerate(result.candidates, start=1):
-        suffix = f"（{candidate.subgroup}方向）" if candidate.subgroup else ""
+        suffix = (
+            f"（{'或'.join(candidate.subgroups)}方向）" if candidate.subgroups else ""
+        )
         lines.append(f"{index}. {candidate.canonical}{suffix}")
     lines.append("")
     lines.append(

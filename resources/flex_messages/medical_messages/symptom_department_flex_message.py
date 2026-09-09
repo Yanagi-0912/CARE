@@ -39,6 +39,8 @@ _TPL_HEADER_TAG_COLOR = "#D1E7DD"
 _TPL_BODY_BG = "#FAFAFA"
 _TPL_LABEL_COLOR = "#555555"
 _TPL_CANDIDATE_TITLE_COLOR = "#222222"
+_TPL_SUBGROUP_CHIP_BG = "#1E7D58"
+_TPL_SUBGROUP_CHIP_TEXT = "#FFFFFF"
 _TPL_CANDIDATE_REASON_COLOR = "#333333"
 _TPL_SEPARATOR_COLOR = "#E0E0E0"
 _TPL_SOURCE_LINK_COLOR = "#1D6F8A"
@@ -67,6 +69,9 @@ _HEADER_TITLE = "推薦掛號科別"
 _TAG_SUGGESTION = "(建議優先)"
 _TAG_FALLBACK = "(不確定時的方向)"
 _SOURCE_LABEL = "參考來源"
+# 補列條目退到「症狀層級」出處時的標題。必須寫明是別科，否則等於用一家醫院的
+# 對照表背書一個那張表沒這樣分類的科別。
+_SOURCE_LABEL_OTHER_DEPARTMENT = "參考來源（下列對照表有收錄「{term}」，但列在其他科別）"
 
 # 保底卡在標題列仍要顯示一個科別，否則版面會空一塊。用 FALLBACK_DEPARTMENTS
 # 的第一個（家醫科），與 body 的候選一致。
@@ -115,8 +120,65 @@ def _header(primary: str, tag: str, ft: theme.FlexTheme) -> dict[str, Any]:
     }
 
 
+def _subgroup_chip(subgroup: str, ft: theme.FlexTheme) -> dict[str, Any]:
+    #次專科標籤。深綠底白字，與候選卡的淺色底拉出對比。
+
+    return {
+        "type": "box",
+        "layout": "vertical",
+        "flex": 0,
+        "backgroundColor": _TPL_SUBGROUP_CHIP_BG,
+        "cornerRadius": "14px",
+        "paddingAll": "4px",
+        "paddingStart": "10px",
+        "paddingEnd": "10px",
+        "contents": [
+            {
+                "type": "text",
+                "text": subgroup,
+                "size": ft.caption,
+                "color": _TPL_SUBGROUP_CHIP_TEXT,
+                "weight": "bold",
+                "align": "center",
+            }
+        ],
+    }
+
+
+def _candidate_title(
+    index: int, canonical: str, subgroups: tuple[str, ...], ft: theme.FlexTheme
+) -> dict[str, Any]:
+    """候選卡的標題。有次專科時是「科別 + 標籤」一行，沒有時就只是一行文字。
+    次專科有幾個就掛幾顆標籤
+    """
+    title: dict[str, Any] = {
+        "type": "text",
+        "text": f"{index}. {canonical}",
+        "size": ft.heading,
+        "weight": "bold",
+        "color": _TPL_CANDIDATE_TITLE_COLOR,
+        "adjustMode": "shrink-to-fit",
+    }
+    if not subgroups:
+        return title
+    return {
+        "type": "box",
+        "layout": "horizontal",
+        "spacing": "sm",
+        "alignItems": "center",
+        "contents": [
+            {**title, "flex": 0},
+            *(_subgroup_chip(subgroup, ft) for subgroup in subgroups),
+        ],
+    }
+
+
 def _candidate_box(
-    index: int, canonical: str, reason: str, ft: theme.FlexTheme
+    index: int,
+    canonical: str,
+    subgroups: tuple[str, ...],
+    reason: str,
+    ft: theme.FlexTheme,
 ) -> dict[str, Any]:
     background, border = _CANDIDATE_PALETTE[(index - 1) % len(_CANDIDATE_PALETTE)]
     return {
@@ -129,14 +191,7 @@ def _candidate_box(
         "borderWidth": "1px",
         "borderColor": border,
         "contents": [
-            {
-                "type": "text",
-                "text": f"{index}. {canonical}",
-                "size": ft.heading,
-                "weight": "bold",
-                "color": _TPL_CANDIDATE_TITLE_COLOR,
-                "adjustMode": "shrink-to-fit",
-            },
+            _candidate_title(index, canonical, subgroups, ft),
             {
                 "type": "text",
                 "text": f"理由：{reason}",
@@ -154,10 +209,13 @@ def _reason_for(candidate, matched_term: str | None) -> str:
     候選科別的說明文字。刻意描述「這一科處理什麼」，不宣稱使用者得了什麼。
     """
     term = matched_term or "你描述的狀況"
-    if candidate.subgroup:
+    if candidate.subgroups:
+        # 多個次專科用「或」連接而不是頓號：頓號讀起來像「兩個都要看」，
+        # 但那是兩條擇一的路（漏斗胸：成人走胸腔外科、小孩走小兒外科）。
+        directions = "或".join(candidate.subgroups)
         base = (
             f"{term}在這類分科中通常由{candidate.canonical}的"
-            f"{candidate.subgroup}方向處理。"
+            f"{directions}方向處理。"
         )
     else:
         base = f"{term}常見的看診方向之一是{candidate.canonical}。"
@@ -195,11 +253,41 @@ def _source_item(
     return node
 
 
+def _cites_other_department(result: SymptomTriageResult) -> bool:
+    """出處是否退到了「症狀層級」——表上有這個症狀，但不是列在建議的科別下。"""
+    return not any(candidate.sources for candidate in result.candidates) and bool(
+        result.term_sources
+    )
+
+
+def _cited_references(
+    result: SymptomTriageResult, references: tuple[SourceReference, ...]
+) -> tuple[SourceReference, ...]:
+    """
+    只留下真的把這個症狀列進去的來源。
+    候選全無出處時（origin=project 的補列條目）退到症狀層級：對照表上仍找得到
+    這個症狀，只是列在別科。嘔吐是實例——榮總玉里收錄了，列在小兒科，成人拿到
+    的內科是本專案補列的。整段藏起來的話，使用者面對一張沒有任何出處的卡，而
+    出處其實存在且點進去就找得到自己問的症狀。退這一層要配 
+    _SOURCE_LABEL_OTHER_DEPARTMENT 標題，不能讓它看起來像是在支持這個科別。
+
+    保底卡（term_sources 為空）與那些連症狀本身都沒有任何來源收錄的補列條目
+    （痰多、流鼻水、流鼻血、帶狀皰疹）仍然不會有出處，這是正確的。
+    """
+    cited = {code for candidate in result.candidates for code in candidate.sources}
+    if not cited:
+        cited = set(result.term_sources)
+    if not cited:
+        return ()
+    # 維持 references 的原始順序，不依 cited 的集合順序（那是不穩定的）。
+    return tuple(ref for ref in references if ref.code in cited)
+
+
 def _source_section(
-    references: tuple[SourceReference, ...], ft: theme.FlexTheme
+    references: tuple[SourceReference, ...], label: str, ft: theme.FlexTheme
 ) -> list[dict[str, Any]]:
     """
-    參考來源。逐條列出且各自可點，不把三家醫院擠成一段敘述——來源存在的目的是
+    參考來源。逐條列出且各自可點，不把醫院擠成一段敘述——來源存在的目的是
     讓使用者能自己去核對，擠成一坨文字等於既點不了也記不住。
     """
     if not references:
@@ -215,7 +303,7 @@ def _source_section(
             "contents": [
                 {
                     "type": "text",
-                    "text": _SOURCE_LABEL,
+                    "text": label,
                     "size": ft.caption,
                     "color": _TPL_LABEL_COLOR,
                     "weight": "bold",
@@ -227,6 +315,13 @@ def _source_section(
             ],
         },
     ]
+
+
+def _source_label(result: SymptomTriageResult) -> str:
+    """來源區塊的標題。退到症狀層級時要說明那些表把症狀列在別科。"""
+    if _cites_other_department(result) and result.matched_term:
+        return _SOURCE_LABEL_OTHER_DEPARTMENT.format(term=result.matched_term)
+    return _SOURCE_LABEL
 
 
 def _nearby_prompt(primary: str, ft: theme.FlexTheme) -> dict[str, Any]:
@@ -321,13 +416,14 @@ def _build_suggestion_bubble(
                     _candidate_box(
                         index,
                         candidate.canonical,
+                        candidate.subgroups,
                         _reason_for(candidate, result.matched_term),
                         ft,
                     )
                     for index, candidate in enumerate(result.candidates, start=1)
                 ),
                 _nearby_prompt(primary, ft),
-                *_source_section(references, ft),
+                *_source_section(references, _source_label(result), ft),
             ],
         },
         "footer": _footer(ft),
@@ -344,9 +440,11 @@ def build_symptom_department_flex(
 
     font_size 省略時讀 request-scoped 的 ContextVar（webhook 進來時由 handler
     依使用者設定寫入）；references 可注入，測試才能在不讀對照表檔的情況下
-    驗證來源條列。
+    驗證來源條列。實際列出的是這些來源中「真的收錄了這個症狀」的那幾家
+    （見 _cited_references）。
     """
     resolved = load_source_references() if references is None else references
+    resolved = _cited_references(result, resolved)
     ft = theme.resolve_theme(font_size)
     primary = result.primary_department or _DEFAULT_PRIMARY
     return {

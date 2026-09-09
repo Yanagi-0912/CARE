@@ -12,6 +12,7 @@
 """
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 # 資料庫實際存在的部定專科（來自 medicalFacilities.departments 的 distinct 值）。
@@ -222,7 +223,20 @@ def extract_department_intent(text: str) -> DepartmentMatch | None:
     return None
 
 
-def build_department_query(canonical: str) -> dict:
+# departments 為這些值代表「院所沒有申報專科」，不是某一個專科。實務上多為
+# 一般西醫診所——巷口那種什麼都看一點的。
+UNSPECIFIED_DEPARTMENTS: tuple[str, ...] = ("不分科", "西醫一般科")
+
+# 職責本就等同一般門診的科別。搜尋這幾科時，未申報專科的院所要一併撈出來：
+# 使用者站在一間只標「不分科」的診所旁邊搜「附近的內科」卻查無，是把資料的
+# 申報粒度當成了臨床事實。反過來，眼科、牙科、婦產科不納入——那些診所做不了
+# 那件事，混進去等於把人導去白跑一趟。
+GENERAL_PRACTICE_DEPARTMENTS: frozenset[str] = frozenset(
+    {"內科", "家醫科", *UNSPECIFIED_DEPARTMENTS}
+)
+
+
+def _departments_regex(values: Sequence[str]) -> dict:
     """
     組出比對 departments 的 MongoDB 條件。
 
@@ -230,4 +244,18 @@ def build_department_query(canonical: str) -> dict:
     「['家醫科、內科、外科、…']」這種整串塞進單一元素的髒資料，精確比對會把
     台大等級的醫院全部漏掉。regex 對陣列欄位會逐元素比對，兩種格式都能命中。
     """
-    return {"departments": {"$regex": re.escape(canonical), "$options": "i"}}
+    pattern = "|".join(re.escape(value) for value in values)
+    return {"departments": {"$regex": pattern, "$options": "i"}}
+
+
+def build_department_query(canonical: str) -> dict:
+    """指定科別的查詢條件。通科型科別會一併涵蓋未申報專科的院所。"""
+    values = [canonical]
+    if canonical in GENERAL_PRACTICE_DEPARTMENTS:
+        values.extend(v for v in UNSPECIFIED_DEPARTMENTS if v != canonical)
+    return _departments_regex(values)
+
+
+def build_unspecified_department_query() -> dict:
+    """只撈未申報專科的院所。專科搜尋湊不滿時的補充梯次用（見 MedicalService）。"""
+    return _departments_regex(UNSPECIFIED_DEPARTMENTS)

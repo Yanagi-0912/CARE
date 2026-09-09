@@ -10,6 +10,166 @@ from app.core.user_language import (
 )
 
 _MESSAGES: dict[str, dict[str, str]] = {
+    # --- 緊急狀況家人通報卡 ----------------------------------------------
+    #
+    # 收件人是家屬，不是當事人。措辭要能讓人立刻做一件事（打電話），
+    # 而不是先讀完一段說明。
+    "emergency_family.alt_text": {
+        "zh-TW": "{name} 可能需要立即協助",
+        "en": "{name} may need immediate help",
+        "id": "{name} mungkin butuh bantuan segera",
+        "vi": "{name} có thể cần trợ giúp ngay",
+        "th": "{name} อาจต้องการความช่วยเหลือทันที",
+        "ja": "{name} さんに今すぐ助けが必要かもしれません",
+    },
+    "emergency_family.title": {
+        "zh-TW": "家人可能需要立即協助",
+        "en": "A family member may need help now",
+        "id": "Anggota keluarga mungkin butuh bantuan sekarang",
+        "vi": "Người thân có thể cần trợ giúp ngay",
+        "th": "สมาชิกในครอบครัวอาจต้องการความช่วยเหลือตอนนี้",
+        "ja": "ご家族に今すぐ助けが必要かもしれません",
+    },
+    "emergency_family.lead": {
+        "zh-TW": "{name} 剛才在 CARE 描述的狀況，系統判定可能需要立即處置。",
+        "en": (
+            "What {name} just described in CARE looks like it may need "
+            "immediate care."
+        ),
+        "id": (
+            "Apa yang baru saja {name} sampaikan di CARE tampaknya "
+            "memerlukan penanganan segera."
+        ),
+        "vi": (
+            "Điều {name} vừa mô tả trong CARE có thể cần được xử trí ngay."
+        ),
+        "th": "สิ่งที่ {name} เพิ่งบอกใน CARE อาจต้องได้รับการดูแลทันที",
+        "ja": "{name} さんが CARE で伝えた内容は、すぐの対応が必要かもしれません。",
+    },
+    "emergency_family.words_label": {
+        "zh-TW": "{name} 剛才說的話",
+        "en": "What {name} just said",
+        "id": "Yang baru saja dikatakan {name}",
+        "vi": "{name} vừa nói",
+        "th": "สิ่งที่ {name} เพิ่งพูด",
+        "ja": "{name} さんが今言ったこと",
+    },
+    "emergency_family.reason_label": {
+        "zh-TW": "系統為什麼判定為緊急",
+        "en": "Why the system flagged this",
+        "id": "Alasan peringatan ini",
+        "vi": "Lý do cảnh báo",
+        "th": "เหตุผลที่แจ้งเตือน",
+        "ja": "判定の理由",
+    },
+    "emergency_family.action_label": {
+        "zh-TW": "現在可以做的事",
+        "en": "What you can do now",
+        "id": "Yang bisa Anda lakukan sekarang",
+        "vi": "Việc bạn có thể làm ngay",
+        "th": "สิ่งที่คุณทำได้ตอนนี้",
+        "ja": "今できること",
+    },
+    "emergency_family.step.1": {
+        "zh-TW": "先打電話給 {name}，確認他現在的狀況。",
+        "en": "Call {name} first and check how they are right now.",
+        "id": "Hubungi {name} lebih dulu dan pastikan keadaannya sekarang.",
+        "vi": "Hãy gọi cho {name} trước để xem hiện giờ họ thế nào.",
+        "th": "โทรหา {name} ก่อน เพื่อดูว่าตอนนี้เป็นอย่างไร",
+        "ja": "まず {name} さんに電話して、今の様子を確かめてください。",
+    },
+    "emergency_family.step.2": {
+        "zh-TW": "聯絡不上、或情況危急時，直接撥 119 並前往他所在的位置。",
+        "en": (
+            "If you cannot reach them, or it sounds serious, call 119 and go "
+            "to where they are."
+        ),
+        "id": (
+            "Jika tidak bisa dihubungi atau terdengar serius, hubungi 119 dan "
+            "datangi lokasinya."
+        ),
+        "vi": (
+            "Nếu không liên lạc được hoặc tình hình nghiêm trọng, hãy gọi 119 "
+            "và đến chỗ họ."
+        ),
+        "th": "หากติดต่อไม่ได้หรือดูรุนแรง ให้โทร 119 และไปหาเขา",
+        "ja": "連絡がつかない、または深刻な場合は 119 に通報し、その場所へ向かってください。",
+    },
+    "emergency_family.call_patient": {
+        "zh-TW": "打電話給 {name}",
+        "en": "Call {name}",
+        "id": "Hubungi {name}",
+        "vi": "Gọi cho {name}",
+        "th": "โทรหา {name}",
+        "ja": "{name} さんに電話",
+    },
+    "emergency_family.open_chat": {
+        "zh-TW": "在 CARE 傳訊息給他",
+        "en": "Message them in CARE",
+        "id": "Kirim pesan lewat CARE",
+        "vi": "Nhắn tin trong CARE",
+        "th": "ส่งข้อความใน CARE",
+        "ja": "CARE でメッセージを送る",
+    },
+    "emergency_family.footer": {
+        "zh-TW": "這是系統依對話內容做的判斷，不是醫療診斷，也可能判斷錯誤。請以你實際聯繫到的情況為準。",
+        "en": (
+            "This is an automated judgement from the conversation, not a "
+            "medical diagnosis, and it can be wrong. Trust what you find when "
+            "you reach them."
+        ),
+        "id": (
+            "Ini penilaian otomatis dari percakapan, bukan diagnosis medis, "
+            "dan bisa saja keliru. Percayai apa yang Anda temukan saat "
+            "menghubunginya."
+        ),
+        "vi": (
+            "Đây là đánh giá tự động từ cuộc trò chuyện, không phải chẩn đoán "
+            "y khoa và có thể sai. Hãy tin vào những gì bạn thấy khi liên hệ "
+            "được với họ."
+        ),
+        "th": (
+            "นี่คือการประเมินอัตโนมัติจากบทสนทนา ไม่ใช่การวินิจฉัยทางการแพทย์ "
+            "และอาจผิดพลาดได้ โปรดยึดตามสิ่งที่คุณพบเมื่อติดต่อได้"
+        ),
+        "ja": (
+            "これは会話内容からの自動判定であり、医学的診断ではなく、"
+            "誤ることもあります。実際に連絡して確かめた状況を優先してください。"
+        ),
+    },
+    "emergency_family.fallback_name": {
+        "zh-TW": "你的家人",
+        "en": "Your family member",
+        "id": "Anggota keluarga Anda",
+        "vi": "Người thân của bạn",
+        "th": "สมาชิกในครอบครัวของคุณ",
+        "ja": "ご家族",
+    },
+    # 通知當事人「家人已經知道了」。措辭刻意是支持性的而非警告式的——
+    # 這則訊息的收件人正處於危機中，讀起來必須像有人來陪，不是像被舉報。
+    "text.emergency.family_notified": {
+        "zh-TW": "我已經讓你的家人知道你現在需要有人陪。你不用一個人撐著。",
+        "en": (
+            "I've let your family know you need someone with you right now. "
+            "You don't have to get through this alone."
+        ),
+        "id": (
+            "Saya sudah memberi tahu keluarga Anda bahwa Anda butuh seseorang "
+            "di dekat Anda sekarang. Anda tidak perlu menghadapinya sendiri."
+        ),
+        "vi": (
+            "Tôi đã báo cho người thân biết rằng bạn đang cần ai đó ở bên. "
+            "Bạn không phải một mình vượt qua chuyện này."
+        ),
+        "th": (
+            "ฉันได้แจ้งครอบครัวของคุณแล้วว่าตอนนี้คุณต้องการใครสักคนอยู่ด้วย "
+            "คุณไม่ต้องผ่านเรื่องนี้คนเดียว"
+        ),
+        "ja": (
+            "今そばに誰かが必要だということを、ご家族に伝えました。"
+            "ひとりで抱えなくて大丈夫です。"
+        ),
+    },
     # --- 緊急狀況卡片 ---------------------------------------------------
     #
     # 這張卡是急救指示，SHALL 全部隨使用者語言切換。混語言比全中文更糟：
@@ -989,6 +1149,29 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "vi": "Mở {day} {time}",
         "th": "เปิด{day} {time}",
         "ja": "{day} {time} 開始",
+    },
+    "flex.facility.unspecified_department": {
+        "zh-TW": "此院所資料未載明科別，是依距離補列的鄰近選項，建議先去電確認有無此診。",
+        "en": (
+            "This facility lists no specialty; it is included as a nearby option "
+            "by distance. Please call ahead to confirm."
+        ),
+        "id": (
+            "Fasilitas ini tidak mencantumkan spesialisasi; ditampilkan sebagai "
+            "opsi terdekat. Sebaiknya telepon dulu untuk memastikan."
+        ),
+        "vi": (
+            "Cơ sở này không ghi chuyên khoa; được đưa vào theo khoảng cách. "
+            "Vui lòng gọi trước để xác nhận."
+        ),
+        "th": (
+            "สถานพยาบาลนี้ไม่ได้ระบุแผนก แสดงเป็นตัวเลือกใกล้เคียงตามระยะทาง "
+            "แนะนำให้โทรสอบถามก่อน"
+        ),
+        "ja": (
+            "この医療機関は診療科の記載がなく、距離順で補足表示しています。"
+            "受診前に電話でご確認ください。"
+        ),
     },
     "flex.facility.note": {
         "zh-TW": "院所註記：{note}",

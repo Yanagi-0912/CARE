@@ -59,6 +59,7 @@ from app.services.safety.ingredient_overlap import (
     IngredientWatchlist,
     load_local_action_forms,
 )
+from app.services.safety.emergency_alert_service import EmergencyFamilyAlertService
 from app.services.safety.otc_alert_service import OtcAlertService
 from app.services.safety.safety_alert_service import SafetyAlertService
 from app.services.gemini import GeminiService
@@ -595,6 +596,15 @@ _enabled_otc_alert_service = (
     _otc_alert_service if settings.OTC_ALERT_ENABLED else None
 )
 
+# 對話中判定為緊急時通報家人。與 OTC 通報走同一個決策點（家庭授權服務），
+# 只是查 NOTIFICATION_POLICY 裡的 emergency_detected。刻意沒有開關：
+# 這是安全通報，不是可選功能——沒有合格收件人時它自己就不會送出。
+_emergency_family_alert_service = EmergencyFamilyAlertService(
+    replier=_line_replier,
+    authorization_service=_family_authorization_service,
+    user_profile_service=_user_profile_service,
+)
+
 _message_handler = LineMessageHandler(
     agent=_care_agent,
     history_service=_line_history_service,
@@ -602,6 +612,7 @@ _message_handler = LineMessageHandler(
     replier=_line_replier,
     loading_animation_service=_line_loading_animation_service,
     safety_alert_service=_enabled_safety_alert_service,
+    emergency_family_alert_service=_emergency_family_alert_service,
 )
 _media_handler = LineMediaHandler(
     agent=_care_agent,

@@ -23,7 +23,7 @@ def test_build_flex_map_uri_with_name():
     parsed = urlparse(uri)
     destination = parse_qs(parsed.query)["destination"][0]
     # 優先級:經緯度->名稱->地址
-    assert destination == f"{facility.latitude},{facility.longitude}"
+    assert destination == f"{facility.address}"
     assert uri.startswith("https://www.google.com/maps/dir/?api=1&destination=")
 
 
@@ -207,3 +207,54 @@ def test_generate_facility_list_flex_message_candidate_list_no_hint_when_full():
     flex_result = generate_facility_list_flex_message(mock_facilities, total_count=1)
     full_str = str(flex_result)
     assert "結果超過顯示上限" not in full_str
+
+
+# --- 未載明科別的補列院所 ----------------------------------------------------
+#
+# 專科搜尋湊不滿時會依距離補上沒有申報科別的院所（見
+# MedicalService._supplement_with_unspecified）。不標示的話使用者會以為那間
+# 診所真的有他要的那一科。
+
+
+def _clinic(name: str, facility_id: str) -> MedicalFacility:
+    return MedicalFacility(
+        id=facility_id,
+        name=name,
+        distance_meters=120.0,
+        address="測試地址",
+        phone="03-5872000",
+        latitude=24.79,
+        longitude=121.17,
+        type="CLINIC",
+    )
+
+
+def _texts(node) -> list[str]:
+    if isinstance(node, dict):
+        found = [node["text"]] if node.get("type") == "text" else []
+        for child in node.get("contents", []):
+            found.extend(_texts(child))
+        return found
+    return []
+
+
+def test_supplemented_facility_is_labelled_as_unspecified():
+    flex = generate_facility_list_flex_message(
+        [_clinic("皮膚科診所", "id-1"), _clinic("巷口診所", "id-2")],
+        unspecified_ids=frozenset({"id-2"}),
+    )
+    items = flex["contents"]["body"]["contents"]
+    labelled = [
+        node
+        for node in items
+        if node.get("type") == "box"
+        and any("未載明科別" in text for text in _texts(node))
+    ]
+
+    assert len(labelled) == 1
+    assert "巷口診所" in _texts(labelled[0])
+
+
+def test_no_label_when_nothing_was_supplemented():
+    flex = generate_facility_list_flex_message([_clinic("皮膚科診所", "id-1")])
+    assert not any("未載明科別" in text for text in _texts(flex["contents"]))

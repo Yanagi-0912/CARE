@@ -116,7 +116,7 @@ async def test_department_and_type_combine_with_and():
 
     assert repository.calls[0]["query"] == {
         "$and": [
-            {"departments": {"$regex": "內科", "$options": "i"}},
+            {"departments": {"$regex": "內科|不分科|西醫一般科", "$options": "i"}},
             {"type": {"$in": ["醫院", "綜合醫院", "精神科醫院", "中醫醫院"]}},
         ]
     }
@@ -134,7 +134,7 @@ async def test_department_only_query_has_no_and():
     await service.find_nearby_facilities_by_department(25.0, 121.0, "腸胃科")
 
     assert repository.calls[0]["query"] == {
-        "departments": {"$regex": "內科", "$options": "i"}
+        "departments": {"$regex": "內科|不分科|西醫一般科", "$options": "i"}
     }
 
 
@@ -145,11 +145,11 @@ async def test_type_only_query_via_department_method_has_no_and():
     service = MedicalService(repository=FakeRepository([]))
 
     combined_both = service._combine_filters(
-        {"departments": {"$regex": "內科", "$options": "i"}},
+        {"departments": {"$regex": "內科|不分科|西醫一般科", "$options": "i"}},
         {"type": {"$in": ["醫院"]}},
     )
     combined_department_only = service._combine_filters(
-        {"departments": {"$regex": "內科", "$options": "i"}}, None
+        {"departments": {"$regex": "內科|不分科|西醫一般科", "$options": "i"}}, None
     )
     combined_type_only = service._combine_filters(
         None, {"type": {"$in": ["醫院"]}}
@@ -158,11 +158,11 @@ async def test_type_only_query_via_department_method_has_no_and():
 
     assert combined_both == {
         "$and": [
-            {"departments": {"$regex": "內科", "$options": "i"}},
+            {"departments": {"$regex": "內科|不分科|西醫一般科", "$options": "i"}},
             {"type": {"$in": ["醫院"]}},
         ]
     }
-    assert combined_department_only == {"departments": {"$regex": "內科", "$options": "i"}}
+    assert combined_department_only == {"departments": {"$regex": "內科|不分科|西醫一般科", "$options": "i"}}
     assert combined_type_only == {"type": {"$in": ["醫院"]}}
     assert combined_none is None
 
@@ -194,7 +194,7 @@ async def test_department_search_omits_facility_type_matches_status_quo():
     result = await service.find_nearby_facilities_by_department(25.0, 121.0, "腸胃科")
 
     assert repository.calls[0]["query"] == {
-        "departments": {"$regex": "內科", "$options": "i"}
+        "departments": {"$regex": "內科|不分科|西醫一般科", "$options": "i"}
     }
     assert result.facility_type_match is None
     assert result.facility_type_unresolved is False
@@ -253,7 +253,7 @@ async def test_department_search_treats_blank_facility_type_as_absent(blank):
     )
 
     assert repository.calls[0]["query"] == {
-        "departments": {"$regex": "內科", "$options": "i"}
+        "departments": {"$regex": "內科|不分科|西醫一般科", "$options": "i"}
     }, "空字串不得讓科別查詢多包一層 $and"
     assert result.facility_type_unresolved is False
     assert result.facility_type_match is None

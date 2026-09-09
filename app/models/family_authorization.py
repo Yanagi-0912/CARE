@@ -205,8 +205,10 @@ PROXY_WRITE_FORBIDDEN_FIELDS: frozenset[str] = frozenset(
     {"name", "display_name", "picture_url", "role", "settings", "line_id"}
 )
 
-# 推播種類。
-NotificationKind = Literal["high_risk_drug_alert", "otc_medication_added"]
+# 推播種類，包含:高風險藥物、加入非處方藥、警急事件偵測
+NotificationKind = Literal[
+    "high_risk_drug_alert", "otc_medication_added", "emergency_detected"
+]
 
 # 通知政策。**與 PERMISSIONS 分開宣告，兩者的變更互不牽動。**
 #
@@ -228,6 +230,8 @@ NOTIFICATION_POLICY: dict[NotificationKind, frozenset[FamilyRole]] = {
     # 價值的訊息。持續發送低價值訊息會讓收件人靜音整個帳號，連帶淹沒真正需要
     # 注意的警報。2026-08 曾因空提醒卡打爆 LINE 月額度，推播成本是實際約束。
     "otc_medication_added": frozenset({"GUARDIAN", "CAREGIVER"}),
+    # 對話中偵測到需要立即處置的狀況（意識不清、大量出血、自傷或自盡表達…）。
+    "emergency_detected": frozenset({"GUARDIAN", "CAREGIVER"}),
 }
 
 # 每位資料擁有者各自持有的遷移狀態。強制以**擁有者**為邊界逐一啟用，

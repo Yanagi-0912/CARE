@@ -24,8 +24,8 @@ from app.services.medical.symptom_classification.urgency import (
 )
 from app.services.gemini.shared.parser import content_to_text
 from app.services.rag.fail_messages import is_rag_fail
-from app.tools.registry import get_all_tools
 from app.tools.user_document_tools import is_document_answer_unavailable
+from app.tools.registry import get_all_tools
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +152,7 @@ class Agent:
         builder.add_node("tools", tools_node)
 
         builder.add_edge(START, "guardrail")
-        # 急迫度短路：判定為緊急時直接產卡，不進 agent。安全檢查不能是 agent
+        # 急迫度短路：判定為緊急時直接產生卡片，不進 agent。安全檢查不能是 agent
         # 可以選擇不做的事——前一版把它放在工具裡，agent 選了 RAG，檢查就從未
         # 執行過。
         builder.add_conditional_edges(
@@ -194,6 +194,8 @@ class Agent:
                 {
                     "messages": messages,
                     "allow_rag": False,
+                    "urgency": URGENCY_NONE,
+                    "urgency_display": "",
                     "user_profile": user_profile,
                 }
             )
@@ -262,8 +264,11 @@ class Agent:
         # 出來的自然語言回覆」有意義，因此這裡以「有沒有被覆寫」為準，而不是回頭
         # 猜 response 像不像 JSON：覆寫與否正是問題的成因，判斷它才不會漏掉未來
         # 新增的其他 Flex 工具。
+        #
+        # 急迫度短路時 response 是緊急卡的 Flex JSON，理由與上同，一併跳過。
+        is_emergency = result.get("urgency") == URGENCY_EMERGENCY
         rag_tool_content = None
-        if not used_tool_names:
+        if not used_tool_names and not is_emergency:
             for msg in reversed(result.get("messages", [])):
                 if getattr(msg, "name", None) == "get_rag_answer":
                     rag_tool_content = msg.content
@@ -287,19 +292,13 @@ class Agent:
                     heading, sources_body = split
                     response = f"{response.strip()}\n\n{heading}{sources_body.strip()}"
 
-        call_request_location = False
-        for msg in result.get("messages", []):
-            if getattr(msg, "name", None) == "request_location_quick_reply":
-                call_request_location = True
-                break
-
         # 呈現層要知道「這輪是不是有內容可以做成卡片」。判斷放在這裡而非
         # reply.py，因為只有這裡看得到 ToolMessage。
         answer_kind: str | None = None
-        if not used_tool_names:
+        if not used_tool_names and not is_emergency:
             # used_tool_names 非空代表 response 已被醫療工具接管、內容是要原封
             # 不動送出的 Flex JSON，再組一次卡只會壞掉（同「後補來源」那段的
-            # 理由）。
+            # 理由）。緊急卡同理。
             for msg in reversed(result.get("messages", [])):
                 name = getattr(msg, "name", None)
                 if name not in ("get_rag_answer", "answer_from_uploaded_document"):
@@ -315,15 +314,27 @@ class Agent:
                     )
                 break
 
+        call_request_location = False
+        for msg in result.get("messages", []):
+            if getattr(msg, "name", None) == "request_location_quick_reply":
+                call_request_location = True
+                break
+
         logger.info(
-            "[Agent] 執行完成，response_type=%s, call_request_location=%s, answer_kind=%s",
+            "[Agent] 執行完成，response_type=%s, call_request_location=%s, "
+            "answer_kind=%s, emergency=%s",
             type(response).__name__,
             call_request_location,
             answer_kind,
+            is_emergency,
         )
 
         return {
             "response": response,
             "call_request_location": call_request_location,
             "answer_kind": answer_kind,
+            # 供呼叫端決定要不要通報家人。回傳判定與說明而不是「要不要通報」，
+            # 因為「誰該收到」是家庭授權的事，不屬於 agent。
+            "emergency": is_emergency,
+            "emergency_reason": result.get("urgency_display") or "",
         }

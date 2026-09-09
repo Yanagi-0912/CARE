@@ -10,7 +10,9 @@
     "本檔僅提供就診方向參考，SHALL NOT 作為診斷依據；回覆須含免責與就醫提示。",
     "symptoms[].sources 長度可視為跨院共識強度：3 家皆列 > 2 家 > 單一家。單一來源的條目優先送人工複查。",
     "多個科別同時列出同一症狀時，代表該症狀本就跨科，SHALL 以多候選呈現，不得擅自擇一。",
-    "symptoms[].origin 為 `project` 者係本專案補列，非來源所載；其 sources 為空陣列，SHALL NOT 宣稱有跨院共識。"
+    "symptoms[].origin 為 `project` 者係本專案補列，非來源所載；其 sources 為空陣列，SHALL NOT 宣稱有跨院共識。",
+    "symptoms[].subgroup 為陣列時代表該症狀有多條次專科路徑，SHALL 全數呈現，SHALL NOT 擇一顯示；順序為「較通用或成人優先」，供卡片依序掛標籤。",
+    "symptoms[].subgroup SHALL 為掛號窗口報得出來的診名（如「胃腸肝膽科」「心臟內科」），SHALL NOT 為服務類別或內部路由註記（如「初診分流」「預防保健」）——該欄位會直接顯示在卡片的科別標籤上，掛不到號的詞等於給錯指示。"
   ],
   "sources": {
     "V": {
@@ -35,7 +37,7 @@
       "level": "醫學中心分院"
     }
   },
-  "canonical_note": "canonical 取自 db.medicalFacilities.departments 的 44 個 distinct 值（2026-08-27 查）。db_facility_count 為該次統計的院所數，用於評估建議出去的科別使用者是否真的找得到。次專科（腸胃科、心臟科、腎臟科…）在資料庫不存在，一律歸入所屬部定專科，subgroup 欄位保留原本的次專科方向供回覆時說明用。",
+  "canonical_note": "canonical 取自 db.medicalFacilities.departments 的 44 個 distinct 值（2026-08-27 查）。db_facility_count 為該次統計的院所數，用於評估建議出去的科別使用者是否真的找得到。次專科（腸胃科、心臟科、腎臟科…）在資料庫不存在，一律歸入所屬部定專科，subgroup 欄位保留原本的次專科方向供回覆時說明用，可為字串或字串陣列——同一症狀在不同來源被分到不同次專科時（漏斗胸：成大列胸腔外科、台大雲林列小兒外科），兩個都要留，擇一等於替使用者決定他該走哪條路。",
   "downgrade_rule": {
     "decided_at": "2026-08-27",
     "min_facility_count": 10,
@@ -330,7 +332,7 @@
         {
           "term": "腹痛",
           "kind": "symptom",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "N",
             "Y"
@@ -339,7 +341,7 @@
         {
           "term": "腹脹",
           "kind": "symptom",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "V",
             "N",
@@ -349,7 +351,7 @@
         {
           "term": "腹瀉",
           "kind": "symptom",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "V",
             "N"
@@ -358,7 +360,7 @@
         {
           "term": "腹鳴",
           "kind": "symptom",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "V"
           ]
@@ -366,7 +368,7 @@
         {
           "term": "便秘",
           "kind": "symptom",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "V"
           ]
@@ -374,7 +376,7 @@
         {
           "term": "打嗝",
           "kind": "symptom",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "V"
           ],
@@ -383,7 +385,7 @@
         {
           "term": "食慾不振",
           "kind": "symptom",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "V",
             "N",
@@ -393,7 +395,7 @@
         {
           "term": "胃酸逆流",
           "kind": "symptom",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "V",
             "N",
@@ -403,7 +405,7 @@
         {
           "term": "黑便",
           "kind": "symptom",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "V",
             "N",
@@ -413,7 +415,7 @@
         {
           "term": "血便",
           "kind": "symptom",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "Y"
           ]
@@ -421,7 +423,7 @@
         {
           "term": "吐血",
           "kind": "symptom",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "N",
             "Y"
@@ -431,7 +433,7 @@
         {
           "term": "吞嚥困難",
           "kind": "symptom",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "Y"
           ],
@@ -440,7 +442,7 @@
         {
           "term": "上吐下瀉",
           "kind": "symptom",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "Y"
           ]
@@ -448,7 +450,7 @@
         {
           "term": "皮膚泛黃",
           "kind": "symptom",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "V",
             "Y"
@@ -457,7 +459,7 @@
         {
           "term": "肝腫大",
           "kind": "symptom",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "V"
           ]
@@ -465,7 +467,7 @@
         {
           "term": "肝功能指數異常",
           "kind": "screening",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "N",
             "Y"
@@ -474,7 +476,7 @@
         {
           "term": "肝膽結石",
           "kind": "disease",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "N",
             "Y"
@@ -483,7 +485,7 @@
         {
           "term": "胃潰瘍",
           "kind": "disease",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "N",
             "Y"
@@ -492,7 +494,7 @@
         {
           "term": "B型肝炎",
           "kind": "disease",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "N",
             "Y"
@@ -501,7 +503,7 @@
         {
           "term": "C型肝炎",
           "kind": "disease",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "Y"
           ]
@@ -509,7 +511,7 @@
         {
           "term": "腸胃炎",
           "kind": "disease",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "Y"
           ]
@@ -517,7 +519,7 @@
         {
           "term": "大腸癌篩檢",
           "kind": "screening",
-          "subgroup": "胃腸肝膽",
+          "subgroup": "胃腸肝膽科",
           "sources": [
             "Y"
           ]
@@ -525,7 +527,7 @@
         {
           "term": "咳嗽",
           "kind": "symptom",
-          "subgroup": "胸腔",
+          "subgroup": "胸腔內科",
           "sources": [
             "N",
             "Y"
@@ -534,7 +536,7 @@
         {
           "term": "咳血",
           "kind": "symptom",
-          "subgroup": "胸腔",
+          "subgroup": "胸腔內科",
           "sources": [
             "N",
             "Y"
@@ -543,7 +545,10 @@
         {
           "term": "胸悶",
           "kind": "symptom",
-          "subgroup": "胸腔／心臟",
+          "subgroup": [
+            "胸腔內科",
+            "心臟內科"
+          ],
           "sources": [
             "Y"
           ]
@@ -551,7 +556,10 @@
         {
           "term": "胸痛",
           "kind": "symptom",
-          "subgroup": "胸腔／心臟",
+          "subgroup": [
+            "胸腔內科",
+            "心臟內科"
+          ],
           "sources": [
             "Y"
           ]
@@ -559,7 +567,7 @@
         {
           "term": "氣喘",
           "kind": "disease",
-          "subgroup": "胸腔",
+          "subgroup": "胸腔內科",
           "sources": [
             "N",
             "Y"
@@ -568,7 +576,7 @@
         {
           "term": "肺炎",
           "kind": "disease",
-          "subgroup": "胸腔",
+          "subgroup": "胸腔內科",
           "sources": [
             "N",
             "Y"
@@ -577,7 +585,7 @@
         {
           "term": "支氣管炎",
           "kind": "disease",
-          "subgroup": "胸腔",
+          "subgroup": "胸腔內科",
           "sources": [
             "N",
             "Y"
@@ -586,7 +594,10 @@
         {
           "term": "肺結核",
           "kind": "disease",
-          "subgroup": "胸腔／感染",
+          "subgroup": [
+            "胸腔內科",
+            "感染科"
+          ],
           "sources": [
             "N",
             "Y"
@@ -595,7 +606,10 @@
         {
           "term": "上呼吸道感染",
           "kind": "disease",
-          "subgroup": "胸腔／感染",
+          "subgroup": [
+            "胸腔內科",
+            "感染科"
+          ],
           "sources": [
             "N",
             "Y"
@@ -604,7 +618,7 @@
         {
           "term": "發燒",
           "kind": "symptom",
-          "subgroup": "感染",
+          "subgroup": "感染科",
           "sources": [
             "N",
             "Y"
@@ -613,7 +627,7 @@
         {
           "term": "不明原因發燒",
           "kind": "symptom",
-          "subgroup": "感染",
+          "subgroup": "感染科",
           "sources": [
             "N",
             "Y"
@@ -622,7 +636,7 @@
         {
           "term": "感冒",
           "kind": "disease",
-          "subgroup": "感染",
+          "subgroup": null,
           "sources": [
             "N",
             "Y"
@@ -631,7 +645,10 @@
         {
           "term": "泌尿道感染",
           "kind": "disease",
-          "subgroup": "感染／腎臟",
+          "subgroup": [
+            "感染科",
+            "腎臟內科"
+          ],
           "sources": [
             "N",
             "Y"
@@ -640,7 +657,7 @@
         {
           "term": "蜂窩性組織炎",
           "kind": "disease",
-          "subgroup": "感染",
+          "subgroup": "感染科",
           "sources": [
             "Y"
           ]
@@ -648,16 +665,17 @@
         {
           "term": "性病",
           "kind": "disease",
-          "subgroup": "感染",
+          "subgroup": "感染科",
           "sources": [
             "N",
             "Y"
-          ]
+          ],
+          "rank": 2
         },
         {
           "term": "血尿",
           "kind": "symptom",
-          "subgroup": "腎臟",
+          "subgroup": "腎臟內科",
           "sources": [
             "V",
             "N",
@@ -667,7 +685,7 @@
         {
           "term": "蛋白尿",
           "kind": "symptom",
-          "subgroup": "腎臟",
+          "subgroup": "腎臟內科",
           "sources": [
             "V",
             "N",
@@ -677,7 +695,7 @@
         {
           "term": "水腫",
           "kind": "symptom",
-          "subgroup": "腎臟",
+          "subgroup": "腎臟內科",
           "sources": [
             "V",
             "N",
@@ -687,7 +705,7 @@
         {
           "term": "尿量減少",
           "kind": "symptom",
-          "subgroup": "腎臟",
+          "subgroup": "腎臟內科",
           "sources": [
             "V",
             "Y"
@@ -696,7 +714,7 @@
         {
           "term": "多尿",
           "kind": "symptom",
-          "subgroup": "腎臟",
+          "subgroup": "腎臟內科",
           "sources": [
             "V"
           ]
@@ -704,7 +722,7 @@
         {
           "term": "排尿疼痛",
           "kind": "symptom",
-          "subgroup": "腎臟",
+          "subgroup": "腎臟內科",
           "sources": [
             "Y"
           ]
@@ -712,7 +730,7 @@
         {
           "term": "腰痛",
           "kind": "symptom",
-          "subgroup": "腎臟",
+          "subgroup": "腎臟內科",
           "sources": [
             "V"
           ],
@@ -721,7 +739,7 @@
         {
           "term": "腎功能不良",
           "kind": "disease",
-          "subgroup": "腎臟",
+          "subgroup": "腎臟內科",
           "sources": [
             "V",
             "Y"
@@ -730,7 +748,7 @@
         {
           "term": "尿毒症",
           "kind": "disease",
-          "subgroup": "腎臟",
+          "subgroup": "腎臟內科",
           "sources": [
             "V",
             "N"
@@ -739,7 +757,7 @@
         {
           "term": "腎結石",
           "kind": "disease",
-          "subgroup": "腎臟",
+          "subgroup": "腎臟內科",
           "sources": [
             "N"
           ]
@@ -747,7 +765,7 @@
         {
           "term": "電解質異常",
           "kind": "screening",
-          "subgroup": "腎臟",
+          "subgroup": "腎臟內科",
           "sources": [
             "V",
             "Y"
@@ -756,7 +774,10 @@
         {
           "term": "高血壓",
           "kind": "disease",
-          "subgroup": "心臟／腎臟",
+          "subgroup": [
+            "心臟內科",
+            "腎臟內科"
+          ],
           "sources": [
             "V",
             "N",
@@ -766,7 +787,7 @@
         {
           "term": "心悸",
           "kind": "symptom",
-          "subgroup": "心臟",
+          "subgroup": "心臟內科",
           "sources": [
             "Y"
           ]
@@ -774,7 +795,7 @@
         {
           "term": "心律不整",
           "kind": "disease",
-          "subgroup": "心臟",
+          "subgroup": "心臟內科",
           "sources": [
             "N",
             "Y"
@@ -783,7 +804,7 @@
         {
           "term": "心絞痛",
           "kind": "symptom",
-          "subgroup": "心臟",
+          "subgroup": "心臟內科",
           "sources": [
             "N"
           ]
@@ -791,7 +812,7 @@
         {
           "term": "心臟衰竭",
           "kind": "disease",
-          "subgroup": "心臟",
+          "subgroup": "心臟內科",
           "sources": [
             "V",
             "N",
@@ -801,7 +822,7 @@
         {
           "term": "腳腫",
           "kind": "symptom",
-          "subgroup": "心臟",
+          "subgroup": "心臟內科",
           "sources": [
             "Y"
           ]
@@ -809,7 +830,7 @@
         {
           "term": "間歇跛行",
           "kind": "symptom",
-          "subgroup": "心臟",
+          "subgroup": "心臟內科",
           "sources": [
             "Y"
           ]
@@ -817,7 +838,7 @@
         {
           "term": "糖尿病",
           "kind": "disease",
-          "subgroup": "新陳代謝內分泌",
+          "subgroup": "新陳代謝內分泌科",
           "sources": [
             "V",
             "N",
@@ -827,7 +848,10 @@
         {
           "term": "高血脂",
           "kind": "disease",
-          "subgroup": "新陳代謝內分泌",
+          "subgroup": [
+            "新陳代謝內分泌科",
+            "心臟內科"
+          ],
           "sources": [
             "N",
             "Y"
@@ -836,7 +860,7 @@
         {
           "term": "甲狀腺疾病",
           "kind": "disease",
-          "subgroup": "新陳代謝內分泌",
+          "subgroup": "新陳代謝內分泌科",
           "sources": [
             "N",
             "Y"
@@ -845,7 +869,7 @@
         {
           "term": "肥胖",
           "kind": "disease",
-          "subgroup": "新陳代謝內分泌",
+          "subgroup": "新陳代謝內分泌科",
           "sources": [
             "N",
             "Y"
@@ -854,7 +878,7 @@
         {
           "term": "骨質疏鬆症",
           "kind": "disease",
-          "subgroup": "新陳代謝內分泌",
+          "subgroup": "新陳代謝內分泌科",
           "sources": [
             "Y"
           ]
@@ -862,7 +886,7 @@
         {
           "term": "關節炎",
           "kind": "disease",
-          "subgroup": "免疫風濕",
+          "subgroup": "免疫風濕科",
           "sources": [
             "N",
             "Y"
@@ -871,7 +895,7 @@
         {
           "term": "痛風",
           "kind": "disease",
-          "subgroup": "免疫風濕",
+          "subgroup": "免疫風濕科",
           "sources": [
             "N",
             "Y"
@@ -880,7 +904,7 @@
         {
           "term": "僵直性脊椎炎",
           "kind": "disease",
-          "subgroup": "免疫風濕",
+          "subgroup": "免疫風濕科",
           "sources": [
             "N",
             "Y"
@@ -889,7 +913,7 @@
         {
           "term": "紅斑性狼瘡",
           "kind": "disease",
-          "subgroup": "免疫風濕",
+          "subgroup": "免疫風濕科",
           "sources": [
             "N",
             "Y"
@@ -898,7 +922,7 @@
         {
           "term": "類風濕性關節炎",
           "kind": "disease",
-          "subgroup": "免疫風濕",
+          "subgroup": "免疫風濕科",
           "sources": [
             "N",
             "Y"
@@ -907,7 +931,7 @@
         {
           "term": "乾燥症",
           "kind": "disease",
-          "subgroup": "免疫風濕",
+          "subgroup": "免疫風濕科",
           "sources": [
             "Y"
           ]
@@ -915,7 +939,7 @@
         {
           "term": "蕁麻疹",
           "kind": "symptom",
-          "subgroup": "免疫風濕",
+          "subgroup": "免疫風濕科",
           "sources": [
             "N",
             "Y"
@@ -925,7 +949,7 @@
         {
           "term": "貧血",
           "kind": "disease",
-          "subgroup": "血液",
+          "subgroup": "血液科",
           "sources": [
             "N",
             "Y"
@@ -934,7 +958,7 @@
         {
           "term": "淋巴結腫大",
           "kind": "symptom",
-          "subgroup": "血液",
+          "subgroup": "血液科",
           "sources": [
             "Y"
           ]
@@ -942,7 +966,7 @@
         {
           "term": "白血球異常",
           "kind": "screening",
-          "subgroup": "血液",
+          "subgroup": "血液科",
           "sources": [
             "Y"
           ]
@@ -950,7 +974,7 @@
         {
           "term": "血小板異常",
           "kind": "screening",
-          "subgroup": "血液",
+          "subgroup": "血液科",
           "sources": [
             "Y"
           ]
@@ -958,7 +982,7 @@
         {
           "term": "凝血功能異常",
           "kind": "screening",
-          "subgroup": "血液",
+          "subgroup": "血液科",
           "sources": [
             "Y"
           ]
@@ -966,7 +990,7 @@
         {
           "term": "癌症治療與追蹤",
           "kind": "service",
-          "subgroup": "腫瘤",
+          "subgroup": "腫瘤內科",
           "sources": [
             "N",
             "Y"
@@ -1021,7 +1045,7 @@
         {
           "term": "中毒",
           "kind": "disease",
-          "subgroup": "毒物",
+          "subgroup": "臨床毒物科",
           "sources": [
             "N"
           ],
@@ -1030,10 +1054,26 @@
         {
           "term": "痰多",
           "kind": "symptom",
-          "subgroup": "胸腔",
+          "subgroup": "胸腔內科",
           "sources": [],
           "origin": "project",
           "note": "本專案補列。三份來源皆無獨立的「痰」條目，但「喉嚨有痰」「一直有痰」是高頻主訴，缺此條目會讓使用者落到保底建議。分列胸腔與耳鼻喉兩科，因為痰的來源可能在下呼吸道或上呼吸道。"
+        },
+        {
+          "term": "嘔吐",
+          "kind": "symptom",
+          "subgroup": "胃腸肝膽科",
+          "sources": [],
+          "origin": "project",
+          "note": "本專案補列。榮總玉里僅在「小兒科／15歲以下兒童」那一整列裡收錄本症狀，成大與台大未單列，於是表上只有兒科一個候選——成人問同一個症狀會拿到兒科。這是三份來源粒度不一致造成的洞，不是臨床上只有兒科看。"
+        },
+        {
+          "term": "慢性咳嗽",
+          "kind": "symptom",
+          "subgroup": "胸腔內科",
+          "sources": [],
+          "origin": "project",
+          "note": "本專案補列。榮總玉里僅在「小兒科／15歲以下兒童」那一整列裡收錄本症狀，成大與台大未單列，於是表上只有兒科一個候選——成人問同一個症狀會拿到兒科。這是三份來源粒度不一致造成的洞，不是臨床上只有兒科看。"
         }
       ]
     },
@@ -1077,7 +1117,7 @@
         {
           "term": "痔瘡",
           "kind": "disease",
-          "subgroup": "大腸直腸肛門",
+          "subgroup": "大腸直腸外科",
           "sources": [
             "V",
             "N",
@@ -1087,7 +1127,7 @@
         {
           "term": "便血",
           "kind": "symptom",
-          "subgroup": "大腸直腸肛門",
+          "subgroup": "大腸直腸外科",
           "sources": [
             "N",
             "Y"
@@ -1096,7 +1136,7 @@
         {
           "term": "脫肛",
           "kind": "symptom",
-          "subgroup": "大腸直腸肛門",
+          "subgroup": "大腸直腸外科",
           "sources": [
             "N",
             "Y"
@@ -1105,7 +1145,7 @@
         {
           "term": "肛門腫痛",
           "kind": "symptom",
-          "subgroup": "大腸直腸肛門",
+          "subgroup": "大腸直腸外科",
           "sources": [
             "N",
             "Y"
@@ -1114,7 +1154,7 @@
         {
           "term": "大便失禁",
           "kind": "symptom",
-          "subgroup": "大腸直腸肛門",
+          "subgroup": "大腸直腸外科",
           "sources": [
             "N",
             "Y"
@@ -1123,7 +1163,7 @@
         {
           "term": "大便習慣改變",
           "kind": "symptom",
-          "subgroup": "大腸直腸肛門",
+          "subgroup": "大腸直腸外科",
           "sources": [
             "Y"
           ]
@@ -1131,7 +1171,7 @@
         {
           "term": "大便變細",
           "kind": "symptom",
-          "subgroup": "大腸直腸肛門",
+          "subgroup": "大腸直腸外科",
           "sources": [
             "Y"
           ]
@@ -1139,7 +1179,7 @@
         {
           "term": "長期便秘",
           "kind": "symptom",
-          "subgroup": "大腸直腸肛門",
+          "subgroup": "大腸直腸外科",
           "sources": [
             "N",
             "Y"
@@ -1148,7 +1188,7 @@
         {
           "term": "大腸癌",
           "kind": "disease",
-          "subgroup": "大腸直腸肛門",
+          "subgroup": "大腸直腸外科",
           "sources": [
             "N",
             "Y"
@@ -1157,7 +1197,7 @@
         {
           "term": "乳房硬塊",
           "kind": "symptom",
-          "subgroup": "乳房甲狀腺",
+          "subgroup": "乳房甲狀腺科",
           "sources": [
             "V",
             "N",
@@ -1167,7 +1207,7 @@
         {
           "term": "乳房疼痛",
           "kind": "symptom",
-          "subgroup": "乳房甲狀腺",
+          "subgroup": "乳房甲狀腺科",
           "sources": [
             "Y"
           ]
@@ -1175,7 +1215,7 @@
         {
           "term": "乳癌",
           "kind": "disease",
-          "subgroup": "乳房甲狀腺",
+          "subgroup": "乳房甲狀腺科",
           "sources": [
             "N",
             "Y"
@@ -1184,7 +1224,7 @@
         {
           "term": "甲狀腺結節",
           "kind": "disease",
-          "subgroup": "乳房甲狀腺",
+          "subgroup": "乳房甲狀腺科",
           "sources": [
             "N",
             "Y"
@@ -1272,7 +1312,10 @@
         {
           "term": "膽結石",
           "kind": "disease",
-          "subgroup": "消化外科",
+          "subgroup": [
+            "消化外科",
+            "一般外科"
+          ],
           "sources": [
             "N",
             "Y"
@@ -1344,7 +1387,10 @@
         {
           "term": "狐臭",
           "kind": "disease",
-          "subgroup": "胸腔外科／整形",
+          "subgroup": [
+            "胸腔外科",
+            "整形外科"
+          ],
           "sources": [
             "N",
             "Y"
@@ -1391,10 +1437,29 @@
         {
           "term": "漏斗胸",
           "kind": "disease",
-          "subgroup": "小兒外科",
+          "subgroup": [
+            "胸腔外科",
+            "小兒外科"
+          ],
           "sources": [
             "N",
             "Y"
+          ]
+        },
+        {
+          "term": "包皮過長",
+          "kind": "disease",
+          "subgroup": "小兒外科",
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "尿道下裂",
+          "kind": "disease",
+          "subgroup": "小兒外科",
+          "sources": [
+            "N"
           ]
         }
       ]
@@ -1992,6 +2057,23 @@
             "Y"
           ],
           "note": "2026-09-02 人工改寫，來源原文為「手部外科」。"
+        },
+        {
+          "term": "關節炎",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ]
+        },
+        {
+          "term": "坐骨神經痛",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "Y"
+          ],
+          "rank": 1
         }
       ]
     },
@@ -2162,6 +2244,23 @@
           "sources": [
             "V"
           ]
+        },
+        {
+          "term": "隱睪症",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
+        },
+        {
+          "term": "性病",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ],
+          "rank": 3
         }
       ]
     },
@@ -2278,7 +2377,7 @@
         {
           "term": "不孕症",
           "kind": "disease",
-          "subgroup": "生殖",
+          "subgroup": "生殖醫學科",
           "sources": [
             "N",
             "Y"
@@ -2287,7 +2386,7 @@
         {
           "term": "避孕諮詢",
           "kind": "service",
-          "subgroup": "生殖",
+          "subgroup": "生殖醫學科",
           "sources": [
             "Y"
           ]
@@ -2928,6 +3027,22 @@
           "sources": [],
           "origin": "project",
           "note": "本專案補列。三份來源皆無鼻出血相關條目，但「流鼻血」是高頻主訴，缺此條目會讓使用者落到保底建議。歸耳鼻喉科。"
+        },
+        {
+          "term": "感冒",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [],
+          "origin": "project",
+          "rank": 2
+        },
+        {
+          "term": "咳嗽",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [],
+          "origin": "project",
+          "rank": 1
         }
       ]
     },
@@ -3132,6 +3247,23 @@
           "origin": "project",
           "rank": 1,
           "note": "本專案補列。三份來源皆無帶狀皰疹／皮蛇條目。term 併列醫學名與俗名是刻意的：實測 cos(皮蛇, 帶狀皰疹)=0.817，低於比對門檻——「皮蛇」是對外觀的比喻，與醫學名之間沒有可推導的語意關係，向量推不出來。併列後打「皮蛇」得 0.880，進得了決選。同表的 香港腳、富貴手、五十肩、灰指甲 也是以俗名收錄。 本科排序理由：皮膚病灶與抗病毒藥物治療，抗病毒藥有 72 小時黃金期，列為第一順位。"
+        },
+        {
+          "term": "性病",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ],
+          "rank": 1
+        },
+        {
+          "term": "紅斑性狼瘡",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [
+            "N"
+          ]
         }
       ]
     },
@@ -3355,7 +3487,7 @@
         {
           "term": "注意力不足過動症",
           "kind": "disease",
-          "subgroup": "兒童青少年",
+          "subgroup": "兒童青少年精神科",
           "sources": [
             "V",
             "Y"
@@ -3365,7 +3497,7 @@
         {
           "term": "自閉症類群疾患",
           "kind": "disease",
-          "subgroup": "兒童青少年",
+          "subgroup": "兒童青少年精神科",
           "sources": [
             "V",
             "Y"
@@ -3375,7 +3507,7 @@
         {
           "term": "發展遲緩",
           "kind": "symptom",
-          "subgroup": "兒童青少年",
+          "subgroup": "兒童青少年精神科",
           "sources": [
             "Y"
           ],
@@ -3384,7 +3516,7 @@
         {
           "term": "學習障礙",
           "kind": "symptom",
-          "subgroup": "兒童青少年",
+          "subgroup": "兒童青少年精神科",
           "sources": [
             "Y"
           ],
@@ -3393,7 +3525,7 @@
         {
           "term": "妥瑞氏症",
           "kind": "disease",
-          "subgroup": "兒童青少年",
+          "subgroup": "兒童青少年精神科",
           "sources": [
             "Y"
           ],
@@ -3402,7 +3534,7 @@
         {
           "term": "拒學",
           "kind": "symptom",
-          "subgroup": "兒童青少年",
+          "subgroup": "兒童青少年精神科",
           "sources": [
             "V"
           ],
@@ -3411,7 +3543,7 @@
         {
           "term": "兒童情緒或行為困擾",
           "kind": "symptom",
-          "subgroup": "兒童青少年",
+          "subgroup": "兒童青少年精神科",
           "sources": [
             "V",
             "Y"
@@ -3604,6 +3736,14 @@
           "subgroup": null,
           "sources": [
             "Y"
+          ]
+        },
+        {
+          "term": "腰酸背痛",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [
+            "V"
           ]
         }
       ]
@@ -3820,7 +3960,7 @@
         {
           "term": "身心障礙者牙科照護",
           "kind": "service",
-          "subgroup": "特殊需求",
+          "subgroup": "特殊需求者牙科",
           "sources": [
             "Y"
           ],
@@ -3830,7 +3970,7 @@
         {
           "term": "看牙無法配合的治療",
           "kind": "service",
-          "subgroup": "特殊需求",
+          "subgroup": "特殊需求者牙科",
           "sources": [
             "N"
           ],
@@ -3859,7 +3999,7 @@
         {
           "term": "一般身體不適",
           "kind": "symptom",
-          "subgroup": "初診分流",
+          "subgroup": null,
           "sources": [
             "N",
             "Y"
@@ -3869,7 +4009,7 @@
         {
           "term": "感冒發燒",
           "kind": "disease",
-          "subgroup": "初診分流",
+          "subgroup": null,
           "sources": [
             "N"
           ]
@@ -3877,7 +4017,7 @@
         {
           "term": "疲倦",
           "kind": "symptom",
-          "subgroup": "初診分流",
+          "subgroup": null,
           "sources": [
             "N"
           ]
@@ -3885,7 +4025,7 @@
         {
           "term": "失眠",
           "kind": "symptom",
-          "subgroup": "初診分流",
+          "subgroup": null,
           "sources": [
             "N"
           ]
@@ -3893,7 +4033,7 @@
         {
           "term": "頭痛",
           "kind": "symptom",
-          "subgroup": "初診分流",
+          "subgroup": null,
           "sources": [
             "N"
           ]
@@ -3901,7 +4041,7 @@
         {
           "term": "腰酸背痛",
           "kind": "symptom",
-          "subgroup": "初診分流",
+          "subgroup": null,
           "sources": [
             "N"
           ]
@@ -3909,7 +4049,7 @@
         {
           "term": "三高控制",
           "kind": "service",
-          "subgroup": "慢性病",
+          "subgroup": null,
           "sources": [
             "N"
           ]
@@ -3917,7 +4057,7 @@
         {
           "term": "健康檢查",
           "kind": "service",
-          "subgroup": "預防保健",
+          "subgroup": null,
           "sources": [
             "N",
             "Y"
@@ -3926,7 +4066,7 @@
         {
           "term": "成人疫苗接種",
           "kind": "service",
-          "subgroup": "預防保健",
+          "subgroup": null,
           "sources": [
             "N",
             "Y"
@@ -3935,7 +4075,7 @@
         {
           "term": "戒菸門診",
           "kind": "service",
-          "subgroup": "預防保健",
+          "subgroup": null,
           "sources": [
             "Y"
           ]
@@ -3943,7 +4083,7 @@
         {
           "term": "減重諮詢",
           "kind": "service",
-          "subgroup": "預防保健",
+          "subgroup": null,
           "sources": [
             "N",
             "Y"
@@ -3952,7 +4092,7 @@
         {
           "term": "檢查報告異常追蹤",
           "kind": "service",
-          "subgroup": "初診分流",
+          "subgroup": null,
           "sources": [
             "N"
           ],
@@ -3961,7 +4101,7 @@
         {
           "term": "安寧緩和醫療",
           "kind": "service",
-          "subgroup": "安寧",
+          "subgroup": "安寧緩和科",
           "sources": [
             "Y"
           ]
@@ -3969,7 +4109,7 @@
         {
           "term": "多種藥物整合評估",
           "kind": "service",
-          "subgroup": "高齡醫學",
+          "subgroup": "高齡醫學科",
           "sources": [
             "N",
             "Y"
@@ -3979,7 +4119,7 @@
         {
           "term": "反覆跌倒",
           "kind": "symptom",
-          "subgroup": "高齡醫學",
+          "subgroup": "高齡醫學科",
           "sources": [
             "N",
             "Y"
@@ -3988,7 +4128,7 @@
         {
           "term": "老年衰弱症",
           "kind": "disease",
-          "subgroup": "高齡醫學",
+          "subgroup": "高齡醫學科",
           "sources": [
             "N",
             "Y"
@@ -3997,7 +4137,7 @@
         {
           "term": "老年肌少症",
           "kind": "disease",
-          "subgroup": "高齡醫學",
+          "subgroup": "高齡醫學科",
           "sources": [
             "Y"
           ]
@@ -4005,7 +4145,7 @@
         {
           "term": "譫妄",
           "kind": "symptom",
-          "subgroup": "高齡醫學",
+          "subgroup": "高齡醫學科",
           "sources": [
             "N"
           ]
@@ -4013,7 +4153,7 @@
         {
           "term": "尿失禁",
           "kind": "symptom",
-          "subgroup": "高齡醫學",
+          "subgroup": "高齡醫學科",
           "sources": [
             "N"
           ]
@@ -4021,7 +4161,7 @@
         {
           "term": "營養不良",
           "kind": "symptom",
-          "subgroup": "高齡醫學",
+          "subgroup": "高齡醫學科",
           "sources": [
             "N"
           ]
@@ -4029,7 +4169,7 @@
         {
           "term": "長者整體健康評估",
           "kind": "service",
-          "subgroup": "高齡醫學",
+          "subgroup": "高齡醫學科",
           "sources": [
             "N"
           ],
@@ -4038,7 +4178,7 @@
         {
           "term": "長照諮詢",
           "kind": "service",
-          "subgroup": "高齡醫學",
+          "subgroup": "高齡醫學科",
           "sources": [
             "Y"
           ]
@@ -4051,6 +4191,36 @@
           "origin": "project",
           "rank": 3,
           "note": "本專案補列。三份來源皆無帶狀皰疹／皮蛇條目。term 併列醫學名與俗名是刻意的：實測 cos(皮蛇, 帶狀皰疹)=0.817，低於比對門檻——「皮蛇」是對外觀的比喻，與醫學名之間沒有可推導的語意關係，向量推不出來。併列後打「皮蛇」得 0.880，進得了決選。同表的 香港腳、富貴手、五十肩、灰指甲 也是以俗名收錄。 本科排序理由：初步評估與轉診。"
+        },
+        {
+          "term": "感冒",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [],
+          "origin": "project",
+          "rank": 1
+        },
+        {
+          "term": "高血脂",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [],
+          "origin": "project"
+        },
+        {
+          "term": "氣喘",
+          "kind": "disease",
+          "subgroup": null,
+          "sources": [],
+          "origin": "project"
+        },
+        {
+          "term": "咳嗽",
+          "kind": "symptom",
+          "subgroup": null,
+          "sources": [],
+          "origin": "project",
+          "rank": 2
         }
       ]
     },
@@ -4074,7 +4244,7 @@
         {
           "term": "慢性疼痛",
           "kind": "symptom",
-          "subgroup": "疼痛",
+          "subgroup": "疼痛科",
           "sources": [
             "V",
             "N",
@@ -4084,7 +4254,7 @@
         {
           "term": "長期難以緩解的疼痛",
           "kind": "symptom",
-          "subgroup": "疼痛",
+          "subgroup": "疼痛科",
           "sources": [
             "V",
             "N",
@@ -4095,7 +4265,7 @@
         {
           "term": "癌症疼痛",
           "kind": "symptom",
-          "subgroup": "疼痛",
+          "subgroup": "疼痛科",
           "sources": [
             "V",
             "N",
@@ -4105,7 +4275,7 @@
         {
           "term": "神經痛",
           "kind": "symptom",
-          "subgroup": "疼痛",
+          "subgroup": "疼痛科",
           "sources": [
             "Y"
           ]
@@ -4113,7 +4283,7 @@
         {
           "term": "長期服用止痛藥",
           "kind": "symptom",
-          "subgroup": "疼痛",
+          "subgroup": "疼痛科",
           "sources": [
             "V"
           ]
@@ -4121,7 +4291,7 @@
         {
           "term": "神經阻斷治療",
           "kind": "procedure",
-          "subgroup": "疼痛",
+          "subgroup": "疼痛科",
           "sources": [
             "Y"
           ]
@@ -4583,11 +4753,20 @@
       "decision": "改寫 31 筆帶有院方服務選單口吻的條目（含一組來源不同但同義的重複條目合併），標準醫學名詞一律不動。每條以 note 保留來源原文供溯源。",
       "rationale": "來源是散文式清單（「腹脹、腹瀉、大便不規則、食慾不振…」），表已拆成原子詞。`腹痛`、`咳嗽`、`貧血` 這類是標準醫學名詞、非著作權標的，改寫既無必要又會傷比對——term 同時是卡片顯示文字與向量比對的來源。真正帶著來源機構表達的是 service／screening／procedure 那類服務選單用語（「行為合作困難者牙科治療」「周全性老年評估」「慢性病續方與追蹤」），改寫這些同時改善卡片可讀性與口語命中率。`檢驗結果異常追蹤`（內科）與 `檢查異常結果追蹤`（家醫科）是同一件事的兩種來源寫法，併為 `檢查報告異常追蹤` 後自然成為雙科別條目。",
       "decided_at": "2026-09-02"
+    },
+    {
+      "question": "「嘔吐」「慢性咳嗽」在表上只有兒科一個候選，成人問會拿到兒科，要補嗎？",
+      "decision": "補列於內科（嘔吐→胃腸肝膽、慢性咳嗽→胸腔），以 origin: project、sources: [] 標記。",
+      "rationale": "成因是三份來源的粒度不一致：榮總玉里有一張「小兒科＝15歲以下＋一串症狀」的總表，成大與台大按成人專科分列。凡是「兒童常見且成人也會有」的症狀都會只落在兒科。實測「我感覺噁心、嘔吐，要看哪一科」回傳僅兒科。"
     }
   ],
   "open_questions": [
     "牙醫一般科（184 筆）與家庭牙醫科（25 筆）在資料庫是獨立值，「牙科」的 regex 不會命中它們，與家醫科／家庭醫學科屬同類問題，尚未處理。",
     "各語言的 display 與 aliases 尚未建立，需母語者填寫，不得機器翻譯（見 openspec/changes/symptom-department-guidance）。",
-    "所有 symptoms[].term 目前為來源原文或最小幅度改寫，正式上線前須完成人工改寫（design 決策 11）。"
+    "所有 symptoms[].term 目前為來源原文或最小幅度改寫，正式上線前須完成人工改寫（design 決策 11）。",
+    {
+      "question": "台大雲林的神經外科段落含「頭痛、噁心嘔吐及視力模糊是顱內壓上升的徵象」，要不要抽成條目？",
+      "position": "不抽。那是「三者合併出現時的警訊」敘述，不是掛號病症清單。單獨抽出「嘔吐→神經外科」會把所有嘔吐的人導向神經外科，比現況更糟——與擷取腳本把「中風復健」標成急症是同一種錯。"
+    }
   ]
 }

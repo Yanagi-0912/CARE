@@ -39,6 +39,7 @@ from app.services.medical.symptom_classification.normalizer import (
 from app.services.medical.symptom_classification.symptom_table import (
     MAX_CANDIDATES,
     DepartmentCandidate,
+    SymptomEntry,
     SymptomTable,
 )
 
@@ -56,6 +57,15 @@ PEDIATRIC_DEPARTMENT = "兒科"
 RESULT_SUGGESTION = "suggestion"
 RESULT_FALLBACK = "fallback"
 
+
+def _term_sources(entry: SymptomEntry) -> tuple[str, ...]:
+    """對照表上找得到這個症狀的來源代碼，跨所有科別去重、保留出現順序。"""
+    codes: dict[str, None] = {}
+    for candidate in entry.candidates:
+        for code in candidate.sources:
+            codes.setdefault(code, None)
+    return tuple(codes)
+
 @dataclass(frozen=True)
 class SymptomTriageResult:
     kind: str
@@ -67,6 +77,17 @@ class SymptomTriageResult:
     matched_term: str | None = None
     candidates: tuple[DepartmentCandidate, ...] = field(default_factory=tuple)
     fallback_reason: str | None = None
+
+    term_sources: tuple[str, ...] = field(default_factory=tuple)
+    """對照表中收錄這個症狀的所有來源代碼，含被過濾掉的科別。
+
+    與 candidates[].sources 的差別在於粒度：後者是「這一家把這個症狀掛在這一
+    科」，前者只是「這一家的表上找得到這個症狀」。卡片列出處時優先用前者，
+    只有在候選全無出處時（origin=project 的補列條目）才退到這一層，並在標題
+    寫明是「列在其他科別」——嘔吐就是這樣：榮總玉里的表有收錄，但列在小兒科，
+    成人的候選是本專案補列的內科。退到這一層仍然滿足出處的用途（點進去找得到
+    使用者問的症狀），只是不能宣稱它支持這個科別。
+    """
 
     @property
     def primary_department(self) -> str | None:
@@ -107,11 +128,16 @@ class SymptomDepartmentService:
             return self._fallback(text, "這個症狀可能牽涉多個科別", matched_term=term)
 
         candidates = self._filter_pediatric(entry.candidates, text)
+        if not candidates:
+            return self._fallback(
+                text, "這個症狀在對照表中只列了兒科", matched_term=term
+            )
         return SymptomTriageResult(
             kind=RESULT_SUGGESTION,
             user_input=text,
             matched_term=term,
             candidates=candidates[:MAX_CANDIDATES],
+            term_sources=_term_sources(entry),
         )
 
     def _filter_pediatric(
@@ -121,9 +147,16 @@ class SymptomDepartmentService:
         if is_pediatric_age(get_request_age()) or mentions_child(text):
             return candidates
         without = tuple(c for c in candidates if c.canonical != PEDIATRIC_DEPARTMENT)
-        # 全部濾光代表這個症狀只有兒科看，那就照實回傳——寧可給一個不完全
-        # 適用的科別，也不要回一張空卡或無謂的保底。
-        return without or candidates
+        if without:
+            return without
+        # 濾光有兩種可能，而程式分不出來：
+        #   1. 這個症狀真的只有兒科看（尿床、生長發育遲緩、新生兒照護）
+        #   2. 表缺了成人科別（「嘔吐」曾只有兒科，因為只有榮總玉里在小兒科
+        #      總表裡收錄，成大與台大未單列）
+        # 初版在這裡回傳兒科，於是第 2 種情況會給成人一個明確錯誤的答案。
+        # 改成走保底：第 1 種情況成人本來就不會問，就算問了「家醫科」也比
+        # 「兒科」合理；第 2 種情況則從「錯的答案」降級為「誠實的不確定」。
+        return ()
 
     def _fallback(
         self, text: str, reason: str, *, matched_term: str | None = None
@@ -133,7 +166,7 @@ class SymptomDepartmentService:
                 canonical=name,
                 subgroup=None,
                 facility_count=0,
-                source_count=0,
+                sources=(),
             )
             for name in FALLBACK_DEPARTMENTS
         )

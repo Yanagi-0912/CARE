@@ -192,17 +192,39 @@ def test_hotlines_only_exposed_for_emergency():
 # 代價是這類訊息的回覆不受控——已記錄於模組註解與 openspec 決策 3b。
 
 
-def test_prompt_excludes_suicidal_ideation_from_scope():
+def test_prompt_includes_suicidal_ideation_in_scope():
     """
-    純 LLM 方案裡，範圍限制只能寫在 prompt。這條測試守的是「那段字還在」——
-    它被誰不小心刪掉時，行為會無聲地變回紅色 119 卡。
+    自傷／自盡曾一度被排除在判斷之外，那類訊息因此退回 RAG 自由生成、回覆
+    完全不受控。現在改回納入：出紅卡，並觸發家人通報。純 LLM 方案裡這個範圍
+    只能寫在 prompt，所以把它釘成測試——被刪掉時行為會無聲地變回不受控。
     """
     from app.services.medical.symptom_classification import urgency
 
     prompt = urgency._PROMPT_TEMPLATE
-    assert "不屬於本判斷的範圍" in prompt
-    for phrasing in ("燒炭自殺", "我想跳樓", "不想活了"):
-        assert phrasing in prompt
+    assert "自傷與自盡屬於本判斷的範圍" in prompt
+    assert "「我要燒炭自殺」→ happening_now=true, needs_immediate_care=true" in prompt
+    assert "「我想跳樓」→ happening_now=true, needs_immediate_care=true" in prompt
+
+
+def test_prompt_warns_against_figurative_uses():
+    """
+    「這題難到我想自盡」不是求助。納入範圍之後，誤報的代價從「多一張卡」變成
+    「驚動第三人」，因此 prompt 必須明說判準是「此刻是不是真的處於這個狀態」，
+    不是句子裡有沒有出現那個詞。
+    """
+    from app.services.medical.symptom_classification import urgency
+
+    prompt = urgency._PROMPT_TEMPLATE
+    assert "誇飾" in prompt
+    assert "這題難到我想自盡" in prompt
+    assert "紀錄片" in prompt
+
+
+def test_prompt_forbids_quoting_the_user_in_display():
+    """display 會出現在通報給家人的卡片上，是唯一會離開當事人視線的欄位。"""
+    from app.services.medical.symptom_classification import urgency
+
+    assert "SHALL NOT 引用使用者的原話" in urgency._PROMPT_TEMPLATE
 
 
 def test_prompt_keeps_completed_self_harm_in_scope():

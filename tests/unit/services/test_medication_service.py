@@ -217,6 +217,55 @@ async def test_create_reminders_rejects_medication_belonging_to_other_user():
     assert reminders_repo.created_reminders == []
 
 
+@pytest.mark.asyncio
+async def test_create_reminders_validates_all_slots_before_writing_any():
+    """後面某個時段的藥品驗證失敗時，前面的時段不該先被寫入。
+
+    否則使用者收到 400 後重試整個請求，前面那個時段會撞上剛剛才建立的規則
+    而變成 409——這個端點就再也無法用來建立那個時段了。驗證必須在任何一筆
+    `create_reminder` 呼叫之前，對全部時段的條目一次做完。
+    """
+    fake_medications = FakeMedicationRepository(
+        [Medication(id="M9", user_id="U_OTHER", created_by_user_id="U_OTHER", name="別人的藥")]
+    )
+    reminders_repo = FakeReminderRepository(reminder=None, siblings=[])
+    service = MedicationService(
+        reminder_repository=reminders_repo, medication_repository=fake_medications
+    )
+    req = CreateMedicationReminderRequest(
+        user_id="U_SELF",
+        slots=["morning", "evening"],
+        slot_entries={
+            "evening": [
+                ReminderEntryInput(
+                    meal_timing="none", scheduled_time="18:00", medication_ids=["M9"]
+                )
+            ]
+        },
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        await service.create_reminders(creator_user_id="U_SELF", request=req)
+
+    assert excinfo.value.status_code == 400
+    # 「早」時段的條目完全合法，若驗證是逐時段邊做邊寫，這裡會先被建立成功。
+    assert reminders_repo.created_reminders == []
+
+
+@pytest.mark.asyncio
+async def test_create_reminders_deduplicates_repeated_slots():
+    """同一次請求重複勾選同一個時段（例如手滑點兩下）不該建立兩筆規則
+    ——那正是 409 檢查要防止的事，重複的時段必須先去重才逐一比對與建立。"""
+    reminders_repo = FakeReminderRepository(reminder=None, siblings=[])
+    service = MedicationService(reminder_repository=reminders_repo)
+    req = CreateMedicationReminderRequest(user_id="U_SELF", slots=["morning", "morning"])
+
+    reminders = await service.create_reminders(creator_user_id="U_SELF", request=req)
+
+    assert len(reminders) == 1
+    assert len(reminders_repo.created_reminders) == 1
+
+
 def test_medication_service_no_longer_hand_writes_family_checks():
     """服務層 SHALL NOT 自行判斷「他是不是家人」。
 

@@ -121,13 +121,25 @@ class MedicationService:
         # 檢查——「在族譜裡＝有權」正是本 change 要消滅的語意，留一份在這裡
         # 就會有人以為它還是授權依據，而它比矩陣寬。
 
+        # 去重複但保留順序：同一次請求重複勾選同一個時段（例如手滑點兩下、
+        # 或前端表單重複送出同一個 slot）不該被當成「兩個不同時段」各自通過
+        # 下面的衝突檢查——那正是這個檢查要防止的事，重複的時段會在迴圈裡
+        # 對同一個時段建立兩筆規則。
+        slots = list(dict.fromkeys(request.slots))
+
         # 先把請求的每個時段都檢查過一輪，任一時段已有規則就整批擋下、
         # 不建立任何規則（spec「提醒規則與用藥對象」）。現況是靜默建第二筆，
         # 本 change 收緊成 409——否則詳細頁重複送出、或使用者手滑點兩次，
         # 就會在同一個時段留下兩筆規則，那個時段從此每天收到兩則推播。
+        #
+        # 這裡是「先讀後寫」（TOCTOU），不是像 find_or_create_reminder 那樣
+        # 單一 document 的原子 upsert；兩個幾乎同時送出的建立請求仍可能都
+        # 通過這個檢查、各自成功寫入同一個時段兩筆規則。這個機率遠低於
+        # find_or_create_reminder 說明的情境（那邊完全沒有這道檢查），本
+        # change 不在這裡另外補一套併發防護。
         existing = await self._reminder_repository.list_reminders_by_user(target_user_id)
         occupied_slots = {reminder.slot_type for reminder in existing}
-        conflict = next((slot for slot in request.slots if slot in occupied_slots), None)
+        conflict = next((slot for slot in slots if slot in occupied_slots), None)
         if conflict:
             raise HTTPException(
                 status_code=409,
@@ -135,9 +147,15 @@ class MedicationService:
             )
 
         start_date = request.start_date or _today_date_str()
-        created_reminders: List[MedicationReminder] = []
 
-        for slot in request.slots:
+        # 先把每個時段要建立的條目都算好、把全部條目的藥品歸屬一次驗證完，
+        # 一筆規則都還沒寫入資料庫——不能像過去那樣邊驗證邊建立：若請求的
+        # 後面某個時段驗證失敗，前面的時段已經建立成功，使用者收到 400 後
+        # 重試整個請求，前面那個時段又會撞上剛剛才建立的規則而變成 409，
+        # 這個端點就再也無法用來建立那個時段了（見 spec「提醒規則與用藥
+        # 對象」「時段已有規則」）。
+        entries_by_slot: dict[str, list[ReminderEntry]] = {}
+        for slot in slots:
             # 該時段的 slot_entries 有給就以它為準（飯前／飯後拆批）；否則沿用
             # 既有的單一時刻行為，合成一個單一 none 條目（design 決策 1）。
             if request.slot_entries and slot in request.slot_entries:
@@ -149,16 +167,22 @@ class MedicationService:
                     else DEFAULT_SLOT_TIMES.get(slot, "08:00")
                 )
                 entries = [ReminderEntry(meal_timing="none", scheduled_time=scheduled_time)]
+            entries_by_slot[slot] = entries
 
-            await self._assert_medications_belong(
-                target_user_id, _entry_medication_ids(entries)
-            )
+        await self._assert_medications_belong(
+            target_user_id,
+            _entry_medication_ids(
+                [entry for entries in entries_by_slot.values() for entry in entries]
+            ),
+        )
 
+        created_reminders: List[MedicationReminder] = []
+        for slot in slots:
             reminder = MedicationReminder(
                 creator_user_id=creator_user_id,
                 user_id=target_user_id,
                 slot_type=slot,
-                entries=entries,
+                entries=entries_by_slot[slot],
                 start_date=start_date,
                 end_date=request.end_date,
                 enabled=True,

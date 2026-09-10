@@ -64,11 +64,13 @@ T+0 卡片：標題仍是時段名稱；本文依「飯前 → 飯後 → 其他
 
 LINE 內嵌瀏覽器的觸控拖拉在 iOS 上會與頁面捲動打架，長輩的手指也不穩；而且拖拉需要額外引入函式庫並補無障礙備援。改為每張藥品卡上兩顆 ≥44px 的【飯前】【飯後】切換鈕，按下即移入該區塊、再按移回；視覺上仍是「方塊在區塊之間移動」。
 
-### 8. 詳細設定是整頁路由
+### 8. 詳細設定是同一頁內的整頁檢視，不另開路由
 
-多層（時段 → 飯前/飯後 → 藥品）塞進 dialog 在手機上會變成 dialog 裡再捲動，且要處理焦點鎖定的巢狀問題。改為 `/medications/detailed?target=<userId>` 整頁，第一層四張時段卡（顯示既有條目摘要），點進去是該時段的編輯面：飯前、飯後各一組「啟用＋時間」，下方藥品卡清單（`GET /medications`）與「新增藥品」輸入框。儲存時該時段沒規則走 `POST`（帶 `slot_entries`），有規則走 `PUT`（帶 `entries`）。
+多層（時段 → 飯前/飯後 → 藥品）塞進 dialog 在手機上會變成 dialog 裡再捲動，且要處理焦點鎖定的巢狀問題，所以要做成整頁。但不另開 `/medications/detailed` 路由：`App.tsx` 的 `<main key={location.pathname}>` 會在換路徑時重掛整頁，既有註解（`/knowledge-reports/new`）已記錄 LIFF webview 導頁重掛、重打 API 在長輩裝置上明顯卡頓。改為 `MedicationsPage` 內的 `view: 'list' | 'detailed'` 狀態：詳細檢視取代清單區塊、頂端有返回鈕，對象 chips 與已載入的提醒資料都保留。
 
-新增表單（簡易模式）維持 dialog：每個勾選的時段展開一個時間欄位，預設帶 `DEFAULT_SLOT_TIMES`，送出帶 `slot_times`；底部一顆「詳細設定」導向整頁。
+詳細檢視：第一層四張時段卡（顯示既有條目摘要），點進去是該時段的編輯面：飯前、飯後各一組「啟用＋時間」，下方藥品卡清單（`GET /medications`）與「新增藥品」輸入框。儲存時該時段沒規則走 `POST`（帶 `slot_entries`），有規則走 `PUT`（帶 `entries`）。
+
+新增表單（簡易模式）維持 dialog：每個勾選的時段展開一個時間欄位，預設帶 `DEFAULT_SLOT_TIMES`，送出帶 `slot_times`；底部一顆「詳細設定」切換到上述檢視。
 
 ### 9. API 形狀
 

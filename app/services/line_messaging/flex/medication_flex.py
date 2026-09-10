@@ -257,37 +257,54 @@ def _medication_row_with_button(
     ft: theme.FlexTheme,
     language: str | None,
 ) -> dict[str, Any]:
-    """逐藥確認的一列：既有的 `_medication_row_node` 內容＋右側一顆【已吃】
-    按鈕（spec「逐藥確認」）。
+    """逐藥確認的一列：既有的 `_medication_row_node` 內容＋一顆【已吃】按鈕
+    （spec「逐藥確認」）。
 
-    水平排列，藥品內容吃掉較大比例（flex=2）、按鈕維持 `FlexTheme` 定義的
-    `flex=1`——按鈕本身靠 `paddingAll: lg` 撐出 ≥44px 的可點擊高度，不需要
-    額外調整；文字列本身已有 `wrap: True`，寬度變窄時會自動換行而不是把
-    按鈕擠出畫面外。
+    有縮圖與純文字兩種列，版面刻意不同：
+
+    - 純文字列：水平排列，藥品內容吃掉較大比例（flex=2）、按鈕維持
+      `FlexTheme` 定義的 `flex=1`——按鈕靠 `paddingAll: lg` 撐出 ≥44px 的
+      可點擊高度，不需要額外調整；文字本身已有 `wrap: True`，寬度變窄時會
+      自動換行而不是把按鈕擠出畫面外。
+    - 有縮圖列：縮圖＋藥名維持垂直排列的整列寬度，按鈕改放到下方、同樣佔
+      整列寬度，而不是跟縮圖並排。`_medication_row_node` 的縮圖尺寸
+      （`theme._SIZE_SCALE` 的 "thumbnail"：large 180px／xlarge 200px）
+      是照「認得出藥丸形狀顏色」的需求訂的；如果沿用純文字列的水平
+      flex=2/flex=1 分割，縮圖所在的欄位會被壓縮到約 2/3 列寬，三段字級的
+      縮圖尺寸全部視覺上擠成同一個大小，等於白訂了那個尺寸表。按鈕改放
+      下方後縮圖拿回整列寬度，字級變大時縮圖才真的跟著變大。
     """
-    content_node: dict[str, Any] = {**_medication_row_node(entry, ft), "flex": 2}
     button_label = t("flex.med.button.taken_one", language)
+    button = ft.secondary_button(
+        button_label,
+        {
+            "type": "postback",
+            "label": button_label,
+            "data": (
+                f"action=confirm_medication&log_id={log_id}"
+                f"&medication_id={medication_id}"
+            ),
+            "displayText": t("flex.med.display.taken_one", language).format(
+                name=entry.name
+            ),
+        },
+    )
+    row_node = _medication_row_node(entry, ft)
+    if entry.image_url:
+        return {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "sm",
+            "contents": [row_node, button],
+        }
     return {
         "type": "box",
         "layout": "horizontal",
         "spacing": "sm",
         "alignItems": "center",
         "contents": [
-            content_node,
-            ft.secondary_button(
-                button_label,
-                {
-                    "type": "postback",
-                    "label": button_label,
-                    "data": (
-                        f"action=confirm_medication&log_id={log_id}"
-                        f"&medication_id={medication_id}"
-                    ),
-                    "displayText": t("flex.med.display.taken_one", language).format(
-                        name=entry.name
-                    ),
-                },
-            ),
+            {**row_node, "flex": 2},
+            button,
         ],
     }
 

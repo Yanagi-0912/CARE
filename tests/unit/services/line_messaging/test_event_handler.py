@@ -795,6 +795,59 @@ async def test_handle_postback_event_confirm_medication_per_drug_still_pending_r
 
 
 @pytest.mark.asyncio
+async def test_handle_postback_event_confirm_medication_per_drug_empty_taken_names_falls_back(
+    handler,
+    mock_line_api,
+):
+    """`taken_names_for_log` 查不到藥名時退化回空清單（見該方法註解：查詢
+    失敗只記 log、不往外拋）。這裡不能把空清單 join 出空字串塞進「已記錄：」
+    後面，回覆「已記錄：。還有 2 種：…」看不出記錄了什麼；退回 meds.recorded
+    既有措辭，待確認清單不受影響。"""
+    from datetime import datetime, timezone
+    from app.models.medication import MedicationLog
+    from app.services.line_messaging.flex.medication_flex import (
+        MedicationGroup,
+        MedicationListEntry,
+    )
+
+    mock_med_service = AsyncMock()
+    mock_med_service.confirm_medication.return_value = MedicationLog(
+        reminder_id="R123",
+        user_id="U12345",
+        alert_notify_user_id="U_CARE",
+        slot_type="morning",
+        scheduled_at=datetime.now(timezone.utc),
+        timeout_at=datetime.now(timezone.utc),
+        status="pending",
+        taken_medication_ids=["m1"],
+    )
+    mock_med_service.taken_names_for_log.return_value = []
+    mock_med_service.medication_groups_for_log.return_value = [
+        MedicationGroup(
+            meal_timing="after_meal",
+            scheduled_time="08:30",
+            items=[
+                ("m2", MedicationListEntry(name="利尿劑")),
+                ("m3", MedicationListEntry(name="胃藥")),
+            ],
+        )
+    ]
+    handler._medication_service = mock_med_service
+
+    event = _postback_event(
+        "action=confirm_medication&log_id=L123&medication_id=m1", user_id="U12345"
+    )
+    await handler.handle(event)
+
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    text = reply_req.messages[0].text
+    assert "已記錄：。" not in text
+    assert "已記錄您的服藥狀態！" in text
+    assert "利尿劑" in text
+    assert "胃藥" in text
+
+
+@pytest.mark.asyncio
 async def test_handle_postback_event_confirm_medication_per_drug_completes_replies_flex(
     handler,
     mock_line_api,

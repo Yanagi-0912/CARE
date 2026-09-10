@@ -1084,6 +1084,53 @@ def test_patient_reminder_groups_carry_per_drug_postback_data():
     assert footer_text == "全部已服用"
 
 
+def test_patient_reminder_group_row_with_thumbnail_stacks_button_below_full_width():
+    """有縮圖的逐藥列改成垂直排列（縮圖＋藥名在上、按鈕在下，兩者都吃滿整列
+    寬度），不是跟純文字列一樣水平對半分——水平切半會把縮圖擠到只剩約
+    2/3 列寬，`_medication_row_node` 文件的三段字級尺寸就全部視覺上擠成
+    同一個大小。純文字列仍維持水平排列。"""
+    groups = [
+        MedicationGroup(
+            meal_timing="none",
+            scheduled_time="08:00",
+            items=[
+                (
+                    "m1",
+                    MedicationListEntry(
+                        name="脈優", image_url="https://img.example.com/a.jpg"
+                    ),
+                ),
+                ("m2", MedicationListEntry(name="利尿劑")),
+            ],
+        ),
+    ]
+    msg = build_patient_medication_flex(
+        log_id="L1", slot_type="morning", scheduled_time="08:00", medication_groups=groups
+    )
+    group_block = msg.contents.to_dict()["body"]["contents"][1]
+    # contents[0] 是既有單一清單版面沿用的區塊標題（single none group）。
+    image_row, text_row = group_block["contents"][1], group_block["contents"][2]
+
+    assert image_row["type"] == "box"
+    assert image_row["layout"] == "vertical"
+    image_content_node = image_row["contents"][0]
+    assert any(c["type"] == "image" for c in image_content_node["contents"])
+    button_node = image_row["contents"][-1]
+    assert button_node["action"]["type"] == "postback"
+    assert (
+        button_node["action"]["data"]
+        == "action=confirm_medication&log_id=L1&medication_id=m1"
+    )
+
+    assert text_row["type"] == "box"
+    assert text_row["layout"] == "horizontal"
+    text_button = next(c for c in text_row["contents"] if c.get("action"))
+    assert (
+        text_button["action"]["data"]
+        == "action=confirm_medication&log_id=L1&medication_id=m2"
+    )
+
+
 def test_patient_reminder_single_none_group_has_no_group_heading():
     """只有 none 一個條目時（規則沒有拆分飯前飯後）不顯示分區小標，版面比照
     既有單一清單，只差每列多一顆按鈕。"""

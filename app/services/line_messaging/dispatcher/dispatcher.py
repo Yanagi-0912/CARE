@@ -236,18 +236,29 @@ class LineEventDispatcher:
                         )
                         for (_medication_id, entry) in group.items
                     ]
+                    # `taken_names_for_log` 查不到藥名時退化回空清單（見該
+                    # 方法註解：查詢失敗只記 log、不往外拋）——這裡不能照樣
+                    # `、`.join 出一段空字串塞進「已記錄：」後面，那會回覆
+                    # 「已記錄：。還有 N 種：…」這種看不出記錄了什麼的句子。
+                    # 退回 meds.recorded 的既有措辭，還有幾種待確認的部分
+                    # 不受影響。
+                    taken_text = (
+                        "、".join(taken)
+                        if taken
+                        else t("meds.recorded", language=user_language)
+                    )
                     if remaining:
                         progress_text = t(
                             "meds.progress", language=user_language
                         ).format(
-                            taken="、".join(taken),
+                            taken=taken_text,
                             count=len(remaining),
                             remaining="、".join(remaining),
                         )
                     else:
                         progress_text = t(
                             "meds.progress_none_left", language=user_language
-                        ).format(taken="、".join(taken))
+                        ).format(taken=taken_text)
                     await self._replier.reply(
                         reply_token=reply_token,
                         message_text=progress_text,

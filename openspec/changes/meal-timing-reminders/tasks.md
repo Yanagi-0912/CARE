@@ -11,7 +11,7 @@
 > - 前端：顏色只在 `tokens.css`、字串全走 i18next 六語、觸控 ≥44px、rem 不用 px、表單 react-hook-form + zod、server state 只用 TanStack Query 且 key 進 `queryKeys`。交付前跑 `.claude/skills/care-frontend/SKILL.md` §9 的 lint/test/三條 grep。
 > - `CARE-n8n/` 不動。
 
-## 1. 後端資料模型與欄位登錄
+## Task 1: 後端資料模型與欄位登錄
 
 - [ ] 1.1 `app/models/medication.py`：新增
   - `MealTiming = Literal["before_meal", "after_meal", "none"]`、`MEAL_TIMING_ORDER: tuple[str, ...] = ("before_meal", "after_meal", "none")`（推播分區與排序的唯一依據）。
@@ -28,7 +28,7 @@
 - [ ] 1.3 測試 `tests/unit/models/test_medication_models.py`：舊文件（無 `entries`）讀回合成單一 `none` 條目且 `timeout_anchor_time == scheduled_time`；兩條目時 `scheduled_time` 取最早、`timeout_anchor_time` 取最晚、`medication_ids` 為聯集；重複 `meal_timing` 拒絕；同一藥品跨條目拒絕；`slot_entries` 的 `"9am"` 拒絕；`MedicationLog` 缺 `urgent_at` / `taken_medication_ids` 讀回為 `None` / `[]`。`tests/unit/models/test_family_authorization.py` 既有守門測試須維持通過。
 - [ ] 1.4 `python -m pytest tests/unit/models -q` 全綠；commit `feat(medication): 提醒規則新增飯前飯後條目模型`。
 
-## 2. Repository 層
+## Task 2: Repository 層
 
 - [ ] 2.1 `MedicationReminderRepository.find_or_create_reminder`：`$setOnInsert` 加 `"entries": [{"meal_timing": "none", "scheduled_time": scheduled_time, "medication_ids": []}]` 與 `"timeout_anchor_time": scheduled_time`。更新 `tests/unit/repositories/test_medication_repository.py::test_find_or_create_reminder_upserts_atomically` 的斷言。
 - [ ] 2.2 `MedicationReminderRepository.link_medications_to_reminder(reminder_id, medication_ids, collection=None)` 改為三個各自原子、冪等的更新（順序固定）：
@@ -46,7 +46,7 @@
   - 測試：雙分支查詢形狀、`add_taken_medication` 的 `$addToSet`、`mark_as_taken` 帶 ids、`resync` 只改 `urgent_at/timeout_at` 的情境。
 - [ ] 2.6 `python -m pytest tests/unit/repositories -q` 全綠；commit `feat(medication): repository 支援條目、逐藥確認與催促基準`。
 
-## 3. Service 層
+## Task 3: Service 層
 
 - [ ] 3.1 `MedicationService.create_reminders`：
   - 先 `self._reminder_repository.list_reminders_by_user(target)`，請求的任一時段已有規則 → `HTTPException(409, "時段 X 已有用藥提醒")`，不建立任何規則。
@@ -66,7 +66,7 @@
 - [ ] 3.6 測試 `tests/unit/services/test_medication_service.py`（沿用 `_service_with_fakes` 的 fake repo 模式，把 `FakeReminderRepository` 補上 `create_reminder`、`FakeLogRepository` 補上 `get_log_by_id`/`mark_as_taken`/`add_taken_medication`，新增 `FakeMedicationRepository.find_active_by_ids`/`list_by_user`/`create_one`）：409 重複時段；`slot_entries` 建立的派生值；他人藥品 400；多條目帶 `scheduled_time` 400；只改飯後時刻觸發帶 `urgent_at/timeout_at` 的 resync；逐藥確認未到齊維持 pending 並回覆剩餘；到齊轉 taken；停用藥不擋完成；整批確認寫入全部 ids。既有以 `patch(...)` 寫的 `create_reminders`/`confirm_medication` 測試改為 DI。
 - [ ] 3.7 `python -m pytest tests/unit/services/test_medication_service.py -q` 全綠；commit `feat(medication): 服務層支援條目建立更新與逐藥確認`。
 
-## 4. Router 與 OCR 路徑
+## Task 4: Router 與 OCR 路徑
 
 - [ ] 4.1 `app/routers/users/medications.py` 新增：
   - `GET ""`（`response_model=List[Medication]`, `response_model_by_alias=False`, `user_id: Optional[str] = Query(None)`）：本人直接回；他人 `authz.authorize(op, user, "GENERAL", "READ", has_legacy_equivalent=False)` 後 `mask_response([...], "medication", op, user)`。
@@ -76,7 +76,7 @@
 - [ ] 4.3 `app/services/medication/prescription_scan_service.py` `_link_reminders` 程式不變；`_ReminderRepository` Protocol 不變。補一個測試：`FakeReminderRepository` 的規則帶飯前飯後條目時，提交後 `links` 仍只記錄 `(reminder_id, [medication_id])`（證明 OCR 路徑不碰條目）。
 - [ ] 4.4 `python -m pytest tests/unit/routers tests/unit/services/medication -q` 全綠；commit `feat(medication): 藥品列出與手動新增端點`。
 
-## 5. 排程器
+## Task 5: 排程器
 
 - [ ] 5.1 `medication_scheduler.py` `process_ticks`：展開紀錄時 `anchor_dt = strptime(today + reminder.timeout_anchor_time)`；`urgent_at = anchor_dt + 20min`、`timeout_at = anchor_dt + 30min` 寫進 `MedicationLog(...)`。階段 2 改呼叫 `list_pending_urgent_reminders(threshold_time=current_time)`。misfire 判定仍用 `scheduled_dt`。
 - [ ] 5.2 `_TickMedicationNameCache` 新增 `get_groups(log) -> list[MedicationGroup]`：以既有 `_load` 的 reminders/medications 批次資料，按 `reminder.entries` 分組、排除 `log.taken_medication_ids`；`get_entries` 維持（供家屬警報與完成卡）。
@@ -84,7 +84,7 @@
 - [ ] 5.4 `tests/unit/services/test_medication_scheduler.py`：飯前 07:30／飯後 08:30 規則於 07:30 展開的 log 帶 `urgent_at=08:50`、`timeout_at=09:00`；階段 2 以 `now` 呼叫；`get_groups` 分組與排除已確認藥品（`collection=` 注入風格）。既有守門測試 `test_process_ticks_builds_exactly_one_cache_per_stage_outside_the_loop` 維持。
 - [ ] 5.5 `python -m pytest tests/unit/services/test_medication_scheduler.py -q` 全綠；commit `feat(medication): 排程器以最晚條目時刻計算催促與逾時`。
 
-## 6. Flex、i18n 與 postback
+## Task 6: Flex、i18n 與 postback
 
 - [ ] 6.1 `app/i18n/messages.py` 新增六語：`meal.before_meal`（飯前 / Before meal / Sebelum makan / Trước ăn / ก่อนอาหาร / 食前）、`meal.after_meal`（飯後 / After meal / Sesudah makan / Sau ăn / หลังอาหาร / 食後）、`meal.none`（其他 / Other / Lainnya / Khác / อื่น ๆ / その他）、`flex.med.group_heading`（`{meal}　{time}`）、`flex.med.button.taken_one`（已吃 / Taken / Sudah / Đã uống / ทานแล้ว / 服用済み）、`flex.med.display.taken_one`（`我吃了 {name}`）、`flex.med.button.taken_all`（全部已服用 / All taken / …）、`meds.progress`（`已記錄：{taken}。還有 {count} 種：{remaining}`）、`meds.progress_none_left`（`已記錄：{taken}`）。`tests/unit/i18n` 既有的六語完整性測試須過。
 - [ ] 6.2 `medication_flex.py`：
@@ -94,27 +94,27 @@
 - [ ] 6.4 測試 `tests/unit/services/line_messaging/test_medication_flex.py`（分組小標、逐藥 postback data、單一 none 組無小標、無藥品時版面與舊版相同）、`tests/unit/services/line_messaging/test_event_handler.py`（逐藥 postback 未到齊回純文字、到齊回 Flex；fake service 記錄呼叫參數）。
 - [ ] 6.5 `python -m pytest tests/unit/services/line_messaging tests/unit/i18n -q` 全綠；commit `feat(line): 服藥提醒依飯前飯後分區並支援逐藥確認`。
 
-## 7. 後端收尾
+## Task 7: 後端收尾
 
 - [ ] 7.1 `bash init.sh` 全綠；`.env.example` 不需新變數。
 - [ ] 7.2 更新 `openspec/specs/medication-reminders/spec.md` 與 `medication-identification/spec.md`：把 `openspec/changes/meal-timing-reminders/specs/*` 的 ADDED / MODIFIED 條文合併進 living spec（本機沒有 `openspec` CLI，手動合併）。
 - [ ] 7.3 commit `docs(openspec): 合併 meal-timing-reminders 的 spec 條文`。
 
-## 8. 前端：型別、API、i18n
+## Task 8: 前端：型別、API、i18n
 
 - [ ] 8.1 `src/types/medication.ts`：`MealTiming`、`MEAL_TIMING_ORDER`、`MEAL_LABEL_KEY: Record<MealTiming, string>`（`meds.meal.before_meal` 等）、`ReminderEntry { meal_timing; scheduled_time; medication_ids }`；`MedicationReminder` 加 `entries: ReminderEntry[]`、`timeout_anchor_time: string`；`CreateRemindersRequest` 加 `slot_times?: Partial<Record<MedicationSlotType, string>>`、`slot_entries?: Partial<Record<MedicationSlotType, ReminderEntry[]>>`；`UpdateReminderRequest` 加 `entries?: ReminderEntry[]`；`CreateMedicationRequest { user_id; name }`。修正 `DEFAULT_SLOT_TIMES` 上「新增請求不帶 slot_times」的註解。
 - [ ] 8.2 `src/api/medicationApi.ts`：`fetchMedications(targetUserId?) -> Medication[]`（`GET /api/medications?user_id=`）、`createMedication(req) -> Medication`（`POST /api/medications`）；修正 `createReminders` 的註解。`src/lib/queryClient.ts` 加 `medicationList: (targetUserId?) => ['medication-list', targetUserId ?? 'self'] as const`。
 - [ ] 8.3 `src/i18n/medicationMessages.ts` 六語新增：`meds.meal.before_meal`、`meds.meal.after_meal`、`meds.meal.none`、`meds.add.timeField`（提醒時間）、`meds.add.timeNote` 改寫為「可直接調整時間；需要飯前飯後分開提醒請用詳細設定」、`meds.add.detailed`（詳細設定）、`meds.detailed.title`、`meds.detailed.back`、`meds.detailed.slotSummaryEmpty`（尚未設定）、`meds.detailed.entrySummary`（`{{meal}} {{time}} · {{count}} 種藥`）、`meds.detailed.enableTiming`（`提醒{{meal}}`）、`meds.detailed.timeFor`（`{{meal}}時間`）、`meds.detailed.medsHeading`（藥品）、`meds.detailed.assignTo`（`放到{{meal}}`）、`meds.detailed.unassigned`（未指派）、`meds.detailed.noMeds`、`meds.detailed.addMedName`、`meds.detailed.addMed`、`meds.detailed.addMedSuccess`、`meds.detailed.needTiming`（請至少開啟一個時機）、`meds.detailed.save`、`meds.detailed.saveSuccess`、`meds.edit.multiEntryNote`（此提醒有飯前飯後多個時間，請到詳細設定調整）、`meds.edit.openDetailed`。跑 `npx vitest run src/tests/i18n.test.ts`。
 - [ ] 8.4 `npm run build` 通過；commit `feat(medications): 飯前飯後條目的型別、API 與文案`。
 
-## 9. 前端：新增表單可設時間 + 詳細設定入口
+## Task 9: 前端：新增表單可設時間 + 詳細設定入口
 
 - [ ] 9.1 `ReminderFormDialog.tsx`：schema 加 `slotTimes: z.record(z.enum(SLOT_TYPES), z.string().regex(/^\d{2}:\d{2}$/))`，預設 `DEFAULT_SLOT_TIMES`；每個勾選的時段在卡片**下方**（`FieldLabel` 之外，避免點時間觸發 checkbox）渲染 `<Input type="time" id={`slot-time-${slot}`} aria-label={t('meds.add.timeField')}>`；`onSubmit` 改為 `(payload: { slots; slotTimes; startDate; endDate? }) => Promise<void>`；新增 `onOpenDetailed: () => void` prop，footer 左側加 `variant="outline"` 的「詳細設定」鈕（關閉 dialog 並切換檢視）。
 - [ ] 9.2 `index.tsx`：`handleCreate` 送 `slot_times`；新增 `view` 狀態（見 10.x）。
 - [ ] 9.3 `src/tests/medications.test.tsx`：更新 `vi.mock` 工廠補 `fetchMedications`/`createMedication`；新增「勾選早改 07:30 後送出帶 slot_times」測試；既有測試對齊。
 - [ ] 9.4 `npm run test` 全綠；commit `feat(medications): 新增提醒時可直接設定時間`。
 
-## 10. 前端：詳細設定檢視
+## Task 10: 前端：詳細設定檢視
 
 - [ ] 10.1 `src/pages/Medications/useMedicationList.ts`：`useMedicationList(targetUserId?)` → `{ medications, loading, addMedication(name) }`（`useQuery(queryKeys.medicationList)` + `useMutation(createMedication)` 成功後 `setQueryData` 追加）。
 - [ ] 10.2 `src/pages/Medications/DetailedSetupView.tsx`：props `{ targetUserId?: string; targetName: string; reminders: MedicationReminder[]; onBack(); onCreate(slot, entries, startDate); onUpdate(reminderId, entries) }`。第一層：`ItemGroup` 四張時段卡（`SLOT_TONE` 徽章、條目摘要或「尚未設定」），點擊進入 `SlotEntryEditor`。
@@ -123,19 +123,19 @@
 - [ ] 10.5 `src/tests/medicationsDetailed.test.tsx`：打開詳細設定 → 點「早」→ 開飯前 07:30、飯後 08:30 → 指派兩顆藥 → 儲存，斷言 `createReminders` 收到的 `slot_entries`；既有規則走 `updateReminder` 帶 `entries`；未開任何時機顯示錯誤；新增藥品後出現在清單。
 - [ ] 10.6 `npm run test` 全綠；commit `feat(medications): 詳細設定檢視可設定飯前飯後並指派藥品`。
 
-## 11. 前端：卡片與編輯視窗
+## Task 11: 前端：卡片與編輯視窗
 
 - [ ] 11.1 `ReminderCard.tsx`：`entries.length > 1` 或含非 `none` 條目時，在日期列下方列出每個條目一行 `Badge`（`meds.meal.*`）＋時間（`num`）＋藥名（以 `medications` 依 id 對照）；單一 `none` 條目維持原版面。`aria-label` 沿用。
 - [ ] 11.2 `ReminderEditDialog.tsx`：`reminder.entries.length > 1` 時隱藏時間欄位，改顯示 `meds.edit.multiEntryNote` 與「到詳細設定調整」按鈕（新增 prop `onOpenDetailed(reminder)`）；其餘欄位照舊。`index.tsx` 接上（切到 detailed 並預選該時段：`DetailedSetupView` 加 `initialSlot?: MedicationSlotType`）。
 - [ ] 11.3 測試：卡片顯示兩條目；多條目編輯無時間欄位且按鈕切換檢視。`npm run test` 全綠；commit `feat(medications): 提醒卡與編輯視窗呈現飯前飯後條目`。
 
-## 12. 前端收尾與 e2e
+## Task 12: 前端收尾與 e2e
 
 - [ ] 12.1 `e2e/medications.spec.ts`：`page.route('**/api/medications/**')` 與 `**/api/medications?user_id=*` stub（含 OPTIONS 204 與 CORS 標頭，比照 `personalhealth.spec.ts`），`localStorage` 設 `CARE_AUTH_TOKEN` 與 `CARE_LINE_USER_ID`；一條流程：新增表單改時間送出 → 詳細設定建立飯前飯後 → 卡片顯示兩行。本機只跑 `npx playwright test e2e/medications.spec.ts --project=chromium`（WebKit 缺系統函式庫）。
 - [ ] 12.2 依 SKILL.md §9：`npm run lint`、`npm run test`、`npm run build`、三條 grep（字面色 0、Tailwind 色階 0、hardcode 中文不新增）。四種主題與 16/20/24px 字級以 dev server 目視（併入 13.x 手動測試）。
 - [ ] 12.3 commit `test(e2e): 飯前飯後提醒設定流程`。
 
-## 13. 手動測試環境（交付前）
+## Task 13: 手動測試環境（交付前）
 
 - [ ] 13.1 後端：`cd CARE && APP_ROLE=api CORS_ALLOW_ORIGINS=http://localhost:5173 .venv/bin/uvicorn app.main:app --port 8000`（`APP_ROLE=api` 關掉排程器，不會真的推 LINE 訊息；連的是 `.env` 的 MongoDB）。
 - [ ] 13.2 假登入：以 `AUTH_JWT_SECRET`（預設 `dev-only-change-me`）用 PyJWT 簽 `{"sub": "U_MANUAL_TEST", "iss": "care-backend", "exp": ...}`，寫成 `scratchpad/manual-login.js` 供瀏覽器 console 貼上：`localStorage.setItem('CARE_AUTH_TOKEN', ...)`、`localStorage.setItem('CARE_LINE_USER_ID', 'U_MANUAL_TEST')`。

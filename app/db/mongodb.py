@@ -127,6 +127,14 @@ class MongoDBManager:
         return cls.get_database()["medications"]
 
     @classmethod
+    def get_appointment_reminders_collection(cls):
+        """
+        取得 appointment_reminders collection（掛號提醒；單次事件，推播階段的
+        旗標直接存在同一份文件上，沒有另外的 log collection）
+        """
+        return cls.get_database()["appointment_reminders"]
+
+    @classmethod
     def get_prescription_drafts_collection(cls):
         """
         取得 prescription_drafts collection

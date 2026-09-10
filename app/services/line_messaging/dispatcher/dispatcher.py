@@ -32,6 +32,14 @@ from app.core.user_language import (
 from app.core.request_logging import log_done, log_start
 from app.i18n.messages import t
 from app.models.medication import to_taipei_hm
+from app.services.appointment.appointment_service import AppointmentError
+from app.services.line_messaging.flex.appointment_flex import (
+    ATTEND_ACTION,
+    DEPART_ACTION,
+    build_report_ack_flex,
+    format_hm,
+    format_when,
+)
 from app.services.line_messaging.flex.medication_flex import build_patient_medication_flex
 from app.services.line_messaging.handler.message_handler import (
     LineMessageHandler,
@@ -80,6 +88,7 @@ class LineEventDispatcher:
         replier: LineReplier,
         medication_service=None,
         medical_news_share_service=None,
+        appointment_service=None,
     ):
         self._message_handler = message_handler
         self._media_handler = media_handler
@@ -90,6 +99,8 @@ class LineEventDispatcher:
         # 未設定時該 postback 分支只記 log，與 _medication_service 為 None 時的
         # 既有處理一致——功能沒開不該讓事件處理拋錯。
         self._medical_news_share_service = medical_news_share_service
+        # 掛號提醒卡片上的「我已出發／我已到診」。未設定時同樣只記 log。
+        self._appointment_service = appointment_service
 
 
     async def handle(self, event: MessageEvent) -> None:
@@ -226,6 +237,14 @@ class LineEventDispatcher:
                     voice_reply_enabled=False,
                     language=user_language,
                 )
+        elif action in (DEPART_ACTION, ATTEND_ACTION):
+            await self._handle_appointment_report(
+                action=action,
+                appointment_id=params.get("appointment_id", [""])[0],
+                reply_token=reply_token,
+                user_id=user_id,
+                user_profile=user_profile,
+            )
         elif action == "share_medical_news":
             news_ref = params.get("news_ref", [""])[0]
             if not news_ref:
@@ -286,6 +305,80 @@ class LineEventDispatcher:
             )
         else:
             logger.warning("Unknown postback action: %s", action)
+
+    async def _handle_appointment_report(
+        self,
+        *,
+        action: str,
+        appointment_id: str,
+        reply_token: str,
+        user_id: str,
+        user_profile,
+    ) -> None:
+        """掛號提醒卡片上的「我已出發／我已到診」。
+
+        本人與家屬收到同一張卡、同一顆按鈕，按下的人就是回報者。授權與狀態轉移
+        都在 AppointmentService——與 LIFF 的 POST .../depart、.../attend 同一條路——
+        這裡只負責把結果換成回覆。
+
+        LINE 不能修改已送出的訊息：原本那張卡片上的按鈕之後仍然按得下去。所以回覆
+        的是一張新的「已記錄」卡片；之後有人再按同一顆按鈕（例如另一位家屬），服務層
+        冪等回傳現況，這裡回覆同一張「已記錄」卡片，上面寫著原本是誰在幾點回報的。
+        """
+        if not appointment_id:
+            logger.warning("%s postback missing appointment_id", action)
+            return
+        if self._appointment_service is None:
+            logger.warning("%s postback but appointment service not configured", action)
+            return
+
+        language = self._language_from_profile(user_profile)
+        font_size = self._font_size_from_profile(user_profile)
+        service = self._appointment_service
+        try:
+            if action == DEPART_ACTION:
+                reminder = await service.depart(appointment_id, user_id)
+            else:
+                reminder = await service.attend(appointment_id, user_id)
+        except AppointmentError as exc:
+            await self._replier.reply(
+                reply_token=reply_token,
+                message_text=exc.localized(language),
+                user_id=user_id,
+                voice_reply_enabled=False,
+                language=language,
+            )
+            return
+
+        kind = "departed" if action == DEPART_ACTION else "attended"
+        reported_at = reminder.departed_at if kind == "departed" else reminder.attended_at
+        reporter_id = (
+            reminder.departed_by_user_id if kind == "departed" else reminder.attended_by_user_id
+        )
+        fallback_name = t("flex.appt.fallback_name", language=language)
+        if reporter_id == user_id:
+            reporter_name = t("flex.appt.you", language=language)
+        else:
+            reporter_name = await service.display_name(reporter_id) or fallback_name
+        patient_name = None
+        if reminder.user_id != user_id:
+            patient_name = await service.display_name(reminder.user_id) or fallback_name
+
+        ack = build_report_ack_flex(
+            kind=kind,
+            when_text=format_when(reminder.local_appointment_at, language),
+            hospital_name=reminder.hospital_name,
+            reported_time=format_hm(reminder.local(reported_at)) if reported_at else "",
+            reporter_name=reporter_name,
+            patient_name=patient_name,
+            language=language,
+            font_size=font_size,
+        )
+        await self._replier.reply_flex(
+            reply_token=reply_token,
+            flex_message=ack,
+            user_id=user_id,
+        )
 
 
     async def _handle_unsupported_event(self, event) -> None:

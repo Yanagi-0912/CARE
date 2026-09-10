@@ -1,16 +1,8 @@
-import asyncio
 import logging
-from contextlib import suppress
 from datetime import datetime, timedelta
 from functools import partial
-from typing import Any, Awaitable, Callable, NamedTuple, Optional
+from typing import Any, Callable, Optional
 
-from app.core import scheduler_heartbeat
-from app.core.user_font_size import (
-    DEFAULT_USER_FONT_SIZE,
-    normalize_user_font_size,
-)
-from app.core.user_language import DEFAULT_USER_LANGUAGE, normalize_user_language
 from app.models.medication import (
     DEFAULT_MISFIRE_GRACE_MINUTES,
     TAIPEI_TZ,
@@ -36,6 +28,7 @@ from app.services.line_messaging.reply.reply import LineReplier
 from app.services.medication.drug_appearance_image_service import (
     resolve_drug_appearance_image_url,
 )
+from app.services.scheduling.push_tick_scheduler import PushTickScheduler, RecipientPrefs
 from app.services.users.user_profile_service import UserProfileService
 
 logger = logging.getLogger(__name__)
@@ -46,20 +39,9 @@ logger = logging.getLogger(__name__)
 HEARTBEAT_NAME = "medication"
 
 
-class _RecipientPrefs(NamedTuple):
-    """一位收件人的呈現偏好與通知意願。
-
-    `notify_reminder` 與 `notify_family` 在 UserSettings 與 LIFF 設定頁上存在
-    已久，但後端從來沒有讀過它們——使用者把開關關掉，推播照送。UI 對使用者
-    說謊，而這件事不報錯、不留 log，只表現為「我明明關了還是一直收到」，
-    使用者多半會歸咎於自己按錯或直接封鎖官方帳號。這個型別是把它們真正接上
-    的那一步。
-    """
-
-    language: str
-    font_size: str
-    notify_reminder: bool
-    notify_family: bool
+# 收件人偏好的型別已移到與掛號提醒共用的排程骨架（push_tick_scheduler）；
+# 這個名稱保留給既有的 import。
+_RecipientPrefs = RecipientPrefs
 
 
 class _TickMedicationNameCache:
@@ -245,13 +227,19 @@ class _TickMedicationNameCache:
         return entries_by_log_id
 
 
-class MedicationScheduler:
+class MedicationScheduler(PushTickScheduler):
     """
     雙階遞進定時排程引擎 (MedicationScheduler)
     1. T+0min  首刷提醒建立與推播
     2. T+20min 第二次溫馨催促推播 (若逾時未用藥)
     3. T+30min 第三次家屬逾時通報警報 (若仍未用藥)
+
+    迴圈、心跳、推播權搶佔與收件人偏好解析在 `PushTickScheduler`，與掛號提醒
+    （`AppointmentScheduler`）共用；這裡只剩用藥特有的展開判定與三階文案。
     """
+
+    HEARTBEAT_NAME = HEARTBEAT_NAME
+    LOG_PREFIX = "[MedicationScheduler]"
 
     def __init__(
         self,
@@ -263,9 +251,11 @@ class MedicationScheduler:
         log_repository=MedicationLogRepository,
         medication_repository=MedicationRepository,
     ) -> None:
-        self._replier = replier
-        self._user_profile_service = user_profile_service
-        self._check_interval_seconds = check_interval_seconds
+        super().__init__(
+            replier=replier,
+            user_profile_service=user_profile_service,
+            check_interval_seconds=check_interval_seconds,
+        )
         self._misfire_grace_minutes = misfire_grace_minutes
         # 三個 repository 全部走注入，預設就是真正的那三個 class（方法皆為
         # staticmethod，傳 class 本身即可當成物件用），因此正式路徑的行為與
@@ -275,7 +265,6 @@ class MedicationScheduler:
         self._reminder_repository = reminder_repository
         self._log_repository = log_repository
         self._medication_repository = medication_repository
-        self._task: Optional[asyncio.Task] = None
 
     def _medication_cache(self, logs: list[MedicationLog]) -> _TickMedicationNameCache:
         """建立一個階段共用的藥名查表，並把注入的 repository 帶下去。
@@ -288,92 +277,6 @@ class MedicationScheduler:
             reminder_repository=self._reminder_repository,
             medication_repository=self._medication_repository,
         )
-
-    async def _resolve_display_prefs(self, user_id: str) -> tuple[str, str]:
-        """
-        取得收件人的語言與字級設定。
-        排程是背景工作，沒有 request context，因此每則推播都需按收件人各自解析。
-        """
-        prefs = await self._resolve_prefs(user_id)
-        return prefs.language, prefs.font_size
-
-    async def _resolve_prefs(self, user_id: str) -> "_RecipientPrefs":
-        """收件人的語言、字級，以及他要不要收這兩類通知。
-
-        三者一次取回：它們來自同一份 profile，分開查會讓每則推播多打一次
-        資料庫，而這是逐筆推播的迴圈，成本會乘上待推播數。
-
-        **開關看的是收件人自己的設定**，不是被通報對象的。每個人只決定自己
-        收到什麼——用藥者不該替家屬決定要不要被通報，家屬也不該替用藥者關掉
-        提醒。
-
-        載入失敗時回傳預設值並視為兩者皆開啟：缺資料時沿用預設，與本專案其他
-        降級方向一致。反過來（失敗即不送）會讓一次資料庫抖動變成整批服藥提醒
-        靜默消失，那是本能力最不該發生的事。
-        """
-        if not self._user_profile_service or not user_id:
-            return _RecipientPrefs(
-                DEFAULT_USER_LANGUAGE, DEFAULT_USER_FONT_SIZE, True, True
-            )
-        try:
-            profile = await self._user_profile_service.get_user_profile(user_id)
-        except Exception:
-            logger.exception(
-                "[MedicationScheduler] Failed to load display prefs for user %s", user_id
-            )
-            return _RecipientPrefs(
-                DEFAULT_USER_LANGUAGE, DEFAULT_USER_FONT_SIZE, True, True
-            )
-
-        settings = (profile or {}).get("settings") or {}
-        return _RecipientPrefs(
-            normalize_user_language(settings.get("language")),
-            normalize_user_font_size(settings.get("font_size")),
-            # 欄位缺席時視為開啟——既有使用者的文件沒有這兩欄，不需要 backfill。
-            bool(settings.get("notify_reminder", True)),
-            bool(settings.get("notify_family", True)),
-        )
-
-    async def _dispatch(
-        self,
-        *,
-        stage: str,
-        log_id: str,
-        claim: Callable[[str], Awaitable[bool]],
-        release: Callable[[str], Awaitable[bool]],
-        send: Callable[[], Awaitable[bool]],
-    ) -> None:
-        """
-        推播權搶佔 → 推播 → 失敗還原。
-
-        三個階段共用同一套流程，差別只在旗標與訊息內容。搶佔的理由見
-        `MedicationLogRepository` 的「推播權搶佔」段落：查詢與標記之間沒有原子性，
-        多實例並存時會重複推播。
-        """
-        try:
-            claimed = await claim(log_id)
-        except Exception:
-            logger.exception(
-                "[MedicationScheduler] Failed to claim %s for log %s", stage, log_id
-            )
-            return
-
-        if not claimed:
-            # 旗標已被其他實例搶走，或先前的 tick 已送出。
-            return
-
-        try:
-            sent = await send()
-        except Exception:
-            logger.exception(
-                "[MedicationScheduler] Failed to process %s for log %s", stage, log_id
-            )
-            sent = False
-
-        if not sent:
-            # 推播沒成功就把推播權還回去，下一個 tick 會重新搶佔並重試。
-            with suppress(Exception):
-                await release(log_id)
 
     async def _send_patient_reminder(
         self, log: MedicationLog, medication_cache: _TickMedicationNameCache
@@ -422,18 +325,6 @@ class MedicationScheduler:
             font_size=font_size,
         )
         return await self._replier.push_flex(log.user_id, urgent_flex)
-
-    async def _resolve_patient_name(self, user_id: str) -> str:
-        """取得用藥者的顯示名稱；查不到時回退為泛稱。"""
-        if not self._user_profile_service:
-            return "成員"
-        try:
-            profile = await self._user_profile_service.get_user_profile(user_id)
-            if profile and isinstance(profile, dict) and profile.get("name"):
-                return profile["name"]
-        except Exception:
-            pass
-        return "成員"
 
     async def _send_caregiver_alert(
         self, log: MedicationLog, medication_cache: _TickMedicationNameCache
@@ -576,38 +467,6 @@ class MedicationScheduler:
                     "[MedicationScheduler] Failed to send missed-slot summary to %s",
                     caregiver_id,
                 )
-
-    def start(self) -> None:
-        if self._task is not None and not self._task.done():
-            return
-        # 登記心跳：排程器與 API 拆成不同 pod 之後，這是 K8s 唯一能判斷
-        # 「排程器還在跑」的依據——uvicorn 活著不代表這個 task 還在。
-        scheduler_heartbeat.register(
-            HEARTBEAT_NAME, expected_interval_seconds=self._check_interval_seconds
-        )
-        self._task = asyncio.create_task(self._run_loop())
-        logger.info("[MedicationScheduler] Background scheduler started")
-
-    async def stop(self) -> None:
-        if self._task is None or self._task.done():
-            return
-        self._task.cancel()
-        with suppress(asyncio.CancelledError):
-            await self._task
-        logger.info("[MedicationScheduler] Background scheduler stopped")
-
-    async def _run_loop(self) -> None:
-        while True:
-            try:
-                await self.process_ticks()
-            except Exception:
-                logger.exception("[MedicationScheduler] Error during tick execution")
-            # 心跳放在 except 之外：單次 tick 失敗（例如資料庫瞬斷）不代表排程器
-            # 停擺，迴圈本身仍在轉，重啟這個 pod 只會讓情況更糟——重啟期間錯過
-            # 的時段不會補推。心跳要回答的是「這個迴圈還在不在」，不是「這一輪
-            # 有沒有成功」。
-            scheduler_heartbeat.beat(HEARTBEAT_NAME)
-            await asyncio.sleep(self._check_interval_seconds)
 
     async def process_ticks(self, now: Optional[datetime] = None) -> None:
         """執行一次排程檢查 (可代入特定的 now 時間供單元測試或實機測試)"""

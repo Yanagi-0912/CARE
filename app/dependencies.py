@@ -28,6 +28,7 @@ from app.repositories.knowledge_report_preview_repository import (
     KnowledgeReportPreviewRepository,
 )
 from app.repositories.knowledge_report_repository import KnowledgeReportRepository
+from app.repositories.appointment_repository import AppointmentReminderRepository
 from app.repositories.medication_repository import (
     MedicationRepository,
     MedicationReminderRepository,
@@ -36,6 +37,10 @@ from app.repositories.prescription_draft_repository import PrescriptionDraftRepo
 from app.repositories.safety_alert_repository import SafetyAlertRepository
 from app.repositories.user_profile_repository import UserProfileRepository
 from app.services.agent.agent import Agent
+from app.services.appointment.appointment_scheduler import (
+    start_appointment_scheduler as _start_appointment_scheduler,
+)
+from app.services.appointment.appointment_service import AppointmentService
 from app.services.consultation.consultation_service import ConsultationService
 from app.services.family.family_authorization_service import (
     FamilyAuthorizationService,
@@ -644,6 +649,15 @@ _family_delegation_service = FamilyDelegationService(
 )
 _medication_service = MedicationService(indication_service=_drug_indication_service)
 
+# 掛號提醒。出發／到診的授權在服務層（LIFF 與 LINE postback 兩個入口共用），
+# 所以授權服務注入給服務本身；CRUD 的授權仍在 router，與用藥相同。
+_appointment_repository = AppointmentReminderRepository()
+_appointment_service = AppointmentService(
+    repository=_appointment_repository,
+    authorization_service=_family_authorization_service,
+    user_profile_service=_user_profile_service,
+)
+
 # 藥袋辨識。藥證庫沿用上面已經載入的那一份（見 _drug_catalog_service）。
 _prescription_ocr_service = PrescriptionOcrService(
     gemini_service=_gemini_service,
@@ -704,6 +718,7 @@ _line_event_handler = LineEventHandler(
     replier=_line_replier,
     medication_service=_medication_service,
     medical_news_share_service=_medical_news_share_service,
+    appointment_service=_appointment_service,
 )
 
 
@@ -866,6 +881,26 @@ def get_family_authorization_service() -> FamilyAuthorizationService:
 
 def get_medication_service() -> MedicationService:
     return _medication_service
+
+
+def get_appointment_service() -> AppointmentService:
+    return _appointment_service
+
+
+def get_appointment_repository() -> AppointmentReminderRepository:
+    return _appointment_repository
+
+
+def start_appointment_scheduler(*, enabled: bool = True):
+    """掛號提醒排程器。家屬名單走家庭授權服務的 `notification_recipients`，
+    與高風險藥物、OTC、緊急通報是同一個 resolver。"""
+    return _start_appointment_scheduler(
+        enabled=enabled,
+        replier=_line_replier,
+        repository=_appointment_repository,
+        authorization_service=_family_authorization_service,
+        user_profile_service=_user_profile_service,
+    )
 
 
 def get_drug_news_index_service():

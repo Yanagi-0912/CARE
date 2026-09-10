@@ -36,7 +36,7 @@ DEFAULT_FAMILY_ROLE: FamilyRole = "MEMBER"
 
 # 三級資料分類。
 #
-# - GENERAL：用藥設定（藥品名稱、時段、頻率、提醒規則），以及顯示名稱與頭像
+# - GENERAL：用藥設定（藥品名稱、時段、頻率、提醒規則）、掛號提醒，以及顯示名稱與頭像
 # - SENSITIVE：健康狀況（年齡、性別、身高、體重、病史），以及適應症
 # - PRIVATE：與 LINE 健康機器人的對話摘要與原始逐句對話
 DataClassification = Literal["GENERAL", "SENSITIVE", "PRIVATE"]
@@ -81,6 +81,7 @@ PERMISSIONS: dict[FamilyRole, dict[DataClassification, frozenset[Action]]] = {
 ResourceName = Literal[
     "medication_reminder",
     "medication",
+    "appointment_reminder",
     "health_profile",
     "consultation_summary",
     "consultation_raw",
@@ -93,6 +94,7 @@ ResourceName = Literal[
 CLASSIFICATION_OF: dict[ResourceName, DataClassification] = {
     "medication_reminder": "GENERAL",
     "medication": "GENERAL",
+    "appointment_reminder": "GENERAL",
     "health_profile": "SENSITIVE",
     "consultation_summary": "PRIVATE",
     "consultation_raw": "PRIVATE",
@@ -124,6 +126,33 @@ FIELD_CLASSIFICATION: dict[tuple[ResourceName, str], DataClassification] = {
     ("medication_reminder", "medications"): "GENERAL",
     ("medication_reminder", "created_at"): "GENERAL",
     ("medication_reminder", "updated_at"): "GENERAL",
+    # ── 掛號提醒 ──────────────────────────────────────────────────
+    # 整份資源與用藥同級，全部 GENERAL——包括科別。有 GENERAL 讀取權的家屬在
+    # LIFF 內本來就該看得到完整的門診資訊。科別的敏感性是**推播通道**的問題
+    # （訊息會躺在聊天室列表裡、同一支手機的其他人看得到），那條邊界由
+    # appointment_flex 的參數形狀守住——builder 根本不收科別、醫師與看診號——
+    # 而不是由這張表。
+    ("appointment_reminder", "id"): "GENERAL",
+    ("appointment_reminder", "user_id"): "GENERAL",
+    ("appointment_reminder", "creator_user_id"): "GENERAL",
+    ("appointment_reminder", "appointment_at"): "GENERAL",
+    ("appointment_reminder", "facility_id"): "GENERAL",
+    ("appointment_reminder", "hospital_name"): "GENERAL",
+    ("appointment_reminder", "hospital_address"): "GENERAL",
+    ("appointment_reminder", "hospital_phone"): "GENERAL",
+    ("appointment_reminder", "department"): "GENERAL",
+    ("appointment_reminder", "doctor_name"): "GENERAL",
+    ("appointment_reminder", "serial_number"): "GENERAL",
+    ("appointment_reminder", "note"): "GENERAL",
+    ("appointment_reminder", "status"): "GENERAL",
+    ("appointment_reminder", "departed_at"): "GENERAL",
+    ("appointment_reminder", "departed_by_user_id"): "GENERAL",
+    ("appointment_reminder", "attended_at"): "GENERAL",
+    ("appointment_reminder", "attended_by_user_id"): "GENERAL",
+    ("appointment_reminder", "enabled"): "GENERAL",
+    ("appointment_reminder", "notify_at"): "GENERAL",
+    ("appointment_reminder", "created_at"): "GENERAL",
+    ("appointment_reminder", "updated_at"): "GENERAL",
     # ── 藥品 ──────────────────────────────────────────────────────
     ("medication", "id"): "GENERAL",
     ("medication", "user_id"): "GENERAL",
@@ -205,9 +234,12 @@ PROXY_WRITE_FORBIDDEN_FIELDS: frozenset[str] = frozenset(
     {"name", "display_name", "picture_url", "role", "settings", "line_id"}
 )
 
-# 推播種類，包含:高風險藥物、加入非處方藥、警急事件偵測
+# 推播種類，包含:高風險藥物、加入非處方藥、警急事件偵測、掛號提醒
 NotificationKind = Literal[
-    "high_risk_drug_alert", "otc_medication_added", "emergency_detected"
+    "high_risk_drug_alert",
+    "otc_medication_added",
+    "emergency_detected",
+    "appointment_reminder",
 ]
 
 # 通知政策。**與 PERMISSIONS 分開宣告，兩者的變更互不牽動。**
@@ -232,6 +264,17 @@ NOTIFICATION_POLICY: dict[NotificationKind, frozenset[FamilyRole]] = {
     "otc_medication_added": frozenset({"GUARDIAN", "CAREGIVER"}),
     # 對話中偵測到需要立即處置的狀況（意識不清、大量出血、自傷或自盡表達…）。
     "emergency_detected": frozenset({"GUARDIAN", "CAREGIVER"}),
+    # 掛號提醒：T-1h、T+0 兩則推播與 T+30 家屬警報**共用這一份收件人名單**，
+    # 不會有兩套（已拍板：三則推播與一則警報的收件人是同一群人）。
+    #
+    # 收件角色必須是「按得下卡片按鈕的人」：卡片上有「我已出發／我已到診」，
+    # 代按需要 GENERAL 寫入權，而 MEMBER 只有讀——把 MEMBER 納入等於送他一張
+    # 按下去必定 403 的卡片。GENERAL 的寫入者恰好就是 GUARDIAN 與 CAREGIVER
+    # （OWNER 是本人，不經此表）。
+    #
+    # 影子模式下 `notification_recipients` 回傳族譜全員，而 `authorize` 同樣走
+    # legacy（族譜成員即可寫 GENERAL），兩者在兩種模式下都一致。
+    "appointment_reminder": frozenset({"GUARDIAN", "CAREGIVER"}),
 }
 
 # 每位資料擁有者各自持有的遷移狀態。強制以**擁有者**為邊界逐一啟用，

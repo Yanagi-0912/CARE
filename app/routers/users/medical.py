@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import BaseModel, Field
 
 from app.dependencies import CurrentUser, get_current_user, get_medical_service
@@ -43,6 +43,9 @@ router = APIRouter()
 LOGGER_HEADER_TEXT = "[Router:Medical]"
 
 SERVICE_UNAVAILABLE_DETAIL = "醫療院所查詢暫時不可用，請稍後再試"
+
+# 與 LINE「查看院所詳細資訊」postback 查無資料時的文案相同。
+FACILITY_NOT_FOUND_DETAIL = "查無此院所資料，可能已被更新或移除。"
 
 
 class NextOpenPayload(BaseModel):
@@ -439,3 +442,36 @@ async def search_facilities(
         count=len(facilities),
         total_count=total_count,
     )
+
+
+@router.get(
+    "/facilities/{facility_id}",
+    response_model=FacilityPayload,
+    summary="依 id 查詢單一醫療院所",
+    description=(
+        "以院所查詢回傳的 id 重查一筆院所，形狀與列表中的每一筆相同（含 business_status）。"
+        "掛號提醒的編輯畫面用它重新顯示存下來那家院所的 clinic_time——用名稱重打 "
+        "keyword 搜尋會在同名連鎖診所上查錯家。distance_meters 一律為 null。"
+    ),
+)
+async def get_facility(
+    facility_id: Annotated[
+        str, Path(min_length=1, max_length=64, description="院所 id")
+    ],
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    service: Annotated[MedicalService, Depends(get_medical_service)],
+) -> FacilityPayload:
+    """查無此 id（含格式不是合法 ObjectId）回 404。
+
+    注意：repository 的 `find_by_id` 會吞掉資料庫錯誤並回 None（LINE 那一側的
+    既有行為），因此資料庫故障在這裡同樣表現為 404，而不是 503。
+    """
+    try:
+        facility = await service.get_facility_by_id(facility_id)
+    except Exception as exc:
+        logger.exception(f"{LOGGER_HEADER_TEXT} /facilities/{{id}} 查詢失敗")
+        raise HTTPException(status_code=503, detail=SERVICE_UNAVAILABLE_DETAIL) from exc
+
+    if facility is None:
+        raise HTTPException(status_code=404, detail=FACILITY_NOT_FOUND_DETAIL)
+    return _to_payload(facility)

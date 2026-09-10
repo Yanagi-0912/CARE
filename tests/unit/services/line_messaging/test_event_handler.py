@@ -718,7 +718,9 @@ async def test_handle_postback_event_confirm_medication(
     event = _postback_event("action=confirm_medication&log_id=L123", user_id="U12345")
     await handler.handle(event)
 
-    mock_med_service.confirm_medication.assert_called_once_with("L123", "U12345")
+    mock_med_service.confirm_medication.assert_called_once_with(
+        "L123", "U12345", medication_id=None
+    )
     mock_line_api.reply_message.assert_called_once()
     reply_req = mock_line_api.reply_message.call_args[0][0]
     assert reply_req.messages[0].type == "flex"
@@ -732,6 +734,103 @@ async def test_handle_postback_event_confirm_medication(
     rendered = str(reply_req.messages[0].contents.to_dict())
     assert "脈優" in rendered
     assert "利尿劑" in rendered
+
+
+@pytest.mark.asyncio
+async def test_handle_postback_event_confirm_medication_per_drug_still_pending_replies_text(
+    handler,
+    mock_line_api,
+):
+    """逐藥確認未到齊：以純文字（不耗推播額度的 reply token）回覆已記錄與
+    尚未確認的藥品，spec「逐藥確認」。"""
+    from datetime import datetime, timezone
+    from app.models.medication import MedicationLog
+    from app.services.line_messaging.flex.medication_flex import (
+        MedicationGroup,
+        MedicationListEntry,
+    )
+
+    mock_med_service = AsyncMock()
+    mock_med_service.confirm_medication.return_value = MedicationLog(
+        reminder_id="R123",
+        user_id="U12345",
+        alert_notify_user_id="U_CARE",
+        slot_type="morning",
+        scheduled_at=datetime.now(timezone.utc),
+        timeout_at=datetime.now(timezone.utc),
+        status="pending",
+        taken_medication_ids=["m1"],
+    )
+    mock_med_service.taken_names_for_log.return_value = ["脈優"]
+    mock_med_service.medication_groups_for_log.return_value = [
+        MedicationGroup(
+            meal_timing="after_meal",
+            scheduled_time="08:30",
+            items=[
+                ("m2", MedicationListEntry(name="利尿劑")),
+                ("m3", MedicationListEntry(name="胃藥")),
+            ],
+        )
+    ]
+    handler._medication_service = mock_med_service
+
+    event = _postback_event(
+        "action=confirm_medication&log_id=L123&medication_id=m1", user_id="U12345"
+    )
+    await handler.handle(event)
+
+    mock_med_service.confirm_medication.assert_called_once_with(
+        "L123", "U12345", medication_id="m1"
+    )
+    mock_line_api.reply_message.assert_called_once()
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert reply_req.messages[0].type == "text"
+    text = reply_req.messages[0].text
+    assert "脈優" in text
+    assert "利尿劑" in text
+    assert "胃藥" in text
+    # 純文字回覆不得含 Markdown 語法（見 line-reply-rules 硬規則）。
+    assert "*" not in text
+    assert "#" not in text
+
+
+@pytest.mark.asyncio
+async def test_handle_postback_event_confirm_medication_per_drug_completes_replies_flex(
+    handler,
+    mock_line_api,
+):
+    """逐藥確認的最後一顆按下、規則全數到齊：回覆現有的完成卡（Flex），
+    且 medication_id 有被傳給 service（spec「逐藥確認」）。"""
+    from datetime import datetime, timezone
+    from app.models.medication import MedicationLog
+
+    mock_med_service = AsyncMock()
+    mock_med_service.confirm_medication.return_value = MedicationLog(
+        reminder_id="R123",
+        user_id="U12345",
+        alert_notify_user_id="U_CARE",
+        slot_type="morning",
+        scheduled_at=datetime.now(timezone.utc),
+        timeout_at=datetime.now(timezone.utc),
+        status="taken",
+        taken_at=datetime.now(timezone.utc),
+        taken_medication_ids=["m1", "m2"],
+    )
+    mock_med_service.list_medication_names_for_log.return_value = ["脈優", "利尿劑"]
+    handler._medication_service = mock_med_service
+
+    event = _postback_event(
+        "action=confirm_medication&log_id=L123&medication_id=m2", user_id="U12345"
+    )
+    await handler.handle(event)
+
+    mock_med_service.confirm_medication.assert_called_once_with(
+        "L123", "U12345", medication_id="m2"
+    )
+    mock_med_service.taken_names_for_log.assert_not_awaited()
+    mock_med_service.medication_groups_for_log.assert_not_awaited()
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert reply_req.messages[0].type == "flex"
 
 
 @pytest.mark.asyncio

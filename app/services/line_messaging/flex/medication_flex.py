@@ -229,6 +229,150 @@ def _medication_list_block(
     }
 
 
+def _group_heading_node(
+    group: MedicationGroup, ft: theme.FlexTheme, language: str | None
+) -> dict[str, Any]:
+    """一個服藥時機分區的小標，例如「飯前　07:30」（design 決策 6）。
+
+    全型空格與家屬彙整通知的 `{slot_name}　{scheduled_time}` 同一種排版，
+    在 `flex.med.group_heading` 集中管理成模板字串，避免兩處各自硬編碼
+    這個特殊空格。
+    """
+    return {
+        "type": "text",
+        "text": t("flex.med.group_heading", language).format(
+            meal=t(f"meal.{group.meal_timing}", language), time=group.scheduled_time
+        ),
+        "weight": "bold",
+        "size": ft.body,
+        "color": theme.TEXT,
+        "wrap": True,
+    }
+
+
+def _medication_row_with_button(
+    entry: MedicationListEntry,
+    medication_id: str,
+    log_id: str,
+    ft: theme.FlexTheme,
+    language: str | None,
+) -> dict[str, Any]:
+    """逐藥確認的一列：既有的 `_medication_row_node` 內容＋右側一顆【已吃】
+    按鈕（spec「逐藥確認」）。
+
+    水平排列，藥品內容吃掉較大比例（flex=2）、按鈕維持 `FlexTheme` 定義的
+    `flex=1`——按鈕本身靠 `paddingAll: lg` 撐出 ≥44px 的可點擊高度，不需要
+    額外調整；文字列本身已有 `wrap: True`，寬度變窄時會自動換行而不是把
+    按鈕擠出畫面外。
+    """
+    content_node: dict[str, Any] = {**_medication_row_node(entry, ft), "flex": 2}
+    button_label = t("flex.med.button.taken_one", language)
+    return {
+        "type": "box",
+        "layout": "horizontal",
+        "spacing": "sm",
+        "alignItems": "center",
+        "contents": [
+            content_node,
+            ft.secondary_button(
+                button_label,
+                {
+                    "type": "postback",
+                    "label": button_label,
+                    "data": (
+                        f"action=confirm_medication&log_id={log_id}"
+                        f"&medication_id={medication_id}"
+                    ),
+                    "displayText": t("flex.med.display.taken_one", language).format(
+                        name=entry.name
+                    ),
+                },
+            ),
+        ],
+    }
+
+
+def _medication_groups_block(
+    groups: list[MedicationGroup],
+    log_id: str,
+    ft: theme.FlexTheme,
+    language: str | None,
+) -> Optional[dict[str, Any]]:
+    """依服藥時機分區、每列附逐藥確認按鈕的藥品區塊（spec「逐藥確認」「推播
+    列出該時段應服藥品」、design 決策 6）。
+
+    `groups` 保證非空清單、且每組 `items` 皆非空——由呼叫端（`medication_ids`
+    為空或全空清單時）先行判斷要不要呼叫這個函式，這裡不重複判斷一次。
+
+    只有一組且時機為 `none` 時（規則沒有拆分飯前飯後，等同本功能導入前的
+    單一清單）不顯示分區小標，版面比照既有 `_medication_list_block`（含
+    `flex.med.medication_list_heading` 標題），只是每列多一顆按鈕——這是
+    spec 明講的「只差每列多一顆按鈕」。其餘情況（多分區，或單一分區但時機
+    是飯前／飯後）改成每區一行小標，不再有整塊共用的標題文字：小標本身
+    （「飯前　07:30」）已經比「本次應服藥品」更精準地說明這批藥是什麼時候吃。
+
+    顯示上限跨組合計（`MEDICATION_LIST_MAX_ITEMS`），超出的品項不逐一列出，
+    收斂成既有的單行計數且不帶按鈕——收斂後的計數行不代表任何一張藥證，
+    按下去沒有意義。一旦達到上限就不再進入下一組（也不會再多印一個空的
+    分區小標），避免出現「小標底下一列都沒有」的殘影。
+    """
+    single_none = len(groups) == 1 and groups[0].meal_timing == "none"
+    total_items = sum(len(group.items) for group in groups)
+
+    contents: list[dict[str, Any]] = []
+    if single_none:
+        contents.append(
+            {
+                "type": "text",
+                "text": t("flex.med.medication_list_heading", language),
+                "weight": "bold",
+                "size": ft.body,
+                "color": theme.TEXT,
+                "wrap": True,
+            }
+        )
+
+    shown = 0
+    for group in groups:
+        if shown >= MEDICATION_LIST_MAX_ITEMS:
+            break
+        if not single_none:
+            contents.append(_group_heading_node(group, ft, language))
+        for medication_id, entry in group.items:
+            if shown >= MEDICATION_LIST_MAX_ITEMS:
+                break
+            contents.append(
+                _medication_row_with_button(entry, medication_id, log_id, ft, language)
+            )
+            shown += 1
+
+    remaining = total_items - shown
+    if remaining > 0:
+        # 收斂後的計數行只是一句提示文字，不代表任何一張藥證，故意重用
+        # `_medication_row_node` 走純文字分支，不帶按鈕。
+        contents.append(
+            _medication_row_node(
+                MedicationListEntry(
+                    name=t("flex.med.medication_list_more", language).format(
+                        count=remaining
+                    )
+                ),
+                ft,
+            )
+        )
+
+    return {
+        "type": "box",
+        "layout": "vertical",
+        "backgroundColor": theme.SURFACE_ALT,
+        "cornerRadius": "md",
+        "paddingAll": "lg",
+        "spacing": "xs",
+        "margin": "md",
+        "contents": contents,
+    }
+
+
 def _body(contents: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "type": "box",
@@ -283,20 +427,28 @@ def build_patient_medication_flex(
     規則沒有關聯藥品、或關聯的藥品皆已失效時傳入 None／空清單，版面與本參數
     新增前完全相同。
 
-    `medication_groups` 目前接收但不使用——依飯前／飯後分區＋逐藥確認按鈕的
-    版面改造是 Task 6 的範圍（spec「推播列出該時段應服藥品」），這裡先接住
-    參數讓排程器（Task 5）可以先傳，版面與行為都不變。
+    `medication_groups` 非空清單且 `disabled=False` 時，改用依飯前／飯後
+    分區＋逐藥確認按鈕的版面（spec「逐藥確認」「推播列出該時段應服藥品」、
+    design 決策 6），底部按鈕文案改為「全部已服用」；`medication_groups`
+    為 `None`／空清單，或 `disabled=True`（已完成卡片，逐藥按鈕在那之後
+    沒有意義）時，一律落回既有的 `medication_names` 版面，逐位元組不變。
     """
     ft = theme.resolve_theme(font_size)
     slot_name = get_slot_display_name(slot_type, language)
 
     if not disabled:
         alt_text = t("flex.med.alt.reminder", language).format(slot=slot_name)
-        taken_label = t("flex.med.button.taken", language)
         body_contents = [_slot_block(slot_name, scheduled_time, ft, language)]
-        med_block = _medication_list_block(medication_names, ft, language)
-        if med_block is not None:
-            body_contents.append(med_block)
+        if medication_groups:
+            body_contents.append(
+                _medication_groups_block(medication_groups, log_id, ft, language)
+            )
+            taken_label = t("flex.med.button.taken_all", language)
+        else:
+            med_block = _medication_list_block(medication_names, ft, language)
+            if med_block is not None:
+                body_contents.append(med_block)
+            taken_label = t("flex.med.button.taken", language)
         body_contents.append(
             _paragraph(t("flex.med.instruction", language), ft, margin="md")
         )
@@ -381,17 +533,25 @@ def build_patient_urgent_reminder_flex(
     `medication_names` 為 None／空清單時版面與本參數新增前完全相同，見
     `_medication_list_block`。
 
-    `medication_groups` 目前接收但不使用，理由同 `build_patient_medication_flex`
-    ——分區版面是 Task 6 的範圍。
+    `medication_groups` 非空清單時改用分區＋逐藥確認按鈕的版面，理由同
+    `build_patient_medication_flex`；`medication_groups_for_log` 只回傳當日
+    仍有效且尚未在 `taken_medication_ids` 裡的藥（見該方法註解），本函式
+    直接照單全收，因此「催促只列尚未確認的藥品」不需要在這裡另外過濾一次。
     """
     ft = theme.resolve_theme(font_size)
     slot_name = get_slot_display_name(slot_type, language)
-    taken_label = t("flex.med.button.taken", language)
 
     body_contents = [_slot_block(slot_name, scheduled_time, ft, language)]
-    med_block = _medication_list_block(medication_names, ft, language)
-    if med_block is not None:
-        body_contents.append(med_block)
+    if medication_groups:
+        body_contents.append(
+            _medication_groups_block(medication_groups, log_id, ft, language)
+        )
+        taken_label = t("flex.med.button.taken_all", language)
+    else:
+        med_block = _medication_list_block(medication_names, ft, language)
+        if med_block is not None:
+            body_contents.append(med_block)
+        taken_label = t("flex.med.button.taken", language)
     body_contents.append(
         _paragraph(t("flex.med.urgent_body", language), ft, margin="md")
     )

@@ -577,6 +577,27 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "การแจ้งเตือนการใช้ยานี้ได้บันทึกไว้แล้วก่อนหน้านี้ ขอให้สุขภาพแข็งแรง!",
         "ja": "この服薬リマインダーはすでに記録済みです。ご健康をお祈りします！",
     },
+    # 逐藥確認未到齊時的純文字回覆（spec「逐藥確認」）：不耗推播額度，靠
+    # reply token 直接回這則，列出已記錄與尚未確認的藥名，讓使用者知道
+    # 「按有生效」而不必等下一則卡片。
+    "meds.progress": {
+        "zh-TW": "已記錄：{taken}。還有 {count} 種：{remaining}",
+        "en": "Recorded: {taken}. {count} more to go: {remaining}",
+        "id": "Tercatat: {taken}. Masih {count} lagi: {remaining}",
+        "vi": "Đã ghi nhận: {taken}. Còn {count} loại: {remaining}",
+        "th": "บันทึกแล้ว: {taken} เหลืออีก {count} รายการ: {remaining}",
+        "ja": "記録しました：{taken}。残り {count} 種：{remaining}",
+    },
+    # 逐藥確認後同一筆規則當日已無有效藥品待確認（例如藥被停用）：此時只
+    # 剩「已記錄」這句，不該出現「還有 0 種：」這種空清單的殘影。
+    "meds.progress_none_left": {
+        "zh-TW": "已記錄：{taken}",
+        "en": "Recorded: {taken}",
+        "id": "Tercatat: {taken}",
+        "vi": "Đã ghi nhận: {taken}",
+        "th": "บันทึกแล้ว: {taken}",
+        "ja": "記録しました：{taken}",
+    },
     "voice.enabled": {
         "zh-TW": "已開啟語音回覆",
         "en": "Voice reply has been enabled",
@@ -1209,6 +1230,19 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "zh-TW": "睡前", "en": "Bedtime", "id": "Sebelum tidur",
         "vi": "Trước khi ngủ", "th": "ก่อนนอน", "ja": "就寝前",
     },
+    # --- 服藥時機（規則內的條目，design 決策 6：飯前 → 飯後 → 其他固定順序）---
+    "meal.before_meal": {
+        "zh-TW": "飯前", "en": "Before meal", "id": "Sebelum makan",
+        "vi": "Trước ăn", "th": "ก่อนอาหาร", "ja": "食前",
+    },
+    "meal.after_meal": {
+        "zh-TW": "飯後", "en": "After meal", "id": "Sesudah makan",
+        "vi": "Sau ăn", "th": "หลังอาหาร", "ja": "食後",
+    },
+    "meal.none": {
+        "zh-TW": "其他", "en": "Other", "id": "Lainnya",
+        "vi": "Khác", "th": "อื่น ๆ", "ja": "その他",
+    },
     # --- Flex：用藥提醒 ---
     "flex.med.alt.reminder": {
         "zh-TW": "CARE 用藥提醒：{slot} 服藥時間到了",
@@ -1492,6 +1526,43 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "vi": "…và {count} loại thuốc khác",
         "th": "…และอีก {count} รายการยา",
         "ja": "…ほか {count} 件の薬",
+    },
+    # 依飯前／飯後分區的小標（design 決策 6）。全型空格與家屬彙整通知的
+    # 「{slot_name}　{scheduled_time}」同一種排版，六語共用同一個模板字串，
+    # 差別只在前面代換進去的 meal 名稱是否已翻譯。
+    "flex.med.group_heading": {
+        "zh-TW": "{meal}　{time}",
+        "en": "{meal}　{time}",
+        "id": "{meal}　{time}",
+        "vi": "{meal}　{time}",
+        "th": "{meal}　{time}",
+        "ja": "{meal}　{time}",
+    },
+    # 逐藥確認：每一列右側的小按鈕，文案要比整批的「我已用藥」更短——
+    # 一列的可用寬度扣掉藥名與按鈕本身的內距後所剩無幾，長文案會被截斷。
+    "flex.med.button.taken_one": {
+        "zh-TW": "已吃", "en": "Taken", "id": "Sudah",
+        "vi": "Đã uống", "th": "ทานแล้ว", "ja": "服用済み",
+    },
+    "flex.med.display.taken_one": {
+        "zh-TW": "我吃了 {name}",
+        "en": "I took {name}",
+        "id": "Saya sudah minum {name}",
+        "vi": "Tôi đã uống {name}",
+        "th": "ฉันทาน {name} แล้ว",
+        "ja": "{name} を服用しました",
+    },
+    # 逐藥確認上線後，底部整批按鈕改用這個文案（原本的 flex.med.button.taken
+    # 仍是「已完成」卡片與逾時催促既有按鈕共用的文案，這裡另開一個 key 而不是
+    # 直接改字，是因為「我已用藥」在沒有 medication_groups 的既有版面裡還是
+    # 對的措辭，兩者語意不同不該共用同一個 key）。
+    "flex.med.button.taken_all": {
+        "zh-TW": "全部已服用",
+        "en": "All taken",
+        "id": "Semua sudah diminum",
+        "vi": "Đã uống hết",
+        "th": "ทานครบแล้ว",
+        "ja": "すべて服用済み",
     },
     # 用藥風險偵測。給當事人的兩則一律純文字（見 line-reply-rules），措辭刻意
     # 不帶指責：這個功能最容易的失敗方式是讓長輩覺得被監視而不再發問。

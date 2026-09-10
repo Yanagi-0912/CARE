@@ -154,7 +154,8 @@ class _TickMedicationNameCache:
         reminder_collection: Optional[Any] = None,
         medication_collection: Optional[Any] = None,
     ) -> list[MedicationListEntry]:
-        """取得指定 log 的藥品清單列（藥名＋縮圖 URL）；供家屬警報與完成卡使用。
+        """取得指定 log 的扁平藥品清單列（藥名＋縮圖 URL）；供用藥者服藥提醒／
+        二次催促卡片的 `medication_names` 使用，以及其他需要縮圖的呼叫端。
 
         第一次呼叫（不論是這支、`get` 還是 `get_groups`）才會真的發出查詢，
         之後都讀已經查好的結果，理由見 class docstring。

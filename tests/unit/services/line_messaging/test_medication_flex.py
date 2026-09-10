@@ -1014,3 +1014,212 @@ def test_push_entry_carries_no_indication_field():
     from app.services.line_messaging.flex.medication_flex import MedicationListEntry
 
     assert MedicationListEntry._fields == ("name", "image_url")
+
+
+# ── medication_groups：依飯前／飯後分區＋逐藥確認按鈕（Task 6）────────────
+
+
+from app.services.line_messaging.flex.medication_flex import MedicationGroup  # noqa: E402
+
+
+def test_patient_reminder_groups_render_headings_in_order():
+    """依「飯前 → 飯後 → 其他」固定順序分區，每區一行小標，其下才是該區的藥。"""
+    groups = [
+        MedicationGroup(
+            meal_timing="before_meal",
+            scheduled_time="07:30",
+            items=[("m1", MedicationListEntry(name="降血糖藥"))],
+        ),
+        MedicationGroup(
+            meal_timing="after_meal",
+            scheduled_time="08:30",
+            items=[
+                ("m2", MedicationListEntry(name="血壓藥")),
+                ("m3", MedicationListEntry(name="胃藥")),
+            ],
+        ),
+    ]
+    msg = build_patient_medication_flex(
+        log_id="L1", slot_type="morning", scheduled_time="07:30", medication_groups=groups
+    )
+    # 用 json.dumps(ensure_ascii=False) 而非 str(dict)：飯前／飯後小標用的
+    # 全型空格（U+3000）屬於 Unicode Zs 類別，repr() 會把它跳脫成 　，
+    # str(dict) 底層走的正是 repr，逐位元組比對會找不到這個子字串。
+    rendered = _flex_json(msg)
+
+    before_pos = rendered.index("飯前　07:30")
+    drug1_pos = rendered.index("降血糖藥")
+    after_pos = rendered.index("飯後　08:30")
+    drug2_pos = rendered.index("血壓藥")
+    drug3_pos = rendered.index("胃藥")
+    assert before_pos < drug1_pos < after_pos < drug2_pos < drug3_pos
+    # 沒有整塊共用標題——小標本身已經取代它。
+    assert "本次應服藥品" not in rendered
+
+
+def test_patient_reminder_groups_carry_per_drug_postback_data():
+    """每列的按鈕 postback 帶對的 log_id 與 medication_id。"""
+    groups = [
+        MedicationGroup(
+            meal_timing="before_meal",
+            scheduled_time="07:30",
+            items=[("m1", MedicationListEntry(name="降血糖藥"))],
+        ),
+    ]
+    msg = build_patient_medication_flex(
+        log_id="L999", slot_type="morning", scheduled_time="07:30", medication_groups=groups
+    )
+    body = msg.contents.to_dict()["body"]["contents"]
+    group_block = body[1]
+    row = group_block["contents"][1]
+    button = next(c for c in row["contents"] if c.get("action"))
+    assert button["action"]["data"] == "action=confirm_medication&log_id=L999&medication_id=m1"
+    assert button["action"]["displayText"] == "我吃了 降血糖藥"
+    assert button["action"]["type"] == "postback"
+    # 底部整批按鈕文案改為「全部已服用」，postback 資料不變（不帶 medication_id）。
+    footer_button = msg.contents.to_dict()["footer"]["contents"][0]
+    assert footer_button["action"]["data"] == "action=confirm_medication&log_id=L999"
+    assert footer_button["action"]["displayText"] == "我已經完成用藥了"
+    footer_text = footer_button["contents"][0]["text"]
+    assert footer_text == "全部已服用"
+
+
+def test_patient_reminder_single_none_group_has_no_group_heading():
+    """只有 none 一個條目時（規則沒有拆分飯前飯後）不顯示分區小標，版面比照
+    既有單一清單，只差每列多一顆按鈕。"""
+    groups = [
+        MedicationGroup(
+            meal_timing="none",
+            scheduled_time="08:00",
+            items=[
+                ("m1", MedicationListEntry(name="脈優")),
+                ("m2", MedicationListEntry(name="利尿劑")),
+            ],
+        ),
+    ]
+    msg = build_patient_medication_flex(
+        log_id="L1", slot_type="morning", scheduled_time="08:00", medication_groups=groups
+    )
+    rendered = str(msg.contents.to_dict())
+    assert "其他" not in rendered
+    assert "本次應服藥品" in rendered
+    assert "脈優" in rendered
+    assert "利尿劑" in rendered
+    # 每列仍要有按鈕——「差每列多一顆按鈕」不是指少了按鈕。
+    assert "action=confirm_medication&log_id=L1&medication_id=m1" in rendered
+    assert "action=confirm_medication&log_id=L1&medication_id=m2" in rendered
+
+
+def test_patient_reminder_groups_cap_across_groups_with_overflow_and_no_buttons():
+    """顯示上限跨組合計；超出的品項收斂為單行計數且不帶按鈕。"""
+    groups = [
+        MedicationGroup(
+            meal_timing="before_meal",
+            scheduled_time="07:00",
+            items=[(f"a{i}", MedicationListEntry(name=f"甲藥{i}")) for i in range(3)],
+        ),
+        MedicationGroup(
+            meal_timing="after_meal",
+            scheduled_time="08:00",
+            items=[(f"b{i}", MedicationListEntry(name=f"乙藥{i}")) for i in range(4)],
+        ),
+    ]
+    msg = build_patient_medication_flex(
+        log_id="L1", slot_type="morning", scheduled_time="07:00", medication_groups=groups
+    )
+    rendered = str(msg.contents.to_dict())
+    for i in range(3):
+        assert f"甲藥{i}" in rendered
+    for i in range(2):
+        assert f"乙藥{i}" in rendered
+    for i in (2, 3):
+        assert f"乙藥{i}" not in rendered
+    assert "…另有 2 種藥品" in rendered
+    # 恰好 MEDICATION_LIST_MAX_ITEMS 顆按鈕，收斂的計數行沒有按鈕。
+    assert rendered.count("action=confirm_medication&log_id=L1&medication_id=") == 5
+
+
+def test_patient_reminder_urgent_groups_render_headings_and_postback():
+    """二次催促用同一套分區＋逐藥確認按鈕版面；groups 已排除已確認的藥，
+    因此「催促只列尚未確認的藥品」不需要在這裡另外過濾。"""
+    groups = [
+        MedicationGroup(
+            meal_timing="after_meal",
+            scheduled_time="08:30",
+            items=[("m2", MedicationListEntry(name="血壓藥"))],
+        ),
+    ]
+    msg = build_patient_urgent_reminder_flex(
+        log_id="L1", slot_type="morning", scheduled_time="07:30", medication_groups=groups
+    )
+    rendered = _flex_json(msg)
+    assert "飯後　08:30" in rendered
+    assert "血壓藥" in rendered
+    assert "action=confirm_medication&log_id=L1&medication_id=m2" in rendered
+    footer_button = msg.contents.to_dict()["footer"]["contents"][0]
+    assert footer_button["contents"][0]["text"] == "全部已服用"
+
+
+def test_patient_reminder_groups_none_or_empty_falls_back_to_legacy_layout():
+    """medication_groups 為 None 或空清單時，版面必須與只傳 medication_names
+    逐位元組相同——不能因為新增這個參數而動到既有版面（spec「medication_ids
+    為空的規則 SHALL NOT 出現逐藥按鈕，版面 SHALL 與本變更前相同」）。"""
+    names = ["脈優", "利尿劑"]
+    baseline = build_patient_medication_flex(
+        log_id="L1", slot_type="morning", scheduled_time="08:00", medication_names=names
+    )
+    with_none_groups = build_patient_medication_flex(
+        log_id="L1",
+        slot_type="morning",
+        scheduled_time="08:00",
+        medication_names=names,
+        medication_groups=None,
+    )
+    with_empty_groups = build_patient_medication_flex(
+        log_id="L1",
+        slot_type="morning",
+        scheduled_time="08:00",
+        medication_names=names,
+        medication_groups=[],
+    )
+    assert with_none_groups.contents.to_dict() == baseline.contents.to_dict()
+    assert with_empty_groups.contents.to_dict() == baseline.contents.to_dict()
+
+    # disabled=True（完成卡）一律走既有 medication_names 版面，即使帶了 groups，
+    # 因為逐藥按鈕在那之後沒有意義。
+    disabled_baseline = build_patient_medication_flex(
+        log_id="L1",
+        slot_type="morning",
+        scheduled_time="08:00",
+        disabled=True,
+        taken_at_str="08:05",
+        medication_names=names,
+    )
+    disabled_with_groups = build_patient_medication_flex(
+        log_id="L1",
+        slot_type="morning",
+        scheduled_time="08:00",
+        disabled=True,
+        taken_at_str="08:05",
+        medication_names=names,
+        medication_groups=[
+            MedicationGroup(
+                meal_timing="none",
+                scheduled_time="08:00",
+                items=[("m1", MedicationListEntry(name="脈優"))],
+            )
+        ],
+    )
+    assert disabled_with_groups.contents.to_dict() == disabled_baseline.contents.to_dict()
+
+    urgent_baseline = build_patient_urgent_reminder_flex(
+        log_id="L1", slot_type="morning", scheduled_time="08:00", medication_names=names
+    )
+    urgent_with_none_groups = build_patient_urgent_reminder_flex(
+        log_id="L1",
+        slot_type="morning",
+        scheduled_time="08:00",
+        medication_names=names,
+        medication_groups=None,
+    )
+    assert urgent_with_none_groups.contents.to_dict() == urgent_baseline.contents.to_dict()

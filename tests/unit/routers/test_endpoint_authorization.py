@@ -422,10 +422,22 @@ def _reminder_with_indication():
 class _Medications:
     def __init__(self):
         self.calls = []
+        self.list_calls = []
 
     async def get_user_reminders_with_medications(self, user_id, requester_user_id=None):
         self.calls.append(user_id)
         return [_reminder_with_indication()]
+
+    async def list_medications(self, user_id):
+        self.list_calls.append(user_id)
+        return [
+            Medication(
+                _id="m1",
+                user_id=user_id,
+                created_by_user_id=user_id,
+                name="Metformin",
+            )
+        ]
 
 
 def wire_medications():
@@ -484,6 +496,61 @@ def test_reminders_self_is_not_masked(client):
     assert body[0]["medications"][0]["indication"] == "糖尿病"
 
 
+# ── GET/POST /api/medications ────────────────────────────────────────
+#
+# 本 change 新增的路徑，`authorize` 一律傳 has_legacy_equivalent=False——
+# 不受影子模式放寬，一律以 RBAC 判定（見 router 檔頭 docstring）。
+
+
+def test_list_medications_denied_for_stranger(client):
+    wire(None)
+    medications = wire_medications()
+    res = client.get(f"/api/medications?user_id={ELDER}")
+    assert res.status_code == 403
+    assert medications.list_calls == []
+
+
+def test_list_medications_allowed_for_guardian(client):
+    wire("GUARDIAN")
+    medications = wire_medications()
+    res = client.get(f"/api/medications?user_id={ELDER}")
+    assert res.status_code == 200
+    assert medications.list_calls == [ELDER]
+
+
+def test_list_medications_self_needs_no_family_relation(client):
+    """本人查自己：不需要族譜裡有任何關係就能過。"""
+    wire(None, caller=ME)
+    medications = wire_medications()
+    res = client.get(f"/api/medications?user_id={ME}")
+    assert res.status_code == 200
+    assert medications.list_calls == [ME]
+
+
+def test_create_medication_denied_for_member(client):
+    wire("MEMBER")
+    service = wire_writable_medications()
+    res = client.post("/api/medications", json={"user_id": ELDER, "name": "普拿疼"})
+    assert res.status_code == 403
+    assert service.created_medications == []
+
+
+def test_create_medication_allowed_for_guardian(client):
+    wire("GUARDIAN")
+    service = wire_writable_medications()
+    res = client.post("/api/medications", json={"user_id": ELDER, "name": "普拿疼"})
+    assert res.status_code == 200
+    assert service.created_medications == [ELDER]
+
+
+def test_create_medication_self_needs_no_family_relation(client):
+    wire(None, caller=ME)
+    service = wire_writable_medications()
+    res = client.post("/api/medications", json={"user_id": ME, "name": "普拿疼"})
+    assert res.status_code == 200
+    assert service.created_medications == [ME]
+
+
 # ── POST/PUT/DELETE /api/medications/reminders ──────────────────────
 
 
@@ -496,10 +563,20 @@ class _WritableMedications(_Medications):
         self.created = []
         self.updated = []
         self.deleted = []
+        self.created_medications = []
 
     async def create_reminders(self, creator_user_id, request):
         self.created.append(request.user_id)
         return []
+
+    async def create_manual_medication(self, creator_user_id, request):
+        self.created_medications.append(request.user_id)
+        return Medication(
+            _id="m2",
+            user_id=request.user_id,
+            created_by_user_id=creator_user_id,
+            name=request.name,
+        )
 
     async def get_reminder(self, reminder_id):
         return _reminder_with_indication()

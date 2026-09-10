@@ -89,6 +89,25 @@ class MedicationListEntry(NamedTuple):
     image_url: Optional[str] = None
 
 
+class MedicationGroup(NamedTuple):
+    """一個服藥時機（飯前／飯後／無關聯）分區的推播資料，供 T+0／T+20 卡片與
+    `MedicationService.medication_groups_for_log` 共用（見 design 決策 6）。
+
+    `items` 是 `(medication_id, entry)` 的清單——postback 的
+    `confirm_medication` 需要藥品 id 才能寫入 `taken_medication_ids`，
+    `MedicationListEntry` 本身只有藥名與縮圖，不足以組出確認按鈕。
+
+    定義在這裡（`app/services/medication/` 的匯入者）而不是
+    `app/services/medication/medication_groups.py`：後者會與這個模組互相
+    import（flex 組裝需要 `MedicationGroup`，`MedicationService` 也需要）
+    形成循環，放在 flex 這一側、由 service 單向匯入即可避免。
+    """
+
+    meal_timing: str
+    scheduled_time: str
+    items: list[tuple[str, MedicationListEntry]]
+
+
 # 呼叫端可以直接傳純字串（既有呼叫方式，等同 image_url=None，家屬卡片與
 # 「已完成」卡片的既有呼叫點都還是這樣傳），也可以傳 MedicationListEntry
 # 帶入縮圖 URL。兩者在同一個清單中混用是常態而非例外：同一時段的藥有的

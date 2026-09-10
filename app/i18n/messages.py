@@ -588,6 +588,18 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "บันทึกแล้ว: {taken} เหลืออีก {count} รายการ: {remaining}",
         "ja": "記録しました：{taken}。残り {count} 種：{remaining}",
     },
+    # 逐藥確認未到齊但這次沒有任何藥被標記已服用（例如查名稱失敗退化回空
+    # 清單）：不套用 meds.progress 那套「已記錄：{taken}」的措辭，避免出現
+    # 「已記錄：已記錄您的服藥狀態！」這種疊字句，改用只講「還有幾種待確
+    # 認」的獨立句型。
+    "meds.progress_no_taken": {
+        "zh-TW": "還有 {count} 種尚未確認：{remaining}",
+        "en": "{count} still unconfirmed: {remaining}",
+        "id": "Masih {count} belum dikonfirmasi: {remaining}",
+        "vi": "Còn {count} loại chưa xác nhận: {remaining}",
+        "th": "ยังไม่ยืนยันอีก {count} รายการ: {remaining}",
+        "ja": "未確認が {count} 種あります：{remaining}",
+    },
     # 逐藥確認後同一筆規則當日已無有效藥品待確認（例如藥被停用）：此時只
     # 剩「已記錄」這句，不該出現「還有 0 種：」這種空清單的殘影。
     "meds.progress_none_left": {

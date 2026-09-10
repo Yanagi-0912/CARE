@@ -240,25 +240,29 @@ class LineEventDispatcher:
                     # 方法註解：查詢失敗只記 log、不往外拋）——這裡不能照樣
                     # `、`.join 出一段空字串塞進「已記錄：」後面，那會回覆
                     # 「已記錄：。還有 N 種：…」這種看不出記錄了什麼的句子。
-                    # 退回 meds.recorded 的既有措辭，還有幾種待確認的部分
-                    # 不受影響。
-                    taken_text = (
-                        "、".join(taken)
-                        if taken
-                        else t("meds.recorded", language=user_language)
-                    )
-                    if remaining:
+                    # 四種組合分開處理：有記錄／無記錄各自搭配有／無待確認，
+                    # 都沒有時才退回 meds.recorded 的既有措辭。
+                    if taken and remaining:
                         progress_text = t(
                             "meds.progress", language=user_language
                         ).format(
-                            taken=taken_text,
+                            taken="、".join(taken),
+                            count=len(remaining),
+                            remaining="、".join(remaining),
+                        )
+                    elif taken:
+                        progress_text = t(
+                            "meds.progress_none_left", language=user_language
+                        ).format(taken="、".join(taken))
+                    elif remaining:
+                        progress_text = t(
+                            "meds.progress_no_taken", language=user_language
+                        ).format(
                             count=len(remaining),
                             remaining="、".join(remaining),
                         )
                     else:
-                        progress_text = t(
-                            "meds.progress_none_left", language=user_language
-                        ).format(taken=taken_text)
+                        progress_text = t("meds.recorded", language=user_language)
                     await self._replier.reply(
                         reply_token=reply_token,
                         message_text=progress_text,

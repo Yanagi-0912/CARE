@@ -801,8 +801,8 @@ async def test_handle_postback_event_confirm_medication_per_drug_empty_taken_nam
 ):
     """`taken_names_for_log` 查不到藥名時退化回空清單（見該方法註解：查詢
     失敗只記 log、不往外拋）。這裡不能把空清單 join 出空字串塞進「已記錄：」
-    後面，回覆「已記錄：。還有 2 種：…」看不出記錄了什麼；退回 meds.recorded
-    既有措辭，待確認清單不受影響。"""
+    後面，回覆「已記錄：。還有 2 種：…」看不出記錄了什麼；改用
+    meds.progress_no_taken 的獨立句型，不提「已記錄」。"""
     from datetime import datetime, timezone
     from app.models.medication import MedicationLog
     from app.services.line_messaging.flex.medication_flex import (
@@ -841,10 +841,8 @@ async def test_handle_postback_event_confirm_medication_per_drug_empty_taken_nam
 
     reply_req = mock_line_api.reply_message.call_args[0][0]
     text = reply_req.messages[0].text
-    assert "已記錄：。" not in text
-    assert "已記錄您的服藥狀態！" in text
-    assert "利尿劑" in text
-    assert "胃藥" in text
+    assert "已記錄：" not in text
+    assert "還有 2 種尚未確認：利尿劑、胃藥" in text
 
 
 @pytest.mark.asyncio

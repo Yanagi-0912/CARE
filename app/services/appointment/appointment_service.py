@@ -34,6 +34,31 @@ IN_THE_PAST_DETAIL = "門診時間已經過了，請確認日期與時間。"
 RESCHEDULE_ATTENDED_DETAIL = (
     "已經回報到診的掛號不能改時間；如果是另一次門診，請新增一筆掛號提醒。"
 )
+DUPLICATE_DETAIL = "這個時間已經有一筆同醫院、同科別的掛號提醒，不需要重複建立。"
+
+
+def _norm_key(value: Optional[str]) -> str:
+    """比對用：去掉所有空白、不分大小寫。「心臟 內科」與「心臟內科」是同一科。"""
+    return "".join((value or "").split()).casefold()
+
+
+def _is_same_appointment(
+    *,
+    facility_id: Optional[str],
+    hospital_name: str,
+    department: str,
+    other: AppointmentReminder,
+) -> bool:
+    """同一個門診瞬間下，兩筆是不是同一次掛號。
+
+    醫院的比法：兩邊都有 facility_id 時只看 id——連鎖診所的各分院常常同名，
+    名稱相同不代表是同一家。只要有一邊沒有 id（手動輸入的院所），才退回比院名。
+    """
+    if _norm_key(department) != _norm_key(other.department):
+        return False
+    if facility_id and other.facility_id:
+        return facility_id == other.facility_id
+    return _norm_key(hospital_name) == _norm_key(other.hospital_name)
 
 
 def _utcnow() -> datetime:
@@ -194,6 +219,13 @@ class AppointmentService:
             field: _clean_text(field, getattr(request, field))
             for field in TEXT_FIELD_LIMITS
         }
+        await self._ensure_not_duplicate(
+            user_id=request.user_id,
+            appointment_at=appointment_at,
+            facility_id=text_fields["facility_id"],
+            hospital_name=text_fields["hospital_name"],
+            department=text_fields["department"],
+        )
         reminder = AppointmentReminder(
             user_id=request.user_id,
             creator_user_id=creator_user_id,
@@ -258,12 +290,62 @@ class AppointmentService:
         if not set_doc:
             return current
 
+        # 只在「是哪一次門診」的欄位有變動時才檢查：只改備註的請求不該因為
+        # 另一筆提醒而失敗。檢查對象是改完之後的樣子，並排除自己。
+        if {"appointment_at", "facility_id", "hospital_name", "department"} & set_doc.keys():
+            await self._ensure_not_duplicate(
+                user_id=current.user_id,
+                appointment_at=set_doc.get("appointment_at", current.appointment_at),
+                facility_id=set_doc.get("facility_id", current.facility_id),
+                hospital_name=set_doc.get("hospital_name", current.hospital_name),
+                department=set_doc.get("department", current.department),
+                exclude_id=reminder_id,
+            )
+
         set_doc["updated_at"] = now
         updated = await self._repository.update_fields(reminder_id, set_doc)
         if updated is None:
             # 讀到之後、寫入之前被刪掉了。
             raise AppointmentError.of(404, "not_found")
         return updated
+
+    async def _ensure_not_duplicate(
+        self,
+        *,
+        user_id: str,
+        appointment_at: datetime,
+        facility_id: Optional[str],
+        hospital_name: str,
+        department: str,
+        exclude_id: Optional[str] = None,
+    ) -> None:
+        """同一位就診者、同一時間、同醫院、同科別，只能有一筆提醒。
+
+        重複的代價不只是列表多一張：每一筆都會各自推 T-1h、T+0、T+30，家屬會
+        收到兩倍的推播，其中一筆按了到診，另一筆仍會在 T+30 發出「尚未到診」。
+
+        `cancelled` 不算：那一筆已經不會推播了。其餘狀態都算——同一刻已經有一筆
+        回報到診的同一次門診，再建一筆就是重複。
+
+        同一時間但不同醫院或不同科別**不擋**：同一家醫院上午兩個科同時報到是
+        常見的，那是前端提示「時間撞在一起」的範圍，不是後端的錯誤。
+
+        這是應用層的檢查，不是唯一索引：醫院的比法是「有 id 比 id、沒有才比
+        院名」，唯一索引表達不了。兩個請求在同一瞬間送出同一筆時仍可能都通過；
+        前端送出期間會停用按鈕，實務上只剩兩個人同時替同一位長輩建同一筆這種
+        極端情況。
+        """
+        others = await self._repository.list_by_user_at(user_id, appointment_at)
+        for other in others:
+            if other.id == exclude_id or other.status == "cancelled":
+                continue
+            if _is_same_appointment(
+                facility_id=facility_id,
+                hospital_name=hospital_name,
+                department=department,
+                other=other,
+            ):
+                raise AppointmentError(409, DUPLICATE_DETAIL)
 
     async def delete(self, reminder_id: str) -> bool:
         await self.get(reminder_id)

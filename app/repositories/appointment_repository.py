@@ -97,6 +97,17 @@ class AppointmentReminderRepository:
         docs = await cursor.to_list(length=None)
         return [_from_doc(doc) for doc in docs]
 
+    async def list_by_user_at(
+        self, user_id: str, appointment_at: datetime
+    ) -> List[AppointmentReminder]:
+        """同一位就診者、同一個門診瞬間的提醒，給重複檢查用。
+
+        門診時間寫入前一律截到分鐘，所以直接比相等即可。
+        """
+        cursor = self._col.find({"user_id": user_id, "appointment_at": appointment_at})
+        docs = await cursor.to_list(length=None)
+        return [_from_doc(doc) for doc in docs]
+
     async def update_fields(
         self, reminder_id: str, set_doc: dict
     ) -> Optional[AppointmentReminder]:

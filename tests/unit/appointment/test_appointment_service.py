@@ -9,6 +9,7 @@ from app.models.appointment import (
 )
 from app.repositories.appointment_repository import AppointmentReminderRepository
 from app.services.appointment.appointment_service import (
+    DUPLICATE_DETAIL,
     IN_THE_PAST_DETAIL,
     RESCHEDULE_ATTENDED_DETAIL,
     TIMEZONE_REQUIRED_DETAIL,
@@ -145,6 +146,84 @@ async def test_overlong_text_is_rejected(service):
         400,
         "備註最多 500 個字。",
     )
+
+
+# ── 重複的掛號 ────────────────────────────────────────────────────────
+
+
+async def test_same_time_hospital_and_department_is_a_duplicate(service):
+    """家屬與本人各建了一次同一張掛號單：第二筆要擋下來，否則每則推播都會發兩次。"""
+    await service.create(PATIENT, create_request())
+    await expect_error(service.create(DAUGHTER, create_request()), 409, DUPLICATE_DETAIL)
+
+
+async def test_duplicate_check_ignores_spacing_in_names(service):
+    await service.create(PATIENT, create_request(facility_id=None))
+    await expect_error(
+        service.create(
+            PATIENT,
+            create_request(facility_id=None, hospital_name="台大 醫院", department=" 心臟 內科"),
+        ),
+        409,
+        DUPLICATE_DETAIL,
+    )
+
+
+async def test_same_time_different_department_is_allowed(service):
+    """同一家醫院、同一個早上兩個科同時報到是常見的，不是重複。"""
+    await service.create(PATIENT, create_request())
+    saved = await service.create(PATIENT, create_request(department="眼科"))
+    assert saved.department == "眼科"
+
+
+async def test_same_name_but_different_facility_is_allowed(service):
+    """連鎖診所的分院常常同名；兩邊都有 facility_id 時只看 id。"""
+    await service.create(PATIENT, create_request(facility_id="branch-a", hospital_name="仁愛診所"))
+    saved = await service.create(
+        PATIENT, create_request(facility_id="branch-b", hospital_name="仁愛診所")
+    )
+    assert saved.facility_id == "branch-b"
+
+
+async def test_same_facility_id_is_a_duplicate_even_if_the_name_was_edited(service):
+    await service.create(PATIENT, create_request(facility_id="fac-1", hospital_name="台大醫院"))
+    await expect_error(
+        service.create(
+            PATIENT, create_request(facility_id="fac-1", hospital_name="國立臺灣大學醫學院附設醫院")
+        ),
+        409,
+        DUPLICATE_DETAIL,
+    )
+
+
+async def test_different_time_is_not_a_duplicate(service):
+    await service.create(PATIENT, create_request())
+    await service.create(PATIENT, create_request(appointment_at="2026-09-15T14:00:00+08:00"))
+
+
+async def test_cancelled_reminder_does_not_count(service, repo):
+    first = await service.create(PATIENT, create_request())
+    await repo.update_fields(first.id, {"status": "cancelled"})
+    await service.create(PATIENT, create_request())
+
+
+async def test_moving_one_appointment_onto_another_is_rejected(service):
+    await service.create(PATIENT, create_request())
+    later = await service.create(PATIENT, create_request(appointment_at="2026-09-15T14:00:00+08:00"))
+    await expect_error(
+        service.update(later.id, update(appointment_at="2026-09-15T09:30:00+08:00")),
+        409,
+        DUPLICATE_DETAIL,
+    )
+
+
+async def test_editing_a_reminder_never_collides_with_itself(service):
+    saved = await service.create(PATIENT, create_request())
+    assert (await service.update(saved.id, update(note="帶健保卡"))).note == "帶健保卡"
+    resent = await service.update(
+        saved.id, update(appointment_at="2026-09-15T09:30:00+08:00", department="心臟內科")
+    )
+    assert resent.id == saved.id
 
 
 # ── 修改：exclude_unset ───────────────────────────────────────────────

@@ -162,6 +162,14 @@ def test_create_without_offset_is_a_400_with_a_readable_detail(client):
     assert res.json() == {"detail": "門診時間必須帶時區，例如 2026-09-15T09:30:00+08:00。"}
 
 
+def test_creating_the_same_appointment_twice_is_a_409(client):
+    Env()
+    assert create(client).status_code == 200
+    res = create(client)
+    assert res.status_code == 409
+    assert res.json() == {"detail": "這個時間已經有一筆同醫院、同科別的掛號提醒，不需要重複建立。"}
+
+
 def test_missing_required_field_is_fastapis_422(client):
     Env()
     body = {k: v for k, v in PAYLOAD.items() if k != "hospital_name"}

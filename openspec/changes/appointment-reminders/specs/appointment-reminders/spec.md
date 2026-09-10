@@ -8,6 +8,18 @@
 
 系統 SHALL NOT 儲存病名、主訴或診斷。
 
+同一位就診者、同一個門診瞬間、同醫院、同科別 SHALL 只能有一筆狀態不是 `cancelled` 的提醒，建立或修改成重複時 SHALL 回 409。醫院在兩邊都有 `facility_id` 時 SHALL 以 id 比對，否則以院名比對；院名與科別比對時 SHALL 忽略空白。同一瞬間但醫院或科別不同 SHALL NOT 視為重複。
+
+#### Scenario: 家屬與本人各建了一次同一張掛號單
+
+- **WHEN** 已有一筆 9/15 09:30 台大醫院心臟內科的提醒，家屬又建立同一筆
+- **THEN** 第二筆 SHALL 回 409，SHALL NOT 建立
+
+#### Scenario: 同名的連鎖分院
+
+- **WHEN** 同一時間已有一筆「仁愛診所」（facility_id A），又建立「仁愛診所」（facility_id B）同一科
+- **THEN** 系統 SHALL 照常建立
+
 #### Scenario: 帶 offset 原樣回傳
 
 - **WHEN** 建立時送出 `2026-09-15T09:30:00+08:00`

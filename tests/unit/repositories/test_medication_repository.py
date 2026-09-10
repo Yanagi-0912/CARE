@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 import pytest
@@ -101,6 +101,13 @@ async def test_find_or_create_reminder_upserts_atomically():
     set_on_insert = update["$setOnInsert"]
     assert set_on_insert["creator_user_id"] == "U_FAMILY"
     assert set_on_insert["scheduled_time"] == "08:00"
+    # 新插入的文件同時合成 timeout_anchor_time 與單一 none 條目，值與
+    # scheduled_time 相同——這是唯一條目時兩個派生時刻理應相等的情況，
+    # 讓 MedicationReminder(**document) 讀回後不需要額外重算就一致。
+    assert set_on_insert["timeout_anchor_time"] == "08:00"
+    assert set_on_insert["entries"] == [
+        {"meal_timing": "none", "scheduled_time": "08:00", "medication_ids": []}
+    ]
     assert set_on_insert["enabled"] is True
     assert set_on_insert["medication_ids"] == []
     assert kwargs.get("upsert") is True
@@ -788,6 +795,70 @@ async def test_create_many_assigns_ids_and_returns_medications():
 
 
 @pytest.mark.asyncio
+async def test_create_one_delegates_to_create_many():
+    """create_one 只是 create_many([單一藥品]) 的包裝，回傳唯一的結果——
+    id 指派與 model_copy 回填只有一份實作。"""
+    from app.models.medication import Medication
+    from app.repositories.medication_repository import MedicationRepository
+
+    col = _medications_col()
+    medication = Medication(user_id="U_P", created_by_user_id="U_F", name="普拿疼")
+
+    created = await MedicationRepository.create_one(medication, collection=col)
+
+    assert created.name == "普拿疼"
+    assert created.id
+    (documents,), _ = col.insert_many.call_args
+    assert len(documents) == 1
+    assert documents[0]["name"] == "普拿疼"
+
+
+@pytest.mark.asyncio
+async def test_list_by_user_sorts_by_created_at_ascending():
+    """GET /medications?user_id= 的清單：不篩 enabled 與日期（含停用者），
+    依 created_at 升冪，維持使用者建立藥品的原始順序。"""
+    from app.repositories.medication_repository import MedicationRepository
+
+    col = MagicMock()
+    cursor = MagicMock()
+    cursor.sort = MagicMock(return_value=cursor)
+    cursor.to_list = AsyncMock(return_value=[])
+    col.find = MagicMock(return_value=cursor)
+
+    await MedicationRepository.list_by_user("U1", collection=col)
+
+    (query,), _ = col.find.call_args
+    assert query == {"user_id": "U1"}
+    cursor.sort.assert_called_once_with("created_at", 1)
+
+
+@pytest.mark.asyncio
+async def test_list_by_user_includes_disabled_medications():
+    from app.repositories.medication_repository import MedicationRepository
+
+    col = MagicMock()
+    cursor = MagicMock()
+    cursor.sort = MagicMock(return_value=cursor)
+    cursor.to_list = AsyncMock(
+        return_value=[
+            {
+                "_id": "M1",
+                "user_id": "U1",
+                "created_by_user_id": "U1",
+                "name": "停用藥",
+                "enabled": False,
+            }
+        ]
+    )
+    col.find = MagicMock(return_value=cursor)
+
+    result = await MedicationRepository.list_by_user("U1", collection=col)
+
+    assert len(result) == 1
+    assert result[0].enabled is False
+
+
+@pytest.mark.asyncio
 async def test_create_many_with_empty_list_does_not_touch_the_database():
     from app.repositories.medication_repository import MedicationRepository
 
@@ -954,36 +1025,172 @@ async def test_set_enabled_updates_only_that_medication():
     assert update["$set"]["enabled"] is False
 
 
-@pytest.mark.asyncio
-async def test_link_medications_uses_add_to_set_to_avoid_duplicates():
-    from app.repositories.medication_repository import MedicationReminderRepository
-
+def _link_medications_col(reminder_doc: dict) -> MagicMock:
     col = MagicMock()
+    col.find_one = AsyncMock(return_value=reminder_doc)
     col.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
-
-    linked = await MedicationReminderRepository.link_medications_to_reminder(
-        "R1", ["M1", "M2"], collection=col
-    )
-
-    assert linked is True
-    (query, update), _ = col.update_one.call_args
-    assert query == {"_id": "R1"}
-    assert update["$addToSet"]["medication_ids"] == {"$each": ["M1", "M2"]}
+    return col
 
 
 @pytest.mark.asyncio
 async def test_link_medications_with_empty_list_does_not_update():
     from app.repositories.medication_repository import MedicationReminderRepository
 
-    col = MagicMock()
-    col.update_one = AsyncMock()
+    col = _link_medications_col({"_id": "R1", "scheduled_time": "08:00"})
+    col.find_one = AsyncMock()  # 不該被呼叫
 
     linked = await MedicationReminderRepository.link_medications_to_reminder(
         "R1", [], collection=col
     )
 
     assert linked is False
+    col.find_one.assert_not_called()
     col.update_one.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_link_medications_returns_false_when_reminder_missing():
+    from app.repositories.medication_repository import MedicationReminderRepository
+
+    col = _link_medications_col(None)
+
+    linked = await MedicationReminderRepository.link_medications_to_reminder(
+        "R_MISSING", ["M1"], collection=col
+    )
+
+    assert linked is False
+    col.update_one.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_link_medications_legacy_document_gets_entries_synthesized():
+    """本變更前寫入的規則沒有 entries 欄位：三步都要各自送出，步驟 1 的
+    filter／update 必須用文件既有的 scheduled_time 與 medication_ids 合成
+    出單一 none 條目，不是憑空塞值。"""
+    from app.repositories.medication_repository import MedicationReminderRepository
+
+    col = _link_medications_col(
+        {
+            "_id": "R_LEGACY",
+            "scheduled_time": "07:30",
+            "medication_ids": ["M_OLD"],
+            # 刻意不放 entries 欄位
+        }
+    )
+
+    linked = await MedicationReminderRepository.link_medications_to_reminder(
+        "R_LEGACY", ["M1", "M2"], collection=col
+    )
+
+    assert linked is True
+    col.find_one.assert_awaited_once_with({"_id": "R_LEGACY"})
+    assert col.update_one.await_count == 3
+
+    (step1_query, step1_update), step1_kwargs = col.update_one.await_args_list[0]
+    assert step1_query == {"_id": "R_LEGACY", "entries": {"$exists": False}}
+    assert step1_update == {
+        "$set": {
+            "entries": [
+                {
+                    "meal_timing": "none",
+                    "scheduled_time": "07:30",
+                    "medication_ids": ["M_OLD"],
+                }
+            ]
+        }
+    }
+    assert step1_kwargs == {}
+
+    (step2_query, step2_update), _ = col.update_one.await_args_list[1]
+    assert step2_query == {"_id": "R_LEGACY", "entries.meal_timing": {"$ne": "none"}}
+    assert step2_update == {
+        "$push": {
+            "entries": {
+                "meal_timing": "none",
+                "scheduled_time": "07:30",
+                "medication_ids": [],
+            }
+        }
+    }
+
+    (step3_query, step3_update), step3_kwargs = col.update_one.await_args_list[2]
+    assert step3_query == {"_id": "R_LEGACY"}
+    assert step3_update["$addToSet"] == {
+        "entries.$[none].medication_ids": {"$each": ["M1", "M2"]},
+        "medication_ids": {"$each": ["M1", "M2"]},
+    }
+    assert "updated_at" in step3_update["$set"]
+    assert step3_kwargs == {"array_filters": [{"none.meal_timing": "none"}]}
+
+
+@pytest.mark.asyncio
+async def test_link_medications_document_has_meal_entries_but_no_none_entry():
+    """已經設定了飯前／飯後條目、但還沒有任何『無關聯』藥的文件：步驟 1
+    不該命中（entries 欄位已存在），步驟 2 要 push 一個空的 none 條目。"""
+    from app.repositories.medication_repository import MedicationReminderRepository
+
+    col = _link_medications_col(
+        {
+            "_id": "R_MEAL",
+            "scheduled_time": "07:30",
+            "medication_ids": [],
+            "entries": [
+                {"meal_timing": "before_meal", "scheduled_time": "07:30", "medication_ids": ["M_BEFORE"]},
+                {"meal_timing": "after_meal", "scheduled_time": "08:30", "medication_ids": ["M_AFTER"]},
+            ],
+        }
+    )
+
+    linked = await MedicationReminderRepository.link_medications_to_reminder(
+        "R_MEAL", ["M1"], collection=col
+    )
+
+    assert linked is True
+    assert col.update_one.await_count == 3
+
+    (step1_query, _), _ = col.update_one.await_args_list[0]
+    assert step1_query == {"_id": "R_MEAL", "entries": {"$exists": False}}
+
+    (step2_query, step2_update), _ = col.update_one.await_args_list[1]
+    assert step2_query == {"_id": "R_MEAL", "entries.meal_timing": {"$ne": "none"}}
+    assert step2_update["$push"]["entries"] == {
+        "meal_timing": "none",
+        "scheduled_time": "07:30",
+        "medication_ids": [],
+    }
+
+
+@pytest.mark.asyncio
+async def test_link_medications_document_already_has_none_entry():
+    """已經有 none 條目的文件：步驟 1、2 都不該真的命中（filter 不成立時
+    仍會送出 update_one，但不影響任何文件），只有步驟 3 的 $addToSet 真正
+    生效——這裡只驗證三步照樣都會送出、且步驟 3 用 array_filters 鎖定
+    none 條目，不是驗證假集合的比對結果（那件事由 filter 形狀本身保證）。"""
+    from app.repositories.medication_repository import MedicationReminderRepository
+
+    col = _link_medications_col(
+        {
+            "_id": "R_NONE",
+            "scheduled_time": "07:30",
+            "medication_ids": ["M_OLD"],
+            "entries": [
+                {"meal_timing": "none", "scheduled_time": "07:30", "medication_ids": ["M_OLD"]},
+            ],
+        }
+    )
+
+    linked = await MedicationReminderRepository.link_medications_to_reminder(
+        "R_NONE", ["M1", "M2"], collection=col
+    )
+
+    assert linked is True
+    assert col.update_one.await_count == 3
+    (step3_query, step3_update), step3_kwargs = col.update_one.await_args_list[2]
+    assert step3_query == {"_id": "R_NONE"}
+    assert step3_update["$addToSet"]["entries.$[none].medication_ids"] == {
+        "$each": ["M1", "M2"]
+    }
+    assert step3_kwargs["array_filters"] == [{"none.meal_timing": "none"}]
 
 
 # --- 關閉提醒時註銷當日尚未確認的執行紀錄 ---------------------------------
@@ -1058,6 +1265,70 @@ async def test_resync_cancels_the_old_time_and_retags_the_same_time():
 
 
 @pytest.mark.asyncio
+async def test_resync_retags_urgent_and_timeout_when_slot_type_unchanged():
+    """design 決策 5 第二種情形：最早時刻（scheduled_at 對應的
+    scheduled_time）不變，只有最晚時刻（timeout_anchor_time）變了時，
+    要就地改寫 pending 紀錄的 urgent_at／timeout_at，不該註銷——排程展開
+    的 T+0 時刻沒變，改的只是 T+20／T+30 的推播基準。slot_type 沒有變，
+    改標查詢仍要用 urgent_at／timeout_at 的 $ne 命中它。
+    """
+    same_at = datetime(2026, 9, 3, 7, 30, tzinfo=timezone.utc)
+    new_urgent = datetime(2026, 9, 3, 8, 50, tzinfo=timezone.utc)
+    new_timeout = datetime(2026, 9, 3, 9, 0, tzinfo=timezone.utc)
+    col = MagicMock()
+    col.update_many = AsyncMock(
+        side_effect=[MagicMock(modified_count=0), MagicMock(modified_count=1)]
+    )
+
+    cancelled, retagged = await MedicationLogRepository.resync_pending_by_reminder(
+        "R123",
+        scheduled_at=same_at,
+        slot_type="morning",
+        urgent_at=new_urgent,
+        timeout_at=new_timeout,
+        collection=col,
+    )
+
+    assert (cancelled, retagged) == (0, 1)
+    (retag_query, retag_update), _ = col.update_many.call_args_list[1]
+    assert retag_query == {
+        "reminder_id": "R123",
+        "status": "pending",
+        "scheduled_at": same_at,
+        "$or": [
+            {"slot_type": {"$ne": "morning"}},
+            {"urgent_at": {"$ne": new_urgent}},
+            {"timeout_at": {"$ne": new_timeout}},
+        ],
+    }
+    assert retag_update["$set"] == {
+        "slot_type": "morning",
+        "urgent_at": new_urgent,
+        "timeout_at": new_timeout,
+    }
+
+
+@pytest.mark.asyncio
+async def test_resync_without_urgent_or_timeout_keeps_legacy_query_shape():
+    """既有呼叫（不帶 urgent_at／timeout_at）的改標查詢與 $set 維持本變更
+    前的形狀——不是被新分支包住的單元素 $or，行為完全不變。"""
+    new_at = datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc)
+    col = MagicMock()
+    col.update_many = AsyncMock(
+        side_effect=[MagicMock(modified_count=0), MagicMock(modified_count=1)]
+    )
+
+    await MedicationLogRepository.resync_pending_by_reminder(
+        "R123", scheduled_at=new_at, slot_type="noon", collection=col
+    )
+
+    (retag_query, retag_update), _ = col.update_many.call_args_list[1]
+    assert "$or" not in retag_query
+    assert retag_query["slot_type"] == {"$ne": "noon"}
+    assert retag_update["$set"] == {"slot_type": "noon"}
+
+
+@pytest.mark.asyncio
 async def test_resync_never_touches_taken_or_missed_logs():
     """對齊同樣只能打中 pending。
 
@@ -1110,6 +1381,122 @@ async def test_push_queries_are_limited_to_pending_status(
 
     (query,), _ = col.find.call_args
     assert query["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_list_pending_urgent_reminders_has_dual_branch_query():
+    """T+20 查詢改讀 urgent_at；既有紀錄沒有這個欄位時退回
+    scheduled_at <= threshold_time - 20min 的舊算法（design 決策 4／
+    Risks 過渡期雙分支）。呼叫端改傳現在時刻，不再自己先減 20 分鐘。
+    """
+    from app.repositories.medication_repository import MedicationLogRepository
+
+    col = MagicMock()
+    cursor = MagicMock()
+    cursor.to_list = AsyncMock(return_value=[])
+    col.find = MagicMock(return_value=cursor)
+    now = datetime(2026, 9, 10, 12, 0, tzinfo=timezone.utc)
+
+    await MedicationLogRepository.list_pending_urgent_reminders(
+        threshold_time=now, collection=col
+    )
+
+    (query,), _ = col.find.call_args
+    assert query["status"] == "pending"
+    assert query["patient_reminder_sent"] is True
+    assert query["urgent_reminder_sent"] is False
+    assert query["$or"] == [
+        {"urgent_at": {"$lte": now}},
+        {
+            "urgent_at": {"$exists": False},
+            "scheduled_at": {"$lte": now - timedelta(minutes=20)},
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_add_taken_medication_uses_add_to_set(override_medication_logs_col):
+    """逐藥確認：$addToSet 保證重複按同一顆藥是冪等的，不會讓陣列裡
+    同一個 id 出現兩次。"""
+    col = MagicMock()
+    now = datetime.now(tz=timezone.utc)
+    col.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
+    col.find_one = AsyncMock(
+        return_value={**_fake_log_doc(now), "taken_medication_ids": ["M1"]}
+    )
+    override_medication_logs_col(col)
+
+    log = await MedicationLogRepository.add_taken_medication("L123", "M1")
+
+    assert log is not None
+    assert log.taken_medication_ids == ["M1"]
+    (query, update), _ = col.update_one.call_args
+    assert query == {"_id": "L123"}
+    assert update == {"$addToSet": {"taken_medication_ids": "M1"}}
+
+
+@pytest.mark.asyncio
+async def test_add_taken_medication_returns_none_when_log_missing(
+    override_medication_logs_col,
+):
+    col = MagicMock()
+    col.update_one = AsyncMock(return_value=MagicMock(matched_count=0))
+    col.find_one = AsyncMock(return_value=None)
+    override_medication_logs_col(col)
+
+    log = await MedicationLogRepository.add_taken_medication("L_MISSING", "M1")
+
+    assert log is None
+
+
+@pytest.mark.asyncio
+async def test_mark_as_taken_with_taken_medication_ids_adds_to_set(
+    override_medication_logs_col,
+):
+    """整批確認（不帶 medication_id 的 postback）要把當時有效的藥品全部
+    寫進 taken_medication_ids，讓用藥歷史能回答『那次吃了什麼』（design
+    決策 4）。這與 status/taken_at 的 $set 是同一次 update_one。"""
+    col = MagicMock()
+    now = datetime.now(tz=timezone.utc)
+    col.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
+    col.find_one = AsyncMock(
+        return_value={
+            **_fake_log_doc(now),
+            "status": "taken",
+            "taken_at": now,
+            "taken_medication_ids": ["M1", "M2"],
+        }
+    )
+    override_medication_logs_col(col)
+
+    log = await MedicationLogRepository.mark_as_taken(
+        "L123", taken_at=now, taken_medication_ids=["M1", "M2"]
+    )
+
+    assert log is not None
+    assert log.taken_medication_ids == ["M1", "M2"]
+    (query, update), _ = col.update_one.call_args
+    assert query == {"_id": "L123", "status": {"$in": ["pending", "missed", "cancelled"]}}
+    assert update["$set"] == {"status": "taken", "taken_at": now}
+    assert update["$addToSet"] == {"taken_medication_ids": {"$each": ["M1", "M2"]}}
+
+
+@pytest.mark.asyncio
+async def test_mark_as_taken_without_ids_does_not_touch_taken_medication_ids(
+    override_medication_logs_col,
+):
+    """沒帶 taken_medication_ids 時（逐藥確認全部到齊後轉 taken 的路徑，
+    見 service 層）不該動這個欄位——它已經由逐藥確認累積好了。"""
+    col = MagicMock()
+    now = datetime.now(tz=timezone.utc)
+    col.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
+    col.find_one = AsyncMock(return_value={**_fake_log_doc(now), "status": "taken"})
+    override_medication_logs_col(col)
+
+    await MedicationLogRepository.mark_as_taken("L123", taken_at=now)
+
+    (_, update), _ = col.update_one.call_args
+    assert "$addToSet" not in update
 
 
 @pytest.mark.asyncio

@@ -11,9 +11,12 @@ from app.models.medication import (
     CreateMedicationReminderRequest,
     MedicationLog,
     MedicationReminder,
+    ReminderEntry,
     UpdateMedicationReminderRequest,
+    derive_entry_fields,
     ensure_aware_utc,
     to_taipei_hm,
+    validate_entries,
 )
 
 
@@ -242,3 +245,198 @@ def test_medication_keeps_usage_raw_and_indication():
     assert med.indication == "高血壓"
     assert med.license_number == "衛署藥製字第000001號"
     assert med.source == "prescription_ocr"
+
+
+# ── entries（飯前飯後條目）──────────────────────────────────────────
+
+
+def test_reminder_reads_back_without_entries_synthesizes_none_entry():
+    """本變更前寫入的規則沒有 entries 欄位，讀回時須合成單一 none 條目，
+    且 timeout_anchor_time 等於 scheduled_time（spec「既有規則沒有條目欄位」）。
+    """
+    document = {
+        "_id": "R1",
+        "creator_user_id": "U_FAMILY",
+        "user_id": "U_PATIENT",
+        "slot_type": "evening",
+        "scheduled_time": "18:00",
+        "medication_ids": ["M1", "M2"],
+        "start_date": "2026-08-09",
+        "enabled": True,
+    }
+
+    reminder = MedicationReminder(**document)
+
+    assert len(reminder.entries) == 1
+    entry = reminder.entries[0]
+    assert entry.meal_timing == "none"
+    assert entry.scheduled_time == "18:00"
+    assert entry.medication_ids == ["M1", "M2"]
+    assert reminder.scheduled_time == "18:00"
+    assert reminder.timeout_anchor_time == "18:00"
+    assert reminder.medication_ids == ["M1", "M2"]
+
+
+def test_reminder_with_two_entries_derives_min_max_and_union():
+    """飯前飯後兩個條目：scheduled_time 取最早、timeout_anchor_time 取最晚、
+    medication_ids 為依條目順序去重的聯集（spec「早上飯前飯後各一批藥」）。
+    """
+    reminder = MedicationReminder(
+        creator_user_id="U_FAMILY",
+        user_id="U_PATIENT",
+        slot_type="morning",
+        entries=[
+            {
+                "meal_timing": "after_meal",
+                "scheduled_time": "08:30",
+                "medication_ids": ["M2", "M3"],
+            },
+            {
+                "meal_timing": "before_meal",
+                "scheduled_time": "07:30",
+                "medication_ids": ["M1"],
+            },
+        ],
+    )
+
+    assert reminder.scheduled_time == "07:30"
+    assert reminder.timeout_anchor_time == "08:30"
+    assert reminder.medication_ids == ["M1", "M2", "M3"]
+    # entries 依 MEAL_TIMING_ORDER（before_meal, after_meal, none）排序，
+    # 不是輸入時的原始順序。
+    assert [entry.meal_timing for entry in reminder.entries] == [
+        "before_meal",
+        "after_meal",
+    ]
+
+
+def test_reminder_rejects_duplicate_meal_timing():
+    with pytest.raises(ValidationError):
+        MedicationReminder(
+            creator_user_id="U_FAMILY",
+            user_id="U_PATIENT",
+            slot_type="morning",
+            entries=[
+                {"meal_timing": "before_meal", "scheduled_time": "07:30", "medication_ids": []},
+                {"meal_timing": "before_meal", "scheduled_time": "08:00", "medication_ids": []},
+            ],
+        )
+
+
+def test_reminder_rejects_same_medication_across_entries():
+    with pytest.raises(ValidationError):
+        MedicationReminder(
+            creator_user_id="U_FAMILY",
+            user_id="U_PATIENT",
+            slot_type="morning",
+            entries=[
+                {"meal_timing": "before_meal", "scheduled_time": "07:30", "medication_ids": ["M1"]},
+                {"meal_timing": "after_meal", "scheduled_time": "08:30", "medication_ids": ["M1"]},
+            ],
+        )
+
+
+def test_validate_entries_rejects_empty_list():
+    with pytest.raises(ValueError):
+        validate_entries([])
+
+
+def test_derive_entry_fields_returns_plain_dicts_sorted_by_meal_timing_order():
+    entries = [
+        ReminderEntry(meal_timing="none", scheduled_time="12:00", medication_ids=["M9"]),
+        ReminderEntry(meal_timing="before_meal", scheduled_time="11:30", medication_ids=["M1"]),
+    ]
+
+    derived = derive_entry_fields(entries)
+
+    assert derived["scheduled_time"] == "11:30"
+    assert derived["timeout_anchor_time"] == "12:00"
+    assert derived["medication_ids"] == ["M1", "M9"]
+    assert [e["meal_timing"] for e in derived["entries"]] == ["before_meal", "none"]
+    assert all(isinstance(e, dict) for e in derived["entries"])
+
+
+def test_slot_entries_rejects_malformed_time():
+    """slot_entries 裡條目的時間格式錯誤須擋在請求驗證層，理由同 slot_times：
+    格式錯誤若寫進資料庫，排程器的 strptime 會拋錯並被 except 吞掉。"""
+    with pytest.raises(ValidationError):
+        CreateMedicationReminderRequest(
+            user_id="U_SELF",
+            slots=["morning"],
+            slot_entries={
+                "morning": [
+                    {"meal_timing": "none", "scheduled_time": "9am", "medication_ids": []}
+                ]
+            },
+        )
+
+
+def test_slot_entries_rejects_duplicate_meal_timing_within_slot():
+    with pytest.raises(ValidationError):
+        CreateMedicationReminderRequest(
+            user_id="U_SELF",
+            slots=["morning"],
+            slot_entries={
+                "morning": [
+                    {"meal_timing": "before_meal", "scheduled_time": "07:00", "medication_ids": []},
+                    {"meal_timing": "before_meal", "scheduled_time": "07:30", "medication_ids": []},
+                ]
+            },
+        )
+
+
+def test_update_request_entries_validated_same_as_reminder():
+    with pytest.raises(ValidationError):
+        UpdateMedicationReminderRequest(
+            entries=[
+                {"meal_timing": "none", "scheduled_time": "07:00", "medication_ids": ["M1"]},
+                {"meal_timing": "before_meal", "scheduled_time": "07:30", "medication_ids": ["M1"]},
+            ]
+        )
+
+    ok = UpdateMedicationReminderRequest(
+        entries=[
+            {"meal_timing": "before_meal", "scheduled_time": "07:30", "medication_ids": ["M1"]},
+        ]
+    )
+    assert ok.entries[0].meal_timing == "before_meal"
+
+
+# ── MedicationLog：urgent_at / taken_medication_ids ────────────────
+
+
+def test_log_reads_back_without_urgent_at_and_taken_medication_ids():
+    """本變更前寫入的紀錄沒有這兩個欄位，讀回時須維持過去行為：
+    urgent_at 為 None、taken_medication_ids 為空陣列。"""
+    now = datetime.now(tz=timezone.utc)
+    document = {
+        "_id": "LOG1",
+        "reminder_id": "REM_123",
+        "user_id": "U_PATIENT",
+        "alert_notify_user_id": "U_NOTIFY_USER",
+        "slot_type": "morning",
+        "scheduled_at": now,
+        "timeout_at": now,
+    }
+
+    log = MedicationLog(**document)
+
+    assert log.urgent_at is None
+    assert log.taken_medication_ids == []
+
+
+# ── CreateMedicationRequest ─────────────────────────────────────────
+
+
+def test_create_medication_request_strips_name_whitespace():
+    from app.models.medication import CreateMedicationRequest
+
+    req = CreateMedicationRequest(user_id="U_SELF", name="  脈優錠5毫克  ")
+    assert req.name == "脈優錠5毫克"
+
+
+def test_create_medication_request_rejects_blank_name_after_strip():
+    from app.models.medication import CreateMedicationRequest
+
+    with pytest.raises(ValidationError):
+        CreateMedicationRequest(user_id="U_SELF", name="   ")

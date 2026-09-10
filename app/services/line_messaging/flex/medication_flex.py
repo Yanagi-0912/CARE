@@ -267,6 +267,7 @@ def build_patient_medication_flex(
     disabled: bool = False,
     taken_at_str: Optional[str] = None,
     medication_names: Optional[list[MedicationListItem]] = None,
+    medication_groups: Optional[list[MedicationGroup]] = None,
     language: str | None = None,
     font_size: str | None = None,
 ) -> FlexMessage:
@@ -281,6 +282,10 @@ def build_patient_medication_flex(
     丟掉，家屬與使用者都無從核對那一次到底服了哪幾種藥。
     規則沒有關聯藥品、或關聯的藥品皆已失效時傳入 None／空清單，版面與本參數
     新增前完全相同。
+
+    `medication_groups` 目前接收但不使用——依飯前／飯後分區＋逐藥確認按鈕的
+    版面改造是 Task 6 的範圍（spec「推播列出該時段應服藥品」），這裡先接住
+    參數讓排程器（Task 5）可以先傳，版面與行為都不變。
     """
     ft = theme.resolve_theme(font_size)
     slot_name = get_slot_display_name(slot_type, language)
@@ -367,6 +372,7 @@ def build_patient_urgent_reminder_flex(
     slot_type: str,
     scheduled_time: str,
     medication_names: Optional[list[MedicationListItem]] = None,
+    medication_groups: Optional[list[MedicationGroup]] = None,
     language: str | None = None,
     font_size: str | None = None,
 ) -> FlexMessage:
@@ -374,6 +380,9 @@ def build_patient_urgent_reminder_flex(
 
     `medication_names` 為 None／空清單時版面與本參數新增前完全相同，見
     `_medication_list_block`。
+
+    `medication_groups` 目前接收但不使用，理由同 `build_patient_medication_flex`
+    ——分區版面是 Task 6 的範圍。
     """
     ft = theme.resolve_theme(font_size)
     slot_name = get_slot_display_name(slot_type, language)

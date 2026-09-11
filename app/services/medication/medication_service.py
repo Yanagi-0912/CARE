@@ -615,7 +615,23 @@ class MedicationService:
             raise HTTPException(status_code=403, detail="無權限確認此用藥紀錄")
 
         if medication_id is None:
-            expected = await self._expected_medication_ids(log)
+            # 整批確認刻意不採用 `_expected_medication_ids` 文件所述「SHALL NOT
+            # 吞例外」的原則——那條規則是為了逐藥確認的到齊判定設計的：expected
+            # 若被悄悄吞成空清單，會讓「還差一顆」被誤判成「全部到齊」。但整批
+            # 確認本來就是使用者明確按下【全部已服用】，不需要 expected 來決定
+            # 要不要轉成 taken；expected 這裡只是拿來填 taken_medication_ids
+            # 讓用藥歷史好看。查詢失敗時若讓整筆確認跟著失敗，log 會卡在
+            # pending，家屬之後反而收到一次子虛烏有的漏吃藥警報——兩害相權，
+            # 寧可 taken_medication_ids 這次是空的，也不要讓確認本身失敗。
+            try:
+                expected = await self._expected_medication_ids(log)
+            except Exception:
+                logger.exception(
+                    "[MedicationService] 整批確認時查詢有效藥品失敗，log_id=%s，"
+                    "taken_medication_ids 將寫入空清單但仍完成確認",
+                    log_id,
+                )
+                expected = []
             updated_log = await self._log_repository.mark_as_taken(
                 log_id, taken_medication_ids=expected
             )

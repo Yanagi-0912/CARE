@@ -398,6 +398,94 @@ async def test_confirm_medication_writes_all_expected_ids_on_bulk_confirm():
     assert log_repo.mark_as_taken_calls[0]["taken_medication_ids"] == ["M1", "M2"]
 
 
+class _RaisingMedicationRepository(FakeMedicationRepository):
+    """`find_active_by_ids` 一律拋例外的替身，模擬查詢當下 DB 抖動或其他
+    非預期錯誤——用來驗證整批確認與逐藥確認對這類失敗的不同容忍度。"""
+
+    async def find_active_by_ids(self, medication_ids: list[str], date_str: str):
+        raise RuntimeError("模擬查詢有效藥品失敗")
+
+
+@pytest.mark.asyncio
+async def test_confirm_medication_bulk_survives_expected_lookup_failure():
+    """整批確認（【全部已服用】）不應該因為查詢有效藥品失敗而讓紀錄卡在
+    pending——那會讓家屬之後收到一次子虛烏有的漏吃藥警報。這與逐藥確認刻意
+    不吞例外（`_expected_medication_ids` 的判定會直接決定狀態轉換）是不同的
+    風險等級：整批確認的轉換由使用者明確按下的動作決定，expected 只是用來
+    填 `taken_medication_ids` 讓歷史好看，查不到就寫空清單也不影響本次確認
+    是否該完成。"""
+    log = MedicationLog(
+        id="L123",
+        reminder_id="R123",
+        user_id="U_PATIENT",
+        alert_notify_user_id="U_CARE",
+        slot_type="morning",
+        scheduled_at="2026-08-09T00:00:00Z",
+        timeout_at="2026-08-09T00:30:00Z",
+        status="pending",
+    )
+    reminder = MedicationReminder(
+        _id="R123",
+        creator_user_id="U_CARE",
+        user_id="U_PATIENT",
+        slot_type="morning",
+        medication_ids=["M1", "M2"],
+    )
+    log_repo = FakeLogRepository(log=log)
+    service = MedicationService(
+        log_repository=log_repo,
+        reminder_repository=FakeReminderRepository(reminder=reminder),
+        medication_repository=_RaisingMedicationRepository(
+            [_medication("M1", "脈優"), _medication("M2", "利尿劑")]
+        ),
+    )
+
+    result = await service.confirm_medication(log_id="L123", user_id="U_PATIENT")
+
+    assert result.status == "taken"
+    assert log_repo.mark_as_taken_calls == [
+        {"log_id": "L123", "taken_medication_ids": []}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_confirm_medication_per_drug_still_raises_on_lookup_failure():
+    """逐藥確認維持嚴格：到齊判定就是靠 `_expected_medication_ids` 的結果
+    決定要不要收尾成 taken，查詢失敗時吞掉例外、悄悄把 expected 當空清單，
+    會讓任何一次逐藥確認都被誤判成「全部到齊」而錯誤標記已服藥——寧可讓
+    這次確認失敗（拋出例外），也不要留下錯誤的用藥紀錄。"""
+    log = MedicationLog(
+        id="L123",
+        reminder_id="R123",
+        user_id="U_PATIENT",
+        alert_notify_user_id="U_CARE",
+        slot_type="morning",
+        scheduled_at="2026-08-09T00:00:00Z",
+        timeout_at="2026-08-09T00:30:00Z",
+        status="pending",
+    )
+    reminder = MedicationReminder(
+        _id="R123",
+        creator_user_id="U_CARE",
+        user_id="U_PATIENT",
+        slot_type="morning",
+        medication_ids=["M1", "M2"],
+    )
+    log_repo = FakeLogRepository(log=log)
+    service = MedicationService(
+        log_repository=log_repo,
+        reminder_repository=FakeReminderRepository(reminder=reminder),
+        medication_repository=_RaisingMedicationRepository(
+            [_medication("M1", "脈優"), _medication("M2", "利尿劑")]
+        ),
+    )
+
+    with pytest.raises(RuntimeError):
+        await service.confirm_medication(
+            log_id="L123", user_id="U_PATIENT", medication_id="M1"
+        )
+
+
 @pytest.mark.asyncio
 async def test_create_reminders_custom_slot_times():
     req = CreateMedicationReminderRequest(

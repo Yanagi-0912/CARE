@@ -472,6 +472,47 @@ async def test_find_by_ids_with_empty_list_does_not_query_reminders():
     col.find.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_find_by_ids_skips_unparseable_document():
+    """一份文件解析失敗（這裡用重複 meal_timing 的 entries 觸發模型驗證器）
+    不該讓整批查詢跟著拋例外——排程器與其他讀取路徑都是整批處理多位使用者
+    的規則，一則壞文件不能連坐其他人。好文件仍要正常回傳（見
+    `_reminder_from_doc`）。
+    """
+    col = MagicMock()
+    cursor = MagicMock()
+    cursor.to_list = AsyncMock(
+        return_value=[
+            {
+                "_id": "R_GOOD",
+                "creator_user_id": "U_CARE",
+                "user_id": "U_P1",
+                "slot_type": "morning",
+                "scheduled_time": "08:00",
+                "medication_ids": ["M1"],
+            },
+            {
+                "_id": "R_BAD",
+                "creator_user_id": "U_CARE",
+                "user_id": "U_P2",
+                "slot_type": "noon",
+                "scheduled_time": "12:00",
+                "entries": [
+                    {"meal_timing": "none", "scheduled_time": "12:00", "medication_ids": []},
+                    {"meal_timing": "none", "scheduled_time": "12:30", "medication_ids": []},
+                ],
+            },
+        ]
+    )
+    col.find = MagicMock(return_value=cursor)
+
+    reminders = await MedicationReminderRepository.find_by_ids(
+        ["R_GOOD", "R_BAD"], collection=col
+    )
+
+    assert [r.id for r in reminders] == ["R_GOOD"]
+
+
 def _fake_log_doc(now: datetime) -> dict:
     return {
         "_id": "L123",
@@ -1409,6 +1450,10 @@ async def test_list_pending_urgent_reminders_has_dual_branch_query():
         {"urgent_at": {"$lte": now}},
         {
             "urgent_at": {"$exists": False},
+            "scheduled_at": {"$lte": now - timedelta(minutes=20)},
+        },
+        {
+            "urgent_at": None,
             "scheduled_at": {"$lte": now - timedelta(minutes=20)},
         },
     ]

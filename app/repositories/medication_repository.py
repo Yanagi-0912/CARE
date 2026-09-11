@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, List, Optional
 from bson import ObjectId
+from pydantic import ValidationError
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
@@ -72,6 +73,32 @@ def _is_schedulable(doc: dict, today: str) -> bool:
     if end_date and end_date < today:
         return False
     return True
+
+
+def _reminder_from_doc(doc: dict) -> Optional[MedicationReminder]:
+    """把一份 Mongo 文件轉成 `MedicationReminder`，解析失敗時只記錄並回傳
+    `None`，不往外拋。
+
+    模型現在會驗證 `entries`（`meal_timing` 不能重複、一個條目只能對應一種
+    服藥時機，見 `MedicationReminder` 的驗證器），代表「文件存在、但存不進
+    模型」不再只是理論上的可能——不論是手動修過的資料、遷移腳本留下的半成
+    品，還是未來某個寫入路徑的 bug，都可能讓一份文件變成這種形狀。這幾個
+    讀取方法（`list_active_reminders_up_to_time`／`list_reminders_by_user`／
+    `list_reminders_by_creator`／`find_by_ids`）在展開前是逐一 `dict → model`
+    的迴圈，若不隔離每一份文件各自的例外，一則壞規則就會讓
+    `MedicationReminder(**doc)` 拋出，整個列表推導中斷、整批呼叫失敗——對排
+    程器來說即是那一個 tick 的所有使用者都收不到推播，代價遠高於「跳過這一
+    筆壞規則」。因此壞文件在這裡就地降級成 `None`，呼叫端只需要跳過它。
+    """
+    try:
+        return MedicationReminder(**{**doc, "_id": str(doc["_id"])})
+    except ValidationError as exc:
+        logger.error(
+            "[MedicationReminderRepository] 略過無法解析的規則 %s: %s",
+            doc.get("_id"),
+            exc,
+        )
+        return None
 
 
 class MedicationReminderRepository:
@@ -236,7 +263,8 @@ class MedicationReminderRepository:
             collection = MongoDBManager.get_medication_reminders_collection()
         cursor = collection.find({"_id": {"$in": reminder_ids}})
         docs = await cursor.to_list(length=None)
-        return [MedicationReminder(**{**doc, "_id": str(doc["_id"])}) for doc in docs]
+        reminders = [_reminder_from_doc(doc) for doc in docs]
+        return [reminder for reminder in reminders if reminder is not None]
 
     @staticmethod
     async def list_reminders_by_user(
@@ -250,8 +278,9 @@ class MedicationReminderRepository:
         docs = await cursor.to_list(length=None)
         reminders = []
         for doc in docs:
-            doc["_id"] = str(doc["_id"])
-            reminders.append(MedicationReminder(**doc))
+            reminder = _reminder_from_doc(doc)
+            if reminder is not None:
+                reminders.append(reminder)
         return reminders
 
     @staticmethod
@@ -261,8 +290,9 @@ class MedicationReminderRepository:
         docs = await cursor.to_list(length=None)
         reminders = []
         for doc in docs:
-            doc["_id"] = str(doc["_id"])
-            reminders.append(MedicationReminder(**doc))
+            reminder = _reminder_from_doc(doc)
+            if reminder is not None:
+                reminders.append(reminder)
         return reminders
 
     @staticmethod
@@ -270,7 +300,11 @@ class MedicationReminderRepository:
         max_scheduled_time: str, target_date_str: Optional[str] = None
     ) -> List[MedicationReminder]:
         """
-        查詢當日已到達排程時間 (scheduled_time <= max_scheduled_time) 且為啟用狀態的提醒規則
+        查詢當日已到達排程時間 (scheduled_time <= max_scheduled_time) 且為啟用狀態的提醒規則。
+
+        排程器每個 tick 都呼叫這裡展開全體使用者的規則；單一文件解析失敗
+        （見 `_reminder_from_doc`）只跳過那一筆，不能讓一則壞規則拖垮整個
+        tick、讓所有使用者那一輪都收不到推播。
         """
         col = MongoDBManager.get_medication_reminders_collection()
         date_str = target_date_str or _today_date_str()
@@ -283,8 +317,9 @@ class MedicationReminderRepository:
         docs = await cursor.to_list(length=None)
         reminders = []
         for doc in docs:
-            doc["_id"] = str(doc["_id"])
-            reminders.append(MedicationReminder(**doc))
+            reminder = _reminder_from_doc(doc)
+            if reminder is not None:
+                reminders.append(reminder)
         return reminders
 
     @staticmethod
@@ -392,6 +427,9 @@ class MedicationReminderRepository:
 
         # 步驟 2：還沒有 none 條目時補一個空的（步驟 1 剛補上的文件已經有了，
         # 這裡不會再命中；原本就有飯前/飯後但沒有 none 的文件才會命中）。
+        # 單一 document 的 update_one 對同一份文件而言，filter 的判定與寫入
+        # 是同一個原子操作的一部分，兩個並行的掛藥請求不可能同時判定「這份
+        # 文件還沒有 none 條目」為真而各自 push 一次，不會重複 push。
         await collection.update_one(
             {"_id": reminder_id, "entries.meal_timing": {"$ne": "none"}},
             {
@@ -1100,23 +1138,30 @@ class MedicationLogRepository:
         位移現在下放到這裡的退回分支，`urgent_at` 分支不需要它（`urgent_at`
         寫入時已經加過 20 分鐘）。
 
-        兩個分支都用 $lte：防範排程檢查秒數偏差或伺服器重啟造成的延遲漏發。
-        這是過渡期的雙分支（design Risks）：部署後隔天舊紀錄就會走完
+        「沒有這個欄位」在查詢上刻意拆成兩種寫法各配一個分支：`$exists:
+        False`（欄位真的不存在，本變更前的紀錄）與 `urgent_at: None`
+        （欄位存在但值是 null）。兩者在 MongoDB 裡是不同的文件形狀，
+        `$exists: False` 不會命中值為 null 的欄位。這裡的正確性因此不再
+        依賴 `upsert_log` 寫入時是否用 `exclude_none=True` 把 None 值濾掉
+        不寫入——不論插入路徑將來要不要保留那個過濾，這條查詢兩種形狀都
+        接得住，不會因為欄位「存在但是 null」而漏掉一筆該催促的紀錄。
+
+        兩個退回分支都用 $lte：防範排程檢查秒數偏差或伺服器重啟造成的延遲
+        漏發。這是過渡期的分支（design Risks）：部署後隔天舊紀錄就會走完
         T+20／T+30 全部收斂為 taken/missed，屆時可以拿掉退回分支，只是
         本次變更範圍不含這個收尾。
         """
         if collection is None:
             collection = MongoDBManager.get_medication_logs_collection()
+        legacy_condition = {"scheduled_at": {"$lte": threshold_time - timedelta(minutes=20)}}
         query = {
             "status": "pending",
             "patient_reminder_sent": True,
             "urgent_reminder_sent": False,
             "$or": [
                 {"urgent_at": {"$lte": threshold_time}},
-                {
-                    "urgent_at": {"$exists": False},
-                    "scheduled_at": {"$lte": threshold_time - timedelta(minutes=20)},
-                },
+                {"urgent_at": {"$exists": False}, **legacy_condition},
+                {"urgent_at": None, **legacy_condition},
             ],
         }
         cursor = collection.find(query)

@@ -436,6 +436,10 @@ class _Medications:
                 user_id=user_id,
                 created_by_user_id=user_id,
                 name="Metformin",
+                enabled=True,
+                indication="糖尿病",
+                spc_indication="第二型糖尿病",
+                spc_indication_summary="控制血糖",
             )
         ]
 
@@ -525,6 +529,27 @@ def test_list_medications_self_needs_no_family_relation(client):
     res = client.get(f"/api/medications?user_id={ME}")
     assert res.status_code == 200
     assert medications.list_calls == [ME]
+
+
+def test_list_medications_member_gets_masked_indication(client):
+    """MEMBER 讀跨人的藥品清單：藥品本身是 GENERAL、適應症是 SENSITIVE
+    ——拿到的是 200 加遮蔽，不是 403（同 `test_reminders_member_gets_200_
+    without_indication` 的分級邏輯，只是這裡是 `GET /api/medications` 而不是
+    `/reminders`）。`name`／`enabled` 這種一般欄位仍要出現，只有適應症三個
+    欄位被遮蔽。"""
+    wire("MEMBER")
+    medications = wire_medications()
+
+    res = client.get(f"/api/medications?user_id={ELDER}")
+
+    assert res.status_code == 200
+    assert medications.list_calls == [ELDER]
+    body = res.json()[0]
+    assert body["name"] == "Metformin"
+    assert body["enabled"] is True
+    assert body["indication"] is None
+    assert body["spc_indication"] is None
+    assert body["spc_indication_summary"] is None
 
 
 def test_create_medication_denied_for_member(client):

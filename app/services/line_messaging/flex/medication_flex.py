@@ -97,10 +97,15 @@ class MedicationGroup(NamedTuple):
     `confirm_medication` 需要藥品 id 才能寫入 `taken_medication_ids`，
     `MedicationListEntry` 本身只有藥名與縮圖，不足以組出確認按鈕。
 
-    定義在這裡（`app/services/medication/` 的匯入者）而不是
+    暫時定義在這裡（`app/services/medication/` 的匯入者）而不是
     `app/services/medication/medication_groups.py`：後者會與這個模組互相
-    import（flex 組裝需要 `MedicationGroup`，`MedicationService` 也需要）
-    形成循環，放在 flex 這一側、由 service 單向匯入即可避免。
+    import（flex 組裝需要 `MedicationGroup`，`MedicationService` 也需要），
+    放在 flex 這一側、由 service 單向匯入可以先避開這個循環。這不是長久
+    的分層——`MedicationGroup` 本質上是 medication 領域的資料形狀，被塞進
+    flex 模組只是圖眼前方便；之後若要根除這個循環，該做的是把它（連同
+    `MedicationListEntry`）搬到一個兩邊都能匯入、沒有既有依賴方向的中立
+    模組（例如 `app/models/` 或 `app/services/medication/` 底下新開一個
+    不被 flex 依賴的檔案），flex 這一側改成單向匯入它，而不是繼續留在這裡。
     """
 
     meal_timing: str

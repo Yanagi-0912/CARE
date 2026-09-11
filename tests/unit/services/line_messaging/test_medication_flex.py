@@ -1270,3 +1270,70 @@ def test_patient_reminder_groups_none_or_empty_falls_back_to_legacy_layout():
         medication_groups=None,
     )
     assert urgent_with_none_groups.contents.to_dict() == urgent_baseline.contents.to_dict()
+
+
+# ── Flex 大小上限：LINE 50 KB，實測遠低於此 ─────────────────────────────
+
+
+def test_patient_reminder_worst_case_card_stays_well_under_line_flex_limit():
+    """LINE 的 Flex Message 有 50 KB 的大小上限（官方文件：一則訊息的
+    contents 序列化後不得超過 50,000 bytes）。這裡組一張「看起來會最肥」的
+    服藥提醒卡：3 個分區（飯前／飯後／其他）共 5 列（等於
+    `MEDICATION_LIST_MAX_ITEMS`，觸發顯示上限前的最大列數）、其中兩列帶縮圖、
+    藥名刻意取長，字級固定 `xlarge`（三段字級中版面最大的一種）——量測結果
+    約 6 KB（5947 bytes），遠低於 50 KB 的門檻，留有充足餘裕。這條測試釘住
+    這個量測結果，
+    往後若有人在這幾張卡片裡加欄位，大小異常膨脹會在這裡先被抓到，而不是
+    等到 LINE 真的因為超過上限拒收才發現。
+    """
+    long_names = [
+        "本態性高血壓合併輕度腎功能不全患者專用降血壓錠",
+        "第二型糖尿病患者飯前血糖控制專用長效降血糖膜衣錠",
+        "慢性阻塞性肺病合併氣喘患者吸入型支氣管擴張劑",
+        "退化性關節炎合併輕度胃部不適患者專用消炎止痛加腸胃保護劑",
+        "慢性心臟衰竭患者利尿消腫專用長效利尿劑",
+    ]
+    groups = [
+        MedicationGroup(
+            meal_timing="before_meal",
+            scheduled_time="07:30",
+            items=[
+                (
+                    "m1",
+                    MedicationListEntry(
+                        name=long_names[0], image_url="https://img.example.com/a.jpg"
+                    ),
+                ),
+                (
+                    "m2",
+                    MedicationListEntry(
+                        name=long_names[1], image_url="https://img.example.com/b.jpg"
+                    ),
+                ),
+            ],
+        ),
+        MedicationGroup(
+            meal_timing="after_meal",
+            scheduled_time="08:30",
+            items=[
+                ("m3", MedicationListEntry(name=long_names[2])),
+                ("m4", MedicationListEntry(name=long_names[3])),
+            ],
+        ),
+        MedicationGroup(
+            meal_timing="none",
+            scheduled_time="09:00",
+            items=[("m5", MedicationListEntry(name=long_names[4]))],
+        ),
+    ]
+
+    msg = build_patient_medication_flex(
+        log_id="L_WORST_CASE",
+        slot_type="morning",
+        scheduled_time="07:30",
+        medication_groups=groups,
+        font_size="xlarge",
+    )
+
+    size_bytes = len(json.dumps(msg.contents.to_dict(), ensure_ascii=False).encode())
+    assert size_bytes < 20_000

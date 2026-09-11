@@ -395,8 +395,12 @@ class MedicationService:
 
         # 規則現有多個條目時，一個 scheduled_time 不知道要對應哪一個時刻
         # ——這種情況一律要求改用 entries 整份更新（spec「提醒時間格式驗證」）。
-        # 判斷用的是**改動前**的條目數，不看這次請求帶不帶 entries：就算請求
-        # 同時帶了 entries 與 scheduled_time，這個組合本身就是歧義，一律擋下。
+        # 判斷用的是**改動前**的條目數，不看這次請求帶不帶 entries。
+        # 注意：這條擋的只是「規則本來就有多個條目」的歧義；請求同時帶了
+        # entries 與 scheduled_time 並不會一律被擋下——下面 `"entries" in
+        # update_data` 分支優先於 `scheduled_time` 分支，若改動前只有一個
+        # 條目，兩者同時出現時 `derive_entry_fields(request.entries)` 會直接
+        # 蓋掉這裡先寫入 update_data 的 scheduled_time，不會另外報錯。
         if "scheduled_time" in update_data and len(reminder.entries) > 1:
             raise HTTPException(
                 status_code=400,

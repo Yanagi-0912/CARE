@@ -1503,6 +1503,47 @@ async def test_update_reminder_with_entries_derives_fields():
 
 
 @pytest.mark.asyncio
+async def test_update_reminder_reassigning_medications_with_same_times_does_not_resync():
+    """帶 entries 整份更新，但兩個條目的時刻都沒變、只是換了掛的藥品：
+    `updated.slot_type`／`scheduled_time`／`timeout_anchor_time` 三個決定要不要
+    對齊當日紀錄的欄位都跟改動前相同，不該觸發 `resync_pending_by_reminder`，
+    更不該註銷——當日已展開的那筆紀錄該吃藥的時刻沒有變，動它就是平白吃掉
+    使用者今天的提醒。這條純粹是釘住既有行為，不是新規則。"""
+    reminder = _multi_entry_reminder()  # 飯前 07:30（M1）／飯後 08:30（M2）
+    fake_medications = FakeMedicationRepository(
+        [
+            Medication(id="M3", user_id="U_SELF", created_by_user_id="U_SELF", name="新降血糖藥"),
+            Medication(id="M4", user_id="U_SELF", created_by_user_id="U_SELF", name="新血壓藥"),
+        ]
+    )
+    logs = FakeLogRepository()
+    service = MedicationService(
+        reminder_repository=FakeReminderRepository(reminder),
+        medication_repository=fake_medications,
+        log_repository=logs,
+        clock=lambda: FIXED_NOW,
+    )
+
+    await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(
+            entries=[
+                ReminderEntryInput(
+                    meal_timing="before_meal", scheduled_time="07:30", medication_ids=["M3"]
+                ),
+                ReminderEntryInput(
+                    meal_timing="after_meal", scheduled_time="08:30", medication_ids=["M4"]
+                ),
+            ]
+        ),
+    )
+
+    assert logs.resync_calls == []
+    assert logs.cancelled_reminder_ids == []
+
+
+@pytest.mark.asyncio
 async def test_update_reminder_entries_rejects_medication_belonging_to_other_user():
     """條目掛的藥品若不屬於這筆提醒的用藥者，回 400，不寫入任何更新
     （spec「EntryInput.medication_ids 必須全部屬於該用藥者」）。"""

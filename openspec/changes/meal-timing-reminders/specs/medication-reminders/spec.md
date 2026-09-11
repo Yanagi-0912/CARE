@@ -230,7 +230,7 @@
 
 藥品名稱與縮圖以外的欄位 SHALL NOT 出現在推播中；適應症尤其 SHALL NOT 出現。`medication_ids` 為空、或其對應藥品皆已失效時，推播 SHALL 維持既有版面。超過顯示上限的藥品 SHALL 收斂為單行計數。
 
-家屬的逾時警報與錯過時段彙整通知 SHALL NOT 列出藥品名稱與飯前飯後，SHALL 維持既有措辭。
+家屬的 T+30 逾時警報 SHALL 列出該時段尚未確認服用的藥品名稱，讓建立提醒的家屬（`alert_notify_user_id` 取自 `reminder.creator_user_id`）判斷漏掉的是哪一種藥；SHALL NOT 呈現飯前／飯後等服藥時機字樣、藥丸縮圖或適應症。系統中斷期間的錯過時段彙整通知（`build_caregiver_missed_summary_flex`）性質不同——它一次彙整多個時段、可能橫跨多位家人，SHALL NOT 列出藥品名稱，僅維持既有的病患姓名、時段與時刻措辭。
 
 #### Scenario: 飯前飯後分區
 
@@ -247,7 +247,12 @@
 - **WHEN** 某規則的 `medication_ids` 為空且觸發服藥提醒
 - **THEN** 推播版面 SHALL 與本變更前相同
 
-#### Scenario: 家屬警報不列藥品
+#### Scenario: 家屬警報列出漏掉的藥品但不含服藥時機字樣
 
 - **WHEN** 逾時警報推播給家屬
-- **THEN** 訊息 SHALL NOT 含任何藥品名稱或飯前飯後字樣
+- **THEN** 訊息 SHALL 列出該時段尚未確認的藥品名稱，SHALL NOT 含「飯前」「飯後」等服藥時機字樣
+
+#### Scenario: 錯過時段彙整通知不列藥品
+
+- **WHEN** 系統中斷期間錯過的時段彙整成通知推播給家屬
+- **THEN** 訊息 SHALL NOT 含任何藥品名稱

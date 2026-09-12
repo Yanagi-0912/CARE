@@ -1,0 +1,7 @@
+# 真實樣本是長輩手寫的健康紀錄，含姓名、日期與病況，一律不進版控。
+samples/
+golden.jsonl
+
+# 公開資料集的下載快取（約 150MB）與由它們合成的影像，都可用
+# scripts/handwriting_corpus.py 重新產生，不需要進版控。
+.cache/

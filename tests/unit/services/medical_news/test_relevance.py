@@ -1,5 +1,6 @@
 import pytest
 
+from app.services.medical_news import relevance
 from app.services.medical_news.relevance import (
     FORBIDDEN_ADVICE_PATTERNS,
     has_usable_date,
@@ -132,3 +133,51 @@ def test_is_recent_rejects_unparsable_date():
 def test_is_recent_rejects_future_date_beyond_tolerance():
     """發布日在未來超過一天，代表日期抽錯了欄位，不該當成最新消息。"""
     assert is_recent("2027-01-01", today="2026-09-02", max_age_days=30) is False
+
+
+# ── 政策新聞稿判定 ──────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "國健署攜手軍醫局 打造無菸健康戰力 國軍弟兄呼吸更清新、體能更給力",
+        "戒菸專線青年大使出動！「年輕人影響年輕人」迎向無菸新世代",
+        "試管嬰兒補助再加碼 支持不孕夫妻圓生育夢 9月1日起申請適用",
+        "打造全民健康飲食生活 「全國社區營養成果展示活動」8月7日登場",
+        "行政院院會審議通過「菸害防制法」部分條文修正草案",
+        "國民健康署說明電子煙查緝執行情形及後續精進作為",
+        "臺灣6家無菸醫院獲國際殊榮 守護國民呼吸健康",
+        "消除C肝「台灣模式」 日內瓦論壇受國際高度讚嘆",
+        "代謝防治助60萬人迎向健康 即日起加入「逆轉」活動再抽好禮",
+        "2025「健康飲食實踐獎」頒獎典禮 表揚業界典範",
+    ],
+)
+def test_policy_announcements_are_detected(title):
+    """全部取自 `health_articles_chunks` 的真實標題（2026-09-04 量測樣本）。"""
+    assert relevance.is_policy_announcement(title) is True
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "中元節採買提物　長者掌握3要訣防跌",
+        "立秋已過暑氣未退　處暑防熱傷害不可鬆懈",
+        "每月量一次腰圍！「黃阿瑪」陪你一起遠離代謝症候群！",
+        "國健署教你「722」與「3C」血壓管理密碼 輕鬆護心過一夏",
+        "端午防熱大作戰 慢性病患「三要訣」遠離熱傷害",
+        "網傳「70歲長輩別做5項檢查」，是誇大檢查風險的誤導說法",
+        "一般成人血壓標準為<120/80mmHg，未因年齡設有不同標準",
+        "舊謠言重組，造謠蝦子配維生素、榴槤配酒會中毒",
+        "美國藥品研究確實發現部分藥物過期仍有療效；但專家建議應妥善保存",
+        "人工色素、苯甲酸鈉可能與過動症有關，但並非導致過動主因",
+    ],
+)
+def test_genuine_health_education_is_not_flagged(title):
+    """量測樣本裡 TFC 的 90 篇與食藥署闢謠專區的 5 篇零命中，這裡釘住其中幾則。"""
+    assert relevance.is_policy_announcement(title) is False
+
+
+def test_empty_title_is_not_a_policy_announcement():
+    assert relevance.is_policy_announcement("") is False
+    assert relevance.is_policy_announcement(None) is False

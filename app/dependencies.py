@@ -116,6 +116,7 @@ from app.services.rag.query_rewriter import (
 )
 from app.services.rag.retrieval_grader import GeminiRetrievalGrader
 from app.services.rag.web_search_service import WebSearchService
+from app.services.medical_news.article_grader import GeminiKbArticleGrader
 from app.services.medical_news.grader import GeminiNewsGrader
 from app.services.medical_news.index_service import DrugNewsIndexService
 from app.services.medical_news.kb_digest_service import KbDigestService
@@ -683,11 +684,23 @@ if _firecrawl_client is not None:
     )
 
 # Tier 2 讀的是 CARE-data 每日 ETL 維護的同一個 collection，不新增外部依賴。
+#
+# grader 是可選的第二道內容過濾（第一道是標題黑名單，在 relevance 裡、不花額度）。
+# 它與 Tier 1 的 `DrugNewsIndexService` 刻意不共用降級條件：Tier 1 缺 Firecrawl 就
+# 整個不存在，Tier 2 缺 grader 只是品質退一層，仍照常供應。
+_kb_article_grader = None
+if settings.MEDICAL_NEWS_TIER2_GRADER_ENABLED:
+    _kb_article_grader = GeminiKbArticleGrader(gemini_service=_gemini_service)
+else:
+    logger.info("MEDICAL_NEWS_TIER2_GRADER_ENABLED=false; Tier 2 只套用標題黑名單")
+
 _kb_digest_service = None
 if settings.MONGODB_URI and settings.MONGODB_COLLECTION:
     _kb_digest_service = KbDigestService(
         collection=MongoDBManager.get_database()[settings.MONGODB_COLLECTION],
         max_age_days=settings.MEDICAL_NEWS_MAX_AGE_DAYS,
+        grader=_kb_article_grader,
+        max_grade_calls=settings.MEDICAL_NEWS_TIER2_GRADE_MAX_CALLS,
     )
 
 _medical_news_share_service = MedicalNewsShareService(

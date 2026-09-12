@@ -141,4 +141,4 @@
 - [x] 13.2 假登入：以 `AUTH_JWT_SECRET`（預設 `dev-only-change-me`）用 PyJWT 簽 `{"sub": "U_MANUAL_TEST", "iss": "care-backend", "exp": ...}`，寫成 `scratchpad/manual-login.js` 供瀏覽器 console 貼上：`localStorage.setItem('CARE_AUTH_TOKEN', ...)`、`localStorage.setItem('CARE_LINE_USER_ID', 'U_MANUAL_TEST')`。
 - [x] 13.3 前端：`cd CARE-LIFF && VITE_LIFF_ID= VITE_API_BASE_URL=http://127.0.0.1:8000 npm run dev`（清空 `VITE_LIFF_ID` 讓非 LINE 瀏覽器跳過 `liff.init`）。
 - [x] 13.4 給使用者：`http://localhost:5173/medications`、貼 console 的登入指令、測試腳本（新增表單改時間 → 詳細設定 → 卡片 → 編輯），以及清理測試資料的方式（`U_MANUAL_TEST` 的規則與藥品可在頁面上刪除）。
-- [ ] 13.5 使用者驗收後：`superpowers:finishing-a-development-branch`（兩個 repo 各開 PR 到 main，PR 描述繁體中文）。
+- [x] 13.5 使用者驗收後：`superpowers:finishing-a-development-branch`（兩個 repo 各開 PR 到 main，PR 描述繁體中文）。

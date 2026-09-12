@@ -10,8 +10,14 @@
 
 ## 快速開始
 
+先安裝 [uv](https://docs.astral.sh/uv/)（相依與 Python 版本都由它管理）：
+
 ```bash
-./init.sh          # macOS / Linux：建立 .venv、安裝依賴、跑 pytest
+curl -LsSf https://astral.sh/uv/install.sh | sh    # 或 brew install uv
+```
+
+```bash
+./init.sh          # macOS / Linux：建立 .venv、依 uv.lock 安裝依賴、跑 pytest
 ```
 
 ```powershell
@@ -21,17 +27,18 @@
 啟動後端：
 
 ```bash
-uvicorn app.main:app --port 8000 --reload --reload-exclude .venv
+uv run uvicorn app.main:app --port 8000 --reload --reload-exclude .venv
 ```
 
 ### 手動安裝（可選）
 
 ```bash
-python -m venv venv
-source venv/bin/activate        # Windows：venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+uv sync                                              # 建 .venv 並照 uv.lock 安裝
+uv run uvicorn app.main:app --reload --port 8000
 ```
+
+`uv run` 會自己確保環境是最新的，不需要手動 activate。真的想進 shell 也可以
+`source .venv/bin/activate`（Windows：`.venv\Scripts\activate`）。
 
 ### 前端（LIFF App）
 
@@ -45,18 +52,17 @@ npm run test   # 前端測試
 ## 執行測試
 
 ```bash
-pytest              # 或 pytest tests/ -v
+uv run pytest       # 或 uv run pytest tests/ -v
 ```
 
-> 必須在啟動過的虛擬環境裡執行，這樣 `pytest-asyncio` 才會載入，非同步的測試（`async def test_xxx`）才會正常運作。
+> 用 `uv run` 執行，`pytest-asyncio` 才會載入，非同步的測試（`async def test_xxx`）才會正常運作。
+> 它會在跑之前自動把 `.venv` 同步到 `uv.lock` 的狀態，不必先手動 activate。
 
 Windows 範例：
 
 ```powershell
 cd C:\你的路徑\CARE
-venv\Scripts\activate
-pip install -r requirements.txt
-python -m pytest tests/ -v
+uv run pytest tests/ -v
 ```
 
 ## 藥證庫（藥袋辨識用）

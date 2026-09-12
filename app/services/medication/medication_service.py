@@ -512,7 +512,10 @@ class MedicationService:
                 logger.info(
                     "[MedicationService] 提醒 %s 只改了最晚時刻為 %s，"
                     "就地改寫當日未確認紀錄的 urgent_at／timeout_at，共 %d 筆",
-                    reminder_id,
+                    # 記資料庫讀回的 id，不記請求路徑原樣傳進來的 reminder_id：
+                    # 值相同（能走到這裡代表已用它查到規則），但不讓使用者輸入
+                    # 直接進 log（日誌注入，SonarCloud pythonsecurity:S5145）。
+                    updated.id,
                     updated.timeout_anchor_time,
                     retagged,
                 )
@@ -634,7 +637,8 @@ class MedicationService:
                 logger.exception(
                     "[MedicationService] 整批確認時查詢有效藥品失敗，log_id=%s，"
                     "taken_medication_ids 將寫入空清單但仍完成確認",
-                    log_id,
+                    # 同上：記資料庫讀回的 log.id，不記請求原樣的 log_id。
+                    log.id,
                 )
                 expected = []
             updated_log = await self._log_repository.mark_as_taken(

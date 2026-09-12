@@ -1335,3 +1335,89 @@ async def test_speculative_not_started_without_crag():
         docs=[_kb_doc()], crag_enabled=False, speculative_generate=True
     )
     assert service.speculative_generate is False
+
+
+class _ScoredReranker:
+    """模擬 Cohere：在 metadata 寫入 rerank_score，依分數由高到低排序。"""
+
+    def __init__(self, scores):
+        self._scores = scores
+
+    async def rerank(self, query, docs, top_n):
+        scored = [
+            Document(
+                page_content=doc.page_content,
+                metadata={**doc.metadata, "rerank_score": score},
+            )
+            for doc, score in zip(docs, self._scores)
+        ]
+        scored.sort(key=lambda d: d.metadata["rerank_score"], reverse=True)
+        return scored[:top_n]
+
+
+def _distinct_docs(n):
+    return [
+        Document(
+            page_content=f"片段{i}",
+            metadata={"source_name": "國健署", "url": f"https://www.hpa.gov.tw/{i}"},
+        )
+        for i in range(n)
+    ]
+
+
+def _rag_answer_log(caplog):
+    lines = [
+        rec.getMessage()
+        for rec in caplog.records
+        if rec.getMessage().startswith("stage=rag_answer ")
+    ]
+    assert len(lines) == 1
+    return lines[0]
+
+
+@pytest.mark.asyncio
+async def test_rag_answer_log_records_top_rerank_score(caplog):
+    svc, _gemini, _retriever = _make_service(
+        docs=_distinct_docs(3), reranker=_ScoredReranker([0.12, 0.81234, 0.4])
+    )
+    with caplog.at_level("INFO"):
+        await svc.answer("高血壓可以吃葡萄柚嗎")
+    line = _rag_answer_log(caplog)
+    assert "top_rerank=0.8123" in line
+    assert "path=kb " in line or line.endswith("path=kb")
+
+
+@pytest.mark.asyncio
+async def test_rag_answer_log_omits_top_rerank_without_cohere(caplog):
+    """Cohere 失效（VectorScoreReranker 不寫 rerank_score）時不輸出欄位，
+    才不會在校準時被誤當成低分樣本。"""
+    svc, _gemini, _retriever = _make_service(docs=_distinct_docs(2))
+    with caplog.at_level("INFO"):
+        await svc.answer("高血壓可以吃葡萄柚嗎")
+    assert "top_rerank=" not in _rag_answer_log(caplog)
+
+
+@pytest.mark.asyncio
+async def test_rag_answer_log_omits_top_rerank_on_empty_retrieval(caplog):
+    svc, _gemini, _retriever = _make_service(docs=[], web_fallback_enabled=False)
+    with caplog.at_level("INFO"):
+        await svc.answer("冷門問題")
+    line = _rag_answer_log(caplog)
+    assert "top_rerank=" not in line
+    assert "path=web_empty_retrieval" in line
+
+
+@pytest.mark.asyncio
+async def test_model_refuse_is_not_logged_as_kb(caplog):
+    """拒答記成 path=kb 會讓門檻校準把它當成「知識庫答得出來」的樣本。"""
+    svc, _gemini, _retriever = _make_service(
+        docs=_distinct_docs(2),
+        reranker=_ScoredReranker([0.35, 0.2]),
+        answer_content="根據現有資料無法提供建議。",
+    )
+    with caplog.at_level("INFO"):
+        result = await svc.answer("某個冷門問題")
+    assert result == NO_ANSWER_MESSAGE
+    line = _rag_answer_log(caplog)
+    assert "path=kb_model_refuse" in line
+    assert "top_rerank=0.35" in line

@@ -144,6 +144,12 @@ class RagAnswerService:
         # candidates＝第一輪的 docs；approved＝CRAG 放行的 docs。兩者刻意用不同
         # 名字：投機生成是否可用，正是靠「這兩個是不是同一個 list」判斷的。
         candidates = await self._retrieve_and_rerank(user_text)
+        # 精排最高分，供日後校準「CRAG 之前就分流到網搜」的門檻：對照最後走
+        # kb 答出來與 web_crag_reject 的題目各落在哪個分數帶。為什麼不用問題
+        # 文字訓練分類器——知識庫持續新增，分類器學到的是舊知識庫的覆蓋範圍，
+        # 而被它送去網搜的題目永遠不會再碰知識庫、日誌也永遠記 web，重新訓練
+        # 只會把錯誤鎖得更死。這個分數是每次從知識庫即時算出的，沒有這個問題。
+        timing["top_rerank"] = self._top_rerank_score(candidates)
         if not candidates:
             timing["path"] = "web_empty_retrieval"
             return await self._web_or_no_hits(user_text)
@@ -206,10 +212,30 @@ class RagAnswerService:
                 marker,
                 preview,
             )
+            # 不能留在 path=kb：這一題知識庫其實沒答出來，記成 kb 會讓分流門檻
+            # 的校準把它當成「這個分數帶知識庫答得出來」的樣本，門檻被往下拉。
+            timing["path"] = "kb_model_refuse"
             return rag_fail(RagFailCode.MODEL_REFUSE)
 
         dead = await self._dead_source_urls(kb_answer, ranked, timing)
         return self._append_sources(kb_answer, ranked, dead)
+
+    @staticmethod
+    def _top_rerank_score(docs: list[Document]) -> float | None:
+        """候選中最高的 Cohere `rerank_score`；沒有任何一篇帶這個鍵時回傳 None。
+
+        只認 `rerank_score`：Cohere 的 relevance_score 是絕對校準的相關性分數，
+        跨題可比；融合分數是逐題正規化或只看名次的分數，跨題比較沒有意義，拿來
+        訂所有題目共用的門檻不成立。Cohere 失效時回傳 None，日誌就不輸出這個
+        欄位（`_format_kv` 略過 None）——「沒有分數」必須與「分數很低」分得開，
+        否則校準時會把 Cohere 失效的題目誤當成低分樣本。
+        """
+        scores = [
+            float(raw)
+            for doc in docs
+            if isinstance(raw := doc.metadata.get("rerank_score"), (int, float))
+        ]
+        return round(max(scores), 4) if scores else None
 
     def _filter_by_degraded_score(self, docs: list[Document]) -> list[Document]:
         """只保留精排分數達到門檻的文件。門檻為 0 時原樣回傳。

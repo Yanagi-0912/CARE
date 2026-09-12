@@ -62,7 +62,11 @@ from app.services.safety.ingredient_overlap import (
 from app.services.safety.otc_alert_service import OtcAlertService
 from app.services.safety.safety_alert_service import SafetyAlertService
 from app.services.gemini import GeminiService
-from app.services.guardrail import GuardrailService
+from app.services.guardrail import (
+    CascadeGuardrailService,
+    GuardrailService,
+    LocalGuardrailClassifier,
+)
 from app.services.history.history_service import LineMessageHistoryService
 from app.services.knowledge_reports.preview_service import ContentPreviewService
 from app.services.knowledge_reports.service import KnowledgeReportService
@@ -129,9 +133,28 @@ _gemini_service = GeminiService(
     model_name=settings.MODEL_NAME,
 )
 
-_guardrail_service = GuardrailService(
+_llm_guardrail_service = GuardrailService(
     async_text_to_bool=_gemini_service.invoke_boolean_structured_output,
 )
+
+# 串接式 guardrail：本地分類器有把握時直接判，中間地帶才問 Gemini。
+#
+# 為什麼值得：guardrail 跑在每一則訊息的關鍵路徑上（graph 是
+# START → guardrail → agent，沒有並行），線上實測 p50 2,036ms、最快也要
+# 1,098ms。本地推論是次毫秒級，holdout 上 83.4% 的訊息不必再問 Gemini。
+#
+# 載入失敗就退回純 LLM 版本，不讓服務起不來——模型檔是建置期產出物
+# （scripts/build_guardrail_model.py），它不在時的正確行為是「跟導入前
+# 一模一樣」，而不是整個 RAG 守門失效。
+try:
+    _guardrail_service = CascadeGuardrailService(
+        local=LocalGuardrailClassifier.load(),
+        fallback=_llm_guardrail_service,
+    )
+    logger.info("Guardrail cascade enabled (local classifier + LLM fallback)")
+except Exception:
+    logger.exception("本地 guardrail 模型載入失敗，退回純 LLM 判斷")
+    _guardrail_service = _llm_guardrail_service
 
 _query_embeddings_kwargs: dict = {
     "model": settings.EMBEDDING_MODEL,
@@ -265,6 +288,11 @@ _knowledge_report_service = KnowledgeReportService(
     ingest_service=_ingest_service,
     url_policy=default_url_policy(),
     preview_service=_content_preview_service,
+    # 網搜降級自動建報前，先用與 agent 相同的 guardrail 判斷問題是否與健康
+    # 醫療相關（理由見 KnowledgeReportService._is_health_related）。刻意接
+    # cascade 而不是只接本地分類器：「法國國歌」「軍艦進行曲」這類短問句本地
+    # 模型給 p≈0.48、落在升級區，真正判出「不相關」的是 LLM 那一層。
+    topic_guard=_guardrail_service.allow_rag_tool,
 )
 configure_knowledge_report_tool(_knowledge_report_service)
 

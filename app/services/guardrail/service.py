@@ -17,6 +17,15 @@ _CLASSIFICATION_PROMPT = (
 
 AsyncStrToBool = Callable[[str], Awaitable[bool]]
 
+# 位置訊息的前綴與座標樣式。抽成模組層函式而不是留在方法裡，是因為
+# `CascadeGuardrailService` 必須套用同一條規則——那是決定性的判斷，不能
+# 讓其中一條路徑改用模型去猜。
+_LOCATION_PREFIX = "這是我的目前位置"
+
+
+def is_location_message(user_text: str) -> bool:
+    return user_text.startswith(_LOCATION_PREFIX) or "lat=" in user_text
+
 
 class GuardrailService:
     """以注入的「文字 → bool」分類器，決定是否允許 RAG。"""
@@ -25,7 +34,7 @@ class GuardrailService:
         self._async_text_to_bool = async_text_to_bool
 
     async def allow_rag_tool(self, user_text: str) -> bool:
-        if user_text.startswith("這是我的目前位置") or "lat=" in user_text:
+        if is_location_message(user_text):
             logger.debug("檢測到位置訊息，跳過分類並禁用 RAG。")
             return False
 

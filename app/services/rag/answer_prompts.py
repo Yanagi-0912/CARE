@@ -111,8 +111,14 @@ def build_rag_prompt(language: str | None = None) -> ChatPromptTemplate:
                 "編號必須對應下方「RAG 內容」中每段開頭的編號；"
                 "同一句引用多個來源時寫成 [1][2]。\n"
                 "2. 沒有任何一段內容支持的敘述，不要寫入回答。\n"
-                "3. 回覆中不要使用「根據檢索內容」這類字眼，改用「根據 RAG 資訊」等說法"
-                f"（該說法也須使用{lang_name}）。\n"
+                # 這段文字在 RAG_DIRECT_REPLY 開啟時會**原樣呈現給使用者**，
+                # 不再經過模型改寫。任何開場白都會直接出現在卡片第一行，而
+                # 「RAG」對使用者是無意義的內部術語。前綴由程式統一附加
+                # （agent._rag_direct_reply_node 使用 agent.rag_prefix），
+                # 不再要求模型自己寫——模型寫的版本無法被 strip_rag_prefix
+                # 剝除，因為它不是固定字串。
+                "3. 直接回答問題，不要寫任何開場白或資料來源說明"
+                "（例如「根據檢索內容」「根據 RAG 資訊」「以下為回應」）。\n"
                 "4. 請使用一般純文字，不要使用 Markdown 格式符號。\n"
                 f"5. {_NO_ANSWER_RULE}\n"
                 f"6. {_BOUNDARY_RULE}\n"

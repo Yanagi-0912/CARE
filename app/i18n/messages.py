@@ -127,6 +127,39 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "ขออภัย ขณะนี้ฉันไม่พบข้อมูลที่เกี่ยวข้อง กรุณาลองใหม่ภายหลัง",
         "ja": "申し訳ありません。関連情報が見つかりませんでした。しばらくしてから再度お試しください。",
     },
+    # RAG 直通（RAG_DIRECT_REPLY）時附在答案末尾的提醒。
+    #
+    # 為什麼要有固定文案：不直通時這句話是「請模型記得加」——system prompt
+    # 第 4 條要求遇醫療緊急情況提醒尋求專業協助，但實測三題只加了兩題。
+    # 醫療提醒不該取決於模型當下的心情，改成程式接上去就是 100%。
+    #
+    # ⚠ 這段文案是工程預設值，措辭未經醫療專業審閱。上線前請確認用字。
+    "rag.professional_advice_notice": {
+        "zh-TW": "以上內容僅供參考，無法取代醫師診斷。身體不適或情況緊急請儘速就醫。",
+        "en": (
+            "The information above is for reference only and cannot replace a doctor's "
+            "diagnosis. If you feel unwell or this is an emergency, please seek medical "
+            "care promptly."
+        ),
+        "id": (
+            "Informasi di atas hanya sebagai referensi dan tidak dapat menggantikan "
+            "diagnosis dokter. Jika Anda merasa tidak enak badan atau dalam keadaan "
+            "darurat, segera cari pertolongan medis."
+        ),
+        "vi": (
+            "Thông tin trên chỉ mang tính tham khảo và không thể thay thế chẩn đoán "
+            "của bác sĩ. Nếu bạn thấy khó chịu hoặc trong trường hợp khẩn cấp, hãy đi "
+            "khám ngay."
+        ),
+        "th": (
+            "ข้อมูลข้างต้นใช้เพื่อการอ้างอิงเท่านั้น ไม่สามารถใช้แทนการวินิจฉัยของแพทย์ได้ "
+            "หากรู้สึกไม่สบายหรือเป็นกรณีฉุกเฉิน กรุณาไปพบแพทย์โดยเร็ว"
+        ),
+        "ja": (
+            "上記の内容は参考情報であり、医師の診断に代わるものではありません。"
+            "体調がすぐれない場合や緊急時は、早めに医療機関を受診してください。"
+        ),
+    },
     "line.fallback_ununderstood": {
         "zh-TW": "抱歉，我無法理解您的問題，請重新輸入。",
         "en": "Sorry, I couldn't understand your question. Please try again.",

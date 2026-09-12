@@ -11,7 +11,9 @@ from app.dependencies import (
     require_prescription_scan_enabled,
 )
 from app.models.medication import (
+    CreateMedicationRequest,
     CreateMedicationReminderRequest,
+    Medication,
     MedicationLog,
     MedicationReminder,
     MedicationReminderWithMedications,
@@ -71,6 +73,76 @@ def _scan_failure_response(exc: PrescriptionScanError) -> HTTPException:
     return HTTPException(
         status_code=_SCAN_FAILURE_STATUS[exc.reason],
         detail={"reason": exc.reason, "message": str(exc)},
+    )
+
+
+@router.get(
+    "",
+    response_model=List[Medication],
+    response_model_by_alias=False,  # 見檔頭說明：輸出鍵須為 id，不是 _id
+    summary="查詢藥品列表",
+    description=(
+        "取得本人或指定用藥者的藥品列表，含已停用者（帶 enabled 欄位供前端區分）。"
+    ),
+)
+async def list_medications(
+    user_id: Optional[str] = Query(default=None, description="要查詢的使用者 LINE userId"),
+    current_user: CurrentUser = Depends(get_current_user),
+    service: MedicationService = Depends(get_medication_service),
+    authz: FamilyAuthorizationService = Depends(get_family_authorization_service),
+):
+    """查詢藥品列表（spec「藥品的列出與手動新增」）。
+
+    授權與 `GET /reminders` 同一套：用藥資料本身是 GENERAL。這支端點是本
+    change 新增的路徑，導入前不存在，因此 `authorize` 一律傳
+    `has_legacy_equivalent=False`——不受影子模式放寬，一律以 RBAC 判定，
+    不讓遷移期間的使用者取得他在強制後反而沒有的讀取權。
+    """
+    operator_id = current_user.line_user_id
+    target_user_id = user_id or operator_id
+
+    if operator_id == target_user_id:
+        return await service.list_medications(target_user_id)
+
+    await authz.authorize(
+        operator_id, target_user_id, "GENERAL", "READ", has_legacy_equivalent=False
+    )
+    medications = await service.list_medications(target_user_id)
+    return await authz.mask_response(
+        [m.model_dump(by_alias=False) for m in medications],
+        "medication",
+        operator_id,
+        target_user_id,
+    )
+
+
+@router.post(
+    "",
+    response_model=Medication,
+    response_model_by_alias=False,  # 見檔頭說明：輸出鍵須為 id，不是 _id
+    summary="手動新增藥品",
+    description="以藥名手動新增一筆藥品，不含藥證、外觀與適應症等辨識資料。",
+)
+async def create_medication(
+    req: CreateMedicationRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: MedicationService = Depends(get_medication_service),
+    authz: FamilyAuthorizationService = Depends(get_family_authorization_service),
+):
+    """手動新增藥品（spec「藥品的列出與手動新增」）。
+
+    與 `list_medications` 同理：本 change 新增的寫入路徑，`authorize` 傳
+    `has_legacy_equivalent=False`，不受影子模式放寬。
+    """
+    await authz.authorize(
+        current_user.line_user_id,
+        req.user_id,
+        "GENERAL",
+        "WRITE",
+        has_legacy_equivalent=False,
+    )
+    return await service.create_manual_medication(
+        creator_user_id=current_user.line_user_id, request=req
     )
 
 

@@ -121,6 +121,8 @@ FIELD_CLASSIFICATION: dict[tuple[ResourceName, str], DataClassification] = {
     ("medication_reminder", "end_date"): "GENERAL",
     ("medication_reminder", "enabled"): "GENERAL",
     ("medication_reminder", "medication_ids"): "GENERAL",
+    ("medication_reminder", "entries"): "GENERAL",
+    ("medication_reminder", "timeout_anchor_time"): "GENERAL",
     ("medication_reminder", "medications"): "GENERAL",
     ("medication_reminder", "created_at"): "GENERAL",
     ("medication_reminder", "updated_at"): "GENERAL",

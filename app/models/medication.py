@@ -2,7 +2,7 @@ import re
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from typing import ClassVar, List, Literal, Optional
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 
@@ -83,6 +83,96 @@ def to_taipei_hm(dt: Optional[datetime], default: str = "") -> str:
     return ensure_aware_utc(dt).astimezone(TAIPEI_TZ).strftime("%H:%M")
 
 
+# 飯前／飯後／無關聯三種服藥時機。推播分區與排序一律依這個順序，不是條目
+# 在陣列裡的原始輸入順序——同一規則裡誰先展開、家屬彙整通知裡誰先列，
+# 全部只看 MEAL_TIMING_ORDER。
+MealTiming = Literal["before_meal", "after_meal", "none"]
+MEAL_TIMING_ORDER: tuple[str, ...] = ("before_meal", "after_meal", "none")
+
+
+class ReminderEntry(BaseModel):
+    """一筆時段規則裡的一個服藥條目：同一種服藥時機、同一個提醒時刻、
+    同一批藥。一個時段規則可以有多個條目（例如「早」拆成飯前 07:30 與
+    飯後 08:30），但同一種 meal_timing 至多一個——飯前藥不會分兩批推播，
+    要嘛合併成一個條目，要嘛其中一批其實屬於別的時機（見 validate_entries）。
+    """
+
+    meal_timing: MealTiming = "none"
+    scheduled_time: str
+    medication_ids: List[str] = Field(default_factory=list)
+
+    @field_validator("scheduled_time")
+    @classmethod
+    def _validate_scheduled_time(cls, value: str) -> str:
+        if not HHMM_PATTERN.match(value):
+            raise ValueError(
+                f"條目時間格式須為 HH:MM（24 小時制），收到 {value!r}"
+            )
+        return value
+
+
+class ReminderEntryInput(ReminderEntry):
+    """API 輸入用的條目形狀。欄位與 ReminderEntry 完全相同，獨立命名只是
+    讓請求模型與內部儲存模型的型別簽章分開，避免日後兩邊需求分岔時
+    互相牽制（目前刻意不加任何額外欄位或限制，YAGNI）。"""
+
+
+def validate_entries(entries: list[ReminderEntry]) -> list[ReminderEntry]:
+    """
+    條目層級的不變量檢查，供 `MedicationReminder` 與各請求模型共用：
+
+    - 至少一個條目——沒有條目等於這個時段沒有規則，不該存在一筆空規則。
+    - `meal_timing` 不得重複——同一時機拆成兩個條目，推播分區與逾時判定
+      會對不上是哪一個條目。
+    - 同一顆藥不得出現在兩個條目——一顆藥屬於哪個時機是唯一的，出現在
+      兩邊會讓「這個時段的藥是否都已確認」失去單一答案。
+
+    回傳依 `MEAL_TIMING_ORDER` 排序過的新 list，不修改輸入 list 本身。
+    """
+    if not entries:
+        raise ValueError("規則至少須有一個服藥條目")
+
+    seen_timings: set[str] = set()
+    seen_medication_ids: set[str] = set()
+    for entry in entries:
+        if entry.meal_timing in seen_timings:
+            raise ValueError(f"服藥時機「{entry.meal_timing}」重複")
+        seen_timings.add(entry.meal_timing)
+
+        for medication_id in entry.medication_ids:
+            if medication_id in seen_medication_ids:
+                raise ValueError(f"藥品 {medication_id} 不得同時出現在兩個條目")
+            seen_medication_ids.add(medication_id)
+
+    return sorted(entries, key=lambda entry: MEAL_TIMING_ORDER.index(entry.meal_timing))
+
+
+def derive_entry_fields(entries: list[ReminderEntry]) -> dict:
+    """
+    由條目重算規則的三個派生欄位。所有寫入路徑（service、repository）
+    SHALL 只用這個函式算派生值，SHALL NOT 自行重算——三者（最早時刻／
+    最晚時刻／藥品聯集）的定義只此一份，散落在多處會在日後修改時分岔。
+
+    內部會先呼叫 `validate_entries`，所以呼叫端不必先自行驗證再呼叫。
+    `entries` 鍵回傳的是 `model_dump()` 過的 plain dict、依 MEAL_TIMING_ORDER
+    排序，讓呼叫端可以直接放進 Mongo 的 `$set`。
+    """
+    ordered = validate_entries(entries)
+
+    medication_ids: list[str] = []
+    for entry in ordered:
+        for medication_id in entry.medication_ids:
+            if medication_id not in medication_ids:
+                medication_ids.append(medication_id)
+
+    return {
+        "entries": [entry.model_dump() for entry in ordered],
+        "scheduled_time": min(entry.scheduled_time for entry in ordered),
+        "timeout_anchor_time": max(entry.scheduled_time for entry in ordered),
+        "medication_ids": medication_ids,
+    }
+
+
 class MedicationReminder(BaseModel):
     """用藥提醒設定規則"""
 
@@ -94,6 +184,11 @@ class MedicationReminder(BaseModel):
     user_id: str                           # 服用藥物的使用者 LINE userId
     slot_type: MedicationSlotType
     scheduled_time: str = "08:00"
+    # 條目中最晚的時刻，決定該規則整體逾時（T+30）的錨點——飯前飯後拆成
+    # 兩批藥時，逾時警報不該用最早那批的時間去算，否則後一批藥還沒到時間
+    # 就先被判定逾時。舊規則沒有多個條目，讀回後與 scheduled_time 相等
+    # （見下方 mode="before" 合成邏輯），行為與本變更前完全一致。
+    timeout_anchor_time: str = ""
     start_date: str = Field(default_factory=_today_date_str)
     end_date: Optional[str] = None
     enabled: bool = True
@@ -101,8 +196,57 @@ class MedicationReminder(BaseModel):
     # 那些併發行為已有既定條文與保證，不讓藥品關聯成為它們的輸入。
     # 本欄位之前寫入的規則沒有這個 key，讀回時為空陣列，行為與過去一致。
     medication_ids: List[str] = Field(default_factory=list)
+    # 飯前／飯後／無關聯的服藥條目。scheduled_time／timeout_anchor_time／
+    # medication_ids 三者都是由 entries 算出來的派生值（見 derive_entry_fields），
+    # 不是各自獨立輸入——mode="after" 會在每次建構模型時強制以 entries
+    # 重新覆寫這三者，就算呼叫端直接塞了不一致的值也一樣。
+    entries: List[ReminderEntry] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @model_validator(mode="before")
+    @classmethod
+    def _synthesize_entries_from_legacy_fields(cls, data):
+        """
+        既有規則（本變更前寫入）的文件沒有 `entries` 欄位；讀回時在這裡
+        合成一個單一 `none` 條目，讓下面 mode="after" 的
+        `validate_entries`／`derive_entry_fields` 可以一視同仁地處理新舊
+        資料，不必在每個讀取路徑各自判斷「這筆有沒有 entries」（spec
+        「既有規則於資料庫中沒有 entries 時」）。
+
+        只在 `entries` 缺席或空時合成，且只讀取 `dict` 形式的輸入——
+        model_copy() 等場景傳進來的已經是驗證過的物件，不需要、也不應該
+        重新合成。
+        """
+        if not isinstance(data, dict):
+            return data
+        if data.get("entries"):
+            return data
+
+        data = dict(data)
+        data["entries"] = [
+            {
+                "meal_timing": "none",
+                "scheduled_time": data.get("scheduled_time") or "08:00",
+                "medication_ids": data.get("medication_ids") or [],
+            }
+        ]
+        return data
+
+    @model_validator(mode="after")
+    def _validate_and_derive_entry_fields(self) -> "MedicationReminder":
+        """
+        以 entries 為唯一真相，驗證後覆寫三個派生欄位——SHALL NOT 由 API
+        直接寫入（spec「規則內的服藥條目」）。就算呼叫端在建構時另外傳了
+        scheduled_time／timeout_anchor_time／medication_ids，這裡都會用
+        entries 算出來的值蓋掉，兩者不可能不一致。
+        """
+        self.entries = validate_entries(self.entries)
+        derived = derive_entry_fields(self.entries)
+        self.scheduled_time = derived["scheduled_time"]
+        self.timeout_anchor_time = derived["timeout_anchor_time"]
+        self.medication_ids = derived["medication_ids"]
+        return self
 
 
 class Medication(BaseModel):
@@ -206,6 +350,14 @@ class MedicationLog(BaseModel):
     timeout_at: datetime
     status: MedicationLogStatus = "pending"
     taken_at: Optional[datetime] = None
+    # T+20 二次催促送出的時刻。本欄位之前寫入的紀錄沒有這個 key，讀回時為
+    # None，與過去行為一致——它只是催促文案「什麼時候開始催的」的顯示用途，
+    # 不是任何判定的輸入。
+    urgent_at: Optional[datetime] = None
+    # 逐藥確認累積的藥品 id 集合（見 spec「逐藥確認」）。集合語意由服務層
+    # 保證冪等，這裡只是純粹的儲存欄位。本欄位之前寫入的紀錄沒有這個 key，
+    # 讀回時為空陣列，不影響既有的整批確認行為。
+    taken_medication_ids: List[str] = Field(default_factory=list)
     patient_reminder_sent: bool = False
     urgent_reminder_sent: bool = False
     caregiver_alert_sent: bool = False
@@ -228,8 +380,28 @@ class CreateMedicationReminderRequest(BaseModel):
     # 各時段的自訂提醒時間（例如 {"morning": "08:30"}）。key 限定合法時段，
     # 未指定的時段沿用 DEFAULT_SLOT_TIMES。
     slot_times: Optional[dict[MedicationSlotType, str]] = None
+    # 各時段的飯前／飯後條目（例如 {"morning": [{飯前 07:30}, {飯後 08:30}]}）。
+    # 與 slot_times 是兩套獨立的輸入：帶了某時段的 slot_entries 就以條目為準，
+    # 該時段的 scheduled_time／timeout_anchor_time／medication_ids 全部由
+    # derive_entry_fields 重算，slot_times 對該時段不再生效。
+    slot_entries: Optional[dict[MedicationSlotType, List[ReminderEntryInput]]] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
+
+    @field_validator("slot_entries")
+    @classmethod
+    def _validate_slot_entries(
+        cls, value: Optional[dict[str, List[ReminderEntryInput]]]
+    ) -> Optional[dict[str, List[ReminderEntryInput]]]:
+        """
+        對每個時段各自跑一次 validate_entries——時段之間彼此獨立，
+        「早」的條目重複不該連帶擋掉「中」的合法輸入。
+        """
+        if value is None:
+            return value
+        for entries in value.values():
+            validate_entries(entries)
+        return value
 
     @field_validator("slot_times")
     @classmethod
@@ -263,6 +435,12 @@ class UpdateMedicationReminderRequest(BaseModel):
 
     slot_type: Optional[MedicationSlotType] = None
     scheduled_time: Optional[str] = None
+    # 整批覆寫這個時段的服藥條目。帶了就以條目為準重算三個派生欄位；
+    # 未帶（None）代表這次更新不動條目，沿用既有的 entries——None 不在
+    # NULLABLE_FIELDS 裡，代表「明確傳 null」與「沒帶這個欄位」不同義，
+    # 一律當成請求格式錯誤擋在服務層之前，理由同 scheduled_time：條目
+    # 若被寫成 null，該規則會失去唯一真相，排程與逐藥確認都無所依據。
+    entries: Optional[List[ReminderEntryInput]] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     enabled: Optional[bool] = None
@@ -279,6 +457,34 @@ class UpdateMedicationReminderRequest(BaseModel):
             )
         return value
 
+    @field_validator("entries")
+    @classmethod
+    def _validate_entries(
+        cls, value: Optional[List[ReminderEntryInput]]
+    ) -> Optional[List[ReminderEntryInput]]:
+        if value is not None:
+            validate_entries(value)
+        return value
+
+
+class CreateMedicationRequest(BaseModel):
+    """以藥名手動新增藥品的請求（spec「藥品的列出與手動新增」）。
+
+    只收 user_id 與 name——手動新增的藥不含藥證、外觀與適應症，那些欄位
+    只有藥袋辨識（prescription_ocr）才會有資料來源，手動新增硬要收反而是
+    邀請使用者填進不可信的內容。
+    """
+
+    user_id: str
+    name: str = Field(min_length=1, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name_not_blank_after_strip(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("藥名不得為空白")
+        return stripped
 
 
 class MedicationReminderResponse(BaseModel):

@@ -1,7 +1,8 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, List, Optional
 from bson import ObjectId
+from pydantic import ValidationError
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
@@ -74,6 +75,32 @@ def _is_schedulable(doc: dict, today: str) -> bool:
     return True
 
 
+def _reminder_from_doc(doc: dict) -> Optional[MedicationReminder]:
+    """把一份 Mongo 文件轉成 `MedicationReminder`，解析失敗時只記錄並回傳
+    `None`，不往外拋。
+
+    模型現在會驗證 `entries`（`meal_timing` 不能重複、一個條目只能對應一種
+    服藥時機，見 `MedicationReminder` 的驗證器），代表「文件存在、但存不進
+    模型」不再只是理論上的可能——不論是手動修過的資料、遷移腳本留下的半成
+    品，還是未來某個寫入路徑的 bug，都可能讓一份文件變成這種形狀。這幾個
+    讀取方法（`list_active_reminders_up_to_time`／`list_reminders_by_user`／
+    `list_reminders_by_creator`／`find_by_ids`）在展開前是逐一 `dict → model`
+    的迴圈，若不隔離每一份文件各自的例外，一則壞規則就會讓
+    `MedicationReminder(**doc)` 拋出，整個列表推導中斷、整批呼叫失敗——對排
+    程器來說即是那一個 tick 的所有使用者都收不到推播，代價遠高於「跳過這一
+    筆壞規則」。因此壞文件在這裡就地降級成 `None`，呼叫端只需要跳過它。
+    """
+    try:
+        return MedicationReminder(**{**doc, "_id": str(doc["_id"])})
+    except ValidationError as exc:
+        logger.error(
+            "[MedicationReminderRepository] 略過無法解析的規則 %s: %s",
+            doc.get("_id"),
+            exc,
+        )
+        return None
+
+
 class MedicationReminderRepository:
     """
     用藥提醒 (medication_reminders) 資料庫操作
@@ -143,6 +170,12 @@ class MedicationReminderRepository:
         `$setOnInsert` 只在真的建立新文件時套用；`today` 只算一次並傳給
         兩個階段共用，避免兩次呼叫 `_today_date_str()` 在極端情況下跨過
         午夜而算出不一致的結果。
+
+        新插入的文件同時合成一個單一 `none` 條目（`entries`）與
+        `timeout_anchor_time`，值與 `scheduled_time` 相同——這是唯一條目時
+        兩個派生欄位理應相等的情況，等同 `derive_entry_fields([單一 none
+        條目])` 的結果，只是寫在這裡而不必真的建構 `MedicationReminder`
+        再拆解：新建立的規則本來就只有這一種條目，不需要繞一圈。
         """
         if collection is None:
             collection = MongoDBManager.get_medication_reminders_collection()
@@ -156,6 +189,14 @@ class MedicationReminderRepository:
                     "_id": str(ObjectId()),
                     "creator_user_id": creator_user_id,
                     "scheduled_time": scheduled_time,
+                    "timeout_anchor_time": scheduled_time,
+                    "entries": [
+                        {
+                            "meal_timing": "none",
+                            "scheduled_time": scheduled_time,
+                            "medication_ids": [],
+                        }
+                    ],
                     "start_date": today,
                     "end_date": None,
                     "enabled": True,
@@ -222,7 +263,8 @@ class MedicationReminderRepository:
             collection = MongoDBManager.get_medication_reminders_collection()
         cursor = collection.find({"_id": {"$in": reminder_ids}})
         docs = await cursor.to_list(length=None)
-        return [MedicationReminder(**{**doc, "_id": str(doc["_id"])}) for doc in docs]
+        reminders = [_reminder_from_doc(doc) for doc in docs]
+        return [reminder for reminder in reminders if reminder is not None]
 
     @staticmethod
     async def list_reminders_by_user(
@@ -236,8 +278,9 @@ class MedicationReminderRepository:
         docs = await cursor.to_list(length=None)
         reminders = []
         for doc in docs:
-            doc["_id"] = str(doc["_id"])
-            reminders.append(MedicationReminder(**doc))
+            reminder = _reminder_from_doc(doc)
+            if reminder is not None:
+                reminders.append(reminder)
         return reminders
 
     @staticmethod
@@ -247,8 +290,9 @@ class MedicationReminderRepository:
         docs = await cursor.to_list(length=None)
         reminders = []
         for doc in docs:
-            doc["_id"] = str(doc["_id"])
-            reminders.append(MedicationReminder(**doc))
+            reminder = _reminder_from_doc(doc)
+            if reminder is not None:
+                reminders.append(reminder)
         return reminders
 
     @staticmethod
@@ -256,7 +300,11 @@ class MedicationReminderRepository:
         max_scheduled_time: str, target_date_str: Optional[str] = None
     ) -> List[MedicationReminder]:
         """
-        查詢當日已到達排程時間 (scheduled_time <= max_scheduled_time) 且為啟用狀態的提醒規則
+        查詢當日已到達排程時間 (scheduled_time <= max_scheduled_time) 且為啟用狀態的提醒規則。
+
+        排程器每個 tick 都呼叫這裡展開全體使用者的規則；單一文件解析失敗
+        （見 `_reminder_from_doc`）只跳過那一筆，不能讓一則壞規則拖垮整個
+        tick、讓所有使用者那一輪都收不到推播。
         """
         col = MongoDBManager.get_medication_reminders_collection()
         date_str = target_date_str or _today_date_str()
@@ -269,25 +317,39 @@ class MedicationReminderRepository:
         docs = await cursor.to_list(length=None)
         reminders = []
         for doc in docs:
-            doc["_id"] = str(doc["_id"])
-            reminders.append(MedicationReminder(**doc))
+            reminder = _reminder_from_doc(doc)
+            if reminder is not None:
+                reminders.append(reminder)
         return reminders
 
     @staticmethod
-    async def update_reminder(reminder_id: str, update_data: dict) -> Optional[MedicationReminder]:
-        col = MongoDBManager.get_medication_reminders_collection()
+    async def update_reminder(
+        reminder_id: str,
+        update_data: dict,
+        collection: Optional[Any] = None,
+    ) -> Optional[MedicationReminder]:
+        if collection is None:
+            collection = MongoDBManager.get_medication_reminders_collection()
         now = datetime.now(tz=timezone.utc)
         # 收到什麼就寫什麼，不再過濾 None。過濾 None 是「清空 end_date」失效的
         # 第二道濾網（第一道在 MedicationService.update_reminder 的 model_dump），
         # 只修其中一層完全沒有效果。哪些欄位允許 null 由服務層界定並在那裡擋成
         # 400，這一層不重複做那個判斷——分散在兩處只會讓兩邊都以為對方有擋。
+        # 條目化之後這裡也不重複做的判斷再多一項：`entries` 對應的
+        # `scheduled_time`／`timeout_anchor_time`／`medication_ids` 三個派生
+        # 欄位由服務層呼叫 `derive_entry_fields` 算好、與 `entries` 一起放進
+        # `update_data`，這裡只管照單全收地寫入。
         update_doc = dict(update_data)
         update_doc["updated_at"] = now
 
-        result = await col.update_one({"_id": reminder_id}, {"$set": update_doc})
+        result = await collection.update_one({"_id": reminder_id}, {"$set": update_doc})
         if result.matched_count == 0:
             return None
-        return await MedicationReminderRepository.get_reminder_by_id(reminder_id)
+        doc = await collection.find_one({"_id": reminder_id})
+        if not doc:
+            return None
+        doc["_id"] = str(doc["_id"])
+        return MedicationReminder(**doc)
 
     @staticmethod
     async def delete_reminder(reminder_id: str) -> bool:
@@ -301,21 +363,97 @@ class MedicationReminderRepository:
         medication_ids: List[str],
         collection: Optional[Any] = None,
     ) -> bool:
-        """把藥品掛到既有的時段規則上。
+        """把藥品掛到既有時段規則的 `none` 條目上（藥袋提交路徑；見 design
+        決策 3——藥袋辨識不分飯前飯後，一律掛進 `none`）。
 
-        用 $addToSet 而非 $push：同一份處方被重複提交、或使用者把同一種藥
-        再指定一次到同一個時段時，重複的 id 會讓推播把同一種藥列兩遍。
+        改成三個各自原子、冪等的更新，而不是像過去那樣直接寫頂層
+        `medication_ids`（那個寫法在條目化之後不成立：`medication_ids`
+        是由 `derive_entry_fields` 算出來的聯集，SHALL NOT 被直接寫入）：
+
+        1. 舊文件相容：只有「這份文件根本沒有 entries 欄位」（本變更前寫入
+           的規則）才會命中，把它補上與現有 `scheduled_time`／
+           `medication_ids` 對齊的單一 `none` 條目——之後這份文件就跟新
+           規則走同一套條目模型。
+        2. `none` 條目補位：文件已有 entries（不論是剛被步驟 1 補上的，
+           還是新規則本來就有的），但還沒有 `meal_timing == "none"` 的
+           條目（例如使用者已經設定了飯前／飯後、但還沒有任何「無關聯」
+           的藥）時，push 一個空的 `none` 條目，時刻取現有規則的
+           `scheduled_time`——見下方說明，為什麼這個時刻不需要與最早的
+           條目時刻重算比較。
+        3. 掛藥：把 `medication_ids` 用 `$addToSet` 併入 `none` 條目
+           （`array_filters` 鎖定 `meal_timing == "none"` 的那個元素，
+           避免陣列位置法在條目順序不固定時對錯位置），同時比照舊行為
+           把同一批 id 併入頂層 `medication_ids`（走到這裡都已經是幾乎
+           必然在陣列裡才對，`$addToSet` 只是保險）。
+
+        三步都各自是單一 document 的原子更新，且用 `$addToSet`／只在條件
+        不成立時才生效的 filter，重複呼叫（例如同一份藥袋重試送出）結果
+        不變，冪等。
+
+        `none` 條目的時刻恆等於規則現有的 `scheduled_time`（規則新建時
+        `find_or_create_reminder` 就是這樣合成的；使用者若之後另外用
+        detailed 檢視新增了更早的飯前條目，那筆更新會經過
+        `derive_entry_fields` 整份重算，`none` 條目的時刻也會一起被那次
+        更新改掉，不會停留在這裡寫入的舊值）——因此掛藥本身不需要、也
+        不應該去重算 `scheduled_time`／`timeout_anchor_time`：min/max
+        的候選集合沒有變，只是其中一個候選（`none` 條目）的
+        `medication_ids` 多了幾個 id，時刻不變則兩個派生時刻必然不變。
         """
         if not medication_ids:
             return False
         if collection is None:
             collection = MongoDBManager.get_medication_reminders_collection()
+
+        reminder_doc = await collection.find_one({"_id": reminder_id})
+        if not reminder_doc:
+            return False
+        reminder_scheduled_time = reminder_doc.get("scheduled_time", "08:00")
+
+        # 步驟 1：舊文件補上 entries（只有真的缺這個欄位的文件才會命中）。
+        await collection.update_one(
+            {"_id": reminder_id, "entries": {"$exists": False}},
+            {
+                "$set": {
+                    "entries": [
+                        {
+                            "meal_timing": "none",
+                            "scheduled_time": reminder_scheduled_time,
+                            "medication_ids": reminder_doc.get("medication_ids", []),
+                        }
+                    ]
+                }
+            },
+        )
+
+        # 步驟 2：還沒有 none 條目時補一個空的（步驟 1 剛補上的文件已經有了，
+        # 這裡不會再命中；原本就有飯前/飯後但沒有 none 的文件才會命中）。
+        # 單一 document 的 update_one 對同一份文件而言，filter 的判定與寫入
+        # 是同一個原子操作的一部分，兩個並行的掛藥請求不可能同時判定「這份
+        # 文件還沒有 none 條目」為真而各自 push 一次，不會重複 push。
+        await collection.update_one(
+            {"_id": reminder_id, "entries.meal_timing": {"$ne": "none"}},
+            {
+                "$push": {
+                    "entries": {
+                        "meal_timing": "none",
+                        "scheduled_time": reminder_scheduled_time,
+                        "medication_ids": [],
+                    }
+                }
+            },
+        )
+
+        # 步驟 3：把藥掛進 none 條目與頂層聯集欄位。
         result = await collection.update_one(
             {"_id": reminder_id},
             {
-                "$addToSet": {"medication_ids": {"$each": medication_ids}},
+                "$addToSet": {
+                    "entries.$[none].medication_ids": {"$each": medication_ids},
+                    "medication_ids": {"$each": medication_ids},
+                },
                 "$set": {"updated_at": datetime.now(timezone.utc)},
             },
+            array_filters=[{"none.meal_timing": "none"}],
         )
         return result.matched_count > 0
 
@@ -348,6 +486,40 @@ class MedicationRepository:
 
         await collection.insert_many(documents)
         return created
+
+    @staticmethod
+    async def create_one(
+        medication: Medication, collection: Optional[Any] = None
+    ) -> Medication:
+        """手動新增單一藥品（`POST /medications`）。包 `create_many`而不是
+        另外寫一份 insert_one 邏輯——id 指派、`model_copy` 回填都只有一份
+        實作，`create_many` 已經處理好空清單與批次兩種情況。"""
+        created = await MedicationRepository.create_many(
+            [medication], collection=collection
+        )
+        return created[0]
+
+    @staticmethod
+    async def list_by_user(
+        user_id: str, collection: Optional[Any] = None
+    ) -> List[Medication]:
+        """列出某位使用者的全部藥品，不篩 `enabled` 與日期區間（`GET
+        /medications?user_id=`，見 design 決策 9）。
+
+        與 `list_active_by_user` 刻意不同：那支給推播與消息索引用，只要
+        「當下有效」的藥；這支給 LIFF 詳細設定頁的「新增藥品」清單挑選，
+        使用者需要看到全部藥品（含已停用者，前端自行以 `enabled` 標示），
+        否則會誤以為某顆藥從未建立過而重複新增。
+
+        依 `created_at` 升冪：新增藥品時使用者多半是照著藥袋或處方順序
+        一顆一顆加，清單維持建立順序比較符合預期，也讓同一批藥袋辨識
+        新增的藥品在清單裡保持原本的相對順序。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_medications_collection()
+        cursor = collection.find({"user_id": user_id}).sort("created_at", 1)
+        docs = await cursor.to_list(length=None)
+        return [Medication(**{**doc, "_id": str(doc["_id"])}) for doc in docs]
 
     @staticmethod
     async def list_active_drug_keys(
@@ -581,8 +753,14 @@ class MedicationLogRepository:
         return MedicationLog(**doc)
 
     @staticmethod
-    async def mark_as_taken(log_id: str, taken_at: Optional[datetime] = None) -> Optional[MedicationLog]:
-        """更新單一 Document 狀態為已服藥。
+    async def mark_as_taken(
+        log_id: str,
+        taken_at: Optional[datetime] = None,
+        taken_medication_ids: Optional[List[str]] = None,
+        collection: Optional[Any] = None,
+    ) -> Optional[MedicationLog]:
+        """更新單一 Document 狀態為已服藥（「全部已服用」整批確認路徑，見
+        design 決策 4）。
 
         `pending`、`missed`、`cancelled` 三種狀態都允許轉成 `taken`：使用者按下的
         確認一律優先於系統推得的狀態。`missed` 是排程器判定的逾時，`cancelled` 是
@@ -592,19 +770,68 @@ class MedicationLogRepository:
 
         放寬狀態條件不會讓已經停下的推播復活：三階推播的待推播查詢限定
         `status="pending"`，`taken` 同樣挑不到。
+
+        `taken_medication_ids` 有給時併入同一個 `$set` 更新（用
+        `$addToSet`／`$each`）：整批確認要把「當時有效的藥品」全部寫進
+        `taken_medication_ids`，讓用藥歷史能一致地回答「那次吃了什麼」
+        （design 決策 4）；呼叫端（service 層）負責決定要傳哪些 id，這裡
+        只管寫入。
         """
-        col = MongoDBManager.get_medication_logs_collection()
+        if collection is None:
+            collection = MongoDBManager.get_medication_logs_collection()
         now = taken_at or datetime.now(tz=timezone.utc)
-        result = await col.update_one(
+        update: dict = {"$set": {"status": "taken", "taken_at": now}}
+        if taken_medication_ids:
+            update["$addToSet"] = {
+                "taken_medication_ids": {"$each": taken_medication_ids}
+            }
+        result = await collection.update_one(
             {"_id": log_id, "status": {"$in": ["pending", "missed", "cancelled"]}},
-            {"$set": {"status": "taken", "taken_at": now}},
+            update,
         )
         if result.matched_count == 0:
-            log = await MedicationLogRepository.get_log_by_id(log_id)
-            if log and log.status == "taken":
-                return log
+            doc = await collection.find_one({"_id": log_id})
+            if doc:
+                doc["_id"] = str(doc["_id"])
+                log = MedicationLog(**doc)
+                if log.status == "taken":
+                    return log
             return None
-        return await MedicationLogRepository.get_log_by_id(log_id)
+        doc = await collection.find_one({"_id": log_id})
+        if not doc:
+            return None
+        doc["_id"] = str(doc["_id"])
+        return MedicationLog(**doc)
+
+    @staticmethod
+    async def add_taken_medication(
+        log_id: str,
+        medication_id: str,
+        collection: Optional[Any] = None,
+    ) -> Optional[MedicationLog]:
+        """逐藥確認累積單一藥品 id（見 design 決策 4「逐藥確認」）。
+
+        用 `$addToSet` 而非 `$push`：重複按同一顆藥的【已吃】必須是冪等的
+        （design 決策 6「重複按同一顆是冪等的，回覆相同」），`$push` 會讓
+        同一個 id 在陣列裡出現多次，「全部到齊」的判定（集合包含關係）雖然
+        不受影響，但會讓紀錄裡的陣列無意義地增長。
+
+        不像 `mark_as_taken` 限定 `status in (pending, missed, cancelled)`：
+        逐藥確認允許在任何狀態下寫入——包含已經 `taken` 之後又被按到（例如
+        使用者對著同一則訊息重複點擊），因為「全部到齊」判定在服務層重算，
+        這裡只負責忠實記錄使用者按過哪些藥，不做狀態機的把關。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_medication_logs_collection()
+        await collection.update_one(
+            {"_id": log_id},
+            {"$addToSet": {"taken_medication_ids": medication_id}},
+        )
+        doc = await collection.find_one({"_id": log_id})
+        if not doc:
+            return None
+        doc["_id"] = str(doc["_id"])
+        return MedicationLog(**doc)
 
     @staticmethod
     async def cancel_pending_by_reminder(
@@ -641,9 +868,27 @@ class MedicationLogRepository:
         reminder_id: str,
         scheduled_at: datetime,
         slot_type: str,
+        urgent_at: Optional[datetime] = None,
+        timeout_at: Optional[datetime] = None,
         collection: Optional[Any] = None,
     ) -> tuple[int, int]:
         """讓某筆規則當日還沒確認的紀錄對齊改過的排程，回傳 `(註銷數, 改標數)`。
+
+        `urgent_at`／`timeout_at` 是條目化之後新增的對齊維度（design 決策 5
+        第二種情形）：最早時刻（`scheduled_time`）不變、只有最晚時刻
+        （`timeout_anchor_time`）變了時，紀錄的 `scheduled_at` 不用動
+        （排程展開的 T+0 時刻沒變），但 T+20／T+30 的推播基準要跟著改，
+        否則會用舊的最晚時刻催促或通知家屬逾時。這種情形走的正是「時刻
+        相同、只有標籤變了」的改標路徑，只是這次要改的標籤除了
+        `slot_type`（時段名稱互換）還多了這兩個時間欄位。
+
+        呼叫端未帶 `urgent_at`／`timeout_at`（既有呼叫，只改時段名稱）時，
+        改標查詢與 `$set` 維持本變更前的形狀（只看 `slot_type` 是否不同、
+        只改 `slot_type`），行為不變。帶了其中之一時，改標查詢改成
+        `$or`——只要 `slot_type`／`urgent_at`／`timeout_at` 任一項不同就
+        命中，`$set` 一併把有帶的欄位寫入，讓「只改了最晚時刻、時段名稱
+        沒變」與「只改了時段名稱、最晚時刻沒變」都能各自被對到的那一項
+        `$ne` 命中。
 
         使用者改時段或改提醒時間時呼叫。展開出來的紀錄是規則在**展開當下**的
         快照（`slot_type`、`scheduled_at` 都是複製過去的值），三階推播查詢只讀
@@ -680,14 +925,33 @@ class MedicationLogRepository:
             },
             {"$set": {"status": "cancelled"}},
         )
-        retagged = await collection.update_many(
-            {
+
+        retag_set: dict = {"slot_type": slot_type}
+        if urgent_at is None and timeout_at is None:
+            retag_query: dict = {
                 "reminder_id": reminder_id,
                 "status": "pending",
                 "scheduled_at": scheduled_at,
                 "slot_type": {"$ne": slot_type},
-            },
-            {"$set": {"slot_type": slot_type}},
+            }
+        else:
+            or_clauses: list = [{"slot_type": {"$ne": slot_type}}]
+            if urgent_at is not None:
+                or_clauses.append({"urgent_at": {"$ne": urgent_at}})
+                retag_set["urgent_at"] = urgent_at
+            if timeout_at is not None:
+                or_clauses.append({"timeout_at": {"$ne": timeout_at}})
+                retag_set["timeout_at"] = timeout_at
+            retag_query = {
+                "reminder_id": reminder_id,
+                "status": "pending",
+                "scheduled_at": scheduled_at,
+                "$or": or_clauses,
+            }
+
+        retagged = await collection.update_many(
+            retag_query,
+            {"$set": retag_set},
         )
         return cancelled.modified_count, retagged.modified_count
 
@@ -908,19 +1172,52 @@ class MedicationLogRepository:
         return [MedicationLog(**{**doc, "_id": str(doc["_id"])}) for doc in docs]
 
     @staticmethod
-    async def list_pending_urgent_reminders(threshold_time: datetime) -> List[MedicationLog]:
+    async def list_pending_urgent_reminders(
+        threshold_time: datetime, collection: Optional[Any] = None
+    ) -> List[MedicationLog]:
         """
-        查詢已過 T+20min (scheduled_at <= threshold_time) 且狀態仍為 pending 尚未發送催促提醒的日誌。
-        使用 $lte 可防範排程檢查秒數偏差或伺服器重啟造成的延遲漏發。
+        查詢已過 T+20min 且狀態仍為 pending 尚未發送催促提醒的日誌。
+
+        T+20 的基準是 `urgent_at`（= 規則 `timeout_anchor_time` + 20 分鐘，
+        見 design 決策 4），不再是 `scheduled_at` + 20 分鐘——飯前飯後拆成
+        兩批藥時，最晚那批的服藥時間才是「該催促的時刻」，用最早那批算會
+        催得太早。
+
+        但既有紀錄（本變更前展開）沒有 `urgent_at` 這個欄位，所以查詢用
+        `$or` 保留舊的計算方式當退回分支：有 `urgent_at` 的走
+        `urgent_at <= threshold_time`；沒有的走
+        `scheduled_at <= threshold_time - 20min`，等同舊版行為。呼叫端
+        （scheduler）改傳現在時刻 `now`，不再自己先減 20 分鐘——20 分鐘的
+        位移現在下放到這裡的退回分支，`urgent_at` 分支不需要它（`urgent_at`
+        寫入時已經加過 20 分鐘）。
+
+        「沒有這個欄位」在查詢上刻意拆成兩種寫法各配一個分支：`$exists:
+        False`（欄位真的不存在，本變更前的紀錄）與 `urgent_at: None`
+        （欄位存在但值是 null）。兩者在 MongoDB 裡是不同的文件形狀，
+        `$exists: False` 不會命中值為 null 的欄位。這裡的正確性因此不再
+        依賴 `upsert_log` 寫入時是否用 `exclude_none=True` 把 None 值濾掉
+        不寫入——不論插入路徑將來要不要保留那個過濾，這條查詢兩種形狀都
+        接得住，不會因為欄位「存在但是 null」而漏掉一筆該催促的紀錄。
+
+        兩個退回分支都用 $lte：防範排程檢查秒數偏差或伺服器重啟造成的延遲
+        漏發。這是過渡期的分支（design Risks）：部署後隔天舊紀錄就會走完
+        T+20／T+30 全部收斂為 taken/missed，屆時可以拿掉退回分支，只是
+        本次變更範圍不含這個收尾。
         """
-        col = MongoDBManager.get_medication_logs_collection()
+        if collection is None:
+            collection = MongoDBManager.get_medication_logs_collection()
+        legacy_condition = {"scheduled_at": {"$lte": threshold_time - timedelta(minutes=20)}}
         query = {
             "status": "pending",
             "patient_reminder_sent": True,
             "urgent_reminder_sent": False,
-            "scheduled_at": {"$lte": threshold_time},
+            "$or": [
+                {"urgent_at": {"$lte": threshold_time}},
+                {"urgent_at": {"$exists": False}, **legacy_condition},
+                {"urgent_at": None, **legacy_condition},
+            ],
         }
-        cursor = col.find(query)
+        cursor = collection.find(query)
         docs = await cursor.to_list(length=None)
         return [MedicationLog(**{**doc, "_id": str(doc["_id"])}) for doc in docs]
 

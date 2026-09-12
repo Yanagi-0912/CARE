@@ -147,6 +147,8 @@ TBD - created by archiving change prescription-bag-scan. Update Purpose after ar
 
 `QD` 的 `timing` 例外理由：`timing` 是辨識階段就已經抽出的欄位，`bedtime` 是其中唯一明確指向單一時段的值——「睡前服用」不是與進食的關係，而是直接陳述時段本身。一日僅一次的藥品若標示睡前，把預設提醒排在早上，會讓使用者依錯誤的預設時段服藥，且必須每次都手動更正才能得到正確結果；系統不該在已經取得能判斷這件事的資訊時，仍然給出一個明知有更精確答案的預設值。`before_meal`／`after_meal`／`empty_stomach` 不受此例外涵蓋，因為它們描述的是與進食的相對關係，不指向任何一個固定時段，無法據以推得該對應哪一次服藥。一日多次的頻次（`BID`／`TID`／`QID`）同樣不受影響：多劑量藥袋上出現「睡前」多半只限定其中最後一次劑量，頻次代碼本身已經是「一天吃幾次」這件事上更明確、更不容易被誤讀的陳述，用單一 `timing` 值覆寫整組時段映射屬於過度推論，因此刻意不做。
 
+提交時每個時段 SHALL 經 `find_or_create_reminder` 取得或建立該用藥者的唯一規則，新建規則 SHALL 只含一個 `none` 條目，時刻為該時段的預設時間。藥品 SHALL 連結至該規則的 `none` 條目（缺席時建立），SHALL NOT 改動規則既有的飯前、飯後條目，亦 SHALL NOT 嘗試從藥袋判定飯前飯後。
+
 #### Scenario: TID 映射三個時段
 
 - **WHEN** 某藥品的頻次代碼為 `TID` 且使用者未覆寫
@@ -186,6 +188,11 @@ TBD - created by archiving change prescription-bag-scan. Update Purpose after ar
 
 - **WHEN** 某藥品的頻次代碼為 `OTHER`，使用者明確選擇「這個藥不用定時提醒我」而不指定任何時段
 - **THEN** 系統 SHALL 允許提交並建立該藥品，該藥品的 id SHALL NOT 出現在任何提醒規則的 `medication_ids` 中
+
+#### Scenario: 提交到已有飯前飯後的時段
+
+- **WHEN** 長輩的「早」規則已設定飯前與飯後條目，家屬提交一張辨識為 BID 的藥袋
+- **THEN** 該藥 SHALL 掛在「早」與「晚」規則的 `none` 條目，既有的飯前、飯後條目與時刻 SHALL NOT 改變
 
 ### Requirement: 需要時服用的藥品不建立定時提醒
 

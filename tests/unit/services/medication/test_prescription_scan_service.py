@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from app.models.family_tree import FamilyMember, FamilyTree
-from app.models.medication import MedicationReminder
+from app.models.medication import MedicationReminder, ReminderEntry
 from app.models.prescription import (
     CommitDrugItem,
     CommitPrescriptionDraftRequest,
@@ -1065,6 +1065,52 @@ async def test_commit_reuses_an_existing_reminder_for_the_slot():
 
     assert reminders.created == []
     assert reminders.links[0][0] == "R_EXISTING"
+
+
+@pytest.mark.asyncio
+async def test_commit_links_medication_without_touching_the_rules_entries():
+    """OCR 路徑只呼叫 `link_medications_to_reminder`，不曾改動規則的
+    `entries`（飯前／飯後條目）——即使命中的既有規則已經拆成飯前／飯後兩個
+    條目，提交後 `links` 仍只記錄單一 `(reminder_id, [medication_id])`，
+    且規則物件本身的 `entries` 原封不動。條目只能經由
+    `PUT /medications/reminders/{id}` 修改（見 4.1／design 決策 9），
+    `_link_reminders` 與 `_ReminderRepository` Protocol 都刻意不變。
+    """
+    existing = MedicationReminder(
+        id="R_EXISTING",
+        creator_user_id="U_FAMILY",
+        user_id="U_PATIENT",
+        slot_type="morning",
+        entries=[
+            ReminderEntry(
+                meal_timing="before_meal",
+                scheduled_time="07:30",
+                medication_ids=["M_OLD"],
+            ),
+            ReminderEntry(
+                meal_timing="after_meal",
+                scheduled_time="08:30",
+                medication_ids=[],
+            ),
+        ],
+    )
+    original_entries = list(existing.entries)
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    reminders = FakeReminderRepository(existing=[existing])
+    service = _service(
+        drafts=drafts,
+        reminders=reminders,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    result = await service.commit(
+        "D1", "U_FAMILY", _request(CommitDrugItem(name="某藥", frequency_code="QD"))
+    )
+
+    new_medication_id = result.medication_ids[0]
+    assert reminders.links == [("R_EXISTING", [new_medication_id])]
+    assert existing.entries == original_entries
 
 
 @pytest.mark.asyncio

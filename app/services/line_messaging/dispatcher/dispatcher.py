@@ -190,31 +190,86 @@ class LineEventDispatcher:
                 return
 
             if self._medication_service:
-                log = await self._medication_service.confirm_medication(log_id, user_id)
-                taken_time_str = to_taipei_hm(log.taken_at)
-                scheduled_time_str = to_taipei_hm(log.scheduled_at, default="08:00")
-                # 已完成的卡片要留下「這次吃了哪幾種藥」——提醒卡上有的資訊
-                # 不該在按下確認後就消失，那是使用者事後唯一查得到的憑據。
-                # 查不到時回傳空清單，卡片自動退回沒有藥品區塊的原樣。
-                medication_names = (
-                    await self._medication_service.list_medication_names_for_log(log)
+                # 逐藥確認的 postback 才會帶 medication_id；整批的【全部已服用】
+                # 不帶，維持既有行為（spec「逐藥確認」：不帶藥品 id 的確認直接
+                # 轉 taken）。
+                medication_id = params.get("medication_id", [""])[0] or None
+                log = await self._medication_service.confirm_medication(
+                    log_id, user_id, medication_id=medication_id
                 )
 
-                disabled_flex = build_patient_medication_flex(
-                    log_id=log_id,
-                    slot_type=log.slot_type,
-                    scheduled_time=scheduled_time_str,
-                    disabled=True,
-                    taken_at_str=taken_time_str,
-                    medication_names=medication_names,
-                    language=user_language,
-                    font_size=self._font_size_from_profile(user_profile),
-                )
-                await self._replier.reply_flex(
-                    reply_token=reply_token,
-                    flex_message=disabled_flex,
-                    user_id=user_id,
-                )
+                if log.status == "taken":
+                    taken_time_str = to_taipei_hm(log.taken_at)
+                    scheduled_time_str = to_taipei_hm(log.scheduled_at, default="08:00")
+                    # 已完成的卡片要留下「這次吃了哪幾種藥」——提醒卡上有的資訊
+                    # 不該在按下確認後就消失，那是使用者事後唯一查得到的憑據。
+                    # 查不到時回傳空清單，卡片自動退回沒有藥品區塊的原樣。
+                    medication_names = (
+                        await self._medication_service.list_medication_names_for_log(log)
+                    )
+
+                    disabled_flex = build_patient_medication_flex(
+                        log_id=log_id,
+                        slot_type=log.slot_type,
+                        scheduled_time=scheduled_time_str,
+                        disabled=True,
+                        taken_at_str=taken_time_str,
+                        medication_names=medication_names,
+                        language=user_language,
+                        font_size=self._font_size_from_profile(user_profile),
+                    )
+                    await self._replier.reply_flex(
+                        reply_token=reply_token,
+                        flex_message=disabled_flex,
+                        user_id=user_id,
+                    )
+                else:
+                    # 逐藥確認尚未到齊：以純文字回覆已記錄與尚未確認的藥品，
+                    # 讓使用者知道「按有生效」而不必等下一則卡片（spec
+                    # 「逐藥確認」，design 決策 6）。回覆走 reply token，
+                    # 不耗推播額度。
+                    taken = await self._medication_service.taken_names_for_log(log)
+                    remaining = [
+                        entry.name
+                        for group in await self._medication_service.medication_groups_for_log(
+                            log
+                        )
+                        for (_medication_id, entry) in group.items
+                    ]
+                    # `taken_names_for_log` 查不到藥名時退化回空清單（見該
+                    # 方法註解：查詢失敗只記 log、不往外拋）——這裡不能照樣
+                    # `、`.join 出一段空字串塞進「已記錄：」後面，那會回覆
+                    # 「已記錄：。還有 N 種：…」這種看不出記錄了什麼的句子。
+                    # 四種組合分開處理：有記錄／無記錄各自搭配有／無待確認，
+                    # 都沒有時才退回 meds.recorded 的既有措辭。
+                    if taken and remaining:
+                        progress_text = t(
+                            "meds.progress", language=user_language
+                        ).format(
+                            taken="、".join(taken),
+                            count=len(remaining),
+                            remaining="、".join(remaining),
+                        )
+                    elif taken:
+                        progress_text = t(
+                            "meds.progress_none_left", language=user_language
+                        ).format(taken="、".join(taken))
+                    elif remaining:
+                        progress_text = t(
+                            "meds.progress_no_taken", language=user_language
+                        ).format(
+                            count=len(remaining),
+                            remaining="、".join(remaining),
+                        )
+                    else:
+                        progress_text = t("meds.recorded", language=user_language)
+                    await self._replier.reply(
+                        reply_token=reply_token,
+                        message_text=progress_text,
+                        user_id=user_id,
+                        voice_reply_enabled=False,
+                        language=user_language,
+                    )
             else:
                 await self._replier.reply(
                     reply_token=reply_token,

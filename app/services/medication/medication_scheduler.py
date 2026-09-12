@@ -26,6 +26,7 @@ from app.repositories.medication_repository import (
     MedicationRepository,
 )
 from app.services.line_messaging.flex.medication_flex import (
+    MedicationGroup,
     MedicationListEntry,
     build_caregiver_alert_flex,
     build_caregiver_missed_summary_flex,
@@ -90,6 +91,11 @@ class _TickMedicationNameCache:
     家屬警報不需要（spec「家屬卡片不含縮圖」）：兩者共用同一份查表，差別只在
     讀出來時要不要保留 image_url——`get()` 只回藥名（給家屬警報用），
     `get_entries()` 回帶縮圖 URL 的完整列（給用藥者提醒用）。
+
+    `get_groups()` 是同一批查詢結果的第三種讀法：依規則的 `entries` 分區
+    （飯前／飯後／無關聯），供 T+0／T+20 用藥者卡片依時機分組呈現並排除
+    已確認的藥（design 決策 6）。三支讀法共用同一次 `_load()`，呼叫順序或
+    次數都不會讓查詢次數增加。
     """
 
     def __init__(
@@ -112,6 +118,15 @@ class _TickMedicationNameCache:
         self._reminder_repository = reminder_repository
         self._medication_repository = medication_repository
         self._entries_by_log_id: Optional[dict[str, list[MedicationListEntry]]] = None
+        # `get_groups` 額外需要的兩份索引，由 `_load` 在同一批查詢裡順便建好：
+        # 規則本身（要讀 `entries` 做分區）與「每個台北日期各自的藥品查表」
+        # （與 `entries_by_log_id` 用的是同一份 `entry_by_id`，只是多留一份
+        # 以日期為 key 的版本，不必重新發查詢或重算縮圖）。兩者預設為空字典
+        # 而非 None：`_load` 提早結束的分支（沒有 reminder_ids／查詢失敗）
+        # 不會補設它們，`get_groups` 因此自然退化成空清單，不需要另外判斷
+        # 「有沒有載入過」。
+        self._reminder_by_id: dict[str, "MedicationReminder"] = {}
+        self._entry_by_id_by_date: dict[str, dict[str, MedicationListEntry]] = {}
 
     async def get(
         self,
@@ -139,17 +154,84 @@ class _TickMedicationNameCache:
         reminder_collection: Optional[Any] = None,
         medication_collection: Optional[Any] = None,
     ) -> list[MedicationListEntry]:
-        """取得指定 log 的藥品清單列（藥名＋縮圖 URL）；供用藥者提醒使用。
+        """取得指定 log 的扁平藥品清單列（藥名＋縮圖 URL）；供用藥者服藥提醒／
+        二次催促卡片的 `medication_names` 使用，以及其他需要縮圖的呼叫端。
 
-        第一次呼叫（不論是這支或 `get`）才會真的發出查詢，之後都讀已經查好的
-        結果，理由見 class docstring。
+        第一次呼叫（不論是這支、`get` 還是 `get_groups`）才會真的發出查詢，
+        之後都讀已經查好的結果，理由見 class docstring。
+        """
+        await self._ensure_loaded(
+            reminder_collection=reminder_collection,
+            medication_collection=medication_collection,
+        )
+        return self._entries_by_log_id.get(log.id, [])
+
+    async def get_groups(
+        self,
+        log: "MedicationLog",
+        *,
+        reminder_collection: Optional[Any] = None,
+        medication_collection: Optional[Any] = None,
+    ) -> list["MedicationGroup"]:
+        """取得指定 log 依服藥時機分區的資料；供 T+0／T+20 用藥者卡片使用
+        （spec「三階遞進推播」、design 決策 6）。
+
+        分組語意與 `MedicationService.medication_groups_for_log`（單筆、
+        dispatcher 路徑）完全一致：依 `reminder.entries` 的順序（已由模型
+        驗證器排過 `MEAL_TIMING_ORDER`），每個條目的 `items` 是該條目裡、在
+        log 台北日期當日有效、且尚未出現在 `taken_medication_ids` 的藥；
+        `items` 為空的條目直接跳過。差別只在於這裡讀的是 `_load` 已經批次
+        查好的 `_reminder_by_id`／`_entry_by_id_by_date`，不會為了分組另外
+        發查詢——即使先呼叫過 `get_entries` 也一樣，兩者共用同一次 `_load`。
+
+        規則不存在（查詢失敗或已被刪除）時回傳空清單，卡片退回沒有分區
+        的原樣，與 `get_entries` 同一個降級方向。
+        """
+        await self._ensure_loaded(
+            reminder_collection=reminder_collection,
+            medication_collection=medication_collection,
+        )
+        reminder = self._reminder_by_id.get(log.reminder_id)
+        if not reminder:
+            return []
+
+        date_str = ensure_aware_utc(log.scheduled_at).astimezone(TAIPEI_TZ).strftime("%Y-%m-%d")
+        entry_by_id = self._entry_by_id_by_date.get(date_str, {})
+        taken_ids = set(log.taken_medication_ids)
+
+        groups: list[MedicationGroup] = []
+        for entry in reminder.entries:
+            items = [
+                (medication_id, entry_by_id[medication_id])
+                for medication_id in entry.medication_ids
+                if medication_id in entry_by_id and medication_id not in taken_ids
+            ]
+            if items:
+                groups.append(
+                    MedicationGroup(
+                        meal_timing=entry.meal_timing,
+                        scheduled_time=entry.scheduled_time,
+                        items=items,
+                    )
+                )
+        return groups
+
+    async def _ensure_loaded(
+        self,
+        *,
+        reminder_collection: Optional[Any],
+        medication_collection: Optional[Any],
+    ) -> None:
+        """第一次呼叫才真的發查詢，之後都是 no-op——理由見 class docstring。
+
+        `get_entries`／`get_groups` 都經這支，確保同一個 tick 內不論呼叫
+        順序或次數，`_load` 只跑一次。
         """
         if self._entries_by_log_id is None:
             self._entries_by_log_id = await self._load(
                 reminder_collection=reminder_collection,
                 medication_collection=medication_collection,
             )
-        return self._entries_by_log_id.get(log.id, [])
 
     def _resolve_thumbnail(self, medication: Medication) -> Optional[str]:
         """證號已確定時才嘗試解析縮圖 URL。
@@ -195,6 +277,9 @@ class _TickMedicationNameCache:
             )
             return {}
         reminder_by_id = {reminder.id: reminder for reminder in reminders}
+        # `get_groups` 讀 `entries`（分區用），這批 reminder 已經是同一次查詢
+        # 撈回來的完整物件，直接留一份參照，不必為分組另外查一次。
+        self._reminder_by_id = reminder_by_id
 
         medication_ids = sorted(
             {mid for reminder in reminders for mid in reminder.medication_ids}
@@ -234,6 +319,10 @@ class _TickMedicationNameCache:
                 )
                 for medication in medications
             }
+            # `get_groups` 依日期分組查表：同一份 entry_by_id，多留一份以
+            # 日期為 key 的版本，供分區時查該條目的藥是否當日有效、要不要
+            # 顯示縮圖，不重算、不再查一次。
+            self._entry_by_id_by_date[date_str] = entry_by_id
             for log in logs_on_date:
                 reminder = reminder_by_id.get(log.reminder_id)
                 if not reminder:
@@ -393,12 +482,15 @@ class MedicationScheduler:
         # 用藥者的提醒卡要看得出「哪一顆」，走 get_entries() 帶出縮圖 URL；
         # 家屬警報只需要藥名，見 _send_caregiver_alert 仍是 get()。
         medication_entries = await medication_cache.get_entries(log)
+        # `medication_groups` 供分區版面用（Task 6）；`medication_names` 仍照舊
+        # 傳完整列，現有版面不變，見 build_patient_medication_flex 的說明。
         flex_msg = build_patient_medication_flex(
             log_id=log.id,
             slot_type=log.slot_type,
             scheduled_time=to_taipei_hm(log.scheduled_at, default="08:00"),
             disabled=False,
             medication_names=medication_entries,
+            medication_groups=await medication_cache.get_groups(log),
             language=language,
             font_size=font_size,
         )
@@ -418,6 +510,7 @@ class MedicationScheduler:
             slot_type=log.slot_type,
             scheduled_time=to_taipei_hm(log.scheduled_at, default="08:00"),
             medication_names=medication_entries,
+            medication_groups=await medication_cache.get_groups(log),
             language=language,
             font_size=font_size,
         )
@@ -673,7 +766,16 @@ class MedicationScheduler:
                 scheduled_dt = datetime.strptime(
                     f"{today_date_str} {reminder.scheduled_time}", "%Y-%m-%d %H:%M"
                 ).replace(tzinfo=current_time.tzinfo)
-                timeout_dt = scheduled_dt + timedelta(minutes=30)
+                # T+20 催促與 T+30 家屬警報改以條目中最晚的時刻
+                # （timeout_anchor_time）起算，不是 scheduled_dt（最早條目時刻）
+                # ——飯前 07:30、飯後 08:30 時，08:00 不該催、08:00 更不該通知
+                # 家屬漏吃（design 決策 2、4；spec「三階遞進推播」）。單一 none
+                # 條目的舊規則兩個時刻相等，這裡算出來與變更前完全相同。
+                anchor_dt = datetime.strptime(
+                    f"{today_date_str} {reminder.timeout_anchor_time}", "%Y-%m-%d %H:%M"
+                ).replace(tzinfo=current_time.tzinfo)
+                urgent_at = anchor_dt + timedelta(minutes=20)
+                timeout_dt = anchor_dt + timedelta(minutes=30)
 
                 # 不為「提醒建立之前」的時段補建 log。
                 # 否則 20:00 新增一筆早上 08:00 的提醒，會在同一個 tick 內連續
@@ -694,6 +796,7 @@ class MedicationScheduler:
                     alert_notify_user_id=reminder.creator_user_id,
                     slot_type=reminder.slot_type,
                     scheduled_at=scheduled_dt,
+                    urgent_at=urgent_at,
                     timeout_at=timeout_dt,
                     status="missed" if is_misfired else "pending",
                     patient_reminder_sent=is_misfired,
@@ -750,12 +853,15 @@ class MedicationScheduler:
             )
 
         # ── 階段 2：T+20min 第二次溫馨催促 ─────────────────────────────
-        # 門檻計算：找出 scheduled_at <= (當前時間 - 20分鐘) 的記錄
-        # 說明：採用 $lte (小於等於) 能有效容忍執行秒數偏差或伺服器重啟延遲，絕不漏發。
-        #       配合 urgent_reminder_sent 標記與單一 Document 狀態變更，保證不會重複發送。
-        urgent_threshold = current_time - timedelta(minutes=20)
+        # 門檻計算：20 分鐘的位移已經下放到展開時寫入的 urgent_at（見上方
+        # 階段 1，= timeout_anchor_time + 20 分鐘），這裡直接傳現在時刻；
+        # 沒有 urgent_at 的既有紀錄由 repository 端的 $or 分支退回
+        # scheduled_at + 20min（等同本變更前的算法，見
+        # list_pending_urgent_reminders 的說明，design 決策 4）。
+        # 採用 $lte (小於等於) 能有效容忍執行秒數偏差或伺服器重啟延遲，絕不漏發，
+        # 配合 urgent_reminder_sent 標記與單一 Document 狀態變更，保證不會重複發送。
         pending_urgent_logs = await self._log_repository.list_pending_urgent_reminders(
-            threshold_time=urgent_threshold
+            threshold_time=current_time
         )
         urgent_medication_cache = self._medication_cache(pending_urgent_logs)
         for log in pending_urgent_logs:

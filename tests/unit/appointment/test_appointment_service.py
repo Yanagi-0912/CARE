@@ -9,18 +9,36 @@ from app.models.appointment import (
 )
 from app.repositories.appointment_repository import AppointmentReminderRepository
 from app.services.appointment.appointment_service import (
+    CANCEL_ATTENDED_DETAIL,
+    CANCEL_DAY_ENDED_DETAIL,
     DUPLICATE_DETAIL,
+    FORBIDDEN_CANCEL_DETAIL,
     IN_THE_PAST_DETAIL,
+    INVALID_CURSOR_DETAIL,
     RESCHEDULE_ATTENDED_DETAIL,
+    RESCHEDULE_CANCELLED_DETAIL,
     TIMEZONE_REQUIRED_DETAIL,
     AppointmentError,
     AppointmentService,
 )
 
-from .support import DAUGHTER, PATIENT, STRANGER, TPE, FakeAuthz, FakeCollection
+from .support import (
+    DAUGHTER,
+    PATIENT,
+    STRANGER,
+    TPE,
+    FakeAuthz,
+    FakeCollection,
+    make_appointment,
+)
 
 THE_DAY_BEFORE = datetime(2026, 9, 14, 10, 0, tzinfo=TPE)
 DAY_OF = datetime(2026, 9, 15, 8, 40, tzinfo=TPE)
+# 9/15 09:30 門診的當日結束是 9/16 00:00。排程器下一次標記 missed 之前，狀態仍是
+# scheduled／departed——這一刻就落在那段空窗裡。
+AFTER_DAY_END = datetime(2026, 9, 16, 0, 5, tzinfo=TPE)
+MISSED_MESSAGE = "這個門診的當天已經結束，無法再回報出發或到診。"
+CANCELLED_MESSAGE = "這筆掛號提醒已經取消，無法回報出發或到診。"
 
 
 class Clock:
@@ -148,7 +166,7 @@ async def test_overlong_text_is_rejected(service):
     )
 
 
-# ── 重複的掛號 ────────────────────────────────────────────────────────
+# ── 重複的掛號：同一瞬間只能有一筆沒有取消的 ─────────────────────────
 
 
 async def test_same_time_hospital_and_department_is_a_duplicate(service):
@@ -157,42 +175,22 @@ async def test_same_time_hospital_and_department_is_a_duplicate(service):
     await expect_error(service.create(DAUGHTER, create_request()), 409, DUPLICATE_DETAIL)
 
 
-async def test_duplicate_check_ignores_spacing_in_names(service):
-    await service.create(PATIENT, create_request(facility_id=None))
-    await expect_error(
-        service.create(
-            PATIENT,
-            create_request(facility_id=None, hospital_name="台大 醫院", department=" 心臟 內科"),
-        ),
-        409,
-        DUPLICATE_DETAIL,
-    )
-
-
-async def test_same_time_different_department_is_allowed(service):
-    """同一家醫院、同一個早上兩個科同時報到是常見的，不是重複。"""
+@pytest.mark.parametrize(
+    "other",
+    [
+        {"department": "眼科"},
+        {"facility_id": "branch-b", "hospital_name": "仁愛診所"},
+        {"facility_id": None, "hospital_name": "馬偕醫院", "department": "骨科"},
+    ],
+    ids=["另一科", "另一家院所", "院所與科別都不同"],
+)
+async def test_same_instant_is_a_duplicate_whatever_the_hospital_or_department(
+    service, other
+):
+    """2026-09-10 追加：同一位就診者、同一瞬間只能有一筆，不論醫院或科別。"""
     await service.create(PATIENT, create_request())
-    saved = await service.create(PATIENT, create_request(department="眼科"))
-    assert saved.department == "眼科"
-
-
-async def test_same_name_but_different_facility_is_allowed(service):
-    """連鎖診所的分院常常同名；兩邊都有 facility_id 時只看 id。"""
-    await service.create(PATIENT, create_request(facility_id="branch-a", hospital_name="仁愛診所"))
-    saved = await service.create(
-        PATIENT, create_request(facility_id="branch-b", hospital_name="仁愛診所")
-    )
-    assert saved.facility_id == "branch-b"
-
-
-async def test_same_facility_id_is_a_duplicate_even_if_the_name_was_edited(service):
-    await service.create(PATIENT, create_request(facility_id="fac-1", hospital_name="台大醫院"))
     await expect_error(
-        service.create(
-            PATIENT, create_request(facility_id="fac-1", hospital_name="國立臺灣大學醫學院附設醫院")
-        ),
-        409,
-        DUPLICATE_DETAIL,
+        service.create(PATIENT, create_request(**other)), 409, DUPLICATE_DETAIL
     )
 
 
@@ -201,15 +199,25 @@ async def test_different_time_is_not_a_duplicate(service):
     await service.create(PATIENT, create_request(appointment_at="2026-09-15T14:00:00+08:00"))
 
 
-async def test_cancelled_reminder_does_not_count(service, repo):
-    first = await service.create(PATIENT, create_request())
-    await repo.update_fields(first.id, {"status": "cancelled"})
+async def test_the_same_instant_for_another_patient_is_not_a_duplicate(service):
     await service.create(PATIENT, create_request())
+    await service.create(DAUGHTER, create_request(user_id=DAUGHTER))
+
+
+async def test_a_cancelled_reminder_frees_its_time_slot(service):
+    """取消了 9/15 09:30 那一筆，再建一筆 9/15 09:30 要能建。"""
+    first = await service.create(PATIENT, create_request())
+    await service.cancel(first.id, PATIENT)
+    again = await service.create(PATIENT, create_request())
+    assert again.id != first.id
 
 
 async def test_moving_one_appointment_onto_another_is_rejected(service):
     await service.create(PATIENT, create_request())
-    later = await service.create(PATIENT, create_request(appointment_at="2026-09-15T14:00:00+08:00"))
+    later = await service.create(
+        PATIENT,
+        create_request(appointment_at="2026-09-15T14:00:00+08:00", department="眼科"),
+    )
     await expect_error(
         service.update(later.id, update(appointment_at="2026-09-15T09:30:00+08:00")),
         409,
@@ -224,6 +232,17 @@ async def test_editing_a_reminder_never_collides_with_itself(service):
         saved.id, update(appointment_at="2026-09-15T09:30:00+08:00", department="心臟內科")
     )
     assert resent.id == saved.id
+
+
+async def test_rows_that_predate_the_rule_stay_editable(service, repo):
+    """舊規則下建立的同一時間兩筆（不同科）不溯及既往：編輯表單會整份回送原本的
+    appointment_at，只改備註的 PUT 不能因為另一筆而失敗。"""
+    first = await repo.create(make_appointment(department="心臟內科"))
+    await repo.create(make_appointment(department="眼科"))
+    updated = await service.update(
+        first.id, update(appointment_at="2026-09-15T09:30:00+08:00", note="帶健保卡")
+    )
+    assert updated.note == "帶健保卡"
 
 
 # ── 修改：exclude_unset ───────────────────────────────────────────────
@@ -299,6 +318,85 @@ async def test_an_attended_appointment_cannot_be_moved(service, clock):
     )
     # 但其他欄位仍可修改
     assert (await service.update(saved.id, update(note="拿了處方箋"))).note == "拿了處方箋"
+
+
+async def test_a_cancelled_appointment_cannot_be_moved(service):
+    """取消是終局：改期要新增一筆，舊的那筆留著當「這次門診後來取消了」的紀錄。"""
+    saved = await service.create(PATIENT, create_request())
+    await service.cancel(saved.id, PATIENT)
+    await expect_error(
+        service.update(saved.id, update(appointment_at="2026-09-22T14:00:00+08:00")),
+        409,
+        RESCHEDULE_CANCELLED_DETAIL,
+    )
+    stored = await service.get(saved.id)
+    assert stored.status == "cancelled"
+    assert stored.local_appointment_at.isoformat() == "2026-09-15T09:30:00+08:00"
+    # 其他欄位仍可修改；整份回送同一個門診時間也不算改時間
+    edited = await service.update(
+        saved.id, update(appointment_at="2026-09-15T09:30:00+08:00", note="醫院通知停診")
+    )
+    assert (edited.status, edited.note) == ("cancelled", "醫院通知停診")
+
+
+async def test_a_missed_appointment_can_still_be_moved(service, repo, clock):
+    """missed 維持現狀：時間填錯了所以沒去成，改時間重置回 scheduled。"""
+    saved = await service.create(PATIENT, create_request())
+    await repo.mark_missed(datetime(2026, 9, 16, 0, 0, tzinfo=TPE))
+    clock.now = datetime(2026, 9, 16, 8, 0, tzinfo=TPE)
+    moved = await service.update(saved.id, update(appointment_at="2026-09-22T14:00:00+08:00"))
+    assert moved.status == "scheduled"
+
+
+class _SomeoneActsBeforeTheWrite(AppointmentReminderRepository):
+    """在服務層讀到現況之後、寫入之前，插進另一個人的動作（只插一次）。"""
+
+    def __init__(self, collection, act):
+        super().__init__(collection_provider=lambda: collection)
+        self._act = act
+
+    async def update_fields(self, reminder_id, set_doc, **kwargs):
+        act, self._act = self._act, None
+        if act is not None:
+            await act(self, reminder_id)
+        return await super().update_fields(reminder_id, set_doc, **kwargs)
+
+
+@pytest.mark.parametrize(
+    "act,detail,status",
+    [
+        (
+            lambda repo, rid: repo.mark_attended(rid, by_user_id=DAUGHTER, at=DAY_OF),
+            RESCHEDULE_ATTENDED_DETAIL,
+            "attended",
+        ),
+        (
+            lambda repo, rid: repo.mark_cancelled(rid, by_user_id=DAUGHTER, at=DAY_OF),
+            RESCHEDULE_CANCELLED_DETAIL,
+            "cancelled",
+        ),
+    ],
+    ids=["剛回報到診", "剛取消"],
+)
+async def test_a_reschedule_racing_a_terminal_report_does_not_erase_it(
+    clock, act, detail, status
+):
+    """洞 1：讀完之後、寫入之前有人回報到診（或取消）。無條件的 $set 會把狀態改回
+    scheduled、清空回報紀錄、重排三個推播——紀錄消失，家屬還會再收到提醒。"""
+    repo = _SomeoneActsBeforeTheWrite(FakeCollection(), act)
+    service = AppointmentService(repository=repo, authorization_service=FakeAuthz(), clock=clock)
+    saved = await repo.create(make_appointment())
+    clock.now = DAY_OF
+
+    await expect_error(
+        service.update(saved.id, update(appointment_at="2026-09-22T14:00:00+08:00")),
+        409,
+        detail,
+    )
+    stored = await repo.get_by_id(saved.id)
+    assert stored.status == status
+    assert stored.local_appointment_at.isoformat() == "2026-09-15T09:30:00+08:00"
+    assert stored.notify_at() == []
 
 
 async def test_rescheduling_into_the_past_is_rejected(service):
@@ -389,18 +487,29 @@ async def test_missed_appointments_accept_neither_button(service, repo, clock):
     saved = await service.create(PATIENT, create_request())
     await repo.mark_missed(datetime(2026, 9, 16, 0, 0, tzinfo=TPE))
     clock.now = datetime(2026, 9, 16, 8, 0, tzinfo=TPE)
-    message = "這個門診的當天已經結束，無法再回報出發或到診。"
-    await expect_error(service.depart(saved.id, PATIENT), 409, message)
-    await expect_error(service.attend(saved.id, PATIENT), 409, message)
+    await expect_error(service.depart(saved.id, PATIENT), 409, MISSED_MESSAGE)
+    await expect_error(service.attend(saved.id, PATIENT), 409, MISSED_MESSAGE)
 
 
-async def test_reporting_on_a_cancelled_appointment_is_a_conflict(service, repo, clock):
+@pytest.mark.parametrize("press", ["depart", "attend"])
+async def test_nothing_can_be_reported_after_the_day_ends_even_before_missed_is_marked(
+    service, clock, press
+):
+    """洞 2：當日結束後、排程器標記 missed 之前，狀態仍是 scheduled。只看狀態的話，
+    隔天凌晨按一下「我已到診」，沒去的門診就變成已到診——那等於補登（已拍板不做）。"""
     saved = await service.create(PATIENT, create_request())
-    await repo.update_fields(saved.id, {"status": "cancelled"})
+    clock.now = AFTER_DAY_END
+    await expect_error(getattr(service, press)(saved.id, PATIENT), 409, MISSED_MESSAGE)
+    assert (await service.get(saved.id)).status == "scheduled"
+
+
+async def test_a_departed_appointment_cannot_be_attended_after_the_day_ends(service, clock):
+    saved = await service.create(PATIENT, create_request())
     clock.now = DAY_OF
-    await expect_error(
-        service.attend(saved.id, PATIENT), 409, "這筆掛號提醒已經取消，無法回報出發或到診。"
-    )
+    await service.depart(saved.id, PATIENT)
+    clock.now = AFTER_DAY_END
+    await expect_error(service.attend(saved.id, DAUGHTER), 409, MISSED_MESSAGE)
+    assert (await service.get(saved.id)).status == "departed"
 
 
 async def test_localized_error_for_line(service, clock):
@@ -409,6 +518,98 @@ async def test_localized_error_for_line(service, clock):
     with pytest.raises(AppointmentError) as exc_info:
         await service.depart(saved.id, STRANGER)
     assert exc_info.value.localized("en") == t("appt.error.forbidden_report", "en")
+
+
+# ── 取消 ──────────────────────────────────────────────────────────────
+
+
+async def test_cancel_keeps_the_record_and_stops_every_push(service):
+    saved = await service.create(PATIENT, create_request())
+    cancelled = await service.cancel(saved.id, DAUGHTER)
+    assert cancelled.status == "cancelled"
+    assert cancelled.cancelled_by_user_id == DAUGHTER
+    assert cancelled.cancelled_at == THE_DAY_BEFORE
+    assert cancelled.updated_at == THE_DAY_BEFORE
+    assert cancelled.notify_at() == []
+    # 輸出時與出發／到診相同，帶 appointment_at 的 offset
+    assert cancelled.to_response().cancelled_at.isoformat() == "2026-09-14T10:00:00+08:00"
+    assert (await service.get(saved.id)).hospital_name == "台大醫院"  # 紀錄還在
+
+
+async def test_cancel_is_not_limited_to_the_appointment_day(service):
+    """取消通常發生在門診前幾天：沒有出發／到診那種「門診當天」的限制。"""
+    saved = await service.create(
+        PATIENT, create_request(appointment_at="2026-10-20T09:30:00+08:00")
+    )
+    assert (await service.cancel(saved.id, PATIENT)).status == "cancelled"
+
+
+async def test_cancel_after_departing_keeps_the_departure(service, clock):
+    saved = await service.create(PATIENT, create_request())
+    clock.now = DAY_OF
+    await service.depart(saved.id, PATIENT)
+    cancelled = await service.cancel(saved.id, DAUGHTER)
+    assert cancelled.status == "cancelled"
+    assert cancelled.departed_by_user_id == PATIENT
+
+
+async def test_second_cancel_is_idempotent_and_keeps_the_first_canceller(service, clock):
+    saved = await service.create(PATIENT, create_request())
+    first = await service.cancel(saved.id, DAUGHTER)
+    clock.now = DAY_OF
+    again = await service.cancel(saved.id, PATIENT)
+    assert again == first
+    assert again.cancelled_by_user_id == DAUGHTER
+
+
+async def test_an_attended_appointment_cannot_be_cancelled(service, clock):
+    saved = await service.create(PATIENT, create_request())
+    clock.now = DAY_OF
+    await service.attend(saved.id, PATIENT)
+    await expect_error(service.cancel(saved.id, PATIENT), 409, CANCEL_ATTENDED_DETAIL)
+
+
+async def test_a_missed_appointment_cannot_be_cancelled(service, repo, clock):
+    saved = await service.create(PATIENT, create_request())
+    await repo.mark_missed(datetime(2026, 9, 16, 0, 0, tzinfo=TPE))
+    clock.now = datetime(2026, 9, 16, 8, 0, tzinfo=TPE)
+    await expect_error(service.cancel(saved.id, PATIENT), 409, CANCEL_DAY_ENDED_DETAIL)
+
+
+async def test_cancel_after_the_day_ends_is_refused_even_before_missed_is_marked(
+    service, clock
+):
+    """只看狀態會讓人取消一個已經結束的門診：那段空窗裡狀態還是 scheduled。"""
+    saved = await service.create(PATIENT, create_request())
+    clock.now = AFTER_DAY_END
+    await expect_error(service.cancel(saved.id, PATIENT), 409, CANCEL_DAY_ENDED_DETAIL)
+    assert (await service.get(saved.id)).status == "scheduled"
+
+
+async def test_cancel_needs_write_permission(service):
+    saved = await service.create(PATIENT, create_request())
+    await expect_error(service.cancel(saved.id, STRANGER), 403, FORBIDDEN_CANCEL_DETAIL)
+    assert (await service.get(saved.id)).status == "scheduled"
+
+
+async def test_cancel_of_an_unknown_id_is_404(service):
+    await expect_error(
+        service.cancel("nope", PATIENT), 404, t("appt.error.not_found", "zh-TW")
+    )
+
+
+async def test_a_cancelled_appointment_accepts_neither_button(service, clock):
+    """手機上留著取消前收到的 T-1h 卡片，按鈕仍按得下去：要說明已取消，不能寫入。"""
+    saved = await service.create(PATIENT, create_request())
+    await service.cancel(saved.id, PATIENT)
+    # 門診前一天就按：說「已取消」，不說「門診當天才能回報」
+    await expect_error(service.depart(saved.id, PATIENT), 409, CANCELLED_MESSAGE)
+    clock.now = DAY_OF
+    await expect_error(service.depart(saved.id, DAUGHTER), 409, CANCELLED_MESSAGE)
+    await expect_error(service.attend(saved.id, DAUGHTER), 409, CANCELLED_MESSAGE)
+    # 當日結束後再按，仍然說明已取消，不是「當天已經結束」
+    clock.now = AFTER_DAY_END
+    await expect_error(service.attend(saved.id, PATIENT), 409, CANCELLED_MESSAGE)
 
 
 # ── 列表 ──────────────────────────────────────────────────────────────
@@ -424,3 +625,113 @@ async def test_list_hides_past_days_by_default(service, repo, clock):
         past.id,
         future.id,
     ]
+
+
+async def test_the_legacy_list_is_unchanged_by_cancelling(service):
+    """不帶 scope 的舊格式照舊只看當日結束：取消了的未來門診仍在預設清單裡。"""
+    saved = await service.create(PATIENT, create_request())
+    await service.cancel(saved.id, PATIENT)
+    assert [r.id for r in await service.list_for_user(PATIENT)] == [saved.id]
+
+
+def _tpe(month: int, day: int, hour: int = 9, minute: int = 0) -> datetime:
+    return datetime(2026, month, day, hour, minute, tzinfo=TPE)
+
+
+async def seed_history(repo) -> dict:
+    """現在是 9/15 08:00 時的一份歷史。"""
+    return {
+        "attended_0910": await repo.create(make_appointment(at=_tpe(9, 10), status="attended")),
+        "missed_0912": await repo.create(make_appointment(at=_tpe(9, 12), status="missed")),
+        # 當日已結束、排程器還沒標記 missed
+        "ended_0914": await repo.create(make_appointment(at=_tpe(9, 14, 11))),
+        "today_0915": await repo.create(make_appointment(at=_tpe(9, 15, 9, 30))),
+        "later_0920": await repo.create(make_appointment(at=_tpe(9, 20))),
+        # 下個月的門診取消了，也歸在過去
+        "cancelled_1001": await repo.create(
+            make_appointment(at=_tpe(10, 1), status="cancelled")
+        ),
+        "someone_else": await repo.create(
+            make_appointment(at=_tpe(9, 10), user_id=DAUGHTER, creator_user_id=DAUGHTER)
+        ),
+    }
+
+
+async def test_scopes_split_upcoming_and_past(service, repo, clock):
+    rows = await seed_history(repo)
+    clock.now = _tpe(9, 15, 8)
+
+    upcoming, cursor, total = await service.list_scope(PATIENT, "upcoming", limit=1)
+    assert [r.id for r in upcoming] == [rows["today_0915"].id, rows["later_0920"].id]
+    assert (cursor, total) == (None, 2)  # upcoming 不分頁，limit 不適用
+
+    past, cursor, total = await service.list_scope(PATIENT, "past", limit=20)
+    assert [r.id for r in past] == [
+        rows["cancelled_1001"].id,
+        rows["ended_0914"].id,
+        rows["missed_0912"].id,
+        rows["attended_0910"].id,
+    ]
+    assert (cursor, total) == (None, 4)
+
+
+async def test_past_pages_walk_to_the_oldest_record_without_gaps_or_repeats(
+    service, repo, clock
+):
+    clock.now = _tpe(9, 30, 12)
+    created = [await repo.create(make_appointment(at=_tpe(9, day))) for day in range(1, 8)]
+    # 同一時間兩筆：取消之後在原時間重掛
+    created.append(await repo.create(make_appointment(at=_tpe(9, 4), status="cancelled")))
+
+    seen, cursor, pages = [], None, 0
+    while True:
+        items, cursor, total = await service.list_scope(
+            PATIENT, "past", limit=3, cursor=cursor
+        )
+        pages += 1
+        assert total == 8  # 整個 scope 的筆數，不是這一頁的
+        seen.extend(items)
+        if cursor is None:
+            break
+
+    assert pages == 3  # 3 + 3 + 2，最後不會多一頁空的
+    assert sorted(r.id for r in seen) == sorted(r.id for r in created)
+    stamps = [r.appointment_at for r in seen]
+    assert stamps == sorted(stamps, reverse=True)
+
+
+async def test_paging_is_stable_when_a_shown_record_is_deleted(service, repo, clock):
+    """以位置分頁：刪掉已經顯示過的一筆，下一頁不會因此漏掉一筆。"""
+    clock.now = _tpe(9, 30, 12)
+    for day in range(1, 6):
+        await repo.create(make_appointment(at=_tpe(9, day)))
+
+    first, cursor, _ = await service.list_scope(PATIENT, "past", limit=2)
+    assert [r.appointment_at.day for r in first] == [5, 4]
+    await repo.delete(first[0].id)
+
+    second, _, total = await service.list_scope(PATIENT, "past", limit=2, cursor=cursor)
+    assert [r.local_appointment_at.day for r in second] == [3, 2]
+    assert total == 4
+
+
+@pytest.mark.parametrize("cursor", ["not-base64!", "e30", "W10", "eyJhdCI6IjIwMjYtMDktMDFUMDk6MDA6MDAiLCJpZCI6IngifQ"])
+async def test_a_tampered_cursor_is_a_400(service, cursor):
+    """"e30"、"W10" 是 {}、[]；最後一個的時間沒有 offset。"""
+    await expect_error(
+        service.list_scope(PATIENT, "past", limit=20, cursor=cursor),
+        400,
+        INVALID_CURSOR_DETAIL,
+    )
+
+
+async def test_delete_past_removes_exactly_what_the_past_list_counts(service, repo, clock):
+    rows = await seed_history(repo)
+    clock.now = _tpe(9, 15, 8)
+    _, _, shown = await service.list_scope(PATIENT, "past", limit=50)
+
+    assert await service.delete_past(PATIENT) == shown == 4
+    remaining = await repo.list_by_user(PATIENT)
+    assert [r.id for r in remaining] == [rows["today_0915"].id, rows["later_0920"].id]
+    assert await repo.get_by_id(rows["someone_else"].id) is not None
+    assert await service.delete_past(PATIENT) == 0

@@ -22,6 +22,7 @@ from .support import (
     FakeProfiles,
     RecordingReplier,
     make_appointment,
+    real_authz,
     rendered,
 )
 
@@ -29,12 +30,12 @@ DAY_OF = datetime(2026, 9, 15, 8, 40, tzinfo=TPE)
 
 
 class Env:
-    def __init__(self):
+    def __init__(self, authz=None):
         col = FakeCollection()
         self.repo = AppointmentReminderRepository(collection_provider=lambda: col)
         self.service = AppointmentService(
             repository=self.repo,
-            authorization_service=FakeAuthz(writers=[DAUGHTER, SON]),
+            authorization_service=authz or FakeAuthz(writers=[DAUGHTER, SON]),
             user_profile_service=FakeProfiles(
                 {PATIENT: {"name": "王媽媽"}, DAUGHTER: {"name": "王小明"}}
             ),
@@ -116,6 +117,37 @@ async def test_deleted_appointment(env):
     await env.repo.delete(env.reminder.id)
     await env.press(PATIENT, attend(env.reminder.id))
     assert env.replier.replies[-1]["message_text"] == t("appt.error.not_found", "zh-TW")
+
+
+async def test_a_card_left_on_the_phone_after_cancelling(env):
+    """取消之後，先前收到的 T-1h 卡片還留在手機上、按鈕仍按得下去：回純文字說明，
+    不寫入。`cancelled` 在本版真的會被寫入，這條路徑要走真的取消。"""
+    await env.service.cancel(env.reminder.id, DAUGHTER)
+    await env.press(PATIENT, depart(env.reminder.id))
+    await env.press(DAUGHTER, attend(env.reminder.id), language="en")
+
+    assert env.replier.flex_replies == []
+    assert env.replier.replies[0]["message_text"] == "這筆掛號提醒已經取消，無法回報出發或到診。"
+    assert env.replier.replies[1]["message_text"] == t("appt.error.cancelled", "en")
+    assert (await env.repo.get_by_id(env.reminder.id)).status == "cancelled"
+
+
+@pytest.mark.parametrize(
+    "role,allowed", [("MEMBER", False), ("CAREGIVER", True), ("GUARDIAN", True)]
+)
+async def test_card_buttons_use_the_strict_check_in_shadow_mode(role, allowed):
+    """影子模式下，只有讀取權的 MEMBER 按卡片按鈕也是 403（已拍板）。"""
+    env = Env(authz=real_authz(PATIENT, {DAUGHTER: role}, "shadow"))
+    reminder = await env.repo.create(make_appointment())
+
+    await env.press(DAUGHTER, attend(reminder.id))
+
+    stored = await env.repo.get_by_id(reminder.id)
+    if allowed:
+        assert stored.status == "attended"
+    else:
+        assert env.replier.replies[-1]["message_text"] == "您沒有權限替這位家人回報出發或到診。"
+        assert stored.status == "scheduled"
 
 
 async def test_missing_id_or_service_is_ignored(env):

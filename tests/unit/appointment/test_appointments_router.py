@@ -6,7 +6,7 @@
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 import pytest
@@ -20,20 +20,23 @@ from app.dependencies import (
     get_medical_service,
 )
 from app.main import app
-from app.models.family_tree import FamilyMember, FamilyTree
 from app.repositories.appointment_repository import AppointmentReminderRepository
-from app.routers.users.appointments import FORBIDDEN_READ_DETAIL, FORBIDDEN_WRITE_DETAIL
+from app.routers.users.appointments import (
+    DELETE_ALL_SCOPE_DETAIL,
+    FORBIDDEN_DELETE_ALL_DETAIL,
+    FORBIDDEN_READ_DETAIL,
+    FORBIDDEN_WRITE_DETAIL,
+)
 from app.schemas import MedicalFacility
 from app.services.appointment.appointment_service import AppointmentService
 from app.services.family.family_authorization_service import (
     FamilyAuthorizationService,
 )
 
-from .support import TPE, FakeCollection, make_appointment
+from .support import TPE, FakeCollection, make_appointment, real_authz
 
 ME = "U_ME"
 ELDER = "U_ELDER"
-TREE_TIME = datetime(2026, 8, 24, 12, 0, tzinfo=timezone.utc)
 THE_DAY_BEFORE = datetime(2026, 9, 14, 10, 0, tzinfo=TPE)
 DAY_OF = datetime(2026, 9, 15, 8, 40, tzinfo=TPE)
 
@@ -68,6 +71,8 @@ RESPONSE_KEYS = {
     "departed_by_user_id",
     "attended_at",
     "attended_by_user_id",
+    "cancelled_at",
+    "cancelled_by_user_id",
     "enabled",
     "notify_at",
     "created_at",
@@ -75,33 +80,9 @@ RESPONSE_KEYS = {
 }
 
 
-class _Trees:
-    def __init__(self, trees):
-        self.trees = trees
-
-    async def get_by_user_id(self, user_id):
-        return self.trees.get(user_id)
-
-
-class _NoDelegations:
-    async def has_active_delegation(self, owner_id, delegate_user_id, now=None):
-        return False
-
-
 def build_authz(role: Optional[str], state: str) -> FamilyAuthorizationService:
-    members = [] if role is None else [FamilyMember(user_id=ME, family_role=role)]
-    tree = FamilyTree(
-        user_id=ELDER,
-        family_members=members,
-        rbac_migration_state=state,
-        created_at=TREE_TIME,
-        updated_at=TREE_TIME,
-    )
-    return FamilyAuthorizationService(
-        family_tree_repository=_Trees({ELDER: tree}),
-        delegation_repository=_NoDelegations(),
-        enforcement_enabled=True,
-    )
+    """ME 對 ELDER 是 role；role=None 代表 ME 不在 ELDER 的族譜裡。"""
+    return real_authz(ELDER, {} if role is None else {ME: role}, state)
 
 
 class Env:
@@ -162,12 +143,13 @@ def test_create_without_offset_is_a_400_with_a_readable_detail(client):
     assert res.json() == {"detail": "門診時間必須帶時區，例如 2026-09-15T09:30:00+08:00。"}
 
 
-def test_creating_the_same_appointment_twice_is_a_409(client):
+def test_a_second_appointment_at_the_same_instant_is_a_409(client):
+    """同一瞬間只能有一筆，不論醫院或科別。"""
     Env()
     assert create(client).status_code == 200
-    res = create(client)
+    res = create(client, facility_id=None, hospital_name="馬偕醫院", department="骨科")
     assert res.status_code == 409
-    assert res.json() == {"detail": "這個時間已經有一筆同醫院、同科別的掛號提醒，不需要重複建立。"}
+    assert res.json() == {"detail": "這個時間已經有一筆掛號提醒，同一個時間只能有一筆。"}
 
 
 def test_missing_required_field_is_fastapis_422(client):
@@ -194,9 +176,63 @@ def test_member_or_stranger_gets_the_appointment_specific_403(client, role):
     assert res.json() == {"detail": FORBIDDEN_WRITE_DETAIL}
 
 
-def test_member_in_shadow_mode_keeps_the_legacy_write(client):
-    Env(role="MEMBER", caller=ME, state="shadow")
-    assert create(client).status_code == 200
+REPORT_FORBIDDEN = "您沒有權限替這位家人回報出發或到診。"
+CANCEL_FORBIDDEN = "您沒有權限替這位家人取消門診。"
+
+# 掛號的每一條寫入路徑，與權限不足時該回的 detail。
+WRITE_PATHS = {
+    "POST": (lambda client, rid: create(client), FORBIDDEN_WRITE_DETAIL),
+    "PUT": (
+        lambda client, rid: client.put(f"/api/appointments/reminders/{rid}", json={"note": "x"}),
+        FORBIDDEN_WRITE_DETAIL,
+    ),
+    "DELETE": (
+        lambda client, rid: client.delete(f"/api/appointments/reminders/{rid}"),
+        FORBIDDEN_WRITE_DETAIL,
+    ),
+    "depart": (
+        lambda client, rid: client.post(f"/api/appointments/reminders/{rid}/depart"),
+        REPORT_FORBIDDEN,
+    ),
+    "attend": (
+        lambda client, rid: client.post(f"/api/appointments/reminders/{rid}/attend"),
+        REPORT_FORBIDDEN,
+    ),
+    "cancel": (
+        lambda client, rid: client.post(f"/api/appointments/reminders/{rid}/cancel"),
+        CANCEL_FORBIDDEN,
+    ),
+}
+
+
+@pytest.mark.parametrize("path", list(WRITE_PATHS))
+@pytest.mark.parametrize("role,allowed", [("MEMBER", False), ("CAREGIVER", True), ("GUARDIAN", True)])
+def test_every_write_path_is_strict_in_shadow_mode(client, path, role, allowed):
+    """已拍板：只有讀取權的家人不能更動掛號，影子模式下也一樣。
+
+    這條測試以前是反過來的（影子模式下 MEMBER 可以建立）：掛號寫入原本沿用預設的
+    `has_legacy_equivalent=True`。
+    """
+    env = Env(role=role, caller=ME, state="shadow")
+    env.now = DAY_OF  # 出發／到診要在門診當天
+    saved = asyncio.run(env.repo.create(make_appointment(
+        user_id=ELDER, at=datetime(2026, 9, 15, 11, 0, tzinfo=TPE)
+    )))
+    call, forbidden = WRITE_PATHS[path]
+    res = call(client, saved.id)
+    if allowed:
+        assert res.status_code == 200
+    else:
+        assert res.status_code == 403
+        assert res.json() == {"detail": forbidden}
+
+
+def test_member_in_shadow_mode_can_still_read(client):
+    env = Env(role="MEMBER", caller=ME, state="shadow")
+    asyncio.run(env.repo.create(make_appointment(user_id=ELDER)))
+    res = client.get(f"/api/appointments/reminders?target_user_id={ELDER}&scope=upcoming")
+    assert res.status_code == 200
+    assert res.json()["total_count"] == 1
 
 
 # ── GET ───────────────────────────────────────────────────────────────
@@ -336,6 +372,168 @@ def test_depart_after_attend_is_a_409(client):
     res = client.post(f"/api/appointments/reminders/{reminder_id}/depart")
     assert res.status_code == 409
     assert res.json() == {"detail": "已經回報到診了，不需要再回報出發。"}
+
+
+# ── cancel ────────────────────────────────────────────────────────────
+
+
+def test_cancel_records_who_and_when_and_a_second_press_is_identical(client):
+    env = Env(role="CAREGIVER", caller=ME)
+    saved = asyncio.run(env.repo.create(make_appointment(user_id=ELDER)))
+
+    res = client.post(f"/api/appointments/reminders/{saved.id}/cancel", json={"ignored": 1})
+    assert res.status_code == 200
+    body = res.json()
+    assert set(body) == RESPONSE_KEYS
+    assert body["status"] == "cancelled"
+    assert body["cancelled_at"] == "2026-09-14T10:00:00+08:00"
+    assert body["cancelled_by_user_id"] == ME
+    assert body["notify_at"] == []
+
+    # 長輩本人稍後也按了取消：200、逐字相同，取消者仍是第一位
+    env.now = DAY_OF
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(line_user_id=ELDER)
+    again = client.post(f"/api/appointments/reminders/{saved.id}/cancel")
+    assert again.status_code == 200
+    assert again.json() == body
+
+
+@pytest.mark.parametrize(
+    "status,detail",
+    [
+        ("attended", "已經回報到診的門診不能取消。"),
+        ("missed", "這個門診的當天已經結束，不需要取消。"),
+    ],
+)
+def test_cancel_conflicts(client, status, detail):
+    env = Env()
+    saved = asyncio.run(env.repo.create(make_appointment(user_id=ELDER, status=status)))
+    res = client.post(f"/api/appointments/reminders/{saved.id}/cancel")
+    assert res.status_code == 409
+    assert res.json() == {"detail": detail}
+
+
+def test_cancel_of_an_unknown_id_is_404(client):
+    Env()
+    res = client.post("/api/appointments/reminders/6aa27e77c964976ac9281c0f/cancel")
+    assert res.status_code == 404
+    assert res.json() == {"detail": "找不到這筆掛號提醒，可能已經被刪除。"}
+
+
+def test_put_new_time_on_a_cancelled_reminder_is_a_409(client):
+    Env()
+    reminder_id = create(client).json()["id"]
+    client.post(f"/api/appointments/reminders/{reminder_id}/cancel")
+    res = client.put(
+        f"/api/appointments/reminders/{reminder_id}",
+        json={"appointment_at": "2026-09-22T14:00:00+08:00"},
+    )
+    assert res.status_code == 409
+    assert res.json() == {
+        "detail": "已經取消的掛號不能改時間；如果要改期，請新增一筆掛號提醒。"
+    }
+
+
+# ── GET ?scope= ───────────────────────────────────────────────────────
+
+
+def seed_elder_history(env):
+    """現在是 9/14 10:00：9/1～9/5 五筆已到診、9/20 一筆已取消（都算過去），
+    9/15 一筆即將到來。"""
+    for day in range(1, 6):
+        asyncio.run(env.repo.create(make_appointment(
+            user_id=ELDER, at=datetime(2026, 9, day, 9, 0, tzinfo=TPE), status="attended"
+        )))
+    asyncio.run(env.repo.create(make_appointment(
+        user_id=ELDER, at=datetime(2026, 9, 20, 9, 0, tzinfo=TPE), status="cancelled"
+    )))
+    asyncio.run(env.repo.create(make_appointment(user_id=ELDER)))
+
+
+def test_scope_upcoming_and_paged_past(client):
+    env = Env()
+    seed_elder_history(env)
+
+    upcoming = client.get("/api/appointments/reminders?scope=upcoming").json()
+    assert set(upcoming) == {"items", "next_cursor", "total_count"}
+    assert [r["appointment_at"] for r in upcoming["items"]] == ["2026-09-15T09:30:00+08:00"]
+    assert (upcoming["next_cursor"], upcoming["total_count"]) == (None, 1)
+
+    first = client.get("/api/appointments/reminders?scope=past&limit=4").json()
+    assert [r["appointment_at"][:10] for r in first["items"]] == [
+        "2026-09-20", "2026-09-05", "2026-09-04", "2026-09-03",
+    ]
+    assert first["total_count"] == 6
+    rest = client.get(
+        "/api/appointments/reminders",
+        params={"scope": "past", "limit": 4, "cursor": first["next_cursor"]},
+    ).json()
+    assert [r["appointment_at"][:10] for r in rest["items"]] == ["2026-09-02", "2026-09-01"]
+    assert (rest["next_cursor"], rest["total_count"]) == (None, 6)
+
+    # 不帶 scope：舊格式照舊
+    legacy = client.get("/api/appointments/reminders?include_past=true").json()
+    assert isinstance(legacy, list) and len(legacy) == 7
+
+
+def test_scope_for_a_family_member(client):
+    env = Env(role="MEMBER", caller=ME)
+    seed_elder_history(env)
+    body = client.get(f"/api/appointments/reminders?target_user_id={ELDER}&scope=past").json()
+    assert body["total_count"] == 6
+    assert set(body["items"][0]) == RESPONSE_KEYS
+
+
+@pytest.mark.parametrize("query", ["scope=past&limit=51", "scope=past&limit=0", "scope=all"])
+def test_malformed_list_parameters_are_fastapis_422(client, query):
+    Env()
+    assert client.get(f"/api/appointments/reminders?{query}").status_code == 422
+
+
+def test_a_tampered_cursor_is_a_400(client):
+    Env()
+    res = client.get("/api/appointments/reminders?scope=past&cursor=e30")
+    assert res.status_code == 400
+    assert res.json() == {"detail": "分頁位置無效，請重新整理頁面後再試一次。"}
+
+
+# ── DELETE /reminders?scope=past ──────────────────────────────────────
+
+
+def test_delete_all_history_leaves_upcoming_alone(client):
+    env = Env()
+    seed_elder_history(env)
+    assert client.delete("/api/appointments/reminders?scope=past").json() == {"deleted": 6}
+    assert client.get("/api/appointments/reminders?scope=past").json()["total_count"] == 0
+    assert client.get("/api/appointments/reminders?scope=upcoming").json()["total_count"] == 1
+    # 沒有過去紀錄時不是 404；帶自己的 id 等同省略
+    res = client.delete(f"/api/appointments/reminders?scope=past&target_user_id={ELDER}")
+    assert (res.status_code, res.json()) == (200, {"deleted": 0})
+
+
+@pytest.mark.parametrize("query", ["", "?scope=upcoming", "?scope=all"])
+def test_delete_all_without_scope_past_is_a_400_and_deletes_nothing(client, query):
+    env = Env()
+    seed_elder_history(env)
+    res = client.delete(f"/api/appointments/reminders{query}")
+    assert res.status_code == 400
+    assert res.json() == {"detail": DELETE_ALL_SCOPE_DETAIL}
+    assert len(asyncio.run(env.repo.list_by_user(ELDER))) == 7
+
+
+@pytest.mark.parametrize("role", ["GUARDIAN", "CAREGIVER"])
+@pytest.mark.parametrize("target", [ELDER, ""])
+def test_family_cannot_delete_all_and_it_never_falls_back_to_their_own(client, role, target):
+    env = Env(role=role, caller=ME)
+    seed_elder_history(env)
+    mine = asyncio.run(env.repo.create(make_appointment(
+        user_id=ME, at=datetime(2026, 9, 1, 9, 0, tzinfo=TPE)
+    )))
+    res = client.delete(f"/api/appointments/reminders?scope=past&target_user_id={target}")
+    assert res.status_code == 403
+    assert res.json() == {"detail": FORBIDDEN_DELETE_ALL_DETAIL}
+    assert asyncio.run(env.repo.get_by_id(mine.id)) is not None
+    assert len(asyncio.run(env.repo.list_by_user(ELDER))) == 7
 
 
 # ── GET /api/medical/facilities/{id} ──────────────────────────────────

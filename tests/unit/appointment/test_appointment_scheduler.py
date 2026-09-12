@@ -289,17 +289,16 @@ def _authz_for(state: str) -> FamilyAuthorizationService:
     )
 
 
-async def test_enforced_family_recipients_are_the_general_writers():
-    """MEMBER 只有 GENERAL 讀取權，按不下卡片上的按鈕，所以不收。"""
-    h = Harness(authz=_authz_for("enforced"))
+@pytest.mark.parametrize("state", ["enforced", "shadow"])
+async def test_family_recipients_are_the_general_writers_in_both_modes(state):
+    """MEMBER 只有 GENERAL 讀取權，按不下卡片上的按鈕，所以不收。
+
+    影子模式也一樣（已拍板）：掛號的寫入在影子模式下同樣是嚴格判定，送給 MEMBER
+    就是一張按了必定 403 的卡片。這條測試以前在影子模式下期望族譜全員。
+    """
+    h = Harness(authz=_authz_for(state))
     await h.seed()
     assert recipients(await h.tick(at(8, 30))) == [PATIENT, DAUGHTER, "U_GUARDIAN"]
-
-
-async def test_shadow_mode_keeps_the_legacy_whole_family():
-    h = Harness(authz=_authz_for("shadow"))
-    await h.seed()
-    assert recipients(await h.tick(at(8, 30))) == [PATIENT, DAUGHTER, SON, "U_GUARDIAN"]
 
 
 # ── 推播失敗 ──────────────────────────────────────────────────────────

@@ -34,3 +34,13 @@
 - [x] 6.1 `pytest tests/` 全綠（4001 passed；唯一失敗 `test_require_magick_passes_when_binary_is_present` 需要本機安裝 ImageMagick，在 HEAD 上同樣失敗）
 - [ ] 6.2 部署到 care-dev，以真實 LINE 帳號走一次 T-1h → 出發 → T+0 → 到診，與一次不按任何按鈕到 T+30
 - [ ] 6.3 觀察一週推播量，確認家屬推播沒有逼近 LINE 月額度
+
+## 7. 生命週期（2026-09-12 前端需求）
+
+- [x] 7.1 取消：`POST .../cancel`、`cancelled_at`／`cancelled_by_user_id`（含欄位分類登記）、條件式原子更新（含當日結束）；已取消不能改時間
+- [x] 7.2 列表 `scope=upcoming|past`、past 以（門診時間, id）位置分頁；`past_filter` 為「過去」的唯一定義
+- [x] 7.3 `DELETE /reminders?scope=past`：只有本人，單一 `delete_many`
+- [x] 7.4 同一瞬間只能有一筆沒有取消的掛號（不論醫院或科別）
+- [x] 7.5 寫入一律嚴格判定；`appointment_reminder` 推播在影子模式下也只送 GUARDIAN／CAREGIVER；族譜回應新增 `my_strict_permissions`
+- [x] 7.6 改時間改為條件式寫入；出發／到診加上當日結束條件
+- [ ] 7.7 前端改用 `my_strict_permissions` 與 `scope` 後，與後端同時上線；之後擇期拿掉 `include_past`

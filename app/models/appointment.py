@@ -150,6 +150,9 @@ class AppointmentReminder(BaseModel):
     departed_by_user_id: Optional[str] = None
     attended_at: Optional[datetime] = None
     attended_by_user_id: Optional[str] = None
+    # 取消這次門診：保留紀錄、停止推播。與出發／到診同形，取消者只取自 token。
+    cancelled_at: Optional[datetime] = None
+    cancelled_by_user_id: Optional[str] = None
     # 只管推播。關閉後三個階段都不送，但狀態機照走（仍可回報出發／到診，
     # 當日結束仍會標記 missed）。
     enabled: bool = True
@@ -172,6 +175,7 @@ class AppointmentReminder(BaseModel):
         "day_end_at",
         "departed_at",
         "attended_at",
+        "cancelled_at",
         "created_at",
         "updated_at",
     )
@@ -227,6 +231,8 @@ class AppointmentReminder(BaseModel):
             departed_by_user_id=self.departed_by_user_id,
             attended_at=local_or_none(self.attended_at),
             attended_by_user_id=self.attended_by_user_id,
+            cancelled_at=local_or_none(self.cancelled_at),
+            cancelled_by_user_id=self.cancelled_by_user_id,
             enabled=self.enabled,
             notify_at=self.notify_at(),
             created_at=self.local(self.created_at),
@@ -259,10 +265,29 @@ class AppointmentReminderResponse(BaseModel):
     departed_by_user_id: Optional[str]
     attended_at: Optional[datetime]
     attended_by_user_id: Optional[str]
+    cancelled_at: Optional[datetime]
+    cancelled_by_user_id: Optional[str]
     enabled: bool
     notify_at: List[datetime]
     created_at: datetime
     updated_at: datetime
+
+
+# 列表的兩個分區。「過去」的定義只有一份，在 appointment_repository.past_filter。
+AppointmentListScope = Literal["upcoming", "past"]
+
+
+class AppointmentReminderPage(BaseModel):
+    """`GET /reminders?scope=...` 的回應。
+
+    `total_count` 是整個 scope 的筆數，不是這一頁的——前端用它顯示「過去的門診
+    （23）」與「刪除全部 23 筆」。`next_cursor` 為 null 代表沒有下一頁；upcoming
+    不分頁，一律 null。
+    """
+
+    items: List[AppointmentReminderResponse]
+    next_cursor: Optional[str]
+    total_count: int
 
 
 class CreateAppointmentReminderRequest(BaseModel):

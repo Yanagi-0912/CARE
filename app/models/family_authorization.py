@@ -149,6 +149,8 @@ FIELD_CLASSIFICATION: dict[tuple[ResourceName, str], DataClassification] = {
     ("appointment_reminder", "departed_by_user_id"): "GENERAL",
     ("appointment_reminder", "attended_at"): "GENERAL",
     ("appointment_reminder", "attended_by_user_id"): "GENERAL",
+    ("appointment_reminder", "cancelled_at"): "GENERAL",
+    ("appointment_reminder", "cancelled_by_user_id"): "GENERAL",
     ("appointment_reminder", "enabled"): "GENERAL",
     ("appointment_reminder", "notify_at"): "GENERAL",
     ("appointment_reminder", "created_at"): "GENERAL",
@@ -272,10 +274,21 @@ NOTIFICATION_POLICY: dict[NotificationKind, frozenset[FamilyRole]] = {
     # 按下去必定 403 的卡片。GENERAL 的寫入者恰好就是 GUARDIAN 與 CAREGIVER
     # （OWNER 是本人，不經此表）。
     #
-    # 影子模式下 `notification_recipients` 回傳族譜全員，而 `authorize` 同樣走
-    # legacy（族譜成員即可寫 GENERAL），兩者在兩種模式下都一致。
+    # 兩種模式都照這一列篩選（見下方 STRICT_NOTIFICATION_KINDS）：掛號的寫入在影子
+    # 模式下同樣是嚴格判定，推播若在影子模式下擴及全員，MEMBER 就會收到按了必定
+    # 403 的卡片。
     "appointment_reminder": frozenset({"GUARDIAN", "CAREGIVER"}),
 }
+
+# 影子模式下**仍然**依 NOTIFICATION_POLICY 篩選收件人的推播種類。
+#
+# 影子模式承諾「行為與導入前完全相同」，所以其他種類在影子模式下送族譜全員。但
+# 導入 RBAC 之後才有的推播沒有「導入前」可言——與 `authorize` 的
+# `has_legacy_equivalent=False` 是同一個道理。掛號提醒整個功能都是新的，它的寫入
+# 一律嚴格判定（已拍板），收件人必須跟著嚴格，卡片上的按鈕才按得下去。
+STRICT_NOTIFICATION_KINDS: frozenset[NotificationKind] = frozenset(
+    {"appointment_reminder"}
+)
 
 # 每位資料擁有者各自持有的遷移狀態。強制以**擁有者**為邊界逐一啟用，
 # 不是單一全域切換——全域切換的那一刻，所有尚未指派角色的擁有者，其家人會
@@ -345,6 +358,7 @@ __all__ = [
     "PROXY_WRITE_FORBIDDEN_FIELDS",
     "NotificationKind",
     "NOTIFICATION_POLICY",
+    "STRICT_NOTIFICATION_KINDS",
     "MigrationState",
     "DEFAULT_MIGRATION_STATE",
     "is_allowed",

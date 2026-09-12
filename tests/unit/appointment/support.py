@@ -18,6 +18,10 @@ from typing import Any, Iterable, Optional
 from fastapi import HTTPException
 
 from app.models.appointment import AppointmentReminder, day_end_for, utc_offset_minutes
+from app.models.family_tree import FamilyMember, FamilyTree
+from app.services.family.family_authorization_service import (
+    FamilyAuthorizationService,
+)
 
 TPE = timezone(timedelta(hours=8))
 
@@ -71,6 +75,10 @@ def matches(doc: dict, query: dict) -> bool:
             if not any(matches(doc, sub) for sub in cond):
                 return False
             continue
+        if key == "$nor":
+            if any(matches(doc, sub) for sub in cond):
+                return False
+            continue
         value = doc.get(key, _MISSING)
         if isinstance(cond, dict) and cond and all(k.startswith("$") for k in cond):
             for op, arg in cond.items():
@@ -97,15 +105,26 @@ def _apply(doc: dict, update: dict) -> None:
 
 
 class _Cursor:
+    """sort 與 limit 的套用順序與 Motor 相同：不論呼叫順序，一律先排序再截斷。"""
+
     def __init__(self, docs: list[dict]):
         self._docs = docs
+        self._limit: Optional[int] = None
 
-    def sort(self, key: str, direction: int = 1) -> "_Cursor":
-        self._docs.sort(key=lambda doc: doc.get(key), reverse=direction < 0)
+    def sort(self, key, direction: int = 1) -> "_Cursor":
+        keys = key if isinstance(key, list) else [(key, direction)]
+        # 穩定排序：由最次要的鍵往前排，結果等同多鍵排序。
+        for field, order in reversed(keys):
+            self._docs.sort(key=lambda doc: doc.get(field), reverse=order < 0)
+        return self
+
+    def limit(self, count: int) -> "_Cursor":
+        self._limit = count
         return self
 
     async def to_list(self, length: Optional[int] = None) -> list[dict]:
-        return list(self._docs)
+        docs = self._docs if self._limit is None else self._docs[: self._limit]
+        return list(docs)
 
 
 class FakeCollection:
@@ -131,6 +150,9 @@ class FakeCollection:
 
     def find(self, query: dict) -> _Cursor:
         return _Cursor([copy.deepcopy(doc) for doc in self.docs if matches(doc, query)])
+
+    async def count_documents(self, query: dict) -> int:
+        return sum(1 for doc in self.docs if matches(doc, query))
 
     async def update_one(self, query: dict, update: dict):
         for doc in self.docs:
@@ -162,6 +184,12 @@ class FakeCollection:
                 del self.docs[index]
                 return SimpleNamespace(deleted_count=1)
         return SimpleNamespace(deleted_count=0)
+
+    async def delete_many(self, query: dict):
+        kept = [doc for doc in self.docs if not matches(doc, query)]
+        deleted = len(self.docs) - len(kept)
+        self.docs = kept
+        return SimpleNamespace(deleted_count=deleted)
 
 
 def make_appointment(at: datetime = APPOINTMENT_AT, **overrides: Any) -> AppointmentReminder:
@@ -248,3 +276,42 @@ class FakeAuthz:
         if self.fail_recipients:
             raise RuntimeError("tree lookup failed")
         return list(self.recipients)
+
+
+class _Trees:
+    def __init__(self, trees: dict) -> None:
+        self.trees = trees
+
+    async def get_by_user_id(self, user_id):
+        return self.trees.get(user_id)
+
+
+class _NoDelegations:
+    async def has_active_delegation(self, owner_id, delegate_user_id, now=None):
+        return False
+
+
+def real_authz(
+    owner_id: str, members: dict[str, Optional[str]], state: str
+) -> FamilyAuthorizationService:
+    """**真的** `FamilyAuthorizationService`，只把族譜換成記憶體。
+
+    `members` 是 `{user_id: family_role}`；role 為 None 代表在族譜裡但沒指派角色。
+    影子模式與嚴格判定的差別只有真的授權服務測得出來——FakeAuthz 不看模式。
+    """
+    moment = datetime(2026, 8, 24, 12, 0, tzinfo=timezone.utc)
+    tree = FamilyTree(
+        user_id=owner_id,
+        family_members=[
+            FamilyMember(user_id=user_id, family_role=role)
+            for user_id, role in members.items()
+        ],
+        rbac_migration_state=state,
+        created_at=moment,
+        updated_at=moment,
+    )
+    return FamilyAuthorizationService(
+        family_tree_repository=_Trees({owner_id: tree}),
+        delegation_repository=_NoDelegations(),
+        enforcement_enabled=True,
+    )

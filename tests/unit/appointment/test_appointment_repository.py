@@ -203,3 +203,89 @@ async def test_mark_missed_at_day_end_regardless_of_enabled_but_never_attended(r
     assert (await repo.get_by_id(departed.id)).status == "missed"
     assert (await repo.get_by_id(disabled.id)).status == "missed"
     assert (await repo.get_by_id(attended.id)).status == "attended"
+
+
+@pytest.mark.parametrize("status,ok", [
+    ("scheduled", True),
+    ("departed", True),
+    ("attended", False),
+    ("missed", False),
+    ("cancelled", False),
+])
+async def test_mark_cancelled_source_states(repo, status, ok):
+    reminder = await seed(repo, status=status)
+    result = await repo.mark_cancelled(reminder.id, by_user_id=PATIENT, at=at(8, 0, day=14))
+    assert (result is not None) is ok
+
+
+@pytest.mark.parametrize("transition", ["mark_departed", "mark_attended", "mark_cancelled"])
+async def test_no_transition_after_the_day_ends_even_before_missed_is_marked(repo, transition):
+    reminder = await seed(repo)  # 9/15 09:30，當日結束 9/16 00:00
+    move = getattr(repo, transition)
+    assert await move(reminder.id, by_user_id=PATIENT, at=at(0, 0, day=16)) is None
+    assert (await repo.get_by_id(reminder.id)).status == "scheduled"
+    assert await move(reminder.id, by_user_id=PATIENT, at=at(23, 59)) is not None
+
+
+async def test_conditional_update_leaves_other_states_alone(repo):
+    reminder = await seed(repo, status="attended")
+    written = await repo.update_fields(
+        reminder.id,
+        {"status": "scheduled"},
+        only_if_status_in=("scheduled", "departed", "missed"),
+    )
+    assert written is None
+    assert (await repo.get_by_id(reminder.id)).status == "attended"
+
+
+# ── 即將到來／過去：同一份判定 ────────────────────────────────────────
+
+
+async def _every_kind_of_row(repo) -> list:
+    """每一種狀態 × 當日結束的前後與界線上。"""
+    rows = []
+    for status in ("scheduled", "departed", "attended", "missed", "cancelled"):
+        for when in (at(9, 0, day=14), at(9, 30), at(9, 0, day=30)):
+            rows.append(await seed(repo, at=when, status=status))
+    return rows
+
+
+@pytest.mark.parametrize(
+    "now",
+    [at(0, 0), at(23, 59, day=14), at(8, 0), at(0, 0, day=16)],
+    ids=["9/14 那筆的當日結束那一刻", "前一分鐘", "早上", "9/15 那筆的當日結束"],
+)
+async def test_upcoming_and_past_are_disjoint_and_cover_everything(repo, now):
+    """兩區必須互斥、合起來涵蓋全部：否則某一筆會兩區都看得到，或哪一區都找不到。"""
+    rows = await _every_kind_of_row(repo)
+    upcoming = set(await ids(repo.list_scope(PATIENT, "upcoming", now)))
+    past = set(await ids(repo.list_scope(PATIENT, "past", now)))
+
+    assert upcoming.isdisjoint(past)
+    assert upcoming | past == {row.id for row in rows}
+    assert await repo.count_scope(PATIENT, "upcoming", now) == len(upcoming)
+    assert await repo.count_scope(PATIENT, "past", now) == len(past)
+
+
+async def test_past_is_a_finished_day_or_a_cancellation(repo):
+    ended = await seed(repo, at=at(9, 0, day=14))  # 當日已結束，還沒被標記 missed
+    today = await seed(repo)
+    cancelled_next_week = await seed(repo, at=at(9, 0, day=22), status="cancelled")
+
+    assert await ids(repo.list_scope(PATIENT, "past", at(8, 0))) == [
+        cancelled_next_week.id,  # 由新到舊
+        ended.id,
+    ]
+    assert await ids(repo.list_scope(PATIENT, "upcoming", at(8, 0))) == [today.id]
+
+
+async def test_delete_past_uses_the_same_definition_as_the_list(repo):
+    await _every_kind_of_row(repo)
+    other = await seed(repo, user_id="U_OTHER", at=at(9, 0, day=1))
+    now = at(8, 0)
+    past = set(await ids(repo.list_scope(PATIENT, "past", now)))
+    upcoming = set(await ids(repo.list_scope(PATIENT, "upcoming", now)))
+
+    assert await repo.delete_past(PATIENT, now) == len(past)
+    assert set(await ids(repo.list_by_user(PATIENT))) == upcoming
+    assert await repo.get_by_id(other.id) is not None

@@ -11,7 +11,7 @@
 
 import logging
 from datetime import datetime
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, List, Optional, Sequence, Tuple
 
 from bson import ObjectId
 from pymongo import ReturnDocument
@@ -21,6 +21,7 @@ from app.models.appointment import (
     CAREGIVER_ALERT_DELAY,
     OPEN_STATUSES,
     PRE_REMINDER_LEAD,
+    AppointmentListScope,
     AppointmentReminder,
 )
 from app.repositories.push_claim import release_push_claim
@@ -32,6 +33,23 @@ LOG_PREFIX = "[AppointmentReminderRepository]"
 
 def _from_doc(doc: dict) -> AppointmentReminder:
     return AppointmentReminder(**{**doc, "_id": str(doc["_id"])})
+
+
+def past_filter(now: datetime) -> dict:
+    """「過去」的唯一定義：當日已結束，或已經取消。
+
+    列表的兩個 scope 與「刪除全部歷史紀錄」都從這裡取，不能各寫一份——否則畫面上
+    「過去的門診」顯示 23 筆，按下刪除全部卻刪了 25 筆。「當日結束」與排程器標記
+    missed 是同一條界線（`day_end_at`）。一筆下個月的門診取消了，也歸在過去。
+    """
+    return {"$or": [{"day_end_at": {"$lte": now}}, {"status": "cancelled"}]}
+
+
+def scope_filter(scope: AppointmentListScope, now: datetime) -> dict:
+    """「即將到來」以 `$nor` 取「過去」的補集，而不是另寫一組條件：兩者因此在結構上
+    就互斥、合起來涵蓋全部，日後改了「過去」的定義也不會漏掉或重複。"""
+    past = past_filter(now)
+    return past if scope == "past" else {"$nor": [past]}
 
 
 class AppointmentReminderRepository:
@@ -108,30 +126,99 @@ class AppointmentReminderRepository:
         docs = await cursor.to_list(length=None)
         return [_from_doc(doc) for doc in docs]
 
+    async def list_scope(
+        self,
+        user_id: str,
+        scope: AppointmentListScope,
+        now: datetime,
+        *,
+        limit: Optional[int] = None,
+        older_than: Optional[Tuple[datetime, str]] = None,
+    ) -> List[AppointmentReminder]:
+        """某位就診者「即將到來」或「過去」的提醒（定義見 `past_filter`）。
+
+        upcoming 由早到晚，past 由新到舊；同一時間多筆時以 id 決定先後，分頁位置才
+        唯一。`older_than` 是上一頁最後一筆的（門診時間, id），只用於 past：回傳排在
+        它之後、也就是更舊的那些。
+        """
+        direction = -1 if scope == "past" else 1
+        clauses = [scope_filter(scope, now)]
+        if older_than is not None:
+            at, last_id = older_than
+            clauses.append(
+                {
+                    "$or": [
+                        {"appointment_at": {"$lt": at}},
+                        {"appointment_at": at, "_id": {"$lt": last_id}},
+                    ]
+                }
+            )
+        cursor = self._col.find({"user_id": user_id, "$and": clauses}).sort(
+            [("appointment_at", direction), ("_id", direction)]
+        )
+        if limit is not None:
+            cursor = cursor.limit(limit)
+        docs = await cursor.to_list(length=None)
+        return [_from_doc(doc) for doc in docs]
+
+    async def count_scope(
+        self, user_id: str, scope: AppointmentListScope, now: datetime
+    ) -> int:
+        return await self._col.count_documents(
+            {"user_id": user_id, **scope_filter(scope, now)}
+        )
+
     async def update_fields(
-        self, reminder_id: str, set_doc: dict
+        self,
+        reminder_id: str,
+        set_doc: dict,
+        *,
+        only_if_status_in: Optional[Sequence[str]] = None,
     ) -> Optional[AppointmentReminder]:
-        """收到什麼就 `$set` 什麼，包含 None。哪些欄位允許 null 由服務層界定。"""
-        result = await self._col.update_one({"_id": reminder_id}, {"$set": set_doc})
-        if result.matched_count == 0:
-            return None
-        return await self.get_by_id(reminder_id)
+        """收到什麼就 `$set` 什麼，包含 None。哪些欄位允許 null 由服務層界定。
+
+        `only_if_status_in` 帶值時是條件式寫入：狀態不在其中就不寫、回 None。改門診
+        時間靠它封住「讀到現況」與「寫入」之間的空檔——那段時間裡有人剛回報到診或
+        取消，無條件的 `$set` 會把狀態改回 scheduled，洗掉到診或取消的紀錄。
+        """
+        query: dict = {"_id": reminder_id}
+        if only_if_status_in is not None:
+            query["status"] = {"$in": list(only_if_status_in)}
+        doc = await self._col.find_one_and_update(
+            query, {"$set": set_doc}, return_document=ReturnDocument.AFTER
+        )
+        return _from_doc(doc) if doc else None
 
     async def delete(self, reminder_id: str) -> bool:
         result = await self._col.delete_one({"_id": reminder_id})
         return result.deleted_count > 0
 
+    async def delete_past(self, user_id: str, now: datetime) -> int:
+        """刪除某位就診者「過去」的全部提醒（定義見 `past_filter`），回傳實際筆數。
+
+        單一 `delete_many`，不是呼叫端逐筆刪。它不是跨文件的交易：命令在伺服器端
+        中途失敗時，已刪的不會還原。但條件只挑得到過去的紀錄，重送同一個請求只會
+        把剩下的刪掉，不會多刪任何一筆即將到來的門診。
+        """
+        result = await self._col.delete_many({"user_id": user_id, **past_filter(now)})
+        return result.deleted_count
+
     # ── 狀態轉移 ──────────────────────────────────────────────────────
     #
-    # 兩支都是「以來源狀態為條件的單一文件原子更新」：本人與家屬同時按下同一顆
-    # 按鈕時，只有一邊會寫入，另一邊拿到 None，由服務層重讀後判斷是冪等（已經是
-    # 目標狀態）還是衝突。
+    # 三支都是「以來源狀態為條件的單一文件原子更新」：本人與家屬同時按下同一顆
+    # 按鈕（或一人按到診、一人按取消）時，只有一邊會寫入，另一邊拿到 None，由服務
+    # 層重讀後判斷是冪等（已經是目標狀態）還是衝突。
+    #
+    # 條件都含 `day_end_at > at`，不能只看狀態：當日結束之後、排程器下一次標記
+    # missed 之前，狀態仍是 scheduled／departed。只看狀態的話，隔天凌晨按一下
+    # 「我已到診」就能把沒去的門診補登成到診（已拍板不做補登），也能取消一個已經
+    # 結束的門診。
 
     async def mark_departed(
         self, reminder_id: str, *, by_user_id: str, at: datetime
     ) -> Optional[AppointmentReminder]:
         doc = await self._col.find_one_and_update(
-            {"_id": reminder_id, "status": "scheduled"},
+            {"_id": reminder_id, "status": "scheduled", "day_end_at": {"$gt": at}},
             {
                 "$set": {
                     "status": "departed",
@@ -148,12 +235,39 @@ class AppointmentReminderRepository:
         self, reminder_id: str, *, by_user_id: str, at: datetime
     ) -> Optional[AppointmentReminder]:
         doc = await self._col.find_one_and_update(
-            {"_id": reminder_id, "status": {"$in": list(OPEN_STATUSES)}},
+            {
+                "_id": reminder_id,
+                "status": {"$in": list(OPEN_STATUSES)},
+                "day_end_at": {"$gt": at},
+            },
             {
                 "$set": {
                     "status": "attended",
                     "attended_at": at,
                     "attended_by_user_id": by_user_id,
+                    "updated_at": at,
+                }
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        return _from_doc(doc) if doc else None
+
+    async def mark_cancelled(
+        self, reminder_id: str, *, by_user_id: str, at: datetime
+    ) -> Optional[AppointmentReminder]:
+        """只寫狀態與取消者。三個推播階段的查詢與搶佔都只挑 scheduled／departed，
+        寫入 cancelled 之後尚未發出的推播自然全部停下，不需要另外清旗標。"""
+        doc = await self._col.find_one_and_update(
+            {
+                "_id": reminder_id,
+                "status": {"$in": list(OPEN_STATUSES)},
+                "day_end_at": {"$gt": at},
+            },
+            {
+                "$set": {
+                    "status": "cancelled",
+                    "cancelled_at": at,
+                    "cancelled_by_user_id": by_user_id,
                     "updated_at": at,
                 }
             },

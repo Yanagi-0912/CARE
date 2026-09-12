@@ -65,6 +65,7 @@ from app.services.safety.ingredient_overlap import (
     load_local_action_forms,
 )
 from app.services.safety.emergency_alert_service import EmergencyFamilyAlertService
+from app.services.medication.tcm_catalog_service import TcmCatalogService
 from app.services.safety.otc_alert_service import OtcAlertService
 from app.services.safety.safety_alert_service import SafetyAlertService
 from app.services.gemini import GeminiService

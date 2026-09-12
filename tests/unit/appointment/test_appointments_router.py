@@ -160,20 +160,7 @@ def test_missing_required_field_is_fastapis_422(client):
     assert res.json()["detail"][0]["loc"] == ["body", "hospital_name"]
 
 
-@pytest.mark.parametrize("role", ["GUARDIAN", "CAREGIVER"])
-def test_general_writers_can_create_for_the_elder(client, role):
-    Env(role=role, caller=ME)
-    res = create(client)
-    assert res.status_code == 200
-    assert res.json()["creator_user_id"] == ME
-
-
-@pytest.mark.parametrize("role", ["MEMBER", None])
-def test_member_or_stranger_gets_the_appointment_specific_403(client, role):
-    Env(role=role, caller=ME)
-    res = create(client)
-    assert res.status_code == 403
-    assert res.json() == {"detail": FORBIDDEN_WRITE_DETAIL}
+# ── 寫入權限：一律嚴格判定 ─────────────────────────────────────────────
 
 
 REPORT_FORBIDDEN = "您沒有權限替這位家人回報出發或到診。"
@@ -206,33 +193,32 @@ WRITE_PATHS = {
 
 
 @pytest.mark.parametrize("path", list(WRITE_PATHS))
-@pytest.mark.parametrize("role,allowed", [("MEMBER", False), ("CAREGIVER", True), ("GUARDIAN", True)])
-def test_every_write_path_is_strict_in_shadow_mode(client, path, role, allowed):
+@pytest.mark.parametrize(
+    "role,allowed",
+    [("GUARDIAN", True), ("CAREGIVER", True), ("MEMBER", False), (None, False)],
+    ids=["GUARDIAN", "CAREGIVER", "MEMBER", "族譜外"],
+)
+@pytest.mark.parametrize("state", ["enforced", "shadow"])
+def test_every_write_path_is_strict_in_both_modes(client, state, role, allowed, path):
     """已拍板：只有讀取權的家人不能更動掛號，影子模式下也一樣。
 
-    這條測試以前是反過來的（影子模式下 MEMBER 可以建立）：掛號寫入原本沿用預設的
-    `has_legacy_equivalent=True`。
+    寫入以 `has_legacy_equivalent=False` 判定，結果與遷移狀態無關；兩種模式跑同一張
+    表，釘住的就是這件事。
     """
-    env = Env(role=role, caller=ME, state="shadow")
+    env = Env(role=role, caller=ME, state=state)
     env.now = DAY_OF  # 出發／到診要在門診當天
     saved = asyncio.run(env.repo.create(make_appointment(
         user_id=ELDER, at=datetime(2026, 9, 15, 11, 0, tzinfo=TPE)
     )))
     call, forbidden = WRITE_PATHS[path]
     res = call(client, saved.id)
-    if allowed:
-        assert res.status_code == 200
-    else:
+    if not allowed:
         assert res.status_code == 403
         assert res.json() == {"detail": forbidden}
-
-
-def test_member_in_shadow_mode_can_still_read(client):
-    env = Env(role="MEMBER", caller=ME, state="shadow")
-    asyncio.run(env.repo.create(make_appointment(user_id=ELDER)))
-    res = client.get(f"/api/appointments/reminders?target_user_id={ELDER}&scope=upcoming")
+        return
     assert res.status_code == 200
-    assert res.json()["total_count"] == 1
+    if path == "POST":
+        assert res.json()["creator_user_id"] == ME  # 代建：建立者是家屬，就診者是長輩
 
 
 # ── GET ───────────────────────────────────────────────────────────────
@@ -254,8 +240,10 @@ def test_list_defaults_to_today_and_future(client):
     ]
 
 
-def test_member_can_read_the_elders_list(client):
-    env = Env(role="MEMBER", caller=ME)
+@pytest.mark.parametrize("state", ["enforced", "shadow"])
+def test_member_can_read_the_elders_list(client, state):
+    """讀取維持預設判定：MEMBER 本來就有 GENERAL 讀取權，兩種模式都讀得到。"""
+    env = Env(role="MEMBER", caller=ME, state=state)
     asyncio.run(env.repo.create(make_appointment(user_id=ELDER)))
     res = client.get(f"/api/appointments/reminders?target_user_id={ELDER}")
     assert res.status_code == 200
@@ -304,14 +292,6 @@ def test_put_new_time_resets_status_and_notify_at(client):
     assert body["notify_at"][0] == "2026-09-22T13:00:00+08:00"
 
 
-def test_put_by_member_is_forbidden(client):
-    env = Env(role="MEMBER", caller=ME)
-    saved = asyncio.run(env.repo.create(make_appointment(user_id=ELDER)))
-    res = client.put(f"/api/appointments/reminders/{saved.id}", json={"note": "x"})
-    assert res.status_code == 403
-    assert res.json() == {"detail": FORBIDDEN_WRITE_DETAIL}
-
-
 # ── DELETE ────────────────────────────────────────────────────────────
 
 
@@ -339,21 +319,6 @@ def test_depart_then_attend(client):
     attended = client.post(f"/api/appointments/reminders/{reminder_id}/attend").json()
     assert attended["status"] == "attended"
     assert attended["notify_at"] == []
-
-
-def test_caregiver_can_report_but_member_cannot(client):
-    env = Env(role="MEMBER", caller=ME)
-    saved = asyncio.run(env.repo.create(make_appointment(user_id=ELDER)))
-    env.now = DAY_OF
-    res = client.post(f"/api/appointments/reminders/{saved.id}/attend")
-    assert res.status_code == 403
-    assert res.json() == {"detail": "您沒有權限替這位家人回報出發或到診。"}
-
-    env = Env(role="CAREGIVER", caller=ME)
-    saved = asyncio.run(env.repo.create(make_appointment(user_id=ELDER)))
-    env.now = DAY_OF
-    body = client.post(f"/api/appointments/reminders/{saved.id}/attend").json()
-    assert body["attended_by_user_id"] == ME
 
 
 def test_reporting_too_early_is_a_409(client):

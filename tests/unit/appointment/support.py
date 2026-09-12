@@ -3,7 +3,8 @@
 `FakeCollection` 是一個只實作 AppointmentReminderRepository 用得到的那幾個
 Motor 方法與運算子的記憶體 collection。刻意不用 MagicMock 斷言查詢字典：掛號
 提醒的正確性幾乎全落在時間窗的邊界（T-1h 那一分鐘算不算、當日結束那一刻算
-不算），斷言「查詢長這樣」驗不到「查詢真的挑中對的文件」。
+不算），斷言「查詢長這樣」驗不到「查詢真的挑中對的文件」。沒實作的運算子一律
+NotImplementedError——repository 日後用了新的運算子，測試會直接告訴你。
 
 它也照 Motor（未開 tz_aware）的行為把 aware datetime 以 naive UTC 存回——模型層
 的時區還原若漏了一處，測試會在這裡看到相差 8 小時。
@@ -48,18 +49,12 @@ def to_storage(value: Any) -> Any:
 def _compare(op: str, value: Any, arg: Any) -> bool:
     if op == "$in":
         return value in arg
-    if op == "$ne":
-        return value != arg
-    if op == "$exists":
-        return (value is not _MISSING) == bool(arg)
     if value is _MISSING or value is None:
         return False
     if op == "$lte":
         return value <= arg
     if op == "$lt":
         return value < arg
-    if op == "$gte":
-        return value >= arg
     if op == "$gt":
         return value > arg
     raise NotImplementedError(op)
@@ -82,7 +77,7 @@ def matches(doc: dict, query: dict) -> bool:
         value = doc.get(key, _MISSING)
         if isinstance(cond, dict) and cond and all(k.startswith("$") for k in cond):
             for op, arg in cond.items():
-                current = None if value is _MISSING and op in ("$in", "$ne") else value
+                current = None if value is _MISSING and op == "$in" else value
                 if not _compare(op, current, to_storage(arg)):
                     return False
         else:
@@ -248,7 +243,11 @@ class FakeProfiles:
 
 
 class FakeAuthz:
-    """家庭授權的替身：誰對就診者有 GENERAL 寫入權、家屬名單是誰。"""
+    """家庭授權的替身：誰對就診者有 GENERAL 寫入權、家屬名單是誰。
+
+    不看遷移狀態，也不看 `has_legacy_equivalent`。要驗「影子模式下仍嚴格」這類
+    判定本身，請用 `real_authz`。
+    """
 
     def __init__(
         self,
@@ -260,10 +259,8 @@ class FakeAuthz:
         self.recipients = list(recipients)
         self.fail_recipients = fail_recipients
         self.recipient_calls: list[tuple[str, str]] = []
-        self.authorize_calls: list[tuple] = []
 
     async def authorize(self, operator_id, target_owner_id, classification, action, **kwargs):
-        self.authorize_calls.append((operator_id, target_owner_id, classification, action))
         if operator_id == target_owner_id or operator_id in self.writers:
             return "GUARDIAN"
         raise HTTPException(

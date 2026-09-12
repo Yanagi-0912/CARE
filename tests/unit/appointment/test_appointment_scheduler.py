@@ -5,14 +5,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.models.family_tree import FamilyMember, FamilyTree
 from app.repositories.appointment_repository import AppointmentReminderRepository
 from app.services.appointment.appointment_scheduler import (
     NOTIFICATION_KIND,
     AppointmentScheduler,
-)
-from app.services.family.family_authorization_service import (
-    FamilyAuthorizationService,
 )
 
 from .support import (
@@ -25,6 +21,7 @@ from .support import (
     FakeProfiles,
     RecordingReplier,
     make_appointment,
+    real_authz,
     rendered,
 )
 
@@ -260,43 +257,19 @@ async def test_unknown_patient_name_falls_back_in_each_recipients_language():
     assert "Your family member's appointment" in pushes[SON]
 
 
-def _authz_for(state: str) -> FamilyAuthorizationService:
-    now = datetime(2026, 9, 1, tzinfo=timezone.utc)
-    tree = FamilyTree(
-        user_id=PATIENT,
-        family_members=[
-            FamilyMember(user_id=DAUGHTER, family_role="CAREGIVER"),
-            FamilyMember(user_id=SON, family_role="MEMBER"),
-            FamilyMember(user_id="U_GUARDIAN", family_role="GUARDIAN"),
-        ],
-        rbac_migration_state=state,
-        created_at=now,
-        updated_at=now,
-    )
-
-    class _Trees:
-        async def get_by_user_id(self, user_id):
-            return tree if user_id == PATIENT else None
-
-    class _NoDelegations:
-        async def has_active_delegation(self, owner_id, delegate_user_id, now=None):
-            return False
-
-    return FamilyAuthorizationService(
-        family_tree_repository=_Trees(),
-        delegation_repository=_NoDelegations(),
-        enforcement_enabled=True,
-    )
-
-
 @pytest.mark.parametrize("state", ["enforced", "shadow"])
 async def test_family_recipients_are_the_general_writers_in_both_modes(state):
     """MEMBER 只有 GENERAL 讀取權，按不下卡片上的按鈕，所以不收。
 
     影子模式也一樣（已拍板）：掛號的寫入在影子模式下同樣是嚴格判定，送給 MEMBER
-    就是一張按了必定 403 的卡片。這條測試以前在影子模式下期望族譜全員。
+    就是一張按了必定 403 的卡片。
     """
-    h = Harness(authz=_authz_for(state))
+    authz = real_authz(
+        PATIENT,
+        {DAUGHTER: "CAREGIVER", SON: "MEMBER", "U_GUARDIAN": "GUARDIAN"},
+        state,
+    )
+    h = Harness(authz=authz)
     await h.seed()
     assert recipients(await h.tick(at(8, 30))) == [PATIENT, DAUGHTER, "U_GUARDIAN"]
 

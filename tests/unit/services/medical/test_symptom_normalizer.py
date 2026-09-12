@@ -163,6 +163,17 @@ async def test_no_index_still_works_via_llm():
 
 
 @pytest.mark.asyncio
+async def test_llm_failure_degrades_to_no_match():
+    """兜底層失效不該讓整條流程斷掉，回 None 由服務層走保底。"""
+
+    async def invoke(_prompt):
+        raise RuntimeError("LLM 掛了")
+
+    normalizer = SymptomNormalizer(table_terms=_FAKE_TERMS, invoke=invoke)
+    assert await normalizer.resolve("肚子痛") is None
+
+
+@pytest.mark.asyncio
 async def test_schema_never_gains_a_department_field_even_when_narrowed():
     """決策 5 的紅線在候選縮小後仍然成立：模型沒有輸出科別的通道。"""
     from app.services.medical.department_matcher import CANONICAL_DEPARTMENTS

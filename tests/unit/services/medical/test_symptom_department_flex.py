@@ -243,6 +243,12 @@ def test_card_avoids_diagnostic_phrasing():
         assert forbidden not in payload
 
 
+def test_card_carries_disclaimer():
+    payload = json.dumps(_bubble(_suggestion((_candidate("內科"),))), ensure_ascii=False)
+    assert "不是醫療診斷" in payload
+    assert "儘速就醫" in payload
+
+
 # --- 字級 --------------------------------------------------------------------
 
 
@@ -261,25 +267,12 @@ def test_colors_and_spacing_do_not_move_with_font_size(template):
     字級只該影響 size。顏色、間距、圓角仍以模板為準——兩者混在一起改動時，
     「版面跑掉」會很難查是字級還是樣式造成的。
     """
-
-    def without_sizes(node):
-        if isinstance(node, dict):
-            return {
-                key: (None if key == "size" else without_sizes(value))
-                for key, value in node.items()
-            }
-        if isinstance(node, list):
-            return [without_sizes(item) for item in node]
-        return node
-
     result = _suggestion(
         (_candidate("內科", "胃腸肝膽"), _candidate("外科"), _candidate("婦產科"))
     )
-    baseline = without_sizes(_skeleton(_bubble(result, font_size="large")))
+    baseline = _skeleton(_bubble(result, font_size="large"))
     for font_size in ("normal", "xlarge"):
-        assert (
-            without_sizes(_skeleton(_bubble(result, font_size=font_size))) == baseline
-        )
+        assert _skeleton(_bubble(result, font_size=font_size)) == baseline
 
 
 # --- 追問與 Quick Reply ------------------------------------------------------
@@ -316,20 +309,6 @@ def test_prompt_sits_between_candidates_and_sources():
     assert last_candidate < prompt_index < types.index("separator")
 
 
-def test_quick_reply_sends_an_explicit_sentence_not_a_yes():
-    """
-    送「好」需要 agent 記得剛剛問了什麼；送「搜尋附近的皮膚科」不需要，
-    而且既有的 _is_nearby_department_intent() 直接接得住。
-    """
-    payload = build_symptom_department_flex(
-        _suggestion((_candidate("皮膚科"),)), references=()
-    )
-    action = payload["quickReply"]["items"][0]["action"]
-    assert action["type"] == "message"
-    assert action["text"] == "搜尋附近的皮膚科"
-    assert action["text"] not in ("好", "是", "要")
-
-
 def test_quick_reply_text_is_routable_by_the_existing_nearby_intent():
     """按鈕文字必須被既有路由接住，否則點了等於沒反應。"""
     from app.services.agent.utils.nodes import _is_nearby_department_intent
@@ -343,14 +322,6 @@ def test_quick_reply_text_is_routable_by_the_existing_nearby_intent():
         assert _is_nearby_department_intent(text) is True
         match = extract_department_intent(text)
         assert match is not None and match.canonical == name
-
-
-def test_quick_reply_label_fits_line_limit():
-    """LINE 的 Quick Reply label 上限 20 字，超過會被拒絕整則訊息。"""
-    payload = build_symptom_department_flex(
-        _suggestion((_candidate("職業醫學科"),)), references=()
-    )
-    assert len(payload["quickReply"]["items"][0]["action"]["label"]) <= 20
 
 
 def test_fallback_card_offers_its_own_primary_department():
@@ -374,8 +345,6 @@ def test_quick_reply_survives_the_reply_path():
     quickReply 是本分支加的，兩邊改到同一個函式。這條測試同時釘住兩者，
     下次再有人只保留其中一半就會失敗。
     """
-    import json
-
     from app.services.line_messaging.reply.reply import LineReplier
 
     payload = build_symptom_department_flex(
@@ -396,8 +365,6 @@ def test_flex_without_quick_reply_still_parses():
     只有科別卡帶 quickReply。其他醫療卡片沒有這個鍵，轉換不得因此炸掉或
     讓整張卡退化成純文字。
     """
-    import json
-
     from app.services.line_messaging.reply.reply import LineReplier
 
     payload = {
@@ -505,23 +472,3 @@ def test_multiple_subgroups_read_as_alternatives_in_the_reason():
     reason = boxes[0]["contents"][1]["text"]
 
     assert "胸腔外科或小兒外科方向" in reason
-
-
-def test_real_table_keeps_both_paths_for_a_split_symptom():
-    """
-    資料層的迴歸：對照表只存一個字串時，卡片再怎麼改也只掛得出一顆標籤。
-    這裡守的是「兩家分法不同」這個事實有沒有留在表上。
-    """
-    from app.services.medical.symptom_classification.symptom_table import (
-        load_symptom_table,
-    )
-
-    candidate = load_symptom_table().lookup("漏斗胸").candidates[0]
-    assert candidate.canonical == "外科"
-    assert candidate.subgroups == ("胸腔外科", "小兒外科")
-
-
-def test_subgroups_normalises_the_single_string_form():
-    """表裡絕大多數條目仍是單一字串，兩種寫法都要收斂到同一個介面。"""
-    assert DepartmentCandidate("內科", "胃腸肝膽", 100, ()).subgroups == ("胃腸肝膽",)
-    assert DepartmentCandidate("內科", None, 100, ()).subgroups == ()

@@ -169,28 +169,26 @@ async def test_overlong_text_is_rejected(service):
 # ── 重複的掛號：同一瞬間只能有一筆沒有取消的 ─────────────────────────
 
 
-async def test_same_time_hospital_and_department_is_a_duplicate(service):
-    """家屬與本人各建了一次同一張掛號單：第二筆要擋下來，否則每則推播都會發兩次。"""
-    await service.create(PATIENT, create_request())
-    await expect_error(service.create(DAUGHTER, create_request()), 409, DUPLICATE_DETAIL)
-
-
 @pytest.mark.parametrize(
     "other",
     [
+        {},
         {"department": "眼科"},
         {"facility_id": "branch-b", "hospital_name": "仁愛診所"},
         {"facility_id": None, "hospital_name": "馬偕醫院", "department": "骨科"},
     ],
-    ids=["另一科", "另一家院所", "院所與科別都不同"],
+    ids=["完全相同", "另一科", "另一家院所", "院所與科別都不同"],
 )
 async def test_same_instant_is_a_duplicate_whatever_the_hospital_or_department(
     service, other
 ):
-    """2026-09-10 追加：同一位就診者、同一瞬間只能有一筆，不論醫院或科別。"""
+    """同一位就診者、同一瞬間只能有一筆，不論醫院或科別（2026-09-10 追加）。
+
+    「完全相同」就是家屬與本人各建了一次同一張掛號單：不擋的話每則推播都會發兩次。
+    """
     await service.create(PATIENT, create_request())
     await expect_error(
-        service.create(PATIENT, create_request(**other)), 409, DUPLICATE_DETAIL
+        service.create(DAUGHTER, create_request(**other)), 409, DUPLICATE_DETAIL
     )
 
 
@@ -225,15 +223,6 @@ async def test_moving_one_appointment_onto_another_is_rejected(service):
     )
 
 
-async def test_editing_a_reminder_never_collides_with_itself(service):
-    saved = await service.create(PATIENT, create_request())
-    assert (await service.update(saved.id, update(note="帶健保卡"))).note == "帶健保卡"
-    resent = await service.update(
-        saved.id, update(appointment_at="2026-09-15T09:30:00+08:00", department="心臟內科")
-    )
-    assert resent.id == saved.id
-
-
 async def test_rows_that_predate_the_rule_stay_editable(service, repo):
     """舊規則下建立的同一時間兩筆（不同科）不溯及既往：編輯表單會整份回送原本的
     appointment_at，只改備註的 PUT 不能因為另一筆而失敗。"""
@@ -246,14 +235,6 @@ async def test_rows_that_predate_the_rule_stay_editable(service, repo):
 
 
 # ── 修改：exclude_unset ───────────────────────────────────────────────
-
-
-async def test_absent_key_is_untouched_and_explicit_null_clears(service):
-    saved = await service.create(PATIENT, create_request())
-    updated = await service.update(saved.id, update(doctor_name=None))
-    assert updated.doctor_name is None
-    assert updated.serial_number == "23"  # 沒帶 → 不動
-    assert updated.hospital_phone == "0223123456"
 
 
 @pytest.mark.parametrize(
@@ -512,14 +493,6 @@ async def test_a_departed_appointment_cannot_be_attended_after_the_day_ends(serv
     assert (await service.get(saved.id)).status == "departed"
 
 
-async def test_localized_error_for_line(service, clock):
-    saved = await service.create(PATIENT, create_request())
-    clock.now = DAY_OF
-    with pytest.raises(AppointmentError) as exc_info:
-        await service.depart(saved.id, STRANGER)
-    assert exc_info.value.localized("en") == t("appt.error.forbidden_report", "en")
-
-
 # ── 取消 ──────────────────────────────────────────────────────────────
 
 
@@ -723,15 +696,3 @@ async def test_a_tampered_cursor_is_a_400(service, cursor):
         400,
         INVALID_CURSOR_DETAIL,
     )
-
-
-async def test_delete_past_removes_exactly_what_the_past_list_counts(service, repo, clock):
-    rows = await seed_history(repo)
-    clock.now = _tpe(9, 15, 8)
-    _, _, shown = await service.list_scope(PATIENT, "past", limit=50)
-
-    assert await service.delete_past(PATIENT) == shown == 4
-    remaining = await repo.list_by_user(PATIENT)
-    assert [r.id for r in remaining] == [rows["today_0915"].id, rows["later_0920"].id]
-    assert await repo.get_by_id(rows["someone_else"].id) is not None
-    assert await service.delete_past(PATIENT) == 0

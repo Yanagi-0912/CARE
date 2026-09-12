@@ -15,6 +15,7 @@ from app.models.medication import (
     MedicationLog,
     MedicationReminder,
     MedicationReminderWithMedications,
+    MedicationVisitsResponse,
     UpdateMedicationReminderRequest,
 )
 from app.models.prescription import (
@@ -142,6 +143,42 @@ async def get_reminders(
         user_id,
     )
 
+
+
+@router.get(
+    "/visits",
+    response_model=MedicationVisitsResponse,
+    summary="查詢看診紀錄",
+    description=(
+        "把使用者的用藥紀錄依「調劑機構 × 調劑日期」彙整成看診紀錄。"
+        "資料來自藥袋辨識——健保雲端藥歷看不到自費看診（不插健保卡就沒有"
+        "就醫紀錄），藥袋是那件事唯一的入口。"
+    ),
+)
+async def get_visits(
+    target_user_id: Optional[str] = Query(default=None, description="要查詢的使用者 LINE userId"),
+    current_user: CurrentUser = Depends(get_current_user),
+    service: MedicationService = Depends(get_medication_service),
+    authz: FamilyAuthorizationService = Depends(get_family_authorization_service),
+):
+    """取得看診紀錄。
+
+    **這支端點整體是 SENSITIVE，不是混合分類。** `get_reminders` 那支可以只
+    遮蔽適應症、其餘照給，因為藥名本身是 GENERAL；這裡不行——把機構名遮掉之後
+    剩下的就是一串沒有意義的日期，回一個「有 5 次看診但不告訴你在哪」的清單
+    只會製造困惑。因此沒有 SENSITIVE 讀取權者一律 403。
+
+    這也是 MEMBER 拿不到這支端點的地方：他對 GENERAL 有讀取權，但「常去腫瘤科」
+    「上個月去了身心科」揭露的病情遠多於藥名。
+    """
+    operator_id = current_user.line_user_id
+    user_id = target_user_id or operator_id
+
+    if operator_id != user_id:
+        await authz.authorize(operator_id, user_id, "SENSITIVE", "READ")
+
+    visits = await service.get_user_visits(user_id)
+    return MedicationVisitsResponse(visits=visits)
 
 
 @router.get(

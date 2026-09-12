@@ -154,6 +154,31 @@ class Medication(BaseModel):
     unit_content: Optional[str] = None
     total_quantity: Optional[int] = None
     usage_raw: Optional[str] = None        # 藥袋上的用法原文，供使用者核對
+    # 調劑機構與調劑日期，原樣帶自藥袋辨識結果（`RecognitionResult`）。
+    #
+    # 這兩欄在同一次 OCR 就已經讀出來了，先前只是沒有落地——藥袋是「這個人
+    # 去哪裡看診、什麼時候拿的藥」的唯一來源，而健保雲端藥歷看不到自費看診
+    # （不插健保卡就沒有就醫紀錄），所以這裡是那件事唯一的入口。
+    #
+    # `institution` 的授權分級是 **SENSITIVE 而非 GENERAL**（見
+    # `family_authorization.CLASSIFICATION`）：「常去腫瘤科」「上個月去了
+    # 身心科」揭露的病情遠多於藥名，與 `indication` 同一條理由。
+    #
+    # `dispensed_date` 是藥袋上印的調劑日期（YYYY-MM-DD），**不是掃描時間**。
+    # 看診紀錄要以它分組：長輩可能拖三天才掃，`created_at` 不是看診日。
+    #
+    # 手動新增的藥、以及本欄位之前寫入的紀錄都是 None，呈現面據此顯示「未
+    # 記錄來源」而不是留白。
+    institution: Optional[str] = None
+    dispensed_date: Optional[str] = None
+    # 建立這筆藥的那一次掃描（`PrescriptionDraft.draft_id`）。草稿本身有 TTL
+    # 會過期，過期後就再也無從得知「這幾種藥是同一次掃進來的」——所以要在
+    # 這裡留一份。
+    #
+    # 它與 `(institution, dispensed_date)` 分組是兩件事：實測同一個藥袋在
+    # 42 分鐘內被掃了三次，產生三個不同的 draft_id 但只有一次看診。看診紀錄
+    # 用機構＋日期分組，draft_id 用來回答「這次掃描進了哪些藥」。
+    draft_id: Optional[str] = None
     frequency_code: MedicationFrequencyCode = "OTHER"
     # 適應症會直接揭露病情，僅供 LIFF 內呈現，不得進入任何推播訊息。
     indication: Optional[str] = None
@@ -262,6 +287,29 @@ class MedicationReminderResponse(BaseModel):
 
 class MedicationLogResponse(BaseModel):
     log: MedicationLog
+
+
+class MedicationVisit(BaseModel):
+    """一次看診：同一個機構、同一個調劑日期拿到的那些藥。
+
+    以 `(institution, dispensed_date)` 分組而不是以掃描分組——實測同一個藥袋
+    在 42 分鐘內被掃了三次，按掃描列會讓同一家醫院出現三次。`scan_count` 保留
+    那個事實供除錯，但不是分組依據。
+
+    `institution` 為 None 代表「未記錄來源」：手動新增的藥，以及本欄位落地
+    之前建立的舊紀錄。呈現面 SHALL 明確標示，不要留白。
+    """
+
+    institution: Optional[str] = None
+    dispensed_date: Optional[str] = None
+    medication_ids: List[str] = Field(default_factory=list)
+    medication_names: List[str] = Field(default_factory=list)
+    scan_count: int = 0
+    first_created_at: Optional[datetime] = None
+
+
+class MedicationVisitsResponse(BaseModel):
+    visits: List[MedicationVisit] = Field(default_factory=list)
 
 
 class MedicationReminderWithMedications(MedicationReminder):

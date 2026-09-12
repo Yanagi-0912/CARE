@@ -56,10 +56,14 @@ from app.services.medication.prescription_ocr_service import PrescriptionOcrServ
 from app.services.medication.prescription_scan_service import PrescriptionScanService
 from app.services.safety.drug_mention_extractor import DrugMentionExtractor
 from app.services.safety.ingredient_overlap import (
+    IngredientClass,
     IngredientWatchlist,
     load_local_action_forms,
 )
+from app.services.medication.tcm_catalog_service import TcmCatalogService
 from app.services.safety.otc_alert_service import OtcAlertService
+from app.services.safety.atc_interaction import ClassPairTable
+from app.services.safety.tcm_interaction import TcmInteractionTable
 from app.services.safety.safety_alert_service import SafetyAlertService
 from app.services.gemini import GeminiService
 from app.services.guardrail import (
@@ -567,6 +571,20 @@ _enabled_safety_alert_service = (
 # 靜態設定，每次偵測重讀只是白花 I/O；讀不到時 IngredientWatchlist 回空清單，
 # 效果是「不偵測任何重複」，與整條路徑對主流程 fail-open 的方向一致。
 _otc_watchlist = IngredientWatchlist.load_from_path()
+# 抗膽鹼疊加清單。同樣是靜態設定，讀不到時回空清單＝不偵測疊加。
+_anticholinergics = IngredientClass.load_from_path()
+# 中藥庫與中西藥配對表。同樣是建置期產出的靜態檔，執行期不對外連線；
+# 讀不到時兩者都退化成「不辨識中藥／不偵測中西藥交互作用」。
+_class_pairs = ClassPairTable.load_from_path()
+_tcm_watch_herbs = IngredientWatchlist(
+    entry.get("name", "")
+    for entry in (
+        IngredientWatchlist._load_payload("resources/tcm_watch_herbs.json").get("herbs")
+        or []
+    )
+)
+_tcm_catalog_service = TcmCatalogService.load_from_path()
+_tcm_interactions = TcmInteractionTable.load_from_path()
 _otc_local_action_forms = load_local_action_forms()
 _otc_alert_service = OtcAlertService(
     catalog_service=_drug_catalog_service,
@@ -574,6 +592,11 @@ _otc_alert_service = OtcAlertService(
     reminder_repository=MedicationReminderRepository,
     replier=_line_replier,
     watchlist=_otc_watchlist,
+    anticholinergics=_anticholinergics,
+    class_pairs=_class_pairs,
+    tcm_watch_herbs=_tcm_watch_herbs,
+    tcm_catalog_service=_tcm_catalog_service,
+    tcm_interactions=_tcm_interactions,
     local_action_forms=_otc_local_action_forms,
     # 與高風險通報走同一個決策點，只是查 NOTIFICATION_POLICY 裡的另一個種類
     # （otc_medication_added）。收到通知 SHALL NOT 改變收件人的資料存取權。

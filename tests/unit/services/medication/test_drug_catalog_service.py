@@ -1042,3 +1042,162 @@ def test_entry_by_license_number_returns_none_for_unknown(tmp_path):
     assert service.entry_by_license_number("不存在") is None
     assert service.entry_by_license_number("") is None
     assert service.entry_by_license_number("  ") is None
+
+
+# ── 衍生查詢（去括號補述、中英拆分）──────────────────────────────────────
+#
+# 動機是實測藥袋掃描的三輪結果：同一個藥袋掃三次，證號時有時無。根因不是
+# 比對器不穩定（它是決定性的），是模型每次讀出來的字串不同，而其中兩種
+# 差異會讓含容比對整個落空。
+#
+# 這一層 SHALL NOT 放寬任何證據規則：每個變體都走同一條 `_match_key`
+# 管線，改變的只是拿哪個字串去問。
+
+
+def _variant_service(
+    *entries: DrugCatalogEntry, threshold: float = 0.88
+) -> DrugCatalogService:
+    return DrugCatalogService(entries, threshold=threshold)
+
+
+class TestParentheticalVariant:
+    def test_hallucinated_closing_paren_still_resolves(self):
+        """藥袋把品名截斷在括號中間，模型補上右括號，造出庫裡不存在的字串。
+
+        `ANROKIN TABLETS (CHLORZOXA` 是真實品名的子字串所以命中；
+        `ANROKIN TABLETS (CHLORZOXA)` 因為那個右括號什麼都比不到。
+        去掉整個括號段後，品名主幹仍是子字串。
+        """
+        service = _variant_service(
+            DrugCatalogEntry(
+                license_number="L1",
+                name_zh="安樂筋錠（氯若沙宗）",
+                name_en="ANROKIN TABLETS (CHLORZOXAZONE)",
+            )
+        )
+
+        assert service.match("ANROKIN TABLETS (CHLORZOXA)").license_number == "L1"
+
+    def test_variant_is_not_tried_when_primary_already_resolves(self):
+        """主鍵定出答案時不再問第二次——那只會製造分歧。"""
+        service = _variant_service(
+            DrugCatalogEntry(
+                license_number="L1",
+                name_zh="安樂筋錠（氯若沙宗）",
+                name_en="ANROKIN TABLETS (CHLORZOXAZONE)",
+            )
+        )
+
+        assert service.match("ANROKIN TABLETS (CHLORZOXA").license_number == "L1"
+
+    def test_stripping_cannot_invent_evidence(self):
+        """去括號的方向是變短，候選只會變多不會變少：一個完全不存在的
+        藥名不會因為去掉括號就變成已驗證。"""
+        service = _variant_service(
+            DrugCatalogEntry(license_number="L1", name_zh="安樂筋錠", name_en="ANROKIN")
+        )
+
+        assert service.match("完全不存在的藥（某成分）") is None
+
+
+class TestScriptSplitVariant:
+    def test_mixed_script_name_resolves_by_intersection(self):
+        """藥袋把英文品牌與中文品名印在一起，但藥證庫的 name_zh 與 name_en
+        是兩個獨立欄位，混合字串在任何一邊都不是子字串。"""
+        service = _variant_service(
+            DrugCatalogEntry(
+                license_number="L1",
+                name_zh="〝永勝〞莫得炎腸溶微粒膠囊50毫克",
+                name_en="VORTAGEN E.M. CAPSULES 50MG",
+            ),
+            DrugCatalogEntry(
+                license_number="L2",
+                name_zh="“永勝”莫得炎栓劑12.5毫克",
+                name_en="VORTAGEN SUPPS. 12.5MG",
+            ),
+        )
+
+        # VORTAGEN 單獨問會命中兩張（歧義），中文段單獨問只中 L1；
+        # 交集恰好一張才回傳。
+        assert service.match("VORTAGEN莫得炎腸溶微粒膠囊").license_number == "L1"
+
+    def test_requires_both_sides_to_verify(self):
+        """其中一段未通過驗證時整個放棄，不拿另一段的結果冒充答案。"""
+        service = _variant_service(
+            DrugCatalogEntry(
+                license_number="L1",
+                name_zh="莫得炎腸溶微粒膠囊50毫克",
+                name_en="VORTAGEN E.M. CAPSULES 50MG",
+            )
+        )
+
+        assert service.match("ZZZQQQ莫得炎腸溶微粒膠囊") is None
+
+    def test_ambiguous_intersection_is_not_resolved(self):
+        """交集不只一張時仍然不指認身分——與主鍵路徑同一條規則。"""
+        service = _variant_service(
+            DrugCatalogEntry(license_number="L1", name_zh="莫得炎膠囊", name_en="VORTAGEN CAPS A"),
+            DrugCatalogEntry(license_number="L2", name_zh="莫得炎膠囊", name_en="VORTAGEN CAPS B"),
+        )
+
+        result = service.match("VORTAGEN莫得炎膠囊")
+        assert result is None or result.license_number is None
+
+    def test_pure_chinese_name_is_untouched(self):
+        """沒有拉丁字段時不走拆分路徑，行為與過去完全一致。"""
+        service = _variant_service(
+            DrugCatalogEntry(license_number="L1", name_zh="便通樂錠", name_en="THROUGH TABLETS")
+        )
+
+        assert service.match("便通樂錠").license_number == "L1"
+
+
+class TestVariantsNeverBypassRealAmbiguity:
+    """變體層最重要的不變量：不得繞過藥證庫本身就有的歧義。
+
+    實測回歸：`INFLAMNIL TABLETS 100MG (TRIMETHOPRIM)` 的真候選集合有 26 張
+    藥證，去掉括號後的主幹卻收斂成唯一。早期版本會回傳那個唯一值，違反
+    「證號唯一才可信」——判準因此改成 `candidates` 非空就直接回傳主鍵結果，
+    而不是 `license_number` 有值。
+    """
+
+    def test_ambiguous_containment_match_is_not_overridden_by_a_variant(self):
+        service = _variant_service(
+            DrugCatalogEntry(license_number="L1", name_zh="易寧炎錠100毫克（每索匹林）"),
+            DrugCatalogEntry(license_number="L2", name_zh="易寧炎錠100毫克（另一種）"),
+            DrugCatalogEntry(license_number="L3", name_zh="易寧炎錠100毫克"),
+        )
+
+        result = service.match("易寧炎錠100毫克（每索匹林）")
+
+        # 完整字串完全比對命中 L1，但它同時是 L2、L3 的相關品名家族成員；
+        # 無論結果是唯一或多筆，都必須來自主鍵那條路徑，不得由去括號變體決定。
+        assert result is not None
+        assert result.candidates, "含容／完全比對必須帶著候選，那是唯一性的證據"
+
+    def test_fuzzy_only_primary_may_be_superseded_by_a_variant(self):
+        """模糊命中依定義不帶候選、永遠不釘證號，沒有提供任何唯一性資訊，
+        因此可以被一個字面上真的對得到藥證的變體取代。"""
+        service = _variant_service(
+            DrugCatalogEntry(
+                license_number="L1",
+                name_zh="安樂筋錠（氯若沙宗）",
+                name_en="ANROKIN TABLETS (CHLORZOXAZONE)",
+            ),
+            threshold=0.5,
+        )
+
+        primary = service._match_key(normalize_drug_name("ANROKIN TABLETS (CHLORZOXA)"))
+        assert primary is not None
+        assert primary.candidates == [], "前提：這個字串走的是模糊路徑"
+
+        assert service.match("ANROKIN TABLETS (CHLORZOXA)").license_number == "L1"
+
+    def test_failed_variants_do_not_erase_a_fuzzy_verification(self):
+        """變體幫不上忙時要退回主鍵的結果——藥名驗證不該因此消失，
+        否則信心度會無故降級（見 `_verify_against_catalog`）。"""
+        service = _variant_service(
+            DrugCatalogEntry(license_number="L1", name_zh="脈優錠5毫克"), threshold=0.5
+        )
+
+        assert service.match("脈定錠5毫克") is not None

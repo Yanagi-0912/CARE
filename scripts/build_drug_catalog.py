@@ -45,6 +45,10 @@ logger = logging.getLogger(__name__)
 LICENCE_DATASET_URL = "https://data.fda.gov.tw/data/opendata/export/36/json"
 # 藥品外觀資料集（data.gov.tw dataset 9120）
 APPEARANCE_DATASET_URL = "https://data.fda.gov.tw/data/opendata/export/42/json"
+# 藥品藥理治療分類 ATC 碼資料集（data.gov.tw dataset 9119）。與許可證資料集
+# 同一個來源系統、同樣每 7 日更新，鍵也同樣是許可證字號，所以合併方式比照
+# 外觀資料集，不需要任何名稱比對。
+ATC_DATASET_URL = "https://data.fda.gov.tw/data/opendata/export/41/json"
 
 DEFAULT_OUTPUT = "resources/drug_catalog.json"
 DOWNLOAD_TIMEOUT_SECONDS = 180
@@ -215,9 +219,37 @@ def _index_appearance_fields(
     return by_licence
 
 
+def _index_atc_codes(atc_rows: Iterable[dict[str, Any]]) -> dict[str, list[str]]:
+    """許可證字號 → 該張藥證的全部 ATC 代碼，去重後排序。
+
+    **「主或次項」刻意不保留。** 實測那一欄不是「主成分／副成分」，而是同一套
+    分類的粗細層級：一張藥證可能同時掛著 `D08A`（主，3 碼群組）與 `D08AX`、
+    `D08AE`（次，5 碼次群組），也可能掛上真正屬於另一類的 `V07`。消費端要問
+    的是「這張藥證屬不屬於某個藥理類別」，主項與次項對這個問題都是有效答案，
+    而複方藥的次項正是它的另一半成分——交互作用判定要看的就是全部成分。
+
+    排序後輸出，讓同一份輸入永遠產生同一份檔案（比照成分陣列的處理）。
+
+    ⚠ 代碼粒度不一致，前綴比對時要注意：實測 80,579 列裡有 3 碼 1,061 列、
+    4 碼 1,804 列、5 碼 11,413 列、7 碼 66,301 列。以藥證計，99% 至少有一個
+    ≥5 碼（藥理次群，如 N05BA 苯二氮平類），93% 至少有一個 7 碼（化學物質，
+    如 B01AA03 warfarin）。也就是說用 5 碼前綴比對會漏掉只掛到 3～4 碼的
+    那 1%，那是資料本身的粒度，不是比對邏輯的缺陷。
+    """
+    by_licence: dict[str, set[str]] = {}
+    for row in atc_rows:
+        license_number = _clean(row.get("許可證字號"))
+        code = _clean(row.get("代碼")).upper()
+        if not license_number or not code:
+            continue
+        by_licence.setdefault(license_number, set()).add(code)
+    return {lic: sorted(codes) for lic, codes in by_licence.items()}
+
+
 def build_entries(
     licences: Iterable[dict[str, Any]],
     appearances: Iterable[dict[str, Any]],
+    atc_rows: Iterable[dict[str, Any]] = (),
 ) -> list[dict[str, str]]:
     """合併兩個資料集，輸出 DrugCatalogService 讀得懂的條目。
 
@@ -262,8 +294,13 @@ def build_entries(
             }
 
     appearance_by_licence = _index_appearance_fields(appearances)
+    atc_by_licence = _index_atc_codes(atc_rows)
     for license_number, entry in by_licence.items():
         entry.update(appearance_by_licence.get(license_number, _EMPTY_APPEARANCE_FIELDS))
+        # 查無 ATC 的證號給空陣列，不是 None——比照 ingredients 的慣例，
+        # 消費端不必先判斷型別就能安全迭代。實測覆蓋率 58.4%（66,503 張
+        # 藥證中 38,815 張查得到），四成查無是資料本身的缺口。
+        entry["atc_codes"] = atc_by_licence.get(license_number, [])
 
     return list(by_licence.values())
 
@@ -672,7 +709,7 @@ def summarize_indications(
         )
 
     model = ChatGoogleGenerativeAI(
-        model=model_name or os.getenv("MODEL_NAME", "gemini-2.5-flash"),
+        model=model_name or os.getenv("MODEL_NAME", "gemini-3.8-flash"),
         google_api_key=api_key,
         timeout=SUMMARY_TIMEOUT_SECONDS,
     )
@@ -838,7 +875,8 @@ def main(output_path: Optional[str] = None) -> int:
 
     licences = _download(LICENCE_DATASET_URL)
     appearances = _download(APPEARANCE_DATASET_URL)
-    entries = build_entries(licences, appearances)
+    atc_rows = _download(ATC_DATASET_URL)
+    entries = build_entries(licences, appearances, atc_rows)
 
     with open(output_path_resolved, "w", encoding="utf-8") as output_file:
         json.dump(entries, output_file, ensure_ascii=False)

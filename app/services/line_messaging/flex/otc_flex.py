@@ -54,21 +54,55 @@ def build_otc_family_flex(
     indication: Optional[str] = None,
     existing_drug_name: Optional[str] = None,
     shared_ingredients: tuple[str, ...] = (),
+    stacked_ingredients: tuple[str, ...] = (),
+    tcm_pair: tuple[str, ...] = (),
+    class_pair: tuple[str, ...] = (),
     language: Optional[str] = None,
     font_size: Optional[str] = None,
 ) -> FlexMessage:
     """非處方藥通知卡。
 
-    有 `existing_drug_name` 與 `shared_ingredients` 就是「成分重複」版，否則是
-    「新增了一個非處方藥」版——兩者共用同一張卡而不是拆成兩支，因為它們的差別
-    只在多出兩列與換一句結語；拆開會讓版面在兩處各自漂移。
+    三種版本共用同一張卡，差別只在多出兩列與換一句結語；拆成三支會讓版面在
+    三處各自漂移。版本由參數決定：
+
+    - `shared_ingredients` 有值 → 「成分重複」（同一個成分吃了兩份）
+    - `stacked_ingredients` 有值 → 「作用疊加」（兩個不同成分的作用相加）
+    - `class_pair` 有值 → 「出血風險」（藥理類別 × 藥理類別）
+    - `tcm_pair` 有值 → 「中西藥併用」（中藥名 × 西藥成分）
+    - 皆空 → 「新增了一個非處方藥」
+
+    三種成分參數不會同時有值：呼叫端一次只會得到一個結論（重複 → 疊加 →
+    中西藥，先成立的勝出），同一件狀況發兩則只會稀釋。真的同時傳入時依這個
+    順序取用，與呼叫端的優先序一致。
+
+    中西藥那一版多一行資料來源。來源站自述「僅供藥師參考」，標明出處是讓
+    收件人知道這則不是我們的判斷，而且查得到原文。
 
     語言與字級取的是**收件家人本人**的設定，不是當事人的，比照
     `build_family_alert_flex`。背景推播沒有 request context 可繼承。
     """
     ft = theme.resolve_theme(font_size)
     is_overlap = bool(existing_drug_name and shared_ingredients)
-    suffix = "overlap" if is_overlap else "added"
+    is_stacking = not is_overlap and bool(existing_drug_name and stacked_ingredients)
+    is_bleeding = bool(existing_drug_name and class_pair)
+    is_overlap = is_overlap and not is_bleeding
+    is_stacking = is_stacking and not is_bleeding
+    is_tcm = (
+        not is_bleeding
+        and not is_overlap
+        and not is_stacking
+        and bool(existing_drug_name and tcm_pair)
+    )
+    if is_bleeding:
+        suffix, listed_ingredients = "bleeding", class_pair
+    elif is_overlap:
+        suffix, listed_ingredients = "overlap", shared_ingredients
+    elif is_stacking:
+        suffix, listed_ingredients = "stacking", stacked_ingredients
+    elif is_tcm:
+        suffix, listed_ingredients = "tcm", tcm_pair
+    else:
+        suffix, listed_ingredients = "added", ()
 
     body_contents: list[dict[str, Any]] = [
         {
@@ -110,7 +144,7 @@ def build_otc_family_flex(
     if indication:
         body_contents.append(_row(t("flex.otc.label.indication", language), indication, ft))
 
-    if is_overlap:
+    if is_bleeding or is_overlap or is_stacking or is_tcm:
         body_contents.append(
             _row(t("flex.otc.label.existing", language), existing_drug_name or "", ft)
         )
@@ -123,7 +157,20 @@ def build_otc_family_flex(
                 "contents": [
                     {
                         "type": "text",
-                        "text": t("flex.otc.label.shared", language),
+                        "text": t(
+                            "flex.otc.label.bleeding"
+                            if is_bleeding
+                            else (
+                                "flex.otc.label.shared"
+                                if is_overlap
+                                else (
+                                    "flex.otc.label.stacking"
+                                    if is_stacking
+                                    else "flex.otc.label.tcm"
+                                )
+                            ),
+                            language,
+                        ),
                         "size": ft.caption,
                         "color": theme.TEXT_MUTED,
                         "wrap": True,
@@ -132,7 +179,7 @@ def build_otc_family_flex(
                         "type": "text",
                         # 成分是英文學名，刻意不翻譯也不改寫：家人若要拿去問
                         # 藥師或查資料，學名才是共通的那個詞。
-                        "text": "、".join(shared_ingredients),
+                        "text": "、".join(listed_ingredients),
                         "size": ft.body,
                         "color": theme.STATUS_CLOSED,
                         "weight": "bold",
@@ -152,6 +199,18 @@ def build_otc_family_flex(
             "margin": "md",
         }
     )
+
+    if is_tcm:
+        body_contents.append(
+            {
+                "type": "text",
+                "text": t("flex.otc.source.tcm", language),
+                "size": ft.caption,
+                "color": theme.TEXT_MUTED,
+                "wrap": True,
+                "margin": "sm",
+            }
+        )
 
     bubble_dict = {
         "type": "bubble",

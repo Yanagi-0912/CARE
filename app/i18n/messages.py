@@ -1685,6 +1685,208 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "「{new_drug}」 ที่คุณเพิ่งเพิ่ม มีตัวยาซ้ำ ({ingredients}) กับ 「{existing_drug}」 ที่คุณกินอยู่\n\nไม่ได้แปลว่ากินด้วยกันไม่ได้ แต่ควรถามเภสัชกร ครั้งหน้าที่ผ่านร้านยา นำยาทั้งสองกล่องไปถามได้เลย",
         "ja": "追加された「{new_drug}」は、すでに飲んでいる「{existing_drug}」と同じ成分（{ingredients}）を含んでいます。\n\n必ずしも一緒に飲めないわけではありませんが、薬剤師に見てもらうのが安心です。今度薬局に立ち寄ったとき、両方の箱を持って聞いてみてください。",
     },
+    # ── 抗膽鹼疊加（同類累加）────────────────────────────────────────────
+    #
+    # 與成分重複是兩種不同的事，措辭必須分開：重複是「同一個成分吃了兩份」，
+    # 疊加是「兩個不同成分的作用加在一起」。對長輩講機轉沒有用，講他自己
+    # 感覺得到的後果才有用——Beers Table 5 對這組列的風險就是意識混亂、
+    # 跌倒與骨折，源頭是想睡、頭暈、口乾這些可自我察覺的症狀。
+    #
+    # 與 overlap 同一條紅線：SHALL NOT 給劑量建議、SHALL NOT 指示停藥。
+    "flex.otc.header.stacking": {
+        "zh-TW": "用藥作用疊加提醒",
+        "en": "Overlapping drug effects",
+        "id": "Efek obat yang menumpuk",
+        "vi": "Tác dụng thuốc chồng nhau",
+        "th": "แจ้งเตือนฤทธิ์ยาซ้อนทับ",
+        "ja": "作用が重なる薬のお知らせ",
+    },
+    "flex.otc.alt.stacking": {
+        "zh-TW": "{name} 的用藥作用疊加提醒",
+        "en": "Overlapping drug effects for {name}",
+        "id": "Efek obat yang menumpuk untuk {name}",
+        "vi": "Tác dụng thuốc chồng nhau của {name}",
+        "th": "แจ้งเตือนฤทธิ์ยาซ้อนทับของ {name}",
+        "ja": "{name} さんの作用が重なる薬のお知らせ",
+    },
+    "flex.otc.intro.stacking": {
+        "zh-TW": "剛加入的這個藥，和已經在吃的藥作用會疊在一起",
+        "en": "just added this medication, whose effect adds to one already being taken",
+        "id": "baru menambahkan obat ini, yang efeknya menumpuk dengan obat yang sedang diminum",
+        "vi": "vừa thêm thuốc này, tác dụng sẽ cộng thêm với thuốc đang dùng",
+        "th": "เพิ่งเพิ่มยานี้ ซึ่งฤทธิ์จะซ้อนทับกับยาที่กินอยู่",
+        "ja": "この薬を追加しました。すでに飲んでいる薬と作用が重なります",
+    },
+    "flex.otc.label.stacking": {
+        "zh-TW": "作用相似的成分",
+        "en": "Ingredients with similar effects",
+        "id": "Bahan dengan efek serupa",
+        "vi": "Hoạt chất có tác dụng tương tự",
+        "th": "ตัวยาที่ออกฤทธิ์คล้ายกัน",
+        "ja": "作用が似ている成分",
+    },
+    "flex.otc.please_check.stacking": {
+        "zh-TW": "這兩個成分不一樣，但作用會加在一起，容易讓人想睡、頭暈、口乾。對長輩來說，最需要留意的是跌倒。請找個時間一起看一下，或把兩盒藥拿給藥師確認。當事人也收到了同一則提醒。",
+        "en": "These two ingredients are different, but their effects add up and can cause drowsiness, dizziness and dry mouth. For an older adult, the main concern is a fall. Please take a moment to look at both together, or show the two boxes to a pharmacist. They have received the same notice.",
+        "id": "Kedua bahan ini berbeda, tetapi efeknya menumpuk dan bisa menyebabkan mengantuk, pusing, dan mulut kering. Bagi lansia, yang paling perlu diwaspadai adalah jatuh. Mohon lihat keduanya bersama, atau tunjukkan kedua kotak obat ke apoteker. Yang bersangkutan juga menerima pemberitahuan yang sama.",
+        "vi": "Hai hoạt chất này khác nhau, nhưng tác dụng cộng lại có thể gây buồn ngủ, chóng mặt và khô miệng. Với người cao tuổi, điều đáng lo nhất là té ngã. Xin hãy cùng xem qua cả hai, hoặc mang hai hộp thuốc đến hỏi dược sĩ. Người đó cũng đã nhận được thông báo tương tự.",
+        "th": "ตัวยาสองชนิดนี้ต่างกัน แต่ฤทธิ์จะเสริมกัน ทำให้ง่วง เวียนศีรษะ และปากแห้ง สำหรับผู้สูงอายุ สิ่งที่ต้องระวังที่สุดคือการหกล้ม กรุณาหาเวลาดูด้วยกัน หรือนำยาทั้งสองกล่องไปให้เภสัชกรตรวจสอบ เจ้าตัวได้รับการแจ้งเตือนเดียวกันแล้ว",
+        "ja": "この二つの成分は別のものですが、作用が重なって眠気・めまい・口の渇きが出やすくなります。ご高齢の方で最も心配なのは転倒です。お時間のあるときに一緒にご確認いただくか、両方の箱を薬剤師にお見せください。ご本人にも同じ通知が届いています。",
+    },
+    "text.otc.patient.stacking": {
+        "zh-TW": "你剛加入的「{new_drug}」，和已經在吃的「{existing_drug}」，成分不一樣，但作用會加在一起。\n\n這樣比較容易想睡、頭暈、口乾，走路要特別小心。\n\n這兩種藥不一定不能一起吃，但最好請藥師看一下。下次經過藥局時，把兩盒藥一起帶去問他就可以了。\n\n也讓家人幫你看一下，比較放心。",
+        "en": "The 「{new_drug}」 you just added and 「{existing_drug}」, which you are already taking, contain different ingredients, but their effects add up.\n\nThat can make you drowsy, dizzy or dry in the mouth, so please take extra care when walking.\n\nThat does not necessarily mean they cannot be taken together, but it is best to ask a pharmacist. Next time you pass a pharmacy, bring both boxes and ask.\n\nYour family can take a look with you too.",
+        "id": "「{new_drug}」 yang baru Anda tambahkan dan 「{existing_drug}」 yang sedang Anda minum memiliki bahan berbeda, tetapi efeknya menumpuk.\n\nIni bisa membuat mengantuk, pusing, atau mulut kering, jadi berhati-hatilah saat berjalan.\n\nItu belum tentu berarti keduanya tidak boleh diminum bersama, tetapi sebaiknya tanyakan ke apoteker. Lain kali saat melewati apotek, bawalah kedua kotak obat dan tanyakan.\n\nKeluarga juga bisa ikut melihatnya bersama Anda.",
+        "vi": "「{new_drug}」 bạn vừa thêm và 「{existing_drug}」 bạn đang dùng có hoạt chất khác nhau, nhưng tác dụng sẽ cộng lại.\n\nĐiều đó dễ gây buồn ngủ, chóng mặt, khô miệng, nên hãy cẩn thận khi đi lại.\n\nĐiều đó không hẳn là không thể dùng chung, nhưng nên hỏi dược sĩ. Lần tới đi ngang nhà thuốc, hãy mang cả hai hộp để hỏi.\n\nNgười nhà cũng có thể xem cùng bạn.",
+        "th": "「{new_drug}」 ที่คุณเพิ่งเพิ่ม กับ 「{existing_drug}」 ที่คุณกินอยู่ มีตัวยาต่างกัน แต่ฤทธิ์จะเสริมกัน\n\nอาจทำให้ง่วง เวียนศีรษะ ปากแห้ง เดินเหินต้องระวังเป็นพิเศษ\n\nไม่ได้แปลว่ากินด้วยกันไม่ได้ แต่ควรถามเภสัชกร ครั้งหน้าที่ผ่านร้านยา นำยาทั้งสองกล่องไปถามได้เลย\n\nให้คนที่บ้านช่วยดูด้วยจะอุ่นใจกว่า",
+        "ja": "追加された「{new_drug}」と、すでに飲んでいる「{existing_drug}」は、成分は違いますが作用が重なります。\n\n眠気・めまい・口の渇きが出やすくなるので、歩くときは特に気をつけてください。\n\n必ずしも一緒に飲めないわけではありませんが、薬剤師に見てもらうのが安心です。今度薬局に立ち寄ったとき、両方の箱を持って聞いてみてください。\n\nご家族にも一緒に見てもらいましょう。",
+    },
+    "text.otc.patient.stacking_solo": {
+        "zh-TW": "你剛加入的「{new_drug}」，和已經在吃的「{existing_drug}」，成分不一樣，但作用會加在一起。\n\n這樣比較容易想睡、頭暈、口乾，走路要特別小心。\n\n這兩種藥不一定不能一起吃，但最好請藥師看一下。下次經過藥局時，把兩盒藥一起帶去問他就可以了。",
+        "en": "The 「{new_drug}」 you just added and 「{existing_drug}」, which you are already taking, contain different ingredients, but their effects add up.\n\nThat can make you drowsy, dizzy or dry in the mouth, so please take extra care when walking.\n\nThat does not necessarily mean they cannot be taken together, but it is best to ask a pharmacist. Next time you pass a pharmacy, bring both boxes and ask.",
+        "id": "「{new_drug}」 yang baru Anda tambahkan dan 「{existing_drug}」 yang sedang Anda minum memiliki bahan berbeda, tetapi efeknya menumpuk.\n\nIni bisa membuat mengantuk, pusing, atau mulut kering, jadi berhati-hatilah saat berjalan.\n\nItu belum tentu berarti keduanya tidak boleh diminum bersama, tetapi sebaiknya tanyakan ke apoteker. Lain kali saat melewati apotek, bawalah kedua kotak obat dan tanyakan.",
+        "vi": "「{new_drug}」 bạn vừa thêm và 「{existing_drug}」 bạn đang dùng có hoạt chất khác nhau, nhưng tác dụng sẽ cộng lại.\n\nĐiều đó dễ gây buồn ngủ, chóng mặt, khô miệng, nên hãy cẩn thận khi đi lại.\n\nĐiều đó không hẳn là không thể dùng chung, nhưng nên hỏi dược sĩ. Lần tới đi ngang nhà thuốc, hãy mang cả hai hộp để hỏi.",
+        "th": "「{new_drug}」 ที่คุณเพิ่งเพิ่ม กับ 「{existing_drug}」 ที่คุณกินอยู่ มีตัวยาต่างกัน แต่ฤทธิ์จะเสริมกัน\n\nอาจทำให้ง่วง เวียนศีรษะ ปากแห้ง เดินเหินต้องระวังเป็นพิเศษ\n\nไม่ได้แปลว่ากินด้วยกันไม่ได้ แต่ควรถามเภสัชกร ครั้งหน้าที่ผ่านร้านยา นำยาทั้งสองกล่องไปถามได้เลย",
+        "ja": "追加された「{new_drug}」と、すでに飲んでいる「{existing_drug}」は、成分は違いますが作用が重なります。\n\n眠気・めまい・口の渇きが出やすくなるので、歩くときは特に気をつけてください。\n\n必ずしも一緒に飲めないわけではありませんが、薬剤師に見てもらうのが安心です。今度薬局に立ち寄ったとき、両方の箱を持って聞いてみてください。",
+    },
+    # ── 中西藥交互作用 ──────────────────────────────────────────────────
+    #
+    # 與前兩種的差別：那兩種講「同一種作用吃了兩份」，這種講「兩套不同的用藥
+    # 體系互相影響」。長輩常認為中藥溫和、不算「吃藥」，因此措辭要先破除
+    # 「中藥可以配著吃」這個前提，再導向藥師。
+    #
+    # 資料來源必須標示：`flex.otc.source.tcm`。來源站自述「僅供藥師參考」，
+    # 標明出處是讓收件人知道這則不是我們的判斷，而且查得到原文。
+    #
+    # 同一條紅線：SHALL NOT 給劑量建議、SHALL NOT 指示停藥。
+    "flex.otc.header.tcm": {
+        "zh-TW": "中藥與西藥併用提醒",
+        "en": "Herbal and Western medicine together",
+        "id": "Obat herbal dan obat Barat bersamaan",
+        "vi": "Dùng thuốc Đông y cùng thuốc Tây",
+        "th": "แจ้งเตือนใช้ยาจีนร่วมกับยาแผนปัจจุบัน",
+        "ja": "漢方薬と西洋薬の併用について",
+    },
+    "flex.otc.alt.tcm": {
+        "zh-TW": "{name} 的中西藥併用提醒",
+        "en": "Herbal and Western medicine notice for {name}",
+        "id": "Pemberitahuan obat herbal dan Barat untuk {name}",
+        "vi": "Thông báo dùng chung Đông – Tây y của {name}",
+        "th": "แจ้งเตือนใช้ยาจีนร่วมกับยาแผนปัจจุบันของ {name}",
+        "ja": "{name} さんの漢方薬と西洋薬の併用のお知らせ",
+    },
+    "flex.otc.intro.tcm": {
+        "zh-TW": "剛加入的這個藥，和已經在吃的藥有併用紀錄",
+        "en": "just added this medication, which has a recorded interaction with one already being taken",
+        "id": "baru menambahkan obat ini, yang tercatat berinteraksi dengan obat yang sedang diminum",
+        "vi": "vừa thêm thuốc này, có ghi nhận tương tác với thuốc đang dùng",
+        "th": "เพิ่งเพิ่มยานี้ ซึ่งมีบันทึกปฏิกิริยากับยาที่กินอยู่",
+        "ja": "この薬を追加しました。すでに飲んでいる薬との併用の記録があります",
+    },
+    "flex.otc.label.tcm": {
+        "zh-TW": "有併用紀錄的組合",
+        "en": "Recorded combination",
+        "id": "Kombinasi yang tercatat",
+        "vi": "Cặp có ghi nhận",
+        "th": "คู่ยาที่มีบันทึก",
+        "ja": "記録のある組み合わせ",
+    },
+    "flex.otc.please_check.tcm": {
+        "zh-TW": "中藥不等於溫和，它一樣會和西藥互相影響。這一組在衛福部的資料庫裡有併用紀錄。請找個時間一起看一下，或把兩種藥都拿給藥師確認——記得跟他說也有在吃中藥。當事人也收到了同一則提醒。",
+        "en": "Herbal medicine is not automatically mild; it can still affect Western medicines. This combination is recorded in the Ministry of Health and Welfare database. Please take a moment to look at both together, or show both to a pharmacist — and mention the herbal medicine. They have received the same notice.",
+        "id": "Obat herbal tidak otomatis ringan; obat ini tetap dapat memengaruhi obat Barat. Kombinasi ini tercatat dalam basis data Kementerian Kesehatan dan Kesejahteraan. Mohon lihat keduanya bersama, atau tunjukkan keduanya ke apoteker — dan sebutkan obat herbalnya. Yang bersangkutan juga menerima pemberitahuan yang sama.",
+        "vi": "Thuốc Đông y không đương nhiên là nhẹ; nó vẫn có thể ảnh hưởng tới thuốc Tây. Cặp này có ghi nhận trong cơ sở dữ liệu của Bộ Y tế và Phúc lợi. Xin hãy cùng xem qua cả hai, hoặc mang cả hai đến hỏi dược sĩ — và nhớ nói rõ là có dùng thuốc Đông y. Người đó cũng đã nhận được thông báo tương tự.",
+        "th": "ยาจีนไม่ได้แปลว่าอ่อนโยนเสมอไป ยังส่งผลต่อยาแผนปัจจุบันได้ คู่ยานี้มีบันทึกอยู่ในฐานข้อมูลของกระทรวงสาธารณสุขและสวัสดิการ กรุณาหาเวลาดูด้วยกัน หรือนำยาทั้งสองไปให้เภสัชกรตรวจสอบ และแจ้งด้วยว่ากินยาจีนอยู่ เจ้าตัวได้รับการแจ้งเตือนเดียวกันแล้ว",
+        "ja": "漢方薬だから穏やかとは限らず、西洋薬に影響することがあります。この組み合わせは衛生福利部のデータベースに記録があります。お時間のあるときに一緒にご確認いただくか、両方を薬剤師にお見せください——漢方薬も飲んでいることをお伝えください。ご本人にも同じ通知が届いています。",
+    },
+    "flex.otc.source.tcm": {
+        "zh-TW": "資料來源：衛生福利部中西藥交互作用資料庫",
+        "en": "Source: MOHW Chinese–Western Drug Interaction Database",
+        "id": "Sumber: Basis Data Interaksi Obat Tionghoa–Barat, MOHW",
+        "vi": "Nguồn: Cơ sở dữ liệu tương tác Đông – Tây y, Bộ Y tế và Phúc lợi",
+        "th": "แหล่งข้อมูล: ฐานข้อมูลปฏิกิริยายาจีน–ยาแผนปัจจุบัน กระทรวงสาธารณสุขและสวัสดิการ",
+        "ja": "出典：衛生福利部 中西薬相互作用データベース",
+    },
+    "text.otc.patient.tcm": {
+        "zh-TW": "你剛加入的「{new_drug}」，和已經在吃的「{existing_drug}」，在衛福部的資料庫裡有併用紀錄（{ingredients}）。\n\n很多人以為中藥比較溫和、可以配著吃，但它一樣會和西藥互相影響。\n\n這兩種不一定不能一起吃，但最好請藥師看一下。下次經過藥局時，把兩種藥都帶去問他，記得跟他說你也有在吃中藥。\n\n也讓家人幫你看一下，比較放心。",
+        "en": "The 「{new_drug}」 you just added and 「{existing_drug}」, which you are already taking, have a recorded interaction ({ingredients}) in the Ministry of Health and Welfare database.\n\nMany people assume herbal medicine is mild and can be taken alongside anything, but it can still affect Western medicines.\n\nThat does not necessarily mean they cannot be taken together, but it is best to ask a pharmacist. Next time you pass a pharmacy, bring both and mention that you are taking herbal medicine.\n\nYour family can take a look with you too.",
+        "id": "「{new_drug}」 yang baru Anda tambahkan dan 「{existing_drug}」 yang sedang Anda minum tercatat berinteraksi ({ingredients}) dalam basis data Kementerian Kesehatan dan Kesejahteraan.\n\nBanyak orang mengira obat herbal itu ringan dan bisa diminum bersama apa saja, padahal tetap dapat memengaruhi obat Barat.\n\nItu belum tentu berarti keduanya tidak boleh diminum bersama, tetapi sebaiknya tanyakan ke apoteker. Lain kali saat melewati apotek, bawalah keduanya dan sebutkan bahwa Anda minum obat herbal.\n\nKeluarga juga bisa ikut melihatnya bersama Anda.",
+        "vi": "「{new_drug}」 bạn vừa thêm và 「{existing_drug}」 bạn đang dùng có ghi nhận tương tác ({ingredients}) trong cơ sở dữ liệu của Bộ Y tế và Phúc lợi.\n\nNhiều người nghĩ thuốc Đông y nhẹ nên uống chung được, nhưng nó vẫn ảnh hưởng tới thuốc Tây.\n\nĐiều đó không hẳn là không thể dùng chung, nhưng nên hỏi dược sĩ. Lần tới đi ngang nhà thuốc, hãy mang cả hai và nói rõ bạn có dùng thuốc Đông y.\n\nNgười nhà cũng có thể xem cùng bạn.",
+        "th": "「{new_drug}」 ที่คุณเพิ่งเพิ่ม กับ 「{existing_drug}」 ที่คุณกินอยู่ มีบันทึกปฏิกิริยา ({ingredients}) ในฐานข้อมูลของกระทรวงสาธารณสุขและสวัสดิการ\n\nหลายคนคิดว่ายาจีนอ่อนโยนและกินร่วมกับอะไรก็ได้ แต่จริง ๆ แล้วยังส่งผลต่อยาแผนปัจจุบัน\n\nไม่ได้แปลว่ากินด้วยกันไม่ได้ แต่ควรถามเภสัชกร ครั้งหน้าที่ผ่านร้านยา นำยาทั้งสองไปถาม และบอกด้วยว่ากินยาจีนอยู่\n\nให้คนที่บ้านช่วยดูด้วยจะอุ่นใจกว่า",
+        "ja": "追加された「{new_drug}」と、すでに飲んでいる「{existing_drug}」は、衛生福利部のデータベースに併用の記録（{ingredients}）があります。\n\n漢方薬は穏やかで何と一緒に飲んでも大丈夫と思われがちですが、西洋薬に影響することがあります。\n\n必ずしも一緒に飲めないわけではありませんが、薬剤師に見てもらうのが安心です。今度薬局に立ち寄ったとき、両方を持参し、漢方薬も飲んでいるとお伝えください。\n\nご家族にも一緒に見てもらいましょう。",
+    },
+    "text.otc.patient.tcm_solo": {
+        "zh-TW": "你剛加入的「{new_drug}」，和已經在吃的「{existing_drug}」，在衛福部的資料庫裡有併用紀錄（{ingredients}）。\n\n很多人以為中藥比較溫和、可以配著吃，但它一樣會和西藥互相影響。\n\n這兩種不一定不能一起吃，但最好請藥師看一下。下次經過藥局時，把兩種藥都帶去問他，記得跟他說你也有在吃中藥。",
+        "en": "The 「{new_drug}」 you just added and 「{existing_drug}」, which you are already taking, have a recorded interaction ({ingredients}) in the Ministry of Health and Welfare database.\n\nMany people assume herbal medicine is mild and can be taken alongside anything, but it can still affect Western medicines.\n\nThat does not necessarily mean they cannot be taken together, but it is best to ask a pharmacist. Next time you pass a pharmacy, bring both and mention that you are taking herbal medicine.",
+        "id": "「{new_drug}」 yang baru Anda tambahkan dan 「{existing_drug}」 yang sedang Anda minum tercatat berinteraksi ({ingredients}) dalam basis data Kementerian Kesehatan dan Kesejahteraan.\n\nBanyak orang mengira obat herbal itu ringan dan bisa diminum bersama apa saja, padahal tetap dapat memengaruhi obat Barat.\n\nItu belum tentu berarti keduanya tidak boleh diminum bersama, tetapi sebaiknya tanyakan ke apoteker. Lain kali saat melewati apotek, bawalah keduanya dan sebutkan bahwa Anda minum obat herbal.",
+        "vi": "「{new_drug}」 bạn vừa thêm và 「{existing_drug}」 bạn đang dùng có ghi nhận tương tác ({ingredients}) trong cơ sở dữ liệu của Bộ Y tế và Phúc lợi.\n\nNhiều người nghĩ thuốc Đông y nhẹ nên uống chung được, nhưng nó vẫn ảnh hưởng tới thuốc Tây.\n\nĐiều đó không hẳn là không thể dùng chung, nhưng nên hỏi dược sĩ. Lần tới đi ngang nhà thuốc, hãy mang cả hai và nói rõ bạn có dùng thuốc Đông y.",
+        "th": "「{new_drug}」 ที่คุณเพิ่งเพิ่ม กับ 「{existing_drug}」 ที่คุณกินอยู่ มีบันทึกปฏิกิริยา ({ingredients}) ในฐานข้อมูลของกระทรวงสาธารณสุขและสวัสดิการ\n\nหลายคนคิดว่ายาจีนอ่อนโยนและกินร่วมกับอะไรก็ได้ แต่จริง ๆ แล้วยังส่งผลต่อยาแผนปัจจุบัน\n\nไม่ได้แปลว่ากินด้วยกันไม่ได้ แต่ควรถามเภสัชกร ครั้งหน้าที่ผ่านร้านยา นำยาทั้งสองไปถาม และบอกด้วยว่ากินยาจีนอยู่",
+        "ja": "追加された「{new_drug}」と、すでに飲んでいる「{existing_drug}」は、衛生福利部のデータベースに併用の記録（{ingredients}）があります。\n\n漢方薬は穏やかで何と一緒に飲んでも大丈夫と思われがちですが、西洋薬に影響することがあります。\n\n必ずしも一緒に飲めないわけではありませんが、薬剤師に見てもらうのが安心です。今度薬局に立ち寄ったとき、両方を持参し、漢方薬も飲んでいるとお伝えください。",
+    },
+    # ── 出血風險（ATC 類別配對）──────────────────────────────────────────
+    #
+    # 四種通知裡唯一可能致命的，因此排在最前面。措辭與其餘三種的差別：
+    # 這則要讓人**現在就注意身體徵兆**（黑便、牙齦出血、瘀青），那是當事人
+    # 自己觀察得到、而且出現時必須立刻就醫的訊號。
+    #
+    # 同一條紅線：SHALL NOT 指示停藥。抗凝血劑自行停用會中風，比出血更嚴重
+    # ——這正是「先別吃」在真正需要那顆藥的情況下本身就是傷害的典型例子。
+    "flex.otc.header.bleeding": {
+        "zh-TW": "出血風險提醒",
+        "en": "Bleeding risk notice",
+        "id": "Pemberitahuan risiko perdarahan",
+        "vi": "Cảnh báo nguy cơ chảy máu",
+        "th": "แจ้งเตือนความเสี่ยงเลือดออก",
+        "ja": "出血リスクのお知らせ",
+    },
+    "flex.otc.alt.bleeding": {
+        "zh-TW": "{name} 的出血風險提醒",
+        "en": "Bleeding risk notice for {name}",
+        "id": "Pemberitahuan risiko perdarahan untuk {name}",
+        "vi": "Cảnh báo nguy cơ chảy máu của {name}",
+        "th": "แจ้งเตือนความเสี่ยงเลือดออกของ {name}",
+        "ja": "{name} さんの出血リスクのお知らせ",
+    },
+    "flex.otc.intro.bleeding": {
+        "zh-TW": "剛加入的這個藥，和已經在吃的藥併用會增加出血風險",
+        "en": "just added this medication, which raises bleeding risk alongside one already being taken",
+        "id": "baru menambahkan obat ini, yang meningkatkan risiko perdarahan bersama obat yang sedang diminum",
+        "vi": "vừa thêm thuốc này, dùng chung với thuốc đang uống sẽ tăng nguy cơ chảy máu",
+        "th": "เพิ่งเพิ่มยานี้ ซึ่งใช้ร่วมกับยาที่กินอยู่จะเพิ่มความเสี่ยงเลือดออก",
+        "ja": "この薬を追加しました。すでに飲んでいる薬との併用で出血リスクが高まります",
+    },
+    "flex.otc.label.bleeding": {
+        "zh-TW": "併用的兩類藥",
+        "en": "The two drug classes",
+        "id": "Dua golongan obat",
+        "vi": "Hai nhóm thuốc",
+        "th": "ยาสองกลุ่ม",
+        "ja": "併用している2つの薬効群",
+    },
+    "flex.otc.please_check.bleeding": {
+        "zh-TW": "這兩類藥一起吃，腸胃道出血的機會會明顯增加。請留意有沒有黑便、牙齦出血、不明瘀青或異常疲倦，出現任何一項就要盡快就醫。請盡快帶著兩種藥去問藥師或原本開藥的醫師——但在問到之前，請不要自行停掉醫師開的藥。當事人也收到了同一則提醒。",
+        "en": "Taking these two together clearly increases the chance of gastrointestinal bleeding. Watch for black stools, bleeding gums, unexplained bruising or unusual tiredness — see a doctor promptly if any appear. Please take both to a pharmacist or the prescribing doctor soon; until then, please do not stop the prescribed medication on your own. They have received the same notice.",
+        "id": "Meminum keduanya bersama jelas meningkatkan risiko perdarahan saluran cerna. Perhatikan tinja hitam, gusi berdarah, memar tanpa sebab, atau lelah tidak biasa — segera ke dokter bila muncul. Mohon segera bawa keduanya ke apoteker atau dokter yang meresepkan; sampai saat itu, jangan hentikan sendiri obat resepnya. Yang bersangkutan juga menerima pemberitahuan yang sama.",
+        "vi": "Dùng chung hai loại này rõ ràng làm tăng nguy cơ xuất huyết tiêu hóa. Hãy để ý phân đen, chảy máu chân răng, bầm tím không rõ nguyên nhân hoặc mệt bất thường — nếu có, đi khám ngay. Xin sớm mang cả hai đến hỏi dược sĩ hoặc bác sĩ đã kê đơn; trước khi hỏi được, đừng tự ý ngừng thuốc bác sĩ đã kê. Người đó cũng đã nhận được thông báo tương tự.",
+        "th": "การกินสองอย่างนี้ร่วมกันเพิ่มโอกาสเลือดออกในทางเดินอาหารอย่างชัดเจน โปรดสังเกตอุจจาระสีดำ เลือดออกตามไรฟัน รอยช้ำไม่ทราบสาเหตุ หรืออ่อนเพลียผิดปกติ หากพบให้รีบพบแพทย์ กรุณานำยาทั้งสองไปถามเภสัชกรหรือแพทย์ผู้สั่งยาโดยเร็ว แต่ก่อนจะได้คำตอบ อย่าหยุดยาที่แพทย์สั่งเอง เจ้าตัวได้รับการแจ้งเตือนเดียวกันแล้ว",
+        "ja": "この2つを一緒に飲むと、消化管出血の可能性が明らかに高まります。黒い便、歯ぐきからの出血、原因不明のあざ、いつもと違う疲れがないか気をつけ、いずれかが出たら早めに受診してください。できるだけ早く両方を薬剤師か処方した医師にお見せください。それまでは、処方された薬を自己判断でやめないでください。ご本人にも同じ通知が届いています。",
+    },
+    "text.otc.patient.bleeding": {
+        "zh-TW": "你剛加入的「{new_drug}」，和已經在吃的「{existing_drug}」，是兩類一起吃會增加出血風險的藥（{ingredients}）。\n\n請留意這幾件事：大便變黑、刷牙流血、身上出現不明的瘀青、或是特別容易累。有任何一項就盡快去看醫生。\n\n請盡快帶著這兩種藥去問藥師，或回去問開藥給你的醫師。在問到之前，請不要自己停掉醫師開的藥——那樣可能更危險。\n\n也讓家人幫你看一下，比較放心。",
+        "en": "The 「{new_drug}」 you just added and 「{existing_drug}」, which you are already taking, are two kinds of medicine that raise bleeding risk together ({ingredients}).\n\nPlease watch for black stools, bleeding when you brush your teeth, unexplained bruises, or feeling unusually tired. See a doctor promptly if any of these appear.\n\nPlease take both to a pharmacist soon, or go back to the doctor who prescribed for you. Until you have asked, do not stop the prescribed medication on your own — that can be more dangerous.\n\nYour family can take a look with you too.",
+        "id": "「{new_drug}」 yang baru Anda tambahkan dan 「{existing_drug}」 yang sedang Anda minum adalah dua jenis obat yang bersama-sama meningkatkan risiko perdarahan ({ingredients}).\n\nMohon perhatikan: tinja menghitam, gusi berdarah saat menyikat gigi, memar tanpa sebab, atau mudah lelah. Segera ke dokter bila ada salah satunya.\n\nSegera bawa kedua obat ke apoteker, atau kembali ke dokter yang meresepkan. Sebelum bertanya, jangan hentikan sendiri obat resep dokter — itu bisa lebih berbahaya.\n\nKeluarga juga bisa ikut melihatnya bersama Anda.",
+        "vi": "「{new_drug}」 bạn vừa thêm và 「{existing_drug}」 bạn đang dùng là hai loại thuốc khi dùng chung sẽ tăng nguy cơ chảy máu ({ingredients}).\n\nHãy để ý: phân đen, chảy máu khi đánh răng, vết bầm không rõ nguyên nhân, hoặc mệt bất thường. Nếu có bất kỳ dấu hiệu nào, hãy đi khám ngay.\n\nXin sớm mang cả hai loại đến hỏi dược sĩ, hoặc quay lại hỏi bác sĩ đã kê đơn. Trước khi hỏi được, đừng tự ý ngừng thuốc bác sĩ kê — như vậy có thể nguy hiểm hơn.\n\nNgười nhà cũng có thể xem cùng bạn.",
+        "th": "「{new_drug}」 ที่คุณเพิ่งเพิ่ม กับ 「{existing_drug}」 ที่คุณกินอยู่ เป็นยาสองกลุ่มที่กินร่วมกันแล้วเพิ่มความเสี่ยงเลือดออก ({ingredients})\n\nโปรดสังเกต: อุจจาระสีดำ เลือดออกตอนแปรงฟัน รอยช้ำไม่ทราบสาเหตุ หรืออ่อนเพลียผิดปกติ หากมีอย่างใดอย่างหนึ่ง ให้รีบไปพบแพทย์\n\nกรุณานำยาทั้งสองไปถามเภสัชกรโดยเร็ว หรือกลับไปถามแพทย์ที่สั่งยาให้คุณ ก่อนจะได้คำตอบ อย่าหยุดยาที่แพทย์สั่งเอง เพราะอาจอันตรายกว่า\n\nให้คนที่บ้านช่วยดูด้วยจะอุ่นใจกว่า",
+        "ja": "追加された「{new_drug}」と、すでに飲んでいる「{existing_drug}」は、一緒に飲むと出血しやすくなる2種類の薬です（{ingredients}）。\n\n黒い便、歯みがきのときの出血、身に覚えのないあざ、いつもより疲れやすい——このいずれかがあれば早めに受診してください。\n\nできるだけ早く両方を薬剤師に見せるか、処方した医師に相談してください。相談できるまで、処方された薬を自己判断でやめないでください。かえって危険なことがあります。\n\nご家族にも一緒に見てもらいましょう。",
+    },
+    "text.otc.patient.bleeding_solo": {
+        "zh-TW": "你剛加入的「{new_drug}」，和已經在吃的「{existing_drug}」，是兩類一起吃會增加出血風險的藥（{ingredients}）。\n\n請留意這幾件事：大便變黑、刷牙流血、身上出現不明的瘀青、或是特別容易累。有任何一項就盡快去看醫生。\n\n請盡快帶著這兩種藥去問藥師，或回去問開藥給你的醫師。在問到之前，請不要自己停掉醫師開的藥——那樣可能更危險。",
+        "en": "The 「{new_drug}」 you just added and 「{existing_drug}」, which you are already taking, are two kinds of medicine that raise bleeding risk together ({ingredients}).\n\nPlease watch for black stools, bleeding when you brush your teeth, unexplained bruises, or feeling unusually tired. See a doctor promptly if any of these appear.\n\nPlease take both to a pharmacist soon, or go back to the doctor who prescribed for you. Until you have asked, do not stop the prescribed medication on your own — that can be more dangerous.",
+        "id": "「{new_drug}」 yang baru Anda tambahkan dan 「{existing_drug}」 yang sedang Anda minum adalah dua jenis obat yang bersama-sama meningkatkan risiko perdarahan ({ingredients}).\n\nMohon perhatikan: tinja menghitam, gusi berdarah saat menyikat gigi, memar tanpa sebab, atau mudah lelah. Segera ke dokter bila ada salah satunya.\n\nSegera bawa kedua obat ke apoteker, atau kembali ke dokter yang meresepkan. Sebelum bertanya, jangan hentikan sendiri obat resep dokter — itu bisa lebih berbahaya.",
+        "vi": "「{new_drug}」 bạn vừa thêm và 「{existing_drug}」 bạn đang dùng là hai loại thuốc khi dùng chung sẽ tăng nguy cơ chảy máu ({ingredients}).\n\nHãy để ý: phân đen, chảy máu khi đánh răng, vết bầm không rõ nguyên nhân, hoặc mệt bất thường. Nếu có bất kỳ dấu hiệu nào, hãy đi khám ngay.\n\nXin sớm mang cả hai loại đến hỏi dược sĩ, hoặc quay lại hỏi bác sĩ đã kê đơn. Trước khi hỏi được, đừng tự ý ngừng thuốc bác sĩ kê — như vậy có thể nguy hiểm hơn.",
+        "th": "「{new_drug}」 ที่คุณเพิ่งเพิ่ม กับ 「{existing_drug}」 ที่คุณกินอยู่ เป็นยาสองกลุ่มที่กินร่วมกันแล้วเพิ่มความเสี่ยงเลือดออก ({ingredients})\n\nโปรดสังเกต: อุจจาระสีดำ เลือดออกตอนแปรงฟัน รอยช้ำไม่ทราบสาเหตุ หรืออ่อนเพลียผิดปกติ หากมีอย่างใดอย่างหนึ่ง ให้รีบไปพบแพทย์\n\nกรุณานำยาทั้งสองไปถามเภสัชกรโดยเร็ว หรือกลับไปถามแพทย์ที่สั่งยาให้คุณ ก่อนจะได้คำตอบ อย่าหยุดยาที่แพทย์สั่งเอง เพราะอาจอันตรายกว่า",
+        "ja": "追加された「{new_drug}」と、すでに飲んでいる「{existing_drug}」は、一緒に飲むと出血しやすくなる2種類の薬です（{ingredients}）。\n\n黒い便、歯みがきのときの出血、身に覚えのないあざ、いつもより疲れやすい——このいずれかがあれば早めに受診してください。\n\nできるだけ早く両方を薬剤師に見せるか、処方した医師に相談してください。相談できるまで、処方された薬を自己判断でやめないでください。かえって危険なことがあります。",
+    },
 }
 
 

@@ -1,0 +1,9790 @@
+[
+ {
+  "code": "H001",
+  "kind": "herb",
+  "name_zh": "丁香",
+  "name_latin": "CARYOPHYLLI FLOS",
+  "name_en": "Clove",
+  "source": "",
+  "herbs": [
+   "丁香"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H002",
+  "kind": "herb",
+  "name_zh": "人參",
+  "name_latin": "GINSENG RADIX ET RHIZOMA",
+  "name_en": "Ginseng Root",
+  "source": "",
+  "herbs": [
+   "人參"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H003",
+  "kind": "herb",
+  "name_zh": "八角茴香",
+  "name_latin": "ANISI STELLATI FRUCTUS",
+  "name_en": "Star Anise Fruit",
+  "source": "",
+  "herbs": [
+   "八角茴香"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H004",
+  "kind": "herb",
+  "name_zh": "三七",
+  "name_latin": "NOTOGINSENG RADIX ET RHIZOMA",
+  "name_en": "Notoginseng Root",
+  "source": "",
+  "herbs": [
+   "三七"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H005",
+  "kind": "herb",
+  "name_zh": "三稜",
+  "name_latin": "SPARGANII RHIZOMA",
+  "name_en": "Common Burreed Rhizome",
+  "source": "",
+  "herbs": [
+   "三稜"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H006",
+  "kind": "herb",
+  "name_zh": "千年健",
+  "name_latin": "HOMALOMENAE RHIZOMA",
+  "name_en": "Obscured Homalomena Rhizome",
+  "source": "",
+  "herbs": [
+   "千年健"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H007",
+  "kind": "herb",
+  "name_zh": "土茯苓",
+  "name_latin": "SMILACIS GLABRAE RHIZOMA",
+  "name_en": "Smooth Greenbrier Rhizome",
+  "source": "",
+  "herbs": [
+   "土茯苓"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H008",
+  "kind": "herb",
+  "name_zh": "大青葉",
+  "name_latin": "ISATIDIS FOLIUM",
+  "name_en": "Indigowoad Leaf",
+  "source": "",
+  "herbs": [
+   "大青葉"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H009",
+  "kind": "herb",
+  "name_zh": "大棗",
+  "name_latin": "JUJUBAE FRUCTUS",
+  "name_en": "Jujube Fruit",
+  "source": "",
+  "herbs": [
+   "大棗"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H010",
+  "kind": "herb",
+  "name_zh": "大黃",
+  "name_latin": "RHEI RADIX ET RHIZOMA",
+  "name_en": "Rhubarb",
+  "source": "",
+  "herbs": [
+   "大黃"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H011",
+  "kind": "herb",
+  "name_zh": "大腹皮",
+  "name_latin": "ARECAE PERICARPIUM",
+  "name_en": "Areca Peel",
+  "source": "",
+  "herbs": [
+   "大腹皮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H012",
+  "kind": "herb",
+  "name_zh": "大薊",
+  "name_latin": "CIRSII JAPONICI HERBA SEU RADIX",
+  "name_en": "Japanese Thistle Herb or Root",
+  "source": "",
+  "herbs": [
+   "大薊"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H013",
+  "kind": "herb",
+  "name_zh": "女貞子",
+  "name_latin": "LIGUSTRI LUCIDI FRUCTUS",
+  "name_en": "Glossy Privet Fruit",
+  "source": "",
+  "herbs": [
+   "女貞子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H014",
+  "kind": "herb",
+  "name_zh": "小茴香",
+  "name_latin": "FOENICULI FRUCTUS",
+  "name_en": "Fennel Fruit",
+  "source": "",
+  "herbs": [
+   "小茴香"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H015",
+  "kind": "herb",
+  "name_zh": "小薊",
+  "name_latin": "CIRSII HERBA",
+  "name_en": "Common Cephalanoplos Herb",
+  "source": "",
+  "herbs": [
+   "小薊"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H016",
+  "kind": "herb",
+  "name_zh": "山豆根",
+  "name_latin": "SOPHORAE TONKINENSIS RADIX ET RHIZOMA",
+  "name_en": "Vietnamese Sophora Root",
+  "source": "",
+  "herbs": [
+   "山豆根"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H017",
+  "kind": "herb",
+  "name_zh": "山柰",
+  "name_latin": "KAEMPFERIAE RHIZOMA",
+  "name_en": "Kaempferia Rhizome",
+  "source": "",
+  "herbs": [
+   "山柰"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H018",
+  "kind": "herb",
+  "name_zh": "山茱萸",
+  "name_latin": "CORNI SARCOCARPIUM",
+  "name_en": "Cornus Sarcocarp",
+  "source": "",
+  "herbs": [
+   "山茱萸"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H019",
+  "kind": "herb",
+  "name_zh": "山楂",
+  "name_latin": "CRATAEGI FRUCTUS",
+  "name_en": "Hawthorn Fruit",
+  "source": "",
+  "herbs": [
+   "山楂"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H020",
+  "kind": "herb",
+  "name_zh": "山銀花",
+  "name_latin": "LONICERAE FLOS",
+  "name_en": "Wild Honeysuckle Flower Bud",
+  "source": "",
+  "herbs": [
+   "山銀花"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H021",
+  "kind": "herb",
+  "name_zh": "山藥",
+  "name_latin": "DIOSCOREAE RHIZOMA",
+  "name_en": "Chinese Yam",
+  "source": "",
+  "herbs": [
+   "山藥"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H022",
+  "kind": "herb",
+  "name_zh": "川木香",
+  "name_latin": "DOLOMIAEAE RADIX",
+  "name_en": "Common Vladimiria Root",
+  "source": "",
+  "herbs": [
+   "川木香"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H023",
+  "kind": "herb",
+  "name_zh": "川木通",
+  "name_latin": "CLEMATIDIS CAULIS",
+  "name_en": "Clematis Stem",
+  "source": "",
+  "herbs": [
+   "川木通"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H024",
+  "kind": "herb",
+  "name_zh": "川牛膝",
+  "name_latin": "CYATHULAE RADIX",
+  "name_en": "Cyathula Root",
+  "source": "",
+  "herbs": [
+   "川牛膝"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H025",
+  "kind": "herb",
+  "name_zh": "川芎",
+  "name_latin": "CHUANXIONG RHIZOMA",
+  "name_en": "Chuanxiong Rhizome",
+  "source": "",
+  "herbs": [
+   "川芎"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H026",
+  "kind": "herb",
+  "name_zh": "川貝母",
+  "name_latin": "FRITILLARIAE CIRRHOSAE BULBUS",
+  "name_en": "Tendrilleaf Fritillary Bulb",
+  "source": "",
+  "herbs": [
+   "川貝母"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H027",
+  "kind": "herb",
+  "name_zh": "川烏",
+  "name_latin": "ACONITI RADIX",
+  "name_en": "Common Monkshood Mother Root",
+  "source": "",
+  "herbs": [
+   "川烏"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H028",
+  "kind": "herb",
+  "name_zh": "川楝子",
+  "name_latin": "AZEDARACH FRUCTUS",
+  "name_en": "Sichuan Chinaberry Fruit",
+  "source": "",
+  "herbs": [
+   "川楝子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H029",
+  "kind": "herb",
+  "name_zh": "丹參",
+  "name_latin": "SALVIAE MILTIORRHIZAE RADIX ET RHIZOMA",
+  "name_en": "Red Sage Root and Rhizome",
+  "source": "",
+  "herbs": [
+   "丹參"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H030",
+  "kind": "herb",
+  "name_zh": "五加皮",
+  "name_latin": "ACANTHOPANACIS CORTEX",
+  "name_en": "Slenderstyle Acanthopanax Root-bark",
+  "source": "",
+  "herbs": [
+   "五加皮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H031",
+  "kind": "herb",
+  "name_zh": "五味子",
+  "name_latin": "SCHISANDRAE FRUCTUS",
+  "name_en": "Schisandra Fruit",
+  "source": "",
+  "herbs": [
+   "五味子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H032",
+  "kind": "herb",
+  "name_zh": "五倍子",
+  "name_latin": "RHOIS GALLA",
+  "name_en": "Chinese Gall",
+  "source": "",
+  "herbs": [
+   "五倍子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H033",
+  "kind": "herb",
+  "name_zh": "化橘紅",
+  "name_latin": "CITRI MAXIMAE EXOCARPIUM",
+  "name_en": "Pummelo Exocarp",
+  "source": "",
+  "herbs": [
+   "化橘紅"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H034",
+  "kind": "herb",
+  "name_zh": "升麻",
+  "name_latin": "CIMICIFUGAE RHIZOMA",
+  "name_en": "Largetrifolious Bugbane Rhizome",
+  "source": "",
+  "herbs": [
+   "升麻"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H035",
+  "kind": "herb",
+  "name_zh": "天竺黃",
+  "name_latin": "BAMBUSAE CONCRETIO SILICEA",
+  "name_en": "Tabasheer",
+  "source": "",
+  "herbs": [
+   "天竺黃"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H036",
+  "kind": "herb",
+  "name_zh": "天門冬",
+  "name_latin": "ASPARAGI RADIX",
+  "name_en": "Asparagus Root",
+  "source": "",
+  "herbs": [
+   "天門冬"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H037",
+  "kind": "herb",
+  "name_zh": "天南星",
+  "name_latin": "ARISAEMATIS RHIZOMA",
+  "name_en": "Jackinthepulpit Tuber",
+  "source": "",
+  "herbs": [
+   "天南星"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H038",
+  "kind": "herb",
+  "name_zh": "天麻",
+  "name_latin": "GASTRODIAE RHIZOMA",
+  "name_en": "Gastrodia Tuber",
+  "source": "",
+  "herbs": [
+   "天麻"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H039",
+  "kind": "herb",
+  "name_zh": "天葵子",
+  "name_latin": "SEMIAQUILEGIAE RADIX",
+  "name_en": "Semiaquilegia Root Tuber",
+  "source": "",
+  "herbs": [
+   "天葵子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H040",
+  "kind": "herb",
+  "name_zh": "太子參",
+  "name_latin": "PSEUDOSTELLARIAE RADIX",
+  "name_en": "Heterophylly Falsestarwort Root",
+  "source": "",
+  "herbs": [
+   "太子參"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H041",
+  "kind": "herb",
+  "name_zh": "巴豆",
+  "name_latin": "CROTONIS SEMEN",
+  "name_en": "Croton Seed",
+  "source": "",
+  "herbs": [
+   "巴豆"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H042",
+  "kind": "herb",
+  "name_zh": "巴戟天",
+  "name_latin": "MORINDAE OFFICINALIS RADIX",
+  "name_en": "Morinda Root",
+  "source": "",
+  "herbs": [
+   "巴戟天"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H043",
+  "kind": "herb",
+  "name_zh": "木瓜",
+  "name_latin": "CHAENOMELIS FRUCTUS",
+  "name_en": "Floweringquince Fruit",
+  "source": "",
+  "herbs": [
+   "木瓜"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H044",
+  "kind": "herb",
+  "name_zh": "木香",
+  "name_latin": "AUCKLANDIAE RADIX",
+  "name_en": "Costus Root",
+  "source": "",
+  "herbs": [
+   "木香"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H045",
+  "kind": "herb",
+  "name_zh": "木通",
+  "name_latin": "AKEBIAE CAULIS",
+  "name_en": "Akebia Stem",
+  "source": "",
+  "herbs": [
+   "木通"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H046",
+  "kind": "herb",
+  "name_zh": "木賊",
+  "name_latin": "EQUISETI HYEMALIS HERBA",
+  "name_en": "Scouring Rush Herb",
+  "source": "",
+  "herbs": [
+   "木賊"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H047",
+  "kind": "herb",
+  "name_zh": "木蝴蝶",
+  "name_latin": "OROXYLI SEMEN",
+  "name_en": "Indian Trum et Flower Seed",
+  "source": "",
+  "herbs": [
+   "木蝴蝶"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H048",
+  "kind": "herb",
+  "name_zh": "木鼈子",
+  "name_latin": "MOMORDICAE SEMEN",
+  "name_en": "Cochinchina Momordica Seed",
+  "source": "",
+  "herbs": [
+   "木鼈子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H049",
+  "kind": "herb",
+  "name_zh": "毛冬青",
+  "name_latin": "ILICIS PUBESCENTIS RADIX ET CAULIS",
+  "name_en": "Pubescent Holly Root and Stem",
+  "source": "",
+  "herbs": [
+   "毛冬青"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H050",
+  "kind": "herb",
+  "name_zh": "水蛭",
+  "name_latin": "HIRUDO",
+  "name_en": "Leech",
+  "source": "",
+  "herbs": [
+   "水蛭"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H051",
+  "kind": "herb",
+  "name_zh": "火麻仁",
+  "name_latin": "CANNABIS FRUCTUS",
+  "name_en": "Hemp Fruit",
+  "source": "",
+  "herbs": [
+   "火麻仁"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H052",
+  "kind": "herb",
+  "name_zh": "牛至",
+  "name_latin": "ORIGANI VULGARIS HERBA",
+  "name_en": "Oregano",
+  "source": "",
+  "herbs": [
+   "牛至"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H053",
+  "kind": "herb",
+  "name_zh": "牛黃",
+  "name_latin": "BOVIS CALCULUS",
+  "name_en": "Oriental Bezoar",
+  "source": "",
+  "herbs": [
+   "牛黃"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H054",
+  "kind": "herb",
+  "name_zh": "牛蒡子",
+  "name_latin": "ARCTII FRUCTUS",
+  "name_en": "Great Burdock Achene",
+  "source": "",
+  "herbs": [
+   "牛蒡子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H055",
+  "kind": "herb",
+  "name_zh": "牛膝",
+  "name_latin": "ACHYRANTHIS BIDENTATAE RADIX",
+  "name_en": "Twotooth Achyranthes Root",
+  "source": "",
+  "herbs": [
+   "牛膝"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H056",
+  "kind": "herb",
+  "name_zh": "王不留行",
+  "name_latin": "VACCARIAE SEMEN",
+  "name_en": "Cowherb Seed",
+  "source": "",
+  "herbs": [
+   "王不留行"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H057",
+  "kind": "herb",
+  "name_zh": "仙茅",
+  "name_latin": "CURCULIGINIS RHIZOMA",
+  "name_en": "Common Curculigo Rhizome",
+  "source": "",
+  "herbs": [
+   "仙茅"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H058",
+  "kind": "herb",
+  "name_zh": "仙鶴草",
+  "name_latin": "AGRIMONIAE HERBA",
+  "name_en": "Hairyvein Agrimonia Herb",
+  "source": "",
+  "herbs": [
+   "仙鶴草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H059",
+  "kind": "herb",
+  "name_zh": "代赭石",
+  "name_latin": "HAEMATITUM",
+  "name_en": "Hematite",
+  "source": "",
+  "herbs": [
+   "代赭石"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H060",
+  "kind": "herb",
+  "name_zh": "冬瓜子",
+  "name_latin": "BENINCASAE SEMEN",
+  "name_en": "Waxgourd Seed",
+  "source": "",
+  "herbs": [
+   "冬瓜子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H061",
+  "kind": "herb",
+  "name_zh": "冬蟲夏草",
+  "name_latin": "CORDYCEPS",
+  "name_en": "Cordyceps",
+  "source": "",
+  "herbs": [
+   "冬蟲夏草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H062",
+  "kind": "herb",
+  "name_zh": "北沙參",
+  "name_latin": "GLEHNIAE RADIX",
+  "name_en": "Coastal Glehnia Root",
+  "source": "",
+  "herbs": [
+   "北沙參"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H063",
+  "kind": "herb",
+  "name_zh": "北板藍根",
+  "name_latin": "ISATIDIS RADIX",
+  "name_en": "Indigowoad Root",
+  "source": "",
+  "herbs": [
+   "北板藍根"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H064",
+  "kind": "herb",
+  "name_zh": "北劉寄奴",
+  "name_latin": "SIPHONOSTEGIAE HERBA",
+  "name_en": "Chinese Siphonostegia Herb",
+  "source": "",
+  "herbs": [
+   "北劉寄奴"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H065",
+  "kind": "herb",
+  "name_zh": "半枝蓮",
+  "name_latin": "SCUTELLARIAE BARBATAE HERBA",
+  "name_en": "Skullcap Herb",
+  "source": "",
+  "herbs": [
+   "半枝蓮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H066",
+  "kind": "herb",
+  "name_zh": "半夏",
+  "name_latin": "PINELLIAE RHIZOMA",
+  "name_en": "Pinellia Tuber",
+  "source": "",
+  "herbs": [
+   "半夏"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H067",
+  "kind": "herb",
+  "name_zh": "玄參",
+  "name_latin": "SCROPHULARIAE RADIX",
+  "name_en": "Scrophularia Root",
+  "source": "",
+  "herbs": [
+   "玄參"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H068",
+  "kind": "herb",
+  "name_zh": "玉竹",
+  "name_latin": "POLYGONATI ODORATI RHIZOMA",
+  "name_en": "Fragrant Solomonseal Rhizome",
+  "source": "",
+  "herbs": [
+   "玉竹"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H069",
+  "kind": "herb",
+  "name_zh": "玉米鬚",
+  "name_latin": "MAYDIS STYLUS",
+  "name_en": "Corn Stylus",
+  "source": "",
+  "herbs": [
+   "玉米鬚"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H070",
+  "kind": "herb",
+  "name_zh": "甘草",
+  "name_latin": "GLYCYRRHIZAE RADIX ET RHIZOMA",
+  "name_en": "Liquorice Root and Rhizome",
+  "source": "",
+  "herbs": [
+   "甘草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H071",
+  "kind": "herb",
+  "name_zh": "甘遂",
+  "name_latin": "KANSUI RADIX",
+  "name_en": "Kansui Root",
+  "source": "",
+  "herbs": [
+   "甘遂"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H072",
+  "kind": "herb",
+  "name_zh": "白及",
+  "name_latin": "BLETILLAE RHIZOMA",
+  "name_en": "Common Bletilla Tuber",
+  "source": "",
+  "herbs": [
+   "白及"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H073",
+  "kind": "herb",
+  "name_zh": "白朮",
+  "name_latin": "ATRACTYLODIS MACROCEPHALAE RHIZOMA",
+  "name_en": "White Atractylodes Rhizome",
+  "source": "",
+  "herbs": [
+   "白朮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H074",
+  "kind": "herb",
+  "name_zh": "白芍",
+  "name_latin": "PAEONIAE RADIX ALBA",
+  "name_en": "Peony Root",
+  "source": "",
+  "herbs": [
+   "白芍"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H075",
+  "kind": "herb",
+  "name_zh": "白果",
+  "name_latin": "GINKGO SEMEN",
+  "name_en": "Ginkgo Seed",
+  "source": "",
+  "herbs": [
+   "白果"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H076",
+  "kind": "herb",
+  "name_zh": "白芥子",
+  "name_latin": "SINAPIS ALBAE SEMEN",
+  "name_en": "White Mustard Seed",
+  "source": "",
+  "herbs": [
+   "白芥子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H077",
+  "kind": "herb",
+  "name_zh": "白花蛇舌草",
+  "name_latin": "OLDENLANDIAE DIFFUSAE HERBA",
+  "name_en": "Spreading Oldenlandia Herb",
+  "source": "",
+  "herbs": [
+   "白花蛇舌草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H078",
+  "kind": "herb",
+  "name_zh": "白芷",
+  "name_latin": "ANGELICAE DAHURICAE RADIX",
+  "name_en": "Dahurian Angelica Root",
+  "source": "",
+  "herbs": [
+   "白芷"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H079",
+  "kind": "herb",
+  "name_zh": "白前",
+  "name_latin": "CYNANCHI STAUNTONII RHIZOMA ET RADIX",
+  "name_en": "Willowleaf Swallowwort Rhizome",
+  "source": "",
+  "herbs": [
+   "白前"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H080",
+  "kind": "herb",
+  "name_zh": "白扁豆",
+  "name_latin": "LABLAB SEMEN ALBUM",
+  "name_en": "White Hyacinth Bean",
+  "source": "",
+  "herbs": [
+   "白扁豆"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H081",
+  "kind": "herb",
+  "name_zh": "白茅根",
+  "name_latin": "IMPERATAE RHIZOMA",
+  "name_en": "Lalang Grass Rhizome",
+  "source": "",
+  "herbs": [
+   "白茅根"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H082",
+  "kind": "herb",
+  "name_zh": "白頭翁",
+  "name_latin": "PULSATILLAE RADIX",
+  "name_en": "Chinese Pulsatilla Root",
+  "source": "",
+  "herbs": [
+   "白頭翁"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H083",
+  "kind": "herb",
+  "name_zh": "白殭蠶",
+  "name_latin": "BOMBYX BATRYTICATUS",
+  "name_en": "Stiff Silkworm",
+  "source": "",
+  "herbs": [
+   "白殭蠶"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H084",
+  "kind": "herb",
+  "name_zh": "白薇",
+  "name_latin": "CYNANCHI ATRATI RADIX ET RHIZOMA",
+  "name_en": "Blackend Swallowwort Root and Rhizome",
+  "source": "",
+  "herbs": [
+   "白薇"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H085",
+  "kind": "herb",
+  "name_zh": "白鮮皮",
+  "name_latin": "DICTAMNI CORTEX",
+  "name_en": "Densefruit Pittany Root-bark",
+  "source": "",
+  "herbs": [
+   "白鮮皮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H086",
+  "kind": "herb",
+  "name_zh": "白蘞",
+  "name_latin": "AMPELOPSIS RADIX",
+  "name_en": "Japanese Ampelopsis Root",
+  "source": "",
+  "herbs": [
+   "白蘞"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H087",
+  "kind": "herb",
+  "name_zh": "石決明",
+  "name_latin": "HALIOTIDIS CONCHA",
+  "name_en": "Sea-ear Shell",
+  "source": "",
+  "herbs": [
+   "石決明"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H088",
+  "kind": "herb",
+  "name_zh": "石韋",
+  "name_latin": "PYRROSIAE FOLIUM",
+  "name_en": "Pyrrosia Leaf",
+  "source": "",
+  "herbs": [
+   "石韋"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H089",
+  "kind": "herb",
+  "name_zh": "石斛",
+  "name_latin": "DENDROBII CAULIS",
+  "name_en": "Dendrobium Stem",
+  "source": "",
+  "herbs": [
+   "石斛"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H090",
+  "kind": "herb",
+  "name_zh": "石菖蒲",
+  "name_latin": "ACORI TATARINOWII RHIZOMA",
+  "name_en": "Acorus Rhizome",
+  "source": "",
+  "herbs": [
+   "石菖蒲"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H091",
+  "kind": "herb",
+  "name_zh": "石榴皮",
+  "name_latin": "GRANATI PERICARPIUM",
+  "name_en": "Pomegranate Pericarp",
+  "source": "",
+  "herbs": [
+   "石榴皮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H092",
+  "kind": "herb",
+  "name_zh": "石膏",
+  "name_latin": "GYPSUM FIBROSUM",
+  "name_en": "Gypsum",
+  "source": "",
+  "herbs": [
+   "石膏"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H093",
+  "kind": "herb",
+  "name_zh": "全蠍",
+  "name_latin": "SCORPIO",
+  "name_en": "Scorpion",
+  "source": "",
+  "herbs": [
+   "全蠍"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H094",
+  "kind": "herb",
+  "name_zh": "冰片",
+  "name_latin": "BORNEOLUM",
+  "name_en": "Borneol",
+  "source": "",
+  "herbs": [
+   "冰片"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H095",
+  "kind": "herb",
+  "name_zh": "合歡皮",
+  "name_latin": "ALBIZIAE CORTEX",
+  "name_en": "Silktree Albizia Bark",
+  "source": "",
+  "herbs": [
+   "合歡皮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H096",
+  "kind": "herb",
+  "name_zh": "地骨皮",
+  "name_latin": "LYCII RADICIS CORTEX",
+  "name_en": "Wolfberry Rootbark",
+  "source": "",
+  "herbs": [
+   "地骨皮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H097",
+  "kind": "herb",
+  "name_zh": "地黃",
+  "name_latin": "REHMANNIAE RADIX",
+  "name_en": "Rehmannia Root",
+  "source": "",
+  "herbs": [
+   "地黃"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H098",
+  "kind": "herb",
+  "name_zh": "地榆",
+  "name_latin": "SANGUISORBAE RADIX",
+  "name_en": "Great Burnet Root",
+  "source": "",
+  "herbs": [
+   "地榆"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H099",
+  "kind": "herb",
+  "name_zh": "地膚子",
+  "name_latin": "KOCHIAE FRUCTUS",
+  "name_en": "Belvedere Fruit",
+  "source": "",
+  "herbs": [
+   "地膚子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H100",
+  "kind": "herb",
+  "name_zh": "地龍",
+  "name_latin": "AMYNTHAS ET METAPHIRE",
+  "name_en": "Earthworm",
+  "source": "",
+  "herbs": [
+   "地龍"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H101",
+  "kind": "herb",
+  "name_zh": "百合",
+  "name_latin": "LILII BULBUS",
+  "name_en": "Lily Bulb",
+  "source": "",
+  "herbs": [
+   "百合"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H102",
+  "kind": "herb",
+  "name_zh": "百部",
+  "name_latin": "STEMONAE RADIX",
+  "name_en": "Stemona Root",
+  "source": "",
+  "herbs": [
+   "百部"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H103",
+  "kind": "herb",
+  "name_zh": "竹茹",
+  "name_latin": "BAMBUSAE CAULIS IN TAENIAS",
+  "name_en": "Bamboo Shavings",
+  "source": "",
+  "herbs": [
+   "竹茹"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H104",
+  "kind": "herb",
+  "name_zh": "肉豆蔻",
+  "name_latin": "MYRISTICAE SEMEN",
+  "name_en": "Nutmeg Seed",
+  "source": "",
+  "herbs": [
+   "肉豆蔻"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H105",
+  "kind": "herb",
+  "name_zh": "肉桂",
+  "name_latin": "CINNAMOMI CORTEX",
+  "name_en": "Cinnamon Bark",
+  "source": "",
+  "herbs": [
+   "肉桂"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H106",
+  "kind": "herb",
+  "name_zh": "桂心",
+  "name_latin": "CINNAMOMI CORTEX CENTRALIS",
+  "name_en": "Cinnamon Central Bark",
+  "source": "",
+  "herbs": [
+   "桂心"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H107",
+  "kind": "herb",
+  "name_zh": "肉蓯蓉",
+  "name_latin": "CISTANCHIS HERBA",
+  "name_en": "Desert-living Cistanche",
+  "source": "",
+  "herbs": [
+   "肉蓯蓉"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H108",
+  "kind": "herb",
+  "name_zh": "艾葉",
+  "name_latin": "ARTEMISIAE ARGYI FOLIUM",
+  "name_en": "Argy Wormwood Leaf",
+  "source": "",
+  "herbs": [
+   "艾葉"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H109",
+  "kind": "herb",
+  "name_zh": "血竭",
+  "name_latin": "DRACONIS SANGUIS",
+  "name_en": "Dragon's Blood",
+  "source": "",
+  "herbs": [
+   "血竭"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H110",
+  "kind": "herb",
+  "name_zh": "西洋參",
+  "name_latin": "PANACIS QUINQUEFOLII RADIX",
+  "name_en": "American Ginseng",
+  "source": "",
+  "herbs": [
+   "西洋參"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H111",
+  "kind": "herb",
+  "name_zh": "伸筋草",
+  "name_latin": "LYCOPODII HERBA",
+  "name_en": "Common Clubmoss Herb",
+  "source": "",
+  "herbs": [
+   "伸筋草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H112",
+  "kind": "herb",
+  "name_zh": "何首烏",
+  "name_latin": "REYNOUTRIAE MULTIFLORAE RADIX",
+  "name_en": "Fleeceflower Root",
+  "source": "",
+  "herbs": [
+   "何首烏"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H113",
+  "kind": "herb",
+  "name_zh": "佛手柑",
+  "name_latin": "CITRI SARCODACTYLIS FRUCTUS",
+  "name_en": "Finger Citron",
+  "source": "",
+  "herbs": [
+   "佛手柑"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H114",
+  "kind": "herb",
+  "name_zh": "吳茱萸",
+  "name_latin": "EUODIAE FRUCTUS",
+  "name_en": "Euodia Fruit",
+  "source": "",
+  "herbs": [
+   "吳茱萸"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H115",
+  "kind": "herb",
+  "name_zh": "忍冬藤",
+  "name_latin": "LONICERAE JAPONICAE CAULIS",
+  "name_en": "Japanese Honeysuckle Stem",
+  "source": "",
+  "herbs": [
+   "忍冬藤"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H116",
+  "kind": "herb",
+  "name_zh": "杜仲",
+  "name_latin": "EUCOMMIAE CORTEX",
+  "name_en": "Eucommia Bark",
+  "source": "",
+  "herbs": [
+   "杜仲"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H117",
+  "kind": "herb",
+  "name_zh": "決明子",
+  "name_latin": "CASSIAE SEMEN",
+  "name_en": "Cassia Seed",
+  "source": "",
+  "herbs": [
+   "決明子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H118",
+  "kind": "herb",
+  "name_zh": "沉香",
+  "name_latin": "AQUILARIAE LIGNUM RESINATUM",
+  "name_en": "Chinese Eaglewood",
+  "source": "",
+  "herbs": [
+   "沉香"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H119",
+  "kind": "herb",
+  "name_zh": "沒藥",
+  "name_latin": "MYRRHA",
+  "name_en": "Myrrh",
+  "source": "",
+  "herbs": [
+   "沒藥"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H120",
+  "kind": "herb",
+  "name_zh": "沙苑蒺藜",
+  "name_latin": "ASTRAGALI COMPLANATI SEMEN",
+  "name_en": "Flastem Milkvetch Seed",
+  "source": "",
+  "herbs": [
+   "沙苑蒺藜"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H121",
+  "kind": "herb",
+  "name_zh": "牡丹皮",
+  "name_latin": "MOUTAN RADICIS CORTEX",
+  "name_en": "Tree Peony Bark",
+  "source": "",
+  "herbs": [
+   "牡丹皮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H122",
+  "kind": "herb",
+  "name_zh": "牡蠣",
+  "name_latin": "CRASSOSTREAE CONCHA",
+  "name_en": "Oyster Shell",
+  "source": "",
+  "herbs": [
+   "牡蠣"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H123",
+  "kind": "herb",
+  "name_zh": "皂角刺",
+  "name_latin": "GLEDITSIAE SPINA",
+  "name_en": "Chinese Honeylocust Spine",
+  "source": "",
+  "herbs": [
+   "皂角刺"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H124",
+  "kind": "herb",
+  "name_zh": "皂莢",
+  "name_latin": "GLEDITSIAE FRUCTUS",
+  "name_en": "Chinese Honeylocust Fruit",
+  "source": "",
+  "herbs": [
+   "皂莢"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H125",
+  "kind": "herb",
+  "name_zh": "芒硝",
+  "name_latin": "NATRII SULFAS",
+  "name_en": "Mirabilitum",
+  "source": "",
+  "herbs": [
+   "芒硝"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H126",
+  "kind": "herb",
+  "name_zh": "豆蔻",
+  "name_latin": "AMOMI FRUCTUS ROTUNDUS",
+  "name_en": "Whitefruit Amomim Fruit",
+  "source": "",
+  "herbs": [
+   "豆蔻"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H127",
+  "kind": "herb",
+  "name_zh": "赤小豆",
+  "name_latin": "VIGNAE SEMEN",
+  "name_en": "Rice Bean",
+  "source": "",
+  "herbs": [
+   "赤小豆"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H128",
+  "kind": "herb",
+  "name_zh": "赤芍",
+  "name_latin": "PAEONIAE RADIX RUBRA",
+  "name_en": "Red Peony Root",
+  "source": "",
+  "herbs": [
+   "赤芍"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H129",
+  "kind": "herb",
+  "name_zh": "車前子",
+  "name_latin": "PLANTAGINIS SEMEN",
+  "name_en": "Plantago Seed",
+  "source": "",
+  "herbs": [
+   "車前子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H130",
+  "kind": "herb",
+  "name_zh": "車前草",
+  "name_latin": "PLANTAGINIS HERBA",
+  "name_en": "Plantago Herb",
+  "source": "",
+  "herbs": [
+   "車前草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H131",
+  "kind": "herb",
+  "name_zh": "辛夷",
+  "name_latin": "MAGNOLIAE FLOS",
+  "name_en": "Magnolia Flower Bud",
+  "source": "",
+  "herbs": [
+   "辛夷"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H132",
+  "kind": "herb",
+  "name_zh": "防己",
+  "name_latin": "STEPHANIAE TETRANDRAE RADIX",
+  "name_en": "Stephania Tetrandra Root",
+  "source": "",
+  "herbs": [
+   "防己"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H133",
+  "kind": "herb",
+  "name_zh": "防風",
+  "name_latin": "SAPOSHNIKOVIAE RADIX ET RHIZOMA",
+  "name_en": "Saposhnikovia Root and Rhizome",
+  "source": "",
+  "herbs": [
+   "防風"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H134",
+  "kind": "herb",
+  "name_zh": "乳香",
+  "name_latin": "OLIBANUM",
+  "name_en": "Frankincense",
+  "source": "",
+  "herbs": [
+   "乳香"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H135",
+  "kind": "herb",
+  "name_zh": "佩蘭",
+  "name_latin": "EUPATORII HERBA",
+  "name_en": "Fortune Eupatorium Herb",
+  "source": "",
+  "herbs": [
+   "佩蘭"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H136",
+  "kind": "herb",
+  "name_zh": "使君子",
+  "name_latin": "QUISQUALIS FRUCTUS",
+  "name_en": "Rangooncreeper Fruit",
+  "source": "",
+  "herbs": [
+   "使君子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H137",
+  "kind": "herb",
+  "name_zh": "兒茶",
+  "name_latin": "CATECHU",
+  "name_en": "Catechu",
+  "source": "",
+  "herbs": [
+   "兒茶"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H138",
+  "kind": "herb",
+  "name_zh": "卷柏",
+  "name_latin": "SELAGINELLAE HERBA",
+  "name_en": "Tamarishoid Spikemoss Herb",
+  "source": "",
+  "herbs": [
+   "卷柏"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H139",
+  "kind": "herb",
+  "name_zh": "延胡索",
+  "name_latin": "CORYDALIS RHIZOMA",
+  "name_en": "Corydalis Tuber",
+  "source": "",
+  "herbs": [
+   "延胡索"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H140",
+  "kind": "herb",
+  "name_zh": "昆布",
+  "name_latin": "LAMINARIAE THALLUS ECKLONIAE THALLUS",
+  "name_en": "Kelp",
+  "source": "",
+  "herbs": [
+   "昆布"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H141",
+  "kind": "herb",
+  "name_zh": "枇杷葉",
+  "name_latin": "ERIOBOTRYAE FOLIUM",
+  "name_en": "Loquat Leaf",
+  "source": "",
+  "herbs": [
+   "枇杷葉"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H142",
+  "kind": "herb",
+  "name_zh": "狗脊",
+  "name_latin": "CIBOTII RHIZOMA",
+  "name_en": "East Asian Tree Fern Rhizome",
+  "source": "",
+  "herbs": [
+   "狗脊"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H143",
+  "kind": "herb",
+  "name_zh": "知母",
+  "name_latin": "ANEMARRHENAE RHIZOMA",
+  "name_en": "Anemarrhena Rhizome",
+  "source": "",
+  "herbs": [
+   "知母"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H144",
+  "kind": "herb",
+  "name_zh": "羌活",
+  "name_latin": "NOTOPTERYGII RHIZOMA ET RADIX",
+  "name_en": "Notopterygium Rhizome and Root",
+  "source": "",
+  "herbs": [
+   "羌活"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H145",
+  "kind": "herb",
+  "name_zh": "芡實",
+  "name_latin": "EURYALES SEMEN",
+  "name_en": "Euryale Seed",
+  "source": "",
+  "herbs": [
+   "芡實"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H146",
+  "kind": "herb",
+  "name_zh": "花椒",
+  "name_latin": "ZANTHOXYLI PERICARPIUM",
+  "name_en": "Pricklyash Peel",
+  "source": "",
+  "herbs": [
+   "花椒"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H147",
+  "kind": "herb",
+  "name_zh": "虎杖",
+  "name_latin": "REYNOUTRIAE RHIZOMA ET RADIX",
+  "name_en": "Giant Knotweed Rhizome and Root",
+  "source": "",
+  "herbs": [
+   "虎杖"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H148",
+  "kind": "herb",
+  "name_zh": "金銀花",
+  "name_latin": "LONICERAE JAPONICAE FLOS",
+  "name_en": "Honeysuckle Flower Bud",
+  "source": "",
+  "herbs": [
+   "金銀花"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H149",
+  "kind": "herb",
+  "name_zh": "金錢草",
+  "name_latin": "LYSIMACHIAE HERBA",
+  "name_en": "Longhairy Antenoron Herb",
+  "source": "",
+  "herbs": [
+   "金錢草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H150",
+  "kind": "herb",
+  "name_zh": "金櫻子",
+  "name_latin": "ROSAE LAEVIGATAE FRUCTUS",
+  "name_en": "Cherokee Rose Fruit",
+  "source": "",
+  "herbs": [
+   "金櫻子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H151",
+  "kind": "herb",
+  "name_zh": "附子",
+  "name_latin": "ACONITI LATERALIS RADIX PRAEPARATA",
+  "name_en": "Prepared Monkshood Daughter Root",
+  "source": "",
+  "herbs": [
+   "附子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H152",
+  "kind": "herb",
+  "name_zh": "青皮",
+  "name_latin": "CITRI RETICULATAE PERICARPIUM VIRIDE",
+  "name_en": "Green Tangerine Peel",
+  "source": "",
+  "herbs": [
+   "青皮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H153",
+  "kind": "herb",
+  "name_zh": "青葙子",
+  "name_latin": "CELOSIAE SEMEN",
+  "name_en": "Feather Cockscomb Seed",
+  "source": "",
+  "herbs": [
+   "青葙子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H154",
+  "kind": "herb",
+  "name_zh": "青蒿",
+  "name_latin": "ARTEMISIAE ANNUAE HERBA",
+  "name_en": "Sweet Wormwood Herb",
+  "source": "",
+  "herbs": [
+   "青蒿"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H155",
+  "kind": "herb",
+  "name_zh": "青黛",
+  "name_latin": "INDIGO NATURALIS",
+  "name_en": "Natural Indigo",
+  "source": "",
+  "herbs": [
+   "青黛"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H156",
+  "kind": "herb",
+  "name_zh": "前胡",
+  "name_latin": "PEUCEDANI RADIX",
+  "name_en": "Hogfennel Root",
+  "source": "",
+  "herbs": [
+   "前胡"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H157",
+  "kind": "herb",
+  "name_zh": "南五味子",
+  "name_latin": "SCHISANDRAE SPHENANTHERAE FRUCTUS",
+  "name_en": "Orange Magnoliavine Fruit",
+  "source": "",
+  "herbs": [
+   "南五味子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H158",
+  "kind": "herb",
+  "name_zh": "南沙參",
+  "name_latin": "ADENOPHORAE RADIX",
+  "name_en": "Ladybell Root",
+  "source": "",
+  "herbs": [
+   "南沙參"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H159",
+  "kind": "herb",
+  "name_zh": "南板藍根",
+  "name_latin": "STROBILANTHII CUSIAE RHIZOMA ET RADIX",
+  "name_en": "Strobilanthes Root",
+  "source": "",
+  "herbs": [
+   "南板藍根"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H160",
+  "kind": "herb",
+  "name_zh": "厚朴",
+  "name_latin": "MAGNOLIAE CORTEX",
+  "name_en": "Magnolia Bark",
+  "source": "",
+  "herbs": [
+   "厚朴"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H161",
+  "kind": "herb",
+  "name_zh": "威靈仙",
+  "name_latin": "CLEMATIDIS RADIX ET RHIZOMA",
+  "name_en": "Clematis Root",
+  "source": "",
+  "herbs": [
+   "威靈仙"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H162",
+  "kind": "herb",
+  "name_zh": "枳椇子",
+  "name_latin": "HOVENIAE SEMEN",
+  "name_en": "Raisin Tree Seed",
+  "source": "",
+  "herbs": [
+   "枳椇子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H163",
+  "kind": "herb",
+  "name_zh": "枳殼",
+  "name_latin": "CITRI FRUCTUS IMMATURUS",
+  "name_en": "Bitter Orange",
+  "source": "",
+  "herbs": [
+   "枳殼"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H164",
+  "kind": "herb",
+  "name_zh": "枳實",
+  "name_latin": "AURANTII FRUCTUS IMMATURUS",
+  "name_en": "Immature Bitter Orange",
+  "source": "",
+  "herbs": [
+   "枳實"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H165",
+  "kind": "herb",
+  "name_zh": "枸杞子",
+  "name_latin": "LYCII FRUCTUS",
+  "name_en": "Wolfberry Fruit",
+  "source": "",
+  "herbs": [
+   "枸杞子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H166",
+  "kind": "herb",
+  "name_zh": "柏子仁",
+  "name_latin": "PLATYCLADI SEMEN",
+  "name_en": "Platycladi Seed",
+  "source": "",
+  "herbs": [
+   "柏子仁"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H167",
+  "kind": "herb",
+  "name_zh": "柿蒂",
+  "name_latin": "KAKI CALYX",
+  "name_en": "Persimmon Calyx and Receptacle",
+  "source": "",
+  "herbs": [
+   "柿蒂"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H168",
+  "kind": "herb",
+  "name_zh": "砂仁",
+  "name_latin": "AMOMI FRUCTUS",
+  "name_en": "Villous Amomum Fruit",
+  "source": "",
+  "herbs": [
+   "砂仁"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H169",
+  "kind": "herb",
+  "name_zh": "穿心蓮",
+  "name_latin": "ANDROGRAPHIS HERBA",
+  "name_en": "Common Andrographis Herb",
+  "source": "",
+  "herbs": [
+   "穿心蓮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H170",
+  "kind": "herb",
+  "name_zh": "紅花",
+  "name_latin": "CARTHAMI FLOS",
+  "name_en": "Safflower",
+  "source": "",
+  "herbs": [
+   "紅花"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H171",
+  "kind": "herb",
+  "name_zh": "紅耆",
+  "name_latin": "HEDYSARI RADIX",
+  "name_en": "Hedysarum Root",
+  "source": "",
+  "herbs": [
+   "紅耆"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H172",
+  "kind": "herb",
+  "name_zh": "紅景天",
+  "name_latin": "RHODIOLAE CRENULATAE RADIX ET RHIZOMA",
+  "name_en": "Kirilow Rhodiola Root and Rhizome",
+  "source": "",
+  "herbs": [
+   "紅景天"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H173",
+  "kind": "herb",
+  "name_zh": "胖大海",
+  "name_latin": "SCAPHII SEMEN",
+  "name_en": "Boat Sterculia Seed",
+  "source": "",
+  "herbs": [
+   "胖大海"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H174",
+  "kind": "herb",
+  "name_zh": "胡麻仁",
+  "name_latin": "SESAMI SEMEN NIGRUM",
+  "name_en": "Black Sesame",
+  "source": "",
+  "herbs": [
+   "胡麻仁"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H175",
+  "kind": "herb",
+  "name_zh": "胡椒",
+  "name_latin": "PIPERIS FRUCTUS",
+  "name_en": "Pepper",
+  "source": "",
+  "herbs": [
+   "胡椒"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H176",
+  "kind": "herb",
+  "name_zh": "胡黃連",
+  "name_latin": "NEOPICRORHIZAE RHIZOMA",
+  "name_en": "Figwortflower Neopicrorhiza Rhizome",
+  "source": "",
+  "herbs": [
+   "胡黃連"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H177",
+  "kind": "herb",
+  "name_zh": "胡蘆巴",
+  "name_latin": "TRIGONELLAE SEMEN",
+  "name_en": "Common Fenugreek Seed",
+  "source": "",
+  "herbs": [
+   "胡蘆巴"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H178",
+  "kind": "herb",
+  "name_zh": "苘麻子",
+  "name_latin": "ABUTILI SEMEN",
+  "name_en": "Chingma Abutilon Seed",
+  "source": "",
+  "herbs": [
+   "苘麻子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H179",
+  "kind": "herb",
+  "name_zh": "苦杏仁",
+  "name_latin": "ARMENIACAE SEMEN AMARUM",
+  "name_en": "Bitter Apricot Seed",
+  "source": "",
+  "herbs": [
+   "苦杏仁"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H180",
+  "kind": "herb",
+  "name_zh": "苦參",
+  "name_latin": "SOPHORAE FLAVESCENTIS RADIX",
+  "name_en": "Lightyellow Sophora Root",
+  "source": "",
+  "herbs": [
+   "苦參"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H181",
+  "kind": "herb",
+  "name_zh": "茺蔚子",
+  "name_latin": "LEONURI FRUCTUS",
+  "name_en": "Motherwort Fruit",
+  "source": "",
+  "herbs": [
+   "茺蔚子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H182",
+  "kind": "herb",
+  "name_zh": "郁李仁",
+  "name_latin": "PRUNI SEMEN",
+  "name_en": "Chinese Dwarf Cherry Seed",
+  "source": "",
+  "herbs": [
+   "郁李仁"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H183",
+  "kind": "herb",
+  "name_zh": "韭菜子",
+  "name_latin": "ALLII TUBEROSI SEMEN",
+  "name_en": "Tuber Onion Seed",
+  "source": "",
+  "herbs": [
+   "韭菜子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H184",
+  "kind": "herb",
+  "name_zh": "首烏藤",
+  "name_latin": "REYNOUTRIAE MULTIFLORAE CAULIS",
+  "name_en": "Fleeceflower Stem",
+  "source": "",
+  "herbs": [
+   "首烏藤"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H185",
+  "kind": "herb",
+  "name_zh": "香附",
+  "name_latin": "CYPERI RHIZOMA",
+  "name_en": "Cyperus Rhizome",
+  "source": "",
+  "herbs": [
+   "香附"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H186",
+  "kind": "herb",
+  "name_zh": "香薷",
+  "name_latin": "MOSLAE HERBA",
+  "name_en": "Chinese Mosla Herb",
+  "source": "",
+  "herbs": [
+   "香薷"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H187",
+  "kind": "herb",
+  "name_zh": "倒地蜈蚣",
+  "name_latin": "HELMINTHOSTACHYDIS RADIX ET RHIZOMA",
+  "name_en": "Ceylan Helminthostachys Root and Rhizome",
+  "source": "",
+  "herbs": [
+   "倒地蜈蚣"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H188",
+  "kind": "herb",
+  "name_zh": "夏枯草",
+  "name_latin": "PRUNELLAE SPICA",
+  "name_en": "Prunella Spike",
+  "source": "",
+  "herbs": [
+   "夏枯草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H189",
+  "kind": "herb",
+  "name_zh": "射干",
+  "name_latin": "IRIS RHIZOMA",
+  "name_en": "Blackberry-lily Rhizome",
+  "source": "",
+  "herbs": [
+   "射干"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H190",
+  "kind": "herb",
+  "name_zh": "柴胡",
+  "name_latin": "BUPLEURI RADIX",
+  "name_en": "Bupleurum Root",
+  "source": "",
+  "herbs": [
+   "柴胡"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H191",
+  "kind": "herb",
+  "name_zh": "栝樓仁",
+  "name_latin": "TRICHOSANTHIS SEMEN",
+  "name_en": "Trichosanthes Seed",
+  "source": "",
+  "herbs": [
+   "栝樓仁"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H192",
+  "kind": "herb",
+  "name_zh": "栝樓根",
+  "name_latin": "TRICHOSANTHIS RADIX",
+  "name_en": "Trichosanthes Root",
+  "source": "",
+  "herbs": [
+   "栝樓根"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H193",
+  "kind": "herb",
+  "name_zh": "桂枝",
+  "name_latin": "CINNAMOMI RAMULUS",
+  "name_en": "Cassia Twig",
+  "source": "",
+  "herbs": [
+   "桂枝"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H194",
+  "kind": "herb",
+  "name_zh": "桃仁",
+  "name_latin": "PERSICAE SEMEN",
+  "name_en": "Peach Kernel",
+  "source": "",
+  "herbs": [
+   "桃仁"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H195",
+  "kind": "herb",
+  "name_zh": "桑白皮",
+  "name_latin": "MORI CORTEX",
+  "name_en": "Mulberry Root Bark",
+  "source": "",
+  "herbs": [
+   "桑白皮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H196",
+  "kind": "herb",
+  "name_zh": "桑枝",
+  "name_latin": "MORI RAMULUS",
+  "name_en": "Mulberry Twig",
+  "source": "",
+  "herbs": [
+   "桑枝"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H197",
+  "kind": "herb",
+  "name_zh": "桑寄生",
+  "name_latin": "TAXILLI HERBA",
+  "name_en": "Chinese Taxillus Twig",
+  "source": "",
+  "herbs": [
+   "桑寄生"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H198",
+  "kind": "herb",
+  "name_zh": "桑葉",
+  "name_latin": "MORI FOLIUM",
+  "name_en": "Mulberry Leaf",
+  "source": "",
+  "herbs": [
+   "桑葉"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H199",
+  "kind": "herb",
+  "name_zh": "桑螵蛸",
+  "name_latin": "MANTIDIS OÖTHECA",
+  "name_en": "Mantis Egg-case",
+  "source": "",
+  "herbs": [
+   "桑螵蛸"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H200",
+  "kind": "herb",
+  "name_zh": "桔梗",
+  "name_latin": "PLATYCODONIS RADIX",
+  "name_en": "Platycodon Root",
+  "source": "",
+  "herbs": [
+   "桔梗"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H201",
+  "kind": "herb",
+  "name_zh": "浙貝母",
+  "name_latin": "FRITILLARIAE THUNBERGII BULBUS",
+  "name_en": "Thunberg Fritillary Bulb",
+  "source": "",
+  "herbs": [
+   "浙貝母"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H202",
+  "kind": "herb",
+  "name_zh": "浮小麥",
+  "name_latin": "TRITICI FRUCTUS LEVIS",
+  "name_en": "Blighted Wheat",
+  "source": "",
+  "herbs": [
+   "浮小麥"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H203",
+  "kind": "herb",
+  "name_zh": "浮萍",
+  "name_latin": "SPIRODELAE HERBA",
+  "name_en": "Spirodela Herb",
+  "source": "",
+  "herbs": [
+   "浮萍"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H204",
+  "kind": "herb",
+  "name_zh": "海金沙",
+  "name_latin": "LYGODII SPORA",
+  "name_en": "Lygodium Spore",
+  "source": "",
+  "herbs": [
+   "海金沙"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H205",
+  "kind": "herb",
+  "name_zh": "海螵蛸",
+  "name_latin": "SEPIAE ENDOCONCHA",
+  "name_en": "Cuttlebone",
+  "source": "",
+  "herbs": [
+   "海螵蛸"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H206",
+  "kind": "herb",
+  "name_zh": "烏梅",
+  "name_latin": "MUME FRUCTUS",
+  "name_en": "Dark Plum Fruit",
+  "source": "",
+  "herbs": [
+   "烏梅"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H207",
+  "kind": "herb",
+  "name_zh": "烏藥",
+  "name_latin": "LINDERAE RADIX",
+  "name_en": "Combined Spicebush Root",
+  "source": "",
+  "herbs": [
+   "烏藥"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H208",
+  "kind": "herb",
+  "name_zh": "益母草",
+  "name_latin": "LEONURI HERBA",
+  "name_en": "Motherwort Herb",
+  "source": "",
+  "herbs": [
+   "益母草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H209",
+  "kind": "herb",
+  "name_zh": "益智",
+  "name_latin": "ALPINIAE OXYPHYLLAE FRUCTUS",
+  "name_en": "Sharpleaf Galangal Fruit",
+  "source": "",
+  "herbs": [
+   "益智"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H210",
+  "kind": "herb",
+  "name_zh": "秦皮",
+  "name_latin": "FRAXINI CORTEX",
+  "name_en": "Ash Bark",
+  "source": "",
+  "herbs": [
+   "秦皮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H211",
+  "kind": "herb",
+  "name_zh": "秦艽",
+  "name_latin": "GENTIANAE MACROPHYLLAE RADIX",
+  "name_en": "Largeleaf Gentian Root",
+  "source": "",
+  "herbs": [
+   "秦艽"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H212",
+  "kind": "herb",
+  "name_zh": "粉萆薢",
+  "name_latin": "DIOSCOREAE HYPOGLAUCAE RHIZOMA",
+  "name_en": "Hypoglaucous Collett Yam Rhizome",
+  "source": "",
+  "herbs": [
+   "粉萆薢"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H213",
+  "kind": "herb",
+  "name_zh": "粉葛",
+  "name_latin": "PUERARIAE THOMSONII RADIX",
+  "name_en": "Edible Kudzuvine Root",
+  "source": "",
+  "herbs": [
+   "粉葛"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H214",
+  "kind": "herb",
+  "name_zh": "臭椿皮",
+  "name_latin": "AILANTHI CORTEX",
+  "name_en": "Ailanthus Bark",
+  "source": "",
+  "herbs": [
+   "臭椿皮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H215",
+  "kind": "herb",
+  "name_zh": "茜草",
+  "name_latin": "RUBIAE RADIX ET RHIZOMA",
+  "name_en": "India Madder Root and Rhizome",
+  "source": "",
+  "herbs": [
+   "茜草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H216",
+  "kind": "herb",
+  "name_zh": "茯苓",
+  "name_latin": "PORIA",
+  "name_en": "Indian Bread",
+  "source": "",
+  "herbs": [
+   "茯苓"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H217",
+  "kind": "herb",
+  "name_zh": "赤茯苓",
+  "name_latin": "RUBRA PORIA",
+  "name_en": "Red Poria",
+  "source": "",
+  "herbs": [
+   "赤茯苓"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H218",
+  "kind": "herb",
+  "name_zh": "茯苓皮",
+  "name_latin": "PORIAE CUTIS",
+  "name_en": "Tuckahoe Peel",
+  "source": "",
+  "herbs": [
+   "茯苓皮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H219",
+  "kind": "herb",
+  "name_zh": "茯神",
+  "name_latin": "PORIA CUM PINI RADIX",
+  "name_en": "Root Poria",
+  "source": "",
+  "herbs": [
+   "茯神"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H220",
+  "kind": "herb",
+  "name_zh": "茵陳",
+  "name_latin": "ARTEMISIAE HERBA",
+  "name_en": "Oriental Wormwood Herb",
+  "source": "",
+  "herbs": [
+   "茵陳"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H221",
+  "kind": "herb",
+  "name_zh": "草豆蔻",
+  "name_latin": "ALPINIAE KATSUMADAI SEMEN",
+  "name_en": "Katsumada Galangal Seed",
+  "source": "",
+  "herbs": [
+   "草豆蔻"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H222",
+  "kind": "herb",
+  "name_zh": "草果",
+  "name_latin": "TSAOKO FRUCTUS",
+  "name_en": "Tsaoko Amomum Fruit",
+  "source": "",
+  "herbs": [
+   "草果"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H223",
+  "kind": "herb",
+  "name_zh": "草烏",
+  "name_latin": "ACONITI KUSNEZOFFII RADIX",
+  "name_en": "Kusnezoff Monkshood Root",
+  "source": "",
+  "herbs": [
+   "草烏"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H224",
+  "kind": "herb",
+  "name_zh": "荊芥",
+  "name_latin": "NEPETAE HERBA",
+  "name_en": "Fineleaf Nepeta Herb",
+  "source": "",
+  "herbs": [
+   "荊芥"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H225",
+  "kind": "herb",
+  "name_zh": "荊芥穗",
+  "name_latin": "NEPETAE SPICA",
+  "name_en": "Fineleaf Nepeta Spike",
+  "source": "",
+  "herbs": [
+   "荊芥穗"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H226",
+  "kind": "herb",
+  "name_zh": "荔枝核",
+  "name_latin": "LITCHI SEMEN",
+  "name_en": "Lychee Seed",
+  "source": "",
+  "herbs": [
+   "荔枝核"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H227",
+  "kind": "herb",
+  "name_zh": "馬齒莧",
+  "name_latin": "PORTULACAE HERBA",
+  "name_en": "Parslane Herb",
+  "source": "",
+  "herbs": [
+   "馬齒莧"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H228",
+  "kind": "herb",
+  "name_zh": "馬錢子",
+  "name_latin": "STRYCHNI SEMEN",
+  "name_en": "Nux Vomica",
+  "source": "",
+  "herbs": [
+   "馬錢子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H229",
+  "kind": "herb",
+  "name_zh": "馬鞭草",
+  "name_latin": "VERBENAE HERBA",
+  "name_en": "European Verbena",
+  "source": "",
+  "herbs": [
+   "馬鞭草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H230",
+  "kind": "herb",
+  "name_zh": "骨碎補",
+  "name_latin": "DRYNARIAE RHIZOMA",
+  "name_en": "Fortune’s Drynaria Rhizome",
+  "source": "",
+  "herbs": [
+   "骨碎補"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H231",
+  "kind": "herb",
+  "name_zh": "高良薑",
+  "name_latin": "ALPINIAE OFFICINARUM RHIZOMA",
+  "name_en": "Galangal Rhizome",
+  "source": "",
+  "herbs": [
+   "高良薑"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H232",
+  "kind": "herb",
+  "name_zh": "側柏葉",
+  "name_latin": "PLATYCLADI CACUMEN",
+  "name_en": "Chinese Arborvitae Twig",
+  "source": "",
+  "herbs": [
+   "側柏葉"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H233",
+  "kind": "herb",
+  "name_zh": "商陸",
+  "name_latin": "PHYTOLACCAE RADIX",
+  "name_en": "Pokeberry Root",
+  "source": "",
+  "herbs": [
+   "商陸"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H234",
+  "kind": "herb",
+  "name_zh": "密蒙花",
+  "name_latin": "BUDDLEJAE FLOS",
+  "name_en": "Pale Butterflybush Flower",
+  "source": "",
+  "herbs": [
+   "密蒙花"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H235",
+  "kind": "herb",
+  "name_zh": "常山",
+  "name_latin": "DICHROAE RADIX",
+  "name_en": "Dichroa Root",
+  "source": "",
+  "herbs": [
+   "常山"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H236",
+  "kind": "herb",
+  "name_zh": "敗醬",
+  "name_latin": "PATRINIAE HERBA",
+  "name_en": "Patrinia Herb",
+  "source": "",
+  "herbs": [
+   "敗醬"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H237",
+  "kind": "herb",
+  "name_zh": "旋覆花",
+  "name_latin": "INULAE FLOS",
+  "name_en": "Inula Flower",
+  "source": "",
+  "herbs": [
+   "旋覆花"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H238",
+  "kind": "herb",
+  "name_zh": "梔子",
+  "name_latin": "GARDENIAE FRUCTUS",
+  "name_en": "Capejasmine Fruit",
+  "source": "",
+  "herbs": [
+   "梔子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H239",
+  "kind": "herb",
+  "name_zh": "淡竹葉",
+  "name_latin": "LOPHATHERI HERBA",
+  "name_en": "Common Lophatherum Herb",
+  "source": "",
+  "herbs": [
+   "淡竹葉"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H240",
+  "kind": "herb",
+  "name_zh": "淡豆豉",
+  "name_latin": "SOJAE SEMEN PRAEPARATUM",
+  "name_en": "Fermented Soybean",
+  "source": "",
+  "herbs": [
+   "淡豆豉"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H241",
+  "kind": "herb",
+  "name_zh": "淫羊藿",
+  "name_latin": "EPIMEDII FOLIUM",
+  "name_en": "Epimedium Leaf",
+  "source": "",
+  "herbs": [
+   "淫羊藿"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H242",
+  "kind": "herb",
+  "name_zh": "牽牛子",
+  "name_latin": "PHARBITIDIS SEMEN",
+  "name_en": "Pharbitis Seed",
+  "source": "",
+  "herbs": [
+   "牽牛子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H243",
+  "kind": "herb",
+  "name_zh": "細辛",
+  "name_latin": "ASARI RADIX",
+  "name_en": "Asarum Root",
+  "source": "",
+  "herbs": [
+   "細辛"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H244",
+  "kind": "herb",
+  "name_zh": "荷葉",
+  "name_latin": "NELUMBINIS FOLIUM",
+  "name_en": "Lotus Leaf",
+  "source": "",
+  "herbs": [
+   "荷葉"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H245",
+  "kind": "herb",
+  "name_zh": "莪朮",
+  "name_latin": "CURCUMAE RHIZOMA",
+  "name_en": "Zedoaria Rhizome",
+  "source": "",
+  "herbs": [
+   "莪朮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H246",
+  "kind": "herb",
+  "name_zh": "蛇床子",
+  "name_latin": "CNIDII FRUCTUS",
+  "name_en": "Common Cnidium Fruit",
+  "source": "",
+  "herbs": [
+   "蛇床子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H247",
+  "kind": "herb",
+  "name_zh": "貫眾",
+  "name_latin": "DRYOPTERIS CRASSIRHIZOMAE RHIZOMA",
+  "name_en": "Male Fern Rhizome",
+  "source": "",
+  "herbs": [
+   "貫眾"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H248",
+  "kind": "herb",
+  "name_zh": "通草",
+  "name_latin": "TETRAPANACIS MEDULLA",
+  "name_en": "Ricepaperplant Pith",
+  "source": "",
+  "herbs": [
+   "通草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H249",
+  "kind": "herb",
+  "name_zh": "連翹",
+  "name_latin": "FORSYTHIAE FRUCTUS",
+  "name_en": "Forsythia Fruit",
+  "source": "",
+  "herbs": [
+   "連翹"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H250",
+  "kind": "herb",
+  "name_zh": "陳皮",
+  "name_latin": "CITRI RETICULATAE PERICARPIUM VETUM",
+  "name_en": "Aged Tangerine Peel",
+  "source": "",
+  "herbs": [
+   "陳皮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H251",
+  "kind": "herb",
+  "name_zh": "橘皮",
+  "name_latin": "CITRI RETICULATAE PERICARPIUM",
+  "name_en": "Tangerine Peel",
+  "source": "",
+  "herbs": [
+   "橘皮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H252",
+  "kind": "herb",
+  "name_zh": "魚腥草",
+  "name_latin": "HOUTTUYNIAE HERBA",
+  "name_en": "Heartleaf Houttuynia Herb",
+  "source": "",
+  "herbs": [
+   "魚腥草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H253",
+  "kind": "herb",
+  "name_zh": "鹿銜草",
+  "name_latin": "PYROLAE HERBA",
+  "name_en": "Chinese Pyrola Herb",
+  "source": "",
+  "herbs": [
+   "鹿銜草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H254",
+  "kind": "herb",
+  "name_zh": "麥芽",
+  "name_latin": "HORDEI FRUCTUS GERMINATUS",
+  "name_en": "Germinated Barley",
+  "source": "",
+  "herbs": [
+   "麥芽"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H255",
+  "kind": "herb",
+  "name_zh": "麥門冬",
+  "name_latin": "OPHIOPOGONIS RADIX",
+  "name_en": "Dwarf Lilyturf Root",
+  "source": "",
+  "herbs": [
+   "麥門冬"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H256",
+  "kind": "herb",
+  "name_zh": "麻黃",
+  "name_latin": "EPHEDRAE HERBA",
+  "name_en": "Ephedra Herb",
+  "source": "",
+  "herbs": [
+   "麻黃"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H257",
+  "kind": "herb",
+  "name_zh": "楮實子",
+  "name_latin": "BROUSSONETIAE FRUCTUS",
+  "name_en": "Paper Mulberry Fruit",
+  "source": "",
+  "herbs": [
+   "楮實子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H258",
+  "kind": "herb",
+  "name_zh": "款冬花",
+  "name_latin": "FARFARAE FLOS",
+  "name_en": "Coltsfoot Flower Bud",
+  "source": "",
+  "herbs": [
+   "款冬花"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H259",
+  "kind": "herb",
+  "name_zh": "番紅花",
+  "name_latin": "CROCI STIGMA",
+  "name_en": "Saffron Stigma",
+  "source": "",
+  "herbs": [
+   "番紅花"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H260",
+  "kind": "herb",
+  "name_zh": "番瀉葉",
+  "name_latin": "SENNAE FOLIUM",
+  "name_en": "Senna Leaf",
+  "source": "",
+  "herbs": [
+   "番瀉葉"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H261",
+  "kind": "herb",
+  "name_zh": "筆仔草",
+  "name_latin": "POGONATHERI HERBA",
+  "name_en": "Golden Hair Grass",
+  "source": "",
+  "herbs": [
+   "筆仔草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H262",
+  "kind": "herb",
+  "name_zh": "紫花地丁",
+  "name_latin": "VIOLAE HERBA",
+  "name_en": "Philippine Violet Herb",
+  "source": "",
+  "herbs": [
+   "紫花地丁"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H263",
+  "kind": "herb",
+  "name_zh": "紫草",
+  "name_latin": "ARNEBIAE RADIX",
+  "name_en": "Arnebia Root",
+  "source": "",
+  "herbs": [
+   "紫草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H264",
+  "kind": "herb",
+  "name_zh": "紫菀",
+  "name_latin": "ASTERIS RADIX ET RHIZOMA",
+  "name_en": "Tatarian Aster Root and Rhizome",
+  "source": "",
+  "herbs": [
+   "紫菀"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H265",
+  "kind": "herb",
+  "name_zh": "紫蘇子",
+  "name_latin": "PERILLAE FRUCTUS",
+  "name_en": "Perilla Fruit",
+  "source": "",
+  "herbs": [
+   "紫蘇子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H266",
+  "kind": "herb",
+  "name_zh": "紫蘇梗",
+  "name_latin": "PERILLAE CAULIS",
+  "name_en": "Perilla Stem",
+  "source": "",
+  "herbs": [
+   "紫蘇梗"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H267",
+  "kind": "herb",
+  "name_zh": "紫蘇葉",
+  "name_latin": "PERILLAE FOLIUM",
+  "name_en": "Perilla Leaf",
+  "source": "",
+  "herbs": [
+   "紫蘇葉"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H268",
+  "kind": "herb",
+  "name_zh": "絡石藤",
+  "name_latin": "TRACHELOSPERMI CAULIS CUM FOLIUM",
+  "name_en": "Chinese Starjasmine Stem",
+  "source": "",
+  "herbs": [
+   "絡石藤"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H269",
+  "kind": "herb",
+  "name_zh": "菊花",
+  "name_latin": "CHRYSANTHEMI FLOS",
+  "name_en": "Chrysanthemum Flower",
+  "source": "",
+  "herbs": [
+   "菊花"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H270",
+  "kind": "herb",
+  "name_zh": "菟絲子",
+  "name_latin": "CUSCUTAE SEMEN",
+  "name_en": "Chinese Dodder Seed",
+  "source": "",
+  "herbs": [
+   "菟絲子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H271",
+  "kind": "herb",
+  "name_zh": "菥蓂",
+  "name_latin": "THLASPI HERBA",
+  "name_en": "Thlaspi Herb",
+  "source": "",
+  "herbs": [
+   "菥蓂"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H272",
+  "kind": "herb",
+  "name_zh": "萊菔子",
+  "name_latin": "RAPHANI SEMEN",
+  "name_en": "Radish Seed",
+  "source": "",
+  "herbs": [
+   "萊菔子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H273",
+  "kind": "herb",
+  "name_zh": "蛤蚧",
+  "name_latin": "GECKO",
+  "name_en": "Tokay",
+  "source": "",
+  "herbs": [
+   "蛤蚧"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H274",
+  "kind": "herb",
+  "name_zh": "蛤殼",
+  "name_latin": "MERETRICIS SEU CYCLINAE CONCHA",
+  "name_en": "Clam Shell",
+  "source": "",
+  "herbs": [
+   "蛤殼"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H275",
+  "kind": "herb",
+  "name_zh": "訶子",
+  "name_latin": "CHEBULAE FRUCTUS",
+  "name_en": "Medicine Terminalia Fruit",
+  "source": "",
+  "herbs": [
+   "訶子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H276",
+  "kind": "herb",
+  "name_zh": "黃芩",
+  "name_latin": "SCUTELLARIAE RADIX",
+  "name_en": "Scutellaria Root",
+  "source": "",
+  "herbs": [
+   "黃芩"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H277",
+  "kind": "herb",
+  "name_zh": "黃耆",
+  "name_latin": "ASTRAGALI RADIX",
+  "name_en": "Astragalus Root",
+  "source": "",
+  "herbs": [
+   "黃耆"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H278",
+  "kind": "herb",
+  "name_zh": "黃連",
+  "name_latin": "COPTIDIS RHIZOMA",
+  "name_en": "Coptis Rhizome",
+  "source": "",
+  "herbs": [
+   "黃連"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H279",
+  "kind": "herb",
+  "name_zh": "黃精",
+  "name_latin": "POLYGONATI RHIZOMA",
+  "name_en": "Solomonseal Rhizome",
+  "source": "",
+  "herbs": [
+   "黃精"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H280",
+  "kind": "herb",
+  "name_zh": "黃蘗",
+  "name_latin": "PHELLODENDRI CORTEX",
+  "name_en": "Phellodendron Bark",
+  "source": "",
+  "herbs": [
+   "黃蘗"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H281",
+  "kind": "herb",
+  "name_zh": "滑石",
+  "name_latin": "TALCUM KAOLINUM",
+  "name_en": "Talc",
+  "source": "",
+  "herbs": [
+   "滑石"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H282",
+  "kind": "herb",
+  "name_zh": "當歸",
+  "name_latin": "ANGELICAE SINENSIS RADIX",
+  "name_en": "Chinese Angelica Root",
+  "source": "",
+  "herbs": [
+   "當歸"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H283",
+  "kind": "herb",
+  "name_zh": "萹蓄",
+  "name_latin": "POLYGONI AVICULARIS HERBA",
+  "name_en": "Common Knotgrass Herb",
+  "source": "",
+  "herbs": [
+   "萹蓄"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H284",
+  "kind": "herb",
+  "name_zh": "葛花",
+  "name_latin": "PUERARIAE FLOS",
+  "name_en": "Lobed Kudzuvine Flower",
+  "source": "",
+  "herbs": [
+   "葛花"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H285",
+  "kind": "herb",
+  "name_zh": "葛根",
+  "name_latin": "PUERARIAE RADIX",
+  "name_en": "Pueraria Root",
+  "source": "",
+  "herbs": [
+   "葛根"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H286",
+  "kind": "herb",
+  "name_zh": "葶藶子",
+  "name_latin": "LEPIDII SEMEN DESCURAINIAE SEMEN",
+  "name_en": "Pepperweed Seed Tansymustard Seed",
+  "source": "",
+  "herbs": [
+   "葶藶子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H287",
+  "kind": "herb",
+  "name_zh": "補骨脂",
+  "name_latin": "CULLENIAE FRUCTUS",
+  "name_en": "Malaytea Scurfpea Fruit",
+  "source": "",
+  "herbs": [
+   "補骨脂"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H288",
+  "kind": "herb",
+  "name_zh": "路路通",
+  "name_latin": "LIQUIDAMBARIS FRUCTUS",
+  "name_en": "Beautiful Sweetgum Fruit",
+  "source": "",
+  "herbs": [
+   "路路通"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H289",
+  "kind": "herb",
+  "name_zh": "鉤藤",
+  "name_latin": "UNCARIAE RAMULUS CUM UNCIS",
+  "name_en": "Uncaria Stem with Hooks",
+  "source": "",
+  "herbs": [
+   "鉤藤"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H290",
+  "kind": "herb",
+  "name_zh": "槐角",
+  "name_latin": "SOPHORAE FRUCTUS",
+  "name_en": "Sophora Fruit",
+  "source": "",
+  "herbs": [
+   "槐角"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H291",
+  "kind": "herb",
+  "name_zh": "槐花",
+  "name_latin": "SOPHORAE FLOS ET FLOS IMMATURUS",
+  "name_en": "Pagodatree Flower and Flower Bud",
+  "source": "",
+  "herbs": [
+   "槐花"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H292",
+  "kind": "herb",
+  "name_zh": "槐米",
+  "name_latin": "SOPHORAE FLOS IMMATURUS",
+  "name_en": "Pagodatree Flower Bud",
+  "source": "",
+  "herbs": [
+   "槐米"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H293",
+  "kind": "herb",
+  "name_zh": "漏蘆",
+  "name_latin": "RHAPONTICI RADIX",
+  "name_en": "Uniflower Swisscentaury Root",
+  "source": "",
+  "herbs": [
+   "漏蘆"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H294",
+  "kind": "herb",
+  "name_zh": "蒲公英",
+  "name_latin": "TARAXACI HERBA",
+  "name_en": "Mongolian Dandelion Herb",
+  "source": "",
+  "herbs": [
+   "蒲公英"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H295",
+  "kind": "herb",
+  "name_zh": "蒲黃",
+  "name_latin": "TYPHAE POLLEN",
+  "name_en": "Cattail Pollen",
+  "source": "",
+  "herbs": [
+   "蒲黃"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H296",
+  "kind": "herb",
+  "name_zh": "蒺藜",
+  "name_latin": "TRIBULI FRUCTUS",
+  "name_en": "Tribulus Fruit",
+  "source": "",
+  "herbs": [
+   "蒺藜"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H297",
+  "kind": "herb",
+  "name_zh": "蒼朮",
+  "name_latin": "ATRACTYLODIS RHIZOMA",
+  "name_en": "Atractylodes Rhizome",
+  "source": "",
+  "herbs": [
+   "蒼朮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H298",
+  "kind": "herb",
+  "name_zh": "蒼耳子",
+  "name_latin": "XANTHII FRUCTUS",
+  "name_en": "Cocklebur Fruit",
+  "source": "",
+  "herbs": [
+   "蒼耳子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H299",
+  "kind": "herb",
+  "name_zh": "豨薟草",
+  "name_latin": "SIGESBECKIAE HERBA",
+  "name_en": "Glandularstalk St. Paulswort Herb",
+  "source": "",
+  "herbs": [
+   "豨薟草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H300",
+  "kind": "herb",
+  "name_zh": "遠志",
+  "name_latin": "POLYGALAE RADIX",
+  "name_en": "Polygala Root",
+  "source": "",
+  "herbs": [
+   "遠志"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H301",
+  "kind": "herb",
+  "name_zh": "酸棗仁",
+  "name_latin": "ZIZIPHI SPINOSAE SEMEN",
+  "name_en": "Jujube Seed",
+  "source": "",
+  "herbs": [
+   "酸棗仁"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H302",
+  "kind": "herb",
+  "name_zh": "鳳尾草",
+  "name_latin": "PTERIS MULTIFIDAE HERBA",
+  "name_en": "Chinese Brake Herb",
+  "source": "",
+  "herbs": [
+   "鳳尾草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H303",
+  "kind": "herb",
+  "name_zh": "劉寄奴",
+  "name_latin": "ARTEMISIAE LACTIFLORAE HERBA",
+  "name_en": "Diverse Wormwood Herb",
+  "source": "",
+  "herbs": [
+   "劉寄奴"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H304",
+  "kind": "herb",
+  "name_zh": "墨旱蓮",
+  "name_latin": "ECLIPTAE HERBA",
+  "name_en": "Yerbadetajo Herb",
+  "source": "",
+  "herbs": [
+   "墨旱蓮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H305",
+  "kind": "herb",
+  "name_zh": "廣金錢草",
+  "name_latin": "DESMODII STYRACIFOLII HERBA",
+  "name_en": "Snowbell-leaf Tickclover Herb",
+  "source": "",
+  "herbs": [
+   "廣金錢草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H306",
+  "kind": "herb",
+  "name_zh": "廣藿香",
+  "name_latin": "POGOSTEMONIS HERBA",
+  "name_en": "Cablin Patchouli Herb",
+  "source": "",
+  "herbs": [
+   "廣藿香"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H307",
+  "kind": "herb",
+  "name_zh": "槲寄生",
+  "name_latin": "VISCI HERBA",
+  "name_en": "Coloed Mistletoe Herb",
+  "source": "",
+  "herbs": [
+   "槲寄生"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H308",
+  "kind": "herb",
+  "name_zh": "穀芽",
+  "name_latin": "ORYZAE FRUCTUS GERMINATUS",
+  "name_en": "Rice-grain Sprout",
+  "source": "",
+  "herbs": [
+   "穀芽"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H309",
+  "kind": "herb",
+  "name_zh": "穀精草",
+  "name_latin": "ERIOCAULI FLOS",
+  "name_en": "Buerger Pipewort Flower",
+  "source": "",
+  "herbs": [
+   "穀精草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H310",
+  "kind": "herb",
+  "name_zh": "蓮子",
+  "name_latin": "NELUMBINIS SEMEN",
+  "name_en": "Lotus Seed",
+  "source": "",
+  "herbs": [
+   "蓮子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H311",
+  "kind": "herb",
+  "name_zh": "蓮子心",
+  "name_latin": "NELUMBINIS PLUMULA",
+  "name_en": "Lotus Plumule",
+  "source": "",
+  "herbs": [
+   "蓮子心"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H312",
+  "kind": "herb",
+  "name_zh": "蓮鬚",
+  "name_latin": "NELUMBINIS STAMEN",
+  "name_en": "Lotus Stamen",
+  "source": "",
+  "herbs": [
+   "蓮鬚"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H313",
+  "kind": "herb",
+  "name_zh": "蓽澄茄",
+  "name_latin": "LITSEAE FRUCTUS",
+  "name_en": "Mountain Spicy Tree Fruit",
+  "source": "",
+  "herbs": [
+   "蓽澄茄"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H314",
+  "kind": "herb",
+  "name_zh": "蔓荊子",
+  "name_latin": "VITICIS FRUCTUS",
+  "name_en": "Shrub Chastetree Fruit",
+  "source": "",
+  "herbs": [
+   "蔓荊子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H315",
+  "kind": "herb",
+  "name_zh": "豬牙皂",
+  "name_latin": "GLEDITSIAE FRUCTUS ABNORMALIS",
+  "name_en": "Chinese Honeylocust Abnormal Fruit",
+  "source": "",
+  "herbs": [
+   "豬牙皂"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H316",
+  "kind": "herb",
+  "name_zh": "豬苓",
+  "name_latin": "POLYPORUS",
+  "name_en": "Agaric",
+  "source": "",
+  "herbs": [
+   "豬苓"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H317",
+  "kind": "herb",
+  "name_zh": "橘紅",
+  "name_latin": "CITRI EXOCARPIUM RUBRUM",
+  "name_en": "Red Tangerine Exocarp",
+  "source": "",
+  "herbs": [
+   "橘紅"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H318",
+  "kind": "herb",
+  "name_zh": "澤瀉",
+  "name_latin": "ALISMATIS RHIZOMA",
+  "name_en": "Alisma Rhizome",
+  "source": "",
+  "herbs": [
+   "澤瀉"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H319",
+  "kind": "herb",
+  "name_zh": "澤蘭",
+  "name_latin": "LYCOPI HERBA",
+  "name_en": "Hiraute Shiny Bugleweed Herb",
+  "source": "",
+  "herbs": [
+   "澤蘭"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H320",
+  "kind": "herb",
+  "name_zh": "燈心草",
+  "name_latin": "JUNCI MEDULLA",
+  "name_en": "Rush Pith",
+  "source": "",
+  "herbs": [
+   "燈心草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H321",
+  "kind": "herb",
+  "name_zh": "獨活",
+  "name_latin": "ANGELICAE PUBESCENTIS RADIX",
+  "name_en": "Pubescent Angelica Root",
+  "source": "",
+  "herbs": [
+   "獨活"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H322",
+  "kind": "herb",
+  "name_zh": "積雪草",
+  "name_latin": "CENTELLAE HERBA",
+  "name_en": "Asiatic Pennywort Herb",
+  "source": "",
+  "herbs": [
+   "積雪草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H323",
+  "kind": "herb",
+  "name_zh": "蕎麥",
+  "name_latin": "FAGOPYRI SEMEN",
+  "name_en": "Buckwheat",
+  "source": "",
+  "herbs": [
+   "蕎麥"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H324",
+  "kind": "herb",
+  "name_zh": "蕤仁",
+  "name_latin": "PRINSEPIAE NUX",
+  "name_en": "Prinsepia Space Insert Nut",
+  "source": "",
+  "herbs": [
+   "蕤仁"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H325",
+  "kind": "herb",
+  "name_zh": "貓鬚草",
+  "name_latin": "ORTHOSIPHONIS HERBA",
+  "name_en": "Cat’s Mustache Herb",
+  "source": "",
+  "herbs": [
+   "貓鬚草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H326",
+  "kind": "herb",
+  "name_zh": "龍膽",
+  "name_latin": "GENTIANAE RADIX ET RHIZOMA",
+  "name_en": "Chinese Gentian Root and Rhizome",
+  "source": "",
+  "herbs": [
+   "龍膽"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H327",
+  "kind": "herb",
+  "name_zh": "薄荷",
+  "name_latin": "MENTHAE HERBA",
+  "name_en": "Peppermint Herb",
+  "source": "",
+  "herbs": [
+   "薄荷"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H328",
+  "kind": "herb",
+  "name_zh": "薏苡仁",
+  "name_latin": "COICIS SEMEN",
+  "name_en": "Coix Seed",
+  "source": "",
+  "herbs": [
+   "薏苡仁"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H329",
+  "kind": "herb",
+  "name_zh": "生薑",
+  "name_latin": "ZINGIBERIS RHIZOMA RECENS",
+  "name_en": "Fresh Ginger Rhizome",
+  "source": "",
+  "herbs": [
+   "生薑"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H330",
+  "kind": "herb",
+  "name_zh": "乾薑",
+  "name_latin": "ZINGIBERIS RHIZOMA",
+  "name_en": "Dry Ginger Rhizome",
+  "source": "",
+  "herbs": [
+   "乾薑"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H331",
+  "kind": "herb",
+  "name_zh": "薑黃",
+  "name_latin": "CURCUMAE LONGAE RHIZOMA",
+  "name_en": "Turmeric Rhizome",
+  "source": "",
+  "herbs": [
+   "薑黃"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H332",
+  "kind": "herb",
+  "name_zh": "薤白",
+  "name_latin": "ALLII MACROSTEMONIS BULBUS",
+  "name_en": "Longstamen Onion Bulb",
+  "source": "",
+  "herbs": [
+   "薤白"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H333",
+  "kind": "herb",
+  "name_zh": "檳榔",
+  "name_latin": "ARECAE SEMEN",
+  "name_en": "Areca Nut",
+  "source": "",
+  "herbs": [
+   "檳榔"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H334",
+  "kind": "herb",
+  "name_zh": "瞿麥",
+  "name_latin": "DIANTHI HERBA",
+  "name_en": "Pink Herb",
+  "source": "",
+  "herbs": [
+   "瞿麥"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H335",
+  "kind": "herb",
+  "name_zh": "藁本",
+  "name_latin": "LIGUSTICI RHIZOMA ET RADIX",
+  "name_en": "Ligusticum Rhizome and Root",
+  "source": "",
+  "herbs": [
+   "藁本"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H336",
+  "kind": "herb",
+  "name_zh": "蟬蛻",
+  "name_latin": "CICADAE PERIOSTRACUM",
+  "name_en": "Cicada Exuviae",
+  "source": "",
+  "herbs": [
+   "蟬蛻"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H337",
+  "kind": "herb",
+  "name_zh": "覆盆子",
+  "name_latin": "RUBI FRUCTUS IMMATURUS",
+  "name_en": "Palmleaf Raspberry Fruit",
+  "source": "",
+  "herbs": [
+   "覆盆子"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H338",
+  "kind": "herb",
+  "name_zh": "鎖陽",
+  "name_latin": "CYNOMORII HERBA",
+  "name_en": "Songaria Cynomorium Herb",
+  "source": "",
+  "herbs": [
+   "鎖陽"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H339",
+  "kind": "herb",
+  "name_zh": "雞內金",
+  "name_latin": "GALLI GIGERII CORNEUM ENDOTHELIUM",
+  "name_en": "Chicken’s Gizzard-membrane",
+  "source": "",
+  "herbs": [
+   "雞內金"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H340",
+  "kind": "herb",
+  "name_zh": "雞血藤",
+  "name_latin": "SPATHOLOBI CAULIS",
+  "name_en": "Suberect Spatholobus Stem",
+  "source": "",
+  "herbs": [
+   "雞血藤"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H341",
+  "kind": "herb",
+  "name_zh": "雞冠花",
+  "name_latin": "CELOSIAE CRISTATAE FLOS",
+  "name_en": "Cockscomb Flower",
+  "source": "",
+  "herbs": [
+   "雞冠花"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H342",
+  "kind": "herb",
+  "name_zh": "雞骨草",
+  "name_latin": "ABRI HERBA",
+  "name_en": "Abrus Herb",
+  "source": "",
+  "herbs": [
+   "雞骨草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H343",
+  "kind": "herb",
+  "name_zh": "鵝不食草",
+  "name_latin": "CENTIPEDAE HERBA",
+  "name_en": "Small Centipeda Herb",
+  "source": "",
+  "herbs": [
+   "鵝不食草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H344",
+  "kind": "herb",
+  "name_zh": "羅漢果",
+  "name_latin": "SIRAITIAE FRUCTUS",
+  "name_en": "Grosvenor Shiratia Fruit",
+  "source": "",
+  "herbs": [
+   "羅漢果"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H345",
+  "kind": "herb",
+  "name_zh": "藕節",
+  "name_latin": "NELUMBINIS RHIZOMATIS NODUS",
+  "name_en": "Lotus Rhizome Node",
+  "source": "",
+  "herbs": [
+   "藕節"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H346",
+  "kind": "herb",
+  "name_zh": "藿香",
+  "name_latin": "AGASTACHIS HERBA",
+  "name_en": "Agastache Herb",
+  "source": "",
+  "herbs": [
+   "藿香"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H347",
+  "kind": "herb",
+  "name_zh": "蘆根",
+  "name_latin": "PHRAGMITIS RHIZOMA",
+  "name_en": "Reed Rhizome",
+  "source": "",
+  "herbs": [
+   "蘆根"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H348",
+  "kind": "herb",
+  "name_zh": "蘆薈",
+  "name_latin": "ALOE",
+  "name_en": "Aloes",
+  "source": "",
+  "herbs": [
+   "蘆薈"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H349",
+  "kind": "herb",
+  "name_zh": "蘇木",
+  "name_latin": "SAPPAN LIGNUM",
+  "name_en": "Sappan Wood",
+  "source": "",
+  "herbs": [
+   "蘇木"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H350",
+  "kind": "herb",
+  "name_zh": "黨參",
+  "name_latin": "CODONOPSIS RADIX",
+  "name_en": "Pilose Asiabell Root",
+  "source": "",
+  "herbs": [
+   "黨參"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H351",
+  "kind": "herb",
+  "name_zh": "續斷",
+  "name_latin": "DIPSACI RADIX",
+  "name_en": "Dipsacus Root",
+  "source": "",
+  "herbs": [
+   "續斷"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H352",
+  "kind": "herb",
+  "name_zh": "鶴蝨",
+  "name_latin": "CARPESII FRUCTUS",
+  "name_en": "Common Carpesium Fruit",
+  "source": "",
+  "herbs": [
+   "鶴蝨"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H353",
+  "kind": "herb",
+  "name_zh": "蠶砂",
+  "name_latin": "BOMBYCIS FAECES",
+  "name_en": "Silkworm Dung",
+  "source": "",
+  "herbs": [
+   "蠶砂"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H354",
+  "kind": "herb",
+  "name_zh": "鼈甲",
+  "name_latin": "PELODISCCI CARAPAX",
+  "name_en": "Turtle Shell",
+  "source": "",
+  "herbs": [
+   "鼈甲"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H355",
+  "kind": "herb",
+  "name_zh": "鬱金",
+  "name_latin": "CURCUMAE RADIX",
+  "name_en": "Curcuma Root",
+  "source": "",
+  "herbs": [
+   "鬱金"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H356",
+  "kind": "herb",
+  "name_zh": "【飲片】白參",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】白參"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H357",
+  "kind": "herb",
+  "name_zh": "【飲片】紅參",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】紅參"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H358",
+  "kind": "herb",
+  "name_zh": "【飲片】三七",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】三七"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H359",
+  "kind": "herb",
+  "name_zh": "【飲片】大黃",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】大黃"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H360",
+  "kind": "herb",
+  "name_zh": "【飲片】川牛膝",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】川牛膝"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H361",
+  "kind": "herb",
+  "name_zh": "【飲片】川芎",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】川芎"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H362",
+  "kind": "herb",
+  "name_zh": "【飲片】丹參",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】丹參"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H363",
+  "kind": "herb",
+  "name_zh": "【飲片】天麻",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】天麻"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H364",
+  "kind": "herb",
+  "name_zh": "【飲片】牛膝",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】牛膝"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H365",
+  "kind": "herb",
+  "name_zh": "【飲片】甘草",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】甘草"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H366",
+  "kind": "herb",
+  "name_zh": "【飲片】白朮",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】白朮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H367",
+  "kind": "herb",
+  "name_zh": "【飲片】白芍",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】白芍"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H368",
+  "kind": "herb",
+  "name_zh": "【飲片】白芷",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】白芷"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H369",
+  "kind": "herb",
+  "name_zh": "【飲片】西洋參",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】西洋參"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H370",
+  "kind": "herb",
+  "name_zh": "【飲片】何首烏",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】何首烏"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H371",
+  "kind": "herb",
+  "name_zh": "【飲片】牡丹皮",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】牡丹皮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H372",
+  "kind": "herb",
+  "name_zh": "【飲片】延胡索",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】延胡索"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H373",
+  "kind": "herb",
+  "name_zh": "【飲片】桑寄生",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】桑寄生"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H374",
+  "kind": "herb",
+  "name_zh": "【飲片】桔梗",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】桔梗"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H375",
+  "kind": "herb",
+  "name_zh": "【飲片】茯苓",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】茯苓"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H376",
+  "kind": "herb",
+  "name_zh": "【飲片】黃芩",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】黃芩"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H377",
+  "kind": "herb",
+  "name_zh": "【飲片】黃耆",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】黃耆"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H378",
+  "kind": "herb",
+  "name_zh": "【飲片】黃連",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】黃連"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H379",
+  "kind": "herb",
+  "name_zh": "【飲片】黃蘖",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】黃蘖"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H380",
+  "kind": "herb",
+  "name_zh": "【飲片】當歸",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】當歸"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H381",
+  "kind": "herb",
+  "name_zh": "【飲片】葛根",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】葛根"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H382",
+  "kind": "herb",
+  "name_zh": "【飲片】蒼朮",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】蒼朮"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H383",
+  "kind": "herb",
+  "name_zh": "【飲片】獨活",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】獨活"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H384",
+  "kind": "herb",
+  "name_zh": "【飲片】乾薑",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】乾薑"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H385",
+  "kind": "herb",
+  "name_zh": "【飲片】黨參",
+  "name_latin": "",
+  "name_en": "",
+  "source": "",
+  "herbs": [
+   "【飲片】黨參"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H386",
+  "kind": "concentrated",
+  "name_zh": "大黃濃縮製劑（顆粒、散）",
+  "name_latin": "Rhubarb Concentrated Preparation(Granules, Powder)",
+  "name_en": "Da-Huang Concentrated Preparation(Granules, Powder)",
+  "source": "",
+  "herbs": [
+   "大黃濃縮製劑（顆粒、散）"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H387",
+  "kind": "concentrated",
+  "name_zh": "小青龍湯濃縮製劑（顆粒、散）",
+  "name_latin": "Siaocinglong Tang Concentrated Preparation (Granules, Powder)",
+  "name_en": "Xiaoqinglon Tang Concentrated Preparation (Granules, Powder)",
+  "source": "",
+  "herbs": [
+   "小青龍湯濃縮製劑（顆粒、散）"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H388",
+  "kind": "concentrated",
+  "name_zh": "加味逍遙散濃縮製劑（顆粒、散）",
+  "name_latin": "Jaiwei Xiaoyao San Concentrated Preparation (Granules, Powder)",
+  "name_en": "Jiawei Siaoyao San Concentrated Preparation (Granules, Powder)",
+  "source": "",
+  "herbs": [
+   "加味逍遙散濃縮製劑（顆粒、散）"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H389",
+  "kind": "concentrated",
+  "name_zh": "半夏瀉心湯濃縮製劑（顆粒、散）",
+  "name_latin": "Banxia Xiesin Tang Concentrated Preparation (Granules, Powder)",
+  "name_en": "Bansia Siexin Tang Concentrated Preparation (Granules, Powder)",
+  "source": "",
+  "herbs": [
+   "半夏瀉心湯濃縮製劑（顆粒、散）"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H390",
+  "kind": "concentrated",
+  "name_zh": "甘草濃縮製劑（顆粒、散）",
+  "name_latin": "Liquorice Root and Rhizome Concentrated Preparation (Granules, Powder)",
+  "name_en": "Gan-Cao Concentrated Preparation(Granules, Powder)",
+  "source": "",
+  "herbs": [
+   "甘草濃縮製劑（顆粒、散）"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H391",
+  "kind": "concentrated",
+  "name_zh": "延胡索濃縮製劑（顆粒、散）",
+  "name_latin": "Corydalis Tuber Concentrated Preparation (Granules, Powder)",
+  "name_en": "Yan Hu-Suo Concentrated Preparation (Granules, Powder)",
+  "source": "",
+  "herbs": [
+   "延胡索濃縮製劑（顆粒、散）"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H392",
+  "kind": "concentrated",
+  "name_zh": "黃芩濃縮製劑（顆粒、散）",
+  "name_latin": "Scutellaria Root Concentrated Preparation (Granules, Powder)",
+  "name_en": "Huang-Cin Concentrated Preparation (Granules, Powder)",
+  "source": "",
+  "herbs": [
+   "黃芩濃縮製劑（顆粒、散）"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H393",
+  "kind": "concentrated",
+  "name_zh": "葛根湯濃縮製劑（顆粒、散）",
+  "name_latin": "Ge Gen Tang Concentrated Preparation (Granules, Powder)",
+  "name_en": "Ge Gen Tang Concentrated Preparation (Granules, Powder)",
+  "source": "",
+  "herbs": [
+   "葛根湯濃縮製劑（顆粒、散）"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "H394",
+  "kind": "concentrated",
+  "name_zh": "葛根濃縮製劑（顆粒、散）",
+  "name_latin": "Puerariae Radix Concentrated Preparation (Granules, Powder)",
+  "name_en": "Ge-Gen Concentrated Preparation (Granules, Powder)",
+  "source": "",
+  "herbs": [
+   "葛根濃縮製劑（顆粒、散）"
+  ],
+  "formula_raw": "",
+  "effect": "",
+  "indication": ""
+ },
+ {
+  "code": "P001",
+  "kind": "formula",
+  "name_zh": "六味地黃丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "小兒藥證直訣",
+  "herbs": [
+   "熟地黃",
+   "山茱萸",
+   "山藥",
+   "澤瀉",
+   "牡丹皮",
+   "茯苓"
+  ],
+  "formula_raw": "熟地黃8、山茱萸4、山藥4、澤瀉3、牡丹皮3、茯苓3 (一日飲片量25公克)。傳統製劑加蜂蜜適量。",
+  "effect": "滋陰補腎。",
+  "indication": "肝腎不足、腰痛足痠、頭暈目眩、消渴、舌燥喉痛、足跟作痛。"
+ },
+ {
+  "code": "P002",
+  "kind": "formula",
+  "name_zh": "八味地黃丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫方集解",
+  "herbs": [
+   "茯苓",
+   "牡丹皮",
+   "澤瀉",
+   "熟地黃",
+   "山茱萸",
+   "山藥",
+   "炮附子",
+   "肉桂"
+  ],
+  "formula_raw": "茯苓3、牡丹皮3、澤瀉3、熟地黃8、山茱萸4、山藥4、炮附子1、肉桂1 (一日飲片量27公克)。傳統製劑加蜂蜜適量。",
+  "effect": "溫補腎陽。",
+  "indication": "腎陽虛弱、命門火衰、夜尿、自汗、耳鳴。"
+ },
+ {
+  "code": "P003",
+  "kind": "formula",
+  "name_zh": "知柏地黃丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫方集解",
+  "herbs": [
+   "熟地黃",
+   "山茱萸",
+   "茯苓",
+   "山藥",
+   "牡丹皮",
+   "澤瀉",
+   "知母",
+   "黃柏"
+  ],
+  "formula_raw": "熟地黃8、山茱萸4、茯苓3、山藥4、牡丹皮3、澤瀉3、知母2、黃柏2 (一日飲片量29公克)。傳統製劑加蜂蜜適量。",
+  "effect": "滋陰降火。",
+  "indication": "頭暈耳鳴、舌燥咽痛、腰脊痠痛。"
+ },
+ {
+  "code": "P004",
+  "kind": "formula",
+  "name_zh": "杞菊地黃丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "中國醫學大辭典",
+  "herbs": [
+   "枸杞子",
+   "甘菊花",
+   "熟地黃",
+   "山茱萸",
+   "山藥",
+   "茯苓",
+   "牡丹皮",
+   "澤瀉"
+  ],
+  "formula_raw": "枸杞子2、甘菊花2、熟地黃8、山茱萸4、山藥4、茯苓3、牡丹皮3、澤瀉3 (一日飲片量29公克)。傳統製劑加蜂蜜適量。",
+  "effect": "滋腎養肝。",
+  "indication": "肝腎陰虛、頭暈目眩、視物不清、眼睛澀痛、迎風流淚。"
+ },
+ {
+  "code": "P005",
+  "kind": "formula",
+  "name_zh": "參苓白朮散《散》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "白扁豆",
+   "人參",
+   "茯苓",
+   "白朮",
+   "甘草",
+   "山藥",
+   "蓮子肉",
+   "桔梗",
+   "薏苡仁",
+   "砂仁",
+   "大棗"
+  ],
+  "formula_raw": "白扁豆2.3、人參3、茯苓3、白朮3、甘草3、山藥3、蓮子肉1.5、桔梗1.5、薏苡仁1.5、砂仁1.5、大棗1.5 (一日飲片量24.8公克)。傳統製劑不加大棗。",
+  "effect": "補氣健脾、滲濕和胃。",
+  "indication": "脾胃虛弱、食少便溏。"
+ },
+ {
+  "code": "P006",
+  "kind": "formula",
+  "name_zh": "四君子湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫方集解",
+  "herbs": [
+   "人參",
+   "茯苓",
+   "炙甘草",
+   "白朮",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "人參6、茯苓6、炙甘草3、白朮6、生薑3、大棗2 (一日飲片量26公克)。",
+  "effect": "益氣健脾。",
+  "indication": "脾胃氣虛、消化不良、面色蒼白、食少便溏。"
+ },
+ {
+  "code": "P007",
+  "kind": "formula",
+  "name_zh": "四物湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "熟地黃",
+   "白芍",
+   "當歸",
+   "川芎"
+  ],
+  "formula_raw": "熟地黃7.5、白芍7.5、當歸7.5、川芎7.5 (一日飲片量30公克)。",
+  "effect": "補血調血。",
+  "indication": "氣血兩虛、疲勞體弱。"
+ },
+ {
+  "code": "P008",
+  "kind": "formula",
+  "name_zh": "補中益氣（丸）《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "脾胃論",
+  "herbs": [
+   "黃耆",
+   "人參",
+   "白朮",
+   "炙甘草",
+   "當歸",
+   "陳皮",
+   "升麻",
+   "柴胡",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "黃耆6、人參4、白朮2、炙甘草4、當歸2、陳皮2、升麻1、柴胡1、生薑3、大棗2 (一日飲片量27公克)。",
+  "effect": "補中益氣、調補脾胃。",
+  "indication": "勞倦、食少無味、脾胃虛弱、元氣不足。"
+ },
+ {
+  "code": "P009",
+  "kind": "formula",
+  "name_zh": "六君子湯（丸）《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "人參",
+   "白朮",
+   "茯苓",
+   "半夏",
+   "炙甘草",
+   "陳皮",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "人參5、白朮5、茯苓5、半夏5、炙甘草2.5、陳皮2.5、生薑2.5、大棗2.5 (一日飲片量30公克)。",
+  "effect": "補氣和中。",
+  "indication": "脾胃虛弱、食慾不振、消化不良、大便溏泄、氣虛有痰。"
+ },
+ {
+  "code": "P010",
+  "kind": "formula",
+  "name_zh": "歸脾湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "校註婦人良方",
+  "herbs": [
+   "人參",
+   "龍眼肉",
+   "黃耆",
+   "炙甘草",
+   "白朮",
+   "茯苓",
+   "木香",
+   "當歸",
+   "酸棗仁",
+   "遠志",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "人參3、龍眼肉3、黃耆3、炙甘草1.5、白朮3、茯苓3、木香1.5、當歸3、酸棗仁3、遠志3、生薑2、大棗2 (一日飲片量31公克)。",
+  "effect": "健脾寧心、益氣補血。",
+  "indication": "心脾兩虛、氣血不足、心悸、不眠、食少體倦、月經不調。"
+ },
+ {
+  "code": "P011",
+  "kind": "formula",
+  "name_zh": "養心湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "證治準繩",
+  "herbs": [
+   "炙黃耆",
+   "茯神",
+   "茯苓",
+   "半夏麴",
+   "當歸",
+   "川芎",
+   "遠志",
+   "酸棗仁",
+   "肉桂",
+   "柏子仁",
+   "五味子",
+   "人參",
+   "炙甘草",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "炙黃耆3、茯神3、茯苓3、半夏麴3、當歸3、川芎3、遠志2、酸棗仁2、肉桂2、柏子仁2、五味子2、人參2、炙甘草1、生薑1、大棗1 (一日飲片量33公克)。",
+  "effect": "補血養心、安神定志。",
+  "indication": "心血不足、心神不寧、失眠多夢。"
+ },
+ {
+  "code": "P012",
+  "kind": "formula",
+  "name_zh": "人參養榮（丸）《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "白芍",
+   "當歸",
+   "桂心",
+   "炙甘草",
+   "陳皮",
+   "人參",
+   "白朮",
+   "黃耆",
+   "熟地黃",
+   "五味子",
+   "茯苓",
+   "遠志",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "白芍4、當歸2.5、桂心2.5、炙甘草2.5、陳皮2.5、人參2.5、白朮2.5、黃耆2.5、熟地黃2、五味子2、茯苓2、遠志1.5、生薑3、大棗1 (一日飲片量33公克)。",
+  "effect": "補氣血。",
+  "indication": "脾肺氣虛、營血不足、食少無味、身倦肌瘦。"
+ },
+ {
+  "code": "P013",
+  "kind": "formula",
+  "name_zh": "百合固金（丸）《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫方集解",
+  "herbs": [
+   "生地黃",
+   "熟地黃",
+   "麥門冬",
+   "百合",
+   "白芍",
+   "當歸",
+   "貝母",
+   "甘草",
+   "玄參",
+   "桔梗"
+  ],
+  "formula_raw": "生地黃4、熟地黃6、麥門冬3、百合2、白芍2、當歸2、貝母2、甘草2、玄參1.6、桔梗1.6 (一日飲片量26.2公克)。傳統製劑加蜂蜜適量。",
+  "effect": "養陰清熱，潤肺化痰。",
+  "indication": "肺腎陰虧、虛火上炎、咽喉燥痛、咳嗽氣喘。"
+ },
+ {
+  "code": "P014",
+  "kind": "formula",
+  "name_zh": "紫菀湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫方集解",
+  "herbs": [
+   "紫菀",
+   "阿膠",
+   "知母",
+   "貝母",
+   "桔梗",
+   "人參",
+   "茯苓",
+   "炙甘草",
+   "五味子"
+  ],
+  "formula_raw": "紫菀4、阿膠4、知母4、貝母4、桔梗2、人參2、茯苓2、炙甘草2、五味子1.5 (一日飲片量25.5公克)。",
+  "effect": "補肺止咳，清熱化痰。",
+  "indication": "勞熱久咳、痰中帶血、肺痿、肺癰。"
+ },
+ {
+  "code": "P015",
+  "kind": "formula",
+  "name_zh": "秦艽鱉甲散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "衛生寶鑑",
+  "herbs": [
+   "鱉甲",
+   "秦艽",
+   "知母",
+   "當歸",
+   "柴胡",
+   "地骨皮",
+   "烏梅",
+   "青蒿"
+  ],
+  "formula_raw": "鱉甲5、秦艽2.5、知母2.5、當歸2.5、柴胡5、地骨皮5、烏梅2、青蒿1.5 (一日飲片量26公克)。",
+  "effect": "滋陰養血，清熱除蒸。",
+  "indication": "骨蒸潮熱，唇紅頰赤，盜汗咳嗽。"
+ },
+ {
+  "code": "P016",
+  "kind": "formula",
+  "name_zh": "益氣聰明湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫方集解",
+  "herbs": [
+   "黃耆",
+   "甘草",
+   "人參",
+   "升麻",
+   "葛根",
+   "蔓荊子",
+   "白芍",
+   "黃柏"
+  ],
+  "formula_raw": "黃耆6、甘草1.2、人參6、升麻1.8、葛根3.6、蔓荊子3.6、白芍2.4、黃柏2.4 (一日飲片量27公克)。",
+  "effect": "益氣升陽，散風清熱",
+  "indication": "風熱上擾，頭痛眩暈，內障初起，耳鳴耳聾。"
+ },
+ {
+  "code": "P017",
+  "kind": "formula",
+  "name_zh": "八珍湯（丸）《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "證治準繩",
+  "herbs": [
+   "當歸",
+   "川芎",
+   "白芍",
+   "熟地黃",
+   "人參",
+   "白朮",
+   "茯苓",
+   "炙甘草",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "當歸3、川芎3、白芍3、熟地黃3、人參3、白朮3、茯苓3、炙甘草1.5、生薑3、大棗2 (一日飲片量27.5公克)。",
+  "effect": "雙補氣血。",
+  "indication": "氣血兩虛、神疲肢倦、食慾不振、面黃肌瘦。"
+ },
+ {
+  "code": "P018",
+  "kind": "formula",
+  "name_zh": "濟生腎氣丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "濟生方",
+  "herbs": [
+   "熟地黃",
+   "山茱萸",
+   "山藥",
+   "茯苓",
+   "牡丹皮",
+   "澤瀉",
+   "炮附子",
+   "肉桂",
+   "牛膝",
+   "車前子"
+  ],
+  "formula_raw": "熟地黃8、山茱萸4、山藥4、茯苓6、牡丹皮3、澤瀉3、炮附子1、肉桂1、牛膝2、車前子2 (一日飲片量34公克)。傳統製劑加蜂蜜適量。",
+  "effect": "溫腎化氣，利水消腫。",
+  "indication": "腎陽不足、腰膝痠重、小便不利。"
+ },
+ {
+  "code": "P019",
+  "kind": "formula",
+  "name_zh": "十全大補（丸）《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "茯苓",
+   "白朮",
+   "人參",
+   "熟地黃",
+   "白芍",
+   "炙甘草",
+   "黃耆",
+   "肉桂",
+   "當歸",
+   "川芎",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "茯苓3、白朮3、人參3、熟地黃3、白芍3、炙甘草3、黃耆3、肉桂3、當歸3、川芎3、生薑3、大棗2 (一日飲片量35公克)。傳統製劑不加生薑、大棗；加蜂蜜適量。",
+  "effect": "補血益氣。",
+  "indication": "氣血兩虛、肢體倦怠。"
+ },
+ {
+  "code": "P020",
+  "kind": "formula",
+  "name_zh": "還少丹《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "楊氏家藏方",
+  "herbs": [
+   "山藥",
+   "牛膝",
+   "茯苓",
+   "山茱萸",
+   "楮實",
+   "杜仲",
+   "五味子",
+   "巴戟天",
+   "肉蓯蓉",
+   "遠志",
+   "小茴香",
+   "石菖蒲",
+   "熟地黃",
+   "枸杞子",
+   "大棗"
+  ],
+  "formula_raw": "山藥3、牛膝3、茯苓2、山茱萸2、楮實2、杜仲2、五味子2、巴戟天2、肉蓯蓉2、遠志2、小茴香2、石菖蒲1、熟地黃1、枸杞子1、大棗1 (一日飲片量28公克)。傳統製劑加蜂蜜適量。",
+  "effect": "補心腎脾胃虛損。",
+  "indication": "脾腎虛寒、血氣虛損、體虛盜汗、遺精尿濁。"
+ },
+ {
+  "code": "P021",
+  "kind": "formula",
+  "name_zh": "黃耆五物湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "刪補名醫方論",
+  "herbs": [
+   "黃耆",
+   "白芍",
+   "桂枝",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "黃耆10、白芍5、桂枝5、生薑5、大棗3 (一日飲片量28公克)。",
+  "effect": "補氣血、和營衛。",
+  "indication": "營衛氣血不足、風邪入侵、營血痺阻、肌肉麻木、手足無力。"
+ },
+ {
+  "code": "P022",
+  "kind": "formula",
+  "name_zh": "麻黃湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "麻黃",
+   "桂枝",
+   "炙甘草",
+   "杏仁"
+  ],
+  "formula_raw": "麻黃9、桂枝6、炙甘草3、杏仁5 (一日飲片量23公克)。",
+  "effect": "發汗解表，宣肺平喘。",
+  "indication": "外感風寒，發熱惡寒，頭痛身疼，無汗而喘。"
+ },
+ {
+  "code": "P023",
+  "kind": "formula",
+  "name_zh": "桂枝湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "桂枝",
+   "白芍",
+   "炙甘草",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "桂枝6、白芍6、炙甘草4、生薑6、大棗5 (一日飲片量27公克)。",
+  "effect": "解肌發表，調和營衛。",
+  "indication": "外感風寒，發熱頭痛，汗出惡風，鼻鳴乾嘔。"
+ },
+ {
+  "code": "P024",
+  "kind": "formula",
+  "name_zh": "小青龍湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "麻黃",
+   "白芍",
+   "五味子",
+   "乾薑",
+   "炙甘草",
+   "桂枝",
+   "半夏",
+   "細辛"
+  ],
+  "formula_raw": "麻黃4、白芍4、五味子1.5、乾薑4、炙甘草4、桂枝4、半夏4、細辛1.5 (一日飲片量27公克)。",
+  "effect": "解表散寒，溫肺化飲。",
+  "indication": "外感風寒，內停水飲，惡寒發熱，無汗，咳嗽氣喘，痰白清稀。"
+ },
+ {
+  "code": "P025",
+  "kind": "formula",
+  "name_zh": "葛根湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "葛根",
+   "麻黃",
+   "桂枝",
+   "白芍",
+   "炙甘草",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "葛根6、麻黃4.5、桂枝3、白芍3、炙甘草3、生薑4.5、大棗4 (一日飲片量28公克)。",
+  "effect": "發汗解肌。",
+  "indication": "外感風寒，頭痛發熱，惡寒無汗，項背強急。"
+ },
+ {
+  "code": "P026",
+  "kind": "formula",
+  "name_zh": "柴葛解肌湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "中國醫學大辭典",
+  "herbs": [
+   "柴胡",
+   "葛根",
+   "羌活",
+   "白芷",
+   "黃芩",
+   "白芍",
+   "桔梗",
+   "甘草",
+   "石膏",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "柴胡2.5、葛根2.5、羌活2.5、白芷2.5、黃芩2.5、白芍2.5、桔梗2.5、甘草1.5、石膏2.5、生薑2、大棗2 (一日飲片量25.5公克)。",
+  "effect": "解肌清熱。",
+  "indication": "頭痛發熱、心煩不眠、眶痛鼻燥、嗌乾耳聾、惡寒無汗。"
+ },
+ {
+  "code": "P027",
+  "kind": "formula",
+  "name_zh": "九味羌活湯《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "此事難知",
+  "herbs": [
+   "羌活",
+   "防風",
+   "蒼朮",
+   "細辛",
+   "川芎",
+   "白芷",
+   "生地黃",
+   "黃芩",
+   "甘草",
+   "生薑",
+   "蔥白"
+  ],
+  "formula_raw": "羌活3、防風3、蒼朮3、細辛1、川芎2、白芷2、生地黃2、黃芩2、甘草2、生薑3、蔥白3 (一日飲片量26公克)。",
+  "effect": "解表、祛濕、清裏熱。",
+  "indication": "外感風寒濕邪、頭痛、項強、四肢痠痛。"
+ },
+ {
+  "code": "P028",
+  "kind": "formula",
+  "name_zh": "人參敗毒散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "人參",
+   "茯苓",
+   "甘草",
+   "前胡",
+   "川芎",
+   "羌活",
+   "獨活",
+   "桔梗",
+   "柴胡",
+   "枳殼",
+   "生薑",
+   "薄荷"
+  ],
+  "formula_raw": "人參3、茯苓3、甘草1.5、前胡3、川芎3、羌活3、獨活3、桔梗3、柴胡3、枳殼3、生薑3、薄荷0.5 (一日飲片量32公克)。",
+  "effect": "益氣解表、散風祛濕。",
+  "indication": "外感風寒濕邪、惡寒發熱無汗、頭項強痛、肢體煩疼、胸膈痞悶、鼻塞聲重、咳嗽有痰。"
+ },
+ {
+  "code": "P029",
+  "kind": "formula",
+  "name_zh": "川芎茶調散《散》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "白芷",
+   "甘草",
+   "羌活",
+   "荊芥",
+   "川芎",
+   "細辛",
+   "防風",
+   "薄荷"
+  ],
+  "formula_raw": "白芷2、甘草2、羌活2、荊芥4、川芎4、細辛1、防風1.5、薄荷8 (一日飲片量24.5公克)。",
+  "effect": "祛風、止痛",
+  "indication": "偏正頭痛。"
+ },
+ {
+  "code": "P030",
+  "kind": "formula",
+  "name_zh": "荊防敗毒散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "奇效良方",
+  "herbs": [
+   "荊芥",
+   "防風",
+   "羌活",
+   "獨活",
+   "柴胡",
+   "前胡",
+   "川芎",
+   "枳殼",
+   "桔梗",
+   "茯苓",
+   "甘草",
+   "生薑",
+   "薄荷"
+  ],
+  "formula_raw": "荊芥3、防風3、羌活3、獨活3、柴胡3、前胡3、川芎3、枳殼3、桔梗3、茯苓3、甘草1.5、生薑3、薄荷1 (一日飲片量35.5公克)。",
+  "effect": "發汗解表、散風祛濕。",
+  "indication": "外感風寒濕邪、惡寒發熱、頭痛項強、肢體痠痛、腮腫。"
+ },
+ {
+  "code": "P031",
+  "kind": "formula",
+  "name_zh": "麻杏甘石湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "麻黃",
+   "杏仁",
+   "炙甘草",
+   "石膏"
+  ],
+  "formula_raw": "麻黃8、杏仁6、炙甘草4、石膏16 (一日飲片量34公克)。",
+  "effect": "辛涼宣泄、清肺平喘。",
+  "indication": "熱邪壅肺，發熱，咳嗽氣喘。"
+ },
+ {
+  "code": "P032",
+  "kind": "formula",
+  "name_zh": "麻杏薏甘湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "金匱要略",
+  "herbs": [
+   "麻黃",
+   "炙甘草",
+   "薏苡仁",
+   "杏仁"
+  ],
+  "formula_raw": "麻黃5、炙甘草10、薏苡仁5、杏仁4 (一日飲片量24公克)。",
+  "effect": "發汗解表，祛風濕。",
+  "indication": "風濕身痛發熱，日晡甚者。"
+ },
+ {
+  "code": "P033",
+  "kind": "formula",
+  "name_zh": "麻黃附子細湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "麻黃",
+   "炮附子",
+   "細辛"
+  ],
+  "formula_raw": "麻黃8、炮附子5、細辛8 (一日飲片量21公克)。",
+  "effect": "發散表邪、溫經散寒。",
+  "indication": "少陰病始得之，反發熱、脈沈者。"
+ },
+ {
+  "code": "P034",
+  "kind": "formula",
+  "name_zh": "大承氣湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "大黃",
+   "厚朴",
+   "枳實",
+   "芒硝"
+  ],
+  "formula_raw": "大黃8、厚朴16、枳實3、芒硝6 (一日飲片量33公克)。",
+  "effect": "峻下熱結、消痞除滿。",
+  "indication": "陽明實熱、腸中燥屎堅結、腹中痞滿。"
+ },
+ {
+  "code": "P035",
+  "kind": "formula",
+  "name_zh": "小陷胸湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "黃連",
+   "半夏",
+   "栝蔞實"
+  ],
+  "formula_raw": "黃連3、半夏12、栝蔞實12 (一日飲片量27公克)。",
+  "effect": "清熱化痰、寬胸散結。",
+  "indication": "痰熱塞胸、心下痞痛。"
+ },
+ {
+  "code": "P036",
+  "kind": "formula",
+  "name_zh": "五積散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "陳皮",
+   "枳殼",
+   "麻黃",
+   "白芍",
+   "川芎",
+   "當歸",
+   "炙甘草",
+   "茯苓",
+   "半夏",
+   "肉桂",
+   "白芷",
+   "厚朴",
+   "炮乾薑",
+   "桔梗",
+   "蒼朮",
+   "生薑"
+  ],
+  "formula_raw": "陳皮2、枳殼2、麻黃2、白芍1、川芎1、當歸1、炙甘草1、茯苓1、半夏1、肉桂1、白芷1、厚朴1.5、炮乾薑1.5、桔梗4、蒼朮8、生薑2 (一日飲片量31公克)。",
+  "effect": "解表散寒、溫中消積。",
+  "indication": "外感寒邪、內傷生冷、肢節疼痛。"
+ },
+ {
+  "code": "P037",
+  "kind": "formula",
+  "name_zh": "參蘇飲",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "陳皮",
+   "枳殼",
+   "桔梗",
+   "甘草",
+   "木香",
+   "半夏",
+   "紫蘇葉",
+   "葛根",
+   "前胡",
+   "人參",
+   "茯苓",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "陳皮2、枳殼2、桔梗2、甘草2、木香2、半夏3、紫蘇葉3、葛根3、前胡3、人參3、茯苓3、生薑2、大棗1 (一日飲片量31公克)。",
+  "effect": "益氣解表、宣肺化痰。",
+  "indication": "體虛感冒、惡寒發熱、頭痛鼻塞、咳嗽痰多。"
+ },
+ {
+  "code": "P038",
+  "kind": "formula",
+  "name_zh": "香蘇散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "陳皮",
+   "香附",
+   "紫蘇葉",
+   "炙甘草",
+   "生薑",
+   "蔥白"
+  ],
+  "formula_raw": "陳皮4、香附8、紫蘇葉8、炙甘草2、生薑3、蔥白3 (一日飲片量28公克)。",
+  "effect": "理氣和中，解表散寒。",
+  "indication": "外感風寒，內有氣滯，形寒身熱，頭痛無汗，胸脘痞悶。"
+ },
+ {
+  "code": "P039",
+  "kind": "formula",
+  "name_zh": "逍遙散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "炙甘草",
+   "白芍",
+   "當歸",
+   "茯苓",
+   "白朮",
+   "柴胡",
+   "煨薑",
+   "薄荷"
+  ],
+  "formula_raw": "炙甘草2、白芍4、當歸4、茯苓4、白朮4、柴胡4、煨薑4、薄荷2 (一日飲片量28公克)。",
+  "effect": "疏肝解鬱、養血健脾。",
+  "indication": "血虛勞倦、頭目昏重、月經不調、神疲食少、榮衛不和。"
+ },
+ {
+  "code": "P040",
+  "kind": "formula",
+  "name_zh": "加味逍遙散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "證治準繩",
+  "herbs": [
+   "當歸",
+   "白朮",
+   "白芍",
+   "柴胡",
+   "茯苓",
+   "炙甘草",
+   "牡丹皮",
+   "山梔子",
+   "煨薑",
+   "薄荷"
+  ],
+  "formula_raw": "當歸4、白朮4、白芍4、柴胡4、茯苓4、炙甘草2、牡丹皮2.5、山梔子2.5、煨薑4、薄荷2 (一日飲片量33公克)。",
+  "effect": "疏肝解鬱、清熱涼血。",
+  "indication": "肝鬱血虛發熱、月經不調、怔忡不寧。"
+ },
+ {
+  "code": "P041",
+  "kind": "formula",
+  "name_zh": "藿香正氣（丸）《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "大腹皮",
+   "茯苓",
+   "白芷",
+   "紫蘇葉",
+   "陳皮",
+   "桔梗",
+   "白朮",
+   "厚朴",
+   "半夏麴",
+   "炙甘草",
+   "藿香",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "大腹皮3、茯苓3、白芷3、紫蘇葉3、陳皮2、桔梗2、白朮2、厚朴2、半夏麴2、炙甘草1、藿香3、生薑3、大棗1 (一日飲片量30公克)。傳統丸劑用：研末，加薑、棗，煎湯泛丸，成品分三次，溫水送服。",
+  "effect": "解表化濕、理氣和中。",
+  "indication": "外感風寒、胃腸不適、消化不良、吐瀉、食滯、中暑、不服水土。"
+ },
+ {
+  "code": "P042",
+  "kind": "formula",
+  "name_zh": "烏藥順氣散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "麻黃",
+   "陳皮",
+   "烏藥",
+   "川芎",
+   "白殭蠶",
+   "枳殼",
+   "白芷",
+   "甘草",
+   "桔梗",
+   "乾薑",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "麻黃4、陳皮4、烏藥4、川芎2、白殭蠶2、枳殼2、白芷2、甘草2、桔梗2、乾薑1、生薑3、大棗1 (一日飲片量29公克)。",
+  "effect": "順氣宣散，祛風化痰。",
+  "indication": "遍身頑麻、骨節疼痛、步履艱難、語言蹇澀、口眼喎斜、筋脈拘攣。"
+ },
+ {
+  "code": "P043",
+  "kind": "formula",
+  "name_zh": "蘇子降氣湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "當歸",
+   "甘草",
+   "厚朴",
+   "前胡",
+   "陳皮",
+   "肉桂",
+   "蘇子",
+   "半夏",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "當歸2、甘草2、厚朴2、前胡2、陳皮3、肉桂3、蘇子5、半夏5、生薑2、大棗1 (一日飲片量27公克)。",
+  "effect": "降氣平喘，溫化痰濕。",
+  "indication": "痰涎壅盛，咳喘短氣，胸膈滿悶，咽喉不利。"
+ },
+ {
+  "code": "P044",
+  "kind": "formula",
+  "name_zh": "定喘湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "證治準繩",
+  "herbs": [
+   "白果仁",
+   "麻黃",
+   "款冬花",
+   "桑白皮",
+   "半夏",
+   "蘇子",
+   "杏仁",
+   "黃芩",
+   "甘草"
+  ],
+  "formula_raw": "白果仁6、麻黃4、款冬花4、桑白皮4、半夏4、蘇子2.5、杏仁2、黃芩2、甘草1.5 (一日飲片量30公克)。",
+  "effect": "宣肺平喘、清熱化痰。",
+  "indication": "熱症喘咳。"
+ },
+ {
+  "code": "P045",
+  "kind": "formula",
+  "name_zh": "越鞠丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "丹溪心法",
+  "herbs": [
+   "蒼朮",
+   "香附",
+   "川芎",
+   "神麴",
+   "炒梔子"
+  ],
+  "formula_raw": "蒼朮5、香附5、川芎5、神麴5、炒梔子5 (一日飲片量25公克)。",
+  "effect": "行氣解鬱",
+  "indication": "氣、血、痰、火、濕、食之鬱結所致的胸膈滿悶、脘腹脹痛、嘈雜吞酸、飲食不化、噯氣嘔吐。"
+ },
+ {
+  "code": "P046",
+  "kind": "formula",
+  "name_zh": "槐花散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "普濟本事方",
+  "herbs": [
+   "炒槐花",
+   "側柏葉",
+   "荊芥穗",
+   "枳殼"
+  ],
+  "formula_raw": "炒槐花6、側柏葉6、荊芥穗6、枳殼6 (一日飲片量24公克)。",
+  "effect": "清腸熱，疏風，行氣，止血。",
+  "indication": "腸風臟毒、痔漏便血。"
+ },
+ {
+  "code": "P047",
+  "kind": "formula",
+  "name_zh": "疏經活血湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "萬病回春",
+  "herbs": [
+   "甘草",
+   "當歸",
+   "白芍",
+   "生地黃",
+   "蒼朮",
+   "牛膝",
+   "陳皮",
+   "桃仁",
+   "威靈仙",
+   "川芎",
+   "防己",
+   "羌活",
+   "防風",
+   "白芷",
+   "龍膽",
+   "茯苓",
+   "生薑"
+  ],
+  "formula_raw": "甘草1、當歸2、白芍2.5、生地黃2、蒼朮2、牛膝2、陳皮2、桃仁2、威靈仙2、川芎1、防己1、羌活1、防風1、白芷1、龍膽1、茯苓1、生薑3 (一日飲片量27.5公克)。",
+  "effect": "疏經、活血、祛風",
+  "indication": "關節痛、腰痛、筋肉痛、遍身走痛。"
+ },
+ {
+  "code": "P048",
+  "kind": "formula",
+  "name_zh": "抵當湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "水蛭",
+   "蝱蟲",
+   "桃仁",
+   "酒大黃"
+  ],
+  "formula_raw": "水蛭10、蝱蟲1、桃仁2、酒大黃10 (一日飲片量23公克)。",
+  "effect": "下焦蓄血、少腹硬滿、經水不利",
+  "indication": "攻逐瘀血。"
+ },
+ {
+  "code": "P049",
+  "kind": "formula",
+  "name_zh": "血府逐瘀湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫林改錯",
+  "herbs": [
+   "當歸",
+   "生地黃",
+   "桃仁",
+   "紅花",
+   "枳殼",
+   "赤芍",
+   "柴胡",
+   "甘草",
+   "桔梗",
+   "川芎",
+   "牛膝"
+  ],
+  "formula_raw": "當歸4.5、生地黃4.5、桃仁6、紅花4.5、枳殼3、赤芍3、柴胡1.5、甘草1.5、桔梗2.3、川芎2.3、牛膝4.5 (一日飲片量37.6公克)。",
+  "effect": "活血化瘀，行氣止痛。",
+  "indication": "胸中血瘀，日晡潮熱、經年胸痛、頭痛、或呃逆不止、或內熱煩悶、心悸失眠。"
+ },
+ {
+  "code": "P050",
+  "kind": "formula",
+  "name_zh": "補陽還五湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫林改錯",
+  "herbs": [
+   "黃耆",
+   "歸尾",
+   "赤芍",
+   "地龍",
+   "川芎",
+   "桃仁",
+   "紅花"
+  ],
+  "formula_raw": "黃耆20、歸尾1、赤芍1、地龍0.5、川芎0.5、桃仁0.5、紅花0.5 (一日飲片量24公克)。",
+  "effect": "補氣、活血、通絡。",
+  "indication": "半身不遂、口眼歪斜、語言蹇澀、中風後遺症。"
+ },
+ {
+  "code": "P051",
+  "kind": "formula",
+  "name_zh": "正骨紫金丹《丹》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫宗金鑑",
+  "herbs": [
+   "丁香",
+   "木香",
+   "血竭",
+   "兒茶",
+   "熟大黃",
+   "紅花",
+   "當歸",
+   "蓮肉",
+   "茯苓",
+   "白芍",
+   "牡丹皮",
+   "甘草"
+  ],
+  "formula_raw": "丁香2、木香2、血竭2、兒茶2、熟大黃2、紅花2、當歸4、蓮肉4、茯苓4、白芍4、牡丹皮1、甘草0.6 (一日飲片量29.6公克)。傳統製劑加蜂蜜適量。",
+  "effect": "活血、祛瘀、止痛。",
+  "indication": "跌撲損傷、瘀血停滯。"
+ },
+ {
+  "code": "P052",
+  "kind": "formula",
+  "name_zh": "桃紅四物湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫宗金鑑",
+  "herbs": [
+   "桃仁",
+   "紅花",
+   "當歸",
+   "川芎",
+   "白芍",
+   "熟地黃"
+  ],
+  "formula_raw": "桃仁5、紅花2.5、當歸5、川芎2.5、白芍5、熟地黃5 (一日飲片量25公克)。",
+  "effect": "活血行瘀。",
+  "indication": "月經不調、痛經、經行不暢有血塊。"
+ },
+ {
+  "code": "P053",
+  "kind": "formula",
+  "name_zh": "消風散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "外科正宗",
+  "herbs": [
+   "當歸",
+   "生地黃",
+   "防風",
+   "蟬蛻",
+   "知母",
+   "苦參",
+   "胡麻",
+   "荊芥",
+   "蒼朮",
+   "牛蒡子",
+   "石膏",
+   "甘草",
+   "木通"
+  ],
+  "formula_raw": "當歸2.5、生地黃2.5、防風2.5、蟬蛻2.5、知母2.5、苦參2.5、胡麻2.5、荊芥2.5、蒼朮2.5、牛蒡子2.5、石膏2.5、甘草1.25、木通1.25 (一日飲片量30公克)。",
+  "effect": "潤血祛風、除濕清熱。",
+  "indication": "風濕浸淫血脈之瘡疥搔癢，及風熱隱症。"
+ },
+ {
+  "code": "P054",
+  "kind": "formula",
+  "name_zh": "上中下通用痛風丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "丹溪心法",
+  "herbs": [
+   "天南星",
+   "蒼朮",
+   "黃柏",
+   "川芎",
+   "白芷",
+   "神麴",
+   "桃仁",
+   "威靈仙",
+   "羌活",
+   "防己",
+   "桂枝",
+   "紅花",
+   "龍膽"
+  ],
+  "formula_raw": "天南星4、蒼朮4、黃柏4、川芎2、白芷2、神麴2、桃仁2、威靈仙1、羌活1、防己2、桂枝1、紅花0.5、龍膽2 (一日飲片量27.5公克)。",
+  "effect": "疏風祛痰、清熱燥濕、活血止痛。",
+  "indication": "感受風寒濕邪、挾痰熱、血脈不暢、骨節疼痛。"
+ },
+ {
+  "code": "P055",
+  "kind": "formula",
+  "name_zh": "蠲痹湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "中國醫學大辭典",
+  "herbs": [
+   "當歸",
+   "赤芍",
+   "黃耆",
+   "薑黃",
+   "羌活",
+   "炙甘草",
+   "生薑",
+   "大棗",
+   "防風"
+  ],
+  "formula_raw": "當歸4、赤芍4、黃耆4、薑黃4、羌活4、炙甘草1.5、生薑3、大棗2、防風4 (一日飲片量30.5公克)。",
+  "effect": "益氣和營，祛風除濕。",
+  "indication": "風痹，身體煩疼，項背拘急，肩肘痛重，舉動艱難，手足冷痹。"
+ },
+ {
+  "code": "P056",
+  "kind": "formula",
+  "name_zh": "三痹湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "婦人良方",
+  "herbs": [
+   "續斷",
+   "杜仲",
+   "防風",
+   "肉桂",
+   "細辛",
+   "人參",
+   "茯苓",
+   "當歸",
+   "白芍",
+   "黃耆",
+   "牛膝",
+   "甘草",
+   "秦艽",
+   "生地黃",
+   "川芎",
+   "獨活",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "續斷1.5、杜仲1.5、防風1.5、肉桂1.5、細辛1.5、人參1.5、茯苓1.5、當歸1.5、白芍1.5、黃耆1.5、牛膝1.5、甘草1.5、秦艽1.5、生地黃1.5、川芎1.5、獨活1.5、生薑1.5、大棗1.5 (一日飲片量27公克)。",
+  "effect": "補氣血、祛風濕、止痹痛。",
+  "indication": "氣血凝滯、手足拘攣、風寒濕痹。"
+ },
+ {
+  "code": "P057",
+  "kind": "formula",
+  "name_zh": "獨活寄生湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "千金方",
+  "herbs": [
+   "獨活",
+   "寄生",
+   "杜仲",
+   "牛膝",
+   "細辛",
+   "秦艽",
+   "茯苓",
+   "桂心",
+   "防風",
+   "川芎",
+   "人參",
+   "甘草",
+   "當歸",
+   "白芍",
+   "生地黃"
+  ],
+  "formula_raw": "獨活3、寄生2、杜仲2、牛膝2、細辛2、秦艽2、茯苓2、桂心2、防風2、川芎2、人參2、甘草2、當歸2、白芍2、生地黃2 (一日飲片量31公克)。",
+  "effect": "祛風濕、止痹痛、補氣血。",
+  "indication": "風寒濕痹、腰膝冷痛、腿足屈伸不利。"
+ },
+ {
+  "code": "P058",
+  "kind": "formula",
+  "name_zh": "鈎藤散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "普濟本事方",
+  "herbs": [
+   "鈎藤",
+   "陳皮",
+   "半夏",
+   "麥門冬",
+   "茯苓",
+   "茯神",
+   "人參",
+   "甘菊花",
+   "防風",
+   "炙甘草",
+   "石膏",
+   "生薑"
+  ],
+  "formula_raw": "鈎藤2、陳皮2、半夏2、麥門冬2、茯苓2、茯神2、人參2、甘菊花2、防風2、炙甘草1、石膏4、生薑3 (一日飲片量26公克)。",
+  "effect": "祛風痰、清頭目。",
+  "indication": "肝厥頭暈、嘔吐、昏眩。"
+ },
+ {
+  "code": "P059",
+  "kind": "formula",
+  "name_zh": "小續命湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫方集解",
+  "herbs": [
+   "麻黃",
+   "桂枝",
+   "甘草",
+   "生薑",
+   "人參",
+   "川芎",
+   "杏仁",
+   "炮附子",
+   "防己",
+   "白芍",
+   "黃芩",
+   "防風",
+   "大棗"
+  ],
+  "formula_raw": "麻黃2、桂枝2、甘草2、生薑6、人參2、川芎2、杏仁2、炮附子1、防己2、白芍2、黃芩2、防風3、大棗1 (一日飲片量29公克)。",
+  "effect": "補氣散寒、疏風祛濕。",
+  "indication": "中風、口眼歪斜、筋脈拘急、半身不遂、舌強不能語或神情悶亂。"
+ },
+ {
+  "code": "P060",
+  "kind": "formula",
+  "name_zh": "吳茱萸湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "吳茱萸",
+   "人參",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "吳茱萸7.5、人參4.5、生薑9、大棗6 (一日飲片量27公克)。",
+  "effect": "溫中補虛、降逆止嘔。",
+  "indication": "脾胃虛寒、食穀欲嘔、吐利煩躁、手足厥冷、乾嘔吐涎頭痛。"
+ },
+ {
+  "code": "P061",
+  "kind": "formula",
+  "name_zh": "附子理中（丸）《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "人參",
+   "炮附子",
+   "炮乾薑",
+   "炙甘草",
+   "白朮"
+  ],
+  "formula_raw": "人參5、炮附子5、炮乾薑5、炙甘草5、白朮5 (一日飲片量25公克) 。傳統製劑加蜂蜜適量。",
+  "effect": "溫中散寒。",
+  "indication": "脾胃虛寒、飲食不化、四肢厥冷、腸鳴腹痛、嘔吐泄瀉。"
+ },
+ {
+  "code": "P062",
+  "kind": "formula",
+  "name_zh": "清暑益氣湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "脾胃論",
+  "herbs": [
+   "黃耆",
+   "蒼朮",
+   "升麻",
+   "人參",
+   "澤瀉",
+   "神麴",
+   "陳皮",
+   "白朮",
+   "麥門冬",
+   "當歸",
+   "炙甘草",
+   "青皮",
+   "黃柏",
+   "葛根",
+   "五味子",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "黃耆3、蒼朮3、升麻3、人參1.5、澤瀉1.5、神麴1.5、陳皮1.5、白朮1.5、麥門冬1、當歸1、炙甘草1、青皮1、黃柏1、葛根1、五味子0.5、生薑3、大棗2 (一日飲片量28公克)。",
+  "effect": "清暑除濕、益氣生津。",
+  "indication": "長夏濕熱蒸炎、四肢困倦、身熱心煩、自汗口渴、便黃、溺赤、脈虛者。"
+ },
+ {
+  "code": "P063",
+  "kind": "formula",
+  "name_zh": "竹葉石膏湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "竹葉",
+   "石膏",
+   "半夏",
+   "人參",
+   "炙甘草",
+   "粳米",
+   "麥門冬"
+  ],
+  "formula_raw": "竹葉2、石膏16、半夏4、人參3、炙甘草2、粳米6、麥門冬6 (一日飲片量39公克)。",
+  "effect": "清熱生津、益氣和胃。",
+  "indication": "熱病後期、氣陰兩傷、乾嘔少氣口渴、脈虛大無力者。"
+ },
+ {
+  "code": "P064",
+  "kind": "formula",
+  "name_zh": "香薷飲",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "香薷",
+   "白扁豆",
+   "厚朴"
+  ],
+  "formula_raw": "香薷12、白扁豆6、厚朴6 (一日飲片量24公克)。",
+  "effect": "祛暑解表、化濕和中。",
+  "indication": "暑季乘涼飲冷、外感於寒、內傷於濕、身熱惡寒、頭重頭痛、腹痛吐瀉。"
+ },
+ {
+  "code": "P065",
+  "kind": "formula",
+  "name_zh": "五皮飲",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "五加皮",
+   "地骨皮",
+   "生薑皮",
+   "大腹皮",
+   "茯苓皮"
+  ],
+  "formula_raw": "五加皮6、地骨皮6、生薑皮6、大腹皮6、茯苓皮6 (一日飲片量30公克)。",
+  "effect": "健脾化濕、理氣消腫。",
+  "indication": "水病腫滿、上氣喘急、小便不利。"
+ },
+ {
+  "code": "P066",
+  "kind": "formula",
+  "name_zh": "八正散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "車前子",
+   "瞿麥",
+   "滑石",
+   "大黃",
+   "山梔子",
+   "萹蓄",
+   "木通",
+   "甘草梢",
+   "燈心草"
+  ],
+  "formula_raw": "車前子3、瞿麥3、滑石3、大黃3、山梔子3、萹蓄3、木通3、甘草梢3、燈心草2 (一日飲片量26公克)。",
+  "effect": "清熱瀉火、利水通淋。",
+  "indication": "膀胱結熱、小便濇痛。"
+ },
+ {
+  "code": "P067",
+  "kind": "formula",
+  "name_zh": "萆薢分清飲",
+  "name_latin": "",
+  "name_en": "",
+  "source": "丹溪心法",
+  "herbs": [
+   "益智仁",
+   "萆薢",
+   "石菖蒲",
+   "烏藥",
+   "甘草梢",
+   "茯苓"
+  ],
+  "formula_raw": "益智仁6、萆薢6、石菖蒲6、烏藥6、甘草梢3、茯苓3 (一日飲片量30公克)。",
+  "effect": "溫腎利濕、分清去濁。",
+  "indication": "膏淋白濁，小便頻數。"
+ },
+ {
+  "code": "P068",
+  "kind": "formula",
+  "name_zh": "茵陳五苓散《散》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "金匱要略",
+  "herbs": [
+   "茵陳蒿",
+   "澤瀉",
+   "豬苓",
+   "茯苓",
+   "白朮",
+   "桂枝"
+  ],
+  "formula_raw": "茵陳蒿16、澤瀉2.5、豬苓1.5、茯苓1.5、白朮1.5、桂枝1 (一日飲片量24公克)。",
+  "effect": "利濕清熱。",
+  "indication": "黃疸、小便不利、煩渴。"
+ },
+ {
+  "code": "P069",
+  "kind": "formula",
+  "name_zh": "五淋散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "赤茯苓",
+   "當歸",
+   "甘草",
+   "山梔子",
+   "赤芍",
+   "燈心草"
+  ],
+  "formula_raw": "赤茯苓6、當歸4.8、甘草4.8、山梔子4、赤芍4、燈心草2 (一日飲片量25.6公克)。",
+  "effect": "清熱利濕、通淋和血。",
+  "indication": "治五淋、腎氣不足、膀胱有熱、小便淋瀝不通、臍腹急痛。"
+ },
+ {
+  "code": "P070",
+  "kind": "formula",
+  "name_zh": "導水茯苓湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "奇效良方",
+  "herbs": [
+   "赤茯苓",
+   "麥門冬",
+   "澤瀉",
+   "白朮",
+   "桑白皮",
+   "紫蘇葉",
+   "檳榔",
+   "木瓜",
+   "大腹皮",
+   "陳皮",
+   "砂仁",
+   "木香",
+   "燈心草"
+  ],
+  "formula_raw": "赤茯苓4.8、麥門冬4.8、澤瀉4.8、白朮4.8、桑白皮1.6、紫蘇葉1.6、檳榔1.6、木瓜1.6、大腹皮1.2、陳皮1.2、砂仁1.2、木香1.2、燈心草1 (一日飲片量31.4公克)。",
+  "effect": "行氣化濕，利水消腫。",
+  "indication": "遍身水腫、喘滿倚息、不得平臥、飲食不下、小便秘澀。"
+ },
+ {
+  "code": "P071",
+  "kind": "formula",
+  "name_zh": "木防己湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "金匱要略",
+  "herbs": [
+   "木防己",
+   "石膏",
+   "桂枝",
+   "人參"
+  ],
+  "formula_raw": "木防己6、石膏12、桂枝4、人參8 (一日飲片量30公克)。",
+  "effect": "鎮虛逆、散支飲。",
+  "indication": "膈間支飲、喘滿、心下痞堅。"
+ },
+ {
+  "code": "P072",
+  "kind": "formula",
+  "name_zh": "雞鳴散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "證治準繩",
+  "herbs": [
+   "檳榔",
+   "陳皮",
+   "木瓜",
+   "吳茱萸",
+   "紫蘇葉",
+   "桔梗",
+   "生薑"
+  ],
+  "formula_raw": "檳榔8、陳皮5、木瓜5、吳茱萸1.5、紫蘇葉1.5、桔梗2.5、生薑2.5 (一日飲片量26公克)。",
+  "effect": "溫宣降濁。",
+  "indication": "腳氣疼痛、風濕流注、足痛筋脈浮腫。"
+ },
+ {
+  "code": "P073",
+  "kind": "formula",
+  "name_zh": "炙甘草湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "炙甘草",
+   "生薑",
+   "桂枝",
+   "人參",
+   "生地黃",
+   "阿膠",
+   "麥門冬",
+   "火麻仁",
+   "大棗"
+  ],
+  "formula_raw": "炙甘草3、生薑2.5、桂枝2.5、人參1.5、生地黃12、阿膠1.5、麥門冬2.5、火麻仁3、大棗3 (一日飲片量31.5公克)。",
+  "effect": "益氣補血、滋陰復脈。",
+  "indication": "氣虛血少脈結代、心動悸、氣短胸悶、虛勞肺痿。"
+ },
+ {
+  "code": "P074",
+  "kind": "formula",
+  "name_zh": "清燥救肺湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫宗金鑑",
+  "herbs": [
+   "桑葉",
+   "石膏",
+   "甘草",
+   "胡麻仁",
+   "阿膠",
+   "人參",
+   "麥門冬",
+   "杏仁",
+   "枇杷葉"
+  ],
+  "formula_raw": "桑葉7.5、石膏6.5、甘草2.5、胡麻仁2.5、阿膠2、人參2、麥門冬3、杏仁2、枇杷葉2 (一日飲片量30公克)。",
+  "effect": "清燥潤肺。",
+  "indication": "燥邪傷肺、頭痛身熱、乾咳無痰、氣逆而喘、口渴心煩。"
+ },
+ {
+  "code": "P075",
+  "kind": "formula",
+  "name_zh": "甘露飲",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "熟地黃",
+   "麥門冬",
+   "枳殼",
+   "炙甘草",
+   "茵陳蒿",
+   "枇杷葉",
+   "石斛",
+   "黃芩",
+   "生地黃",
+   "天門冬"
+  ],
+  "formula_raw": "熟地黃2.5、麥門冬2.5、枳殼2.5、炙甘草2.5、茵陳蒿2.5、枇杷葉2.5、石斛2.5、黃芩2.5、生地黃2.5、天門冬2.5 (一日飲片量25公克)。",
+  "effect": "滋陰、清濕熱。",
+  "indication": "胃經濕熱、口臭咽痛、口舌生瘡、牙宣齦腫。"
+ },
+ {
+  "code": "P076",
+  "kind": "formula",
+  "name_zh": "黃連解毒湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "外台秘要",
+  "herbs": [
+   "黃連",
+   "黃芩",
+   "黃柏",
+   "山梔子"
+  ],
+  "formula_raw": "黃連6、黃芩6、黃柏6、山梔子6 (一日飲片量24公克)。",
+  "effect": "清熱解毒。",
+  "indication": "口燥咽乾、小便赤澀、大便秘結、治一切火熱之症。"
+ },
+ {
+  "code": "P077",
+  "kind": "formula",
+  "name_zh": "白虎湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "知母",
+   "石膏",
+   "炙甘草",
+   "粳米"
+  ],
+  "formula_raw": "知母6、石膏16、炙甘草2、粳米8 (一日飲片量32公克)。",
+  "effect": "清熱生津。",
+  "indication": "陽明經証或溫病氣分大熱，症見口大渴、身大熱、脈洪大、汗大出者。"
+ },
+ {
+  "code": "P078",
+  "kind": "formula",
+  "name_zh": "涼膈散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "大黃",
+   "芒硝",
+   "甘草",
+   "連翹",
+   "山梔子",
+   "黃芩",
+   "薄荷",
+   "竹葉"
+  ],
+  "formula_raw": "大黃4、芒硝4、甘草4、連翹8、山梔子2、黃芩2、薄荷2、竹葉2 (一日飲片量28公克)。",
+  "effect": "清熱解毒、瀉火通便。",
+  "indication": "臟腑積熱、煩躁多渴、口舌生瘡、咽喉腫痛、便秘尿赤。"
+ },
+ {
+  "code": "P079",
+  "kind": "formula",
+  "name_zh": "龍膽瀉肝（丸）《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "李東垣方",
+  "herbs": [
+   "龍膽",
+   "黃芩",
+   "山梔子",
+   "澤瀉",
+   "木通",
+   "車前子",
+   "當歸",
+   "生地黃",
+   "柴胡",
+   "甘草"
+  ],
+  "formula_raw": "龍膽4、黃芩2、山梔子2、澤瀉4、木通2、車前子2、當歸2、生地黃2、柴胡4、甘草2 (一日飲片量26公克)。",
+  "effect": "瀉肝火、利濕熱。",
+  "indication": "臟腑積熱、耳鳴耳聾、耳腫疼痛、小便澀滯。"
+ },
+ {
+  "code": "P080",
+  "kind": "formula",
+  "name_zh": "清胃散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "蘭室秘藏",
+  "herbs": [
+   "當歸",
+   "黃連",
+   "生地黃",
+   "牡丹皮",
+   "升麻"
+  ],
+  "formula_raw": "當歸3.6、黃連3.6、生地黃3.6、牡丹皮6、升麻12 (一日飲片量28.8公克)。",
+  "effect": "清胃火、涼血熱。",
+  "indication": "胃火所致的牙痛、面熱、唇口頰腮腫痛生瘡、牙宣出血、牙齦潰爛。"
+ },
+ {
+  "code": "P081",
+  "kind": "formula",
+  "name_zh": "甘露消毒丹《丹》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫效秘傳",
+  "herbs": [
+   "滑石",
+   "黃芩",
+   "茵陳蒿",
+   "藿香",
+   "連翹",
+   "石菖蒲",
+   "白豆蔻",
+   "薄荷",
+   "木通",
+   "射干",
+   "川貝母"
+  ],
+  "formula_raw": "滑石6、黃芩4、茵陳蒿4.4、藿香1.6、連翹1.6、石菖蒲2.4、白豆蔻1.6、薄荷1.6、木通2、射干1.6、川貝母2 (一日飲片量28.8公克)。",
+  "effect": "化濁利濕、清熱解毒。",
+  "indication": "暑濕時疫、發熱倦怠、胸悶腹脹、咽腫口渴、溺赤便閉。"
+ },
+ {
+  "code": "P082",
+  "kind": "formula",
+  "name_zh": "清心蓮子飲",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "石蓮肉",
+   "茯苓",
+   "黃耆",
+   "人參",
+   "麥門冬",
+   "地骨皮",
+   "黃芩",
+   "炙甘草",
+   "車前子"
+  ],
+  "formula_raw": "石蓮肉4.5、茯苓4.5、黃耆4.5、人參4.5、麥門冬3、地骨皮3、黃芩3、炙甘草3、車前子3 (一日飲片量33公克)。",
+  "effect": "清心火、益氣養陰。",
+  "indication": "上盛下虛、心火上炎、口苦咽乾、膀胱濕熱、遺精淋濁。"
+ },
+ {
+  "code": "P083",
+  "kind": "formula",
+  "name_zh": "導赤散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "小兒藥證直訣",
+  "herbs": [
+   "生地黃",
+   "甘草",
+   "木通",
+   "竹葉"
+  ],
+  "formula_raw": "生地黃6、甘草6、木通6、竹葉6 (一日飲片量24公克)。",
+  "effect": "清心火、利小便",
+  "indication": "口糜舌瘡、小便赤澀、熱淋不利。"
+ },
+ {
+  "code": "P084",
+  "kind": "formula",
+  "name_zh": "玉女煎",
+  "name_latin": "",
+  "name_en": "",
+  "source": "景岳全書",
+  "herbs": [
+   "生石膏",
+   "熟地黃",
+   "麥門冬",
+   "知母",
+   "牛膝"
+  ],
+  "formula_raw": "生石膏10、熟地黃10、麥門冬5、知母4、牛膝4 (一日飲片量33公克)。",
+  "effect": "清胃滋陰。",
+  "indication": "陰虛胃熱、煩熱口渴、頭痛牙痛。"
+ },
+ {
+  "code": "P085",
+  "kind": "formula",
+  "name_zh": "荊芥連翹湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "沈氏尊生書",
+  "herbs": [
+   "當歸",
+   "白芍",
+   "川芎",
+   "黃芩",
+   "山梔子",
+   "連翹",
+   "荊芥",
+   "防風",
+   "枳殼",
+   "甘草",
+   "白芷",
+   "桔梗",
+   "柴胡"
+  ],
+  "formula_raw": "當歸2、白芍2、川芎2、黃芩2、山梔子2、連翹2、荊芥2、防風2、枳殼2、甘草1.5、白芷2、桔梗2、柴胡2 (一日飲片量25.5公克)。",
+  "effect": "清熱解毒。",
+  "indication": "治風熱耳腫疼痛。"
+ },
+ {
+  "code": "P086",
+  "kind": "formula",
+  "name_zh": "滋陰降火湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "沈氏尊生書",
+  "herbs": [
+   "白芍",
+   "當歸",
+   "熟地黃",
+   "白朮",
+   "天門冬",
+   "麥門冬",
+   "生地黃",
+   "陳皮",
+   "知母",
+   "黃柏",
+   "炙甘草",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "白芍2.5、當歸2.5、熟地黃2、白朮2、天門冬2、麥門冬2、生地黃1.5、陳皮1.5、知母1、黃柏1、炙甘草1、生薑3、大棗2 (一日飲片量24公克)。",
+  "effect": "滋陰降火。",
+  "indication": "陰虛發熱，痰咳喘急，盜汗口乾。"
+ },
+ {
+  "code": "P087",
+  "kind": "formula",
+  "name_zh": "當歸龍薈丸去麝香《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "丹溪心法",
+  "herbs": [
+   "當歸",
+   "龍膽",
+   "蘆薈",
+   "山梔子",
+   "黃連",
+   "黃芩",
+   "黃柏",
+   "大黃",
+   "木香",
+   "青黛",
+   "麝香"
+  ],
+  "formula_raw": "當歸3、龍膽3、蘆薈1.5、山梔子3、黃連3、黃芩3、黃柏3、大黃1.5、木香0.75、青黛1.5、麝香0.15 (一日飲片量23.25公克)。",
+  "effect": "瀉肝膽實火、通便。",
+  "indication": "肝膽火旺、驚悸不寧、大便秘結。"
+ },
+ {
+  "code": "P088",
+  "kind": "formula",
+  "name_zh": "辛夷清肺湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "外科正宗",
+  "herbs": [
+   "辛夷",
+   "黃芩",
+   "山梔子",
+   "麥門冬",
+   "百合",
+   "石膏",
+   "知母",
+   "甘草",
+   "枇杷葉",
+   "升麻"
+  ],
+  "formula_raw": "辛夷2、黃芩3、山梔子3、麥門冬3、百合3、石膏3、知母3、甘草1.5、枇杷葉3、升麻1 (一日飲片量25.5公克)。",
+  "effect": "清肺熱。",
+  "indication": "鼻塞、鼻生瘜肉。"
+ },
+ {
+  "code": "P089",
+  "kind": "formula",
+  "name_zh": "華蓋散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "麻黃",
+   "蘇子",
+   "桑白皮",
+   "杏仁",
+   "赤茯苓",
+   "陳皮",
+   "甘草"
+  ],
+  "formula_raw": "麻黃4、蘇子4、桑白皮4、杏仁4、赤茯苓4、陳皮4、甘草2 (一日飲片量26公克)。",
+  "effect": "宣肺平喘、止咳化痰。",
+  "indication": "肺感寒邪、咳嗽上氣。胸膈煩滿、頭昏目眩。"
+ },
+ {
+  "code": "P090",
+  "kind": "formula",
+  "name_zh": "清肺湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "增補萬病回春",
+  "herbs": [
+   "甘草",
+   "黃芩",
+   "桔梗",
+   "茯苓",
+   "陳皮",
+   "當歸",
+   "貝母",
+   "桑白皮",
+   "天門冬",
+   "山梔子",
+   "杏仁",
+   "麥門冬",
+   "五味子",
+   "生薑",
+   "大棗",
+   "竹茹"
+  ],
+  "formula_raw": "甘草0.6、黃芩3、桔梗2、茯苓2、陳皮2、當歸2、貝母2、桑白皮2、天門冬1.5、山梔子1.5、杏仁1.5、麥門冬1.5、五味子0.4、生薑3、大棗2、竹茹2 (一日飲片量29公克)。",
+  "effect": "清肺、化痰、止咳",
+  "indication": "咳嗽、上焦痰盛"
+ },
+ {
+  "code": "P091",
+  "kind": "formula",
+  "name_zh": "止嗽散《散》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫學心悟",
+  "herbs": [
+   "桔梗",
+   "荊芥",
+   "紫菀",
+   "百部",
+   "白前",
+   "甘草",
+   "陳皮"
+  ],
+  "formula_raw": "桔梗5、荊芥5、紫菀5、百部5、白前5、甘草2、陳皮2.5 (一日飲片量29.5公克)。",
+  "effect": "疏風解表、化痰止咳",
+  "indication": "外感咳嗽，喀痰不暢"
+ },
+ {
+  "code": "P092",
+  "kind": "formula",
+  "name_zh": "金沸草散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "荊芥",
+   "前胡",
+   "麻黃",
+   "旋覆花",
+   "甘草",
+   "半夏",
+   "赤芍",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "荊芥6、前胡4.5、麻黃4.5、旋覆花4.5、甘草1.5、半夏1.5、赤芍1.5、生薑3、大棗1 (一日飲片量28公克)。",
+  "effect": "解表散寒、治風化痰",
+  "indication": "肺感風寒、咳嗽多痰"
+ },
+ {
+  "code": "P093",
+  "kind": "formula",
+  "name_zh": "香砂六君子湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "刪補名醫方論",
+  "herbs": [
+   "人參",
+   "白朮",
+   "茯苓",
+   "甘草",
+   "陳皮",
+   "半夏",
+   "砂仁",
+   "木香",
+   "生薑"
+  ],
+  "formula_raw": "人參2.5、白朮5、茯苓5、甘草2、陳皮2、半夏2.5、砂仁2、木香2、生薑5 (一日飲片量28公克)。",
+  "effect": "健脾養胃",
+  "indication": "氣虛痰飲、嘔吐痞悶、腹脹噯氣"
+ },
+ {
+  "code": "P094",
+  "kind": "formula",
+  "name_zh": "治濁固本丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫學正傳",
+  "herbs": [
+   "蓮鬚",
+   "黃連",
+   "茯苓",
+   "砂仁",
+   "益智仁",
+   "半夏",
+   "黃柏",
+   "炙甘草",
+   "豬苓"
+  ],
+  "formula_raw": "蓮鬚4、黃連4、茯苓2、砂仁2、益智仁2、半夏2、黃柏2、炙甘草6、豬苓5 (一日飲片量29公克)。",
+  "effect": "清熱、利濕",
+  "indication": "濕熱下注、頻尿白濁"
+ },
+ {
+  "code": "P095",
+  "kind": "formula",
+  "name_zh": "當歸六黃湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "蘭室秘藏",
+  "herbs": [
+   "當歸",
+   "生地黃",
+   "熟地黃",
+   "黃柏",
+   "黃芩",
+   "黃連",
+   "黃耆"
+  ],
+  "formula_raw": "當歸3.5、生地黃3.5、熟地黃3.5、黃柏3.5、黃芩3.5、黃連3.5、黃耆7 (一日飲片量28公克)。",
+  "effect": "滋陰清熱、固表止汗",
+  "indication": "陰虛有火、盜汗、發熱"
+ },
+ {
+  "code": "P096",
+  "kind": "formula",
+  "name_zh": "散腫潰堅湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "蘭室秘藏",
+  "herbs": [
+   "黃芩",
+   "龍膽",
+   "栝樓根",
+   "黃柏",
+   "知母",
+   "桔梗",
+   "昆布",
+   "柴胡",
+   "炙甘草",
+   "荊三稜",
+   "莪朮",
+   "連翹",
+   "葛根",
+   "白芍",
+   "當歸尾",
+   "黃連",
+   "升麻"
+  ],
+  "formula_raw": "黃芩4、龍膽2.5、栝樓根2.5、黃柏4、知母2.5、桔梗2.5、昆布2.5、柴胡2.5、炙甘草1.5、荊三稜1.5、莪朮1.5、連翹1.5、葛根1.5、白芍1、當歸尾1、黃連1、升麻0.5 (一日飲片量34公克)。",
+  "effect": "清熱解毒、破結潰堅",
+  "indication": "瘰癧、馬刀"
+ },
+ {
+  "code": "P097",
+  "kind": "formula",
+  "name_zh": "排膿散《散》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "金匱要略",
+  "herbs": [
+   "枳實",
+   "白芍",
+   "桔梗"
+  ],
+  "formula_raw": "枳實18、白芍6、桔梗2 (一日飲片量26公克)。",
+  "effect": "排膿止痛",
+  "indication": "內癰膿從便出"
+ },
+ {
+  "code": "P098",
+  "kind": "formula",
+  "name_zh": "如意金黃散（只用於傳統製劑）",
+  "name_latin": "",
+  "name_en": "",
+  "source": "外科正宗",
+  "herbs": [
+   "栝樓根",
+   "黃柏",
+   "大黃",
+   "薑黃",
+   "白芷",
+   "厚朴",
+   "陳皮",
+   "甘草",
+   "蒼朮",
+   "生天南星"
+  ],
+  "formula_raw": "栝樓根25、黃柏12.5、大黃12.5、薑黃12.5、白芷12.5、厚朴5、陳皮5、甘草5、蒼朮5、生天南星5 (適量調敷)。",
+  "effect": "消腫、解毒、止痛",
+  "indication": "癰瘍、疔腫、乳癰 、丹毒、漆瘡、燙傷、跌撲損傷"
+ },
+ {
+  "code": "P099",
+  "kind": "formula",
+  "name_zh": "完帶湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傅青主女科",
+  "herbs": [
+   "白朮",
+   "山藥",
+   "人參",
+   "白芍",
+   "車前子",
+   "蒼朮",
+   "甘草",
+   "陳皮",
+   "荊芥炭",
+   "柴胡"
+  ],
+  "formula_raw": "白朮10、山藥10、人參2、白芍5、車前子3、蒼朮3、甘草1、陳皮0.5、荊芥炭0.5、柴胡0.6 (一日飲片量35.6克)。",
+  "effect": "健脾燥濕，疏肝理氣",
+  "indication": "白帶"
+ },
+ {
+  "code": "P100",
+  "kind": "formula",
+  "name_zh": "調經丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "六科準繩",
+  "herbs": [
+   "香附",
+   "杜仲",
+   "川芎",
+   "白芍",
+   "當歸",
+   "生地黃",
+   "陳皮",
+   "小茴香",
+   "延胡索",
+   "肉蓯蓉",
+   "青皮",
+   "烏藥",
+   "黃芩",
+   "海螵蛸"
+  ],
+  "formula_raw": "香附4、杜仲4、川芎2、白芍2、當歸2、生地黃2、陳皮2、小茴香2、延胡索2、肉蓯蓉2、青皮2、烏藥2、黃芩2、海螵蛸2 (一日飲片量32克)。傳統製劑加醋、麫適量。",
+  "effect": "活血調經、行氣止痛",
+  "indication": "月經不調、痛經、產後瘀血腹痛"
+ },
+ {
+  "code": "P101",
+  "kind": "formula",
+  "name_zh": "聖愈湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫宗金鑑",
+  "herbs": [
+   "熟地黃",
+   "川芎",
+   "人參",
+   "當歸",
+   "黃耆",
+   "白芍"
+  ],
+  "formula_raw": "熟地黃5、川芎2.5、人參5、當歸2.5、黃耆5、白芍5 (一日飲片量25公克)。",
+  "effect": "補氣養血",
+  "indication": "氣血俱虛、煩渴燥熱、睡臥不寧、體倦少食"
+ },
+ {
+  "code": "P102",
+  "kind": "formula",
+  "name_zh": "十神湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "陳皮",
+   "麻黃",
+   "川芎",
+   "炙甘草",
+   "香附",
+   "紫蘇葉",
+   "白芷",
+   "升麻",
+   "葛根",
+   "赤芍",
+   "生薑"
+  ],
+  "formula_raw": "陳皮2、麻黃2、川芎2、炙甘草2、香附2、紫蘇葉2、白芷2、升麻2、葛根7、赤芍2、生薑3 (一日飲片量28公克)。",
+  "effect": "解肌發表、理氣通陽",
+  "indication": "感冒風寒，發熱惡寒 頭痛無汗，咳嗽鼻塞"
+ },
+ {
+  "code": "P103",
+  "kind": "formula",
+  "name_zh": "升麻葛根湯《散》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫方集解",
+  "herbs": [
+   "葛根",
+   "升麻",
+   "白芍",
+   "甘草",
+   "生薑"
+  ],
+  "formula_raw": "葛根6、升麻9、白芍6、甘草3、生薑3 (一日飲片量27公克)。傳統製劑不加生薑。",
+  "effect": "解肌透疹、痘疹熱毒",
+  "indication": "麻疹初發，或發而未透，發熱惡風，噴嚏咳嗽"
+ },
+ {
+  "code": "P104",
+  "kind": "formula",
+  "name_zh": "辛夷散《散》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫方集解",
+  "herbs": [
+   "辛夷",
+   "細辛",
+   "藁本",
+   "升麻",
+   "川芎",
+   "木通",
+   "防風",
+   "甘草",
+   "白芷",
+   "茶葉"
+  ],
+  "formula_raw": "辛夷2.5、細辛2.5、藁本2.5、升麻2.5、川芎2.5、木通2.5、防風2.5、甘草2.5、白芷2.5、茶葉2.5 (一日飲片量25公克)。",
+  "effect": "散風寒，祛濕邪，通鼻竅",
+  "indication": "感冒初期引起之鼻塞不通，鼻流清涕"
+ },
+ {
+  "code": "P105",
+  "kind": "formula",
+  "name_zh": "小承氣湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "大黃",
+   "厚朴",
+   "枳實"
+  ],
+  "formula_raw": "大黃14、厚朴7、枳實7 (一日飲片量28公克)。",
+  "effect": "泄熱通便，消痞除滿",
+  "indication": "陽明實熱，腹滿便秘"
+ },
+ {
+  "code": "P106",
+  "kind": "formula",
+  "name_zh": "調胃承氣湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "大黃",
+   "炙甘草",
+   "芒硝"
+  ],
+  "formula_raw": "大黃8、炙甘草4、芒硝16 (一日飲片量28公克)。",
+  "effect": "通便軟堅，和胃泄熱",
+  "indication": "陽明熱結，口渴心煩，腹滿便秘"
+ },
+ {
+  "code": "P107",
+  "kind": "formula",
+  "name_zh": "桃仁承氣湯（桃核承氣湯）",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "桃仁",
+   "桂枝",
+   "大黃",
+   "芒硝",
+   "炙甘草"
+  ],
+  "formula_raw": "桃仁5、桂枝5、大黃10、芒硝5、炙甘草5 (一日飲片量30公克)。",
+  "effect": "通便下瘀",
+  "indication": "下焦蓄血，少腹急結，小便自利，血瘀經閉"
+ },
+ {
+  "code": "P108",
+  "kind": "formula",
+  "name_zh": "大柴胡湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "柴胡",
+   "黃芩",
+   "白芍",
+   "半夏",
+   "生薑",
+   "枳實",
+   "大棗",
+   "大黃"
+  ],
+  "formula_raw": "柴胡8、黃芩3、白芍3、半夏5、生薑5、枳實2、大棗2、大黃2 (一日飲片量30公克)。",
+  "effect": "和解少陽，瀉下熱結",
+  "indication": "傷寒入陽明，少陽未盡，寒熱往來，心下鞭滿，嘔吐不止，心煩便秘"
+ },
+ {
+  "code": "P109",
+  "kind": "formula",
+  "name_zh": "防風通聖散《散》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫方集解",
+  "herbs": [
+   "防風",
+   "荊芥",
+   "連翹",
+   "麻黃",
+   "薄荷",
+   "川芎",
+   "當歸",
+   "白芍",
+   "白朮",
+   "山梔子",
+   "大黃",
+   "芒硝",
+   "黃芩",
+   "石膏",
+   "桔梗",
+   "甘草",
+   "滑石",
+   "生薑",
+   "蔥白"
+  ],
+  "formula_raw": "防風1、荊芥1、連翹1、麻黃1、薄荷1、川芎1、當歸1、白芍1、白朮1、山梔子1、大黃1、芒硝1、黃芩2、石膏2、桔梗2、甘草4、滑石6、生薑2、蔥白2 (一日飲片量32公克)。傳統製劑不加生薑、蔥白 (傳統散劑用法：研細末)。",
+  "effect": "解表通裡、疏風清熱",
+  "indication": "表裏三焦俱實、大便秘結、小便短赤、瘡瘍腫毒"
+ },
+ {
+  "code": "P110",
+  "kind": "formula",
+  "name_zh": "葛根黃芩黃連湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "葛根",
+   "炙甘草",
+   "黃芩",
+   "黃連"
+  ],
+  "formula_raw": "葛根12、炙甘草3、黃芩4.5、黃連4.5 (一日飲片量24公克)。",
+  "effect": "清熱、解表",
+  "indication": "表證未解誤下，熱邪入裏，身熱下利，胸脘煩熱，喘而汗出"
+ },
+ {
+  "code": "P111",
+  "kind": "formula",
+  "name_zh": "桑菊飲",
+  "name_latin": "",
+  "name_en": "",
+  "source": "溫病條辨",
+  "herbs": [
+   "杏仁",
+   "連翹",
+   "薄荷",
+   "桑葉",
+   "菊花",
+   "桔梗",
+   "甘草",
+   "蘆根"
+  ],
+  "formula_raw": "杏仁5、連翹4、薄荷2、桑葉6、菊花2.5、桔梗5、甘草2、蘆根5 (一日飲片量31.5公克)。",
+  "effect": "疏風清熱、宣肺止咳",
+  "indication": "風溫初起，咳嗽，身熱口渴"
+ },
+ {
+  "code": "P112",
+  "kind": "formula",
+  "name_zh": "杏蘇散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "溫病條辨",
+  "herbs": [
+   "紫蘇葉",
+   "半夏",
+   "茯苓",
+   "前胡",
+   "桔梗",
+   "枳殼",
+   "甘草",
+   "生薑",
+   "大棗",
+   "橘皮",
+   "杏仁"
+  ],
+  "formula_raw": "紫蘇葉3、半夏3、茯苓3、前胡2、桔梗2、枳殼2、甘草1、生薑2、大棗2、橘皮1、杏仁3 (一日飲片量24公克)。",
+  "effect": "溫散風寒、宣肺化痰。",
+  "indication": "感冒、發熱、頭痛、痰嗽。"
+ },
+ {
+  "code": "P113",
+  "kind": "formula",
+  "name_zh": "銀翹散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "溫病條辨",
+  "herbs": [
+   "連翹",
+   "金銀花",
+   "桔梗",
+   "薄荷",
+   "淡竹葉",
+   "甘草",
+   "荊芥",
+   "淡豆豉",
+   "牛蒡子",
+   "蘆根"
+  ],
+  "formula_raw": "連翹5、金銀花5、桔梗3、薄荷3、淡竹葉2、甘草2.5、荊芥2、淡豆豉2.5、牛蒡子3、蘆根2 (一日飲片量30公克)。",
+  "effect": "辛涼透表、清熱解毒。",
+  "indication": "溫病初起，發熱微惡風寒，頭痛口渴，咳嗽咽痛。"
+ },
+ {
+  "code": "P114",
+  "kind": "formula",
+  "name_zh": "柴胡桂枝湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "桂枝",
+   "黃芩",
+   "人參",
+   "炙甘草",
+   "半夏",
+   "白芍",
+   "大棗",
+   "生薑",
+   "柴胡"
+  ],
+  "formula_raw": "桂枝3、黃芩3、人參3、炙甘草2、半夏5、白芍3、大棗2、生薑3、柴胡8 (一日飲片量32公克)。",
+  "effect": "表裏雙解。",
+  "indication": "少陽證兼太陽表證，發熱，微惡寒，肢節煩疼，微嘔，心下支結。"
+ },
+ {
+  "code": "P115",
+  "kind": "formula",
+  "name_zh": "小柴胡湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "柴胡",
+   "黃芩",
+   "人參",
+   "炙甘草",
+   "半夏",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "柴胡8、黃芩3、人參3、炙甘草3、半夏5、生薑3、大棗2 (一日飲片量27公克)。",
+  "effect": "和解少陽。",
+  "indication": "少陽證，往來寒熱，胸脇苦滿，默默不欲飲食，心煩喜嘔，口苦，咽乾，目眩。"
+ },
+ {
+  "code": "P116",
+  "kind": "formula",
+  "name_zh": "芍藥甘草湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "白芍",
+   "炙甘草"
+  ],
+  "formula_raw": "白芍12、炙甘草12 (一日飲片量24公克)。",
+  "effect": "緩急止痛。",
+  "indication": "腹中疼痛，腿腳攣急。"
+ },
+ {
+  "code": "P117",
+  "kind": "formula",
+  "name_zh": "柴陷湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "沈氏尊生書",
+  "herbs": [
+   "半夏",
+   "栝樓仁",
+   "柴胡",
+   "黃連",
+   "黃芩",
+   "人參",
+   "甘草",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "半夏9、栝樓仁6、柴胡6、黃連3、黃芩3、人參2、甘草1.5、生薑3、大棗2 (一日飲片量35.5公克)。",
+  "effect": "清熱滌痰，寬胸散結。",
+  "indication": "痰熱互結，胸痺咳嗽。"
+ },
+ {
+  "code": "P118",
+  "kind": "formula",
+  "name_zh": "黃連湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "黃連",
+   "炙甘草",
+   "乾薑",
+   "桂枝",
+   "人參",
+   "半夏",
+   "大棗"
+  ],
+  "formula_raw": "黃連4.5、炙甘草4.5、乾薑4.5、桂枝4.5、人參3、半夏6、大棗3 (一日飲片量30公克)。",
+  "effect": "調和寒熱，和胃降逆。",
+  "indication": "胸中有熱，胃中有寒，腹中痛，欲嘔吐。"
+ },
+ {
+  "code": "P119",
+  "kind": "formula",
+  "name_zh": "四逆散《散》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "甘草",
+   "枳實",
+   "柴胡",
+   "白芍"
+  ],
+  "formula_raw": "甘草6、枳實6、柴胡6、白芍6 (一日飲片量24公克)。",
+  "effect": "疏肝理脾。",
+  "indication": "手足厥逆、或欬或悸、小便不利、腹中痛、泄利下重。"
+ },
+ {
+  "code": "P120",
+  "kind": "formula",
+  "name_zh": "旋覆代赭石湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒雜病論",
+  "herbs": [
+   "旋覆花",
+   "人參",
+   "生薑",
+   "半夏",
+   "代赭石",
+   "大棗",
+   "炙甘草"
+  ],
+  "formula_raw": "旋覆花4.5、人參3、生薑7.5、半夏7.5、代赭石1.5、大棗4、炙甘草4.5 (一日飲片量32.5公克)。",
+  "effect": "扶正益胃，降逆化痰。",
+  "indication": "汗吐下解之後，心下痞鞭，噫氣不除。"
+ },
+ {
+  "code": "P121",
+  "kind": "formula",
+  "name_zh": "半夏厚朴湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "金匱要略",
+  "herbs": [
+   "半夏",
+   "厚朴",
+   "茯苓",
+   "生薑",
+   "紫蘇葉"
+  ],
+  "formula_raw": "半夏8、厚朴4.5、茯苓6、生薑7.5、紫蘇葉3 (一日飲片量29公克)。",
+  "effect": "行氣開鬱、降逆化痰。",
+  "indication": "梅核氣(咽中如有物阻，咯吐不出，吞嚥不下)、胸脘滿悶、或咳嗽、或嘔吐。"
+ },
+ {
+  "code": "P122",
+  "kind": "formula",
+  "name_zh": "橘皮竹茹湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "濟生方",
+  "herbs": [
+   "赤茯苓",
+   "陳皮",
+   "枇杷葉",
+   "麥門冬",
+   "竹茹",
+   "半夏",
+   "人參",
+   "甘草",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "赤茯苓3、陳皮3、枇杷葉3、麥門冬3、竹茹3、半夏3、人參1.5、甘草1.5、生薑3、大棗2 (一日飲片量26公克)。",
+  "effect": "理氣清熱，和中降逆。",
+  "indication": "胃熱多渴、嘔噦不食。"
+ },
+ {
+  "code": "P123",
+  "kind": "formula",
+  "name_zh": "橘核丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "濟生方",
+  "herbs": [
+   "橘核",
+   "海藻",
+   "昆布",
+   "海帶",
+   "川楝子",
+   "桃仁",
+   "厚朴",
+   "木通",
+   "枳實",
+   "延胡索",
+   "桂心",
+   "木香"
+  ],
+  "formula_raw": "橘核4、海藻4、昆布4、海帶4、川楝子4、桃仁4、厚朴1、木通1、枳實1、延胡索1、桂心1、木香1 (一日飲片量30公克)。",
+  "effect": "行氣破滯，消堅散結。",
+  "indication": "疝氣，睪丸腫脹，偏有大小，或堅硬如石，或上引臍腹絞痛，陰囊腫脹。"
+ },
+ {
+  "code": "P124",
+  "kind": "formula",
+  "name_zh": "復元活血湯去穿山甲",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫學發明",
+  "herbs": [
+   "柴胡",
+   "當歸",
+   "栝樓根",
+   "穿山甲",
+   "甘草",
+   "紅花",
+   "桃仁",
+   "大黃"
+  ],
+  "formula_raw": "柴胡5、當歸3、栝樓根3、穿山甲2、甘草2、紅花2、桃仁2、大黃10 (一日飲片量27公克)。",
+  "effect": "活血祛瘀。",
+  "indication": "跌打損傷、瘀血留於脇下、痛不可忍者。"
+ },
+ {
+  "code": "P125",
+  "kind": "formula",
+  "name_zh": "大黃牡丹皮湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "金匱要略",
+  "herbs": [
+   "大黃",
+   "牡丹皮",
+   "桃仁",
+   "冬瓜仁",
+   "芒硝"
+  ],
+  "formula_raw": "大黃10、牡丹皮2.5、桃仁2.5、冬瓜仁6、芒硝7 (一日飲片量28公克)。",
+  "effect": "泄熱破瘀，散結消腫。",
+  "indication": "腸癰、少腹腫痞、按之痛甚、發熱惡寒。"
+ },
+ {
+  "code": "P126",
+  "kind": "formula",
+  "name_zh": "芍藥湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "病機氣宜保命集",
+  "herbs": [
+   "白芍",
+   "當歸",
+   "黃芩",
+   "黃連",
+   "大黃",
+   "木香",
+   "檳榔",
+   "炙甘草",
+   "肉桂"
+  ],
+  "formula_raw": "白芍7、當歸3.5、黃芩3.5、黃連3.5、大黃2、木香1.5、檳榔1.5、炙甘草1.5、肉桂1 (一日飲片量25公克)。",
+  "effect": "清濕熱，理氣血。",
+  "indication": "痢疾，便膿血，腹痛，裏急後重。"
+ },
+ {
+  "code": "P127",
+  "kind": "formula",
+  "name_zh": "桂枝茯苓丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "金匱要略",
+  "herbs": [
+   "桂枝",
+   "茯苓",
+   "牡丹皮",
+   "桃仁",
+   "赤芍"
+  ],
+  "formula_raw": "桂枝6、茯苓6、牡丹皮6、桃仁6、赤芍6 (一日飲片量30公克)。",
+  "effect": "活血化瘀，緩消癥塊。",
+  "indication": "婦人宿有癥塊，妊娠胎動，漏下不止，瘀血痛經，經閉。"
+ },
+ {
+  "code": "P128",
+  "kind": "formula",
+  "name_zh": "當歸拈痛湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "李東垣方",
+  "herbs": [
+   "當歸",
+   "人參",
+   "茵陳蒿",
+   "羌活",
+   "防風",
+   "升麻",
+   "葛根",
+   "蒼朮",
+   "白朮",
+   "甘草",
+   "炒黃芩",
+   "苦參",
+   "知母",
+   "豬苓",
+   "澤瀉"
+  ],
+  "formula_raw": "當歸1.5、人參1.5、茵陳蒿3.5、羌活3.5、防風2、升麻1.5、葛根1.5、蒼朮1.5、白朮2、甘草3.5、炒黃芩3.5、苦參1.5、知母2、豬苓2、澤瀉2 (一日飲片量33公克)。",
+  "effect": "燥濕清熱，活血止痛。",
+  "indication": "濕熱走注、遍身骨節煩痛、肩背沉重及一切濕熱。"
+ },
+ {
+  "code": "P129",
+  "kind": "formula",
+  "name_zh": "四逆湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "炙甘草",
+   "乾薑",
+   "炮附子"
+  ],
+  "formula_raw": "炙甘草10、乾薑7.5、炮附子10 (一日飲片量27.5公克)。",
+  "effect": "溫經救陽。",
+  "indication": "陰盛陽虛，手足厥冷，下利清榖，嘔吐腹痛。"
+ },
+ {
+  "code": "P130",
+  "kind": "formula",
+  "name_zh": "當歸四逆湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "當歸",
+   "桂枝",
+   "白芍",
+   "細辛",
+   "大棗",
+   "炙甘草",
+   "木通"
+  ],
+  "formula_raw": "當歸4.5、桂枝4.5、白芍4.5、細辛4.5、大棗6、炙甘草3、木通3 (一日飲片量30公克)。",
+  "effect": "溫經散寒、養血通脈。",
+  "indication": "寒入厥陰，手足厥冷，脈微欲絕。"
+ },
+ {
+  "code": "P131",
+  "kind": "formula",
+  "name_zh": "真武湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "茯苓",
+   "白芍",
+   "生薑",
+   "白朮",
+   "炮附子"
+  ],
+  "formula_raw": "茯苓7.5、白芍7.5、生薑7.5、白朮5、炮附子3 (一日飲片量30.5公克)。",
+  "effect": "溫腎散寒、健脾利水。",
+  "indication": "脾腎陽虛、水氣內停。"
+ },
+ {
+  "code": "P132",
+  "kind": "formula",
+  "name_zh": "小建中湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒金匱方",
+  "herbs": [
+   "桂枝",
+   "炙甘草",
+   "大棗",
+   "白芍",
+   "生薑",
+   "膠飴"
+  ],
+  "formula_raw": "桂枝4.5、炙甘草3、大棗4.5、白芍9、生薑4.5、膠飴1 (一日飲片量26.5公克)。",
+  "effect": "溫中補虛、和裏緩急。",
+  "indication": "脾胃虛寒、裏急腹痛。"
+ },
+ {
+  "code": "P133",
+  "kind": "formula",
+  "name_zh": "大建中湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "金匱要略",
+  "herbs": [
+   "蜀椒",
+   "乾薑",
+   "人參",
+   "膠飴"
+  ],
+  "formula_raw": "蜀椒4、乾薑16、人參8、膠飴1 (一日飲片量29公克)。",
+  "effect": "溫中補虛，降逆止痛。",
+  "indication": "膈間支飲、喘滿、心下痞滿。"
+ },
+ {
+  "code": "P134",
+  "kind": "formula",
+  "name_zh": "黃耆建中湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "金匱要略",
+  "herbs": [
+   "桂枝",
+   "炙甘草",
+   "大棗",
+   "白芍",
+   "生薑",
+   "膠飴",
+   "黃耆"
+  ],
+  "formula_raw": "桂枝4.5、炙甘草3、大棗4.5、白芍9、生薑4.5、膠飴1、黃耆2.5 (一日飲片量29公克)。",
+  "effect": "溫中補虛、和裏緩急。",
+  "indication": "虛勞不足、脾胃虛寒腹痛、自汗、短氣、肢體困倦、及陽虛身痛。"
+ },
+ {
+  "code": "P135",
+  "kind": "formula",
+  "name_zh": "六一散《散》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫方集解",
+  "herbs": [
+   "滑石",
+   "甘草"
+  ],
+  "formula_raw": "滑石24、甘草4 (一日飲片量28公克)。",
+  "effect": "清暑利濕。",
+  "indication": "暑濕身熱，心煩口渴，小便不利。"
+ },
+ {
+  "code": "P136",
+  "kind": "formula",
+  "name_zh": "五苓散《散》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "豬苓",
+   "澤瀉",
+   "茯苓",
+   "桂枝",
+   "白朮"
+  ],
+  "formula_raw": "豬苓4.5、澤瀉7.5、茯苓4.5、桂枝3、白朮4.5 (一日飲片量24公克)。",
+  "effect": "化氣利水，健脾祛濕。",
+  "indication": "內停水濕，外有表證，小便不利，煩渴欲飲，水入即吐，泄瀉。"
+ },
+ {
+  "code": "P137",
+  "kind": "formula",
+  "name_zh": "豬苓湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "豬苓",
+   "茯苓",
+   "阿膠",
+   "滑石",
+   "澤瀉"
+  ],
+  "formula_raw": "豬苓6、茯苓6、阿膠6、滑石6、澤瀉6 (一日飲片量30公克)。",
+  "effect": "滋陰清熱利水。",
+  "indication": "水熱互結，內熱傷陰，發熱，渴欲飲水，小便不利，心煩不得眠。"
+ },
+ {
+  "code": "P138",
+  "kind": "formula",
+  "name_zh": "越婢加朮湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "金匱要略",
+  "herbs": [
+   "麻黃",
+   "石膏",
+   "生薑",
+   "甘草",
+   "大棗",
+   "白朮"
+  ],
+  "formula_raw": "麻黃6、石膏8、生薑3、甘草2、大棗3、白朮4 (一日飲片量26公克)。",
+  "effect": "疏風泄熱，發汗行水。",
+  "indication": "皮水，四肢腫，小便不利。"
+ },
+ {
+  "code": "P139",
+  "kind": "formula",
+  "name_zh": "羌活勝濕湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "內外傷辨惑論",
+  "herbs": [
+   "羌活",
+   "獨活",
+   "藳本",
+   "防風",
+   "炙甘草",
+   "川芎",
+   "蔓荊子"
+  ],
+  "formula_raw": "羌活7、獨活7、藳本3.5、防風3.5、炙甘草3.5、川芎3.5、蔓荊子2 (一日飲片量30公克)。",
+  "effect": "發汗、祛風、勝濕。",
+  "indication": "濕氣在表、頭痛、頭重、腰脊重痛，或一身盡痛，微熱昏倦。"
+ },
+ {
+  "code": "P140",
+  "kind": "formula",
+  "name_zh": "茵陳蒿湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "茵陳蒿",
+   "大黃",
+   "山梔子"
+  ],
+  "formula_raw": "茵陳蒿18、大黃6、山梔子6 (一日飲片量30公克)。",
+  "effect": "清熱利濕。",
+  "indication": "陽黃發熱、頭汗出、身無汗、口渴、腹微滿，小便短赤。"
+ },
+ {
+  "code": "P141",
+  "kind": "formula",
+  "name_zh": "薏苡仁湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "張氏醫通",
+  "herbs": [
+   "薏苡仁",
+   "白芍",
+   "當歸",
+   "麻黃",
+   "桂枝",
+   "蒼朮",
+   "炙甘草",
+   "生薑"
+  ],
+  "formula_raw": "薏苡仁20、白芍3、當歸3、麻黃1.5、桂枝1.5、蒼朮2、炙甘草1.5、生薑3 (一日飲片量35.5公克)。",
+  "effect": "祛濕通痺。",
+  "indication": "濕痺，關節腫脹，痠痛重著。"
+ },
+ {
+  "code": "P142",
+  "kind": "formula",
+  "name_zh": "苓桂朮甘湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "金匱要略",
+  "herbs": [
+   "茯苓",
+   "桂枝",
+   "白朮",
+   "炙甘草"
+  ],
+  "formula_raw": "茯苓10、桂枝7.5、白朮7.5、炙甘草5 (一日飲片量30公克)。",
+  "effect": "健脾滲濕，溫化痰飲。",
+  "indication": "痰飲為病，胸脇脹滿，眩暈心悸，短氣而咳。"
+ },
+ {
+  "code": "P143",
+  "kind": "formula",
+  "name_zh": "小半夏加茯苓湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "金匱要略",
+  "herbs": [
+   "半夏",
+   "生薑",
+   "茯苓"
+  ],
+  "formula_raw": "半夏12、生薑12、茯苓6 (一日飲片量30公克)。",
+  "effect": "行水消痞。",
+  "indication": "卒嘔吐、心下痞、膈間有水、眩悸者。"
+ },
+ {
+  "code": "P144",
+  "kind": "formula",
+  "name_zh": "腎著湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "金匱要略",
+  "herbs": [
+   "甘草",
+   "白朮",
+   "乾薑",
+   "茯苓"
+  ],
+  "formula_raw": "甘草4、白朮4、乾薑8、茯苓8 (一日飲片量24公克)。",
+  "effect": "溫脾祛濕。",
+  "indication": "寒濕傷脾，身體重者，腰及腰以下冷痛。"
+ },
+ {
+  "code": "P145",
+  "kind": "formula",
+  "name_zh": "潤腸湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "萬病回春",
+  "herbs": [
+   "當歸",
+   "熟地黃",
+   "生地黃",
+   "火麻仁",
+   "桃仁",
+   "杏仁",
+   "枳實",
+   "黃芩",
+   "厚朴",
+   "大黃",
+   "甘草"
+  ],
+  "formula_raw": "當歸2.5、熟地黃2.5、生地黃2.5、火麻仁2.5、桃仁2.5、杏仁2.5、枳實2.5、黃芩2.5、厚朴2.5、大黃2.5、甘草1.5 (一日飲片量26.5公克)。",
+  "effect": "潤腸通便。",
+  "indication": "腸胃燥熱，大便秘結。"
+ },
+ {
+  "code": "P146",
+  "kind": "formula",
+  "name_zh": "響聲破笛丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "萬病回春",
+  "herbs": [
+   "連翹",
+   "桔梗",
+   "川芎",
+   "砂仁",
+   "訶子",
+   "兒茶",
+   "薄荷",
+   "大黃",
+   "甘草"
+  ],
+  "formula_raw": "連翹4、桔梗3、川芎4、砂仁1.5、訶子1.5、兒茶3、薄荷6、大黃1.5、甘草3 (一日飲片量27.5公克)。",
+  "effect": "清肺潤喉。",
+  "indication": "喉痛聲啞、失音。"
+ },
+ {
+  "code": "P147",
+  "kind": "formula",
+  "name_zh": "半夏瀉心湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "半夏",
+   "黃芩",
+   "乾薑",
+   "人參",
+   "黃連",
+   "大棗",
+   "炙甘草"
+  ],
+  "formula_raw": "半夏7.5、黃芩4.5、乾薑4.5、人參4.5、黃連1.5、大棗3、炙甘草4.5 (一日飲片量30公克)。",
+  "effect": "和胃降逆。",
+  "indication": "傷寒下早，心下痞滿，嘔而腸鳴。"
+ },
+ {
+  "code": "P148",
+  "kind": "formula",
+  "name_zh": "瀉白散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "小兒藥證直訣",
+  "herbs": [
+   "地骨皮",
+   "桑白皮",
+   "甘草",
+   "粳米"
+  ],
+  "formula_raw": "地骨皮10、桑白皮10、甘草1、粳米8 (一日飲片量29公克)。",
+  "effect": "瀉肺清熱。",
+  "indication": "肺熱咳嗽，甚則氣喘，皮膚蒸熱，日晡尤甚。"
+ },
+ {
+  "code": "P149",
+  "kind": "formula",
+  "name_zh": "普濟消毒飲《散》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "東垣試效方",
+  "herbs": [
+   "黃芩",
+   "黃連",
+   "玄參",
+   "柴胡",
+   "桔梗",
+   "甘草",
+   "連翹",
+   "牛蒡子",
+   "板藍根",
+   "馬勃",
+   "白殭蠶",
+   "升麻",
+   "薄荷",
+   "陳皮"
+  ],
+  "formula_raw": "黃芩5、黃連5、玄參2、柴胡2、桔梗2、甘草2、連翹1、牛蒡子1、板藍根1、馬勃1、白殭蠶0.7、升麻0.7、薄荷1、陳皮2 (一日飲片量26.4公克)。",
+  "effect": "疏風散邪、清熱解毒。",
+  "indication": "大頭瘟症，頭面，咽喉腫痛。"
+ },
+ {
+  "code": "P150",
+  "kind": "formula",
+  "name_zh": "三黃瀉心湯《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "金匱要略",
+  "herbs": [
+   "大黃",
+   "黃連",
+   "黃芩"
+  ],
+  "formula_raw": "大黃12、黃連6、黃芩6 (一日飲片量24公克)。傳統製劑加蜂蜜適量 (或米糊為丸)。",
+  "effect": "瀉火解毒。",
+  "indication": "三焦實熱，口舌生瘡，吐血衂血，膈胸煩熱，大便秘結，小便赤澀。"
+ },
+ {
+  "code": "P151",
+  "kind": "formula",
+  "name_zh": "清心利膈湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "中國醫學大辭典",
+  "herbs": [
+   "防風",
+   "荊芥",
+   "薄荷",
+   "桔梗",
+   "黃芩",
+   "黃連",
+   "山梔子",
+   "連翹",
+   "玄參",
+   "大黃",
+   "芒硝",
+   "牛蒡子",
+   "甘草",
+   "金銀花",
+   "淡竹葉"
+  ],
+  "formula_raw": "防風3、荊芥3、薄荷3、桔梗3、黃芩3、黃連3、山梔子1.5、連翹1.5、玄參1.5、大黃1.5、芒硝1.5、牛蒡子1.5、甘草1.5、金銀花2、淡竹葉4 (一日飲片量34.5公克)。",
+  "effect": "清熱解毒。",
+  "indication": "心脾蘊熱，咽喉腮舌腫痛。"
+ },
+ {
+  "code": "P152",
+  "kind": "formula",
+  "name_zh": "半夏天麻白朮湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "脾胃論",
+  "herbs": [
+   "半夏",
+   "黃柏",
+   "乾薑",
+   "天麻",
+   "蒼朮",
+   "茯苓",
+   "黃耆",
+   "澤瀉",
+   "人參",
+   "白朮",
+   "神麴",
+   "麥芽",
+   "陳皮"
+  ],
+  "formula_raw": "半夏4.5、黃柏0.5、乾薑0.5、天麻1.5、蒼朮1.5、茯苓1.5、黃耆1.5、澤瀉1.5、人參1.5、白朮3、神麴3、麥芽4.5、陳皮4.5 (一日飲片量29.5公克)。",
+  "effect": "補脾燥濕、化痰熄風。",
+  "indication": "痰厥頭痛，咳痰稠粘，頭眩煩悶，噁心吐逆，身重肢冷。"
+ },
+ {
+  "code": "P153",
+  "kind": "formula",
+  "name_zh": "安中散《散》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "甘草",
+   "延胡索",
+   "良薑",
+   "乾薑",
+   "茴香",
+   "肉桂",
+   "牡蠣"
+  ],
+  "formula_raw": "甘草6、延胡索3、良薑3、乾薑3、茴香3、肉桂3、牡蠣3 (一日飲片量24公克)。",
+  "effect": "溫中散寒止痛。",
+  "indication": "脾胃寒凝氣滯、脘腹疼痛、口吐酸水、停積不消、脹滿不適。"
+ },
+ {
+  "code": "P154",
+  "kind": "formula",
+  "name_zh": "玉屏風散《散》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "世醫得效方",
+  "herbs": [
+   "黃耆",
+   "防風",
+   "白朮",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "黃耆15、防風5、白朮5、生薑3、大棗2 (一日飲片量30公克)。傳統製劑不加生薑、大棗。",
+  "effect": "益氣固表止汗。",
+  "indication": "表虛自汗、虛人外感。"
+ },
+ {
+  "code": "P155",
+  "kind": "formula",
+  "name_zh": "乙字湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "驗方",
+  "herbs": [
+   "當歸",
+   "柴胡",
+   "黃芩",
+   "甘草",
+   "升麻",
+   "大黃"
+  ],
+  "formula_raw": "當歸6、柴胡6、黃芩3、甘草3、升麻2、大黃1.5 (一日飲片量21.5公克)。",
+  "effect": "清熱、通便。",
+  "indication": "便秘痔痛。"
+ },
+ {
+  "code": "P156",
+  "kind": "formula",
+  "name_zh": "消痔丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "瘍醫大全",
+  "herbs": [
+   "生地黃",
+   "黃芩",
+   "金銀花",
+   "枳殼",
+   "秦艽",
+   "防風",
+   "大黃",
+   "當歸",
+   "蒼朮",
+   "地龍",
+   "槐花",
+   "赤芍"
+  ],
+  "formula_raw": "生地黃4.8、黃芩1.8、金銀花1.2、枳殼1.2、秦艽1.2、防風2.4、大黃2.4、當歸2.4、蒼朮2.4、地龍2.4、槐花2.4、赤芍2.4 (一日飲片量27公克)。傳統製劑加蜂蜜適量。",
+  "effect": "清熱、涼血、通便。",
+  "indication": "痔漏，便秘。"
+ },
+ {
+  "code": "P157",
+  "kind": "formula",
+  "name_zh": "紫雲膏（只用於傳統製劑）",
+  "name_latin": "",
+  "name_en": "",
+  "source": "外科正宗",
+  "herbs": [
+   "紫草",
+   "當歸",
+   "蜜蠟",
+   "胡麻油",
+   "油質基劑適量"
+  ],
+  "formula_raw": "紫草5、當歸5、蜜蠟15、胡麻油13、油質基劑適量 (外用，每次適量塗抹於患處，一日數次)。",
+  "effect": "潤膚、止癢、生肌。",
+  "indication": "皮膚燥癢、手足皸裂、燙傷、凍傷。"
+ },
+ {
+  "code": "P158",
+  "kind": "formula",
+  "name_zh": "八味帶下方",
+  "name_latin": "",
+  "name_en": "",
+  "source": "驗方",
+  "herbs": [
+   "當歸",
+   "川芎",
+   "茯苓",
+   "木通",
+   "陳皮",
+   "土茯苓",
+   "金銀花",
+   "大黃"
+  ],
+  "formula_raw": "當歸5、川芎3、茯苓3、木通3、陳皮2、土茯苓6、金銀花3、大黃1 (一日飲片量26公克)。",
+  "effect": "清熱解毒。",
+  "indication": "濕熱帶下、熱淋。"
+ },
+ {
+  "code": "P159",
+  "kind": "formula",
+  "name_zh": "溫經湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "金匱要略",
+  "herbs": [
+   "吳茱萸",
+   "當歸",
+   "川芎",
+   "白芍",
+   "人參",
+   "桂枝",
+   "阿膠",
+   "牡丹皮",
+   "生薑",
+   "甘草",
+   "半夏",
+   "麥門冬"
+  ],
+  "formula_raw": "吳茱萸3、當歸2、川芎2、白芍2、人參2、桂枝2、阿膠2、牡丹皮2、生薑2、甘草2、半夏3、麥門冬4 (一日飲片量28公克)。",
+  "effect": "溫經養血、活血調經。",
+  "indication": "婦人少腹寒冷、脹急不舒、經期不順、淋漓不止。"
+ },
+ {
+  "code": "P160",
+  "kind": "formula",
+  "name_zh": "芎歸膠艾湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "金匱要略",
+  "herbs": [
+   "川芎",
+   "阿膠",
+   "甘草",
+   "艾葉",
+   "當歸",
+   "白芍",
+   "生地黃"
+  ],
+  "formula_raw": "川芎2.5、阿膠2.5、甘草2.5、艾葉4、當歸4、白芍5、生地黃8 (一日飲片量28.5公克)。",
+  "effect": "補血調經、安胎止崩。",
+  "indication": "流產後出血不淨，月經過多。"
+ },
+ {
+  "code": "P161",
+  "kind": "formula",
+  "name_zh": "當歸芍藥散《散》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "金匱要略",
+  "herbs": [
+   "當歸",
+   "白芍",
+   "茯苓",
+   "白朮",
+   "澤瀉",
+   "川芎"
+  ],
+  "formula_raw": "當歸2、白芍10、茯苓2.5、白朮2.5、澤瀉5、川芎5 (一日飲片量27公克)。",
+  "effect": "補血養肝，健脾滲濕。",
+  "indication": "月經不調，妊娠腰疼痛，頭暈，腰腳冷感。"
+ },
+ {
+  "code": "P162",
+  "kind": "formula",
+  "name_zh": "生化湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傅青主女科",
+  "herbs": [
+   "當歸",
+   "川芎",
+   "桃仁",
+   "黑薑",
+   "炙甘草"
+  ],
+  "formula_raw": "當歸16、川芎6、桃仁3、黑薑1、炙甘草1 (一日飲片量27公克)。",
+  "effect": "生新血、化瘀血、溫中散寒。",
+  "indication": "產後惡露不行，少腹疼痛。"
+ },
+ {
+  "code": "P163",
+  "kind": "formula",
+  "name_zh": "玉泉丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "古今醫統",
+  "herbs": [
+   "栝樓根",
+   "葛根",
+   "麥門冬",
+   "人參",
+   "茯苓",
+   "烏梅",
+   "甘草",
+   "生黃耆",
+   "炙黃耆"
+  ],
+  "formula_raw": "栝樓根4.5、葛根4.5、麥門冬3、人參3、茯苓3、烏梅3、甘草3、生黃耆1.5、炙黃耆1.5 (一日飲片量27公克)。傳統製劑加蜂蜜適量。",
+  "effect": "生津止渴、益氣養陰。",
+  "indication": "消渴多飲、小便頻數、大便稀溏、精神疲乏。"
+ },
+ {
+  "code": "P164",
+  "kind": "formula",
+  "name_zh": "黃連上清丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "中國醫學大辭典",
+  "herbs": [
+   "黃連",
+   "黃芩",
+   "黃柏",
+   "山梔子",
+   "菊花",
+   "當歸尾",
+   "桔梗",
+   "葛根",
+   "薄荷",
+   "玄參",
+   "栝樓根",
+   "川芎",
+   "薑黃",
+   "連翹",
+   "大黃"
+  ],
+  "formula_raw": "黃連3、黃芩3、黃柏3、山梔子3、菊花1.5、當歸尾1.5、桔梗0.8、葛根0.8、薄荷0.8、玄參0.8、栝樓根0.8、川芎0.8、薑黃2.2、連翹2.2、大黃4.4 (一日飲片量28.6公克)。傳統製劑加蜂蜜適量。",
+  "effect": "疏風、清熱、解毒。",
+  "indication": "上焦積熱、眼痛咽痛、口舌生瘡、心膈煩熱、肺火上升、風熱鼻赤。"
+ },
+ {
+  "code": "P165",
+  "kind": "formula",
+  "name_zh": "梔子豉湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "山梔子",
+   "淡豆豉"
+  ],
+  "formula_raw": "山梔子10、淡豆豉15 (一日飲片量25公克)。",
+  "effect": "清熱除煩。",
+  "indication": "汗吐下後、邪熱客胸，身熱懊憹，虛煩不眠。"
+ },
+ {
+  "code": "P166",
+  "kind": "formula",
+  "name_zh": "桔梗湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "桔梗",
+   "甘草"
+  ],
+  "formula_raw": "桔梗8、甘草16 (一日飲片量24公克)。",
+  "effect": "排膿解毒。",
+  "indication": "肺癰吐膿，其氣腥臭，咽喉腫痛。"
+ },
+ {
+  "code": "P167",
+  "kind": "formula",
+  "name_zh": "清肺飲",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫方集解",
+  "herbs": [
+   "杏仁",
+   "貝母",
+   "茯苓",
+   "桔梗",
+   "甘草",
+   "五味子",
+   "橘紅",
+   "生薑"
+  ],
+  "formula_raw": "杏仁5、貝母5、茯苓5、桔梗2.5、甘草2.5、五味子2.5、橘紅2.5、生薑3 (一日飲片量28公克)。",
+  "effect": "化痰，潤燥。",
+  "indication": "痰濕氣逆而咳嗽。"
+ },
+ {
+  "code": "P168",
+  "kind": "formula",
+  "name_zh": "瓜蔞枳實湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "萬病回春",
+  "herbs": [
+   "栝樓",
+   "枳實",
+   "桔梗",
+   "茯苓",
+   "貝母",
+   "陳皮",
+   "黃芩",
+   "山梔子",
+   "當歸",
+   "砂仁",
+   "木香",
+   "甘草",
+   "生薑"
+  ],
+  "formula_raw": "栝樓3、枳實3、桔梗3、茯苓3、貝母3、陳皮3、黃芩3、山梔子3、當歸2、砂仁1.5、木香1.5、甘草1、生薑3 (一日飲片量33公克)。",
+  "effect": "清肺化痰，行氣利膈。",
+  "indication": "久咳、痰結胸膈，痰迷心竅，不能言語。"
+ },
+ {
+  "code": "P169",
+  "kind": "formula",
+  "name_zh": "不換金正氣散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "厚朴",
+   "藿香",
+   "陳皮",
+   "半夏",
+   "蒼朮",
+   "炙甘草",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "厚朴4、藿香4、陳皮4、半夏4、蒼朮4、炙甘草4、生薑3、大棗2 (一日飲片量29公克)。",
+  "effect": "行氣化濕，和胃止嘔。",
+  "indication": "四時傷寒，瘴疫時氣，頭痛寒熱，霍亂吐瀉。"
+ },
+ {
+  "code": "P170",
+  "kind": "formula",
+  "name_zh": "健脾丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "證治準繩",
+  "herbs": [
+   "白朮",
+   "木香",
+   "黃連",
+   "甘草",
+   "茯苓",
+   "人參",
+   "神麴",
+   "陳皮",
+   "砂仁",
+   "麥芽",
+   "山楂",
+   "山藥",
+   "肉豆蔻"
+  ],
+  "formula_raw": "白朮5、木香1.5、黃連1.5、甘草1.5、茯苓4、人參3、神麴2、陳皮2、砂仁2、麥芽2、山楂2、山藥2、肉豆蔻2 (一日飲片量30.5公克)。",
+  "effect": "益氣健脾，和胃消食。",
+  "indication": "脾胃虛弱，飲食不化，脘腹脹滿。"
+ },
+ {
+  "code": "P171",
+  "kind": "formula",
+  "name_zh": "連翹敗毒散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫方集解",
+  "herbs": [
+   "羌活",
+   "獨活",
+   "柴胡",
+   "前胡",
+   "川芎",
+   "枳殼",
+   "桔梗",
+   "茯苓",
+   "金銀花",
+   "連翹",
+   "甘草",
+   "生薑",
+   "薄荷"
+  ],
+  "formula_raw": "羌活2、獨活2、柴胡2、前胡2、川芎2、枳殼2、桔梗2、茯苓2、金銀花2、連翹2、甘草1、生薑2、薄荷2 (一日飲片量25公克)。",
+  "effect": "解表清熱，消腫解毒。",
+  "indication": "傷寒頭痛，瘡瘍初起。"
+ },
+ {
+  "code": "P172",
+  "kind": "formula",
+  "name_zh": "補陰湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "萬病回春",
+  "herbs": [
+   "當歸",
+   "白芍",
+   "生地黃",
+   "熟地黃",
+   "陳皮",
+   "茴香",
+   "補骨脂",
+   "懷牛膝",
+   "杜仲",
+   "茯苓",
+   "人參",
+   "黃柏",
+   "知母",
+   "炙甘草",
+   "大棗"
+  ],
+  "formula_raw": "當歸2、白芍2、生地黃2、熟地黃2、陳皮2、茴香2、補骨脂2、懷牛膝2、杜仲2、茯苓2、人參1、黃柏1.5、知母1.5、炙甘草1、大棗2 (一日飲片量27公克)。",
+  "effect": "滋陰補腎。",
+  "indication": "腎虛腰痛。"
+ },
+ {
+  "code": "P173",
+  "kind": "formula",
+  "name_zh": "麥味地黃丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫方集解",
+  "herbs": [
+   "熟地黃",
+   "山茱萸肉",
+   "山藥",
+   "茯苓",
+   "牡丹皮",
+   "澤瀉",
+   "五味子",
+   "麥門冬"
+  ],
+  "formula_raw": "熟地黃8、山茱萸肉4、山藥4、茯苓3、牡丹皮3、澤瀉3、五味子2、麥門冬3 (一日飲片量30公克)。傳統製劑加蜂蜜適量。",
+  "effect": "斂肺滋陰。",
+  "indication": "肺腎陰虛，咳嗽虛喘，潮熱盜汗。"
+ },
+ {
+  "code": "P174",
+  "kind": "formula",
+  "name_zh": "滋陰地黃丸（熟乾地黃丸）《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "蘭室秘藏",
+  "herbs": [
+   "人參",
+   "炙甘草",
+   "天門冬",
+   "地骨皮",
+   "五味子",
+   "枳殼",
+   "黃連",
+   "當歸",
+   "黃芩",
+   "生地黃",
+   "柴胡",
+   "熟地黃"
+  ],
+  "formula_raw": "人參1、炙甘草1、天門冬1.5、地骨皮1.5、五味子1.5、枳殼1、黃連1.5、當歸2.5、黃芩2.5、生地黃4、柴胡4、熟地黃5 (一日飲片量27公克)。傳統製劑加蜂蜜適量。",
+  "effect": "養陰清熱，益肝明目。",
+  "indication": "肝腎不足，陰虛有熱，頭暈目眩，視物昏花。"
+ },
+ {
+  "code": "P175",
+  "kind": "formula",
+  "name_zh": "當歸補血湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "內外傷辨惑論",
+  "herbs": [
+   "黃耆",
+   "當歸"
+  ],
+  "formula_raw": "黃耆25、當歸5 (一日飲片量30公克)。",
+  "effect": "補氣生血。",
+  "indication": "脈大而虛，氣弱血虛，勞倦內傷。"
+ },
+ {
+  "code": "P176",
+  "kind": "formula",
+  "name_zh": "大補陰丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "丹溪心法",
+  "herbs": [
+   "黃柏",
+   "知母",
+   "熟地黃",
+   "龜板"
+  ],
+  "formula_raw": "黃柏6、知母6、熟地黃9、龜板9 (一日飲片量30公克)。傳統製劑加蜂蜜適量。",
+  "effect": "滋陰降火。",
+  "indication": "陰虧火旺，肺痿欬血，呃逆煩熱，骨蒸盜汗，足膝疼熱。"
+ },
+ {
+  "code": "P177",
+  "kind": "formula",
+  "name_zh": "七寶美髯丹《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫方集解",
+  "herbs": [
+   "製何首烏",
+   "茯苓",
+   "懷牛膝",
+   "當歸",
+   "枸杞子",
+   "菟絲子",
+   "補骨脂"
+  ],
+  "formula_raw": "製何首烏12、茯苓3、懷牛膝3、當歸3、枸杞子3、菟絲子3、補骨脂1.5 (一日飲片量28.5公克)。傳統製劑加蜂蜜適量。",
+  "effect": "滋腎養血。",
+  "indication": "腎陰虧損，筋骨無力，鬚髮早白。"
+ },
+ {
+  "code": "P178",
+  "kind": "formula",
+  "name_zh": "斑龍丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "古今醫統",
+  "herbs": [
+   "鹿角霜",
+   "鹿角膠",
+   "菟絲子",
+   "柏子仁",
+   "熟地黃",
+   "茯苓",
+   "補骨脂"
+  ],
+  "formula_raw": "鹿角霜5、鹿角膠5、菟絲子5、柏子仁5、熟地黃5、茯苓2.5、補骨脂2.5 (一日飲片量30公克)。",
+  "effect": "養氣血，益筋骨。",
+  "indication": "腎陽不足，腰膝酸軟，頻尿肢冷。"
+ },
+ {
+  "code": "P179",
+  "kind": "formula",
+  "name_zh": "再造散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒六書",
+  "herbs": [
+   "黃耆",
+   "人參",
+   "桂枝",
+   "甘草",
+   "附子",
+   "細辛",
+   "羌活",
+   "防風",
+   "川芎",
+   "煨薑",
+   "白芍",
+   "大棗"
+  ],
+  "formula_raw": "黃耆3、人參3、桂枝3、甘草3、附子1.5、細辛1.5、羌活2.5、防風2.5、川芎2.5、煨薑3、白芍3、大棗3 (一日飲片量31.5公克)。",
+  "effect": "溫陽益氣。",
+  "indication": "外感風寒，熱清寒重，無汗肢冷。"
+ },
+ {
+  "code": "P180",
+  "kind": "formula",
+  "name_zh": "養肝丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "濟生方",
+  "herbs": [
+   "當歸",
+   "車前子",
+   "白芍",
+   "防風",
+   "蕤仁",
+   "熟地黃",
+   "川芎",
+   "楮實子"
+  ],
+  "formula_raw": "當歸3.5、車前子3.5、白芍3.5、防風3.5、蕤仁3.5、熟地黃3.5、川芎3.5、楮實子3.5 (一日飲片量28公克)。傳統製劑加蜂蜜適量。",
+  "effect": "養血明目。",
+  "indication": "肝血不足，眼目昏花，或生眵淚，久視無力。"
+ },
+ {
+  "code": "P181",
+  "kind": "formula",
+  "name_zh": "清涼散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "萬病回春",
+  "herbs": [
+   "山梔子",
+   "連翹",
+   "黃芩",
+   "防風",
+   "枳殼",
+   "黃連",
+   "當歸",
+   "生地黃",
+   "甘草",
+   "桔梗",
+   "薄荷",
+   "燈心草",
+   "細茶",
+   "山豆根"
+  ],
+  "formula_raw": "山梔子3、連翹3、黃芩3、防風3、枳殼3、黃連3、當歸3、生地黃3、甘草3、桔梗1.5、薄荷1.5、燈心草1、細茶1、山豆根1 (一日飲片量33公克)。",
+  "effect": "清熱瀉火，消腫止痛。",
+  "indication": "一切實火，咽喉腫痛。"
+ },
+ {
+  "code": "P182",
+  "kind": "formula",
+  "name_zh": "甘麥大棗湯（甘草小麥大棗湯）",
+  "name_latin": "",
+  "name_en": "",
+  "source": "金匱要略",
+  "herbs": [
+   "甘草",
+   "小麥",
+   "大棗"
+  ],
+  "formula_raw": "甘草6、小麥12、大棗6 (一日飲片量24公克)。",
+  "effect": "養心安神，和中緩急。",
+  "indication": "婦人臟躁，善悲欲泣，小兒夜啼，不眠。"
+ },
+ {
+  "code": "P183",
+  "kind": "formula",
+  "name_zh": "柴胡加龍骨牡蠣湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒雜病論",
+  "herbs": [
+   "半夏",
+   "大棗",
+   "柴胡",
+   "生薑",
+   "人參",
+   "龍骨",
+   "桂枝",
+   "茯苓",
+   "大黃",
+   "牡蠣",
+   "黃芩"
+  ],
+  "formula_raw": "半夏3、大棗2、柴胡5、生薑2、人參2、龍骨2、桂枝2、茯苓2、大黃2.5、牡蠣2、黃芩2 (一日飲片量26.5公克)。",
+  "effect": "和解少陽，鎮驚安神。",
+  "indication": "傷寒誤下後，胸滿，煩驚，譫語，一身儘重，不能轉側。"
+ },
+ {
+  "code": "P184",
+  "kind": "formula",
+  "name_zh": "保產無憂方",
+  "name_latin": "",
+  "name_en": "",
+  "source": "驗方新編",
+  "herbs": [
+   "厚朴",
+   "艾葉",
+   "當歸",
+   "川芎",
+   "荊芥",
+   "川貝母",
+   "菟絲子",
+   "羌活",
+   "甘草",
+   "枳殼",
+   "白芍",
+   "生薑",
+   "黃耆"
+  ],
+  "formula_raw": "厚朴1.4、艾葉1.4、當歸3、川芎3、荊芥1.6、川貝母2、菟絲子2、羌活1、甘草1、枳殼1.2、白芍4、生薑3、黃耆1.6 (一日飲片量26.2公克)。",
+  "effect": "補氣養血，安胎保產。",
+  "indication": "胎動不安。"
+ },
+ {
+  "code": "P185",
+  "kind": "formula",
+  "name_zh": "當歸飲子",
+  "name_latin": "",
+  "name_en": "",
+  "source": "證治準繩",
+  "herbs": [
+   "當歸",
+   "白芍",
+   "川芎",
+   "生地黃",
+   "白蒺藜",
+   "防風",
+   "荊芥",
+   "何首烏",
+   "黃耆",
+   "甘草",
+   "生薑"
+  ],
+  "formula_raw": "當歸3、白芍3、川芎3、生地黃3、白蒺藜3、防風3、荊芥3、何首烏1.5、黃耆1.5、甘草1.5、生薑4.5 (一日飲片量30公克)。",
+  "effect": "補氣益血，疏風除濕。",
+  "indication": "瘡疥風癬，濕毒搔癢。"
+ },
+ {
+  "code": "P186",
+  "kind": "formula",
+  "name_zh": "寧嗽丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "中國醫學大辭典",
+  "herbs": [
+   "桔梗",
+   "川石斛",
+   "半夏",
+   "川貝母",
+   "蘇子",
+   "茯苓",
+   "薄荷",
+   "杏仁",
+   "桑白皮",
+   "橘紅",
+   "榖芽",
+   "甘草"
+  ],
+  "formula_raw": "桔梗3、川石斛3、半夏3、川貝母3、蘇子3、茯苓3、薄荷2.3、杏仁2.3、桑白皮2.3、橘紅1.5、榖芽1.5、甘草0.8 (一日飲片量28.7公克)。",
+  "effect": "止咳寧嗽，清肺化痰。",
+  "indication": "咳嗽痰多氣急，痰白黏或色黃。"
+ },
+ {
+  "code": "P187",
+  "kind": "formula",
+  "name_zh": "二陳湯（丸）《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "半夏",
+   "陳皮",
+   "茯苓",
+   "炙甘草",
+   "生薑"
+  ],
+  "formula_raw": "半夏8、陳皮8、茯苓5、炙甘草2.5、生薑2.5 (一日飲片量26公克)。",
+  "effect": "燥濕化痰，理氣和中。",
+  "indication": "濕痰咳嗽，痰多色白，胸膈脹滿，噁心嘔吐，脾胃不和。"
+ },
+ {
+  "code": "P188",
+  "kind": "formula",
+  "name_zh": "桂枝芍藥知母湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "金匱要略",
+  "herbs": [
+   "桂枝",
+   "白芍",
+   "甘草",
+   "麻黃",
+   "生薑",
+   "白朮",
+   "知母",
+   "防風",
+   "炮附子"
+  ],
+  "formula_raw": "桂枝4、白芍3、甘草2、麻黃2、生薑5、白朮5、知母4、防風4、炮附子2 (一日飲片量31公克)。",
+  "effect": "祛風勝濕，溫經止痛。",
+  "indication": "風濕痺證，肢節腫痛，腳腫麻木，頭眩短氣，心煩欲吐。"
+ },
+ {
+  "code": "P189",
+  "kind": "formula",
+  "name_zh": "蒼耳散《散》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "證治準繩",
+  "herbs": [
+   "辛夷",
+   "蒼耳子",
+   "白芷",
+   "薄荷",
+   "蔥白",
+   "細茶"
+  ],
+  "formula_raw": "辛夷8、蒼耳子4、白芷16、薄荷1、蔥白3、細茶2 (一日飲片量34公克)。",
+  "effect": "傳統製劑加蔥白、細茶適量。",
+  "indication": "疏風，清熱。"
+ },
+ {
+  "code": "P190",
+  "kind": "formula",
+  "name_zh": "柴胡清肝湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫宗金鑑",
+  "herbs": [
+   "柴胡",
+   "生地黃",
+   "當歸",
+   "赤芍",
+   "川芎",
+   "連翹",
+   "牛蒡子",
+   "黃芩",
+   "山梔子",
+   "栝樓根",
+   "甘草節",
+   "防風"
+  ],
+  "formula_raw": "柴胡3、生地黃3、當歸4、赤芍3、川芎2、連翹2、牛蒡子3、黃芩2、山梔子2、栝樓根2、甘草節2、防風2 (一日飲片量30公克)。",
+  "effect": "清肝疏風，瀉火解毒。",
+  "indication": "鬢疽初起，肝膽三焦風熱怒火之症。"
+ },
+ {
+  "code": "P191",
+  "kind": "formula",
+  "name_zh": "托裏消毒飲",
+  "name_latin": "",
+  "name_en": "",
+  "source": "外科正宗",
+  "herbs": [
+   "人參",
+   "川芎",
+   "白芍",
+   "黃耆",
+   "當歸",
+   "白朮",
+   "金銀花",
+   "茯苓",
+   "白芷",
+   "甘草",
+   "皂角刺",
+   "桔梗"
+  ],
+  "formula_raw": "人參3、川芎3、白芍3、黃耆3、當歸3、白朮3、金銀花3、茯苓3、白芷1.5、甘草1.5、皂角刺1.5、桔梗1.5 (一日飲片量30 公克)。",
+  "effect": "補氣益血，托裏消毒。",
+  "indication": "瘡瘍氣血俱虛，托膿生肌。"
+ },
+ {
+  "code": "P192",
+  "kind": "formula",
+  "name_zh": "桑螵蛸散《散》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "本草衍義",
+  "herbs": [
+   "桑螵蛸",
+   "遠志",
+   "菖蒲",
+   "龍骨",
+   "人參",
+   "茯苓",
+   "當歸",
+   "龜板"
+  ],
+  "formula_raw": "桑螵蛸3、遠志3、菖蒲3、龍骨3、人參3、茯苓3、當歸3、龜板3 (一日飲片量24公克)。",
+  "effect": "調補心腎，固精止遺。",
+  "indication": "小便頻數，遺尿，滑精，精神恍惚，健忘。"
+ },
+ {
+  "code": "P193",
+  "kind": "formula",
+  "name_zh": "溫清飲（解毒四物湯）",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫學入門",
+  "herbs": [
+   "黃連",
+   "黃柏",
+   "黃芩",
+   "山梔子",
+   "當歸",
+   "川芎",
+   "白芍",
+   "熟地黃"
+  ],
+  "formula_raw": "黃連3.5、黃柏3.5、黃芩3.5、山梔子3.5、當歸3.5、川芎3.5、白芍3.5、熟地黃3.5 (一日飲片量28公克)。",
+  "effect": "清熱化濕，養血和營。",
+  "indication": "經水不止，面色萎黃，臍腹刺痛，崩漏。"
+ },
+ {
+  "code": "P194",
+  "kind": "formula",
+  "name_zh": "金鎖固精丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "醫方集解",
+  "herbs": [
+   "沙苑蒺藜",
+   "芡實",
+   "蓮鬚",
+   "龍骨",
+   "牡蠣",
+   "蓮子"
+  ],
+  "formula_raw": "沙苑蒺藜6、芡實6、蓮鬚6、龍骨3、牡蠣3、蓮子6 (一日飲片量30公克)。",
+  "effect": "固腎濇精。",
+  "indication": "腎虛，遺精，盜汗，腰痠耳鳴，四肢倦怠。"
+ },
+ {
+  "code": "P195",
+  "kind": "formula",
+  "name_zh": "保和丸《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "丹溪心法",
+  "herbs": [
+   "山楂",
+   "神麴",
+   "半夏",
+   "茯苓",
+   "陳皮",
+   "連翹",
+   "萊菔子"
+  ],
+  "formula_raw": "山楂12、神麴4、半夏4、茯苓4、陳皮2、連翹2、萊菔子2 (一日飲片量30公克)。",
+  "effect": "消積和胃。",
+  "indication": "食積飲停，胸膈痞滿，噯氣吞酸，腹痛泄瀉。"
+ },
+ {
+  "code": "P196",
+  "kind": "formula",
+  "name_zh": "胃苓湯《散》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "中國醫學大辭典",
+  "herbs": [
+   "蒼朮",
+   "厚朴",
+   "陳皮",
+   "白朮",
+   "茯苓",
+   "澤瀉",
+   "豬苓",
+   "甘草",
+   "肉桂",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "蒼朮3、厚朴3、陳皮3、白朮3、茯苓3、澤瀉2、豬苓2、甘草1.2、肉桂1、生薑3、大棗2 (一日飲片量26.2公克)。傳統製劑不加生薑、大棗。",
+  "effect": "祛濕化滯，健脾和中。",
+  "indication": "中暑傷濕，停飲挾食，腹痛泄瀉，嘔吐肢痛，小便短少。"
+ },
+ {
+  "code": "P197",
+  "kind": "formula",
+  "name_zh": "平胃散（丸）《丸》",
+  "name_latin": "",
+  "name_en": "",
+  "source": "太平惠民和劑局方",
+  "herbs": [
+   "陳皮",
+   "厚朴",
+   "炙甘草",
+   "蒼朮",
+   "生薑",
+   "大棗"
+  ],
+  "formula_raw": "陳皮5、厚朴5、炙甘草3、蒼朮8、生薑3、大棗2 (一日飲片量26公克)。",
+  "effect": "燥濕健脾，理氣和中。",
+  "indication": "濕阻脾胃，脘腹脹滿，噁心嘔吐，噫氣吞酸。"
+ },
+ {
+  "code": "P198",
+  "kind": "formula",
+  "name_zh": "白虎加人參湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "傷寒論",
+  "herbs": [
+   "知母",
+   "石膏",
+   "炙甘草",
+   "粳米",
+   "人參"
+  ],
+  "formula_raw": "知母6、石膏16、炙甘草2、粳米8、人參3 (一日飲片量35公克)。",
+  "effect": "清熱、益氣、生津。",
+  "indication": "津氣兩傷、煩渴、中暑、身熱而渴，汗出惡寒。"
+ },
+ {
+  "code": "P199",
+  "kind": "formula",
+  "name_zh": "抑肝散",
+  "name_latin": "",
+  "name_en": "",
+  "source": "證治準繩",
+  "herbs": [
+   "柴胡",
+   "甘草",
+   "川芎",
+   "當歸",
+   "白朮",
+   "茯苓",
+   "鈎藤"
+  ],
+  "formula_raw": "柴胡2.5、甘草2.5、川芎4、當歸5、白朮5、茯苓5、鈎藤5 (一日飲片量29公克)。",
+  "effect": "清肝熱。",
+  "indication": "肝經虛熱、驚悸抽搐，嘔吐痰涎，腹脹少食，睡臥不安。"
+ },
+ {
+  "code": "P200",
+  "kind": "formula",
+  "name_zh": "溫膽湯",
+  "name_latin": "",
+  "name_en": "",
+  "source": "中國醫學大辭典",
+  "herbs": [
+   "半夏",
+   "竹茹",
+   "枳實",
+   "陳皮",
+   "生薑",
+   "甘草",
+   "茯苓",
+   "大棗"
+  ],
+  "formula_raw": "半夏5、竹茹5、枳實5、陳皮7.5、生薑5、甘草2.5、茯苓4、大棗1 (一日飲片量35公克)。",
+  "effect": "溫膽和胃，除痰止嘔。",
+  "indication": "膽虛不眠，痰熱上擾，虛煩驚悸，口苦嘔涎。"
+ }
+]

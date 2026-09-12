@@ -29,13 +29,15 @@ async def test_search_parses_hits_from_firecrawl_payload():
         return_value=_mock_response(
             {
                 "success": True,
-                "data": [
-                    {
-                        "title": "高血壓",
-                        "description": "說明",
-                        "url": "https://www.hpa.gov.tw/a",
-                    }
-                ],
+                "data": {
+                    "web": [
+                        {
+                            "title": "高血壓",
+                            "description": "說明",
+                            "url": "https://www.hpa.gov.tw/a",
+                        }
+                    ]
+                },
             }
         )
     )
@@ -46,9 +48,50 @@ async def test_search_parses_hits_from_firecrawl_payload():
     assert hits[0].url == "https://www.hpa.gov.tw/a"
     http_client.post.assert_awaited_once()
     args, kwargs = http_client.post.await_args
-    assert args[0].endswith("/search")
+    assert args[0] == "https://api.firecrawl.dev/v2/search"
     assert kwargs["headers"]["Authorization"] == "Bearer fc-test"
     assert kwargs["json"] == {"query": "高血壓", "limit": 3}
+
+
+@pytest.mark.asyncio
+async def test_search_sends_include_domains_when_given():
+    http_client = AsyncMock()
+    http_client.post = AsyncMock(
+        return_value=_mock_response({"success": True, "data": {"web": []}})
+    )
+    client = FirecrawlClient(api_key="fc-test", http_client=http_client)
+    await client.search(
+        "persistent genital arousal disorder",
+        limit=8,
+        include_domains=["nih.gov", "medlineplus.gov"],
+    )
+    _args, kwargs = http_client.post.await_args
+    assert kwargs["json"] == {
+        "query": "persistent genital arousal disorder",
+        "limit": 8,
+        "includeDomains": ["nih.gov", "medlineplus.gov"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_search_still_parses_v1_list_payload():
+    """base_url 被指回 v1 時 data 是 list；只認 v2 的形狀會靜靜回 0 筆。"""
+    http_client = AsyncMock()
+    http_client.post = AsyncMock(
+        return_value=_mock_response(
+            {
+                "success": True,
+                "data": [{"title": "高血壓", "url": "https://www.hpa.gov.tw/a"}],
+            }
+        )
+    )
+    client = FirecrawlClient(
+        api_key="fc-test",
+        base_url="https://api.firecrawl.dev/v1",
+        http_client=http_client,
+    )
+    hits = await client.search("高血壓")
+    assert [hit.url for hit in hits] == ["https://www.hpa.gov.tw/a"]
 
 
 @pytest.mark.asyncio

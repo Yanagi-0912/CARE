@@ -1,5 +1,6 @@
+import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 
 from langchain_core.documents import Document
@@ -11,6 +12,7 @@ from app.services.gemini import GeminiService
 from app.i18n.messages import t
 from app.services.rag.cannot_answer import (
     CANNOT_ANSWER_MARKERS,
+    NO_ANSWER_SENTINEL,
     answer_preview,
     matched_cannot_answer_marker,
 )
@@ -21,6 +23,7 @@ from app.services.rag.fail_messages import (
     rag_fail,
 )
 from app.services.rag.link_check import LinkChecker, dead_urls
+from app.services.rag.query_rewriter import RewrittenQuery
 from app.services.rag.web_client import WebSearchClient
 from app.services.rag.whitelist import (
     is_allowed_url,
@@ -45,6 +48,32 @@ def web_answer_prefix(language: str | None = None) -> str:
     return t("rag.web_answer_prefix", language=language)
 
 
+def _interleave(doc_lists: Sequence[list[Document]], *, limit: int) -> list[Document]:
+    """各路輪流取一份、網址去重，取滿 *limit* 為止。
+
+    交錯而不串接：串接的話中文那一路會吃滿全部名額，而罕見病正是中文那路
+    搜到不相關內容（多發性硬化症、泌尿科問答）、英文那路才有正解的情況。
+    名額維持 CITE_TOP_K 而不是兩路相加：來源清單只列前 CITE_TOP_K 份，
+    多給生成的文件會被引用成清單上沒有的編號。
+    """
+    merged: list[Document] = []
+    seen: set[str] = set()
+    depth = max((len(docs) for docs in doc_lists), default=0)
+    for rank in range(depth):
+        for docs in doc_lists:
+            if rank >= len(docs):
+                continue
+            doc = docs[rank]
+            url = str(doc.metadata.get("url") or "")
+            if url in seen:
+                continue
+            seen.add(url)
+            merged.append(doc)
+            if len(merged) >= limit:
+                return merged
+    return merged
+
+
 class WebSearchService:
     def __init__(
         self,
@@ -52,15 +81,23 @@ class WebSearchService:
         web_client: WebSearchClient | None = None,
         on_web_fallback_success: OnWebFallbackSuccess | None = None,
         link_checker: LinkChecker | None = None,
+        en_search_domains: Sequence[str] = (),
     ) -> None:
         self.gemini_service = gemini_service
         self.web_client = web_client
         self._on_web_fallback_success = on_web_fallback_success
         # None＝不檢查來源網址存活，行為與導入前完全相同（見 link_check.py）
         self.link_checker = link_checker
+        # 空＝不搜英文那一路（見 config.RAG_WEB_SEARCH_EN_DOMAINS）
+        self._en_search_domains = tuple(
+            domain.strip() for domain in en_search_domains if domain.strip()
+        )
 
-    async def answer(self, query: str) -> str:
-        web_docs = await self._fetch_web_docs(query)
+    async def answer(
+        self, query: str, *, search_queries: RewrittenQuery | None = None
+    ) -> str:
+        """*search_queries* 只決定「拿什麼去搜」；生成與知識回報一律用原句。"""
+        web_docs = await self._fetch_web_docs(query, search_queries)
         if not web_docs:
             logger.info("rag_fail code=%s", RagFailCode.WEB_EMPTY)
             return rag_fail(RagFailCode.WEB_EMPTY)
@@ -168,19 +205,69 @@ class WebSearchService:
         )
         with stage_timer(logger, "rag_web_generate", docs=len(docs)):
             result = await self.gemini_service.chat_model.ainvoke(messages)
-        answer_text = result.content or t("rag.generate_fallback")
+        # 空字串＝答不出來，理由同 RagAnswerService._generate_answer。
+        answer_text = result.content or NO_ANSWER_SENTINEL
         if not isinstance(answer_text, str):
             answer_text = str(answer_text)
         return answer_text
 
-    async def _fetch_web_docs(self, query: str) -> list[Document]:
+    async def _fetch_web_docs(
+        self, query: str, search_queries: RewrittenQuery | None = None
+    ) -> list[Document]:
+        """中英兩路並行搜尋、交錯合併；兩路都沒有可用文件時以原句重搜一次。
+
+        中文那一路查 gov.tw：有改寫時用 zh_terms，沒有時沿用原句（web tool
+        與 CRAG 關閉時的行為因此與導入前相同）。英文那一路只在有 en_terms
+        且設定了英文網域時才搜。
+
+        重搜是因為 Firecrawl 會隨機回 0 筆：2026-09-12 同一查詢連打兩次，
+        10 組裡有 2 組一次 0 筆、一次 5 筆。重搜用原句，因為改寫過的關鍵字
+        不一定比原句好搜；沒有改寫時就是同一句再搜一次。只在完全沒有可用
+        文件時才重搜，所以多花的時間只落在原本就會失敗的題目上。
+        """
         if self.web_client is None:
             return []
-        with stage_timer(logger, "rag_web_search") as t_search:
+        zh_query = (search_queries.zh_terms if search_queries else "") or query
+        en_query = (
+            search_queries.en_terms
+            if search_queries is not None and self._en_search_domains
+            else ""
+        )
+
+        legs = [self._search_leg("zh", with_whitelist_site_filter(zh_query))]
+        if en_query:
+            # 英文那一路只取 CITE_TOP_K 筆：交錯合併後它最多用到 2 份，多搜的
+            # 只是多等，而兩路並行時整段是被較慢的那一路拖住。2026-09-12 實測
+            # v2 includeDomains（nih.gov、medlineplus.gov）limit 8 要 1.9-5.3 秒、
+            # limit 3 是 1.0-1.6 秒（各 3 次）。
+            legs.append(
+                self._search_leg(
+                    "en",
+                    en_query,
+                    include_domains=self._en_search_domains,
+                    limit=CITE_TOP_K,
+                )
+            )
+        docs = _interleave(await asyncio.gather(*legs), limit=CITE_TOP_K)
+        if docs:
+            return docs
+        return await self._search_leg("zh_retry", with_whitelist_site_filter(query))
+
+    async def _search_leg(
+        self,
+        leg: str,
+        query: str,
+        *,
+        include_domains: Sequence[str] | None = None,
+        limit: int = WEB_SEARCH_LIMIT,
+    ) -> list[Document]:
+        assert self.web_client is not None
+        with stage_timer(logger, "rag_web_search", leg=leg) as t_search:
             try:
                 hits = await self.web_client.search(
-                    with_whitelist_site_filter(query),
-                    limit=WEB_SEARCH_LIMIT,
+                    query,
+                    limit=limit,
+                    include_domains=include_domains,
                 )
             except Exception:
                 t_search["hits"] = "error"
@@ -189,9 +276,8 @@ class WebSearchService:
 
         # scrape 是逐一 await 的，整段的 ms 與次數要分開記：單次 scrape 不慢
         # 但跑了六次，與單次就卡滿逾時，是兩個不同的問題、兩種不同的修法。
-        with stage_timer(logger, "rag_web_scrape_loop") as t_loop:
-            docs = await self._collect_web_docs(hits, t_loop)
-        return docs
+        with stage_timer(logger, "rag_web_scrape_loop", leg=leg) as t_loop:
+            return await self._collect_web_docs(hits, t_loop)
 
     async def _collect_web_docs(
         self, hits: list[Any], t_loop: dict[str, Any]

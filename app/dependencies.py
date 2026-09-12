@@ -102,7 +102,10 @@ from app.services.rag.whitelist import default_url_policy
 from app.services.rag.user_document_answer_service import UserDocumentAnswerService
 from app.services.rag.user_document_ingest_service import UserDocumentIngestService
 from app.services.rag.user_document_retriever import UserDocumentVectorRetriever
-from app.services.rag.query_rewriter import GeminiQueryRewriter
+from app.services.rag.query_rewriter import (
+    REWRITE_THINKING_LEVEL,
+    GeminiQueryRewriter,
+)
 from app.services.rag.retrieval_grader import GeminiRetrievalGrader
 from app.services.rag.web_search_service import WebSearchService
 from app.services.medical_news.grader import GeminiNewsGrader
@@ -212,7 +215,15 @@ _rag_grader = None
 _rag_rewriter = None
 if settings.RAG_CRAG_ENABLED:
     _rag_grader = GeminiRetrievalGrader(gemini_service=_gemini_service)
-    _rag_rewriter = GeminiQueryRewriter(gemini_service=_gemini_service)
+    # 改寫用獨立的低 thinking 實例：它與 CRAG 分級同時起跑，要比分級先跑完
+    # 才不會讓使用者多等（數字見 query_rewriter.REWRITE_THINKING_LEVEL）。
+    _rag_rewriter = GeminiQueryRewriter(
+        gemini_service=GeminiService(
+            api_key=settings.GEMINI_API_KEY,
+            model_name=settings.MODEL_NAME,
+            thinking_level=REWRITE_THINKING_LEVEL,
+        )
+    )
 else:
     logger.info("RAG_CRAG_ENABLED=false; skipping retrieval grader")
 
@@ -270,6 +281,7 @@ _web_search_service = WebSearchService(
     web_client=_firecrawl_client,
     on_web_fallback_success=_knowledge_report_service.create_from_web_fallback,
     link_checker=_link_checker,
+    en_search_domains=settings.RAG_WEB_SEARCH_EN_DOMAINS.split(","),
 )
 
 _rag_answer_service = RagAnswerService(

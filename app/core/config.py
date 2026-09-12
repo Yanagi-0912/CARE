@@ -291,6 +291,15 @@ class Settings:
     RAG_WEB_SEARCH_SITE_FILTER: str = os.getenv(
         "RAG_WEB_SEARCH_SITE_FILTER", "site:gov.tw"
     )
+    # 網搜英文那一路的網域（逗號分隔，送給 Firecrawl v2 的 includeDomains）。
+    # 中文那一路仍用上面的 site: 篩選查 gov.tw。罕見病在 gov.tw 常沒有中文
+    # 資料，要用英文醫學名詞查 nih.gov 才找得到（例：persistent genital arousal
+    # disorder 在 nih.gov 回 5 筆 PMC／PubMed，中文原句在 gov.tw 只命中一份
+    # 不相關的 PDF）。這裡的網域必須也在入庫白名單內，因為搜回來的結果照樣
+    # 用白名單過濾。空字串＝不搜英文。
+    RAG_WEB_SEARCH_EN_DOMAINS: str = os.getenv(
+        "RAG_WEB_SEARCH_EN_DOMAINS", "nih.gov,medlineplus.gov"
+    )
     # 手動知識回報的濫用防護。只計 source="manual" 的回報：若把 agent tool 與
     # web fallback 自動建報也算進來，使用者在 LINE 多問幾個知識庫答不出來的
     # 問題就會把自己的手動額度用光，而他完全不會知道自己「用掉」了什麼

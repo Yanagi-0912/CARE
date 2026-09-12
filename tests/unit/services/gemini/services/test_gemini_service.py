@@ -104,3 +104,15 @@ async def test_invoke_structured_output_with_image_sends_prompt_and_inline_image
         # 影像以 data URI 內嵌，不落地成檔案也不對外產生可讀取的網址
         assert content[1]["image_url"].startswith("data:image/png;base64,")
         assert base64.b64decode(content[1]["image_url"].split(",", 1)[1]) == b"raw"
+
+
+def test_thinking_level_is_passed_to_chat_model():
+    svc = GeminiService(
+        api_key="dummy_key", model_name="dummy_model", thinking_level="low"
+    )
+    assert svc.chat_model.thinking_level == "low"
+
+
+def test_thinking_level_defaults_to_model_default():
+    svc = GeminiService(api_key="dummy_key", model_name="dummy_model")
+    assert svc.chat_model.thinking_level is None

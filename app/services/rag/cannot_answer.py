@@ -1,19 +1,16 @@
-CANNOT_ANSWER_MARKERS: tuple[str, ...] = (
-    "不知道",
-    "無法提供",
-    "無法回答",
-    "無法安全回答",
-    "未找到",
-    "找不到相關",
-    "don't know",
-    "do not know",
-    "cannot answer",
-    "unable to answer",
-    "not enough information",
-    "no matching",
-    "わかりません",
-    "答えられません",
-)
+"""判斷模型是否答不出來。
+
+只認 prompt 要求模型寫出的固定標記，不比對「不知道」「無法提供」這類字眼——
+理由與實測數字見 answer_prompts._NO_ANSWER_RULE。字眼比對兩頭都會錯：模型換
+個說法或換個語言就漏抓；正常回答裡剛好出現「不知道」「無法提供」，又會整段
+被丟掉。
+"""
+
+NO_ANSWER_SENTINEL = "[NO_ANSWER]"
+
+# 名稱與 tuple 形式保留：answer_service、web_search_service 的拒答判斷，以及
+# eval_scoring.is_refuse_ok 都透過它比對。
+CANNOT_ANSWER_MARKERS: tuple[str, ...] = (NO_ANSWER_SENTINEL,)
 
 
 def matched_cannot_answer_marker(text: str, markers: tuple[str, ...]) -> str:

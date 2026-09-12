@@ -16,7 +16,7 @@
 - **新增 Agent tool `suggest_department_for_symptom`**：與 `get_rag_answer` 並列，處理「症狀 + 問科別」的問句。純症狀敘述（「我肚子好痛」）不含掛號意圖者行為不變，仍走 `get_rag_answer`。
 - **新增 `UrgencyClassifier`**：語意急迫度判斷，判準為「所述狀況是否正在發生、且是否需要立即處置」。**掛在 graph 上 `agent` 之前**，判定為緊急時短路整條流程，不進 agent、不跑 RAG、不呼叫任何工具。與掛號意圖、症狀描述、工具呼叫皆無關（design 決策 1、2）。
 - **新增 `SymptomDepartmentService`**：三段流程——症狀詞正規化 → 對照表比對 → 產生候選科別建議。本服務不做急迫度判斷（design 決策 3）。
-- **新增人工審定的症狀對照表**：`resources/symptom_department_table/`。爬蟲產出（`scripts/department_symptom_scraper.py`）僅為原料，`confidence` 非 `verified` 的條目 SHALL NOT 進入線上查詢。
+- **新增人工審定的症狀對照表**：`resources/symptom_department_table/`。原料是來源醫院公開對照表的原文備份（`raw/*.md`），人工整併成 `symptom_department_reference.json`；repo 中沒有爬蟲腳本。表中只收來源所載的對應，不含本專案補列或人工排序（design 決策 14）；審定狀態以整張表的 `status` 表示。
 - **對照表的科別欄位一律先過 `resolve_department()` 轉成部定專科**，載入時驗證，對不上即失敗。否則會產生「系統說查過了但附近沒有」——`llm_term_resolver.py` 模組註解指出這比「系統看不懂」更糟。
 - **輸出一律為多候選 + 保底 + 免責**，並可直接銜接既有的 `find_nearby_facilities_by_department`。
 - `get_rag_answer`、`find_nearby_hospitals`、`find_nearby_facilities_by_department` 與 `department_matcher` 的別名表**行為不變**。`department_matcher` 維持不收症狀詞——症狀邏輯全部收斂在新模組，兩者職責不混。
@@ -36,11 +36,11 @@
 ## Impact
 
 - **程式**：新增 `app/services/medical/symptom_classification/`（`urgency.py`、`normalizer.py`、`symptom_table.py`、`symptom_department_service.py`）、`app/tools/symptom_tools.py`；修改 `app/tools/registry.py`、`app/dependencies.py`、`app/services/agent/prompt.py`、`app/services/agent/utils/nodes.py`、`app/services/agent/agent.py`（graph 新增 `emergency` 節點與條件邊）、`app/services/agent/utils/state.py`
-- **資源**：`resources/symsptom_department_table/` 更名為 `resources/symptom_department_table/`（現名為拼字錯誤）；新增人工審定後的正式表
+- **資源**：`resources/symsptom_department_table/` 已更名為 `resources/symptom_department_table/`（2026-09-12）；新增人工審定後的正式表
 - **資料庫**：無 schema 變更，不新增 collection，不寫入任何資料
 - **行為**：純症狀敘述、找院所、RAG 衛教三條既有路徑皆不受影響；新路徑僅在「症狀 + 掛號意圖」同時成立時啟用
 - **測試**：`tests/unit/services/medical/test_urgency_classifier.py`、`test_symptom_normalizer.py`、`test_symptom_table.py`、`test_symptom_department_service.py`、`test_emergency_condition_flex.py`、`test_symptom_department_flex.py`、`tests/unit/tools/test_symptom_tools.py`、`tests/unit/tools/test_registry.py`（更新），以及 `tests/unit/services/agent/test_urgency_routing.py`——**端到端路由測試為必要項**：初版的單元測試全綠而線上完全失效，缺的正是這一層
-- **設定**：`SYMPTOM_DEPARTMENT_ENABLED`（default **false**，人工審定完成且 tasks 第 1 節門檻達標前不開啟）、`SYMPTOM_MATCH_MIN_SCORE`
+- **設定**：無新增設定。不設功能旗標，隨部署上線（design 決策 10）；比對門檻為模組常數，不進 env（design 決策 12）
 
 ## 尚未量測的前提
 
@@ -53,8 +53,8 @@
 
 ## 已知限制（撰稿時即成立，非實作缺陷）
 
-- 現有原料僅一家醫院（臺北榮總玉里分院），其分科方式不等同全台通用，且科別名稱（「胃腸科（含肝膽）」「一般內科」「傳統醫學科」「疼痛科」）皆不在 55 個部定專科內。
-- 原料含來源網站錯字（「打曀」「穿恐」）與非科別值（`15歲以下兒童` 被解析為 department）。
+- 現有原料為三家醫院（臺北榮總玉里分院、成大醫院、台大雲林分院），分科方式與粒度彼此不一致（榮總玉里把兒童症狀整列收在「15歲以下兒童」底下），科別名稱皆須轉為部定專科。表中缺成人科別的症狀（嘔吐、慢性咳嗽）與三家都沒收錄的症狀（流鼻水、流鼻血、痰多、帶狀皰疹）目前走保底，等併入更多醫院後補齊（design 決策 14）。
+- 原料含來源網站錯字（「穿恐」應為「穿孔」、「坐骨神精痛」應為「坐骨神經痛」）與非科別值（`15歲以下兒童` 被解析為 department）。
 - 爬蟲的 `emergency` 旗標為關鍵字初篩，明顯過寬：「常見疾病的診治（如潰瘍、便秘、感冒、頭痛等）」因含「潰瘍」被標為 `true`。腳本註解已載明此為初篩、須人工複查，本 change 據此要求人工定案。
 - 「肚子痛」三字不在原料中（原料為「腹脹」「腹瀉」「下腹痛」「急性神經腹痛」等），需靠正規化與同義詞處理。
 - 腹痛本身跨內科、外科、婦產科、泌尿科、急診——這正是原 Non-Goal 的立論。本 change 以「多候選 + 急迫度優先」回應，而非宣稱能分辨。

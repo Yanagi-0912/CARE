@@ -66,7 +66,7 @@ TOP_K = 5
 DEFAULT_VECTOR_PATH = (
     Path(__file__).resolve().parents[4]
     / "resources"
-    / "symsptom_department_table"
+    / "symptom_department_table"
     / "symptom_vectors.json"
 )
 

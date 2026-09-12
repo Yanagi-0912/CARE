@@ -85,6 +85,16 @@ def test_department_intent_also_counts_as_nearby_facility_intent():
     assert _is_nearby_facility_intent("附近有醫院嗎") is True
 
 
+@pytest.mark.parametrize("text", ["我肚子好痛要掛哪一科", "頭暈要看哪一科"])
+def test_symptom_with_registration_intent_does_not_request_location(text):
+    """
+    症狀＋問科別走 suggest_department_for_symptom，只回科別建議，SHALL NOT 跳出要
+    位置的按鈕（symptom-department-guidance spec「建議不主動請求位置」）。
+    """
+    assert _is_nearby_department_intent(text) is False
+    assert _is_nearby_facility_intent(text) is False
+
+
 def test_extract_department_from_history_looks_past_location_message():
     messages = [
         HumanMessage(content="附近有腸胃科嗎"),

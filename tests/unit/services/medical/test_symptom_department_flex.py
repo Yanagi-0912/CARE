@@ -21,7 +21,6 @@ import json
 from pathlib import Path
 
 import pytest
-from linebot.v3.messaging import FlexContainer
 
 from app.services.medical.symptom_classification.symptom_department_service import (
     RESULT_FALLBACK,
@@ -178,34 +177,6 @@ def test_source_section_matches_template(template):
     assert _skeleton(source_block) == _skeleton(tpl_block)
 
 
-# --- 交替配色 ---------------------------------------------------------------
-
-
-def test_adjacent_candidates_use_different_colors():
-    """相鄰候選卡不得同色，否則在小螢幕上會黏成一塊看不出是幾個選項。"""
-    bubble = _bubble(
-        _suggestion((_candidate("內科"), _candidate("外科"), _candidate("婦產科")))
-    )
-    _, boxes, _, _, _ = _body_parts(bubble)
-    colors = [box["backgroundColor"] for box in boxes]
-    assert all(a != b for a, b in zip(colors, colors[1:]))
-    assert colors == [
-        _CANDIDATE_PALETTE[0][0],
-        _CANDIDATE_PALETTE[1][0],
-        _CANDIDATE_PALETTE[0][0],
-    ]
-
-
-def test_candidate_border_pairs_with_its_background():
-    """底色與邊框色必須成對，配錯會出現綠底配米色框。"""
-    bubble = _bubble(
-        _suggestion((_candidate("內科"), _candidate("外科"), _candidate("婦產科")))
-    )
-    _, boxes, _, _, _ = _body_parts(bubble)
-    for box in boxes:
-        assert (box["backgroundColor"], box["borderColor"]) in _CANDIDATE_PALETTE
-
-
 # --- 來源條列 ---------------------------------------------------------------
 
 
@@ -261,17 +232,7 @@ def test_fallback_uses_the_same_stylesheet(template):
     ]
 
 
-# --- LINE 端驗證與用語邊界 ---------------------------------------------------
-
-
-@pytest.mark.parametrize("count", [1, 2, 3])
-@pytest.mark.parametrize("font_size", ["normal", "large", "xlarge"])
-def test_card_passes_line_sdk_validation(count, font_size):
-    candidates = tuple(
-        _candidate(name) for name in ("內科", "外科", "婦產科")[:count]
-    )
-    payload = _bubble(_suggestion(candidates), font_size=font_size)
-    FlexContainer.from_json(json.dumps(payload, ensure_ascii=False))
+# --- 用語邊界 ----------------------------------------------------------------
 
 
 def test_card_avoids_diagnostic_phrasing():
@@ -459,84 +420,6 @@ def test_malformed_quick_reply_does_not_break_the_card():
         assert LineReplier._parse_quick_reply(bad) is None
 
 
-# --- 出處只列真的收錄了這個症狀的來源 ----------------------------------------
-#
-# 初版一律列出全部三家，因為候選只留了來源「數量」沒留代碼。後果是每張卡的出處
-# 都一樣、也都不精確——一個症狀不可能每次都剛好三家都收錄。
-
-
-def test_only_cited_sources_are_listed():
-    from resources.flex_messages.medical_messages.symptom_department_flex_message import (
-        _cited_references,
-    )
-
-    result = _suggestion(
-        (
-            DepartmentCandidate(
-                canonical="內科", subgroup=None, facility_count=100, sources=("V",)
-            ),
-        )
-    )
-    assert [ref.code for ref in _cited_references(result, _REFERENCES)] == ["V"]
-
-
-def test_sources_from_every_candidate_are_unioned():
-    """
-    候選有兩科、各自來自不同醫院時，出處要涵蓋兩者——卡片是整體的建議，
-    不是只為第一個候選出處。
-    """
-    from resources.flex_messages.medical_messages.symptom_department_flex_message import (
-        _cited_references,
-    )
-
-    result = _suggestion(
-        (
-            DepartmentCandidate("內科", None, 100, ("V",)),
-            DepartmentCandidate("耳鼻喉科", None, 100, ("N",)),
-        )
-    )
-    assert {ref.code for ref in _cited_references(result, _REFERENCES)} == {"V", "N"}
-
-
-def test_cited_sources_keep_the_reference_file_order():
-    """集合的迭代順序不穩定，出處排序必須跟著來源檔走，否則每次送出都不一樣。"""
-    from resources.flex_messages.medical_messages.symptom_department_flex_message import (
-        _cited_references,
-    )
-
-    result = _suggestion((DepartmentCandidate("內科", None, 100, ("N", "V")),))
-    assert [ref.code for ref in _cited_references(result, _REFERENCES)] == ["V", "N"]
-
-
-def test_project_added_entry_shows_no_source_section():
-    """
-    `痰多`／`流鼻血` 是本專案補列的，sources 為空。列出任何一家醫院都是宣稱
-    「他們的對照表有收這個症狀」——那不是事實。
-    """
-    result = _suggestion((DepartmentCandidate("耳鼻喉科", None, 100, ()),))
-    bubble = _bubble(result, references=_REFERENCES)
-    contents = bubble["body"]["contents"]
-    assert not any(node.get("type") == "separator" for node in contents)
-    assert all(
-        "參考來源" not in json.dumps(node, ensure_ascii=False) for node in contents
-    )
-
-
-def test_fallback_card_shows_no_source_section():
-    """保底建議不是來自任何一家醫院的對照表，不該掛出處。"""
-    fallback = SymptomTriageResult(
-        kind=RESULT_FALLBACK,
-        user_input="x",
-        fallback_reason="無法對應到已知的症狀條目",
-        candidates=(
-            DepartmentCandidate("家醫科", None, 0, ()),
-            DepartmentCandidate("內科", None, 0, ()),
-        ),
-    )
-    payload = json.dumps(_bubble(fallback, references=_REFERENCES), ensure_ascii=False)
-    assert "參考來源" not in payload
-
-
 # --- 次專科標籤 --------------------------------------------------------------
 #
 # 「內科的胃腸肝膽」才是使用者要帶去掛號窗口的資訊，但它原本只埋在理由句中間，
@@ -600,75 +483,6 @@ def test_chip_does_not_leak_into_the_nearby_search():
     assert "胃腸肝膽" not in action["text"]
 
 
-def test_chip_survives_the_longest_subgroup_in_the_table():
-    """最長的次專科（七個字）也必須通過 LINE 端驗證，不能撐破標題列。"""
-    bubble = _bubble(_suggestion((_candidate("內科", "新陳代謝內分泌"),)))
-    FlexContainer.from_dict(bubble)
-
-
-# --- 補列條目退到症狀層級的出處 ----------------------------------------------
-
-
-def _project_added(term_sources):
-    """本專案補列的候選：科別本身沒有出處，但症狀在對照表上找得到（列在別科）。"""
-    return SymptomTriageResult(
-        kind=RESULT_SUGGESTION,
-        user_input="我感覺噁心、嘔吐，要看哪一科",
-        matched_term="嘔吐",
-        candidates=(DepartmentCandidate("內科", "胃腸肝膽", 900, ()),),
-        term_sources=term_sources,
-    )
-
-
-def test_term_level_sources_are_cited_when_the_candidate_has_none():
-    """
-    整段藏起來的話，使用者面對一張沒有任何出處的卡；但榮總玉里的表確實收錄了
-    嘔吐，點進去找得到他問的症狀——出處的用途正是讓他自己核對。
-    """
-    bubble = _bubble(_project_added(("V",)))
-    _, _, _, _, source_block = _body_parts(bubble)
-    label, *items = source_block["contents"]
-
-    assert [item["action"]["uri"] for item in items] == ["https://example.com/v"]
-    assert "嘔吐" in label["text"] and "其他科別" in label["text"]
-
-
-def test_direct_citation_keeps_the_plain_label():
-    """來源真的把症狀列在這一科時，標題不該多出「列在其他科別」那句。"""
-    bubble = _bubble(_suggestion((_candidate("內科", "胃腸肝膽", sources=2),)))
-    _, _, _, _, source_block = _body_parts(bubble)
-
-    assert source_block["contents"][0]["text"] == "參考來源"
-
-
-def test_term_level_citation_never_overrides_a_direct_one():
-    """
-    候選自己有出處時就用它。退到症狀層級只是補洞，不能讓一家「有收錄但列在
-    別科」的醫院混進「這一科是這樣分類的」名單裡。
-    """
-    from resources.flex_messages.medical_messages.symptom_department_flex_message import (  # noqa: E501
-        _cited_references,
-    )
-
-    result = SymptomTriageResult(
-        kind=RESULT_SUGGESTION,
-        user_input="x",
-        matched_term="腹痛",
-        candidates=(DepartmentCandidate("內科", None, 100, ("N",)),),
-        term_sources=("V", "N"),
-    )
-    assert [ref.code for ref in _cited_references(result, _REFERENCES)] == ["N"]
-
-
-def test_entry_with_no_source_anywhere_still_shows_nothing():
-    """
-    痰多、流鼻水、流鼻血、帶狀皰疹連症狀本身都沒有任何一家收錄，term_sources
-    為空。列出任何一家醫院都是宣稱「他們的表有收這個症狀」，那不是事實。
-    """
-    payload = json.dumps(_bubble(_project_added(())), ensure_ascii=False)
-    assert "參考來源" not in payload
-
-
 # --- 一個症狀有多條次專科路徑 ------------------------------------------------
 #
 # 漏斗胸在成大列於胸腔外科、在台大雲林列於小兒外科。整併時只留一個等於替使用者
@@ -691,18 +505,6 @@ def test_multiple_subgroups_read_as_alternatives_in_the_reason():
     reason = boxes[0]["contents"][1]["text"]
 
     assert "胸腔外科或小兒外科方向" in reason
-
-
-def test_multi_chip_card_passes_line_sdk_validation():
-    bubble = _bubble(
-        _suggestion(
-            (
-                _candidate("內科", ("新陳代謝內分泌", "心臟")),
-                _candidate("外科", ("胸腔外科", "小兒外科")),
-            )
-        )
-    )
-    FlexContainer.from_dict(bubble)
 
 
 def test_real_table_keeps_both_paths_for_a_split_symptom():

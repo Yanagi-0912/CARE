@@ -2,7 +2,8 @@
 症狀對應建議科別的 Flex Message。
 
 兩種版面，對應 SymptomTriageResult 的兩種 kind：
-    suggestion 建議卡。主要科別 + 至多 3 個候選 + 逐條參考來源 + 免責。
+    suggestion 建議卡。主要科別 + 至多 MAX_CANDIDATES 個候選（各附來源標註）
+               + 逐條參考來源 + 免責。
     fallback   保底卡。明說系統無法判斷，給初診方向。
 
 字級：
@@ -69,9 +70,6 @@ _HEADER_TITLE = "推薦掛號科別"
 _TAG_SUGGESTION = "(建議優先)"
 _TAG_FALLBACK = "(不確定時的方向)"
 _SOURCE_LABEL = "參考來源"
-# 補列條目退到「症狀層級」出處時的標題。必須寫明是別科，否則等於用一家醫院的
-# 對照表背書一個那張表沒這樣分類的科別。
-_SOURCE_LABEL_OTHER_DEPARTMENT = "參考來源（下列對照表有收錄「{term}」，但列在其他科別）"
 
 # 保底卡在標題列仍要顯示一個科別，否則版面會空一塊。用 FALLBACK_DEPARTMENTS
 # 的第一個（家醫科），與 body 的候選一致。
@@ -204,9 +202,27 @@ def _candidate_box(
     }
 
 
-def _reason_for(candidate, matched_term: str | None) -> str:
+def _source_annotation(candidate, hospital_count: int) -> str:
+    """
+    候選的來源標註（design 決策 15）。N＝收錄此症狀的醫院數，M＝列在這一科的醫院數。
+
+    不寫死醫院總數，也不說「都」：來源會增加，「三家醫院都這樣分類」在第四家
+    併入後就成了錯話。保底候選沒有來源，不加註。
+    """
+    listed = candidate.source_count
+    if listed == 0:
+        return ""
+    if hospital_count == 1:
+        return "（僅 1 家醫院的對照表收錄此症狀，建議先去電確認）"
+    call_ahead = "，建議先去電確認" if listed == 1 else ""
+    return f"（收錄此症狀的 {hospital_count} 家醫院中，有 {listed} 家列在此科{call_ahead}）"
+
+
+def _reason_for(candidate, matched_term: str | None, hospital_count: int) -> str:
     """
     候選科別的說明文字。刻意描述「這一科處理什麼」，不宣稱使用者得了什麼。
+
+    對照表的 note 是維護紀錄，不在這裡出現。
     """
     term = matched_term or "你描述的狀況"
     if candidate.subgroups:
@@ -219,15 +235,7 @@ def _reason_for(candidate, matched_term: str | None) -> str:
         )
     else:
         base = f"{term}常見的看診方向之一是{candidate.canonical}。"
-
-    if candidate.source_count >= 3:
-        base += "（三家醫院的對照表都這樣分類）"
-    elif candidate.source_count == 1:
-        base += "（僅一家醫院的對照表這樣分類，建議先去電確認）"
-
-    if candidate.note:
-        base += f" 註：{candidate.note}"
-    return base
+    return base + _source_annotation(candidate, hospital_count)
 
 
 def _source_item(
@@ -253,32 +261,16 @@ def _source_item(
     return node
 
 
-def _cites_other_department(result: SymptomTriageResult) -> bool:
-    """出處是否退到了「症狀層級」——表上有這個症狀，但不是列在建議的科別下。"""
-    return not any(candidate.sources for candidate in result.candidates) and bool(
-        result.term_sources
-    )
-
-
 def _cited_references(
     result: SymptomTriageResult, references: tuple[SourceReference, ...]
 ) -> tuple[SourceReference, ...]:
     """
-    只留下真的把這個症狀列進去的來源。
-    候選全無出處時（origin=project 的補列條目）退到症狀層級：對照表上仍找得到
-    這個症狀，只是列在別科。嘔吐是實例——榮總玉里收錄了，列在小兒科，成人拿到
-    的內科是本專案補列的。整段藏起來的話，使用者面對一張沒有任何出處的卡，而
-    出處其實存在且點進去就找得到自己問的症狀。退這一層要配 
-    _SOURCE_LABEL_OTHER_DEPARTMENT 標題，不能讓它看起來像是在支持這個科別。
+    只留下至少支持一個已顯示候選的來源。
 
-    保底卡（term_sources 為空）與那些連症狀本身都沒有任何來源收錄的補列條目
-    （痰多、流鼻水、流鼻血、帶狀皰疹）仍然不會有出處，這是正確的。
+    被兒科濾掉的候選不算：列出它的來源，等於說那家醫院支持這張卡上的科別。
+    保底卡的候選沒有來源，因此不會有出處。
     """
     cited = {code for candidate in result.candidates for code in candidate.sources}
-    if not cited:
-        cited = set(result.term_sources)
-    if not cited:
-        return ()
     # 維持 references 的原始順序，不依 cited 的集合順序（那是不穩定的）。
     return tuple(ref for ref in references if ref.code in cited)
 
@@ -315,13 +307,6 @@ def _source_section(
             ],
         },
     ]
-
-
-def _source_label(result: SymptomTriageResult) -> str:
-    """來源區塊的標題。退到症狀層級時要說明那些表把症狀列在別科。"""
-    if _cites_other_department(result) and result.matched_term:
-        return _SOURCE_LABEL_OTHER_DEPARTMENT.format(term=result.matched_term)
-    return _SOURCE_LABEL
 
 
 def _nearby_prompt(primary: str, ft: theme.FlexTheme) -> dict[str, Any]:
@@ -390,6 +375,12 @@ def _build_suggestion_bubble(
         label = f"依「{result.matched_term}」整理的可能科別與評估原因"
         tag = _TAG_SUGGESTION
 
+    # 標註的分母：收錄這個症狀的醫院數。候選自己的來源一併計入——列在這一科的
+    # 醫院必然收錄了這個症狀，呼叫端漏帶 term_sources 時分母才不會小於分子。
+    hospital_count = len(
+        set(result.term_sources).union(*(c.sources for c in result.candidates))
+    )
+
     return {
         "type": "bubble",
         "size": "mega",
@@ -417,13 +408,13 @@ def _build_suggestion_bubble(
                         index,
                         candidate.canonical,
                         candidate.subgroups,
-                        _reason_for(candidate, result.matched_term),
+                        _reason_for(candidate, result.matched_term, hospital_count),
                         ft,
                     )
                     for index, candidate in enumerate(result.candidates, start=1)
                 ),
                 _nearby_prompt(primary, ft),
-                *_source_section(references, _source_label(result), ft),
+                *_source_section(references, _SOURCE_LABEL, ft),
             ],
         },
         "footer": _footer(ft),

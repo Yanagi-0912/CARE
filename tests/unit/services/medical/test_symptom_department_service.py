@@ -126,37 +126,7 @@ def test_load_reports_declared_status(table):
     assert table.verified is True
 
 
-def test_candidates_sorted_by_cross_source_agreement(table):
-    """沒有人工優先序時，三家都這樣分類的科別要排在只有一家的前面。
-
-    有 rank 的條目不在此列：來源共識描述的是三份表怎麼分類，不是臨床動線，
-    指定了 rank 就代表有人判斷過該先去哪一科（見 DepartmentCandidate.rank）。
-    """
-    for term in table.terms:
-        counts = [
-            c.source_count for c in table.lookup(term).candidates if c.rank is None
-        ]
-        assert counts == sorted(counts, reverse=True), term
-
-
-def test_manual_rank_outranks_cross_source_agreement(table):
-    """
-    坐骨神經痛：骨科只有一家來源，神經外科與復健科各有來源，但非外傷性的
-    坐骨神經痛第一線就是骨科與復健科，先被導向手術科別是錯的動線。
-    """
-    candidates = table.lookup("坐骨神經痛").candidates
-    assert candidates[0].canonical == "骨科"
-    assert candidates[0].source_count < candidates[1].source_count
-
-
-def test_ranked_candidates_come_before_unranked_ones(table):
-    """只指定部分候選時，有指定的照 rank 排前，其餘維持共識順序。"""
-    for term in table.terms:
-        ranked = [c.rank is not None for c in table.lookup(term).candidates]
-        assert ranked == sorted(ranked, reverse=True), term
-        ranks = [c.rank for c in table.lookup(term).candidates if c.rank is not None]
-        assert ranks == sorted(ranks), term
-
+# 候選排序由 test_symptom_acceptance.py 的 T11、T12 驗證。
 
 # ---------------------------------------------------------------- 正規化
 
@@ -223,47 +193,8 @@ async def test_unknown_symptom_falls_back(service):
     assert [c.canonical for c in result.candidates] == list(FALLBACK_DEPARTMENTS)
 
 
-@pytest.mark.asyncio
-async def test_too_many_candidates_falls_back_instead_of_guessing(table):
-    """
-    候選過多代表這個症狀本來就跨科，硬挑三個等於把不確定性藏起來。
-    SHALL NOT 退化為「取表中最接近的幾條」。
-    """
-
-    class BroadNormalizer:
-        async def resolve(self, text):
-            return "多科症狀"
-
-    from app.services.medical.symptom_classification.symptom_table import (
-        DepartmentCandidate,
-        SymptomEntry,
-        SymptomTable,
-    )
-
-    # 候選數刻意由 MAX_CANDIDATES 推導：寫死科別清單時，上限一調（3 → 5）這條
-    # 測試就會從「驗保底」變成「驗剛好沒超過」而靜默失去意義。
-    over_the_cap = ("內科", "外科", "婦產科", "泌尿科", "皮膚科", "骨科", "眼科")[
-        : MAX_CANDIDATES + 1
-    ]
-    entry = SymptomEntry(
-        term="多科症狀",
-        kind="symptom",
-        candidates=tuple(
-            DepartmentCandidate(
-                canonical=name, subgroup=None, facility_count=1, sources=("V",)
-            )
-            for name in over_the_cap
-        ),
-    )
-    service = SymptomDepartmentService(
-        table=SymptomTable({"多科症狀": entry}, verified=True),
-        normalizer=BroadNormalizer(),
-    )
-
-    result = await service.suggest("那個症狀要掛哪一科")
-    assert result.kind == RESULT_FALLBACK
-    assert result.matched_term == "多科症狀"
-    assert [c.canonical for c in result.candidates] == list(FALLBACK_DEPARTMENTS)
+# 候選數上限（5 個照常建議、6 個走保底、以兒科過濾前計數）由
+# test_symptom_acceptance.py 的 T19 驗證。
 
 
 @pytest.mark.asyncio
@@ -431,15 +362,7 @@ async def test_filter_does_not_touch_non_pediatric_candidates(service, age_conte
 # ---------------------------------------------------------------- 兒科濾光的處置
 
 
-@pytest.mark.asyncio
-async def test_vomiting_now_has_an_adult_department(table):
-    """
-    實測回報：「我感覺噁心、嘔吐，要看哪一科」回傳僅兒科。成因是三份來源的
-    粒度不一致——榮總玉里把嘔吐收在「小兒科／15歲以下兒童」那一整列裡，
-    成大與台大未單列，於是表上只有兒科。已補列於內科。
-    """
-    canonicals = [c.canonical for c in table.lookup("嘔吐").candidates]
-    assert "內科" in canonicals
+# 成人問嘔吐（只列兒科）走保底，由 test_symptom_acceptance.py 的 T15 驗證。
 
 
 @pytest.mark.asyncio
@@ -474,25 +397,9 @@ async def test_child_still_gets_the_pediatric_only_symptom(table, age_context):
 
 
 # ---------------------------------------------------------------- 症狀層級出處
-
-
-@pytest.mark.asyncio
-async def test_term_sources_survive_the_pediatric_filter(table, age_context):
-    """
-    成人問「嘔吐」拿到的內科是本專案補列的（sources 為空），但榮總玉里的表確實
-    收錄了嘔吐——列在小兒科。那個來源代碼只掛在被濾掉的兒科候選上，服務層若不
-    先收下來，卡片會變成一張完全沒有出處的卡，而出處其實存在、點進去也找得到
-    使用者問的症狀。
-    """
-    service = SymptomDepartmentService(
-        table=table, normalizer=StubResolver({"x": "嘔吐"})
-    )
-    with age_context(40):
-        result = await service.suggest("x")
-
-    assert [c.canonical for c in result.candidates] == ["內科"]
-    assert result.candidates[0].sources == ()
-    assert "V" in result.term_sources
+#
+# 被兒科過濾掉的候選，其來源仍算進標註分母 N，由 test_symptom_acceptance.py 的
+# T28（D1）驗證。
 
 
 @pytest.mark.asyncio
@@ -536,10 +443,10 @@ def test_every_subgroup_is_a_registrable_clinic_name(table):
 
 
 @pytest.mark.asyncio
-async def test_common_cold_points_at_where_people_actually_go(table, age_context):
+async def test_common_cold_carries_no_subgroup_label(table, age_context):
     """
-    感冒在三家對照表分屬感染科、家庭醫學科、胸腔內科，沒有共識。與其挑一家的
-    分法掛標籤，不如給民眾真的會去的窗口——家醫科與耳鼻喉科。
+    感冒在三家對照表分屬感染科、家庭醫學科、胸腔內科，沒有共識。挑一家的分法
+    掛上標籤等於假裝有共識，因此不帶次專科標籤。
     """
     service = SymptomDepartmentService(
         table=table, normalizer=StubResolver({"x": "感冒"})
@@ -547,8 +454,6 @@ async def test_common_cold_points_at_where_people_actually_go(table, age_context
     with age_context(40):
         result = await service.suggest("x")
 
-    canonicals = [c.canonical for c in result.candidates]
-    assert "家醫科" in canonicals and "耳鼻喉科" in canonicals
     assert all(c.subgroups == () for c in result.candidates)
 
 
@@ -562,7 +467,6 @@ async def test_hyperlipidemia_offers_the_cardiology_route(table, age_context):
         result = await service.suggest("x")
 
     assert result.candidates[0].subgroups == ("新陳代謝內分泌科", "心臟內科")
-    assert "家醫科" in [c.canonical for c in result.candidates]
 
 
 # ------------------------------------------------ 人工複查補上的候選科別（B 節）
@@ -580,21 +484,13 @@ async def test_hyperlipidemia_offers_the_cardiology_route(table, age_context):
         ("包皮過長", ["泌尿科", "外科"]),
         ("尿道下裂", ["泌尿科", "外科"]),
         ("關節炎", ["內科", "骨科"]),
-        ("坐骨神經痛", ["骨科", "神經外科", "復健科"]),
         ("腰酸背痛", ["骨科", "家醫科", "復健科"]),
-        ("性病", ["皮膚科", "內科", "泌尿科"]),
         ("紅斑性狼瘡", ["內科", "皮膚科"]),
-        ("感冒", ["家醫科", "耳鼻喉科", "內科"]),
+        # 坐骨神經痛、性病的順序原由 rank 決定，改由 test_symptom_acceptance.py 的 T12 驗證。
     ],
 )
 def test_reviewed_candidate_order(table, term, expected):
     assert [c.canonical for c in table.lookup(term).candidates] == expected
-
-
-def test_asthma_offers_family_medicine_to_adults(table):
-    """氣喘的兒科候選會被成人過濾掉，家醫科補上後成人才有第二個方向。"""
-    canonicals = [c.canonical for c in table.lookup("氣喘").candidates]
-    assert canonicals == ["內科", "兒科", "家醫科"]
 
 
 def test_reviewed_additions_stay_within_the_candidate_cap(table):

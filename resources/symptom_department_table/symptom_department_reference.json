@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "status": "verified",
   "generated_at": "2026-08-27",
   "purpose": "症狀／科別對照的彙整參考。由三家醫院公開的就醫病症對照表整併，科別一律已轉換為 medicalFacilities.departments 實際存在的值，可直接供 find_nearby_facilities_by_department 使用。",
@@ -8,9 +8,9 @@
     "急症判斷由 urgency.py 的語意判斷器負責，擋在 agent 之前並短路整條流程（design 決策 1、2）；判定為緊急時 SHALL NOT 併列任何門診科別。本檔的 red_flags 區塊**不參與**這件事，也不被程式載入——它是爬蟲以關鍵字初篩的草稿，關鍵字方案已於 2026-08-30 廢止（覆蓋不全且僅適用 zh-TW，其他語言等同沒有安全網）。",
     "canonical 欄位是唯一可用於查詢的值。raw 僅供溯源，SHALL NOT 作為查詢條件。",
     "本檔僅提供就診方向參考，SHALL NOT 作為診斷依據；回覆須含免責與就醫提示。",
-    "symptoms[].sources 長度可視為跨院共識強度：3 家皆列 > 2 家 > 單一家。單一來源的條目優先送人工複查。",
+    "symptoms[].sources 為把此症狀列在該科的來源醫院代碼，家數越多代表跨院共識越強；卡片以「收錄此症狀的 N 家醫院中，有 M 家列在此科」呈現，不寫死醫院總數。僅 1 家的條目優先送人工複查。",
     "多個科別同時列出同一症狀時，代表該症狀本就跨科，SHALL 以多候選呈現，不得擅自擇一。",
-    "symptoms[].origin 為 `project` 者係本專案補列，非來源所載；其 sources 為空陣列，SHALL NOT 宣稱有跨院共識。",
+    "symptoms[] 只收來源醫院所載的「症狀－科別」對應，每筆至少 1 個來源代碼；本專案不補列候選、不指定順序（design 決策 14）。欄位僅限 term、sources、subgroup、kind、note、downgraded_from，其他欄位載入即失敗。",
     "symptoms[].subgroup 為陣列時代表該症狀有多條次專科路徑，SHALL 全數呈現，SHALL NOT 擇一顯示；順序為「較通用或成人優先」，供卡片依序掛標籤。",
     "symptoms[].subgroup SHALL 為掛號窗口報得出來的診名（如「胃腸肝膽科」「心臟內科」），SHALL NOT 為服務類別或內部路由註記（如「初診分流」「預防保健」）——該欄位會直接顯示在卡片的科別標籤上，掛不到號的詞等於給錯指示。"
   ],
@@ -380,7 +380,7 @@
           "sources": [
             "V"
           ],
-          "note": "來源原文為錯字「打曀」"
+          "note": "來源原文為「打曀」，經人工確認不是錯字；term 採通用寫法「打嗝」"
         },
         {
           "term": "食慾不振",
@@ -669,8 +669,7 @@
           "sources": [
             "N",
             "Y"
-          ],
-          "rank": 2
+          ]
         },
         {
           "term": "血尿",
@@ -1050,30 +1049,6 @@
             "N"
           ],
           "note": "急性中毒屬 red_flags，此處為慢性或後續追蹤"
-        },
-        {
-          "term": "痰多",
-          "kind": "symptom",
-          "subgroup": "胸腔內科",
-          "sources": [],
-          "origin": "project",
-          "note": "本專案補列。三份來源皆無獨立的「痰」條目，但「喉嚨有痰」「一直有痰」是高頻主訴，缺此條目會讓使用者落到保底建議。分列胸腔與耳鼻喉兩科，因為痰的來源可能在下呼吸道或上呼吸道。"
-        },
-        {
-          "term": "嘔吐",
-          "kind": "symptom",
-          "subgroup": "胃腸肝膽科",
-          "sources": [],
-          "origin": "project",
-          "note": "本專案補列。榮總玉里僅在「小兒科／15歲以下兒童」那一整列裡收錄本症狀，成大與台大未單列，於是表上只有兒科一個候選——成人問同一個症狀會拿到兒科。這是三份來源粒度不一致造成的洞，不是臨床上只有兒科看。"
-        },
-        {
-          "term": "慢性咳嗽",
-          "kind": "symptom",
-          "subgroup": "胸腔內科",
-          "sources": [],
-          "origin": "project",
-          "note": "本專案補列。榮總玉里僅在「小兒科／15歲以下兒童」那一整列裡收錄本症狀，成大與台大未單列，於是表上只有兒科一個候選——成人問同一個症狀會拿到兒科。這是三份來源粒度不一致造成的洞，不是臨床上只有兒科看。"
         }
       ]
     },
@@ -1724,15 +1699,6 @@
             "Y"
           ],
           "note": "亦見於家醫科高齡醫學"
-        },
-        {
-          "term": "帶狀皰疹（皮蛇）",
-          "kind": "disease",
-          "subgroup": null,
-          "sources": [],
-          "origin": "project",
-          "rank": 2,
-          "note": "本專案補列。三份來源皆無帶狀皰疹／皮蛇條目。term 併列醫學名與俗名是刻意的：實測 cos(皮蛇, 帶狀皰疹)=0.817，低於比對門檻——「皮蛇」是對外觀的比喻，與醫學名之間沒有可推導的語意關係，向量推不出來。併列後打「皮蛇」得 0.880，進得了決選。同表的 香港腳、富貴手、五十肩、灰指甲 也是以俗名收錄。 本科排序理由：帶狀皰疹後神經痛。"
         }
       ]
     },
@@ -2072,8 +2038,7 @@
           "subgroup": null,
           "sources": [
             "Y"
-          ],
-          "rank": 1
+          ]
         }
       ]
     },
@@ -2259,8 +2224,7 @@
           "subgroup": null,
           "sources": [
             "N"
-          ],
-          "rank": 3
+          ]
         }
       ]
     },
@@ -2551,14 +2515,6 @@
           "sources": [
             "V"
           ]
-        },
-        {
-          "term": "流鼻水",
-          "kind": "symptom",
-          "subgroup": null,
-          "sources": [],
-          "origin": "project",
-          "note": "本專案補列。三份來源皆無「流鼻水」條目，表內與鼻分泌物相關的只有鼻炎、鼻過敏、鼻竇炎，全為疾病名。正規化層 SHALL NOT 把症狀對應到疾病名（會讓卡片顯示成診斷），因此實測「我流鼻水要看哪一科」一律落到保底。與 痰多、流鼻血 同一類缺口。 兒科比照 鼻炎 同列。"
         },
         {
           "term": "血尿",
@@ -3003,46 +2959,6 @@
           "sources": [
             "Y"
           ]
-        },
-        {
-          "term": "痰多",
-          "kind": "symptom",
-          "subgroup": null,
-          "sources": [],
-          "origin": "project",
-          "note": "本專案補列。三份來源皆無獨立的「痰」條目，但「喉嚨有痰」「一直有痰」是高頻主訴，缺此條目會讓使用者落到保底建議。分列胸腔與耳鼻喉兩科，因為痰的來源可能在下呼吸道或上呼吸道。"
-        },
-        {
-          "term": "流鼻水",
-          "kind": "symptom",
-          "subgroup": null,
-          "sources": [],
-          "origin": "project",
-          "note": "本專案補列。三份來源皆無「流鼻水」條目，表內與鼻分泌物相關的只有鼻炎、鼻過敏、鼻竇炎，全為疾病名。正規化層 SHALL NOT 把症狀對應到疾病名（會讓卡片顯示成診斷），因此實測「我流鼻水要看哪一科」一律落到保底。與 痰多、流鼻血 同一類缺口。"
-        },
-        {
-          "term": "流鼻血",
-          "kind": "symptom",
-          "subgroup": null,
-          "sources": [],
-          "origin": "project",
-          "note": "本專案補列。三份來源皆無鼻出血相關條目，但「流鼻血」是高頻主訴，缺此條目會讓使用者落到保底建議。歸耳鼻喉科。"
-        },
-        {
-          "term": "感冒",
-          "kind": "disease",
-          "subgroup": null,
-          "sources": [],
-          "origin": "project",
-          "rank": 2
-        },
-        {
-          "term": "咳嗽",
-          "kind": "symptom",
-          "subgroup": null,
-          "sources": [],
-          "origin": "project",
-          "rank": 1
         }
       ]
     },
@@ -3240,22 +3156,12 @@
           ]
         },
         {
-          "term": "帶狀皰疹（皮蛇）",
-          "kind": "disease",
-          "subgroup": null,
-          "sources": [],
-          "origin": "project",
-          "rank": 1,
-          "note": "本專案補列。三份來源皆無帶狀皰疹／皮蛇條目。term 併列醫學名與俗名是刻意的：實測 cos(皮蛇, 帶狀皰疹)=0.817，低於比對門檻——「皮蛇」是對外觀的比喻，與醫學名之間沒有可推導的語意關係，向量推不出來。併列後打「皮蛇」得 0.880，進得了決選。同表的 香港腳、富貴手、五十肩、灰指甲 也是以俗名收錄。 本科排序理由：皮膚病灶與抗病毒藥物治療，抗病毒藥有 72 小時黃金期，列為第一順位。"
-        },
-        {
           "term": "性病",
           "kind": "disease",
           "subgroup": null,
           "sources": [
             "N"
-          ],
-          "rank": 1
+          ]
         },
         {
           "term": "紅斑性狼瘡",
@@ -4182,45 +4088,6 @@
           "sources": [
             "Y"
           ]
-        },
-        {
-          "term": "帶狀皰疹（皮蛇）",
-          "kind": "disease",
-          "subgroup": null,
-          "sources": [],
-          "origin": "project",
-          "rank": 3,
-          "note": "本專案補列。三份來源皆無帶狀皰疹／皮蛇條目。term 併列醫學名與俗名是刻意的：實測 cos(皮蛇, 帶狀皰疹)=0.817，低於比對門檻——「皮蛇」是對外觀的比喻，與醫學名之間沒有可推導的語意關係，向量推不出來。併列後打「皮蛇」得 0.880，進得了決選。同表的 香港腳、富貴手、五十肩、灰指甲 也是以俗名收錄。 本科排序理由：初步評估與轉診。"
-        },
-        {
-          "term": "感冒",
-          "kind": "disease",
-          "subgroup": null,
-          "sources": [],
-          "origin": "project",
-          "rank": 1
-        },
-        {
-          "term": "高血脂",
-          "kind": "disease",
-          "subgroup": null,
-          "sources": [],
-          "origin": "project"
-        },
-        {
-          "term": "氣喘",
-          "kind": "disease",
-          "subgroup": null,
-          "sources": [],
-          "origin": "project"
-        },
-        {
-          "term": "咳嗽",
-          "kind": "symptom",
-          "subgroup": null,
-          "sources": [],
-          "origin": "project",
-          "rank": 2
         }
       ]
     },

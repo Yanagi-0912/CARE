@@ -7,50 +7,15 @@ coverage.md。原本斷言「每一條別名都真的生效」「別名覆蓋率
 「人稱前綴要全部剝掉」的測試隨該層一併刪除——那些性質已不存在。
 
 留下來的是兩類仍然成立的斷言：
-  1. 對照表本身的內容（本專案補列的條目、跨科不擇一），原本經由別名觸達，
-     現在直接查表。
-  2. 孩童指涉偵測，服務的是兒科候選過濾，不屬於比對層。
+  1. 孩童指涉偵測，服務的是兒科候選過濾，不屬於比對層。
+  2. 三段式比對：直接採用、交 LLM 決選、走保底。
+
+對照表內容的斷言（本專案補列的流鼻血、痰多）已隨 design 決策 14 撤回補列而刪除。
 """
 
 import pytest
 
 from app.services.medical.symptom_classification.normalizer import mentions_child
-from app.services.medical.symptom_classification.symptom_table import (
-    load_symptom_table,
-)
-
-
-@pytest.fixture(scope="module")
-def table():
-    return load_symptom_table()
-
-
-# --- 對照表內容 --------------------------------------------------------------
-
-
-def test_nosebleed_goes_to_ent(table):
-    """
-    三份來源都沒有鼻出血條目，是本專案補列的。實測「流鼻血要掛哪科」原本落到
-    保底，看起來像耳鼻喉科被歸錯，其實是表沒收這個症狀。
-    """
-    entry = table.lookup("流鼻血")
-    assert [c.canonical for c in entry.candidates] == ["耳鼻喉科"]
-
-
-def test_phlegm_maps_to_both_airway_departments(table):
-    """痰的來源可能在下呼吸道或上呼吸道，不該擇一。"""
-    entry = table.lookup("痰多")
-    assert {c.canonical for c in entry.candidates} == {"內科", "耳鼻喉科"}
-
-
-def test_project_added_entry_claims_no_source_consensus(table):
-    """
-    `痰多` 是本專案補列而非來源所載，sources 為空。回覆不得宣稱有跨院共識，
-    這靠 source_count 為 0 自然呈現。
-    """
-    for term in ("痰多", "流鼻血"):
-        entry = table.lookup(term)
-        assert all(c.source_count == 0 for c in entry.candidates)
 
 
 # --- 孩童指涉偵測 ------------------------------------------------------------

@@ -249,19 +249,46 @@ class RagAnswerService:
         return round(max(scores), 4) if scores else None
 
     def _filter_by_degraded_score(self, docs: list[Document]) -> list[Document]:
-        """只保留精排分數達到門檻的文件。門檻為 0 時原樣回傳。
+        """只保留 Cohere `rerank_score` 達到門檻的文件。門檻為 0 時原樣回傳。
 
-        分數取 `rerank_score`（Cohere）優先，退回 `score`（向量／RRF 融合）。
-        兩者都沒有時視為不合格：拿不到分數就無從判斷相關性，而這條路徑的
-        前提正是「唯一的把關已經失效」。
+        **只認 `rerank_score`，不退回 `score`。** 沒有這個欄位就代表 Cohere
+        也失效了（`VectorScoreReranker` 不寫這個鍵），此時整批視為不合格，
+        走與「知識庫無資料」相同的路徑。
+
+        為什麼不退回 `score`——這是量出來的，不是設計偏好。以 golden set 的
+        22 題、110 篇降級路徑候選（36 相關／74 不相關）實測
+        （`scripts/rag_degraded_floor_scan.py`）：
+
+          - 融合分數（convex α=0.6）：相關文件均值 0.632、不相關 0.650。
+            **不相關的比相關的還高**，中位數同向（0.606 / 0.619）。原因是
+            min-max 是逐題正規化的，每題該腿的第一名恆為 1.0——「整批候選
+            都不相關」的那一題，它最好的那筆照樣滿分。而這張網要擋的正是
+            整批不相關的情況，正規化剛好把唯一有用的訊號抹掉。
+          - 原始 cosine：相關 0.8941、不相關 0.8872，差 0.0069，分佈完全
+            重疊（相關最低 0.854 < 不相關的 p75 0.897）。門檻在 0.05~0.80
+            之間只會刷掉那 3 筆「BM25 撈到但向量沒撈到」的文件——那不是
+            相關性過濾，是關掉 BM25 那條腿；拉到 0.90 才開始有效果，代價是
+            一次丟掉 9 題的相關文件。
+
+        也就是說這兩個尺度上都不存在有意義的門檻值。`rerank_score` 不同：
+        Cohere 的 relevance_score 是絕對校準的分數，0.3 在它上面才有語意。
+
+        另一個好處是這讓門檻與 `RAG_FUSION_MODE` 解耦。退回 `score` 時，
+        RRF（兩腿滿分也才 1/61+1/61 ≈ 0.033）與凸組合（0~1）在同一個 0.3
+        之下的行為天差地遠——切換融合模式會順帶改到醫療答案的把關，那是
+        兩件不該綁在一起的事。
+
+        行為變更的範圍（其餘情況與本次變更前完全相同）：只有「Cohere 不可用
+        **且** 走純向量檢索（RAG_HYBRID_ENABLED=false）」這個組合會改變——
+        該組合下 `score` 是 cosine（≈0.88 > 0.3），過去會放行，現在轉網搜。
+        依上述量測，那個放行本來就近似「什麼都沒擋」；要維持舊行為請把
+        `RAG_DEGRADED_MIN_SCORE` 設為 0，那也更誠實地描述它實際在做的事。
         """
         if self.degraded_min_score <= 0:
             return docs
         kept: list[Document] = []
         for doc in docs:
             raw = doc.metadata.get("rerank_score")
-            if not isinstance(raw, (int, float)):
-                raw = doc.metadata.get("score")
             if isinstance(raw, (int, float)) and float(raw) >= self.degraded_min_score:
                 kept.append(doc)
         return kept

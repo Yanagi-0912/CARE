@@ -181,12 +181,16 @@ if settings.RAG_HYBRID_ENABLED and settings.MONGODB_TEXT_INDEX:
         text_retriever=_rag_text_retriever,
         rrf_k=settings.RAG_RRF_K,
         limit=settings.RAG_RETRIEVE_CANDIDATES,
+        fusion_mode=settings.RAG_FUSION_MODE,
+        alpha=settings.RAG_FUSION_ALPHA,
     )
     logger.info(
-        "RAG hybrid retrieval enabled: vector=%s text=%s rrf_k=%s",
+        "RAG hybrid retrieval enabled: vector=%s text=%s fusion=%s rrf_k=%s alpha=%s",
         settings.MONGODB_VECTOR_INDEX,
         settings.MONGODB_TEXT_INDEX,
+        settings.RAG_FUSION_MODE,
         settings.RAG_RRF_K,
+        settings.RAG_FUSION_ALPHA,
     )
 else:
     _rag_retriever = _rag_vector_retriever

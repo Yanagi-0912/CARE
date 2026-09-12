@@ -118,6 +118,32 @@ class Settings:
     )
     RAG_RRF_K: int = int(os.getenv("RAG_RRF_K", "60"))
 
+    # 融合方式：convex（預設，正規化分數的凸組合）或 rrf（Reciprocal Rank Fusion）。
+    #
+    # 為什麼補上 convex：k=60 是 RRF 原始論文（Cormack et al., SIGIR 2009）
+    # 在 TREC 上用的值，本專案從未校準過它。Bruch et al.（TOIS 42(1), 2023；
+    # arXiv:2210.11934）量到 RRF 對參數敏感、凸組合在 in-domain 與 out-of-domain
+    # 都較好，而且權重「只需少量標註查詢」就能調——這正好對上 golden.jsonl
+    # 只有 55 題的現實。
+    #
+    # 為什麼預設 convex：2026-09-12 golden set 重新稽核後（計分題 17→26）以
+    # scripts/rag_fusion_sweep.py 驗證——vector 切面 RRF 22/26 → 25/26、cohere
+    # 切面 25/26 → 26/26，兩切面皆零退步，holdout(n=5) 無差異。
+    # RAG_TEXT_TITLE_BOOST 的增益接上 Cohere 後就消失了，這次沒有：融合決定的是
+    # 「哪 40 筆進得了 Cohere」，kb-026 的正解在 RRF 下排第 42 名，根本沒進候選池。
+    #
+    # **線上生效的就是這裡的預設值。**正式環境讀的是 CARE-infra helm
+    # values.yaml 產生的 ConfigMap（CARE 的 .env 不會進 image），而那裡沒有設
+    # 這兩個鍵。要退回 RRF：在 values.yaml 的 backend.config 加
+    # RAG_FUSION_MODE: "rrf"。
+    RAG_FUSION_MODE: str = os.getenv("RAG_FUSION_MODE", "convex")
+
+    # 凸組合裡向量腿的權重，文字腿拿 1-alpha。只在 RAG_FUSION_MODE=convex 時
+    # 生效。0.6 由上述掃描選出：vector 切面平滑單峰（0.3:20 0.5:22 **0.6:25**
+    # 0.7:24 0.8+:23），cohere 切面 0.5 與 0.6 並列最高。這是在本專案語料上校準
+    # 的值——知識庫大改或換 embedding 模型後要重掃。
+    RAG_FUSION_ALPHA: float = float(os.getenv("RAG_FUSION_ALPHA", "0.6"))
+
     # BM25 也比對文章標題。chunk_content 本身不含標題（切塊時被切掉了），
     # 而 embedding 與 rerank 兩處都會把標題補回文本，只有 BM25 這條腿看不到，
     # 藥名／疾病名只出現在標題時會整篇漏掉。空字串＝關閉，退回只比對內文。
@@ -161,7 +187,14 @@ class Settings:
     # 0.3 是保守起步值：Cohere relevance_score 的分佈上，明顯不相關的內容
     # 多落在 0.2 以下。應以 golden set 校準後再調——調高會讓 grader 失效期間
     # 更常轉網搜或拒答，調低則失去這張網的意義。
+    #
+    # **這個門檻只套用在 Cohere 的 relevance_score 上**，不套用在融合分數或
+    # 原始 cosine（見 `_filter_by_degraded_score`）。那兩個尺度量過了，區分
+    # 不了相關與不相關：融合分數的不相關均值 0.650 比相關的 0.632 還高，
+    # cosine 兩者只差 0.0069 且完全重疊（scripts/rag_degraded_floor_scan.py，
+    # 22 題 110 篇）。因此 Cohere 不可用時是整批轉網搜，不是用別的分數頂替。
     RAG_DEGRADED_MIN_SCORE: float = float(os.getenv("RAG_DEGRADED_MIN_SCORE", "0.3"))
+
 
     # 精排後之文章層級去重：同一篇文章最多留幾個 chunk 進 top-n（避免單一
     # 文章的多個 chunk 擠爆 top-n 名額，犧牲來源多樣性）。

@@ -857,10 +857,47 @@ async def test_degraded_path_keeps_documents_above_floor():
 
 
 @pytest.mark.asyncio
-async def test_degraded_path_falls_back_to_vector_score():
-    """Cohere 降級時沒有 rerank_score，要退回融合／向量分數判斷。"""
+async def test_degraded_path_rejects_when_cohere_score_is_missing():
+    """
+    Cohere 也失效時沒有 rerank_score，整批視為不合格——不退回 `score`。
+
+    量測依據見 `_filter_by_degraded_score` 的 docstring：融合分數與原始
+    cosine 都無法區分相關與不相關（前者的不相關均值甚至更高），在那兩個
+    尺度上不存在有意義的門檻。
+    """
     service, gemini, _ = _make_service(
-        docs=[_scored_doc("只有向量分", score=0.8)], answer_content="回答 [1]",
+        docs=[_scored_doc("只有融合分", score=0.8)],
+        grader=_BoomGrader(), crag_enabled=True, web_fallback_enabled=False,
+    )
+    service.degraded_min_score = 0.3
+
+    await service.answer("問題")
+    gemini.chat_model.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_degraded_floor_is_independent_of_fusion_scale():
+    """
+    同一個門檻不該因為換了融合模式就換行為：RRF 的分數在 1/61 量級、凸組合
+    在 0~1，兩者都不該影響這張網。有 rerank_score 才算數。
+    """
+    for fusion_score in (0.033, 0.95):
+        service, gemini, _ = _make_service(
+            docs=[_scored_doc("融合分不同但都沒有 rerank_score", score=fusion_score)],
+            grader=_BoomGrader(), crag_enabled=True, web_fallback_enabled=False,
+        )
+        service.degraded_min_score = 0.3
+
+        await service.answer("問題")
+        gemini.chat_model.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_degraded_floor_still_uses_cohere_score_when_available():
+    """Cohere 活著時行為完全不變——那個尺度上 0.3 有語意。"""
+    service, _, _ = _make_service(
+        docs=[_scored_doc("Cohere 高分", rerank=0.9, score=0.01)],
+        answer_content="回答 [1]",
         grader=_BoomGrader(), crag_enabled=True, web_fallback_enabled=False,
     )
     service.degraded_min_score = 0.3

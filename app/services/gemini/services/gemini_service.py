@@ -33,9 +33,13 @@ class GeminiService:
         *,
         api_key: str,
         model_name: str,
+        temperature: float = 0.0,
         thinking_level: str | None = None,
     ) -> None:
         """初始化 chat model；公開 `chat_model` 屬性。
+
+        `temperature` 預設 0，正式路徑一律沿用。留出參數是給評測用的：
+        要量測模型在同一張影像上的答案穩不穩，必須讓它有機會給出不同答案。
 
         `thinking_level` 預設 None＝沿用模型預設（gemini-3.8-flash 是 medium）。
         只給延遲敏感、推理需求低的呼叫用，例如查詢改寫（見
@@ -48,7 +52,7 @@ class GeminiService:
         self.chat_model = ChatGoogleGenerativeAI(
             model=model_name,
             google_api_key=api_key,
-            temperature=0,
+            temperature=temperature,
             **extra,
         )
         logger.info(

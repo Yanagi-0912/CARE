@@ -25,6 +25,7 @@ from app.services.rag.fail_messages import (
 from app.services.rag.link_check import LinkChecker, dead_urls
 from app.services.rag.query_rewriter import RewrittenQuery
 from app.services.rag.web_client import WebSearchClient
+from app.services.gemini.shared.parser import content_to_text
 from app.services.rag.whitelist import (
     is_allowed_url,
     normalize_url,
@@ -205,10 +206,14 @@ class WebSearchService:
         )
         with stage_timer(logger, "rag_web_generate", docs=len(docs)):
             result = await self.gemini_service.chat_model.ainvoke(messages)
+        # `content_to_text` 而非 `str()`：Gemini 開著 thinking 時 `.content`
+        # 回的是 list-of-parts（`[{"type": "text", "text": "…", "extras":
+        # {"signature": "<數千字 base64>"}}]`），`str()` 會把整個 Python
+        # repr 連同簽章一起變成「答案」。實測一則 400 字的衛教回覆會被包成
+        # 4,600~7,000 字，之後全程當作答案文字傳遞——進 agent 的 context、
+        # 進引用解析、也會進卡片。
         # 空字串＝答不出來，理由同 RagAnswerService._generate_answer。
-        answer_text = result.content or NO_ANSWER_SENTINEL
-        if not isinstance(answer_text, str):
-            answer_text = str(answer_text)
+        answer_text = content_to_text(result.content) or NO_ANSWER_SENTINEL
         return answer_text
 
     async def _fetch_web_docs(

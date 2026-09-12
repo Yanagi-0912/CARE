@@ -29,6 +29,7 @@ from app.services.rag.query_rewriter import QueryRewriter, RewrittenQuery
 from app.services.rag.retrieval_grader import Grade, RetrievalGrader
 from app.services.rag.retriever import MongoAtlasVectorRetriever
 from app.services.rag.web_search_service import WebSearchService
+from app.services.gemini.shared.parser import content_to_text
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +54,14 @@ DEFAULT_DEGRADED_MIN_SCORE = 0.0
 # CRAG 判 ambiguous 時，啟動改寫第二輪的時間預算（秒）。0.0＝不設限，
 # 維持導入前的行為。
 #
-# 第二輪是整條管線最貴的一段：實測（gemini-2.5-flash，thinking 預設開啟）
-# rewrite 5.3s ＋ 第二輪檢索精排 1.6s ＋ grade 11.8s ≈ 19s，後面還要再付
-# 一次 generate（3.8-10.2s）。同一題走不走第二輪是 43.6s 與 ~25s 的差別。
+# 第二輪是整條管線最貴的一段。下列數字是在 gemini-2.5-flash（thinking 預設
+# 開啟）上實測的：rewrite 5.3s ＋ 第二輪檢索精排 1.6s ＋ grade 11.8s ≈ 19s，
+# 後面還要再付一次 generate（3.8-10.2s）。同一題走不走第二輪是 43.6s 與 ~25s
+# 的差別。
+#
+# ⚠ 預設模型已換成 gemini-3.8-flash，上面這組數字尚未在新模型上重測。實測新
+# 模型的純文字回應快了約一倍，所以這個預算值很可能過於寬鬆——要調之前先重測，
+# 不要照著舊數字推算。
 #
 # 為什麼是「用掉多少」而不是「還剩多少」：預算檢查點在第一輪 grade 之後，
 # 那時已經知道這一輪的 grader 有多慢——grader 慢通常代表第二次也會慢，
@@ -506,12 +512,16 @@ class RagAnswerService:
             logger, "rag_generate", docs=len(docs), speculative=speculative or None
         ):
             rag_result = await self.gemini_service.chat_model.ainvoke(messages)
+        # `content_to_text` 而非 `str()`：Gemini 開著 thinking 時 `.content`
+        # 回的是 list-of-parts（`[{"type": "text", "text": "…", "extras":
+        # {"signature": "<數千字 base64>"}}]`），`str()` 會把整個 Python
+        # repr 連同簽章一起變成「答案」。實測一則 400 字的衛教回覆會被包成
+        # 4,600~7,000 字，之後全程當作答案文字傳遞——進 agent 的 context、
+        # 進引用解析、也會進卡片。
         # 模型回空字串就是答不出來，直接給拒答標記。原本退回
         # rag.generate_fallback（「抱歉，我目前找不到相關資料」），再靠字眼比對
         # 轉成拒答；拒答改成只認標記後，那段文案會被當成答案送出去。
-        answer_text = rag_result.content or NO_ANSWER_SENTINEL
-        if not isinstance(answer_text, str):
-            answer_text = str(answer_text)
+        answer_text = content_to_text(rag_result.content) or NO_ANSWER_SENTINEL
         return answer_text
 
     @staticmethod

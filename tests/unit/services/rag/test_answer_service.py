@@ -1352,6 +1352,50 @@ async def test_speculative_not_started_without_crag():
     assert service.speculative_generate is False
 
 
+# ── Gemini list-of-parts 回應 ────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_answer_flattens_list_of_parts_instead_of_str_repr():
+    """
+    Gemini 開著 thinking 時 `.content` 是 list-of-parts，且每個 part 帶一段
+    數千字的 `signature`。過去用 `str()` 轉型，等於把整個 Python repr 連同
+    簽章當成答案往下傳——實測一則 400 字的衛教回覆會被包成 4,600~7,000 字，
+    進 agent context、進引用解析、也會進 Flex 卡。
+    """
+    content = [
+        {
+            "type": "text",
+            "text": "根據 RAG 資訊，高血壓要少鹽 [1]。",
+            "extras": {"signature": "EusbCugbARFNMg" * 300},
+        }
+    ]
+    service, gemini, _ = _make_service(
+        docs=[_scored_doc("內容", rerank=0.9)], answer_content=content
+    )
+
+    answer = await service.answer("高血壓要注意什麼")
+
+    assert "根據 RAG 資訊，高血壓要少鹽 [1]。" in answer
+    assert "'type':" not in answer
+    assert "signature" not in answer
+    assert "EusbCugb" not in answer
+
+
+@pytest.mark.asyncio
+async def test_answer_falls_back_when_parts_carry_no_text():
+    """只有簽章、沒有文字的回應等同空答案，要走既有的 fallback 文案。"""
+    service, _, _ = _make_service(
+        docs=[_scored_doc("內容", rerank=0.9)],
+        answer_content=[{"type": "text", "extras": {"signature": "abc"}}],
+    )
+
+    answer = await service.answer("問題")
+
+    assert "signature" not in answer
+    assert "abc" not in answer
+
+
 class _ScoredReranker:
     """模擬 Cohere：在 metadata 寫入 rerank_score，依分數由高到低排序。"""
 

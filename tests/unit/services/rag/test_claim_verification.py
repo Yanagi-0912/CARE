@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -783,3 +784,163 @@ async def test_worst_case_unmatched_card_stays_within_the_size_guard():
         f"最壞情況的判定卡為 {wire_bytes(bubble):,} bytes，超過門檻——"
         "會在無聲中退回純文字。降低 _RELATED_INFO_TOP_K 或縮短區塊內容。"
     )
+
+
+# --- stage=claim_verify 觀測 ----------------------------------------------
+#
+# 「比對就沒中」與「比對中了但同一性驗證否決」過去在日誌上是同一件事——
+# 使用者兩種情況收到的卡片也一模一樣（都是證據不足），所以也不會有人回報。
+# 但前者指向語料缺口，後者指向那道 fail-closed 防線可能誤殺，而誤殺率從來
+# 沒有量過。下面把兩者鎖成不同的 outcome。
+
+_SERVICE_LOGGER = "app.services.rag.claim_verification.service"
+
+
+def _verify_stages(caplog):
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == _SERVICE_LOGGER
+        and record.getMessage().startswith("stage=claim_verify")
+    ]
+
+
+def _only_verify_stage(caplog):
+    lines = _verify_stages(caplog)
+    assert len(lines) == 1, lines
+    return lines[0]
+
+
+@pytest.mark.asyncio
+async def test_verify_logs_hit_outcome_with_verdict_and_score(caplog):
+    service = ClaimVerificationService(
+        normalizer=_StaticNormalizer(),
+        matcher=_StaticMatcher(_make_match("部分錯誤")),
+        invoke_reasoning=AsyncMock(return_value="理由"),
+        identity_verifier=_StaticIdentityVerifier(True),
+    )
+
+    with caplog.at_level(logging.INFO, logger=_SERVICE_LOGGER):
+        await service.verify(_USER_TEXT)
+
+    line = _only_verify_stage(caplog)
+    assert "outcome=hit" in line
+    assert "identity=same" in line
+    assert "verdict=incorrect" in line
+    assert "score=0.95" in line
+
+
+@pytest.mark.asyncio
+async def test_verify_logs_no_match_when_matcher_returns_nothing(caplog):
+    service = ClaimVerificationService(
+        normalizer=_StaticNormalizer(),
+        matcher=_StaticMatcher(None),
+        invoke_reasoning=AsyncMock(return_value="理由"),
+        identity_verifier=_StaticIdentityVerifier(True),
+    )
+
+    with caplog.at_level(logging.INFO, logger=_SERVICE_LOGGER):
+        await service.verify(_USER_TEXT)
+
+    line = _only_verify_stage(caplog)
+    assert "outcome=no_match" in line
+    assert "identity=" not in line
+
+
+@pytest.mark.asyncio
+async def test_verify_logs_identity_rejected_distinctly_from_no_match(caplog):
+    """這一則是整個量測的重點：防線擋掉的量必須自己有一個名字。"""
+    service = ClaimVerificationService(
+        normalizer=_StaticNormalizer(),
+        matcher=_StaticMatcher(_make_match("錯誤")),
+        invoke_reasoning=AsyncMock(return_value="理由"),
+        identity_verifier=_StaticIdentityVerifier(False),
+    )
+
+    with caplog.at_level(logging.INFO, logger=_SERVICE_LOGGER):
+        result = await service.verify(_USER_TEXT)
+
+    assert result.verdict == NOT_ENOUGH_EVIDENCE
+    line = _only_verify_stage(caplog)
+    assert "outcome=identity_rejected" in line
+    assert "identity=different" in line
+    # 被否決的那筆分數要留著：門檻放寬會直接讓這批變多，兩者要能對照。
+    assert "score=0.95" in line
+
+
+@pytest.mark.asyncio
+async def test_verify_logs_identity_skipped_when_verifier_not_wired(caplog):
+    """線上出現這個值代表 65% 誤配率那道防線整條沒接上——最安靜的接線疏漏。"""
+    service = ClaimVerificationService(
+        normalizer=_StaticNormalizer(),
+        matcher=_StaticMatcher(_make_match("錯誤")),
+        invoke_reasoning=AsyncMock(return_value="理由"),
+    )
+
+    with caplog.at_level(logging.INFO, logger=_SERVICE_LOGGER):
+        await service.verify(_USER_TEXT)
+
+    line = _only_verify_stage(caplog)
+    assert "identity=skipped" in line
+    assert "outcome=hit" in line
+
+
+@pytest.mark.asyncio
+async def test_verify_logs_error_outcome_when_exception_escapes(caplog):
+    """接線疏漏要大聲失敗（見 verify 的註解），但那條路徑也得留下一行。"""
+
+    class _RaisingMatcher:
+        async def match(self, claim: str) -> ClaimMatch | None:
+            raise RuntimeError("wiring is broken")
+
+    service = ClaimVerificationService(
+        normalizer=_StaticNormalizer(),
+        matcher=_RaisingMatcher(),
+        invoke_reasoning=AsyncMock(return_value="理由"),
+    )
+
+    with caplog.at_level(logging.INFO, logger=_SERVICE_LOGGER):
+        with pytest.raises(RuntimeError):
+            await service.verify(_USER_TEXT)
+
+    assert "outcome=error" in _only_verify_stage(caplog)
+
+
+@pytest.mark.asyncio
+async def test_user_text_never_reaches_info_logs(caplog):
+    service = ClaimVerificationService(
+        normalizer=_StaticNormalizer(),
+        matcher=_StaticMatcher(_make_match("錯誤")),
+        invoke_reasoning=AsyncMock(return_value="理由"),
+        identity_verifier=_StaticIdentityVerifier(False),
+    )
+
+    with caplog.at_level(logging.INFO, logger=_SERVICE_LOGGER):
+        await service.verify(_USER_TEXT)
+
+    assert all(_USER_TEXT not in message for message in _verify_stages(caplog))
+    assert f"user_len={len(_USER_TEXT)}" in _only_verify_stage(caplog)
+
+
+@pytest.mark.asyncio
+async def test_rejected_pair_is_available_at_debug_level(caplog):
+    """要判斷一次否決是擋對還是誤殺，只能看驗證器當下實際收到的那兩句話。"""
+    match = _make_match("錯誤")
+    service = ClaimVerificationService(
+        normalizer=_StaticNormalizer(),
+        matcher=_StaticMatcher(match),
+        invoke_reasoning=AsyncMock(return_value="理由"),
+        identity_verifier=_StaticIdentityVerifier(False),
+    )
+
+    with caplog.at_level(logging.DEBUG, logger=_SERVICE_LOGGER):
+        await service.verify(_USER_TEXT)
+
+    details = [
+        record.getMessage()
+        for record in caplog.records
+        if record.getMessage().startswith("claim_identity_detail")
+    ]
+    assert len(details) == 1
+    assert _USER_TEXT in details[0]
+    assert match.title in details[0]

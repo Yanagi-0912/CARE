@@ -216,6 +216,12 @@ class Settings:
     # 命中率約再掉 10 個百分點，0.86 是命中率明顯下滑前的最後一格，
     # 兼顧「誤配是唯一嚴重失效模式、門檻寧缺勿濫」（design.md 決策 3）與
     # 堪用的覆蓋率。
+    #
+    # 上面那組數字是離線的（60 題 LLM 改寫問法），不是線上分佈。要再調之前
+    # 先看 `stage=claim_match` 的 top 分數分佈——特別是 outcome=below_threshold
+    # 那批離門檻多遠；差 0.01 的近失與根本沒有候選是完全不同的問題，離線題庫
+    # 分不出來。同一個 rid 上的 stage=claim_verify outcome=identity_rejected
+    # 是另一半：門檻放寬會直接讓那批變多。
     CLAIM_MATCH_MIN_SCORE: float = float(os.getenv("CLAIM_MATCH_MIN_SCORE", "0.86"))
 
     # Light CRAG（檢索充足性分級；關閉則等同舊行為）

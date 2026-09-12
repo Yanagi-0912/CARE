@@ -29,6 +29,8 @@ from typing import Any, Protocol
 
 from motor.motor_asyncio import AsyncIOMotorClient
 
+from app.core.request_logging import stage_timer
+
 logger = logging.getLogger(__name__)
 
 _NUM_CANDIDATES_MULTIPLIER = 30
@@ -141,6 +143,30 @@ class MongoAtlasClaimMatcher:
         return self._collection
 
     async def match(self, claim: str) -> ClaimMatch | None:
+        """比對入口。實作在 `_resolve`，這裡只負責觀測。
+
+        每次比對都留一行 `stage=claim_match`（命中與降級都記）。過去只有例外
+        路徑有 log，於是「未命中」在日誌上完全沒有痕跡——分不出是候選一篇都
+        沒有、非法 verdict 被擋下、還是差 0.01 分沒過門檻。三者要採取的行動
+        完全不同（補語料／查 ETL／調門檻），而 `CLAIM_MATCH_MIN_SCORE` 是否
+        還在對的位置，除了線上分數分佈之外沒有別的依據可看。
+
+        `candidates`／`top`／`runner_up` 必須在挑出最佳解**之前**記錄：
+        `_best_verdicted_match` 一旦收斂成單筆，這三個數字就再也拿不回來。
+        """
+        with stage_timer(
+            logger,
+            "claim_match",
+            claim_len=len(claim or ""),
+            threshold=self.min_score,
+        ) as obs:
+            # 預設 error，由 `_resolve` 的各條出口覆寫。沒被覆寫就代表有例外
+            # 從 `_resolve` 逸散出去——stage_timer 在 finally 記錄，那條路徑
+            # 一樣會留下這行。
+            obs["outcome"] = "error"
+            return await self._resolve(claim, obs)
+
+    async def _resolve(self, claim: str, obs: dict[str, Any]) -> ClaimMatch | None:
         # 對齊既有 RAG_HYBRID_ENABLED 在文字索引未建時的 fail-open 處置：
         # 這裡的任何失敗（缺設定、索引不存在、連線失敗、回傳格式異常）都不該
         # 中斷查核流程，一律降級為「未命中」，交由上層判定「證據不足」。
@@ -150,14 +176,29 @@ class MongoAtlasClaimMatcher:
             logger.warning(
                 "claim match failed, degrading to no match: %s", exc, exc_info=True
             )
+            obs["outcome"] = "search_failed"
             return None
 
-        best = self._best_verdicted_match(raw_docs)
+        candidates = self._dedup_by_url(raw_docs)
+        obs["candidates"] = len(candidates)
+        if candidates:
+            obs["top"] = round(float(candidates[0]["score"]), 4)
+            if len(candidates) > 1:
+                obs["runner_up"] = round(float(candidates[1]["score"]), 4)
+
+        best = self._best_verdicted_match(candidates)
         if best is None:
+            obs["outcome"] = "no_candidates"
             return None
 
         score = best["score"]
+        # 平手改判日期的分支實際上多久觸發一次，只有這裡量得到（週報記的
+        # 「8 題有 3 題分差小於 0.005」是離線抽樣，不是線上分佈）。
+        if candidates and best is not candidates[0]:
+            obs["tie_break"] = True
         if score < self.min_score:
+            obs["outcome"] = "below_threshold"
+            self._log_detail(claim, best)
             return None
 
         verdict = str(best.get("verdict") or "")
@@ -173,6 +214,7 @@ class MongoAtlasClaimMatcher:
                 verdict,
                 best.get("url"),
             )
+            obs["outcome"] = "invalid_verdict"
             return None
 
         content = str(best.get(self.content_field) or "")
@@ -187,8 +229,12 @@ class MongoAtlasClaimMatcher:
                 "claim match has empty content (url=%s), degrading to no match",
                 best.get("url"),
             )
+            obs["outcome"] = "empty_content"
             return None
 
+        obs["outcome"] = "hit"
+        obs["verdict"] = verdict
+        obs["url"] = str(best.get("url") or "") or None
         return ClaimMatch(
             claim=str(best.get(self.claim_field) or ""),
             verdict=verdict,
@@ -251,13 +297,15 @@ class MongoAtlasClaimMatcher:
         ]
         return await self._ensure_collection().aggregate(pipeline).to_list(length=None)
 
-    def _best_verdicted_match(
-        self, raw_docs: list[dict[str, Any]]
-    ) -> dict[str, Any] | None:
-        """先濾掉沒有 verdict 的文件，同一 url 只留最高分那筆，再取全域最高分。
+    def _dedup_by_url(self, raw_docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """濾掉沒有 verdict／沒有分數的文件，同一 url 只留最高分那筆，依分數排序。
 
         `$match` 已在 pipeline 裡濾過 verdict，這裡再做一次是防禦性的：
         假 collection（測試）或未來換掉的儲存層不保證真的執行了那個 stage。
+
+        這段原本是 `_best_verdicted_match` 的前半。拆出來是為了讓 `match()`
+        能在收斂成單筆之前，先把候選數與前兩名分數記進 stage log——挑完就
+        再也拿不回來，而那正是校準門檻唯一的線上依據。
         """
         best_by_url: dict[str, dict[str, Any]] = {}
         for doc in raw_docs:
@@ -271,14 +319,40 @@ class MongoAtlasClaimMatcher:
             if current_best is None or score > current_best["score"]:
                 best_by_url[url] = doc
 
-        if not best_by_url:
+        return sorted(
+            best_by_url.values(), key=lambda doc: doc["score"], reverse=True
+        )
+
+    def _best_verdicted_match(
+        self, candidates: list[dict[str, Any]]
+    ) -> dict[str, Any] | None:
+        """從已去重排序的候選裡取最高分；分數平手時改取較新的那篇。"""
+        if not candidates:
             return None
 
-        candidates = sorted(best_by_url.values(),
-                            key=lambda doc: doc["score"], reverse=True)
         top_score = candidates[0]["score"]
         tied = [d for d in candidates if top_score - d["score"] <= _SCORE_TIE_EPSILON]
         if len(tied) == 1:
             return tied[0]
         # 日期是字串（"2026-03-11"），字典序即時間序；缺日期者排最後。
         return max(tied, key=lambda doc: str(doc.get("published_at") or ""))
+
+    def _log_detail(self, claim: str, best: dict[str, Any]) -> None:
+        """只在 DEBUG 落地的文字明細。
+
+        `stage=claim_match` 那行刻意只有長度與分數、沒有問句原文——與
+        `message_handler` 既有的 `stage=handle text_len=` 同一個慣例（日誌可能
+        外送，使用者的健康問句不該預設進去）。
+
+        但「差 0.02 分沒過門檻」這件事光看數字無法判斷該不該調門檻：要知道
+        那篇沒過的報告是不是真的在講同一件事，必須看得到兩邊的文字。折衷是
+        需要人工抽樣校準時開一段 `LOG_LEVEL=DEBUG`，平時不留。
+        """
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
+        logger.debug(
+            "claim_match_detail claim=%r top_title=%r top_score=%s",
+            claim,
+            str(best.get("original_title") or ""),
+            best.get("score"),
+        )

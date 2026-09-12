@@ -1,0 +1,1136 @@
+{
+  "models": {
+    "gemini-3.1-pro-preview": {
+      "summary": {
+        "cases": 30,
+        "failed_calls": 1,
+        "cer_mean": 0.3246305418719212,
+        "cer_median": 0.3,
+        "exact_match": 0.20689655172413793,
+        "hallucination_rate": 0.2413793103448276,
+        "instability_mean": null,
+        "abstain_ratio_mean": 0.0,
+        "length_ratio_mean": 0.9874110563765736
+      },
+      "cases": [
+        {
+          "image": "evals/handwriting/cursive/samples/000.png",
+          "reference": "今日早上收縮壓一百三十八",
+          "predictions": [
+            "今日早上收羅座一百三十八"
+          ],
+          "errors": [],
+          "cer": 0.16666666666666666,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/001.png",
+          "reference": "飯前血糖一百二十六",
+          "predictions": [
+            "飯前空腹一百二十八"
+          ],
+          "errors": [],
+          "cer": 0.3333333333333333,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/002.png",
+          "reference": "飯後兩小時血糖一百八十九",
+          "predictions": [
+            "飯後兩小时血糖一百八十九"
+          ],
+          "errors": [],
+          "cer": 0.08333333333333333,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/003.png",
+          "reference": "早上飯後吃降血壓的藥",
+          "predictions": [
+            "早上飯後吃降血壓的藥"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/004.png",
+          "reference": "睡前忘記吃藥",
+          "predictions": [
+            "睡前忘記吃藥"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/005.png",
+          "reference": "血壓計顯示一百五十九",
+          "predictions": [
+            "空座計顯示一百五十次"
+          ],
+          "errors": [],
+          "cer": 0.3,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/006.png",
+          "reference": "昨天晚上睡不好",
+          "predictions": [
+            "昨天晚上睡不好"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/007.png",
+          "reference": "下星期三回診",
+          "predictions": [
+            "六星到三四次"
+          ],
+          "errors": [],
+          "cer": 0.6666666666666666,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/008.png",
+          "reference": "胸口有點悶不太舒服",
+          "predictions": [
+            "魯口可點客不太郎欣"
+          ],
+          "errors": [],
+          "cer": 0.5555555555555556,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/009.png",
+          "reference": "血糖比昨天高很多",
+          "predictions": [
+            "空瓶比成本高很多"
+          ],
+          "errors": [],
+          "cer": 0.5,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/010.png",
+          "reference": "腳有點腫按下去會凹",
+          "predictions": [
+            "秋來點種滿山青四"
+          ],
+          "errors": [],
+          "cer": 0.8888888888888888,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 0.8888888888888888
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/011.png",
+          "reference": "血壓一百三十上下",
+          "predictions": [
+            "主座一百三十上八"
+          ],
+          "errors": [],
+          "cer": 0.375,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/012.png",
+          "reference": "晚上十點吃的藥",
+          "predictions": [
+            "晚上十點吃的葯"
+          ],
+          "errors": [],
+          "cer": 0.14285714285714285,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/013.png",
+          "reference": "手會抖寫字很慢",
+          "predictions": [
+            "手底抖寫字很慢"
+          ],
+          "errors": [],
+          "cer": 0.14285714285714285,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/014.png",
+          "reference": "今天有按時吃藥",
+          "predictions": [
+            "今天要按时吃药"
+          ],
+          "errors": [],
+          "cer": 0.42857142857142855,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/015.png",
+          "reference": "今日早上收縮壓一百三十八",
+          "predictions": [
+            "六日交下收羅壓一百三十八"
+          ],
+          "errors": [],
+          "cer": 0.3333333333333333,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/016.png",
+          "reference": "飯前血糖一百二十六",
+          "predictions": [
+            "飯前空腹一百二十六"
+          ],
+          "errors": [],
+          "cer": 0.2222222222222222,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/017.png",
+          "reference": "飯後兩小時血糖一百八十九",
+          "predictions": [
+            "飯後兩小时血糖一百八十九"
+          ],
+          "errors": [],
+          "cer": 0.08333333333333333,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/018.png",
+          "reference": "早上飯後吃降血壓的藥",
+          "predictions": [
+            "早上飯後吃降血壓的藥"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/019.png",
+          "reference": "睡前忘記吃藥",
+          "predictions": [
+            "睡前忘記吃藥"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/020.png",
+          "reference": "血壓計顯示一百五十九",
+          "predictions": [
+            "主歷計新年一百五十九"
+          ],
+          "errors": [],
+          "cer": 0.4,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/021.png",
+          "reference": "昨天晚上睡不好",
+          "predictions": [
+            "昨天晚上睡不着"
+          ],
+          "errors": [],
+          "cer": 0.14285714285714285,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/022.png",
+          "reference": "下星期三回診",
+          "predictions": [
+            ""
+          ],
+          "errors": [
+            "TimeoutError: "
+          ],
+          "cer": null,
+          "instability": null,
+          "abstain_ratio": null,
+          "length_ratio": null
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/023.png",
+          "reference": "胸口有點悶不太舒服",
+          "predictions": [
+            "魯口意點不可專難欲"
+          ],
+          "errors": [],
+          "cer": 0.7777777777777778,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/024.png",
+          "reference": "血糖比昨天高很多",
+          "predictions": [
+            "空瓶作昨其高很角"
+          ],
+          "errors": [],
+          "cer": 0.625,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/025.png",
+          "reference": "腳有點腫按下去會凹",
+          "predictions": [
+            "秋水點點梅花落四"
+          ],
+          "errors": [],
+          "cer": 0.8888888888888888,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 0.8888888888888888
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/026.png",
+          "reference": "血壓一百三十上下",
+          "predictions": [
+            "主座一百三十マシ"
+          ],
+          "errors": [],
+          "cer": 0.5,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/027.png",
+          "reference": "晚上十點吃的藥",
+          "predictions": [
+            "晚上十點吃的藥"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/028.png",
+          "reference": "手會抖寫字很慢",
+          "predictions": [
+            "手怎抖寫字很慢"
+          ],
+          "errors": [],
+          "cer": 0.14285714285714285,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/029.png",
+          "reference": "今天有按時吃藥",
+          "predictions": [
+            "忘了按时吃药"
+          ],
+          "errors": [],
+          "cer": 0.7142857142857143,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 0.8571428571428571
+        }
+      ]
+    },
+    "gemini-3.8-flash": {
+      "summary": {
+        "cases": 30,
+        "failed_calls": 0,
+        "cer_mean": 0.36474867724867727,
+        "cer_median": 0.31666666666666665,
+        "exact_match": 0.16666666666666666,
+        "hallucination_rate": 0.2,
+        "instability_mean": null,
+        "abstain_ratio_mean": 0.0952116402116402,
+        "length_ratio_mean": 1.0037037037037038
+      },
+      "cases": [
+        {
+          "image": "evals/handwriting/cursive/samples/000.png",
+          "reference": "今日早上收縮壓一百三十八",
+          "predictions": [
+            "今日子上奴孺歷一百三十八"
+          ],
+          "errors": [],
+          "cer": 0.3333333333333333,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/001.png",
+          "reference": "飯前血糖一百二十六",
+          "predictions": [
+            "飯■■粒一百二十六"
+          ],
+          "errors": [],
+          "cer": 0.3333333333333333,
+          "instability": null,
+          "abstain_ratio": 0.2222222222222222,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/002.png",
+          "reference": "飯後兩小時血糖一百八十九",
+          "predictions": [
+            "飯後五小时血糖一百八十九"
+          ],
+          "errors": [],
+          "cer": 0.16666666666666666,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/003.png",
+          "reference": "早上飯後吃降血壓的藥",
+          "predictions": [
+            "早上飯後吃降血压的药"
+          ],
+          "errors": [],
+          "cer": 0.2,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/004.png",
+          "reference": "睡前忘記吃藥",
+          "predictions": [
+            "睡前忘记吃药"
+          ],
+          "errors": [],
+          "cer": 0.3333333333333333,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/005.png",
+          "reference": "血壓計顯示一百五十九",
+          "predictions": [
+            "主座計歌示一百五十九"
+          ],
+          "errors": [],
+          "cer": 0.3,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/006.png",
+          "reference": "昨天晚上睡不好",
+          "predictions": [
+            "昨天晚上睡不好"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/007.png",
+          "reference": "下星期三回診",
+          "predictions": [
+            "上星期三四次"
+          ],
+          "errors": [],
+          "cer": 0.5,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/008.png",
+          "reference": "胸口有點悶不太舒服",
+          "predictions": [
+            "胃口有點兒不太舒服"
+          ],
+          "errors": [],
+          "cer": 0.2222222222222222,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/009.png",
+          "reference": "血糖比昨天高很多",
+          "predictions": [
+            "空艇比我飞高很多"
+          ],
+          "errors": [],
+          "cer": 0.5,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/010.png",
+          "reference": "腳有點腫按下去會凹",
+          "predictions": [
+            "■ ■ ■ 稚 ■ 六 去 ■ ■"
+          ],
+          "errors": [],
+          "cer": 0.8888888888888888,
+          "instability": null,
+          "abstain_ratio": 0.6666666666666666,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/011.png",
+          "reference": "血壓一百三十上下",
+          "predictions": [
+            "血壓一百三十上八"
+          ],
+          "errors": [],
+          "cer": 0.125,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/012.png",
+          "reference": "晚上十點吃的藥",
+          "predictions": [
+            "晚上十点吃的药"
+          ],
+          "errors": [],
+          "cer": 0.2857142857142857,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/013.png",
+          "reference": "手會抖寫字很慢",
+          "predictions": [
+            "手老抖写字很慢"
+          ],
+          "errors": [],
+          "cer": 0.2857142857142857,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/014.png",
+          "reference": "今天有按時吃藥",
+          "predictions": [
+            "六点半按时吃药"
+          ],
+          "errors": [],
+          "cer": 0.7142857142857143,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/015.png",
+          "reference": "今日早上收縮壓一百三十八",
+          "predictions": [
+            "■日■■収掘■一百三十八"
+          ],
+          "errors": [],
+          "cer": 0.5,
+          "instability": null,
+          "abstain_ratio": 0.3333333333333333,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/016.png",
+          "reference": "飯前血糖一百二十六",
+          "predictions": [
+            "飯前血糖一百二十六"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/017.png",
+          "reference": "飯後兩小時血糖一百八十九",
+          "predictions": [
+            "飯後两小时血糖一百八十九"
+          ],
+          "errors": [],
+          "cer": 0.16666666666666666,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/018.png",
+          "reference": "早上飯後吃降血壓的藥",
+          "predictions": [
+            "早上飯後吃降血壓的藥"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/019.png",
+          "reference": "睡前忘記吃藥",
+          "predictions": [
+            "睡前忘记吃药"
+          ],
+          "errors": [],
+          "cer": 0.3333333333333333,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/020.png",
+          "reference": "血壓計顯示一百五十九",
+          "predictions": [
+            "■■计■■一百五十九"
+          ],
+          "errors": [],
+          "cer": 0.5,
+          "instability": null,
+          "abstain_ratio": 0.4,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/021.png",
+          "reference": "昨天晚上睡不好",
+          "predictions": [
+            "昨天晚上睡不着"
+          ],
+          "errors": [],
+          "cer": 0.14285714285714285,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/022.png",
+          "reference": "下星期三回診",
+          "predictions": [
+            "六里邙三岡凉"
+          ],
+          "errors": [],
+          "cer": 0.8333333333333334,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/023.png",
+          "reference": "胸口有點悶不太舒服",
+          "predictions": [
+            "■口■点心不■■■"
+          ],
+          "errors": [],
+          "cer": 0.7777777777777778,
+          "instability": null,
+          "abstain_ratio": 0.5555555555555556,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/024.png",
+          "reference": "血糖比昨天高很多",
+          "predictions": [
+            "血糖比昨天高很多"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/025.png",
+          "reference": "腳有點腫按下去會凹",
+          "predictions": [
+            "和各點線描、八七六四"
+          ],
+          "errors": [],
+          "cer": 1.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.1111111111111112
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/026.png",
+          "reference": "血壓一百三十上下",
+          "predictions": [
+            "■■一百三十マン"
+          ],
+          "errors": [],
+          "cer": 0.5,
+          "instability": null,
+          "abstain_ratio": 0.25,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/027.png",
+          "reference": "晚上十點吃的藥",
+          "predictions": [
+            "晚上十點吃的藥"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/028.png",
+          "reference": "手會抖寫字很慢",
+          "predictions": [
+            "手气抖写字很慢"
+          ],
+          "errors": [],
+          "cer": 0.2857142857142857,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/029.png",
+          "reference": "今天有按時吃藥",
+          "predictions": [
+            "■■■按时吃药"
+          ],
+          "errors": [],
+          "cer": 0.7142857142857143,
+          "instability": null,
+          "abstain_ratio": 0.42857142857142855,
+          "length_ratio": 1.0
+        }
+      ]
+    },
+    "gemini-2.5-pro": {
+      "summary": {
+        "cases": 30,
+        "failed_calls": 1,
+        "cer_mean": 0.5246442255062944,
+        "cer_median": 0.5,
+        "exact_match": 0.034482758620689655,
+        "hallucination_rate": 0.41379310344827586,
+        "instability_mean": null,
+        "abstain_ratio_mean": 0.00779967159277504,
+        "length_ratio_mean": 1.0115489874110564
+      },
+      "cases": [
+        {
+          "image": "evals/handwriting/cursive/samples/000.png",
+          "reference": "今日早上收縮壓一百三十八",
+          "predictions": [
+            "今日早上■獨酌一百三十一"
+          ],
+          "errors": [],
+          "cer": 0.3333333333333333,
+          "instability": null,
+          "abstain_ratio": 0.08333333333333333,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/001.png",
+          "reference": "飯前血糖一百二十六",
+          "predictions": [
+            "飯お空椀一りこちう"
+          ],
+          "errors": [],
+          "cer": 0.7777777777777778,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/002.png",
+          "reference": "飯後兩小時血糖一百八十九",
+          "predictions": [
+            "飯以西小小寸空糖一百小十九"
+          ],
+          "errors": [],
+          "cer": 0.5,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0833333333333333
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/003.png",
+          "reference": "早上飯後吃降血壓的藥",
+          "predictions": [
+            "马上饭后记吃得空麼、的药"
+          ],
+          "errors": [],
+          "cer": 0.9,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.2
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/004.png",
+          "reference": "睡前忘記吃藥",
+          "predictions": [
+            "睡分就龍吃藥"
+          ],
+          "errors": [],
+          "cer": 0.5,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/005.png",
+          "reference": "血壓計顯示一百五十九",
+          "predictions": [
+            "宝曆计衆示一百五十九"
+          ],
+          "errors": [],
+          "cer": 0.4,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/006.png",
+          "reference": "昨天晚上睡不好",
+          "predictions": [
+            "昨天晚上睡得好"
+          ],
+          "errors": [],
+          "cer": 0.14285714285714285,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/007.png",
+          "reference": "下星期三回診",
+          "predictions": [
+            "白星稀三两点"
+          ],
+          "errors": [],
+          "cer": 0.6666666666666666,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/008.png",
+          "reference": "胸口有點悶不太舒服",
+          "predictions": [
+            "曾の乃玷云ふ太郎卯"
+          ],
+          "errors": [],
+          "cer": 0.8888888888888888,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/009.png",
+          "reference": "血糖比昨天高很多",
+          "predictions": [
+            "空攏比我写高很多"
+          ],
+          "errors": [],
+          "cer": 0.5,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/010.png",
+          "reference": "腳有點腫按下去會凹",
+          "predictions": [
+            "红多玷能枋山去告四"
+          ],
+          "errors": [],
+          "cer": 0.8888888888888888,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/011.png",
+          "reference": "血壓一百三十上下",
+          "predictions": [
+            ""
+          ],
+          "errors": [
+            "TimeoutError: "
+          ],
+          "cer": null,
+          "instability": null,
+          "abstain_ratio": null,
+          "length_ratio": null
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/012.png",
+          "reference": "晚上十點吃的藥",
+          "predictions": [
+            "晚上十點吃的藥"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/013.png",
+          "reference": "手會抖寫字很慢",
+          "predictions": [
+            "手應拼寫字很慢"
+          ],
+          "errors": [],
+          "cer": 0.2857142857142857,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/014.png",
+          "reference": "今天有按時吃藥",
+          "predictions": [
+            "六百多按时吃藥"
+          ],
+          "errors": [],
+          "cer": 0.5714285714285714,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/015.png",
+          "reference": "今日早上收縮壓一百三十八",
+          "predictions": [
+            "今日屆々收貓屋一百三十八"
+          ],
+          "errors": [],
+          "cer": 0.3333333333333333,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/016.png",
+          "reference": "飯前血糖一百二十六",
+          "predictions": [
+            "飯為空糖一百二十六"
+          ],
+          "errors": [],
+          "cer": 0.2222222222222222,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/017.png",
+          "reference": "飯後兩小時血糖一百八十九",
+          "predictions": [
+            "飯及与小小时空糖一百八十九"
+          ],
+          "errors": [],
+          "cer": 0.4166666666666667,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0833333333333333
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/018.png",
+          "reference": "早上飯後吃降血壓的藥",
+          "predictions": [
+            "子上飯後吃降空壓的药"
+          ],
+          "errors": [],
+          "cer": 0.3,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/019.png",
+          "reference": "睡前忘記吃藥",
+          "predictions": [
+            "睡前三祀吃药"
+          ],
+          "errors": [],
+          "cer": 0.5,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/020.png",
+          "reference": "血壓計顯示一百五十九",
+          "predictions": [
+            "空屋沙龍子一百石廿九"
+          ],
+          "errors": [],
+          "cer": 0.7,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/021.png",
+          "reference": "昨天晚上睡不好",
+          "predictions": [
+            "昨互晚々睡ふ子"
+          ],
+          "errors": [],
+          "cer": 0.5714285714285714,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/022.png",
+          "reference": "下星期三回診",
+          "predictions": [
+            "二里钙三酒你"
+          ],
+          "errors": [],
+          "cer": 0.8333333333333334,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/023.png",
+          "reference": "胸口有點悶不太舒服",
+          "predictions": [
+            "曾口言超之心與釣之"
+          ],
+          "errors": [],
+          "cer": 0.8888888888888888,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/024.png",
+          "reference": "血糖比昨天高很多",
+          "predictions": [
+            "空瀧以昨了高很多"
+          ],
+          "errors": [],
+          "cer": 0.5,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/025.png",
+          "reference": "腳有點腫按下去會凹",
+          "predictions": [
+            "和為踶搖枯、、之言四"
+          ],
+          "errors": [],
+          "cer": 1.1111111111111112,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.1111111111111112
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/026.png",
+          "reference": "血壓一百三十上下",
+          "predictions": [
+            "主麼一百三千マシ"
+          ],
+          "errors": [],
+          "cer": 0.625,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/027.png",
+          "reference": "晚上十點吃的藥",
+          "predictions": [
+            "晚飯點吃的藥"
+          ],
+          "errors": [],
+          "cer": 0.2857142857142857,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 0.8571428571428571
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/028.png",
+          "reference": "手會抖寫字很慢",
+          "predictions": [
+            "■告拼寫字很慢"
+          ],
+          "errors": [],
+          "cer": 0.42857142857142855,
+          "instability": null,
+          "abstain_ratio": 0.14285714285714285,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/cursive/samples/029.png",
+          "reference": "今天有按時吃藥",
+          "predictions": [
+            "今天我按時吃藥"
+          ],
+          "errors": [],
+          "cer": 0.14285714285714285,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        }
+      ]
+    }
+  },
+  "repeats": 1,
+  "temperature": 0.0,
+  "golden": "evals/handwriting/cursive/golden.jsonl"
+}

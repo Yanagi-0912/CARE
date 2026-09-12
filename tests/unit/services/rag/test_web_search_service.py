@@ -33,6 +33,7 @@ from langchain_core.messages import AIMessage
 from app.core.request_context import reset_line_user_id, set_line_user_id
 from app.core.user_language import reset_request_language, set_request_language
 from app.i18n.messages import t
+from app.services.rag.query_rewriter import RewrittenQuery
 from app.services.rag.web_client import WebSearchHit
 from app.services.rag.fail_messages import RagFailCode, rag_fail
 from app.services.rag.web_search_service import (
@@ -44,19 +45,30 @@ from app.services.rag.web_search_service import (
 
 
 class FakeWebClient:
-    def __init__(self, hits=None, pages=None, search_error=None, scrape_error=None):
+    def __init__(
+        self,
+        hits=None,
+        pages=None,
+        search_error=None,
+        scrape_error=None,
+        hits_by_query=None,
+    ):
         self.hits = hits or []
+        # 依 query 回不同結果（中英兩路各自的命中）；沒列到的 query 退回 hits
+        self.hits_by_query = hits_by_query or {}
         self.pages = pages or {}
         self.search_error = search_error
         self.scrape_error = scrape_error
         self.search_calls: list[str] = []
+        self.search_domains: list = []
         self.scrape_calls: list[str] = []
 
-    async def search(self, query: str, *, limit: int = 5):
+    async def search(self, query: str, *, limit: int = 5, include_domains=None):
         self.search_calls.append(query)
+        self.search_domains.append(include_domains)
         if self.search_error:
             raise self.search_error
-        return self.hits[:limit]
+        return self.hits_by_query.get(query, self.hits)[:limit]
 
     async def scrape(self, url: str) -> str:
         self.scrape_calls.append(url)
@@ -71,6 +83,7 @@ def _make_service(
     web_client=None,
     on_web_fallback_success=None,
     link_checker=None,
+    en_search_domains=(),
 ):
     gemini_service = MagicMock()
     gemini_service.chat_model = MagicMock()
@@ -83,6 +96,7 @@ def _make_service(
             web_client=web_client,
             on_web_fallback_success=on_web_fallback_success,
             link_checker=link_checker,
+            en_search_domains=en_search_domains,
         ),
         gemini_service,
     )
@@ -212,7 +226,7 @@ async def test_answer_returns_no_answer_when_web_client_missing():
 
 @pytest.mark.asyncio
 async def test_answer_logs_model_refuse_diagnostics(caplog):
-    answer_content = "我不知道這個問題的答案。"
+    answer_content = "[NO_ANSWER] 我不知道這個問題的答案。"
     web = FakeWebClient(
         hits=[WebSearchHit(title="疾管署", url="https://www.cdc.gov.tw/w")],
         pages={"https://www.cdc.gov.tw/w": "流感疫苗建議。"},
@@ -227,7 +241,7 @@ async def test_answer_logs_model_refuse_diagnostics(caplog):
         if "rag_fail code=MODEL_REFUSE" in rec.getMessage()
     ]
     assert len(refuse_logs) == 1
-    assert "matched_marker=不知道" in refuse_logs[0]
+    assert "matched_marker=[NO_ANSWER]" in refuse_logs[0]
     assert f"answer_preview={answer_content}" in refuse_logs[0]
 
 
@@ -237,7 +251,7 @@ async def test_answer_returns_no_answer_when_model_cannot_answer():
         hits=[WebSearchHit(title="疾管署", url="https://www.cdc.gov.tw/w")],
         pages={"https://www.cdc.gov.tw/w": "流感疫苗建議。"},
     )
-    svc, _ = _make_service(answer_content="我不知道這個問題的答案。", web_client=web)
+    svc, _ = _make_service(answer_content="[NO_ANSWER] 我不知道這個問題的答案。", web_client=web)
     result = await svc.answer("流感疫苗")
     assert result == NO_ANSWER_MESSAGE
     assert result == rag_fail(RagFailCode.MODEL_REFUSE)
@@ -324,7 +338,7 @@ async def test_answer_model_refuse_does_not_create_knowledge_report():
     )
     on_success = AsyncMock()
     svc, _ = _make_service(
-        answer_content="我不知道這個問題的答案。",
+        answer_content="[NO_ANSWER] 我不知道這個問題的答案。",
         web_client=web,
         on_web_fallback_success=on_success,
     )
@@ -566,3 +580,177 @@ async def test_sources_unchanged_when_link_checker_absent():
     svc, _ = _make_service(answer_content="請就醫評估。", web_client=web)
 
     assert url in await svc.answer("腳痛怎麼辦")
+
+
+# --- 查詢改寫後的中英兩路搜尋 ---
+
+_PGAD_QUERIES = RewrittenQuery(
+    kb_query="持續性性興奮症候群是什麼？",
+    zh_terms="持續性性興奮症候群",
+    en_terms="persistent genital arousal disorder",
+)
+_EN_DOMAINS = ("nih.gov", "medlineplus.gov")
+
+
+def _hit(title, url):
+    return WebSearchHit(
+        title=title, url=url, description=f"{title}的說明文字，長度足夠不必抓全文。"
+    )
+
+
+@pytest.mark.asyncio
+async def test_rewritten_queries_search_zh_and_en_legs():
+    web = FakeWebClient()
+    svc, _ = _make_service(web_client=web, en_search_domains=_EN_DOMAINS)
+
+    await svc.answer("PGAD 是什麼病", search_queries=_PGAD_QUERIES)
+
+    assert web.search_calls[:2] == [
+        "持續性性興奮症候群 site:gov.tw",
+        "persistent genital arousal disorder",
+    ]
+    assert web.search_domains[:2] == [None, _EN_DOMAINS]
+
+
+@pytest.mark.asyncio
+async def test_legs_are_interleaved_so_en_results_are_not_crowded_out():
+    """罕見病：中文那路全是不相關內容時，英文那路的正解仍要擠進前 CITE_TOP_K。"""
+    zh_hits = [
+        _hit("多發性硬化症性功能障礙", "https://www.ntuh.gov.tw/a"),
+        _hit("泌尿科常見問題", "https://sp1.hso.mohw.gov.tw/b"),
+        _hit("精神科常見問題", "https://sp1.hso.mohw.gov.tw/c"),
+    ]
+    en_hits = [
+        _hit("Persistent Genital Arousal Disorder", "https://pmc.ncbi.nlm.nih.gov/articles/PMC1/"),
+        _hit("PGAD review", "https://pubmed.ncbi.nlm.nih.gov/2/"),
+    ]
+    web = FakeWebClient(
+        hits_by_query={
+            "持續性性興奮症候群 site:gov.tw": zh_hits,
+            "persistent genital arousal disorder": en_hits,
+        }
+    )
+    svc, _ = _make_service(
+        answer_content="根據公開網路資料，PGAD 是一種罕見疾病 [2]。",
+        web_client=web,
+        en_search_domains=_EN_DOMAINS,
+    )
+
+    result = await svc.answer("PGAD 是什麼病", search_queries=_PGAD_QUERIES)
+
+    assert "[1] 網路：多發性硬化症性功能障礙：https://www.ntuh.gov.tw/a" in result
+    # 網址經正規化（去掉結尾斜線），與 test_document_url_is_normalized 同一條規則
+    assert (
+        "[2] 網路：Persistent Genital Arousal Disorder："
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC1" in result
+    )
+    assert "[3] 網路：泌尿科常見問題：https://sp1.hso.mohw.gov.tw/b" in result
+    # 名額維持 CITE_TOP_K，不是兩路相加
+    assert "pubmed.ncbi.nlm.nih.gov" not in result
+
+
+@pytest.mark.asyncio
+async def test_generation_and_report_use_original_question():
+    """改寫只決定拿什麼去搜；回答的問題與知識回報仍是使用者的原句。"""
+    web = FakeWebClient(
+        hits_by_query={
+            "persistent genital arousal disorder": [
+                _hit("PGAD", "https://pmc.ncbi.nlm.nih.gov/articles/PMC1/")
+            ]
+        }
+    )
+    on_success = AsyncMock()
+    svc, gemini = _make_service(
+        answer_content="根據公開網路資料 [1]。",
+        web_client=web,
+        on_web_fallback_success=on_success,
+        en_search_domains=_EN_DOMAINS,
+    )
+    token = set_line_user_id("U_LINE")
+    try:
+        await svc.answer("PGAD 是什麼病", search_queries=_PGAD_QUERIES)
+    finally:
+        reset_line_user_id(token)
+
+    prompt = gemini.chat_model.ainvoke.await_args.args[0][0].content
+    assert "PGAD 是什麼病" in prompt
+    assert on_success.await_args.kwargs["question"] == "PGAD 是什麼病"
+
+
+@pytest.mark.asyncio
+async def test_en_leg_skipped_without_domains_or_terms():
+    web = FakeWebClient()
+    svc, _ = _make_service(web_client=web)  # 沒設英文網域
+    await svc.answer("PGAD 是什麼病", search_queries=_PGAD_QUERIES)
+    assert "persistent genital arousal disorder" not in web.search_calls
+
+    web2 = FakeWebClient()
+    svc2, _ = _make_service(web_client=web2, en_search_domains=_EN_DOMAINS)
+    await svc2.answer(
+        "低鈉飲食要注意什麼",
+        search_queries=RewrittenQuery(kb_query="低鈉飲食注意事項", zh_terms="低鈉飲食"),
+    )
+    assert all(domains is None for domains in web2.search_domains)
+
+
+@pytest.mark.asyncio
+async def test_retries_with_original_question_when_no_docs():
+    """Firecrawl 會隨機回 0 筆；兩路都沒有可用文件時，以原句再搜一次。"""
+    web = FakeWebClient(
+        hits_by_query={
+            "PGAD 是什麼病 site:gov.tw": [_hit("衛福部說明", "https://www.mohw.gov.tw/x")]
+        }
+    )
+    svc, _ = _make_service(
+        answer_content="根據公開網路資料 [1]。",
+        web_client=web,
+        en_search_domains=_EN_DOMAINS,
+    )
+
+    result = await svc.answer("PGAD 是什麼病", search_queries=_PGAD_QUERIES)
+
+    assert len(web.search_calls) == 3
+    assert web.search_calls[-1] == "PGAD 是什麼病 site:gov.tw"
+    assert "https://www.mohw.gov.tw/x" in result
+
+
+@pytest.mark.asyncio
+async def test_no_retry_when_first_round_has_docs():
+    web = FakeWebClient(hits=[_hit("國健署", "https://www.hpa.gov.tw/a")])
+    svc, _ = _make_service(answer_content="根據公開網路資料 [1]。", web_client=web)
+    await svc.answer("高血壓要注意什麼")
+    assert web.search_calls == ["高血壓要注意什麼 site:gov.tw"]
+
+
+class _LimitRecordingWebClient(FakeWebClient):
+    def __init__(self):
+        super().__init__()
+        self.limits: list = []
+
+    async def search(self, query: str, *, limit: int = 5, include_domains=None):
+        self.limits.append((include_domains, limit))
+        return await super().search(
+            query, limit=limit, include_domains=include_domains
+        )
+
+
+@pytest.mark.asyncio
+async def test_en_leg_searches_only_cite_top_k_results():
+    """英文那一路只取 CITE_TOP_K（3）筆；中文那一路維持 WEB_SEARCH_LIMIT（8）。"""
+    web = _LimitRecordingWebClient()
+    svc, _ = _make_service(web_client=web, en_search_domains=_EN_DOMAINS)
+
+    await svc.answer("PGAD 是什麼病", search_queries=_PGAD_QUERIES)
+
+    assert web.limits[:2] == [(None, 8), (_EN_DOMAINS, 3)]
+
+
+@pytest.mark.asyncio
+async def test_empty_model_output_is_treated_as_refusal():
+    """模型回空字串時不能把預設文案（「抱歉，我目前找不到相關資料」）當答案送出。"""
+    web = FakeWebClient(hits=[_hit("國健署", "https://www.hpa.gov.tw/a")])
+    svc, _ = _make_service(answer_content="", web_client=web)
+
+    result = await svc.answer("高血壓要注意什麼")
+
+    assert result == rag_fail(RagFailCode.MODEL_REFUSE)

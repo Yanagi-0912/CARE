@@ -117,6 +117,64 @@ def _draft(draft_id: str = "D1") -> PrescriptionDraft:
     )
 
 
+def test_list_medications_router(override_current_user):
+    """GET /api/medications（無結尾斜線）要能解析到 list 端點，回應鍵是
+    `id` 不是 `_id`（見檔頭說明）。"""
+    fake_medication = Medication(
+        id="M1",
+        user_id="U_TEST_USER",
+        created_by_user_id="U_TEST_USER",
+        name="脈優錠5毫克",
+    )
+
+    class _FakeMedicationService:
+        async def list_medications(self, user_id):
+            return [fake_medication]
+
+    app.dependency_overrides[get_medication_service] = lambda: _FakeMedicationService()
+    _override_authz()
+    try:
+        response = client.get("/api/medications")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["id"] == "M1"
+        assert "_id" not in data[0]
+        assert data[0]["name"] == "脈優錠5毫克"
+    finally:
+        app.dependency_overrides.pop(get_medication_service, None)
+
+
+def test_create_medication_router(override_current_user):
+    """POST /api/medications（無結尾斜線）新增藥品，回應鍵是 `id` 不是
+    `_id`。"""
+
+    class _FakeMedicationService:
+        async def create_manual_medication(self, creator_user_id, request):
+            return Medication(
+                id="M2",
+                user_id=request.user_id,
+                created_by_user_id=creator_user_id,
+                name=request.name,
+                source="manual",
+            )
+
+    app.dependency_overrides[get_medication_service] = lambda: _FakeMedicationService()
+    _override_authz()
+    try:
+        response = client.post(
+            "/api/medications", json={"user_id": "U_TEST_USER", "name": "普拿疼"}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == "M2"
+        assert "_id" not in data
+        assert data["name"] == "普拿疼"
+        assert data["source"] == "manual"
+    finally:
+        app.dependency_overrides.pop(get_medication_service, None)
+
+
 def test_create_reminders_router(override_current_user):
     fake_reminder = MedicationReminder(
         creator_user_id="U_TEST_USER",

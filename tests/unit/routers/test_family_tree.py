@@ -161,3 +161,47 @@ def test_set_relationship_success(client, override_family_service, override_curr
     override_family_service.set_relationship.assert_awaited_once_with(
         user_id="U_ME", member_id="U_OTHER", relationship_type="parent"
     )
+
+
+# ── 邀請回應中的 QR 網址 ──────────────────────────────────────────────────
+
+
+def _pending_invitation(token: str = "token123"):
+    return PendingInvitation(
+        _id=token,
+        inviter_id="U_ME",
+        status="pending",
+        created_at=datetime.now(timezone.utc),
+        expires_at=datetime(2026, 5, 20, tzinfo=timezone.utc),
+    )
+
+
+def test_create_invite_returns_absolute_qr_url(
+    client, override_family_service, override_current_user, monkeypatch
+):
+    # 絕對網址是硬需求：Flex Message 的圖由 LINE 的伺服器去抓，相對路徑無效。
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "PUBLIC_BASE_URL", "https://care.example.com/")
+    override_current_user("U_ME")
+    override_family_service.create_invitation.return_value = _pending_invitation()
+
+    body = client.post("/api/family/invites").json()
+
+    assert body["qr_url"] == "https://care.example.com/api/family/invites/token123/qr.png"
+
+
+def test_create_invite_still_works_without_public_base_url(
+    client, override_family_service, override_current_user, monkeypatch
+):
+    # 少了對外網址只是畫不出 QR，連結分享那條路不該被一起拖垮。
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "PUBLIC_BASE_URL", "")
+    override_current_user("U_ME")
+    override_family_service.create_invitation.return_value = _pending_invitation()
+
+    body = client.post("/api/family/invites").json()
+
+    assert body["invite_token"] == "token123"
+    assert body["qr_url"] is None

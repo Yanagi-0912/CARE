@@ -3,8 +3,14 @@ from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 import pytest
 
-from app.models.medication import TAIPEI_TZ, Medication, MedicationLog, MedicationReminder
-from app.services.line_messaging.flex.medication_flex import MedicationListEntry
+from app.models.medication import (
+    TAIPEI_TZ,
+    Medication,
+    MedicationLog,
+    MedicationReminder,
+    ReminderEntry,
+)
+from app.services.line_messaging.flex.medication_flex import MedicationGroup, MedicationListEntry
 from app.services.medication.medication_scheduler import (
     MedicationScheduler,
     _TickMedicationNameCache,
@@ -160,6 +166,59 @@ async def test_process_ticks_t20_urgent_reminder(scheduler, mock_replier, log_re
     mock_replier.push_flex.assert_awaited_once()
     assert mock_replier.push_flex.call_args[0][0] == "U_PATIENT"
     log_repository.claim_patient_urgent_reminder.assert_awaited_once_with("LOG_1")
+
+
+@pytest.mark.asyncio
+async def test_process_ticks_t20_queries_with_now_not_pre_shifted_threshold(
+    scheduler, log_repository
+):
+    """
+    階段 2 改傳現在時刻，不再自己先減 20 分鐘——20 分鐘的位移現在下放到
+    展開時寫入的 `urgent_at`（design 決策 4）；這裡若還傳 `now - 20min`，
+    會與 repository 端 `urgent_at` 分支的位移疊加，把門檻誤推早 40 分鐘。
+    """
+    now = datetime(2026, 7, 29, 8, 21, tzinfo=TAIPEI_TZ)
+
+    await scheduler.process_ticks(now=now)
+
+    log_repository.list_pending_urgent_reminders.assert_awaited_once_with(
+        threshold_time=now
+    )
+
+
+@pytest.mark.asyncio
+async def test_process_ticks_expands_urgent_at_and_timeout_at_from_timeout_anchor_time(
+    scheduler, reminder_repository, log_repository
+):
+    """
+    飯前 07:30／飯後 08:30 的規則於 07:30 展開時，`urgent_at`／`timeout_at`
+    SHALL 以 `timeout_anchor_time`（最晚條目時刻 08:30）起算，不是
+    `scheduled_time`（最早條目時刻 07:30）——否則 08:00 前後就會被誤判
+    成該催促或該通知家屬漏吃（spec「飯前飯後時刻不同」）。
+    """
+    now = datetime(2026, 7, 29, 7, 30, tzinfo=TAIPEI_TZ)
+    reminder_repository.list_active_reminders_up_to_time.return_value = [
+        MedicationReminder(
+            id="REM_1",
+            creator_user_id="U_CARE",
+            user_id="U_PATIENT",
+            slot_type="morning",
+            start_date="2026-07-29",
+            created_at=datetime(2026, 7, 28, 0, 0, tzinfo=TAIPEI_TZ),
+            entries=[
+                ReminderEntry(meal_timing="before_meal", scheduled_time="07:30"),
+                ReminderEntry(meal_timing="after_meal", scheduled_time="08:30"),
+            ],
+        )
+    ]
+
+    await scheduler.process_ticks(now=now)
+
+    log_repository.upsert_log.assert_awaited_once()
+    log_arg = log_repository.upsert_log.call_args[0][0]
+    assert log_arg.scheduled_at == datetime(2026, 7, 29, 7, 30, tzinfo=TAIPEI_TZ)
+    assert log_arg.urgent_at == datetime(2026, 7, 29, 8, 50, tzinfo=TAIPEI_TZ)
+    assert log_arg.timeout_at == datetime(2026, 7, 29, 9, 0, tzinfo=TAIPEI_TZ)
 
 
 @pytest.mark.asyncio
@@ -753,6 +812,207 @@ async def test_tick_cache_medication_batch_failure_degrades_to_empty_for_every_l
     ]
 
     assert results == [[], []]
+    medication_col.find.assert_called_once()
+
+
+# ── get_groups：依服藥時機分區，排除已確認的藥 ────────────────────────
+#
+# 分組語意必須與 `MedicationService.medication_groups_for_log`（單筆、
+# dispatcher 路徑）完全一致，見該函式與 design 決策 6。這裡驗的是批次版
+# `_TickMedicationNameCache.get_groups`：同一批查詢結果既要能拆成
+# `get_entries()` 的平面清單，也要能拆成依 entries 分區的 `MedicationGroup`。
+
+
+@pytest.mark.asyncio
+async def test_get_groups_groups_items_by_entry_in_meal_timing_order():
+    """飯前／飯後兩個條目各自成一個分區，且依 MEAL_TIMING_ORDER 排序。"""
+    scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)  # 台北 08:00
+    logs = [_log("L1", "REM_1", scheduled_at)]
+    reminder_docs = [
+        {
+            "_id": "REM_1",
+            "creator_user_id": "U_CARE",
+            "user_id": "U_PATIENT",
+            "slot_type": "morning",
+            "entries": [
+                {"meal_timing": "after_meal", "scheduled_time": "08:30", "medication_ids": ["M2"]},
+                {"meal_timing": "before_meal", "scheduled_time": "07:30", "medication_ids": ["M1"]},
+            ],
+        }
+    ]
+    medication_docs = [
+        {"_id": "M1", "user_id": "U_PATIENT", "created_by_user_id": "U_CARE", "name": "脈優"},
+        {"_id": "M2", "user_id": "U_PATIENT", "created_by_user_id": "U_CARE", "name": "利尿劑"},
+    ]
+    reminder_col = _find_collection(reminder_docs)
+    medication_col = _find_collection(medication_docs)
+
+    cache = _TickMedicationNameCache(logs)
+    groups = await cache.get_groups(
+        logs[0], reminder_collection=reminder_col, medication_collection=medication_col
+    )
+
+    assert [group.meal_timing for group in groups] == ["before_meal", "after_meal"]
+    assert groups[0].scheduled_time == "07:30"
+    assert groups[0].items == [("M1", MedicationListEntry(name="脈優", image_url=None))]
+    assert groups[1].scheduled_time == "08:30"
+    assert groups[1].items == [("M2", MedicationListEntry(name="利尿劑", image_url=None))]
+
+
+@pytest.mark.asyncio
+async def test_get_groups_excludes_taken_medication_ids():
+    """已在 taken_medication_ids 裡的藥不出現在分區的 items 中
+    （T+20 催促只列尚未確認的藥）。"""
+    scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
+    log = MedicationLog(
+        id="L1",
+        reminder_id="REM_1",
+        user_id="U_PATIENT",
+        alert_notify_user_id="U_CARE",
+        slot_type="morning",
+        scheduled_at=scheduled_at,
+        timeout_at=scheduled_at,
+        status="pending",
+        taken_medication_ids=["M1"],
+    )
+    reminder_docs = [
+        {
+            "_id": "REM_1",
+            "creator_user_id": "U_CARE",
+            "user_id": "U_PATIENT",
+            "slot_type": "morning",
+            "entries": [
+                {"meal_timing": "none", "scheduled_time": "08:00", "medication_ids": ["M1", "M2"]},
+            ],
+        }
+    ]
+    medication_docs = [
+        {"_id": "M1", "user_id": "U_PATIENT", "created_by_user_id": "U_CARE", "name": "脈優"},
+        {"_id": "M2", "user_id": "U_PATIENT", "created_by_user_id": "U_CARE", "name": "利尿劑"},
+    ]
+    reminder_col = _find_collection(reminder_docs)
+    medication_col = _find_collection(medication_docs)
+
+    cache = _TickMedicationNameCache([log])
+    groups = await cache.get_groups(
+        log, reminder_collection=reminder_col, medication_collection=medication_col
+    )
+
+    assert len(groups) == 1
+    assert groups[0].items == [("M2", MedicationListEntry(name="利尿劑", image_url=None))]
+
+
+@pytest.mark.asyncio
+async def test_get_groups_drops_groups_left_empty_after_exclusion():
+    """一個分區的藥全部已確認（或全部失效）時，該分區不出現在結果裡，
+    呼叫端不必再判斷一次「這個分區還有沒有東西」。"""
+    scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
+    log = MedicationLog(
+        id="L1",
+        reminder_id="REM_1",
+        user_id="U_PATIENT",
+        alert_notify_user_id="U_CARE",
+        slot_type="morning",
+        scheduled_at=scheduled_at,
+        timeout_at=scheduled_at,
+        status="pending",
+        taken_medication_ids=["M1"],
+    )
+    reminder_docs = [
+        {
+            "_id": "REM_1",
+            "creator_user_id": "U_CARE",
+            "user_id": "U_PATIENT",
+            "slot_type": "morning",
+            "entries": [
+                {"meal_timing": "before_meal", "scheduled_time": "07:30", "medication_ids": ["M1"]},
+                {"meal_timing": "after_meal", "scheduled_time": "08:30", "medication_ids": ["M2"]},
+            ],
+        }
+    ]
+    medication_docs = [
+        {"_id": "M1", "user_id": "U_PATIENT", "created_by_user_id": "U_CARE", "name": "脈優"},
+        {"_id": "M2", "user_id": "U_PATIENT", "created_by_user_id": "U_CARE", "name": "利尿劑"},
+    ]
+    reminder_col = _find_collection(reminder_docs)
+    medication_col = _find_collection(medication_docs)
+
+    cache = _TickMedicationNameCache([log])
+    groups = await cache.get_groups(
+        log, reminder_collection=reminder_col, medication_collection=medication_col
+    )
+
+    assert [group.meal_timing for group in groups] == ["after_meal"]
+
+
+@pytest.mark.asyncio
+async def test_get_groups_legacy_single_none_entry_yields_one_group():
+    """本變更前寫入的規則沒有 entries 欄位，模型讀回時合成單一 none 條目
+    （見 MedicationReminder._synthesize_entries_from_legacy_fields），
+    get_groups 對它要能得出恰好一個分區，時序與本變更前的單一清單相同。"""
+    scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
+    logs = [_log("L1", "REM_1", scheduled_at)]
+    reminder_docs = [
+        {
+            "_id": "REM_1",
+            "creator_user_id": "U_CARE",
+            "user_id": "U_PATIENT",
+            "slot_type": "morning",
+            "scheduled_time": "08:00",
+            "medication_ids": ["M1"],
+            # 沒有 entries 鍵，模擬本變更前寫入的規則
+        }
+    ]
+    medication_docs = [
+        {"_id": "M1", "user_id": "U_PATIENT", "created_by_user_id": "U_CARE", "name": "脈優"},
+    ]
+    reminder_col = _find_collection(reminder_docs)
+    medication_col = _find_collection(medication_docs)
+
+    cache = _TickMedicationNameCache(logs)
+    groups = await cache.get_groups(
+        logs[0], reminder_collection=reminder_col, medication_collection=medication_col
+    )
+
+    assert len(groups) == 1
+    assert groups[0].meal_timing == "none"
+    assert groups[0].items == [("M1", MedicationListEntry(name="脈優", image_url=None))]
+
+
+@pytest.mark.asyncio
+async def test_get_groups_after_get_entries_issues_no_additional_queries():
+    """`get_entries()` 與 `get_groups()` 共用同一次 `_load()`：不論先呼叫
+    哪一個，第二次呼叫都不該再發查詢（class docstring 的核心保證）。"""
+    scheduled_at = datetime(2026, 8, 9, 0, 0, tzinfo=timezone.utc)
+    logs = [_log("L1", "REM_1", scheduled_at)]
+    reminder_docs = [
+        {
+            "_id": "REM_1",
+            "creator_user_id": "U_CARE",
+            "user_id": "U_PATIENT",
+            "slot_type": "morning",
+            "entries": [
+                {"meal_timing": "none", "scheduled_time": "08:00", "medication_ids": ["M1"]},
+            ],
+        }
+    ]
+    medication_docs = [
+        {"_id": "M1", "user_id": "U_PATIENT", "created_by_user_id": "U_CARE", "name": "脈優"},
+    ]
+    reminder_col = _find_collection(reminder_docs)
+    medication_col = _find_collection(medication_docs)
+
+    cache = _TickMedicationNameCache(logs)
+    entries = await cache.get_entries(
+        logs[0], reminder_collection=reminder_col, medication_collection=medication_col
+    )
+    groups = await cache.get_groups(
+        logs[0], reminder_collection=reminder_col, medication_collection=medication_col
+    )
+
+    assert entries == [MedicationListEntry(name="脈優", image_url=None)]
+    assert groups[0].items == [("M1", MedicationListEntry(name="脈優", image_url=None))]
+    reminder_col.find.assert_called_once()
     medication_col.find.assert_called_once()
 
 

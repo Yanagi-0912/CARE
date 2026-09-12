@@ -1,0 +1,701 @@
+{
+  "_readme": [
+    "抗膽鹼作用累加的成分清單。用於「疊加」判定：**新加入的藥與現有用藥各自命中本清單**",
+    "時才成立——單一藥品命中不構成任何事件。",
+    "",
+    "為什麼需要這個：現有的成分重複偵測要求兩盒藥含**同一個**成分，因此",
+    "「感冒藥（CHLORPHENIRAMINE）＋ 暈車藥（DIMENHYDRINATE）」抓不到——成分名稱不同，",
+    "交集是空的。但藥理上兩者是同一件事：抗膽鹼作用加倍。對長者的後果是頭暈、",
+    "意識混亂、尿滯留，終點是跌倒與骨折。",
+    "",
+    "實測藥證庫（resources/drug_catalog.json）：含本清單成分的非處方藥 3,099 種，",
+    "其中 2,112 種含 CHLORPHENIRAMINE。也就是說近三分之二的疊加會落在同一個成分上、",
+    "由現有的成分重複規則涵蓋；本清單真正補上的是另外那 987 種的交叉組合。",
+    "",
+    "依據：",
+    "  - 2023 AGS Beers Criteria Table 5「抗膽鹼藥 × 抗膽鹼藥」——風險寫明認知衰退、",
+    "    譫妄、跌倒與骨折，建議強度為強；Table 7 為抗膽鹼藥品清單。",
+    "  - PIM-Taiwan 2018（Chang et al., Ther Adv Chronic Dis, DOI 10.1177/2040622319879602，",
+    "    CC BY-NC 4.0）Table 1，65 歲以上不分診斷應避免的藥，附 ATC 代碼。",
+    "  - otc_products / rx_products 由本專案對食藥署許可證資料集（dataset 9122）實測，",
+    "    計數方式為「成分字串包含該名稱的品項數」。",
+    "",
+    "⚠ 與 otc_watch_ingredients.json 同一條但書：本清單由文獻對照與資料分析產出，",
+    "  未經藥師審查。group 與 source 是納入理由，不是臨床建議。",
+    "",
+    "刻意不做的事：不分抗膽鹼強度等級（ACB/ADS 之類的量表）。分級需要逐一的藥理",
+    "  評分依據，我們沒有；而疊加判定只需要「兩邊都算數」，不需要加總分數。",
+    "",
+    "比對語意為**完全比對**（比照 IngredientWatchlist），不是子字串比對：實測子字串",
+    "比對會把 BUTYLSCOPOLAMINE、ACLIDINIUM、UMECLIDINIUM 誤中，見 excluded_by_pharmacology。",
+    "因此本清單逐一列舉藥證庫裡實際出現的成分字串（含鹽類與異構物寫法）。",
+    "",
+    "CLIDINIUM BROMIDE 雖然也是四級銨，仍予保留：PIM-Taiwan Table 1 明文把",
+    "「clidinium 與 chlordiazepoxide 的複方」列為高抗膽鹼作用（A03CA02）。此處以來源為準。"
+  ],
+  "group_notes": {
+    "antihistamine_1st_gen": "第一代抗組織胺。PIM-Taiwan Table 1 呼吸系統段整組列為 65 歲以上應避免。",
+    "antispasmodic": "解痙劑／抗蕈毒鹼。Beers Table 7 列為強抗膽鹼。含 ATROPINE、SCOPOLAMINE 者多為點眼或外用，由 local_action_dosage_forms 於比對前排除。",
+    "antimuscarinic_urinary": "膀胱過動症用藥。PIM-Taiwan Table 1 泌尿生殖系統段。",
+    "antiparkinsonian": "抗巴金森氏症的抗膽鹼製劑。PIM-Taiwan Table 1 神經系統段。",
+    "antidepressant_tca": "三環抗憂鬱劑。PIM-Taiwan Table 1 神經系統段。",
+    "antidepressant_ssri": "PAROXETINE 是 SSRI 中抗膽鹼作用最強者，PIM-Taiwan 單獨列出。",
+    "antipsychotic": "抗精神病藥中抗膽鹼作用較強者。Beers Table 7。"
+  },
+  "ingredients": [
+    {
+      "name": "CHLORPHENIRAMINE MALEATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 1984,
+      "rx_products": 550
+    },
+    {
+      "name": "DIPHENHYDRAMINE HCL",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 319,
+      "rx_products": 78
+    },
+    {
+      "name": "CARBINOXAMINE MALEATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 163,
+      "rx_products": 36
+    },
+    {
+      "name": "DIPHENHYDRAMINE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 104,
+      "rx_products": 4
+    },
+    {
+      "name": "DICYCLOMINE HCL",
+      "group": "antispasmodic",
+      "otc_products": 102,
+      "rx_products": 109
+    },
+    {
+      "name": "DL-CHLORPHENIRAMINE MALEATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 93,
+      "rx_products": 0
+    },
+    {
+      "name": "BROMPHENIRAMINE MALEATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 91,
+      "rx_products": 36
+    },
+    {
+      "name": "DIMENHYDRINATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 70,
+      "rx_products": 18
+    },
+    {
+      "name": "MECLIZINE HCL",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 49,
+      "rx_products": 31
+    },
+    {
+      "name": "TRIPROLIDINE HCL",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 31,
+      "rx_products": 21
+    },
+    {
+      "name": "DIPHENYLPYRALINE HCL",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 30,
+      "rx_products": 23
+    },
+    {
+      "name": "CLEMASTINE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 26,
+      "rx_products": 32
+    },
+    {
+      "name": "DEXCHLORPHENIRAMINE MALEATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 23,
+      "rx_products": 2
+    },
+    {
+      "name": "DIPHENHYDRAMINE TANNATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 18,
+      "rx_products": 5
+    },
+    {
+      "name": "CYPROHEPTADINE HCL",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 16,
+      "rx_products": 62
+    },
+    {
+      "name": "SCOPOLAMINE HBR",
+      "group": "antispasmodic",
+      "otc_products": 16,
+      "rx_products": 53
+    },
+    {
+      "name": "DOXYLAMINE SUCCINATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 14,
+      "rx_products": 25
+    },
+    {
+      "name": "DIPHENHYDRAMINE SALICYLATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 10,
+      "rx_products": 15
+    },
+    {
+      "name": "BUCLIZINE 2HCL",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 10,
+      "rx_products": 8
+    },
+    {
+      "name": "D-CHLORPHENIRAMINE MALEATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 10,
+      "rx_products": 0
+    },
+    {
+      "name": "CLEMASTINE FUMARATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 9,
+      "rx_products": 9
+    },
+    {
+      "name": "PROMETHAZINE HCL",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 6,
+      "rx_products": 24
+    },
+    {
+      "name": "ATROPINE SULFATE",
+      "group": "antispasmodic",
+      "otc_products": 5,
+      "rx_products": 127
+    },
+    {
+      "name": "HYOSCYAMINE SULFATE",
+      "group": "antispasmodic",
+      "otc_products": 5,
+      "rx_products": 53
+    },
+    {
+      "name": "BUCLIZINE HCL",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 5,
+      "rx_products": 2
+    },
+    {
+      "name": "PHENINDAMINE TARTRATE (PHENINDAMINE HYDROGEN TART",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 5,
+      "rx_products": 0
+    },
+    {
+      "name": "PROMETHAZINE METHYLENDISALICYLATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 4,
+      "rx_products": 1
+    },
+    {
+      "name": "HOMOCHLORCYCLIZINE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 3,
+      "rx_products": 6
+    },
+    {
+      "name": "CYCLIZINE HCL",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 3,
+      "rx_products": 2
+    },
+    {
+      "name": "TRIPROLIDINE HCL MONOHYDRATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 3,
+      "rx_products": 1
+    },
+    {
+      "name": "PROMETHAZINE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 3,
+      "rx_products": 0
+    },
+    {
+      "name": "CHLORPHENIRAMINE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 2,
+      "rx_products": 2
+    },
+    {
+      "name": "SCOPOLAMINE",
+      "group": "antispasmodic",
+      "otc_products": 2,
+      "rx_products": 2
+    },
+    {
+      "name": "DICYCLOMINE",
+      "group": "antispasmodic",
+      "otc_products": 2,
+      "rx_products": 1
+    },
+    {
+      "name": "DIPHENHYDRAMINE LAURYL SULFATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 2,
+      "rx_products": 0
+    },
+    {
+      "name": "TRIHEXYPHENIDYL HCL",
+      "group": "antiparkinsonian",
+      "otc_products": 1,
+      "rx_products": 26
+    },
+    {
+      "name": "KETOTIFEN FUMARATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 1,
+      "rx_products": 23
+    },
+    {
+      "name": "HYOSCYAMINE HYDROBROMIDE",
+      "group": "antispasmodic",
+      "otc_products": 1,
+      "rx_products": 7
+    },
+    {
+      "name": "HYOSCYAMINE",
+      "group": "antispasmodic",
+      "otc_products": 1,
+      "rx_products": 4
+    },
+    {
+      "name": "CHLORCYCLIZINE HCL",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 1,
+      "rx_products": 3
+    },
+    {
+      "name": "BROMODIPHENHYDRAMINE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 1,
+      "rx_products": 1
+    },
+    {
+      "name": "CYPROHEPTADINE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 1,
+      "rx_products": 1
+    },
+    {
+      "name": "HOMATROPINE HBR",
+      "group": "antispasmodic",
+      "otc_products": 1,
+      "rx_products": 1
+    },
+    {
+      "name": "BROMPHENIRAMINE D-",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 1,
+      "rx_products": 0
+    },
+    {
+      "name": "DOXYLAMINE HYDROGEN SUCCINATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 1,
+      "rx_products": 0
+    },
+    {
+      "name": "MECLIZINE 2HCL",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 1,
+      "rx_products": 0
+    },
+    {
+      "name": "CHLORPROMAZINE HCL",
+      "group": "antipsychotic",
+      "otc_products": 0,
+      "rx_products": 53
+    },
+    {
+      "name": "OLANZAPINE",
+      "group": "antipsychotic",
+      "otc_products": 0,
+      "rx_products": 53
+    },
+    {
+      "name": "THIORIDAZINE HCL",
+      "group": "antipsychotic",
+      "otc_products": 0,
+      "rx_products": 38
+    },
+    {
+      "name": "KETOTIFEN",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 37
+    },
+    {
+      "name": "MEQUITAZINE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 32
+    },
+    {
+      "name": "AMITRIPTYLINE HCL",
+      "group": "antidepressant_tca",
+      "otc_products": 0,
+      "rx_products": 31
+    },
+    {
+      "name": "OXYBUTYNIN CHLORIDE",
+      "group": "antimuscarinic_urinary",
+      "otc_products": 0,
+      "rx_products": 27
+    },
+    {
+      "name": "CLIDINIUM BROMIDE",
+      "group": "antispasmodic",
+      "otc_products": 0,
+      "rx_products": 19
+    },
+    {
+      "name": "HOMOCHLORCYCLIZINE HCL",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 19
+    },
+    {
+      "name": "IMIPRAMINE HCL",
+      "group": "antidepressant_tca",
+      "otc_products": 0,
+      "rx_products": 18
+    },
+    {
+      "name": "DOXEPIN HCL",
+      "group": "antidepressant_tca",
+      "otc_products": 0,
+      "rx_products": 14
+    },
+    {
+      "name": "AMITRIPTYLINE",
+      "group": "antidepressant_tca",
+      "otc_products": 0,
+      "rx_products": 13
+    },
+    {
+      "name": "BIPERIDEN HCL",
+      "group": "antiparkinsonian",
+      "otc_products": 0,
+      "rx_products": 13
+    },
+    {
+      "name": "CLOZAPINE",
+      "group": "antipsychotic",
+      "otc_products": 0,
+      "rx_products": 13
+    },
+    {
+      "name": "CLOMIPRAMINE HCL",
+      "group": "antidepressant_tca",
+      "otc_products": 0,
+      "rx_products": 12
+    },
+    {
+      "name": "HYDROXYZINE HCL",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 11
+    },
+    {
+      "name": "ATROPINE SULFATE MONOHYDRATE",
+      "group": "antispasmodic",
+      "otc_products": 0,
+      "rx_products": 9
+    },
+    {
+      "name": "MAPROTILINE HCL",
+      "group": "antidepressant_tca",
+      "otc_products": 0,
+      "rx_products": 9
+    },
+    {
+      "name": "DOXEPIN",
+      "group": "antidepressant_tca",
+      "otc_products": 0,
+      "rx_products": 8
+    },
+    {
+      "name": "HOMOCHLORCYCLIZINE 2HCL",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 7
+    },
+    {
+      "name": "MEBHYDROLIN",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 7
+    },
+    {
+      "name": "PAROXETINE HYDROCHLORIDE",
+      "group": "antidepressant_ssri",
+      "otc_products": 0,
+      "rx_products": 7
+    },
+    {
+      "name": "PAROXETINE HYDROCHLORIDE HEMIHYDRATE",
+      "group": "antidepressant_ssri",
+      "otc_products": 0,
+      "rx_products": 7
+    },
+    {
+      "name": "CHLORPROMAZINE",
+      "group": "antipsychotic",
+      "otc_products": 0,
+      "rx_products": 6
+    },
+    {
+      "name": "TOLTERODINE L-TARTRATE",
+      "group": "antimuscarinic_urinary",
+      "otc_products": 0,
+      "rx_products": 6
+    },
+    {
+      "name": "CYPROHEPTADINE HCL ANHYDROUS",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 5
+    },
+    {
+      "name": "MEBHYDROLINE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 5
+    },
+    {
+      "name": "BIPERIDEN LACTATE",
+      "group": "antiparkinsonian",
+      "otc_products": 0,
+      "rx_products": 4
+    },
+    {
+      "name": "MEBHYDROLINE NAPADISYLATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 4
+    },
+    {
+      "name": "MEBHYDROLINE NAPHTHALENEDISULFONATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 4
+    },
+    {
+      "name": "OXATOMIDE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 4
+    },
+    {
+      "name": "ATROPINE METHONITRATE",
+      "group": "antispasmodic",
+      "otc_products": 0,
+      "rx_products": 3
+    },
+    {
+      "name": "TOLTERODINE TARTRATE",
+      "group": "antimuscarinic_urinary",
+      "otc_products": 0,
+      "rx_products": 3
+    },
+    {
+      "name": "ATROPINE",
+      "group": "antispasmodic",
+      "otc_products": 0,
+      "rx_products": 2
+    },
+    {
+      "name": "BUCLIZINE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 2
+    },
+    {
+      "name": "CHLORPHENIRAMINE TANNATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 2
+    },
+    {
+      "name": "DIPHENYLPYRALINE RESINATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 2
+    },
+    {
+      "name": "KETOTIFEN HYDROGEN FUMARATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 2
+    },
+    {
+      "name": "MAPROTILINE METHANESULFONATE",
+      "group": "antidepressant_tca",
+      "otc_products": 0,
+      "rx_products": 2
+    },
+    {
+      "name": "MEBHYDROLINE NADYPSYLATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 2
+    },
+    {
+      "name": "OLANZAPINE MICRONIZED",
+      "group": "antipsychotic",
+      "otc_products": 0,
+      "rx_products": 2
+    },
+    {
+      "name": "SCOPOLAMINE HCL",
+      "group": "antispasmodic",
+      "otc_products": 0,
+      "rx_products": 2
+    },
+    {
+      "name": "TRIMIPRAMINE",
+      "group": "antidepressant_tca",
+      "otc_products": 0,
+      "rx_products": 2
+    },
+    {
+      "name": "BIPERIDEN",
+      "group": "antiparkinsonian",
+      "otc_products": 0,
+      "rx_products": 1
+    },
+    {
+      "name": "CYCLIZINE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 1
+    },
+    {
+      "name": "DIPHENYLPYRALINE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 1
+    },
+    {
+      "name": "HOMATROPINE",
+      "group": "antispasmodic",
+      "otc_products": 0,
+      "rx_products": 1
+    },
+    {
+      "name": "HYDROXYZINE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 1
+    },
+    {
+      "name": "HYDROXYZINE DIHYDROCHLORIDE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 1
+    },
+    {
+      "name": "HYDROXYZINE PAMOATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 1
+    },
+    {
+      "name": "HYOSCYAMINE CITRATE",
+      "group": "antispasmodic",
+      "otc_products": 0,
+      "rx_products": 1
+    },
+    {
+      "name": "IMIPRAMINE",
+      "group": "antidepressant_tca",
+      "otc_products": 0,
+      "rx_products": 1
+    },
+    {
+      "name": "OLANZAPINE PAMOATE MONOHYDRATE",
+      "group": "antipsychotic",
+      "otc_products": 0,
+      "rx_products": 1
+    },
+    {
+      "name": "OXYBUTYNIN",
+      "group": "antimuscarinic_urinary",
+      "otc_products": 0,
+      "rx_products": 1
+    },
+    {
+      "name": "PROMETHAZINE THEOCLATE",
+      "group": "antihistamine_1st_gen",
+      "otc_products": 0,
+      "rx_products": 1
+    },
+    {
+      "name": "TRIMIPRAMINE METHANESULFONATE",
+      "group": "antidepressant_tca",
+      "otc_products": 0,
+      "rx_products": 1
+    }
+  ],
+  "explicitly_excluded": [
+    {
+      "names": [
+        "CETIRIZINE",
+        "LORATADINE",
+        "FEXOFENADINE",
+        "LEVOCETIRIZINE",
+        "DESLORATADINE"
+      ],
+      "reason": "第二代抗組織胺。不易通過血腦障壁，抗膽鹼與鎮靜作用顯著較低，Beers 與 PIM-Taiwan 都未列入。納入會把最常見的過敏用藥全部變成警報來源。"
+    }
+  ],
+  "excluded_by_pharmacology": [
+    {
+      "names": [
+        "BUTYLSCOPOLAMINE 系列",
+        "METHSCOPOLAMINE 系列",
+        "N-METHYLSCOPOLAMINE 系列"
+      ],
+      "reason": "四級銨結構，不通過血腦障壁，中樞抗膽鹼作用極小。以認知衰退／跌倒為風險理由的疊加判定不應納入。"
+    },
+    {
+      "names": [
+        "ACLIDINIUM",
+        "UMECLIDINIUM"
+      ],
+      "reason": "吸入型長效抗蕈毒鹼（COPD 用）。局部作用、全身抗膽鹼負擔低，Beers Table 7 與 PIM-Taiwan Table 1 均未列入。以子字串比對 CLIDINIUM 會誤中，故改為完全比對並逐一列舉。"
+    },
+    {
+      "names": [
+        "ATROPINE METHYL BROMIDE",
+        "HOMATROPINE METHYLBROMIDE",
+        "SCOPOLAMINE BROMOBUTYLATE",
+        "SCOPOLAMINE BUTYLBROMIDE",
+        "SCOPOLAMINE METHOBROMIDE",
+        "SCOPOLAMINE METHYL BROMIDE",
+        "SCOPOLAMINE METHYLNITRATE",
+        "SCOPOLAMINE-N-BUTYLBROMIDE"
+      ],
+      "reason": "四級銨鹽（甲基溴／甲基硫酸／丁基溴／甲基硝酸）。與母體的三級胺不同，不通過血腦障壁，中樞抗膽鹼作用極小。對應的三級胺寫法（SCOPOLAMINE HBR、ATROPINE SULFATE、HOMATROPINE HBR）仍留在清單內。"
+    }
+  ]
+}

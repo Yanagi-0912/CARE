@@ -188,7 +188,7 @@ ConnectError: [SSL: CERTIFICATE_VERIFY_FAILED] self-signed certificate in certif
 這是公司網路的 TLS 攔截，不是金鑰問題（在公司機器上重現過）。家用網路應該不會有。真遇到：
 
 ```bash
-pip install truststore
+uv add truststore
 ```
 
 然後在腳本最前面加：

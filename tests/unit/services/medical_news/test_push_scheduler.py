@@ -394,3 +394,97 @@ async def test_claim_stores_card_payload_for_sharing():
     assert payload["title"] == news.title
     assert payload["summary"] == news.summary
     assert payload["source_name"] == news.source_name
+
+
+# ── Tier 2 池子的個人化錯開 ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_new_users_do_not_all_get_the_same_tier2_article():
+    """沒有推播歷史的使用者不得全部拿到同一篇。
+
+    池子是全體共用的，而唯一的個人化是「這位使用者收過沒」——對新加入的
+    使用者那個條件對誰都成立。少了 user_id 錯開，功能上線那幾天所有長輩會
+    收到一模一樣的卡。
+    """
+    pool = [_article(url=f"https://www.hpa.gov.tw/a/{i}") for i in range(10)]
+    replier = FakeReplier()
+    scheduler = _scheduler(
+        replier=replier,
+        kb_digest=FakeKbDigest(pool),
+        user_repository=FakeUserRepo([f"U{i}" for i in range(10)]),
+        delivery_repository=FakeDeliveryRepo(),
+    )
+
+    await scheduler.run_once("2026-09-02")
+
+    titles = [flex for _, flex in replier.pushed]
+    assert len(replier.pushed) == 10
+    assert len(set(map(str, titles))) > 1
+
+
+def test_pool_offset_is_stable_across_processes():
+    """偏移不得依賴內建 `hash()`——它受 PYTHONHASHSEED 影響，每次重啟就跳掉。
+
+    直接驗算 blake2b 的值：這個測試的目的正是釘住「同一個 user_id 在任何行程
+    裡都得到同一個偏移」，所以不能只比對兩次呼叫的結果相同。
+    """
+    import hashlib
+
+    from app.services.medical_news.push_scheduler import _pool_offset
+
+    for user_id in ("U1", "Uabcdef0123456789", ""):
+        expected = (
+            int.from_bytes(
+                hashlib.blake2b(user_id.encode("utf-8"), digest_size=8).digest(),
+                "big",
+            )
+            % 7
+        )
+        assert _pool_offset(user_id, 7) == expected
+
+
+def test_pool_offset_handles_empty_pool():
+    from app.services.medical_news.push_scheduler import _pool_offset
+
+    assert _pool_offset("U1", 0) == 0
+
+
+@pytest.mark.asyncio
+async def test_offset_still_skips_already_pushed_articles():
+    """錯開之後仍然不得重推——去重優先於偏移。"""
+    pool = [_article(url=f"https://www.hpa.gov.tw/a/{i}") for i in range(3)]
+    from app.services.medical_news.push_scheduler import _pool_offset
+
+    start = _pool_offset("U1", len(pool))
+    already = make_news_ref("kb_article", pool[start].url)
+
+    replier = FakeReplier()
+    scheduler = _scheduler(
+        replier=replier,
+        kb_digest=FakeKbDigest(pool),
+        user_repository=FakeUserRepo(["U1"]),
+        delivery_repository=FakeDeliveryRepo(pushed={already}),
+    )
+
+    await scheduler.run_once("2026-09-02")
+
+    assert len(replier.pushed) == 1
+    assert pool[start].url not in str(replier.pushed[0][1])
+
+
+@pytest.mark.asyncio
+async def test_nothing_pushed_when_every_pool_article_already_seen():
+    pool = [_article(url=f"https://www.hpa.gov.tw/a/{i}") for i in range(3)]
+    seen = {make_news_ref("kb_article", a.url) for a in pool}
+    replier = FakeReplier()
+    scheduler = _scheduler(
+        replier=replier,
+        kb_digest=FakeKbDigest(pool),
+        user_repository=FakeUserRepo(["U1"]),
+        delivery_repository=FakeDeliveryRepo(pushed=seen),
+    )
+
+    await scheduler.run_once("2026-09-02")
+
+    assert replier.pushed == []

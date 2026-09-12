@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from contextlib import suppress
 from datetime import datetime, timedelta, timezone
@@ -47,6 +48,16 @@ _CONCERN_PRIORITY: dict[str, int] = {
     "supply": 2,
     "education": 3,
 }
+
+
+def _pool_offset(user_id: str, size: int) -> int:
+    """這位使用者從池子的第幾篇開始看。穩定、與行程無關、分佈均勻。"""
+    if size <= 0:
+        return 0
+    digest = hashlib.blake2b(
+        (user_id or "").encode("utf-8"), digest_size=8
+    ).digest()
+    return int.from_bytes(digest, "big") % size
 
 
 class MedicalNewsPushScheduler:
@@ -188,7 +199,7 @@ class MedicalNewsPushScheduler:
             # 問題」對高齡使用者是恐慌而非資訊。
             return
 
-        article = self._pick_tier2(tier2_pool, pushed_refs)
+        article = self._pick_tier2(tier2_pool, pushed_refs, user_id)
         if article is None:
             # 兩層都沒有內容時安靜地不推。推一張空卡比不推糟——那正是
             # medication-reminder-lifecycle 那個 bug 的教訓。
@@ -253,9 +264,29 @@ class MedicalNewsPushScheduler:
 
     @staticmethod
     def _pick_tier2(
-        pool: list[KbArticle], pushed_refs: set[str]
+        pool: list[KbArticle], pushed_refs: set[str], user_id: str
     ) -> Optional[KbArticle]:
-        for article in pool:
+        """從全體共用的池子挑一篇，起點依 user_id 錯開。
+
+        為什麼要錯開：池子是全體共用的，而唯一的個人化是「這位使用者收過沒」。
+        對**沒有推播歷史的人**——新加入的使用者，以及功能剛上線那幾天的所有
+        人——那個條件對誰都成立，於是所有人拿到同一篇 `pool[0]`。同一天同一群
+        長輩收到一模一樣的卡，Tier 2「今日醫療小知識」的個人化外觀就破了。
+
+        起點用 `blake2b` 而不是內建 `hash()`：`hash()` 對 str 受
+        `PYTHONHASHSEED` 影響，每次行程重啟結果都不同，同一位使用者的偏移會在
+        每次部署後跳掉，等於沒有穩定的個人化。這與 `medication_repository` 選
+        用可重現雜湊的理由相同。
+
+        代價：偏移之後不再保證「最新的先推」。可接受——池子裡每一篇都已通過
+        `max_age_days`，彼此的新舊差異對衛教內容沒有意義，而 Tier 1 的警訊
+        （新舊差異有意義的那些）根本不走這條路。
+        """
+        if not pool:
+            return None
+        offset = _pool_offset(user_id, len(pool))
+        for index in range(len(pool)):
+            article = pool[(offset + index) % len(pool)]
             if make_news_ref("kb_article", article.url) not in pushed_refs:
                 return article
         return None

@@ -37,7 +37,7 @@ class Settings:
 
     # Gemini API 配置
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY")
-    MODEL_NAME: str = os.getenv("MODEL_NAME", "gemini-2.5-flash")
+    MODEL_NAME: str = os.getenv("MODEL_NAME", "gemini-3.8-flash")
 
     # Line Messaging API 配置
     LINE_CHANNEL_ID: str = os.getenv("LINE_CHANNEL_ID")
@@ -118,6 +118,32 @@ class Settings:
     )
     RAG_RRF_K: int = int(os.getenv("RAG_RRF_K", "60"))
 
+    # 融合方式：convex（預設，正規化分數的凸組合）或 rrf（Reciprocal Rank Fusion）。
+    #
+    # 為什麼補上 convex：k=60 是 RRF 原始論文（Cormack et al., SIGIR 2009）
+    # 在 TREC 上用的值，本專案從未校準過它。Bruch et al.（TOIS 42(1), 2023；
+    # arXiv:2210.11934）量到 RRF 對參數敏感、凸組合在 in-domain 與 out-of-domain
+    # 都較好，而且權重「只需少量標註查詢」就能調——這正好對上 golden.jsonl
+    # 只有 55 題的現實。
+    #
+    # 為什麼預設 convex：2026-09-12 golden set 重新稽核後（計分題 17→26）以
+    # scripts/rag_fusion_sweep.py 驗證——vector 切面 RRF 22/26 → 25/26、cohere
+    # 切面 25/26 → 26/26，兩切面皆零退步，holdout(n=5) 無差異。
+    # RAG_TEXT_TITLE_BOOST 的增益接上 Cohere 後就消失了，這次沒有：融合決定的是
+    # 「哪 40 筆進得了 Cohere」，kb-026 的正解在 RRF 下排第 42 名，根本沒進候選池。
+    #
+    # **線上生效的就是這裡的預設值。**正式環境讀的是 CARE-infra helm
+    # values.yaml 產生的 ConfigMap（CARE 的 .env 不會進 image），而那裡沒有設
+    # 這兩個鍵。要退回 RRF：在 values.yaml 的 backend.config 加
+    # RAG_FUSION_MODE: "rrf"。
+    RAG_FUSION_MODE: str = os.getenv("RAG_FUSION_MODE", "convex")
+
+    # 凸組合裡向量腿的權重，文字腿拿 1-alpha。只在 RAG_FUSION_MODE=convex 時
+    # 生效。0.6 由上述掃描選出：vector 切面平滑單峰（0.3:20 0.5:22 **0.6:25**
+    # 0.7:24 0.8+:23），cohere 切面 0.5 與 0.6 並列最高。這是在本專案語料上校準
+    # 的值——知識庫大改或換 embedding 模型後要重掃。
+    RAG_FUSION_ALPHA: float = float(os.getenv("RAG_FUSION_ALPHA", "0.6"))
+
     # BM25 也比對文章標題。chunk_content 本身不含標題（切塊時被切掉了），
     # 而 embedding 與 rerank 兩處都會把標題補回文本，只有 BM25 這條腿看不到，
     # 藥名／疾病名只出現在標題時會整篇漏掉。空字串＝關閉，退回只比對內文。
@@ -161,7 +187,14 @@ class Settings:
     # 0.3 是保守起步值：Cohere relevance_score 的分佈上，明顯不相關的內容
     # 多落在 0.2 以下。應以 golden set 校準後再調——調高會讓 grader 失效期間
     # 更常轉網搜或拒答，調低則失去這張網的意義。
+    #
+    # **這個門檻只套用在 Cohere 的 relevance_score 上**，不套用在融合分數或
+    # 原始 cosine（見 `_filter_by_degraded_score`）。那兩個尺度量過了，區分
+    # 不了相關與不相關：融合分數的不相關均值 0.650 比相關的 0.632 還高，
+    # cosine 兩者只差 0.0069 且完全重疊（scripts/rag_degraded_floor_scan.py，
+    # 22 題 110 篇）。因此 Cohere 不可用時是整批轉網搜，不是用別的分數頂替。
     RAG_DEGRADED_MIN_SCORE: float = float(os.getenv("RAG_DEGRADED_MIN_SCORE", "0.3"))
+
 
     # 精排後之文章層級去重：同一篇文章最多留幾個 chunk 進 top-n（避免單一
     # 文章的多個 chunk 擠爆 top-n 名額，犧牲來源多樣性）。
@@ -183,6 +216,12 @@ class Settings:
     # 命中率約再掉 10 個百分點，0.86 是命中率明顯下滑前的最後一格，
     # 兼顧「誤配是唯一嚴重失效模式、門檻寧缺勿濫」（design.md 決策 3）與
     # 堪用的覆蓋率。
+    #
+    # 上面那組數字是離線的（60 題 LLM 改寫問法），不是線上分佈。要再調之前
+    # 先看 `stage=claim_match` 的 top 分數分佈——特別是 outcome=below_threshold
+    # 那批離門檻多遠；差 0.01 的近失與根本沒有候選是完全不同的問題，離線題庫
+    # 分不出來。同一個 rid 上的 stage=claim_verify outcome=identity_rejected
+    # 是另一半：門檻放寬會直接讓那批變多。
     CLAIM_MATCH_MIN_SCORE: float = float(os.getenv("CLAIM_MATCH_MIN_SCORE", "0.86"))
 
     # Light CRAG（檢索充足性分級；關閉則等同舊行為）
@@ -290,6 +329,15 @@ class Settings:
     # （design.md Decision 5）：網搜只是收窄召回，真正把關的是入庫白名單。
     RAG_WEB_SEARCH_SITE_FILTER: str = os.getenv(
         "RAG_WEB_SEARCH_SITE_FILTER", "site:gov.tw"
+    )
+    # 網搜英文那一路的網域（逗號分隔，送給 Firecrawl v2 的 includeDomains）。
+    # 中文那一路仍用上面的 site: 篩選查 gov.tw。罕見病在 gov.tw 常沒有中文
+    # 資料，要用英文醫學名詞查 nih.gov 才找得到（例：persistent genital arousal
+    # disorder 在 nih.gov 回 5 筆 PMC／PubMed，中文原句在 gov.tw 只命中一份
+    # 不相關的 PDF）。這裡的網域必須也在入庫白名單內，因為搜回來的結果照樣
+    # 用白名單過濾。空字串＝不搜英文。
+    RAG_WEB_SEARCH_EN_DOMAINS: str = os.getenv(
+        "RAG_WEB_SEARCH_EN_DOMAINS", "nih.gov,medlineplus.gov"
     )
     # 手動知識回報的濫用防護。只計 source="manual" 的回報：若把 agent tool 與
     # web fallback 自動建報也算進來，使用者在 LINE 多問幾個知識庫答不出來的
@@ -445,6 +493,27 @@ class Settings:
     # 每個藥名每次取幾筆搜尋結果。搜尋成本是 O(不重複藥數 × 這個值)。
     MEDICAL_NEWS_SEARCH_LIMIT: int = int(
         os.getenv("MEDICAL_NEWS_SEARCH_LIMIT", "5")
+    )
+    # Tier 2 選材是否用 LLM 判「這篇對高齡讀者有沒有用」。
+    #
+    # 關掉時只剩 `relevance.is_policy_announcement` 的標題黑名單，那一道擋得掉
+    # 活動與政績新聞稿，擋不掉「內容是真衛教但對象不是長輩」（嬰幼兒篩檢、
+    # 青少年菸害、孕產補助）。
+    #
+    # 成本是 O(每日候選數) 而**不是** O(使用者數)：池子全體共用，選材一天只跑
+    # 一次，上限即下面那個值。撞到 Gemini 配額時這是第一個該關的東西——關掉
+    # Tier 2 仍然照常供應，只是內容品質退回黑名單那一層。
+    MEDICAL_NEWS_TIER2_GRADER_ENABLED: bool = os.getenv(
+        "MEDICAL_NEWS_TIER2_GRADER_ENABLED", "true"
+    ).lower() in ("1", "true", "yes", "on")
+    # 每日 Tier 2 選材最多送幾篇進 grader。上限用完即停止選材（不是「剩下的
+    # 放行」——那會在額度吃緊那天悄悄關掉防線）。
+    #
+    # 30 的來由：選材的候選窗口是 `limit × _OVERFETCH_FACTOR` = 10 × 5 = 50 篇，
+    # 而其中先被日期與標題黑名單篩掉一部分。30 容得下「要湊滿 10 篇池子」的
+    # 正常最壞情況，又不至於在 grader 大量拒絕時把整個窗口都送進模型。
+    MEDICAL_NEWS_TIER2_GRADE_MAX_CALLS: int = int(
+        os.getenv("MEDICAL_NEWS_TIER2_GRADE_MAX_CALLS", "30")
     )
     # 每位使用者每日的分享次數上限。防的是把族譜當廣播用。
     MEDICAL_NEWS_DAILY_SHARE_LIMIT: int = int(

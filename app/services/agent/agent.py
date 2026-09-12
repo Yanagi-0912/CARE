@@ -13,6 +13,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from app.core.request_logging import log_stage, stage_timer
 from app.i18n.messages import (
     split_at_sources_heading,
+    t,
     strip_sources_section,
     text_contains_sources_heading,
 )
@@ -29,6 +30,121 @@ from app.tools.registry import get_all_tools
 
 logger = logging.getLogger(__name__)
 
+_RAG_TOOL_NAME = "get_rag_answer"
+
+
+def _trailing_tool_messages(messages: list[AnyMessage]) -> list[ToolMessage]:
+    """這一輪 tools 節點剛剛附加上去的 ToolMessage。
+
+    從尾端往回收集而不是掃全部：多輪對話的 messages 裡含著先前每一輪的
+    ToolMessage，掃全部會把上一輪的工具也算進來，於是「這一輪只用了 RAG」
+    這個判斷在第二次提問時就永遠成立不了。
+    """
+    collected: list[ToolMessage] = []
+    for msg in reversed(messages or []):
+        if not isinstance(msg, ToolMessage):
+            break
+        collected.append(msg)
+    collected.reverse()
+    return collected
+
+
+def _route_after_tools(state: State) -> str:
+    """工具跑完後：直通，還是回去讓模型組裝回覆。
+
+    **為什麼要有直通這條路**：ReAct 的預設假設是「工具回傳原料、模型負責翻成
+    人話」，所以工具輸出一律會被丟回模型再處理一次。但 `get_rag_answer` 內部
+    自己就跑了一次生成，回傳的是成品——含本文、行內引用與來源清單。再問模型
+    一次等於把成品拆開重做。
+
+    線上實測（care-dev，7 天）：那一次呼叫 p50 3,205ms，是整條管線第二大的
+    一塊，僅次於 RAG 生成本身的 6.2s。三題 A/B 顯示它做三件事——移除行內引用、
+    加醫療提醒、重寫措辭——而醫療提醒是不可靠的（兩輪實測分別只加了 2/3 與
+    0/3）。三件事現在都由程式處理：引用保留（Flex 的來源按鈕標籤就是
+    「[1] 來源名」，留著才對得起來）、提醒改成固定文案（100%）、措辭直接在
+    RAG 自己的 prompt 裡要求。
+
+    **條件刻意收得很緊**，只有「這一輪只呼叫了 get_rag_answer 一個工具、而且
+    它成功產出答案」才直通：
+
+    - **多工具同時呼叫**（例如又查核又 RAG）必須回模型，因為只有它能把兩份
+      輸出合成一段話。
+    - **RAG 失敗訊息**（`is_rag_fail`）不直通。那些文案是給模型當素材用的
+      錯誤說明，直接丟給使用者會漏掉既有的降級話術。
+    - 其餘工具（附近院所、查核卡）本來就有自己的直通路徑，不經過這裡。
+
+    已知取捨：多輪追問（「那芒果呢」）時，模型那一步看得到完整對話歷史，
+    直通看不到——送出的是 RAG 工具針對單一 query 寫的答案。
+    """
+    # 本輪沒提供 RAG 就不可能有合法的 RAG 結果可直通；會走到這裡的只剩被
+    # `_execute_offered_tools` 攔下的呼叫。
+    if not state.get("allow_rag"):
+        return "agent"
+    tool_messages = _trailing_tool_messages(state.get("messages") or [])
+    if len(tool_messages) != 1:
+        return "agent"
+    only = tool_messages[0]
+    if getattr(only, "name", None) != _RAG_TOOL_NAME:
+        return "agent"
+    # ToolNode 出錯時（例如模型把參數名 query 猜成 question）回的是
+    # 「Error invoking tool …」——直通會把這段錯誤原樣送給使用者。
+    if getattr(only, "status", None) == "error":
+        return "agent"
+    if is_rag_fail(content_to_text(only.content)):
+        return "agent"
+    return "rag_direct"
+
+
+def _insert_before_sources(answer: str, notice: str) -> str:
+    """把提醒插在「參考資料來源」標題之前，沒有來源段落時直接接在最後。
+
+    位置是關鍵而不是美觀問題：`reply.py._build_answer_card` 組卡片時會呼叫
+    `strip_sources_section`，而它回傳的是**來源標題之前**的全部內容。提醒
+    若接在整段最後面，純文字回覆看得到，卡片卻永遠看不到——而卡片才是絕大
+    多數使用者實際看到的東西。
+    """
+    split = split_at_sources_heading(answer)
+    if split is None:
+        return f"{answer}\n\n{notice}"
+    heading, sources_body = split
+    before, _ = answer.split(heading, 1)
+    return f"{before.rstrip()}\n\n{notice}\n\n{heading}{sources_body}"
+
+
+def _rag_direct_reply_node(state: State) -> dict:
+    """把 RAG 工具的答案原樣當成最終回覆，只補上醫療提醒。
+
+    刻意**不**移除行內的 `[1][2][3]`：Flex 卡的來源按鈕標籤就是「[1] 來源名」
+    （見 rag_answer_flex._source_buttons），留著行內編號才對得起來。經模型
+    重寫的版本會把它們拿掉，那反而讓句子與按鈕失去對應。
+
+    醫療提醒改成固定文案而非依賴模型：system prompt 第 4 條要求遇醫療緊急
+    情況提醒尋求專業協助，但三題實測只加了兩題。已含提醒時不重複附加——
+    判斷用整串比對而非關鍵字，避免答案本文碰巧提到「就醫」就被誤判。
+    """
+    messages = state.get("messages") or []
+    tool_messages = _trailing_tool_messages(messages)
+    answer = content_to_text(tool_messages[-1].content).strip()
+
+    notice = t("rag.professional_advice_notice")
+    if notice and notice not in answer:
+        answer = _insert_before_sources(answer, notice)
+
+    # 前綴由程式附加，而不是像不直通時那樣要求模型寫（prompt.py 規則）。
+    # 兩個理由：
+    #   1. 模型寫的版本字串不固定，`strip_rag_prefix` 剝不掉，於是卡片第一行
+    #      會出現「根據 RAG 資訊，」這種內部術語——使用者不知道 RAG 是什麼。
+    #   2. 固定字串才能被剝除，行為與今天一致：卡片路徑剝掉（header 與來源
+    #      按鈕已經承擔「這段有外部來源」的告知），純文字路徑保留（那條路徑
+    #      沒有其他標記）。
+    prefix = t("agent.rag_prefix")
+    if prefix and not answer.lstrip().startswith(prefix):
+        answer = f"{prefix}\n{answer}"
+
+    log_stage(logger, "rag_direct_reply", chars=len(answer))
+    return {"messages": [AIMessage(content=answer)]}
+
+
 # LangGraph 基本概念：
 # - State：流程共用資料（例如 messages、allow_rag）
 # - Node：每一步要做的事（函式）
@@ -37,6 +153,105 @@ logger = logging.getLogger(__name__)
 # 執行時會依邊的定義由 START 流向各節點，最後到 END。
 
 TOOL_RESULT_PREVIEW_LEN = 120
+
+
+# 被攔下的工具呼叫回給模型的內容。刻意**不**提參數名或用法：2026-09-10 的
+# 事件裡，ToolNode 回的參數驗證錯誤（「query: Field required, Please fix the
+# error」）等於把正確的呼叫方式教給了模型，它照著改完就成功繞過了 guardrail。
+_BLOCKED_TOOL_REPLY = "此工具本輪不可用。請不要再呼叫未提供的工具，直接依對話內容回覆使用者。"
+
+
+def _offered_tool_names(state: State) -> set[str]:
+    """這一輪實際綁給模型的工具——與 agent_node 用同一個判斷，兩邊不會分岔。"""
+    return {
+        tool.name
+        for tool in get_all_tools(include_rag_tool=bool(state.get("allow_rag", False)))
+    }
+
+
+async def _execute_offered_tools(state: State, config: Any, tool_executor: Any) -> dict:
+    """只執行本輪有提供給模型的工具，其餘回拒絕訊息。
+
+    **為什麼執行層也要把關**：guardrail 的決定原本只在「綁定工具」那一步生效。
+    執行工具的 ToolNode 是用全部工具建的（它必須認得每一種可能被呼叫的工具），
+    於是只要模型輸出一個沒綁給它的呼叫，ToolNode 就照跑。2026-09-10 的線上
+    日誌逐步記下了這件事：
+
+        stage=guardrail allow_rag=False
+        stage=agent_decide tools=[6 個，無 get_rag_answer] call=['get_rag_answer']
+        stage=tool_result  Error … kwargs {'question': '法國國歌'} … query: Field required
+        stage=agent_decide call=['get_rag_answer']        ← 照錯誤訊息改好參數重試
+        stage=tool_result  has_sources=True 以下參考網路公開資料…
+
+    模型從 system prompt 裡知道這個工具的名字（prompt 點名它十幾次），但沒有
+    它的規格，所以先猜錯參數名；錯誤訊息把正確名稱告訴它，第二次就成功了。
+    之後網搜降級自動建報告，130 個非醫療 chunk 經核准進了知識庫。
+
+    攔下的呼叫回 `status="error"` 的 ToolMessage：每個 tool_call 都必須有對應
+    的回應，否則下一次呼叫模型時對話結構不合法；標成 error 則讓
+    `_route_after_tools` 不會把拒絕訊息當成答案直通給使用者。
+
+    沒有任何呼叫被攔時，行為與導入前逐位元相同——直接把原 state 交給 ToolNode。
+
+    殘餘風險：模型收到拒絕後仍可能再呼叫一次。那會一路被攔、直到 LangGraph
+    的遞迴上限，屬有界失效；拒絕訊息已明確要求它直接回覆。
+    """
+    names = _tool_names_from_state(state)
+    t0 = time.perf_counter()
+    log_stage(logger, "tools_start", names=names)
+
+    messages = list(state.get("messages") or [])
+    last = messages[-1] if messages else None
+    tool_calls = list(getattr(last, "tool_calls", None) or [])
+    offered = _offered_tool_names(state)
+    allowed = [tc for tc in tool_calls if tc.get("name") in offered]
+    blocked = [tc for tc in tool_calls if tc.get("name") not in offered]
+
+    if blocked:
+        log_stage(
+            logger,
+            "tool_blocked",
+            names=[tc.get("name") for tc in blocked],
+            allow_rag=bool(state.get("allow_rag")),
+        )
+
+    if not allowed:
+        if not blocked:
+            # 沒有任何工具呼叫：交給 ToolNode 照舊處理（它會自行報錯）。
+            return await tool_executor.ainvoke(state, config=config)
+        return {"messages": [_blocked_message(tc) for tc in blocked]}
+
+    exec_state = state
+    if blocked:
+        exec_state = {**state, "messages": [*messages[:-1], last.model_copy(update={"tool_calls": allowed})]}
+
+    try:
+        result = await tool_executor.ainvoke(exec_state, config=config)
+    except Exception:
+        log_stage(logger, "tools_fail", names=names, ms=int((time.perf_counter() - t0) * 1000))
+        raise
+
+    executed = (result.get("messages") if isinstance(result, dict) else None) or []
+    _log_tool_result_summaries(executed, ms=int((time.perf_counter() - t0) * 1000), names=names)
+    if not blocked:
+        return result
+
+    # 依模型原本的呼叫順序排好回應，攔下的與執行的交錯時也對得上。
+    replies = {getattr(m, "tool_call_id", None): m for m in executed}
+    replies.update({tc["id"]: _blocked_message(tc) for tc in blocked})
+    call_ids = {tc.get("id") for tc in tool_calls}
+    ordered = [replies[tc["id"]] for tc in tool_calls if tc.get("id") in replies]
+    extras = [m for m in executed if getattr(m, "tool_call_id", None) not in call_ids]
+    return {"messages": ordered + extras}
+
+
+def _blocked_message(tool_call: dict) -> ToolMessage:
+    return ToolMessage(
+        content=_BLOCKED_TOOL_REPLY,
+        name=tool_call.get("name"),
+        tool_call_id=tool_call["id"],
+        status="error",
+    )
 
 
 def _tool_names_from_state(state: State) -> list[str]:
@@ -124,32 +339,13 @@ class Agent:
         tool_executor = ToolNode(all_tools)
 
         async def tools_node(state: State, config: RunnableConfig) -> dict:
-
-            names = _tool_names_from_state(state)
-            t0 = time.perf_counter()
-            log_stage(logger, "tools_start", names=names)
-            try:
-                result = await tool_executor.ainvoke(state, config=config)
-
-                elapsed_ms = int((time.perf_counter() - t0) * 1000)
-                result_messages = []
-                if isinstance(result, dict):
-                    result_messages = result.get("messages") or []
-                _log_tool_result_summaries(result_messages, ms=elapsed_ms, names=names)
-                return result
-            except Exception:
-                log_stage(
-                    logger,
-                    "tools_fail",
-                    names=names,
-                    ms=int((time.perf_counter() - t0) * 1000),
-                )
-                raise
+            return await _execute_offered_tools(state, config, tool_executor)
 
         builder.add_node("guardrail", nodes.guardrail_node)
         builder.add_node("emergency", nodes.emergency_node)
         builder.add_node("agent", nodes.agent_node)
         builder.add_node("tools", tools_node)
+        builder.add_node("rag_direct", _rag_direct_reply_node)
 
         builder.add_edge(START, "guardrail")
         # 急迫度短路：判定為緊急時直接產生卡片，不進 agent。安全檢查不能是 agent
@@ -166,7 +362,12 @@ class Agent:
             tools_condition,
             {"tools": "tools", END: END},
         )
-        builder.add_edge("tools", "agent")
+        builder.add_conditional_edges(
+            "tools",
+            _route_after_tools,
+            {"rag_direct": "rag_direct", "agent": "agent"},
+        )
+        builder.add_edge("rag_direct", END)
 
         return builder.compile()
 

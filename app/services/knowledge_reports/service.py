@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+
 import logging
 import random
 import string
@@ -40,11 +42,15 @@ class KnowledgeReportService:
         ingest_service: Optional[IngestService] = None,
         url_policy: UrlPolicy | None = None,
         preview_service: Optional[ContentPreviewService] = None,
+        topic_guard: Callable[[str], Awaitable[bool]] | None = None,
     ) -> None:
         self._repository = repository
         self._ingest_service = ingest_service
         self._url_policy = url_policy or default_url_policy()
         self._preview_service = preview_service
+        # 自動建報的主題閘門，見 create_from_web_fallback。None＝不檢查，
+        # 行為與導入前完全相同。
+        self._topic_guard = topic_guard
 
     @staticmethod
     def _generate_report_id(now: datetime | None = None) -> str:
@@ -118,6 +124,13 @@ class KnowledgeReportService:
         if not normalized_urls:
             return None
 
+        # 主題閘門必須在 delete_pending_or_reviewing_by_urls **之前**：那一步會
+        # 先刪掉同網址的舊報告再建新的。閘門若放在後面，非醫療問題雖然不建
+        # 報告，卻會順手刪掉別人針對同一網址的待審報告。
+        if not await self._is_health_related(question):
+            logger.info("web_fallback_skip_knowledge_report reason=off_topic")
+            return None
+
         await self._repository.delete_pending_or_reviewing_by_urls(normalized_urls)
         return await self.create(
             line_user_id=line_user_id,
@@ -127,6 +140,32 @@ class KnowledgeReportService:
             user_source_urls=normalized_urls,
             source="web_fallback",
         )
+
+    async def _is_health_related(self, question: str) -> bool:
+        """自動建報前的主題把關。
+
+        **為什麼需要**：白名單是來源權威性的過濾，不是主題過濾——design
+        Decision 4 刻意整個收下 `gov.tw`，理由是「只發給政府機關」。於是一個
+        與健康無關的問題只要觸發網搜降級，搜到的政府網頁就會自動變成一筆
+        待審報告，主題把關只剩人工核准那一下。2026-09-10「軍艦進行曲」一題
+        正是這樣讓 navy.mnd.gov.tw 與 audio.nmth.gov.tw 共 130 個 chunk 進了
+        醫療知識庫，其中 2–17 字的頁尾碎片在「憂鬱症常見症狀」一題排到第一。
+
+        **為什麼 fail-open**：閘門本身出錯時照舊建報告。建出來的報告還要經過
+        人工核准才會入庫，放行的代價是佇列多一筆；反過來 fail-closed 的代價
+        是 guardrail 故障期間所有健康問題的回報靜默消失——使用者照樣拿到網路
+        答案，回報卻不見了，只在 log 留一行，那正是 design.md 決策 1 要避免的
+        失效形態。
+
+        日誌刻意不記問題原文，與 `stage=handle text_len=` 同一個慣例。
+        """
+        if self._topic_guard is None:
+            return True
+        try:
+            return bool(await self._topic_guard(question))
+        except Exception:
+            logger.exception("web_fallback_topic_guard_failed; creating report (fail-open)")
+            return True
 
     async def list_for_user(self, line_user_id: str) -> list[KnowledgeReport]:
         return await self._repository.list_by_line_user_id(line_user_id)

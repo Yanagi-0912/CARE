@@ -406,7 +406,16 @@ class PrescriptionScanService:
         try:
             medications = [
                 self._build_medication(
-                    item, resolved_candidate, medication_id, target_user_id, user_id
+                    item,
+                    resolved_candidate,
+                    medication_id,
+                    target_user_id,
+                    user_id,
+                    # 整張藥袋共用的三個值。缺席（模型讀不出來、或藥袋上沒印）
+                    # 時是 None——不臆測，呈現面據此顯示「未記錄來源」。
+                    institution=draft.recognition.institution,
+                    dispensed_date=draft.recognition.dispensed_date,
+                    draft_id=draft.draft_id,
                 )
                 for (item, _slots, resolved_candidate), medication_id in zip(
                     resolved, medication_ids
@@ -651,6 +660,9 @@ class PrescriptionScanService:
         medication_id: str,
         target_user_id: str,
         creator_user_id: str,
+        institution: Optional[str] = None,
+        dispensed_date: Optional[str] = None,
+        draft_id: Optional[str] = None,
     ) -> Medication:
         """組出要寫入的 Medication。
 
@@ -695,6 +707,11 @@ class PrescriptionScanService:
             usage_raw=item.usage_raw,
             frequency_code=item.frequency_code,
             indication=item.indication,
+            # 機構與調劑日期取自整張藥袋的辨識結果，不是逐藥欄位——一個藥袋
+            # 只有一個調劑機構與一個調劑日期，藥品層級沒有這兩個概念。
+            institution=institution,
+            dispensed_date=dispensed_date,
+            draft_id=draft_id,
             source="prescription_ocr",
             start_date=start_date,
             end_date=end_date,

@@ -580,3 +580,52 @@ async def test_hybrid_warmup_reports_failure_without_raising():
 
     vector.warmup.assert_awaited_once()
     text.warmup.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_hybrid_defaults_to_rrf_so_existing_deployments_are_unchanged():
+    hybrid = HybridRetriever(
+        vector_retriever=_stub_retriever([_d("a", score=0.9)]),
+        text_retriever=_stub_retriever([_d("b", score=9.0)]),
+    )
+    docs = await hybrid.ainvoke("查詢")
+    assert docs[0].metadata["fusion"] == "rrf"
+
+
+@pytest.mark.asyncio
+async def test_hybrid_convex_mode_uses_alpha():
+    """alpha 是向量腿的權重——這個方向要能被測試釘住，否則調錯邊不會有人發現。"""
+    vector_only = _d("v-only", score=0.9)
+    text_only = _d("t-only", score=9.0)
+
+    vector_heavy = HybridRetriever(
+        vector_retriever=_stub_retriever([vector_only]),
+        text_retriever=_stub_retriever([text_only]),
+        fusion_mode="convex",
+        alpha=0.9,
+    )
+    text_heavy = HybridRetriever(
+        vector_retriever=_stub_retriever([vector_only]),
+        text_retriever=_stub_retriever([text_only]),
+        fusion_mode="convex",
+        alpha=0.1,
+    )
+
+    assert (await vector_heavy.ainvoke("查詢"))[0].metadata["id"] == "v-only"
+    assert (await text_heavy.ainvoke("查詢"))[0].metadata["id"] == "t-only"
+
+
+def test_hybrid_rejects_unknown_fusion_mode_and_out_of_range_alpha():
+    """設定打錯要在啟動時就炸，不能悄悄以錯誤的比重上線。"""
+    with pytest.raises(ValueError, match="unknown fusion_mode"):
+        HybridRetriever(
+            vector_retriever=_stub_retriever(),
+            text_retriever=_stub_retriever(),
+            fusion_mode="rff",
+        )
+    with pytest.raises(ValueError, match="alpha"):
+        HybridRetriever(
+            vector_retriever=_stub_retriever(),
+            text_retriever=_stub_retriever(),
+            alpha=1.5,
+        )

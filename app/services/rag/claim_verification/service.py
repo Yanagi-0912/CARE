@@ -20,12 +20,13 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Protocol
+from typing import Any, Awaitable, Callable, Protocol
 
 from langchain_core.documents import Document
 from langchain_core.messages import HumanMessage
 
 from app.core.rag_sources import SourceRef
+from app.core.request_logging import stage_timer
 from app.services.gemini import GeminiService
 from app.services.gemini.shared.parser import content_to_text
 from app.services.rag.claim_verification.identity import ClaimIdentityVerifier
@@ -159,8 +160,39 @@ class ClaimVerificationService:
         self._identity_verifier = identity_verifier
 
     async def verify(self, user_text: str) -> VerificationResult:
+        """一次查核的入口。實作在 `_verify`，這裡只負責觀測。
+
+        `stage=claim_verify` 記的是三選一的結果：`hit`、`no_match`
+        （比對就沒中）、`identity_rejected`（比對中了但同一性驗證否決）。
+        後兩者過去在日誌上是同一件事——都只是「使用者收到證據不足」——但
+        它們要修的東西完全不同：`no_match` 指向語料缺口，`identity_rejected`
+        指向那道 fail-closed 防線可能誤殺。
+
+        `identity_rejected` 的量是這條管線目前最可能的沉默失效：防線擋下的
+        誤配有實測（design.md 決策 9 的 65%），它連帶擋掉多少本來正確的命中
+        則從來沒有量過，而使用者兩種情況看到的卡片一模一樣，不會有人回報。
+        搭配 `stage=claim_identity` 的 outcome（同一個 rid）可以把其中「其實
+        是 Gemini 呼叫失敗」的部分扣掉。
+        """
+        with stage_timer(
+            logger, "claim_verify", user_len=len(user_text or "")
+        ) as obs:
+            obs["outcome"] = "error"
+            return await self._verify(user_text, obs)
+
+    async def _verify(
+        self, user_text: str, obs: dict[str, Any]
+    ) -> VerificationResult:
         claim = await self._normalizer.normalize(user_text)
         match = await self._matcher.match(claim)
+
+        if match is not None:
+            obs["score"] = round(match.score, 4)
+            if self._identity_verifier is None:
+                # 正式環境不該出現（見 __init__ 對這個參數的說明）。線上真的
+                # 出現這個值，代表 65% 誤配率那道防線整條沒接上——那是接線
+                # 疏漏裡最安靜的一種：功能照常回答，只是答錯的那些沒人擋。
+                obs["identity"] = "skipped"
 
         if match is not None and self._identity_verifier is not None:
             # 向量比對命中不代表同一主張（design.md 決策 9）。這裡刻意不
@@ -183,11 +215,20 @@ class ClaimVerificationService:
             same = await self._identity_verifier.is_same_claim(
                 user_text, checked_claim
             )
+            obs["identity"] = "same" if same else "different"
             if not same:
+                self._log_identity_detail(user_text, checked_claim)
                 match = None
 
         if match is None:
+            obs["outcome"] = (
+                "identity_rejected"
+                if obs.get("identity") == "different"
+                else "no_match"
+            )
+            obs["verdict"] = NOT_ENOUGH_EVIDENCE_SLUG
             related_info, related_sources = await self._fetch_related_info(claim)
+            obs["related"] = len(related_sources)
             return VerificationResult(
                 user_question=user_text,
                 verdict=NOT_ENOUGH_EVIDENCE,
@@ -203,6 +244,8 @@ class ClaimVerificationService:
 
         # verdict 在這裡已經定案（逐字取自 match）；下一行呼叫語言模型純粹是
         # 為了把報告內容潤成白話理由，其回傳值不會、也沒有管道能回頭改動上面這行。
+        obs["outcome"] = "hit"
+        obs["verdict"] = match.verdict_slug or match.verdict
         reasoning = await self._rewrite_reasoning(user_text, match)
         return VerificationResult(
             user_question=user_text,
@@ -214,6 +257,24 @@ class ClaimVerificationService:
             source_published_at=match.published_at,
             matched=True,
             related_info="",
+        )
+
+    def _log_identity_detail(self, user_text: str, checked_claim: str) -> None:
+        """只在 DEBUG 落地的被否決文字對。
+
+        `stage=claim_verify` 那行刻意只有長度與結果、沒有問句原文（與
+        `message_handler` 的 `stage=handle text_len=` 同一個慣例）。但要判斷
+        一次 `identity_rejected` 到底是擋對還是誤殺，只能看這兩句話本身——
+        分數與 outcome 都不夠。需要人工抽樣校準時開一段 `LOG_LEVEL=DEBUG`。
+
+        記的是實際送進驗證器的那一對字串（`user_text` 與 `checked_claim`），
+        不是正規化後的 claim：抽樣要重現的是驗證器當下看到的東西，換成別的
+        版本就變成在檢查另一個問題（見 `verify` 裡挑 user_text 的理由）。
+        """
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
+        logger.debug(
+            "claim_identity_detail user=%r checked=%r", user_text, checked_claim
         )
 
     async def _rewrite_reasoning(self, user_text: str, match: ClaimMatch) -> str:

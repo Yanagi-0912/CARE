@@ -1,3 +1,4 @@
+import logging
 import sys
 import types
 from unittest.mock import AsyncMock, MagicMock
@@ -495,3 +496,198 @@ async def test_published_at_is_exposed_on_the_match():
     matcher._collection = _fake_collection([_row("https://tfc/x", 0.95, "2024-03-02")])
 
     assert (await matcher.match("查詢")).published_at == "2024-03-02"
+
+
+# --- stage=claim_match 觀測 -----------------------------------------------
+#
+# 過去只有例外路徑有 log，於是「未命中」在日誌上完全沒有痕跡：候選一篇都
+# 沒有、非法 verdict 被擋、差 0.01 分沒過門檻，三者長得一模一樣，但要修的
+# 東西分別是語料、ETL、門檻。下面每一則都鎖住一種 outcome。
+
+_MATCHER_LOGGER = "app.services.rag.claim_verification.matcher"
+
+
+def _stage_lines(caplog):
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == _MATCHER_LOGGER
+        and record.getMessage().startswith("stage=claim_match ")
+    ]
+
+
+def _only_stage(caplog):
+    lines = _stage_lines(caplog)
+    assert len(lines) == 1, lines
+    return lines[0]
+
+
+def _hit_row(**overrides):
+    row = {
+        "claim": "網傳「疫苗是人口滅絕工具」？",
+        "verdict": "錯誤",
+        "verdict_slug": "incorrect",
+        "url": "https://tfc.example/123",
+        "original_title": "【錯誤】網傳「疫苗是人口滅絕工具」？",
+        "chunk_content": "查核中心訪問多位公衛學者，均表示無實證支持此說法。",
+        "score": 0.95,
+    }
+    row.update(overrides)
+    return row
+
+
+@pytest.mark.asyncio
+async def test_match_logs_hit_with_score_and_url(caplog):
+    matcher, _emb = _make_matcher(min_score=0.8)
+    matcher._collection = _fake_collection([_hit_row()])
+
+    with caplog.at_level(logging.INFO, logger=_MATCHER_LOGGER):
+        await matcher.match("疫苗是人口滅絕工具")
+
+    line = _only_stage(caplog)
+    assert "outcome=hit" in line
+    assert "candidates=1" in line
+    assert "top=0.95" in line
+    assert "threshold=0.8" in line
+    assert "verdict=錯誤" in line
+    assert "url=https://tfc.example/123" in line
+
+
+@pytest.mark.asyncio
+async def test_match_logs_top_score_even_when_below_threshold(caplog):
+    """近失與「根本沒有候選」必須分得開——這是校準門檻唯一的線上依據。"""
+    matcher, _emb = _make_matcher(min_score=0.86)
+    matcher._collection = _fake_collection([_hit_row(score=0.8512)])
+
+    with caplog.at_level(logging.INFO, logger=_MATCHER_LOGGER):
+        assert await matcher.match("疫苗是人口滅絕工具") is None
+
+    line = _only_stage(caplog)
+    assert "outcome=below_threshold" in line
+    assert "top=0.8512" in line
+    assert "threshold=0.86" in line
+
+
+@pytest.mark.asyncio
+async def test_match_logs_no_candidates_when_nothing_comes_back(caplog):
+    matcher, _emb = _make_matcher()
+    matcher._collection = _fake_collection([])
+
+    with caplog.at_level(logging.INFO, logger=_MATCHER_LOGGER):
+        assert await matcher.match("疫苗是人口滅絕工具") is None
+
+    line = _only_stage(caplog)
+    assert "outcome=no_candidates" in line
+    assert "candidates=0" in line
+    assert "top=" not in line
+
+
+@pytest.mark.asyncio
+async def test_match_logs_search_failed_instead_of_silent_no_match(caplog):
+    matcher, _emb = _make_matcher()
+    collection = MagicMock()
+    collection.aggregate.side_effect = RuntimeError("index missing")
+    matcher._collection = collection
+
+    with caplog.at_level(logging.INFO, logger=_MATCHER_LOGGER):
+        assert await matcher.match("疫苗是人口滅絕工具") is None
+
+    assert "outcome=search_failed" in _only_stage(caplog)
+
+
+@pytest.mark.asyncio
+async def test_match_logs_invalid_verdict_outcome(caplog):
+    matcher, _emb = _make_matcher(min_score=0.8)
+    matcher._collection = _fake_collection([_hit_row(verdict="查核中")])
+
+    with caplog.at_level(logging.INFO, logger=_MATCHER_LOGGER):
+        assert await matcher.match("疫苗是人口滅絕工具") is None
+
+    assert "outcome=invalid_verdict" in _only_stage(caplog)
+
+
+@pytest.mark.asyncio
+async def test_match_logs_empty_content_outcome(caplog):
+    matcher, _emb = _make_matcher(min_score=0.8)
+    matcher._collection = _fake_collection([_hit_row(chunk_content="")])
+
+    with caplog.at_level(logging.INFO, logger=_MATCHER_LOGGER):
+        assert await matcher.match("疫苗是人口滅絕工具") is None
+
+    assert "outcome=empty_content" in _only_stage(caplog)
+
+
+@pytest.mark.asyncio
+async def test_logged_candidate_count_is_after_url_dedup(caplog):
+    """同一篇的多個 chunk 算一個候選，否則這個數字量到的是切片數不是文章數。"""
+    matcher, _emb = _make_matcher(min_score=0.8)
+    matcher._collection = _fake_collection(
+        [
+            _hit_row(score=0.95),
+            _hit_row(score=0.93),
+            _hit_row(url="https://tfc.example/456", score=0.9),
+        ]
+    )
+
+    with caplog.at_level(logging.INFO, logger=_MATCHER_LOGGER):
+        await matcher.match("疫苗是人口滅絕工具")
+
+    line = _only_stage(caplog)
+    assert "candidates=2" in line
+    assert "top=0.95" in line
+    assert "runner_up=0.9" in line
+
+
+@pytest.mark.asyncio
+async def test_match_logs_tie_break_when_date_decides(caplog):
+    """平手改判日期實際多常觸發，只有線上量得到（週報那組是離線抽樣）。"""
+    matcher, _emb = _make_matcher(min_score=0.8)
+    matcher._collection = _fake_collection(
+        [
+            _hit_row(score=0.9004, published_at="2021-05-01"),
+            _hit_row(
+                url="https://tfc.example/456",
+                score=0.9,
+                published_at="2026-03-11",
+            ),
+        ]
+    )
+
+    with caplog.at_level(logging.INFO, logger=_MATCHER_LOGGER):
+        result = await matcher.match("疫苗是人口滅絕工具")
+
+    assert result.url == "https://tfc.example/456"
+    assert "tie_break=True" in _only_stage(caplog)
+
+
+@pytest.mark.asyncio
+async def test_claim_text_never_reaches_info_logs(caplog):
+    """INFO 只留長度，問句原文只在 DEBUG——與 stage=handle text_len= 同慣例。"""
+    claim = "網傳吃鳳梨心可以溶解血栓"
+    matcher, _emb = _make_matcher(min_score=0.86)
+    matcher._collection = _fake_collection([_hit_row(score=0.85)])
+
+    with caplog.at_level(logging.INFO, logger=_MATCHER_LOGGER):
+        await matcher.match(claim)
+
+    assert all(claim not in message for message in _stage_lines(caplog))
+    assert f"claim_len={len(claim)}" in _only_stage(caplog)
+
+
+@pytest.mark.asyncio
+async def test_near_miss_text_is_available_at_debug_level(caplog):
+    claim = "網傳吃鳳梨心可以溶解血栓"
+    matcher, _emb = _make_matcher(min_score=0.86)
+    matcher._collection = _fake_collection([_hit_row(score=0.85)])
+
+    with caplog.at_level(logging.DEBUG, logger=_MATCHER_LOGGER):
+        await matcher.match(claim)
+
+    details = [
+        record.getMessage()
+        for record in caplog.records
+        if record.getMessage().startswith("claim_match_detail")
+    ]
+    assert len(details) == 1
+    assert claim in details[0]
+    assert "【錯誤】網傳「疫苗是人口滅絕工具」？" in details[0]

@@ -11,37 +11,28 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo -e "${CYAN}=== Step 1: Activating Virtual Environment ===${NC}"
-VENV_DIR="$SCRIPT_DIR/.venv"
-
-if [ ! -d "$VENV_DIR" ]; then
-    echo -e "${YELLOW}Creating Python virtual environment...${NC}"
-    python3 -m venv .venv
+echo -e "${CYAN}=== Step 1: Checking uv ===${NC}"
+if ! command -v uv >/dev/null 2>&1; then
+    echo -e "${RED}找不到 uv。安裝方式：${NC}"
+    echo -e "  curl -LsSf https://astral.sh/uv/install.sh | sh"
+    echo -e "  （或 brew install uv）"
+    exit 1
 fi
+echo "uv: $(uv --version)"
 
-# Detect OS to activate virtual environment
-if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]; then
-    PYTHON_EXE="$VENV_DIR/Scripts/python.exe"
-    PIP_EXE="$VENV_DIR/Scripts/pip.exe"
-else
-    PYTHON_EXE="$VENV_DIR/bin/python"
-    PIP_EXE="$VENV_DIR/bin/pip"
-fi
-
-echo "Python Executable: $PYTHON_EXE"
-echo "Pip Executable: $PIP_EXE"
-echo "Current directory: $SCRIPT_DIR"
-
-echo -e "${CYAN}=== Step 2: Installing Dependencies ===${NC}"
-if $PIP_EXE install -r requirements.txt; then
+echo -e "${CYAN}=== Step 2: Syncing Environment ===${NC}"
+# uv sync 會依 .python-version 取得 CPython 3.12、建立 .venv、
+# 並嚴格照 uv.lock 安裝（含 dev 群組的 pytest）
+if uv sync --locked; then
     echo -e "${GREEN}Dependency installation successful!${NC}"
 else
     echo -e "${RED}Dependency installation failed!${NC}"
+    echo -e "${YELLOW}若因 pyproject.toml 有改動而失敗，請先執行 'uv lock' 更新 uv.lock。${NC}"
     exit 1
 fi
 
 echo -e "${CYAN}=== Step 3: Running Tests ===${NC}"
-if $PYTHON_EXE -m pytest tests/ -v; then
+if uv run pytest tests/ -v; then
     echo -e "${GREEN}All tests passed successfully!${NC}"
 else
     echo -e "${RED}Some tests failed! Please review the errors above.${NC}"
@@ -50,4 +41,4 @@ fi
 
 echo -e "\n${GREEN}=== Environment is Ready ===${NC}"
 echo -e "To start the development server, run:"
-echo -e "  $PYTHON_EXE -m uvicorn app.main:app --port 8000 --reload --reload-exclude .venv"
+echo -e "  uv run uvicorn app.main:app --port 8000 --reload --reload-exclude .venv"

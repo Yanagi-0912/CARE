@@ -1,10 +1,16 @@
 # 基底映像：Python 3.12 精簡版
 FROM python:3.12-slim
 
-# 不寫 .pyc、stdout 即時輸出、pip 不保留快取（映像較小）
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+# uv 以固定版本從官方映像複製進來，確保 build 可重現（不隨 latest 漂移）
+COPY --from=ghcr.io/astral-sh/uv:0.11.16 /uv /uvx /bin/
+
+# 不寫 .pyc 由 uv 的 bytecode 預編譯取代（啟動較快）；stdout 即時輸出；
+# UV_LINK_MODE=copy 避免跨檔案系統 hardlink 警告；容器內不留 uv 快取（映像較小）
+ENV PYTHONUNBUFFERED=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_NO_CACHE=1 \
+    UV_PROJECT_ENVIRONMENT=/app/.venv
 
 # 以非 root 使用者執行，降低容器遭入侵時可取得的權限
 RUN groupadd --system --gid 1001 care \
@@ -14,8 +20,13 @@ RUN groupadd --system --gid 1001 care \
 WORKDIR /app
 
 # 先複製依賴清單並安裝，利於 Docker layer 快取（程式碼變動時不必重裝套件）
-COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+# --locked：uv.lock 與 pyproject.toml 不一致就讓 build 失敗，而非默默重解版本
+# --no-dev：正式映像不含 pytest 等測試相依
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev
+
+# 讓 uvicorn 等執行檔直接可用，CMD 不必前綴 uv run
+ENV PATH="/app/.venv/bin:$PATH"
 
 # 複製應用程式原始碼（含 Flex Message 等 top-level resources）
 COPY app ./app

@@ -6,10 +6,12 @@ from fastapi import HTTPException
 from app.models.family_tree import FamilyMember, FamilyTree
 from app.models.medication import (
     TAIPEI_TZ,
+    CreateMedicationRequest,
     CreateMedicationReminderRequest,
     Medication,
     MedicationLog,
     MedicationReminder,
+    ReminderEntryInput,
     UpdateMedicationReminderRequest,
 )
 from app.services.medication.medication_service import MedicationService
@@ -17,15 +19,44 @@ from app.services.medication.medication_service import MedicationService
 
 class FakeMedicationRepository:
     """`get_user_reminders_with_medications` 用建構子注入的替身——不必碰
-    MongoDB，也不需要 monkeypatch 掉整個 MedicationRepository。"""
+    MongoDB，也不需要 monkeypatch 掉整個 MedicationRepository。
+
+    後續任務（建立／更新提醒的藥品歸屬驗證、逐藥確認的有效性判定、藥品的
+    列出與手動新增）陸續用到同一個替身的更多方法，都收在這裡，理由與
+    `find_by_ids` 相同：不必碰 MongoDB。
+    """
 
     def __init__(self, medications: list[Medication] | None = None):
         self._medications = medications or []
         self.queried_ids: list[str] | None = None
+        self.active_queried_ids: list[str] | None = None
+        self.active_queried_date: str | None = None
+        self.created_medications: list[Medication] = []
 
     async def find_by_ids(self, medication_ids: list[str]) -> list[Medication]:
         self.queried_ids = list(medication_ids)
         return [m for m in self._medications if m.id in medication_ids]
+
+    async def find_active_by_ids(
+        self, medication_ids: list[str], date_str: str
+    ) -> list[Medication]:
+        self.active_queried_ids = list(medication_ids)
+        self.active_queried_date = date_str
+        return [
+            m
+            for m in self._medications
+            if m.id in medication_ids and m.enabled
+        ]
+
+    async def list_by_user(self, user_id: str) -> list[Medication]:
+        return [m for m in self._medications if m.user_id == user_id]
+
+    async def create_one(self, medication: Medication) -> Medication:
+        saved = medication.model_copy(
+            update={"id": medication.id or f"M_NEW_{len(self.created_medications)}"}
+        )
+        self.created_medications.append(saved)
+        return saved
 
 
 class _FakeReminderCursor:
@@ -55,36 +86,26 @@ def medication_service():
 
 
 @pytest.mark.asyncio
-async def test_create_reminders_for_self(medication_service):
+async def test_create_reminders_for_self():
     req = CreateMedicationReminderRequest(
         user_id="U_SELF",
         slots=["morning", "evening"],
         start_date="2026-07-26",
     )
-    with patch(
-        "app.services.medication.medication_service.MedicationReminderRepository.create_reminder",
-        new_callable=AsyncMock,
-    ) as mock_create:
-        mock_create.side_effect = lambda r: r
-        reminders = await medication_service.create_reminders(
-            creator_user_id="U_SELF", request=req
-        )
+    reminders_repo = FakeReminderRepository(reminder=None, siblings=[])
+    service = MedicationService(reminder_repository=reminders_repo)
 
-        assert len(reminders) == 2
-        assert reminders[0].slot_type == "morning"
-        assert reminders[0].scheduled_time == "08:00"
-        assert reminders[1].slot_type == "evening"
-        assert reminders[1].scheduled_time == "18:00"
+    reminders = await service.create_reminders(creator_user_id="U_SELF", request=req)
+
+    assert len(reminders) == 2
+    assert reminders[0].slot_type == "morning"
+    assert reminders[0].scheduled_time == "08:00"
+    assert reminders[1].slot_type == "evening"
+    assert reminders[1].scheduled_time == "18:00"
 
 
 @pytest.mark.asyncio
-async def test_create_reminders_for_family_member(medication_service):
-    fake_tree = FamilyTree(
-        user_id="U_CARE",
-        family_members=[FamilyMember(user_id="U_MEMBER", is_care_recipient=True)],
-        created_at="2026-07-26T00:00:00Z",
-        updated_at="2026-07-26T00:00:00Z",
-    )
+async def test_create_reminders_for_family_member():
     req = CreateMedicationReminderRequest(
         user_id="U_MEMBER",
         slots=["noon"],
@@ -93,17 +114,156 @@ async def test_create_reminders_for_family_member(medication_service):
     # 族譜檢查已移出服務層：為他人建立提醒的授權由 router 經
     # FamilyAuthorizationService 判定（GENERAL 寫入權），拒絕的情境由
     # tests/unit/routers/test_medications_authorization.py 覆蓋。
-    with patch(
-        "app.services.medication.medication_service.MedicationReminderRepository.create_reminder",
-        new_callable=AsyncMock,
-        side_effect=lambda r: r,
-    ):
-        reminders = await medication_service.create_reminders(
-            creator_user_id="U_CARE", request=req
-        )
-        assert len(reminders) == 1
-        assert reminders[0].user_id == "U_MEMBER"
-        assert reminders[0].slot_type == "noon"
+    reminders_repo = FakeReminderRepository(reminder=None, siblings=[])
+    service = MedicationService(reminder_repository=reminders_repo)
+
+    reminders = await service.create_reminders(creator_user_id="U_CARE", request=req)
+
+    assert len(reminders) == 1
+    assert reminders[0].user_id == "U_MEMBER"
+    assert reminders[0].slot_type == "noon"
+
+
+@pytest.mark.asyncio
+async def test_create_reminders_conflicting_slot_is_rejected():
+    """請求的任一時段已有規則時整批擋下，不建立任何規則（spec「提醒規則與
+    用藥對象」）。現況是靜默建第二筆，本 change 收緊成 409。"""
+    existing = MedicationReminder(
+        _id="R_EXIST",
+        creator_user_id="U_SELF",
+        user_id="U_SELF",
+        slot_type="morning",
+        scheduled_time="08:00",
+    )
+    reminders_repo = FakeReminderRepository(reminder=None, siblings=[existing])
+    service = MedicationService(reminder_repository=reminders_repo)
+    req = CreateMedicationReminderRequest(
+        user_id="U_SELF", slots=["morning", "evening"]
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        await service.create_reminders(creator_user_id="U_SELF", request=req)
+
+    assert excinfo.value.status_code == 409
+    assert "早" in excinfo.value.detail
+    assert reminders_repo.created_reminders == []
+
+
+@pytest.mark.asyncio
+async def test_create_reminders_with_slot_entries_derives_fields():
+    """slot_entries 有給的時段以它為準：派生欄位（scheduled_time／
+    timeout_anchor_time／medication_ids）由條目重算，不是沿用單一時刻的
+    舊行為（design 決策 1、2）。"""
+    fake_medications = FakeMedicationRepository(
+        [
+            Medication(id="M1", user_id="U_SELF", created_by_user_id="U_SELF", name="降血糖藥"),
+            Medication(id="M2", user_id="U_SELF", created_by_user_id="U_SELF", name="血壓藥"),
+        ]
+    )
+    reminders_repo = FakeReminderRepository(reminder=None, siblings=[])
+    service = MedicationService(
+        reminder_repository=reminders_repo, medication_repository=fake_medications
+    )
+    req = CreateMedicationReminderRequest(
+        user_id="U_SELF",
+        slots=["morning"],
+        slot_entries={
+            "morning": [
+                ReminderEntryInput(
+                    meal_timing="before_meal", scheduled_time="07:30", medication_ids=["M1"]
+                ),
+                ReminderEntryInput(
+                    meal_timing="after_meal", scheduled_time="08:30", medication_ids=["M2"]
+                ),
+            ]
+        },
+    )
+
+    reminders = await service.create_reminders(creator_user_id="U_SELF", request=req)
+
+    assert len(reminders) == 1
+    reminder = reminders[0]
+    assert reminder.scheduled_time == "07:30"
+    assert reminder.timeout_anchor_time == "08:30"
+    assert reminder.medication_ids == ["M1", "M2"]
+    assert [e.meal_timing for e in reminder.entries] == ["before_meal", "after_meal"]
+
+
+@pytest.mark.asyncio
+async def test_create_reminders_rejects_medication_belonging_to_other_user():
+    """條目掛的藥品若不屬於這位用藥者，回 400，不建立規則（spec
+    「EntryInput.medication_ids 必須全部屬於該用藥者」）。"""
+    fake_medications = FakeMedicationRepository(
+        [Medication(id="M1", user_id="U_OTHER", created_by_user_id="U_OTHER", name="別人的藥")]
+    )
+    reminders_repo = FakeReminderRepository(reminder=None, siblings=[])
+    service = MedicationService(
+        reminder_repository=reminders_repo, medication_repository=fake_medications
+    )
+    req = CreateMedicationReminderRequest(
+        user_id="U_SELF",
+        slots=["morning"],
+        slot_entries={
+            "morning": [
+                ReminderEntryInput(meal_timing="none", scheduled_time="08:00", medication_ids=["M1"])
+            ]
+        },
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        await service.create_reminders(creator_user_id="U_SELF", request=req)
+
+    assert excinfo.value.status_code == 400
+    assert reminders_repo.created_reminders == []
+
+
+@pytest.mark.asyncio
+async def test_create_reminders_validates_all_slots_before_writing_any():
+    """後面某個時段的藥品驗證失敗時，前面的時段不該先被寫入。
+
+    否則使用者收到 400 後重試整個請求，前面那個時段會撞上剛剛才建立的規則
+    而變成 409——這個端點就再也無法用來建立那個時段了。驗證必須在任何一筆
+    `create_reminder` 呼叫之前，對全部時段的條目一次做完。
+    """
+    fake_medications = FakeMedicationRepository(
+        [Medication(id="M9", user_id="U_OTHER", created_by_user_id="U_OTHER", name="別人的藥")]
+    )
+    reminders_repo = FakeReminderRepository(reminder=None, siblings=[])
+    service = MedicationService(
+        reminder_repository=reminders_repo, medication_repository=fake_medications
+    )
+    req = CreateMedicationReminderRequest(
+        user_id="U_SELF",
+        slots=["morning", "evening"],
+        slot_entries={
+            "evening": [
+                ReminderEntryInput(
+                    meal_timing="none", scheduled_time="18:00", medication_ids=["M9"]
+                )
+            ]
+        },
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        await service.create_reminders(creator_user_id="U_SELF", request=req)
+
+    assert excinfo.value.status_code == 400
+    # 「早」時段的條目完全合法，若驗證是逐時段邊做邊寫，這裡會先被建立成功。
+    assert reminders_repo.created_reminders == []
+
+
+@pytest.mark.asyncio
+async def test_create_reminders_deduplicates_repeated_slots():
+    """同一次請求重複勾選同一個時段（例如手滑點兩下）不該建立兩筆規則
+    ——那正是 409 檢查要防止的事，重複的時段必須先去重才逐一比對與建立。"""
+    reminders_repo = FakeReminderRepository(reminder=None, siblings=[])
+    service = MedicationService(reminder_repository=reminders_repo)
+    req = CreateMedicationReminderRequest(user_id="U_SELF", slots=["morning", "morning"])
+
+    reminders = await service.create_reminders(creator_user_id="U_SELF", request=req)
+
+    assert len(reminders) == 1
+    assert len(reminders_repo.created_reminders) == 1
 
 
 def test_medication_service_no_longer_hand_writes_family_checks():
@@ -123,9 +283,21 @@ def test_medication_service_no_longer_hand_writes_family_checks():
     assert "family_members" not in source
 
 
+def _reminder_without_medications() -> MedicationReminder:
+    """整批確認測試用的規則替身：沒有掛任何藥品，`_expected_medication_ids`
+    不需要真的查資料庫就能算出空集合，測試才能只關注確認流程本身。"""
+    return MedicationReminder(
+        _id="R123",
+        creator_user_id="U_CARE",
+        user_id="U_PATIENT",
+        slot_type="morning",
+    )
+
+
 @pytest.mark.asyncio
-async def test_confirm_medication_success(medication_service):
+async def test_confirm_medication_success():
     fake_log = MedicationLog(
+        id="L123",
         reminder_id="R123",
         user_id="U_PATIENT",
         alert_notify_user_id="U_CARE",
@@ -134,25 +306,20 @@ async def test_confirm_medication_success(medication_service):
         timeout_at="2026-07-26T08:30:00Z",
         status="pending",
     )
-    taken_log = fake_log.model_copy(update={"status": "taken"})
-    with patch(
-        "app.services.medication.medication_service.MedicationLogRepository.get_log_by_id",
-        new_callable=AsyncMock,
-        return_value=fake_log,
-    ), patch(
-        "app.services.medication.medication_service.MedicationLogRepository.mark_as_taken",
-        new_callable=AsyncMock,
-        return_value=taken_log,
-    ):
-        res = await medication_service.confirm_medication(
-            log_id="L123", user_id="U_PATIENT"
-        )
-        assert res.status == "taken"
+    service = MedicationService(
+        log_repository=FakeLogRepository(log=fake_log),
+        reminder_repository=FakeReminderRepository(reminder=_reminder_without_medications()),
+    )
+
+    res = await service.confirm_medication(log_id="L123", user_id="U_PATIENT")
+
+    assert res.status == "taken"
 
 
 @pytest.mark.asyncio
-async def test_confirm_medication_forbidden_for_other_user(medication_service):
+async def test_confirm_medication_forbidden_for_other_user():
     fake_log = MedicationLog(
+        id="L123",
         reminder_id="R123",
         user_id="U_PATIENT",
         alert_notify_user_id="U_CARE",
@@ -160,21 +327,17 @@ async def test_confirm_medication_forbidden_for_other_user(medication_service):
         scheduled_at="2026-07-26T08:00:00Z",
         timeout_at="2026-07-26T08:30:00Z",
     )
-    with patch(
-        "app.services.medication.medication_service.MedicationLogRepository.get_log_by_id",
-        new_callable=AsyncMock,
-        return_value=fake_log,
-    ):
-        with pytest.raises(HTTPException) as excinfo:
-            await medication_service.confirm_medication(
-                log_id="L123", user_id="U_OTHER"
-            )
-        assert excinfo.value.status_code == 403
+    service = MedicationService(log_repository=FakeLogRepository(log=fake_log))
+
+    with pytest.raises(HTTPException) as excinfo:
+        await service.confirm_medication(log_id="L123", user_id="U_OTHER")
+    assert excinfo.value.status_code == 403
 
 
 @pytest.mark.asyncio
-async def test_confirm_medication_missed_status_update(medication_service):
+async def test_confirm_medication_missed_status_update():
     missed_log = MedicationLog(
+        id="L123",
         reminder_id="R123",
         user_id="U_PATIENT",
         alert_notify_user_id="U_CARE",
@@ -183,42 +346,162 @@ async def test_confirm_medication_missed_status_update(medication_service):
         timeout_at="2026-07-26T08:30:00Z",
         status="missed",
     )
-    taken_log = missed_log.model_copy(update={"status": "taken"})
-    with patch(
-        "app.services.medication.medication_service.MedicationLogRepository.get_log_by_id",
-        new_callable=AsyncMock,
-        return_value=missed_log,
-    ), patch(
-        "app.services.medication.medication_service.MedicationLogRepository.mark_as_taken",
-        new_callable=AsyncMock,
-        return_value=taken_log,
-    ):
-        res = await medication_service.confirm_medication(
-            log_id="L123", user_id="U_PATIENT"
-        )
-        assert res.status == "taken"
+    service = MedicationService(
+        log_repository=FakeLogRepository(log=missed_log),
+        reminder_repository=FakeReminderRepository(reminder=_reminder_without_medications()),
+    )
+
+    res = await service.confirm_medication(log_id="L123", user_id="U_PATIENT")
+
+    assert res.status == "taken"
 
 
 @pytest.mark.asyncio
-async def test_create_reminders_custom_slot_times(medication_service):
+async def test_confirm_medication_writes_all_expected_ids_on_bulk_confirm():
+    """整批確認（不帶 medication_id）要把當下有效的藥品全部寫進
+    taken_medication_ids，讓用藥歷史能一致地回答「那次吃了什麼」（design
+    決策 4）。"""
+    log = MedicationLog(
+        id="L123",
+        reminder_id="R123",
+        user_id="U_PATIENT",
+        alert_notify_user_id="U_CARE",
+        slot_type="morning",
+        scheduled_at="2026-08-09T00:00:00Z",
+        timeout_at="2026-08-09T00:30:00Z",
+        status="pending",
+    )
+    reminder = MedicationReminder(
+        _id="R123",
+        creator_user_id="U_CARE",
+        user_id="U_PATIENT",
+        slot_type="morning",
+        medication_ids=["M1", "M2"],
+    )
+    fake_medications = FakeMedicationRepository(
+        [
+            _medication("M1", "脈優"),
+            _medication("M2", "利尿劑"),
+        ]
+    )
+    log_repo = FakeLogRepository(log=log)
+    service = MedicationService(
+        log_repository=log_repo,
+        reminder_repository=FakeReminderRepository(reminder=reminder),
+        medication_repository=fake_medications,
+    )
+
+    result = await service.confirm_medication(log_id="L123", user_id="U_PATIENT")
+
+    assert result.status == "taken"
+    assert set(result.taken_medication_ids) == {"M1", "M2"}
+    assert log_repo.mark_as_taken_calls[0]["taken_medication_ids"] == ["M1", "M2"]
+
+
+class _RaisingMedicationRepository(FakeMedicationRepository):
+    """`find_active_by_ids` 一律拋例外的替身，模擬查詢當下 DB 抖動或其他
+    非預期錯誤——用來驗證整批確認與逐藥確認對這類失敗的不同容忍度。"""
+
+    async def find_active_by_ids(self, medication_ids: list[str], date_str: str):
+        raise RuntimeError("模擬查詢有效藥品失敗")
+
+
+@pytest.mark.asyncio
+async def test_confirm_medication_bulk_survives_expected_lookup_failure():
+    """整批確認（【全部已服用】）不應該因為查詢有效藥品失敗而讓紀錄卡在
+    pending——那會讓家屬之後收到一次子虛烏有的漏吃藥警報。這與逐藥確認刻意
+    不吞例外（`_expected_medication_ids` 的判定會直接決定狀態轉換）是不同的
+    風險等級：整批確認的轉換由使用者明確按下的動作決定，expected 只是用來
+    填 `taken_medication_ids` 讓歷史好看，查不到就寫空清單也不影響本次確認
+    是否該完成。"""
+    log = MedicationLog(
+        id="L123",
+        reminder_id="R123",
+        user_id="U_PATIENT",
+        alert_notify_user_id="U_CARE",
+        slot_type="morning",
+        scheduled_at="2026-08-09T00:00:00Z",
+        timeout_at="2026-08-09T00:30:00Z",
+        status="pending",
+    )
+    reminder = MedicationReminder(
+        _id="R123",
+        creator_user_id="U_CARE",
+        user_id="U_PATIENT",
+        slot_type="morning",
+        medication_ids=["M1", "M2"],
+    )
+    log_repo = FakeLogRepository(log=log)
+    service = MedicationService(
+        log_repository=log_repo,
+        reminder_repository=FakeReminderRepository(reminder=reminder),
+        medication_repository=_RaisingMedicationRepository(
+            [_medication("M1", "脈優"), _medication("M2", "利尿劑")]
+        ),
+    )
+
+    result = await service.confirm_medication(log_id="L123", user_id="U_PATIENT")
+
+    assert result.status == "taken"
+    assert log_repo.mark_as_taken_calls == [
+        {"log_id": "L123", "taken_medication_ids": []}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_confirm_medication_per_drug_still_raises_on_lookup_failure():
+    """逐藥確認維持嚴格：到齊判定就是靠 `_expected_medication_ids` 的結果
+    決定要不要收尾成 taken，查詢失敗時吞掉例外、悄悄把 expected 當空清單，
+    會讓任何一次逐藥確認都被誤判成「全部到齊」而錯誤標記已服藥——寧可讓
+    這次確認失敗（拋出例外），也不要留下錯誤的用藥紀錄。"""
+    log = MedicationLog(
+        id="L123",
+        reminder_id="R123",
+        user_id="U_PATIENT",
+        alert_notify_user_id="U_CARE",
+        slot_type="morning",
+        scheduled_at="2026-08-09T00:00:00Z",
+        timeout_at="2026-08-09T00:30:00Z",
+        status="pending",
+    )
+    reminder = MedicationReminder(
+        _id="R123",
+        creator_user_id="U_CARE",
+        user_id="U_PATIENT",
+        slot_type="morning",
+        medication_ids=["M1", "M2"],
+    )
+    log_repo = FakeLogRepository(log=log)
+    service = MedicationService(
+        log_repository=log_repo,
+        reminder_repository=FakeReminderRepository(reminder=reminder),
+        medication_repository=_RaisingMedicationRepository(
+            [_medication("M1", "脈優"), _medication("M2", "利尿劑")]
+        ),
+    )
+
+    with pytest.raises(RuntimeError):
+        await service.confirm_medication(
+            log_id="L123", user_id="U_PATIENT", medication_id="M1"
+        )
+
+
+@pytest.mark.asyncio
+async def test_create_reminders_custom_slot_times():
     req = CreateMedicationReminderRequest(
         user_id="U_SELF",
         slots=["morning", "evening"],
         slot_times={"morning": "07:30", "evening": "19:00"},
         start_date="2026-07-29",
     )
-    with patch(
-        "app.services.medication.medication_service.MedicationReminderRepository.create_reminder",
-        new_callable=AsyncMock,
-        side_effect=lambda r: r,
-    ):
-        reminders = await medication_service.create_reminders(
-            creator_user_id="U_SELF", request=req
-        )
+    reminders_repo = FakeReminderRepository(reminder=None, siblings=[])
+    service = MedicationService(reminder_repository=reminders_repo)
 
-        assert len(reminders) == 2
-        assert reminders[0].scheduled_time == "07:30"
-        assert reminders[1].scheduled_time == "19:00"
+    reminders = await service.create_reminders(creator_user_id="U_SELF", request=req)
+
+    assert len(reminders) == 2
+    assert reminders[0].scheduled_time == "07:30"
+    assert reminders[1].scheduled_time == "19:00"
 
 
 @pytest.mark.asyncio
@@ -590,31 +873,52 @@ class FakeReminderRepository:
 
     def __init__(
         self,
-        reminder: MedicationReminder,
+        reminder: MedicationReminder | None,
         siblings: list[MedicationReminder] | None = None,
     ):
         self._reminder = reminder
         # 同一位使用者名下的其他提醒。改時段時要靠這份清單判斷目標時段是否
         # 已經有人佔著（「一個時段一份 document」的不變量，見
-        # MedicationReminderRepository.find_or_create_reminder 的說明）。
+        # MedicationReminderRepository.find_or_create_reminder 的說明）；
+        # create_reminders 的 409 檢查也是靠它判斷目標時段是否已有規則。
         self._siblings = siblings if siblings is not None else [reminder]
         self.received_update: dict | None = None
+        # create_reminders 建立的每一筆規則，依呼叫順序累積——沒有 id 的
+        # 規則比照 repository 真正建立時一定會有 id 的行為，指派一個假 id。
+        self.created_reminders: list[MedicationReminder] = []
 
     async def get_reminder_by_id(self, reminder_id: str) -> MedicationReminder:
         return self._reminder
 
     async def list_reminders_by_user(self, user_id: str) -> list[MedicationReminder]:
-        return [r for r in self._siblings if r.user_id == user_id]
+        return [r for r in self._siblings if r and r.user_id == user_id]
 
     async def update_reminder(self, reminder_id: str, update_data: dict) -> MedicationReminder:
         self.received_update = dict(update_data)
         return self._reminder.model_copy(update=update_data)
 
+    async def create_reminder(self, reminder: MedicationReminder) -> MedicationReminder:
+        saved = reminder.model_copy(
+            update={"id": reminder.id or f"R_NEW_{len(self.created_reminders)}"}
+        )
+        self.created_reminders.append(saved)
+        return saved
+
 
 class FakeLogRepository:
-    def __init__(self, cancelled: int = 0, resynced: tuple[int, int] = (0, 0)):
+    def __init__(
+        self,
+        cancelled: int = 0,
+        resynced: tuple[int, int] = (0, 0),
+        log: MedicationLog | None = None,
+    ):
         self._cancelled = cancelled
         self._resynced = resynced
+        # confirm_medication 用的單筆日誌替身：get_log_by_id 一律回傳它，
+        # mark_as_taken／add_taken_medication 就地更新它並回傳新版本——與
+        # FakeReminderRepository.get_reminder_by_id 同一種「忽略傳入的 id、
+        # 只操作建構子給的那一筆」慣例，測試只涉及單一 log 的場景已足夠。
+        self._log = log
         self.cancelled_reminder_ids: list[str] = []
         # 改排程走的是另一條路徑（對齊而非全部註銷），分開記錄才分得出服務層
         # 用的是哪一條——關閉是「這筆規則今天不算數了」，改排程是「今天改在
@@ -623,19 +927,28 @@ class FakeLogRepository:
         # 改排程到已經過去的時刻時，服務層會搶先寫一筆 cancelled 佔位，
         # 免得排程器展開出一筆假的漏服（見 _suppress_stale_new_slot）。
         self.upserted_logs: list[MedicationLog] = []
+        self.mark_as_taken_calls: list[dict] = []
+        self.add_taken_medication_calls: list[tuple[str, str]] = []
 
     async def cancel_pending_by_reminder(self, reminder_id: str) -> int:
         self.cancelled_reminder_ids.append(reminder_id)
         return self._cancelled
 
     async def resync_pending_by_reminder(
-        self, reminder_id: str, scheduled_at, slot_type: str
+        self,
+        reminder_id: str,
+        scheduled_at,
+        slot_type: str,
+        urgent_at=None,
+        timeout_at=None,
     ) -> tuple[int, int]:
         self.resync_calls.append(
             {
                 "reminder_id": reminder_id,
                 "scheduled_at": scheduled_at,
                 "slot_type": slot_type,
+                "urgent_at": urgent_at,
+                "timeout_at": timeout_at,
             }
         )
         return self._resynced
@@ -643,6 +956,50 @@ class FakeLogRepository:
     async def upsert_log(self, log: MedicationLog) -> tuple[MedicationLog, bool]:
         self.upserted_logs.append(log)
         return log, True
+
+    async def get_log_by_id(self, log_id: str) -> MedicationLog | None:
+        return self._log
+
+    async def mark_as_taken(
+        self,
+        log_id: str,
+        taken_at=None,
+        taken_medication_ids: list[str] | None = None,
+    ) -> MedicationLog | None:
+        self.mark_as_taken_calls.append(
+            {
+                "log_id": log_id,
+                "taken_medication_ids": list(taken_medication_ids)
+                if taken_medication_ids
+                else taken_medication_ids,
+            }
+        )
+        if self._log is None:
+            return None
+        merged_ids = list(self._log.taken_medication_ids)
+        for mid in taken_medication_ids or []:
+            if mid not in merged_ids:
+                merged_ids.append(mid)
+        self._log = self._log.model_copy(
+            update={
+                "status": "taken",
+                "taken_at": taken_at or FIXED_NOW,
+                "taken_medication_ids": merged_ids,
+            }
+        )
+        return self._log
+
+    async def add_taken_medication(
+        self, log_id: str, medication_id: str
+    ) -> MedicationLog | None:
+        self.add_taken_medication_calls.append((log_id, medication_id))
+        if self._log is None:
+            return None
+        merged_ids = list(self._log.taken_medication_ids)
+        if medication_id not in merged_ids:
+            merged_ids.append(medication_id)
+        self._log = self._log.model_copy(update={"taken_medication_ids": merged_ids})
+        return self._log
 
 
 # 改排程那段同時要算「今天是哪一天」與「離現在多久」。跟著真實時鐘跑的測試
@@ -1061,3 +1418,441 @@ async def test_resending_same_slot_type_is_not_treated_as_conflict():
     )
 
     assert reminders.received_update["scheduled_time"] == "07:30"
+
+
+# --- 條目化：建立／更新提醒的藥品歸屬驗證與派生欄位 -------------------------
+
+
+def _multi_entry_reminder(enabled: bool = True) -> MedicationReminder:
+    """飯前 07:30（M1）、飯後 08:30（M2）兩個條目的規則。"""
+    return MedicationReminder(
+        _id="R123",
+        creator_user_id="U_SELF",
+        user_id="U_SELF",
+        slot_type="morning",
+        entries=[
+            ReminderEntryInput(
+                meal_timing="before_meal", scheduled_time="07:30", medication_ids=["M1"]
+            ),
+            ReminderEntryInput(
+                meal_timing="after_meal", scheduled_time="08:30", medication_ids=["M2"]
+            ),
+        ],
+        enabled=enabled,
+    )
+
+
+@pytest.mark.asyncio
+async def test_update_reminder_rejects_scheduled_time_on_multi_entry_rule():
+    """規則有多個條目時，一個 scheduled_time 不知道要對應哪一個時刻，
+    必須改用 entries 整份更新（spec「提醒時間格式驗證」情境「多條目規則只
+    改單一時間」）。"""
+    service, reminders, _ = _service_with_fakes(_multi_entry_reminder())
+
+    with pytest.raises(HTTPException) as excinfo:
+        await service.update_reminder(
+            creator_user_id="U_SELF",
+            reminder_id="R123",
+            request=UpdateMedicationReminderRequest(scheduled_time="09:00"),
+        )
+
+    assert excinfo.value.status_code == 400
+    assert "詳細設定" in excinfo.value.detail
+    assert reminders.received_update is None
+
+
+@pytest.mark.asyncio
+async def test_update_reminder_with_entries_derives_fields():
+    """帶 entries 整份取代：派生欄位由新條目重算，且原始的 entries 輸入鍵
+    被替換成 derive_entry_fields 展開後的四個欄位，兩者不會此後分岔。"""
+    reminder = _multi_entry_reminder()
+    fake_medications = FakeMedicationRepository(
+        [
+            Medication(id="M1", user_id="U_SELF", created_by_user_id="U_SELF", name="降血糖藥"),
+            Medication(id="M3", user_id="U_SELF", created_by_user_id="U_SELF", name="新藥"),
+        ]
+    )
+    reminders_repo = FakeReminderRepository(reminder)
+    service = MedicationService(
+        reminder_repository=reminders_repo,
+        medication_repository=fake_medications,
+        log_repository=FakeLogRepository(),
+        clock=lambda: FIXED_NOW,
+    )
+
+    await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(
+            entries=[
+                ReminderEntryInput(
+                    meal_timing="before_meal", scheduled_time="07:00", medication_ids=["M1"]
+                ),
+                ReminderEntryInput(
+                    meal_timing="none", scheduled_time="09:00", medication_ids=["M3"]
+                ),
+            ]
+        ),
+    )
+
+    received = reminders_repo.received_update
+    assert received["scheduled_time"] == "07:00"
+    assert received["timeout_anchor_time"] == "09:00"
+    assert received["medication_ids"] == ["M1", "M3"]
+    assert [e["meal_timing"] for e in received["entries"]] == ["before_meal", "none"]
+
+
+@pytest.mark.asyncio
+async def test_update_reminder_reassigning_medications_with_same_times_does_not_resync():
+    """帶 entries 整份更新，但兩個條目的時刻都沒變、只是換了掛的藥品：
+    `updated.slot_type`／`scheduled_time`／`timeout_anchor_time` 三個決定要不要
+    對齊當日紀錄的欄位都跟改動前相同，不該觸發 `resync_pending_by_reminder`，
+    更不該註銷——當日已展開的那筆紀錄該吃藥的時刻沒有變，動它就是平白吃掉
+    使用者今天的提醒。這條純粹是釘住既有行為，不是新規則。"""
+    reminder = _multi_entry_reminder()  # 飯前 07:30（M1）／飯後 08:30（M2）
+    fake_medications = FakeMedicationRepository(
+        [
+            Medication(id="M3", user_id="U_SELF", created_by_user_id="U_SELF", name="新降血糖藥"),
+            Medication(id="M4", user_id="U_SELF", created_by_user_id="U_SELF", name="新血壓藥"),
+        ]
+    )
+    logs = FakeLogRepository()
+    service = MedicationService(
+        reminder_repository=FakeReminderRepository(reminder),
+        medication_repository=fake_medications,
+        log_repository=logs,
+        clock=lambda: FIXED_NOW,
+    )
+
+    await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(
+            entries=[
+                ReminderEntryInput(
+                    meal_timing="before_meal", scheduled_time="07:30", medication_ids=["M3"]
+                ),
+                ReminderEntryInput(
+                    meal_timing="after_meal", scheduled_time="08:30", medication_ids=["M4"]
+                ),
+            ]
+        ),
+    )
+
+    assert logs.resync_calls == []
+    assert logs.cancelled_reminder_ids == []
+
+
+@pytest.mark.asyncio
+async def test_update_reminder_entries_rejects_medication_belonging_to_other_user():
+    """條目掛的藥品若不屬於這筆提醒的用藥者，回 400，不寫入任何更新
+    （spec「EntryInput.medication_ids 必須全部屬於該用藥者」）。"""
+    reminder = _multi_entry_reminder()
+    fake_medications = FakeMedicationRepository(
+        [Medication(id="M9", user_id="U_OTHER", created_by_user_id="U_OTHER", name="別人的藥")]
+    )
+    reminders_repo = FakeReminderRepository(reminder)
+    service = MedicationService(
+        reminder_repository=reminders_repo,
+        medication_repository=fake_medications,
+        log_repository=FakeLogRepository(),
+        clock=lambda: FIXED_NOW,
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        await service.update_reminder(
+            creator_user_id="U_SELF",
+            reminder_id="R123",
+            request=UpdateMedicationReminderRequest(
+                entries=[
+                    ReminderEntryInput(
+                        meal_timing="none", scheduled_time="08:00", medication_ids=["M9"]
+                    )
+                ]
+            ),
+        )
+
+    assert excinfo.value.status_code == 400
+    assert reminders_repo.received_update is None
+
+
+@pytest.mark.asyncio
+async def test_changing_only_timeout_anchor_time_resyncs_with_urgent_and_timeout():
+    """只把飯後時間往後移：最早時刻（scheduled_time／T+0）不變，紀錄的
+    `scheduled_at` 不用動，但最晚時刻變了，`urgent_at`／`timeout_at` 要跟著
+    新的最晚時刻改寫（spec「只把飯後時間往後移」，design 決策 5 第二種情形）。
+    """
+    reminder = _multi_entry_reminder()  # 飯前 07:30／飯後 08:30
+    fake_medications = FakeMedicationRepository(
+        [
+            Medication(id="M1", user_id="U_SELF", created_by_user_id="U_SELF", name="降血糖藥"),
+            Medication(id="M2", user_id="U_SELF", created_by_user_id="U_SELF", name="血壓藥"),
+        ]
+    )
+    reminders_repo = FakeReminderRepository(reminder)
+    logs = FakeLogRepository()
+    service = MedicationService(
+        reminder_repository=reminders_repo,
+        medication_repository=fake_medications,
+        log_repository=logs,
+        clock=lambda: FIXED_NOW,
+    )
+
+    await service.update_reminder(
+        creator_user_id="U_SELF",
+        reminder_id="R123",
+        request=UpdateMedicationReminderRequest(
+            entries=[
+                ReminderEntryInput(
+                    meal_timing="before_meal", scheduled_time="07:30", medication_ids=["M1"]
+                ),
+                ReminderEntryInput(
+                    meal_timing="after_meal", scheduled_time="09:00", medication_ids=["M2"]
+                ),
+            ]
+        ),
+    )
+
+    assert logs.cancelled_reminder_ids == []
+    assert len(logs.resync_calls) == 1
+    call = logs.resync_calls[0]
+    # 最早時刻沒變，scheduled_at 停在原本的 07:30。
+    assert call["scheduled_at"] == FIXED_NOW.replace(hour=7, minute=30)
+    assert call["urgent_at"] == FIXED_NOW.replace(hour=9, minute=20)
+    assert call["timeout_at"] == FIXED_NOW.replace(hour=9, minute=30)
+
+
+# --- 逐藥確認 --------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_confirm_medication_per_drug_partial_confirmation_stays_pending():
+    """逐藥確認未到齊時，紀錄維持原狀態，只累積這次按過的藥（spec「逐藥
+    確認」情境「三種藥逐一確認」的前兩步）。"""
+    log = MedicationLog(
+        id="L123",
+        reminder_id="R123",
+        user_id="U_PATIENT",
+        alert_notify_user_id="U_CARE",
+        slot_type="morning",
+        scheduled_at="2026-08-09T00:00:00Z",
+        timeout_at="2026-08-09T00:30:00Z",
+        status="pending",
+    )
+    reminder = MedicationReminder(
+        _id="R123",
+        creator_user_id="U_CARE",
+        user_id="U_PATIENT",
+        slot_type="morning",
+        medication_ids=["M1", "M2"],
+    )
+    fake_medications = FakeMedicationRepository(
+        [_medication("M1", "脈優"), _medication("M2", "利尿劑")]
+    )
+    log_repo = FakeLogRepository(log=log)
+    service = MedicationService(
+        log_repository=log_repo,
+        reminder_repository=FakeReminderRepository(reminder=reminder),
+        medication_repository=fake_medications,
+    )
+
+    result = await service.confirm_medication(
+        log_id="L123", user_id="U_PATIENT", medication_id="M1"
+    )
+
+    assert result.status == "pending"
+    assert result.taken_medication_ids == ["M1"]
+    assert log_repo.add_taken_medication_calls == [("L123", "M1")]
+    # 未到齊不該連帶呼叫整批收尾。
+    assert log_repo.mark_as_taken_calls == []
+
+
+@pytest.mark.asyncio
+async def test_confirm_medication_per_drug_completes_when_all_confirmed():
+    """按下最後一顆藥的確認後，狀態收斂為 taken（spec「三種藥逐一確認」
+    最後一步）。"""
+    log = MedicationLog(
+        id="L123",
+        reminder_id="R123",
+        user_id="U_PATIENT",
+        alert_notify_user_id="U_CARE",
+        slot_type="morning",
+        scheduled_at="2026-08-09T00:00:00Z",
+        timeout_at="2026-08-09T00:30:00Z",
+        status="pending",
+        taken_medication_ids=["M1"],
+    )
+    reminder = MedicationReminder(
+        _id="R123",
+        creator_user_id="U_CARE",
+        user_id="U_PATIENT",
+        slot_type="morning",
+        medication_ids=["M1", "M2"],
+    )
+    fake_medications = FakeMedicationRepository(
+        [_medication("M1", "脈優"), _medication("M2", "利尿劑")]
+    )
+    log_repo = FakeLogRepository(log=log)
+    service = MedicationService(
+        log_repository=log_repo,
+        reminder_repository=FakeReminderRepository(reminder=reminder),
+        medication_repository=fake_medications,
+    )
+
+    result = await service.confirm_medication(
+        log_id="L123", user_id="U_PATIENT", medication_id="M2"
+    )
+
+    assert result.status == "taken"
+    assert set(result.taken_medication_ids) == {"M1", "M2"}
+    assert len(log_repo.mark_as_taken_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_confirm_medication_disabled_drug_does_not_block_completion():
+    """訊息送出後其中一種藥被停用，用藥者只按下仍有效的那顆：紀錄仍應轉
+    `taken`（spec「訊息送出後藥品被停用」）。"""
+    log = MedicationLog(
+        id="L123",
+        reminder_id="R123",
+        user_id="U_PATIENT",
+        alert_notify_user_id="U_CARE",
+        slot_type="morning",
+        scheduled_at="2026-08-09T00:00:00Z",
+        timeout_at="2026-08-09T00:30:00Z",
+        status="pending",
+    )
+    reminder = MedicationReminder(
+        _id="R123",
+        creator_user_id="U_CARE",
+        user_id="U_PATIENT",
+        slot_type="morning",
+        medication_ids=["M1", "M2"],
+    )
+    disabled_medication = _medication("M2", "利尿劑").model_copy(update={"enabled": False})
+    fake_medications = FakeMedicationRepository([_medication("M1", "脈優"), disabled_medication])
+    log_repo = FakeLogRepository(log=log)
+    service = MedicationService(
+        log_repository=log_repo,
+        reminder_repository=FakeReminderRepository(reminder=reminder),
+        medication_repository=fake_medications,
+    )
+
+    result = await service.confirm_medication(
+        log_id="L123", user_id="U_PATIENT", medication_id="M1"
+    )
+
+    assert result.status == "taken"
+
+
+# --- 藥品的列出與手動新增 ----------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_medications_resolves_thumbnail_and_indication():
+    fake_medications = FakeMedicationRepository(
+        [
+            Medication(
+                id="M1",
+                user_id="U_SELF",
+                created_by_user_id="U_SELF",
+                name="脈優錠",
+                license_number="LIC-1",
+            )
+        ]
+    )
+    service = MedicationService(
+        medication_repository=fake_medications,
+        appearance_image_resolver=lambda lic: "https://example.com/x.jpg"
+        if lic == "LIC-1"
+        else None,
+    )
+
+    result = await service.list_medications("U_SELF")
+
+    assert len(result) == 1
+    assert result[0].thumbnail_url == "https://example.com/x.jpg"
+
+
+@pytest.mark.asyncio
+async def test_create_manual_medication_sets_manual_source_and_other_frequency():
+    fake_medications = FakeMedicationRepository()
+    service = MedicationService(medication_repository=fake_medications)
+    req = CreateMedicationRequest(user_id="U_SELF", name="  維他命B群  ")
+
+    created = await service.create_manual_medication("U_CARE", req)
+
+    assert created.name == "維他命B群"
+    assert created.source == "manual"
+    assert created.frequency_code == "OTHER"
+    assert created.created_by_user_id == "U_CARE"
+    assert fake_medications.created_medications == [created]
+
+
+# --- 推播分區資料與已服用藥名 ------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_medication_groups_for_log_orders_by_meal_timing_and_excludes_taken():
+    log = MedicationLog(
+        id="L123",
+        reminder_id="R123",
+        user_id="U_PATIENT",
+        alert_notify_user_id="U_CARE",
+        slot_type="morning",
+        scheduled_at="2026-08-09T00:00:00Z",
+        timeout_at="2026-08-09T00:30:00Z",
+        status="pending",
+        taken_medication_ids=["M1"],
+    )
+    reminder = MedicationReminder(
+        _id="R123",
+        creator_user_id="U_CARE",
+        user_id="U_PATIENT",
+        slot_type="morning",
+        entries=[
+            ReminderEntryInput(
+                meal_timing="before_meal", scheduled_time="07:30", medication_ids=["M1"]
+            ),
+            ReminderEntryInput(
+                meal_timing="after_meal", scheduled_time="08:30", medication_ids=["M2", "M3"]
+            ),
+        ],
+    )
+    fake_medications = FakeMedicationRepository(
+        [_medication("M1", "降血糖藥"), _medication("M2", "血壓藥"), _medication("M3", "胃藥")]
+    )
+    service = MedicationService(
+        reminder_repository=FakeReminderRepository(reminder=reminder),
+        medication_repository=fake_medications,
+    )
+
+    groups = await service.medication_groups_for_log(log)
+
+    # M1 已在 taken_medication_ids 裡，飯前那組全部確認完畢，不該再出現。
+    assert [g.meal_timing for g in groups] == ["after_meal"]
+    assert [mid for mid, _ in groups[0].items] == ["M2", "M3"]
+
+
+@pytest.mark.asyncio
+async def test_taken_names_for_log_preserves_order_and_ignores_disabled():
+    """已確認藥品的藥名依 taken_medication_ids 的順序，且不做有效性篩選——
+    藥品之後被停用不影響「那次吃了什麼」的歷史顯示。"""
+    log = MedicationLog(
+        id="L123",
+        reminder_id="R123",
+        user_id="U_PATIENT",
+        alert_notify_user_id="U_CARE",
+        slot_type="morning",
+        scheduled_at="2026-08-09T00:00:00Z",
+        timeout_at="2026-08-09T00:30:00Z",
+        status="taken",
+        taken_medication_ids=["M2", "M1"],
+    )
+    disabled_m1 = _medication("M1", "脈優").model_copy(update={"enabled": False})
+    fake_medications = FakeMedicationRepository([_medication("M2", "利尿劑"), disabled_m1])
+    service = MedicationService(medication_repository=fake_medications)
+
+    names = await service.taken_names_for_log(log)
+
+    assert names == ["利尿劑", "脈優"]

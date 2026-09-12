@@ -1,0 +1,83 @@
+[project]
+name = "care"
+version = "0.1.0"
+description = "CARE — LINE 藥物照護助理後端（FastAPI）"
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = [
+    # FastAPI 框架和 Uvicorn 伺服器
+    "fastapi==0.129.0",
+    "uvicorn==0.41.0",
+    "starlette==0.52.1",
+    # 藥袋掃描端點以 multipart 上傳影像，FastAPI 的 UploadFile／File 依賴此套件解析表單
+    "python-multipart==0.0.32",
+
+    # LINE Bot SDK
+    "line-bot-sdk==3.22.0",
+
+    # Text-to-speech
+    "edge-tts==7.2.8",
+    "gTTS==2.5.4",
+    "mutagen==1.47.0",
+
+    # 環境變數設定
+    "python-dotenv==1.1.1",
+
+    # HTTP 請求相關（用於 Gemini API 和其他 HTTP 請求）
+    "requests==2.32.5",
+    "httpx==0.28.1",
+
+    # LangChain（GeminiService 主回覆與 Guardrail 結構化分類）
+    "langchain-core==1.3.2",
+    "langchain-google-genai==4.2.2",
+    "langgraph==1.1.10",
+    "orjson>=3.11.5",
+
+    # MongoDB（RAG 向量搜尋：Motor 非同步；其他腳本仍可用 pymongo）
+    # Motor 3.6 鎖 pymongo<4.10，與 4.16 衝突；3.7+ 為 pymongo>=4.9,<5
+    "pymongo==4.16.0",
+    "motor==3.7.1",
+
+    # 守門測試需要實際解碼已提交的藥丸照片縮圖以驗證尺寸與格式
+    # （tests/unit/resources/test_drug_appearance_images.py），非建置腳本本身
+    # 的相依——建置腳本沿用既有的 ImageMagick CLI（見 scripts/build_drug_catalog.py）
+    "Pillow==12.3.0",
+    # 家庭邀請的 QR 圖片（app/services/family/invite_qr_service.py）。純 Python、
+    # 零相依，PNG 輸出不必經過 Pillow。
+    "segno==1.6.6",
+
+    # 工具套件
+    "pydantic==2.12.5",
+    "typing-extensions==4.15.0",
+    "PyJWT==2.10.1",
+    "redis==5.2.1",
+    # zoneinfo 需要 IANA 時區資料庫。Windows 沒有內建（實測 import 即失敗），
+    # 精簡版 Linux 映像（python:*-slim）也不保證含 tzdata 套件。
+    # 少了它，app/models/medication.py 的 ZoneInfo("Asia/Taipei") 會在 import
+    # 期間直接拋 ZoneInfoNotFoundError，整個服務起不來。
+    "tzdata==2026.3",
+]
+
+# 測試相關（pytest-asyncio 0.25 僅支援 pytest<9）。
+# 不進 [project.dependencies]，正式映像以 `uv sync --no-dev` 排除。
+[dependency-groups]
+dev = [
+    "pytest>=8.2,<9",
+    "pytest-asyncio==0.25.0",
+    "pytest-cov==7.0.0",
+
+    # guardrail 分類器的**訓練**用（scripts/build_guardrail_model.py）。
+    # 刻意留在 dev：訓練是建置期的事，產出物是 resources/guardrail_model.json
+    # ——一張「字詞 → 權重」的表。執行期只做查表與加總，不需要 sklearn 或
+    # numpy，Dockerfile 的 `uv sync --no-dev` 也不會把它們裝進映像
+    # （sklearn + numpy + scipy 逾 100MB，而那台 K3s VM 有磁碟壓力前科）。
+    #
+    # 與 scripts/build_drug_catalog.py 同一個模式：重的工具留在建置期，
+    # 正式映像只 COPY app 與 resources。
+    "scikit-learn>=1.5,<2",
+]
+
+# CARE 是應用程式不是函式庫：不建置成套件，`app` 由 pytest.ini 的 pythonpath 匯入。
+[tool.uv]
+package = false

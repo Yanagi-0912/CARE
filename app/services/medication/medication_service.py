@@ -7,19 +7,28 @@ from app.models.family_tree import FamilyTree
 from app.models.medication import (
     DEFAULT_MISFIRE_GRACE_MINUTES,
     DEFAULT_SLOT_TIMES,
+    SLOT_DISPLAY_NAMES,
     TAIPEI_TZ,
     CreateMedicationReminderRequest,
+    CreateMedicationRequest,
     Medication,
     MedicationLog,
     MedicationReminder,
     MedicationReminderWithMedications,
+    MedicationVisit,
+    ReminderEntry,
     UpdateMedicationReminderRequest,
+    derive_entry_fields,
     ensure_aware_utc,
 )
 from app.repositories.medication_repository import (
     MedicationLogRepository,
     MedicationRepository,
     MedicationReminderRepository,
+)
+from app.services.line_messaging.flex.medication_flex import (
+    MedicationGroup,
+    MedicationListEntry,
 )
 from app.services.medication.drug_appearance_image_service import (
     resolve_drug_appearance_image_url,
@@ -40,6 +49,30 @@ def _today_date_str() -> str:
 
 def _now_taipei() -> datetime:
     return datetime.now(TAIPEI_TZ)
+
+
+def _today_at_taipei(now_taipei: datetime, hhmm: str) -> datetime:
+    """把一個 HH:MM 時刻接上 `now_taipei` 所在的台北日期，組成帶時區的
+    datetime。改排程對齊（`update_reminder`）與 `_suppress_stale_new_slot`
+    都需要「規則某個時刻在今天對應到哪一個瞬間」，且必須與排程器展開
+    `scheduled_at` 的基準（`datetime.now(TAIPEI_TZ)`）一致，否則算出來的
+    時刻對不上已展開的紀錄，該對齊的沒對齊、該保留的反而被誤動。
+    """
+    return datetime.strptime(
+        f"{now_taipei.strftime('%Y-%m-%d')} {hhmm}",
+        "%Y-%m-%d %H:%M",
+    ).replace(tzinfo=TAIPEI_TZ)
+
+
+def _entry_medication_ids(entries: list) -> List[str]:
+    """一批條目的藥品 id 聯集（不重複、保留出現順序）。建立與更新提醒時，
+    驗證藥品歸屬（`_assert_medications_belong`）要用同一份聯集。"""
+    ids: List[str] = []
+    for entry in entries:
+        for medication_id in entry.medication_ids:
+            if medication_id not in ids:
+                ids.append(medication_id)
+    return ids
 
 
 class MedicationService:
@@ -89,31 +122,99 @@ class MedicationService:
         # 檢查——「在族譜裡＝有權」正是本 change 要消滅的語意，留一份在這裡
         # 就會有人以為它還是授權依據，而它比矩陣寬。
 
-        start_date = request.start_date or _today_date_str()
-        created_reminders: List[MedicationReminder] = []
+        # 去重複但保留順序：同一次請求重複勾選同一個時段（例如手滑點兩下、
+        # 或前端表單重複送出同一個 slot）不該被當成「兩個不同時段」各自通過
+        # 下面的衝突檢查——那正是這個檢查要防止的事，重複的時段會在迴圈裡
+        # 對同一個時段建立兩筆規則。
+        slots = list(dict.fromkeys(request.slots))
 
-        for slot in request.slots:
-            scheduled_time = (
-                request.slot_times.get(slot)
-                if request.slot_times and slot in request.slot_times
-                else DEFAULT_SLOT_TIMES.get(slot, "08:00")
+        # 先把請求的每個時段都檢查過一輪，任一時段已有規則就整批擋下、
+        # 不建立任何規則（spec「提醒規則與用藥對象」）。現況是靜默建第二筆，
+        # 本 change 收緊成 409——否則詳細頁重複送出、或使用者手滑點兩次，
+        # 就會在同一個時段留下兩筆規則，那個時段從此每天收到兩則推播。
+        #
+        # 這裡是「先讀後寫」（TOCTOU），不是像 find_or_create_reminder 那樣
+        # 單一 document 的原子 upsert；兩個幾乎同時送出的建立請求仍可能都
+        # 通過這個檢查、各自成功寫入同一個時段兩筆規則。這個機率遠低於
+        # find_or_create_reminder 說明的情境（那邊完全沒有這道檢查），本
+        # change 不在這裡另外補一套併發防護。
+        existing = await self._reminder_repository.list_reminders_by_user(target_user_id)
+        occupied_slots = {reminder.slot_type for reminder in existing}
+        conflict = next((slot for slot in slots if slot in occupied_slots), None)
+        if conflict:
+            raise HTTPException(
+                status_code=409,
+                detail=f"時段「{SLOT_DISPLAY_NAMES[conflict]}」已有用藥提醒",
             )
+
+        start_date = request.start_date or _today_date_str()
+
+        # 先把每個時段要建立的條目都算好、把全部條目的藥品歸屬一次驗證完，
+        # 一筆規則都還沒寫入資料庫——不能像過去那樣邊驗證邊建立：若請求的
+        # 後面某個時段驗證失敗，前面的時段已經建立成功，使用者收到 400 後
+        # 重試整個請求，前面那個時段又會撞上剛剛才建立的規則而變成 409，
+        # 這個端點就再也無法用來建立那個時段了（見 spec「提醒規則與用藥
+        # 對象」「時段已有規則」）。
+        entries_by_slot: dict[str, list[ReminderEntry]] = {}
+        for slot in slots:
+            # 該時段的 slot_entries 有給就以它為準（飯前／飯後拆批）；否則沿用
+            # 既有的單一時刻行為，合成一個單一 none 條目（design 決策 1）。
+            if request.slot_entries and slot in request.slot_entries:
+                entries: list[ReminderEntry] = list(request.slot_entries[slot])
+            else:
+                scheduled_time = (
+                    request.slot_times.get(slot)
+                    if request.slot_times and slot in request.slot_times
+                    else DEFAULT_SLOT_TIMES.get(slot, "08:00")
+                )
+                entries = [ReminderEntry(meal_timing="none", scheduled_time=scheduled_time)]
+            entries_by_slot[slot] = entries
+
+        await self._assert_medications_belong(
+            target_user_id,
+            _entry_medication_ids(
+                [entry for entries in entries_by_slot.values() for entry in entries]
+            ),
+        )
+
+        created_reminders: List[MedicationReminder] = []
+        for slot in slots:
             reminder = MedicationReminder(
                 creator_user_id=creator_user_id,
                 user_id=target_user_id,
                 slot_type=slot,
-                scheduled_time=scheduled_time,
+                entries=entries_by_slot[slot],
                 start_date=start_date,
                 end_date=request.end_date,
                 enabled=True,
             )
-            saved = await MedicationReminderRepository.create_reminder(reminder)
+            saved = await self._reminder_repository.create_reminder(reminder)
             created_reminders.append(saved)
 
         logger.info(
             f"已建立 {len(created_reminders)} 筆用藥提醒: creator={creator_user_id}, target={target_user_id}"
         )
         return created_reminders
+
+    async def _assert_medications_belong(
+        self, user_id: str, medication_ids: List[str]
+    ) -> None:
+        """驗證一批藥品 id 全部屬於 `user_id`（spec「EntryInput.medication_ids
+        必須全部屬於該用藥者」）。空清單直接放行——沒有要關聯藥品的條目不需要
+        查詢，也不該因為空清單而誤判成「有 id 缺席」。
+        """
+        if not medication_ids:
+            return
+        medications = await self._medication_repository.find_by_ids(medication_ids)
+        owned_ids = {
+            medication.id for medication in medications if medication.user_id == user_id
+        }
+        missing = [mid for mid in medication_ids if mid not in owned_ids]
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"藥品 {'、'.join(missing)} 不屬於此用藥者",
+            )
 
     async def get_user_reminders(
         self,
@@ -293,6 +394,40 @@ class MedicationService:
                     detail="該時段已有另一筆用藥提醒，請先刪除或改用其他時段",
                 )
 
+        # 規則現有多個條目時，一個 scheduled_time 不知道要對應哪一個時刻
+        # ——這種情況一律要求改用 entries 整份更新（spec「提醒時間格式驗證」）。
+        # 判斷用的是**改動前**的條目數，不看這次請求帶不帶 entries。
+        # 注意：這條擋的只是「規則本來就有多個條目」的歧義；請求同時帶了
+        # entries 與 scheduled_time 並不會一律被擋下——下面 `"entries" in
+        # update_data` 分支優先於 `scheduled_time` 分支，若改動前只有一個
+        # 條目，兩者同時出現時 `derive_entry_fields(request.entries)` 會直接
+        # 蓋掉這裡先寫入 update_data 的 scheduled_time，不會另外報錯。
+        if "scheduled_time" in update_data and len(reminder.entries) > 1:
+            raise HTTPException(
+                status_code=400,
+                detail="此提醒有多個服藥時機，請改用詳細設定調整時間",
+            )
+
+        # entries／scheduled_time 兩者都只是「使用者想改哪個時刻／哪些藥」的
+        # 輸入，實際要送進資料層的是 derive_entry_fields 算出的四個派生欄位
+        # ——entries 與 scheduled_time／timeout_anchor_time／medication_ids
+        # 不能分開寫，否則兩者會不同步（design 決策 2）。
+        if "entries" in update_data:
+            # 整份取代：先驗證這批條目的藥品全部屬於這筆提醒的用藥者，再展開
+            # 派生欄位並移除原始的 entries 輸入鍵。
+            await self._assert_medications_belong(
+                reminder.user_id, _entry_medication_ids(request.entries)
+            )
+            update_data.pop("entries", None)
+            update_data.update(derive_entry_fields(request.entries))
+        elif "scheduled_time" in update_data:
+            # 只帶 scheduled_time 且規則只有一個條目（多條目已在上面擋掉）：
+            # 同步改寫該條目的時刻，讓 entries 與派生欄位不會此後互相矛盾。
+            rewritten_entry = reminder.entries[0].model_copy(
+                update={"scheduled_time": update_data["scheduled_time"]}
+            )
+            update_data.update(derive_entry_fields([rewritten_entry]))
+
         updated = await self._reminder_repository.update_reminder(reminder_id, update_data)
         if not updated:
             raise HTTPException(status_code=500, detail="更新用藥提醒失敗")
@@ -330,14 +465,19 @@ class MedicationService:
             # `datetime.now(TAIPEI_TZ)` 為準），否則算出來的時刻對不上已展開的
             # `scheduled_at`，該註銷的沒註銷、該保留的反而被註銷。
             now_taipei = self._clock()
-            new_scheduled_at = datetime.strptime(
-                f"{now_taipei.strftime('%Y-%m-%d')} {updated.scheduled_time}",
-                "%Y-%m-%d %H:%M",
-            ).replace(tzinfo=TAIPEI_TZ)
+            new_scheduled_at = _today_at_taipei(now_taipei, updated.scheduled_time)
+            # 一併算出新的逾時錨點時刻，隨同這次對齊一起帶給
+            # resync_pending_by_reminder——多條目規則若這次同時改了最早與最晚
+            # 時刻，當日紀錄的 urgent_at／timeout_at 不該停在舊的最晚時刻上。
+            # 只帶最早時刻改變、最晚時刻沒變時，這裡算出的值與紀錄原值相同，
+            # repository 端的 $ne 比對本來就不會命中，無害。
+            new_anchor_at = _today_at_taipei(now_taipei, updated.timeout_anchor_time)
             cancelled, retagged = await self._log_repository.resync_pending_by_reminder(
                 reminder_id,
                 scheduled_at=new_scheduled_at,
                 slot_type=updated.slot_type,
+                urgent_at=new_anchor_at + timedelta(minutes=20),
+                timeout_at=new_anchor_at + timedelta(minutes=30),
             )
             if cancelled or retagged:
                 logger.info(
@@ -351,6 +491,34 @@ class MedicationService:
                 )
 
             await self._suppress_stale_new_slot(updated, new_scheduled_at, now_taipei)
+        elif updated.timeout_anchor_time != reminder.timeout_anchor_time:
+            # 最早時刻（scheduled_time／T+0）沒變、只有最晚時刻
+            # （timeout_anchor_time）變了：排程器已展開的那筆紀錄的
+            # scheduled_at 不用動，但 T+20／T+30 的推播基準要跟著改，否則會
+            # 用舊的最晚時刻催促或通知家屬逾時（design 決策 5 第二種情形；
+            # spec「只把飯後時間往後移」）。走的是同一支就地改標函式，只是
+            # 這次沒有時刻不同的紀錄要註銷。
+            now_taipei = self._clock()
+            scheduled_at = _today_at_taipei(now_taipei, updated.scheduled_time)
+            anchor_at = _today_at_taipei(now_taipei, updated.timeout_anchor_time)
+            cancelled, retagged = await self._log_repository.resync_pending_by_reminder(
+                reminder_id,
+                scheduled_at=scheduled_at,
+                slot_type=updated.slot_type,
+                urgent_at=anchor_at + timedelta(minutes=20),
+                timeout_at=anchor_at + timedelta(minutes=30),
+            )
+            if cancelled or retagged:
+                logger.info(
+                    "[MedicationService] 提醒 %s 只改了最晚時刻為 %s，"
+                    "就地改寫當日未確認紀錄的 urgent_at／timeout_at，共 %d 筆",
+                    # 記資料庫讀回的 id，不記請求路徑原樣傳進來的 reminder_id：
+                    # 值相同（能走到這裡代表已用它查到規則），但不讓使用者輸入
+                    # 直接進 log（日誌注入，SonarCloud pythonsecurity:S5145）。
+                    updated.id,
+                    updated.timeout_anchor_time,
+                    retagged,
+                )
 
         return updated
 
@@ -432,28 +600,233 @@ class MedicationService:
 
         return await MedicationReminderRepository.delete_reminder(reminder_id)
 
-    async def confirm_medication(self, log_id: str, user_id: str) -> MedicationLog:
-        """確認用藥完成"""
-        log = await MedicationLogRepository.get_log_by_id(log_id)
+    async def confirm_medication(
+        self, log_id: str, user_id: str, medication_id: Optional[str] = None
+    ) -> MedicationLog:
+        """確認用藥完成（spec「逐藥確認」「服藥確認」）。
+
+        不帶 `medication_id`：整批確認（【全部已服用】），行為與本變更前相同
+        ——直接轉 `taken`，並把當下有效的藥品全部寫進 `taken_medication_ids`，
+        讓用藥歷史能一致地回答「那次吃了什麼」（design 決策 4）。
+
+        帶 `medication_id`：逐藥確認。先無條件記錄這顆藥（`add_taken_medication`
+        是 `$addToSet`，重複按同一顆是冪等的），再重算「這筆規則於 log 當日
+        仍有效的藥品」是否已全數包含在 `taken_medication_ids` 裡——到齊才收尾
+        成 `taken`，未到齊維持原狀態（`pending`／`missed`／`cancelled` 皆可能，
+        逐藥確認不改變狀態機，只累積已確認的藥）。
+        """
+        log = await self._log_repository.get_log_by_id(log_id)
         if not log:
             raise HTTPException(status_code=404, detail="找不到用藥日誌紀錄")
 
         if log.user_id != user_id:
             raise HTTPException(status_code=403, detail="無權限確認此用藥紀錄")
 
-        updated_log = await MedicationLogRepository.mark_as_taken(log_id)
+        if medication_id is None:
+            # 整批確認刻意不採用 `_expected_medication_ids` 文件所述「SHALL NOT
+            # 吞例外」的原則——那條規則是為了逐藥確認的到齊判定設計的：expected
+            # 若被悄悄吞成空清單，會讓「還差一顆」被誤判成「全部到齊」。但整批
+            # 確認本來就是使用者明確按下【全部已服用】，不需要 expected 來決定
+            # 要不要轉成 taken；expected 這裡只是拿來填 taken_medication_ids
+            # 讓用藥歷史好看。查詢失敗時若讓整筆確認跟著失敗，log 會卡在
+            # pending，家屬之後反而收到一次子虛烏有的漏吃藥警報——兩害相權，
+            # 寧可 taken_medication_ids 這次是空的，也不要讓確認本身失敗。
+            try:
+                expected = await self._expected_medication_ids(log)
+            except Exception:
+                logger.exception(
+                    "[MedicationService] 整批確認時查詢有效藥品失敗，log_id=%s，"
+                    "taken_medication_ids 將寫入空清單但仍完成確認",
+                    # 同上：記資料庫讀回的 log.id，不記請求原樣的 log_id。
+                    log.id,
+                )
+                expected = []
+            updated_log = await self._log_repository.mark_as_taken(
+                log_id, taken_medication_ids=expected
+            )
+            if not updated_log:
+                raise HTTPException(status_code=400, detail="更新用藥狀態失敗或該紀錄已完成")
+            return updated_log
+
+        updated_log = await self._log_repository.add_taken_medication(log_id, medication_id)
         if not updated_log:
-            raise HTTPException(status_code=400, detail="更新用藥狀態失敗或該紀錄已完成")
+            raise HTTPException(status_code=404, detail="找不到用藥日誌紀錄")
+
+        expected = await self._expected_medication_ids(log)
+        if set(expected) <= set(updated_log.taken_medication_ids):
+            completed = await self._log_repository.mark_as_taken(log_id)
+            if completed:
+                return completed
         return updated_log
+
+    async def _active_medications_for_log(self, log: MedicationLog) -> List[Medication]:
+        """該筆用藥日誌對應規則、於 log 台北日期仍有效的藥品，依
+        `reminder.medication_ids` 的順序回傳。
+
+        供 `list_medication_names_for_log`（卡片藥名清單）與
+        `_expected_medication_ids`（逐藥確認的到齊判定）共用同一段查詢——
+        兩者都需要「這筆 log 的規則、當日仍有效的藥品」，只是後續用途不同。
+        有效性判定用的是**log 自己的台北日期**（而非今天），因為確認可能
+        發生在跨日之後（例如睡前那一劑拖到隔天凌晨才按），用今天的日期去篩
+        會把當時仍有效、今天才結束療程的藥錯誤地濾掉；排程器的
+        `_TickMedicationNameCache` 也是同一條規則，兩邊必須算出同一個答案。
+        """
+        reminder = await self._reminder_repository.get_reminder_by_id(log.reminder_id)
+        if not reminder or not reminder.medication_ids:
+            return []
+
+        date_str = (
+            ensure_aware_utc(log.scheduled_at).astimezone(TAIPEI_TZ).strftime("%Y-%m-%d")
+        )
+        medications = await self._medication_repository.find_active_by_ids(
+            reminder.medication_ids, date_str
+        )
+        medication_by_id = {medication.id: medication for medication in medications}
+        return [
+            medication_by_id[mid]
+            for mid in reminder.medication_ids
+            if mid in medication_by_id
+        ]
+
+    async def _expected_medication_ids(self, log: MedicationLog) -> List[str]:
+        """逐藥／整批確認判定「是否到齊」所用的藥品 id 集合：該規則於 log 台北
+        日期仍有效的藥品，於確認當下重新計算（design 決策 4——不使用推播當時
+        的快照，訊息送出後又加了一顆藥，舊訊息按完仍差一顆；藥品被停用則自動
+        不再計入）。
+
+        刻意 SHALL NOT 吞例外：這裡的結果直接餵給狀態轉換的判定，DB 抖動時若
+        悄悄把 expected 當成空清單，任何一次確認都會被誤判成「全部到齊」而把
+        紀錄錯誤標記為已服藥——寧可讓這次確認失敗，也不要留下錯誤的用藥紀錄。
+        與 `list_medication_names_for_log`／`medication_groups_for_log` 那種
+        純卡片呈現用途（失敗只退化成沒有藥品區塊）不是同一個風險等級。
+        """
+        medications = await self._active_medications_for_log(log)
+        return [medication.id for medication in medications]
+
+    async def medication_groups_for_log(self, log: MedicationLog) -> List[MedicationGroup]:
+        """T+0／T+20 卡片依服藥時機分區的資料（spec「推播列出該時段應服藥品」、
+        design 決策 6）。依 `MEAL_TIMING_ORDER` 排序（`reminder.entries` 本身
+        已由模型驗證器排過序），只含當日仍有效、且尚未在
+        `taken_medication_ids` 裡的藥；一個條目的藥全部確認完就不再出現
+        （`items` 為空的分區直接跳過，呼叫端不必再判斷一次）。
+
+        與 `list_medication_names_for_log` 同一個失敗策略：任何失敗都只記錄
+        並回空清單，不往外拋——這是卡片的呈現資料，不是確認判定的輸入，出錯
+        時卡片退回沒有藥品區塊的原樣即可。
+        """
+        try:
+            reminder = await self._reminder_repository.get_reminder_by_id(log.reminder_id)
+            if not reminder or not reminder.medication_ids:
+                return []
+
+            date_str = (
+                ensure_aware_utc(log.scheduled_at).astimezone(TAIPEI_TZ).strftime("%Y-%m-%d")
+            )
+            medications = await self._medication_repository.find_active_by_ids(
+                reminder.medication_ids, date_str
+            )
+            medication_by_id = {medication.id: medication for medication in medications}
+            taken_ids = set(log.taken_medication_ids)
+
+            groups: List[MedicationGroup] = []
+            for entry in reminder.entries:
+                items = [
+                    (
+                        mid,
+                        MedicationListEntry(
+                            name=medication_by_id[mid].name,
+                            image_url=self._resolve_thumbnail(medication_by_id[mid]),
+                        ),
+                    )
+                    for mid in entry.medication_ids
+                    if mid in medication_by_id and mid not in taken_ids
+                ]
+                if items:
+                    groups.append(
+                        MedicationGroup(
+                            meal_timing=entry.meal_timing,
+                            scheduled_time=entry.scheduled_time,
+                            items=items,
+                        )
+                    )
+            return groups
+        except Exception:
+            logger.exception(
+                "[MedicationService] 無法取得日誌 %s 的分區藥品清單，卡片將不顯示藥品區塊",
+                log.id,
+            )
+            return []
+
+    async def taken_names_for_log(self, log: MedicationLog) -> List[str]:
+        """該筆 log 已確認藥品的藥名，依 `taken_medication_ids` 的順序。
+
+        刻意用 `find_by_ids` 而非 `find_active_by_ids`——不做日期／啟用篩選：
+        使用者按下確認之後，這顆藥可能之後才被停用，但「那次吃了什麼」是
+        已經發生過的事實，不該因為藥品現在的狀態而從歷史紀錄裡消失。
+
+        任何失敗都只記錄並回空清單，理由同 `list_medication_names_for_log`：
+        這是卡片上的補充資訊，不該因為查不到藥名就讓使用者看到錯誤。
+        """
+        if not log.taken_medication_ids:
+            return []
+        try:
+            medications = await self._medication_repository.find_by_ids(
+                log.taken_medication_ids
+            )
+            medication_by_id = {medication.id: medication for medication in medications}
+            return [
+                medication_by_id[mid].name
+                for mid in log.taken_medication_ids
+                if mid in medication_by_id
+            ]
+        except Exception:
+            logger.exception(
+                "[MedicationService] 無法取得日誌 %s 已確認藥品的藥名清單",
+                log.id,
+            )
+            return []
+
+    async def list_medications(self, user_id: str) -> List[Medication]:
+        """列出某位使用者的全部藥品（含停用者，`GET /medications?user_id=`，
+        見 spec「藥品的列出與手動新增」），縮圖與適應症的解析比照
+        `get_user_reminders_with_medications` 同一套規則——都是讀取當下才
+        現算、不落地存進資料庫的欄位。
+        """
+        medications = await self._medication_repository.list_by_user(user_id)
+        return [
+            medication.model_copy(
+                update={
+                    "thumbnail_url": self._resolve_thumbnail(medication),
+                    **self._resolve_indication(medication),
+                }
+            )
+            for medication in medications
+        ]
+
+    async def create_manual_medication(
+        self, creator_user_id: str, request: CreateMedicationRequest
+    ) -> Medication:
+        """以藥名手動新增藥品（`POST /medications`，見 spec「藥品的列出與手動
+        新增」）。手動新增沒有藥證與外觀資料來源，`frequency_code` 一律歸類
+        `OTHER`——臆測頻次會直接變成錯誤的服藥時間（見
+        `MedicationFrequencyCode` 的欄位註解），外觀欄位維持模型預設的空字串。
+        """
+        medication = Medication(
+            user_id=request.user_id,
+            created_by_user_id=creator_user_id,
+            name=request.name.strip(),
+            source="manual",
+            frequency_code="OTHER",
+        )
+        return await self._medication_repository.create_one(medication)
 
     async def list_medication_names_for_log(self, log: MedicationLog) -> List[str]:
         """取得某筆用藥日誌「當次」的藥名清單，供推播／回覆的卡片顯示。
 
         排程器有自己的批次版本（`_TickMedicationNameCache`）——那是為了一個 tick
         內多筆 log 共用查詢；這裡走的是使用者按下確認的單筆路徑，沒有可攤提的
-        對象，逐筆查兩次反而最省。兩邊的結果必須一致，所以有效性判定同樣以
-        **log 自己的台北日期**（而非今天）為準，藥名順序同樣沿用
-        `reminder.medication_ids` 的順序。
+        對象，逐筆查兩次反而最省。查詢邏輯與 `_expected_medication_ids` 共用
+        `_active_medications_for_log`（見該方法註解）。
 
         任何失敗都只記 log 並回傳空清單，不往外拋：這個查詢純粹是卡片上的補充
         資訊，呼叫端拿到空清單時卡片會退回沒有藥品區塊的原樣。使用者的用藥已經
@@ -461,26 +834,8 @@ class MedicationService:
         記錄到。
         """
         try:
-            reminder = await MedicationReminderRepository.get_reminder_by_id(
-                log.reminder_id
-            )
-            if not reminder or not reminder.medication_ids:
-                return []
-
-            date_str = (
-                ensure_aware_utc(log.scheduled_at)
-                .astimezone(TAIPEI_TZ)
-                .strftime("%Y-%m-%d")
-            )
-            medications = await self._medication_repository.find_active_by_ids(
-                reminder.medication_ids, date_str
-            )
-            name_by_id = {medication.id: medication.name for medication in medications}
-            return [
-                name_by_id[mid]
-                for mid in reminder.medication_ids
-                if mid in name_by_id
-            ]
+            medications = await self._active_medications_for_log(log)
+            return [medication.name for medication in medications]
         except Exception:
             logger.exception(
                 "[MedicationService] 無法取得日誌 %s 的藥名清單，卡片將不顯示藥品區塊",
@@ -488,3 +843,11 @@ class MedicationService:
             )
             return []
 
+    async def get_user_visits(self, user_id: str) -> List[MedicationVisit]:
+        """使用者的看診紀錄。
+
+        彙整留在 repository（那是一次 aggregate），這裡只負責轉成模型——
+        比照本服務其餘方法的分工。
+        """
+        rows = await self._medication_repository.list_visits(user_id)
+        return [MedicationVisit(**row) for row in rows]

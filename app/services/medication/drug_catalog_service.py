@@ -116,6 +116,23 @@ _MIN_CONTAINMENT_LENGTH = 3
 # 候選；這一步只是額外補反方向與模糊比對的召回率。
 _MAX_RARE_GRAM_POSTINGS = 3000
 
+# 括號補述。藥證品名的括號裡慣例是成分名或劑型補述
+# （「ANROKIN TABLETS (CHLORZOXAZONE)」「便通樂錠（番瀉/）」）。藥袋上這段
+# 常被截斷，而模型會把看到的殘缺括號「補上」右括號——結果是一個藥證庫裡
+# 不存在的字串：`ANROKIN TABLETS (CHLORZOXA` 是真實品名的子字串所以命中，
+# `ANROKIN TABLETS (CHLORZOXA)` 因為那個右括號就什麼都比不到。
+_PARENTHETICAL_ANY = re.compile(r"[(（][^)）]*[)）]?")
+
+# 拉丁字母與中日韓文字的連續段。藥袋常把英文品牌與中文品名印在一起
+# （「VORTAGEN莫得炎腸溶微粒膠囊」），但藥證庫的 name_zh 與 name_en 是兩個
+# 獨立欄位，這種混合字串在任何一邊都不是子字串。
+_LATIN_RUN_RE = re.compile(r"[A-Z0-9][A-Z0-9./+-]*")
+_CJK_RUN_RE = re.compile(r"[一-鿿぀-ヿ]+")
+
+# 衍生查詢的最小長度。太短的片段（單一個「錠」、兩個字母的縮寫）拿去比對
+# 只會把半個藥證庫拉進候選，與 `_MIN_CONTAINMENT_LENGTH` 同一個道理。
+_MIN_VARIANT_LENGTH = 3
+
 
 @dataclass(frozen=True)
 class DrugCatalogEntry:
@@ -145,6 +162,20 @@ class DrugCatalogEntry:
     # 拿到的是「沒有成分資料」而不是型別錯誤。部署順序不保證程式碼與產出物
     # 同時更新，這裡拋錯會讓整個藥袋掃描掛掉，那比沒有這個功能糟得多。
     ingredients: tuple[str, ...] = ()
+    # 該張藥證的 ATC 藥理治療分類碼（食藥署 dataset 9119，見
+    # scripts/build_drug_catalog.py 的 `_index_atc_codes`）。已去重排序。
+    #
+    # 用途是回答「這張藥證屬不屬於某個藥理類別」——成分名稱做不到這件事：
+    # 要判斷一個藥是不是苯二氮平類，靠成分字串得先窮舉所有苯二氮平的名字，
+    # 靠 ATC 只要看代碼是否以 N05BA 起頭。
+    #
+    # 粒度不一致，前綴比對時要注意：以藥證計，99% 至少有一個 ≥5 碼、
+    # 93% 至少有一個 7 碼，但仍有約 1% 只掛到 3～4 碼的群組層級。
+    #
+    # 預設空 tuple 而非 None，理由與 `ingredients` 相同：舊版
+    # drug_catalog.json 沒有這個欄位時，呼叫端拿到的是「沒有分類資料」
+    # 而不是型別錯誤。實測覆蓋率 58.4%，查無本來就是常態。
+    atc_codes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -332,6 +363,7 @@ class DrugCatalogService:
                     # 讓載入失敗——外觀欄位是既有藥證資料的擴充，不是前提。
                     drug_class=item.get("drug_class", ""),
                     ingredients=tuple(item.get("ingredients") or ()),
+                    atc_codes=tuple(item.get("atc_codes") or ()),
                     image_url=item.get("image_url", ""),
                     shape=item.get("shape", ""),
                     color=item.get("color", ""),
@@ -366,7 +398,116 @@ class DrugCatalogService:
             return cls([], threshold=threshold)
 
     def match(self, name: str) -> Optional[DrugCatalogMatch]:
+        """比對藥名。主鍵定不出證號時，再試幾個衍生查詢。
+
+        **衍生查詢不放寬任何證據規則**：每一個變體都走完全相同的
+        `_match_key` 管線（完全比對 ∪ 含容比對 → 唯一性判定 → 模糊比對），
+        改變的只是「拿哪個字串去問」。因此一個變體能定出證號，代表那個
+        字串本身確實整個對應到一張真實登記品名的一部分——與主鍵命中時
+        的證據力相同。
+
+        **主鍵帶著候選時一律直接回傳，不試變體。** 判準是 `candidates` 非空，
+        不是 `license_number` 有值：含容與完全比對會建立一個真實的唯一性集合
+        （即使結果是「有 26 張、無法定位」），那個歧義是藥證庫本身就有的，
+        不是查詢字串壞掉造成的——拿一個更短的字串去繞過它就是編造答案。
+
+        實測這條界線是必要的：`INFLAMNIL TABLETS 100MG (TRIMETHOPRIM)` 的
+        真候選集合有 26 張藥證，去掉括號後的主幹卻收斂成唯一——回傳那個
+        唯一值會違反「證號唯一才可信」，正是 `test_index_matches_brute_force_
+        at_real_catalog_scale` 要擋的假唯一。
+
+        反過來，**模糊命中可以被變體取代**：模糊路徑依定義不帶候選、也永遠
+        不釘證號（見 `_match_by_fuzzy`），它沒有提供任何唯一性資訊，因此用
+        一個字面上真的能對到藥證的變體去取代它，不會繞過任何既有的歧義。
+        這正是模型補上右括號那個案例——`ANROKIN TABLETS (CHLORZOXA)` 跟真實
+        品名只差一個字元，模糊比對過得了，但那條路徑不給證號。
+
+        實測動機見 `_query_variants`。
+        """
+        primary = self._match_key(normalize_drug_name(name))
+        if primary is not None and primary.candidates:
+            return primary
+
+        for variant in self._query_variants(name):
+            alternate = self._match_key(variant)
+            if alternate is not None and alternate.license_number:
+                return alternate
+
+        split = self._match_by_script_split(name)
+        # 變體全部落空時回到主鍵的結果（可能是模糊命中的「藥名已驗證、
+        # 身分不明」）——變體幫不上忙不該讓原本通過的藥名驗證消失。
+        return split if split is not None else primary
+
+    def _query_variants(self, name: str) -> list[str]:
+        """主鍵定不出證號時要再試的衍生查詢，依序回傳、不含主鍵本身。
+
+        目前只有一種：**去掉括號補述**。藥證品名的括號裡慣例是成分名
+        （「ANROKIN TABLETS (CHLORZOXAZONE)」），藥袋上那段常被截斷，而
+        模型會把殘缺的括號補上右括號，造出一個庫裡不存在的字串。去掉整個
+        括號段之後剩下的品名主幹仍然是真實品名的子字串，含容比對就接得回來。
+
+        去括號的方向是**變短**，因此候選只會變多不會變少——不可能讓一個
+        原本沒有證據的查詢無中生有變成有證據，最壞情況是候選變多而唯一性
+        被拆掉、證號留空，那與現況一致。
+        """
         key = normalize_drug_name(name)
+        if not key:
+            return []
+        stripped = normalize_drug_name(_PARENTHETICAL_ANY.sub("", key))
+        if stripped and stripped != key and len(stripped) >= _MIN_VARIANT_LENGTH:
+            return [stripped]
+        return []
+
+    def _match_by_script_split(self, name: str) -> Optional[DrugCatalogMatch]:
+        """英文品牌與中文品名印在一起時，兩段各自比對後取交集。
+
+        藥袋會印成「VORTAGEN莫得炎腸溶微粒膠囊」，但藥證庫的 `name_zh` 與
+        `name_en` 是兩個獨立欄位，這個混合字串在任何一邊都不是子字串，
+        因此主鍵必然落空。
+
+        **取交集是收緊，不是放寬。** 這裡要求同一張藥證同時通過拉丁字段
+        與中文字段兩次獨立驗證，比任何單一字串的命中證據都強——單獨拿
+        `VORTAGEN` 去問會得到 4 張藥證（歧義），單獨拿中文品名去問是另一
+        組，只有兩邊都指向的那一張才回傳，且仍要求交集後恰好一張。
+
+        兩段都必須自己先通過 `_match_key` 的驗證（回傳非 None）：其中一段
+        未驗證時整個放棄，不拿另一段的結果冒充答案。
+        """
+        key = normalize_drug_name(name)
+        if not key:
+            return None
+        latin = "".join(_LATIN_RUN_RE.findall(key))
+        cjk = "".join(_CJK_RUN_RE.findall(key))
+        if len(latin) < _MIN_VARIANT_LENGTH or len(cjk) < _MIN_VARIANT_LENGTH:
+            return None
+
+        latin_match = self._match_key(latin)
+        cjk_match = self._match_key(cjk)
+        if latin_match is None or cjk_match is None:
+            return None
+
+        by_license = {
+            entry.license_number: entry for entry in latin_match.candidates
+        }
+        shared = [
+            by_license[entry.license_number]
+            for entry in cjk_match.candidates
+            if entry.license_number in by_license
+        ]
+        if len(shared) != 1:
+            return None
+
+        entry = shared[0]
+        return DrugCatalogMatch(
+            license_number=entry.license_number,
+            name_zh=entry.name_zh,
+            name_en=entry.name_en,
+            # 分數取兩段的較小值：這個結果的可信度受較弱的那一段限制。
+            score=min(latin_match.score, cjk_match.score),
+            candidates=[entry],
+        )
+
+    def _match_key(self, key: str) -> Optional[DrugCatalogMatch]:
         if not key or not self._by_key:
             return None
 

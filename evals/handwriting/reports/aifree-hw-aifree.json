@@ -1,0 +1,382 @@
+{
+  "models": {
+    "gemini-2.5-flash": {
+      "summary": {
+        "cases": 30,
+        "failed_calls": 0,
+        "cer_mean": 0.07264911014911014,
+        "cer_median": 0.0,
+        "exact_match": 0.6666666666666666,
+        "hallucination_rate": 0.0,
+        "instability_mean": null,
+        "abstain_ratio_mean": 0.015833333333333335,
+        "length_ratio_mean": 0.9982683982683983
+      },
+      "cases": [
+        {
+          "image": "evals/handwriting/aifree/samples/000.png",
+          "reference": "舒張壓八十二脈搏七十二",
+          "predictions": [
+            "鄧張壓八十二月脈搏七十二"
+          ],
+          "errors": [],
+          "cer": 0.18181818181818182,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0909090909090908
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/001.png",
+          "reference": "早上飯後吃降血壓的藥",
+          "predictions": [
+            "早上飯隻吃將丘歷的藥"
+          ],
+          "errors": [],
+          "cer": 0.4,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/002.png",
+          "reference": "睡前忘記吃藥",
+          "predictions": [
+            "睡 前 忘 記 吃 藥"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/003.png",
+          "reference": "今天頭有點暈沒有吃藥",
+          "predictions": [
+            "今天頭有點暈沒有吃■"
+          ],
+          "errors": [],
+          "cer": 0.1,
+          "instability": null,
+          "abstain_ratio": 0.1,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/004.png",
+          "reference": "昨天晚上睡不好",
+          "predictions": [
+            "昨天晚上睡不好"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/005.png",
+          "reference": "今日量了三次血壓",
+          "predictions": [
+            "今日量了三次■■"
+          ],
+          "errors": [],
+          "cer": 0.25,
+          "instability": null,
+          "abstain_ratio": 0.25,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/006.png",
+          "reference": "醫生說要每天早上量",
+          "predictions": [
+            "醫生說要每天早上量"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/007.png",
+          "reference": "藥剩下五天的份量",
+          "predictions": [
+            "葉 剩 下 五 x 的 份 量"
+          ],
+          "errors": [],
+          "cer": 0.25,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/008.png",
+          "reference": "下星期三回診",
+          "predictions": [
+            "下 星期三 回 診"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/009.png",
+          "reference": "胸口有點悶不太舒服",
+          "predictions": [
+            "胸口有點悶不太舒服"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/010.png",
+          "reference": "早上七點量的血壓",
+          "predictions": [
+            "早上七點鐘的■歷"
+          ],
+          "errors": [],
+          "cer": 0.375,
+          "instability": null,
+          "abstain_ratio": 0.125,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/011.png",
+          "reference": "血糖比昨天高很多",
+          "predictions": [
+            "血糖 比 昨天 高 很多"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/012.png",
+          "reference": "最近走路會喘",
+          "predictions": [
+            "最近走路曾喘"
+          ],
+          "errors": [],
+          "cer": 0.16666666666666666,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/013.png",
+          "reference": "腳有點腫按下去會凹",
+          "predictions": [
+            "腳 點 咗 腫 按 下 去 會 凹"
+          ],
+          "errors": [],
+          "cer": 0.2222222222222222,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/014.png",
+          "reference": "今天沒有頭暈",
+          "predictions": [
+            "今天沒有頭暈"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/015.png",
+          "reference": "吃完飯後量的血糖",
+          "predictions": [
+            "吃 完 飯 後 量 的 血 糖"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/016.png",
+          "reference": "藥吃完了要去拿藥",
+          "predictions": [
+            "藥 吃 完 了 要 去 拿 藥"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/017.png",
+          "reference": "晚上十點吃的藥",
+          "predictions": [
+            "晚上十點吃的藥"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/018.png",
+          "reference": "早餐前量血糖九十八",
+          "predictions": [
+            "早餐前量血糖九十八"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/019.png",
+          "reference": "手會抖寫字很慢",
+          "predictions": [
+            "手 會 寫 字 很 慢"
+          ],
+          "errors": [],
+          "cer": 0.14285714285714285,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 0.8571428571428571
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/020.png",
+          "reference": "這幾天血壓都偏高",
+          "predictions": [
+            "這幾天血壓都偏高"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/021.png",
+          "reference": "醫生開了新的藥",
+          "predictions": [
+            "醫生開了新的藥"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/022.png",
+          "reference": "今天有按時吃藥",
+          "predictions": [
+            "今天有按時吃藥"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/023.png",
+          "reference": "舒張壓八十二脈搏七十二",
+          "predictions": [
+            "豹 張 壓 八 十 二 脈 搏 七 十 二"
+          ],
+          "errors": [],
+          "cer": 0.09090909090909091,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/024.png",
+          "reference": "早上飯後吃降血壓的藥",
+          "predictions": [
+            "早上飯後吃降血壓的藥"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/025.png",
+          "reference": "睡前忘記吃藥",
+          "predictions": [
+            "睡前忘記吃藥"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/026.png",
+          "reference": "今天頭有點暈沒有吃藥",
+          "predictions": [
+            "今天頭有點暈沒有吃藥"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/027.png",
+          "reference": "昨天晚上睡不好",
+          "predictions": [
+            "昨天晚上睡不好"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/028.png",
+          "reference": "今日量了三次血壓",
+          "predictions": [
+            "今日量了三次血壓"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        },
+        {
+          "image": "evals/handwriting/aifree/samples/029.png",
+          "reference": "醫生說要每天早上量",
+          "predictions": [
+            "醫生說要每天早上量"
+          ],
+          "errors": [],
+          "cer": 0.0,
+          "instability": null,
+          "abstain_ratio": 0.0,
+          "length_ratio": 1.0
+        }
+      ]
+    }
+  },
+  "repeats": 1,
+  "temperature": 0.0,
+  "golden": "evals/handwriting/aifree/golden.jsonl"
+}

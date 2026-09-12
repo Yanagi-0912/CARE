@@ -57,6 +57,7 @@ def test_build_entries_maps_licence_and_names():
             "mark_one": "",
             "mark_two": "",
             "size": "",
+            "atc_codes": [],
         }
     ]
 
@@ -154,6 +155,7 @@ def test_appearance_fields_map_onto_matching_licence():
             "mark_one": "PBF",
             "mark_two": "436",
             "size": "8mm",
+            "atc_codes": [],
         }
     ]
 
@@ -597,3 +599,85 @@ class TestParseIngredients:
             "CHLORPHENIRAMINE MALEATE",
         ]
         assert entries[0]["drug_class"] == "otc_guided"
+
+
+# ── ATC 藥理治療分類碼（dataset 9119）───────────────────────────────────
+#
+# 合併方式比照外觀資料集：鍵同樣是許可證字號，不需要任何名稱比對。
+# 附掛規則同樣獨立於「品名該聽哪個資料集」那條規則。
+
+
+def test_atc_codes_map_onto_matching_licence():
+    licences = [{"許可證字號": "L1", "中文品名": "某藥", "英文品名": "SOME DRUG"}]
+    atc_rows = [
+        {"許可證字號": "L1", "主或次項": "主", "代碼": "N05BA01"},
+        {"許可證字號": "L1", "主或次項": "次", "代碼": "N05BA"},
+    ]
+
+    entries = build_entries(licences, [], atc_rows)
+
+    assert entries[0]["atc_codes"] == ["N05BA", "N05BA01"]
+
+
+def test_atc_codes_default_to_empty_list_when_licence_has_none():
+    """查無 ATC 的證號給空陣列，不是 None——比照 ingredients 的慣例，
+    消費端不必先判斷型別就能安全迭代。實測四成藥證查無，這是常態不是例外。"""
+    licences = [{"許可證字號": "L1", "中文品名": "某藥", "英文品名": "SOME DRUG"}]
+
+    entries = build_entries(licences, [], [{"許可證字號": "L9", "代碼": "N05BA01"}])
+
+    assert entries[0]["atc_codes"] == []
+
+
+def test_atc_codes_are_deduplicated_and_sorted():
+    """排序後輸出，讓同一份輸入永遠產生同一份檔案。"""
+    licences = [{"許可證字號": "L1", "中文品名": "某藥", "英文品名": "SOME DRUG"}]
+    atc_rows = [
+        {"許可證字號": "L1", "代碼": "V07"},
+        {"許可證字號": "L1", "代碼": "D08A"},
+        {"許可證字號": "L1", "代碼": "D08A"},
+    ]
+
+    entries = build_entries(licences, [], atc_rows)
+
+    assert entries[0]["atc_codes"] == ["D08A", "V07"]
+
+
+def test_primary_and_secondary_rows_are_both_kept():
+    """「主或次項」刻意不保留——實測那一欄是分類的粗細層級，不是主副成分。
+
+    一張藥證可能同時掛著 D08A（主，群組層級）與 D08AX、D08AE（次，次群組），
+    也可能掛上真正屬於另一類的 V07。消費端問的是「屬不屬於某個類別」，
+    兩者都是有效答案；複方藥的次項正是它的另一半成分。
+    """
+    licences = [{"許可證字號": "L1", "中文品名": "某藥", "英文品名": "SOME DRUG"}]
+    atc_rows = [
+        {"許可證字號": "L1", "主或次項": "主", "代碼": "D08A"},
+        {"許可證字號": "L1", "主或次項": "次", "代碼": "V07"},
+    ]
+
+    entries = build_entries(licences, [], atc_rows)
+
+    assert entries[0]["atc_codes"] == ["D08A", "V07"]
+
+
+def test_atc_rows_without_licence_or_code_are_skipped():
+    licences = [{"許可證字號": "L1", "中文品名": "某藥", "英文品名": "SOME DRUG"}]
+    atc_rows = [
+        {"許可證字號": "", "代碼": "N05BA01"},
+        {"許可證字號": "L1", "代碼": ""},
+        {"許可證字號": "L1", "代碼": None},
+    ]
+
+    entries = build_entries(licences, [], atc_rows)
+
+    assert entries[0]["atc_codes"] == []
+
+
+def test_atc_rows_are_optional_for_backward_compatibility():
+    """既有呼叫端只傳兩個資料集時仍須可用——部署順序不保證同時更新。"""
+    licences = [{"許可證字號": "L1", "中文品名": "某藥", "英文品名": "SOME DRUG"}]
+
+    entries = build_entries(licences, [])
+
+    assert entries[0]["atc_codes"] == []

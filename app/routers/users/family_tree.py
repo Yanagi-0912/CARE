@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from typing import List, Optional
 
@@ -25,6 +25,13 @@ from app.services.family.family_delegation_service import (
     FamilyDelegationService,
 )
 from app.services.family.family_role_service import FamilyRoleService
+from app.services.family.invite_qr_service import (
+    INVITE_CODE_PATTERN,
+    build_invite_qr_url,
+    build_invite_url,
+    expired_invite_png,
+    render_invite_qr_png,
+)
 from app.services.family.family_tree_service import FamilyTreeService
 from app.dependencies import (
     get_family_authorization_service,
@@ -121,7 +128,44 @@ async def create_invite(
         authorization_service=authz,
     )
     return CreateInviteResponse(
-        invite_token=invitation.id, expires_at=invitation.expires_at.isoformat()
+        invite_token=invitation.id,
+        expires_at=invitation.expires_at.isoformat(),
+        invite_url=build_invite_url(invitation.id),
+        qr_url=build_invite_qr_url(invitation.id),
+    )
+
+
+@router.get(
+    "/invites/{code}/qr.png",
+    include_in_schema=False,
+    response_class=Response,
+)
+async def get_invite_qr(
+    code: str,
+    service: FamilyTreeService = Depends(get_family_tree_service),
+):
+    """邀請碼的 QR 圖片。公開端點——Flex Message 的圖是由 LINE 的伺服器去抓的，
+    帶不了使用者的 JWT。
+
+    無效的邀請一律回 200 加上一張「此邀請已失效」的圖，不是 404：
+    - Flex 卡片抓不到圖會顯示破圖，對長輩完全沒有訊息量。
+    - 「不存在」與「已失效」若回不同狀態碼，這支端點就成了枚舉有效邀請碼的
+      預言機。回同一張圖兩者無從分辨。
+
+    圖片本身不外洩任何東西：內容就是請求者手上已經有的那組邀請碼。
+    """
+    usable = bool(INVITE_CODE_PATTERN.fullmatch(code)) and (
+        await service.is_invitation_usable(code)
+    )
+    png = render_invite_qr_png(code) if usable else expired_invite_png()
+
+    return Response(
+        content=png,
+        media_type="image/png",
+        # 不快取，否則邀請失效後拿到的還是那張舊 QR，「已失效」這張圖等於白做。
+        # 產一張圖是毫秒等級，省不了什麼。LINE 端是否另有自己的快取不在這個
+        # 標頭的管轄範圍內，Flex 卡片上的替換只能算盡力而為。
+        headers={"Cache-Control": "no-store"},
     )
 
 

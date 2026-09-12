@@ -11,6 +11,7 @@ from app.services.gemini import GeminiService
 from app.i18n.messages import t
 from app.services.rag.cannot_answer import (
     CANNOT_ANSWER_MARKERS,
+    NO_ANSWER_SENTINEL,
     answer_preview,
     matched_cannot_answer_marker,
 )
@@ -24,10 +25,11 @@ from app.services.rag.fail_messages import (
     RagFailCode,
     rag_fail,
 )
-from app.services.rag.query_rewriter import QueryRewriter
+from app.services.rag.query_rewriter import QueryRewriter, RewrittenQuery
 from app.services.rag.retrieval_grader import Grade, RetrievalGrader
 from app.services.rag.retriever import MongoAtlasVectorRetriever
 from app.services.rag.web_search_service import WebSearchService
+from app.services.gemini.shared.parser import content_to_text
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +54,14 @@ DEFAULT_DEGRADED_MIN_SCORE = 0.0
 # CRAG 判 ambiguous 時，啟動改寫第二輪的時間預算（秒）。0.0＝不設限，
 # 維持導入前的行為。
 #
-# 第二輪是整條管線最貴的一段：實測（gemini-2.5-flash，thinking 預設開啟）
-# rewrite 5.3s ＋ 第二輪檢索精排 1.6s ＋ grade 11.8s ≈ 19s，後面還要再付
-# 一次 generate（3.8-10.2s）。同一題走不走第二輪是 43.6s 與 ~25s 的差別。
+# 第二輪是整條管線最貴的一段。下列數字是在 gemini-2.5-flash（thinking 預設
+# 開啟）上實測的：rewrite 5.3s ＋ 第二輪檢索精排 1.6s ＋ grade 11.8s ≈ 19s，
+# 後面還要再付一次 generate（3.8-10.2s）。同一題走不走第二輪是 43.6s 與 ~25s
+# 的差別。
+#
+# ⚠ 預設模型已換成 gemini-3.8-flash，上面這組數字尚未在新模型上重測。實測新
+# 模型的純文字回應快了約一倍，所以這個預算值很可能過於寬鬆——要調之前先重測，
+# 不要照著舊數字推算。
 #
 # 為什麼是「用掉多少」而不是「還剩多少」：預算檢查點在第一輪 grade 之後，
 # 那時已經知道這一輪的 grader 有多慢——grader 慢通常代表第二次也會慢，
@@ -144,25 +151,35 @@ class RagAnswerService:
         # candidates＝第一輪的 docs；approved＝CRAG 放行的 docs。兩者刻意用不同
         # 名字：投機生成是否可用，正是靠「這兩個是不是同一個 list」判斷的。
         candidates = await self._retrieve_and_rerank(user_text)
+        # 精排最高分，供日後校準「CRAG 之前就分流到網搜」的門檻：對照最後走
+        # kb 答出來與 web_crag_reject 的題目各落在哪個分數帶。為什麼不用問題
+        # 文字訓練分類器——知識庫持續新增，分類器學到的是舊知識庫的覆蓋範圍，
+        # 而被它送去網搜的題目永遠不會再碰知識庫、日誌也永遠記 web，重新訓練
+        # 只會把錯誤鎖得更死。這個分數是每次從知識庫即時算出的，沒有這個問題。
+        timing["top_rerank"] = self._top_rerank_score(candidates)
         if not candidates:
             timing["path"] = "web_empty_retrieval"
             return await self._web_or_no_hits(user_text)
 
         speculative = self._start_speculative_generate(user_text, candidates)
+        rewrite = self._start_speculative_rewrite(user_text, candidates)
         try:
             return await self._answer_from(
-                user_text, candidates, speculative, started, timing
+                user_text, candidates, speculative, rewrite, started, timing
             )
         finally:
             # 冪等：正常路徑上任務已被 await，這裡不做事；提早 return 或例外
-            # 逃出時才真正收掉，不留 orphan task。
+            # 逃出時才真正收掉，不留 orphan task。CRAG 放行時改寫結果用不到，
+            # 也是在這裡被取消。
             _abandon_task(speculative)
+            _abandon_task(rewrite)
 
     async def _answer_from(
         self,
         user_text: str,
         candidates: list[Document],
         speculative: "asyncio.Task[str] | None",
+        rewrite: "asyncio.Task[RewrittenQuery] | None",
         started: float,
         timing: dict[str, Any],
     ) -> str:
@@ -170,7 +187,7 @@ class RagAnswerService:
         if self.crag_enabled:
             try:
                 approved = await self._apply_crag(
-                    user_text, candidates, started=started
+                    user_text, candidates, started=started, rewrite=rewrite
                 )
             except Exception:
                 logger.exception(
@@ -187,11 +204,11 @@ class RagAnswerService:
                     logger.info("rag_fail code=%s crag_grade=degraded_below_floor",
                                 RagFailCode.KB_EMPTY)
                     timing["path"] = "web_degraded_below_floor"
-                    return await self._web_or_no_hits(user_text)
+                    return await self._web_or_no_hits(user_text, rewrite)
             else:
                 if approved is None:
                     timing["path"] = "web_crag_reject"
-                    return await self._web_or_no_hits(user_text)
+                    return await self._web_or_no_hits(user_text, rewrite)
 
         kb_answer = await self._resolve_generate(
             speculative, user_text, candidates, approved
@@ -206,38 +223,155 @@ class RagAnswerService:
                 marker,
                 preview,
             )
+            # 不能留在 path=kb：這一題知識庫其實沒答出來，記成 kb 會讓分流門檻
+            # 的校準把它當成「這個分數帶知識庫答得出來」的樣本，門檻被往下拉。
+            timing["path"] = "kb_model_refuse"
             return rag_fail(RagFailCode.MODEL_REFUSE)
 
         dead = await self._dead_source_urls(kb_answer, ranked, timing)
         return self._append_sources(kb_answer, ranked, dead)
 
-    def _filter_by_degraded_score(self, docs: list[Document]) -> list[Document]:
-        """只保留精排分數達到門檻的文件。門檻為 0 時原樣回傳。
+    @staticmethod
+    def _top_rerank_score(docs: list[Document]) -> float | None:
+        """候選中最高的 Cohere `rerank_score`；沒有任何一篇帶這個鍵時回傳 None。
 
-        分數取 `rerank_score`（Cohere）優先，退回 `score`（向量／RRF 融合）。
-        兩者都沒有時視為不合格：拿不到分數就無從判斷相關性，而這條路徑的
-        前提正是「唯一的把關已經失效」。
+        只認 `rerank_score`：Cohere 的 relevance_score 是絕對校準的相關性分數，
+        跨題可比；融合分數是逐題正規化或只看名次的分數，跨題比較沒有意義，拿來
+        訂所有題目共用的門檻不成立。Cohere 失效時回傳 None，日誌就不輸出這個
+        欄位（`_format_kv` 略過 None）——「沒有分數」必須與「分數很低」分得開，
+        否則校準時會把 Cohere 失效的題目誤當成低分樣本。
+        """
+        scores = [
+            float(raw)
+            for doc in docs
+            if isinstance(raw := doc.metadata.get("rerank_score"), (int, float))
+        ]
+        return round(max(scores), 4) if scores else None
+
+    def _filter_by_degraded_score(self, docs: list[Document]) -> list[Document]:
+        """只保留 Cohere `rerank_score` 達到門檻的文件。門檻為 0 時原樣回傳。
+
+        **只認 `rerank_score`，不退回 `score`。** 沒有這個欄位就代表 Cohere
+        也失效了（`VectorScoreReranker` 不寫這個鍵），此時整批視為不合格，
+        走與「知識庫無資料」相同的路徑。
+
+        為什麼不退回 `score`——這是量出來的，不是設計偏好。以 golden set 的
+        22 題、110 篇降級路徑候選（36 相關／74 不相關）實測
+        （`scripts/rag_degraded_floor_scan.py`）：
+
+          - 融合分數（convex α=0.6）：相關文件均值 0.632、不相關 0.650。
+            **不相關的比相關的還高**，中位數同向（0.606 / 0.619）。原因是
+            min-max 是逐題正規化的，每題該腿的第一名恆為 1.0——「整批候選
+            都不相關」的那一題，它最好的那筆照樣滿分。而這張網要擋的正是
+            整批不相關的情況，正規化剛好把唯一有用的訊號抹掉。
+          - 原始 cosine：相關 0.8941、不相關 0.8872，差 0.0069，分佈完全
+            重疊（相關最低 0.854 < 不相關的 p75 0.897）。門檻在 0.05~0.80
+            之間只會刷掉那 3 筆「BM25 撈到但向量沒撈到」的文件——那不是
+            相關性過濾，是關掉 BM25 那條腿；拉到 0.90 才開始有效果，代價是
+            一次丟掉 9 題的相關文件。
+
+        也就是說這兩個尺度上都不存在有意義的門檻值。`rerank_score` 不同：
+        Cohere 的 relevance_score 是絕對校準的分數，0.3 在它上面才有語意。
+
+        另一個好處是這讓門檻與 `RAG_FUSION_MODE` 解耦。退回 `score` 時，
+        RRF（兩腿滿分也才 1/61+1/61 ≈ 0.033）與凸組合（0~1）在同一個 0.3
+        之下的行為天差地遠——切換融合模式會順帶改到醫療答案的把關，那是
+        兩件不該綁在一起的事。
+
+        行為變更的範圍（其餘情況與本次變更前完全相同）：只有「Cohere 不可用
+        **且** 走純向量檢索（RAG_HYBRID_ENABLED=false）」這個組合會改變——
+        該組合下 `score` 是 cosine（≈0.88 > 0.3），過去會放行，現在轉網搜。
+        依上述量測，那個放行本來就近似「什麼都沒擋」；要維持舊行為請把
+        `RAG_DEGRADED_MIN_SCORE` 設為 0，那也更誠實地描述它實際在做的事。
         """
         if self.degraded_min_score <= 0:
             return docs
         kept: list[Document] = []
         for doc in docs:
             raw = doc.metadata.get("rerank_score")
-            if not isinstance(raw, (int, float)):
-                raw = doc.metadata.get("score")
             if isinstance(raw, (int, float)) and float(raw) >= self.degraded_min_score:
                 kept.append(doc)
         return kept
 
-    async def _web_or_no_hits(self, query: str) -> str:
+    async def _web_or_no_hits(
+        self,
+        query: str,
+        rewrite: "asyncio.Task[RewrittenQuery] | None" = None,
+    ) -> str:
         if not self.web_fallback_enabled or self.web_search is None:
             return self._fail(RagFailCode.KB_EMPTY)
         try:
             with stage_timer(logger, "rag_web_fallback"):
-                return await self.web_search.answer(query)
+                search_queries = await self._search_queries_for_web(query, rewrite)
+                if search_queries is None:
+                    return await self.web_search.answer(query)
+                return await self.web_search.answer(
+                    query, search_queries=search_queries
+                )
         except Exception:
             logger.exception("web fallback failed")
             return self._fail(RagFailCode.WEB_ERROR)
+
+    def _start_speculative_rewrite(
+        self, user_text: str, docs: list[Document]
+    ) -> "asyncio.Task[RewrittenQuery] | None":
+        """在 CRAG 分級開始前就把查詢改寫排進事件迴圈。
+
+        改寫結果只有兩條路用得到：分級判 ambiguous（kb_query 重查知識庫）與
+        判 incorrect（zh_terms／en_terms 網搜）。兩者都要等分級結束才知道，
+        而改寫不依賴分級結果，所以與分級並行。2026-09-12 實測改寫（thinking
+        low）1.2-3.3 秒、分級 1.6-3.7 秒：多數情況改寫先跑完，網搜路徑不必
+        多等；ambiguous 路徑則省下原本排在分級之後的整段改寫。
+
+        代價是分級判 correct 時這次改寫白跑（投機生成那段註解記錄過 84% 的
+        題目判 correct），付的是 token 不是延遲，單次請求的 Gemini 併發也再多 1。
+        """
+        if not (self.crag_enabled and self.rewriter is not None):
+            return None
+        return asyncio.create_task(
+            self._timed_rewrite(user_text, docs, speculative=True)
+        )
+
+    async def _timed_rewrite(
+        self, user_text: str, docs: list[Document], *, speculative: bool
+    ) -> RewrittenQuery:
+        assert self.rewriter is not None
+        # speculative 欄位的理由同 rag_generate：並行那次的 ms 與分級重疊，
+        # 不能直接和序列的階段相加。
+        with stage_timer(logger, "rag_crag_rewrite", speculative=speculative or None):
+            return await self.rewriter.rewrite(user_text, docs)
+
+    async def _await_rewrite(
+        self,
+        rewrite: "asyncio.Task[RewrittenQuery] | None",
+        user_text: str,
+        docs: list[Document],
+    ) -> RewrittenQuery:
+        """取用並行中的改寫；沒有並行任務時（例如檢索為空）當場改寫。
+
+        `rag_rewrite_wait` 記的是分級結束後還得等改寫多久——這才是改寫讓
+        使用者多等的時間，接近 0 代表被分級完全蓋掉。
+        """
+        if rewrite is None:
+            return await self._timed_rewrite(user_text, docs, speculative=False)
+        with stage_timer(logger, "rag_rewrite_wait"):
+            return await rewrite
+
+    async def _search_queries_for_web(
+        self,
+        user_text: str,
+        rewrite: "asyncio.Task[RewrittenQuery] | None",
+    ) -> RewrittenQuery | None:
+        """網搜要用的改寫查詢。改寫失敗回 None，網搜退回用原句，不中斷回答。"""
+        if self.rewriter is None:
+            return None
+        try:
+            return await self._await_rewrite(rewrite, user_text, [])
+        except Exception:
+            logger.exception(
+                "query rewrite failed; web search falls back to the original question"
+            )
+            return None
 
     @staticmethod
     def _fail(code: str) -> str:
@@ -266,12 +400,18 @@ class RagAnswerService:
         return deduped[: self.rerank_top_n]
 
     async def _apply_crag(
-        self, user_text: str, ranked: list[Document], *, started: float
+        self,
+        user_text: str,
+        ranked: list[Document],
+        *,
+        started: float,
+        rewrite: "asyncio.Task[RewrittenQuery] | None" = None,
     ) -> list[Document] | None:
         """回傳可用於生成的 docs；None 表示知識庫不足。
 
         *started* 是本次 answer 的 `time.perf_counter()` 起點，供改寫第二輪的
-        時間預算判斷（見 DEFAULT_CRAG_REWRITE_BUDGET_SECONDS）。
+        時間預算判斷（見 DEFAULT_CRAG_REWRITE_BUDGET_SECONDS）。*rewrite* 是與
+        分級並行的改寫任務（見 `_start_speculative_rewrite`）。
         """
         assert self.grader is not None
         with stage_timer(logger, "rag_crag_grade", attempt="first") as t_grade:
@@ -303,21 +443,20 @@ class RagAnswerService:
             return ranked
 
         try:
-            with stage_timer(logger, "rag_crag_rewrite"):
-                rewritten = await self.rewriter.rewrite(user_text, ranked)
+            rewritten = await self._await_rewrite(rewrite, user_text, ranked)
         except Exception:
             logger.exception(
                 "CRAG rewrite failed; degrading to generate crag_grade=rewrite_degraded"
             )
             return ranked
 
-        second = await self._retrieve_and_rerank(rewritten, attempt="rewrite")
+        second = await self._retrieve_and_rerank(rewritten.kb_query, attempt="rewrite")
         if not second:
             logger.info("crag_grade=ambiguous_exhausted empty_retry")
             return None
 
         with stage_timer(logger, "rag_crag_grade", attempt="rewrite") as t_grade2:
-            grade2 = await self.grader.grade(rewritten, second)
+            grade2 = await self.grader.grade(rewritten.kb_query, second)
             t_grade2["grade"] = grade2.value
         logger.info("crag_grade=%s after_rewrite", grade2.value)
         if grade2 is Grade.CORRECT:
@@ -400,9 +539,16 @@ class RagAnswerService:
             logger, "rag_generate", docs=len(docs), speculative=speculative or None
         ):
             rag_result = await self.gemini_service.chat_model.ainvoke(messages)
-        answer_text = rag_result.content or t("rag.generate_fallback")
-        if not isinstance(answer_text, str):
-            answer_text = str(answer_text)
+        # `content_to_text` 而非 `str()`：Gemini 開著 thinking 時 `.content`
+        # 回的是 list-of-parts（`[{"type": "text", "text": "…", "extras":
+        # {"signature": "<數千字 base64>"}}]`），`str()` 會把整個 Python
+        # repr 連同簽章一起變成「答案」。實測一則 400 字的衛教回覆會被包成
+        # 4,600~7,000 字，之後全程當作答案文字傳遞——進 agent 的 context、
+        # 進引用解析、也會進卡片。
+        # 模型回空字串就是答不出來，直接給拒答標記。原本退回
+        # rag.generate_fallback（「抱歉，我目前找不到相關資料」），再靠字眼比對
+        # 轉成拒答；拒答改成只認標記後，那段文案會被當成答案送出去。
+        answer_text = content_to_text(rag_result.content) or NO_ANSWER_SENTINEL
         return answer_text
 
     @staticmethod

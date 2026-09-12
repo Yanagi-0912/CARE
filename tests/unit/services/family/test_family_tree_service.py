@@ -217,3 +217,85 @@ def test_ensure_family_member_has_been_removed():
     看的是**目標擁有者**的族譜，不是請求者的。
     """
     assert not hasattr(FamilyTreeService, "ensure_family_member")
+
+
+# ── is_invitation_usable ──────────────────────────────────────────────────
+#
+# QR 圖片端點問的是這支。它與 verify_invitation 共用同一套「可用」判定
+# （FamilyTreeService._is_usable），差別只在回報方式：這支把「不存在」與
+# 「已失效」壓成同一個 False，不給出可以枚舉有效邀請碼的差異。
+
+
+def _invitation(*, status: str = "pending", expires_in: timedelta = timedelta(days=1)):
+    return PendingInvitation(
+        _id="token123",
+        inviter_id="U_INVITER",
+        status=status,
+        created_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(timezone.utc) + expires_in,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("invitation", "expected"),
+    [
+        (_invitation(), True),
+        (_invitation(status="accepted"), False),
+        (_invitation(expires_in=timedelta(days=-1)), False),
+        (None, False),
+    ],
+    ids=["pending", "accepted", "expired", "missing"],
+)
+async def test_is_invitation_usable(service, invitation, expected):
+    with patch(
+        "app.repositories.family_tree_repository.FamilyTreeRepository.get_invitation",
+        new_callable=AsyncMock,
+    ) as mock_get:
+        mock_get.return_value = invitation
+
+        assert await service.is_invitation_usable("token123") is expected
+
+
+@pytest.mark.asyncio
+async def test_is_invitation_usable_treats_naive_expiry_as_utc(service):
+    # Mongo 取回的 datetime 多半沒有 tzinfo。當成 UTC 比較，不能讓它跟
+    # aware 的 now() 相減而拋 TypeError。
+    invitation = _invitation()
+    invitation.expires_at = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
+        tzinfo=None
+    )
+
+    with patch(
+        "app.repositories.family_tree_repository.FamilyTreeRepository.get_invitation",
+        new_callable=AsyncMock,
+    ) as mock_get:
+        mock_get.return_value = invitation
+
+        assert await service.is_invitation_usable("token123") is True
+
+
+@pytest.mark.asyncio
+async def test_accept_and_verify_agree_on_expiry(service):
+    """同一筆過期邀請，兩條路徑都要判失效。
+
+    這兩支曾經各寫各的過期判定。只要有一邊算法不同，使用者就會看到「QR 還
+    在、按下去卻 410」——而那種不一致從畫面上完全無從理解。
+    """
+    expired = _invitation(expires_in=timedelta(seconds=-1))
+
+    with patch(
+        "app.repositories.family_tree_repository.FamilyTreeRepository.get_invitation",
+        new_callable=AsyncMock,
+    ) as mock_get:
+        mock_get.return_value = expired
+
+        assert await service.is_invitation_usable("token123") is False
+
+        with pytest.raises(HTTPException) as verify_error:
+            await service.verify_invitation("token123")
+        with pytest.raises(HTTPException) as accept_error:
+            await service.accept_invitation("U_INVITEE", "token123")
+
+    assert verify_error.value.status_code == 410
+    assert accept_error.value.status_code == 410

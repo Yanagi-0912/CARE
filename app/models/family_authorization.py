@@ -143,6 +143,10 @@ FIELD_CLASSIFICATION: dict[tuple[ResourceName, str], DataClassification] = {
     ("medication", "unit_content"): "GENERAL",
     ("medication", "total_quantity"): "GENERAL",
     ("medication", "usage_raw"): "GENERAL",
+    # 調劑日期單獨不揭露病情（與 start_date 同級）；它與 institution 併在
+    # 一起才構成看診紀錄，而那個組合的分級由 institution 決定。
+    ("medication", "dispensed_date"): "GENERAL",
+    ("medication", "draft_id"): "GENERAL",
     ("medication", "frequency_code"): "GENERAL",
     ("medication", "source"): "GENERAL",
     ("medication", "start_date"): "GENERAL",
@@ -153,6 +157,10 @@ FIELD_CLASSIFICATION: dict[tuple[ResourceName, str], DataClassification] = {
     # 三個適應症欄位同屬 SENSITIVE：它們回答的都是「這個人為什麼吃這個藥」。
     # 留在 GENERAL 的話，MEMBER 就能繞過他對 SENSITIVE 的無存取權，從藥品
     # 說明反推長輩的慢性病——那正是資料分類要防止的事。
+    # 調劑機構是健康狀況，不是用藥設定：「常去腫瘤科」「上個月去了身心科」
+    # 揭露的病情遠多於藥名。MEMBER 對 GENERAL 有讀取權、對 SENSITIVE 沒有，
+    # 放錯級別會讓族譜裡的一般成員看得到長輩去了哪些科別。
+    ("medication", "institution"): "SENSITIVE",
     ("medication", "indication"): "SENSITIVE",
     ("medication", "spc_indication"): "SENSITIVE",
     ("medication", "spc_indication_summary"): "SENSITIVE",

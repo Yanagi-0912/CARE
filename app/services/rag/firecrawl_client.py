@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
+from typing import Any
 
 import httpx
 
@@ -14,7 +16,7 @@ class FirecrawlClient:
         self,
         api_key: str,
         *,
-        base_url: str = "https://api.firecrawl.dev/v1",
+        base_url: str = "https://api.firecrawl.dev/v2",
         timeout_seconds: float = 15.0,
         scrape_timeout_seconds: float | None = None,
         http_client: httpx.AsyncClient | None = None,
@@ -36,16 +38,28 @@ class FirecrawlClient:
             "Content-Type": "application/json",
         }
 
-    async def search(self, query: str, *, limit: int = 5) -> list[WebSearchHit]:
+    async def search(
+        self,
+        query: str,
+        *,
+        limit: int = 5,
+        include_domains: Sequence[str] | None = None,
+    ) -> list[WebSearchHit]:
         if not self._api_key:
             return []
+        body: dict[str, Any] = {"query": query, "limit": limit}
+        if include_domains:
+            # v2 原生的網域限制，官方文件說它是在 query 內部加上 site: 運算子。
+            # 用它而不自己拼 `site:A OR site:B`：OR 不在官方文件的運算子清單上，
+            # 能用只是實測剛好可以。
+            body["includeDomains"] = list(include_domains)
         client = self._http_client or httpx.AsyncClient(timeout=self._timeout_seconds)
         owns_client = self._http_client is None
         try:
             response = await client.post(
                 f"{self._base_url}/search",
                 headers=self._headers(),
-                json={"query": query, "limit": limit},
+                json=body,
                 timeout=self._timeout_seconds,
             )
             response.raise_for_status()
@@ -58,10 +72,14 @@ class FirecrawlClient:
                 await client.aclose()
 
         data = payload.get("data") if isinstance(payload, dict) else None
-        if not isinstance(data, list):
+        # v2 的 data 是 {"web": [...], "news": ..., "images": ...}，v1 是 list。
+        # 兩種都認：只認一種的話，base_url 與格式對不上時會「成功回應、0 筆
+        # 結果」，不報錯也不留 log，網搜就這樣靜靜失效。
+        items = data.get("web") if isinstance(data, dict) else data
+        if not isinstance(items, list):
             return []
         hits: list[WebSearchHit] = []
-        for item in data:
+        for item in items:
             if not isinstance(item, dict):
                 continue
             url = str(item.get("url") or "").strip()

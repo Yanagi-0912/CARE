@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.services.medical_news.article_grader import ArticleJudgement
 from app.services.medical_news.kb_digest_service import KbDigestService
 
 
@@ -99,7 +100,13 @@ async def test_articles_older_than_max_age_excluded():
 
 @pytest.mark.asyncio
 async def test_roc_dates_are_accepted():
-    """衛福部與食藥署的頁面常以民國年呈現。"""
+    """民國年仍須認得。
+
+    **訂正 2026-09-04**：本測試原本的理由寫著「衛福部與食藥署的頁面常以民國年
+    呈現」，那是未經查證的推測——實際量測 2,422 筆，民國格式 0 筆。測試保留，
+    但理由改成真正的那個：gov.tw 各頁面的日期呈現不一致，上游改版時多認一種
+    格式的成本是零，少認一種會讓整批文章安靜地消失。
+    """
     collection = _collection(docs=[_chunk(published_at="115-09-01")])
     service = KbDigestService(collection=collection, max_age_days=30)
 
@@ -151,3 +158,155 @@ async def test_articles_without_title_excluded():
     articles = await service.recent_articles("2026-09-02", limit=5)
 
     assert articles == []
+
+
+# ── 政策新聞稿過濾（第一道：標題黑名單，不花額度）─────────────────
+
+
+@pytest.mark.asyncio
+async def test_policy_announcements_are_excluded():
+    """衛福部那批名為闢謠、實為政策新聞稿的內容不得成為 Tier 2 卡片。
+
+    標題取自 `health_articles_chunks` 的真實資料（2026-09-04 量測樣本）。
+    """
+    docs = [
+        _chunk(
+            url="https://www.hpa.gov.tw/a/1",
+            original_title="國健署攜手軍醫局 打造無菸健康戰力 國軍弟兄呼吸更清新",
+        ),
+        _chunk(
+            url="https://www.hpa.gov.tw/a/2",
+            original_title="試管嬰兒補助再加碼 支持不孕夫妻圓生育夢",
+        ),
+        _chunk(
+            url="https://www.hpa.gov.tw/a/3",
+            original_title="行政院院會審議通過「菸害防制法」部分條文修正草案",
+        ),
+        _chunk(
+            url="https://www.hpa.gov.tw/a/4",
+            original_title="中元節採買提物　長者掌握3要訣防跌",
+        ),
+    ]
+    collection = _collection(docs=docs)
+    service = KbDigestService(collection=collection, max_age_days=30)
+
+    articles = await service.recent_articles("2026-09-02", limit=5)
+
+    assert [a.url for a in articles] == ["https://www.hpa.gov.tw/a/4"]
+
+
+# ── grader（第二道：擋黑名單擋不掉的）───────────────────────────────
+
+
+class FakeArticleGrader:
+    """依標題決定判定；`raises` 裡的標題直接拋例外。"""
+
+    def __init__(self, useful_titles=None, raises=()):
+        self._useful = set(useful_titles or [])
+        self._raises = set(raises)
+        self.calls = []
+
+    async def judge_article(self, title, excerpt):
+        self.calls.append(title)
+        if title in self._raises:
+            raise RuntimeError("quota exhausted")
+        return ArticleJudgement(
+            is_useful_for_elderly=title in self._useful, reason="測試"
+        )
+
+
+@pytest.mark.asyncio
+async def test_grader_rejects_articles_not_useful_for_elderly():
+    """標題像衛教、內容也是真衛教，但對象不是長輩——黑名單擋不到，grader 要擋。"""
+    docs = [
+        _chunk(url="https://a.gov.tw/kid", original_title="翻轉兒童肥胖"),
+        _chunk(url="https://a.gov.tw/old", original_title="長者掌握3要訣防跌"),
+    ]
+    grader = FakeArticleGrader(useful_titles=["長者掌握3要訣防跌"])
+    service = KbDigestService(
+        collection=_collection(docs=docs),
+        max_age_days=30,
+        grader=grader,
+        max_grade_calls=10,
+    )
+
+    articles = await service.recent_articles("2026-09-02", limit=5)
+
+    assert [a.url for a in articles] == ["https://a.gov.tw/old"]
+
+
+@pytest.mark.asyncio
+async def test_grader_failure_excludes_the_article():
+    """判定沒有發生時 fail closed——主動推播沒有人在等，沒推遠比推錯好。"""
+    docs = [
+        _chunk(url="https://a.gov.tw/1", original_title="判定會爆炸的一篇"),
+        _chunk(url="https://a.gov.tw/2", original_title="長者掌握3要訣防跌"),
+    ]
+    grader = FakeArticleGrader(
+        useful_titles=["長者掌握3要訣防跌"], raises=["判定會爆炸的一篇"]
+    )
+    service = KbDigestService(
+        collection=_collection(docs=docs),
+        max_age_days=30,
+        grader=grader,
+        max_grade_calls=10,
+    )
+
+    articles = await service.recent_articles("2026-09-02", limit=5)
+
+    assert [a.url for a in articles] == ["https://a.gov.tw/2"]
+
+
+@pytest.mark.asyncio
+async def test_grade_budget_stops_selection_instead_of_admitting_the_rest():
+    """額度用完要停止選材，不得把剩下的一律放行。
+
+    放行等於在額度吃緊那天悄悄關掉這道防線，而那正是最需要它的時候。
+    """
+    docs = [
+        _chunk(url=f"https://a.gov.tw/{i}", original_title=f"文章{i}")
+        for i in range(6)
+    ]
+    grader = FakeArticleGrader(useful_titles=[])
+    service = KbDigestService(
+        collection=_collection(docs=docs),
+        max_age_days=30,
+        grader=grader,
+        max_grade_calls=2,
+    )
+
+    articles = await service.recent_articles("2026-09-02", limit=5)
+
+    assert articles == []
+    assert len(grader.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_blacklisted_titles_never_reach_the_grader():
+    """黑名單擋在 grader 之前，才省得到額度。"""
+    docs = [
+        _chunk(url="https://a.gov.tw/1", original_title="國健署攜手軍醫局 打造無菸健康戰力"),
+        _chunk(url="https://a.gov.tw/2", original_title="長者掌握3要訣防跌"),
+    ]
+    grader = FakeArticleGrader(useful_titles=["長者掌握3要訣防跌"])
+    service = KbDigestService(
+        collection=_collection(docs=docs),
+        max_age_days=30,
+        grader=grader,
+        max_grade_calls=10,
+    )
+
+    await service.recent_articles("2026-09-02", limit=5)
+
+    assert grader.calls == ["長者掌握3要訣防跌"]
+
+
+@pytest.mark.asyncio
+async def test_no_grader_falls_back_to_blacklist_only():
+    """grader 缺席時 Tier 2 仍照常供應，只是品質退回黑名單那一層。"""
+    docs = [_chunk(url="https://a.gov.tw/1", original_title="翻轉兒童肥胖")]
+    service = KbDigestService(collection=_collection(docs=docs), max_age_days=30)
+
+    articles = await service.recent_articles("2026-09-02", limit=5)
+
+    assert [a.url for a in articles] == ["https://a.gov.tw/1"]

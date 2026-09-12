@@ -179,6 +179,12 @@ class GetFamilyTreeResponse(BaseModel):
 class CreateInviteResponse(BaseModel):
     invite_token: str
     expires_at: str  # ISO 8601
+    # 受邀者要開啟的網址（LIFF URL）。QR 圖裡編的就是這一個，兩者不可能分歧。
+    # LIFF_ID 未設定時為 None，前端自行退回站台網址。
+    invite_url: Optional[str] = None
+    # 這張邀請的 QR 圖片絕對網址。PUBLIC_BASE_URL 未設定時為 None——連結分享
+    # 那條路不受影響，前端只要把 QR 區塊藏起來即可。
+    qr_url: Optional[str] = None
 
 
 class VerifyInviteResponse(BaseModel):

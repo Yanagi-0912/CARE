@@ -9,6 +9,7 @@ docstring：前者要 fail-closed 回 False，後者是接線疏漏，要在送�
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import AsyncMock
 
 import pytest
@@ -93,3 +94,73 @@ async def test_is_same_claim_raises_when_neither_dependency_given():
 
     with pytest.raises(RuntimeError):
         await verifier.is_same_claim(_USER_CLAIM, _CHECKED_CLAIM)
+
+
+
+# --- stage=claim_identity 觀測 -------------------------------------------
+#
+# 回傳型別維持 bool（刻意的設計，見模組 docstring），所以「模型判定不同」與
+# 「這次根本沒判成」在呼叫端是同一個 False。要分開量就只能記在這裡：把上游
+# 不穩算成「防線攔截率上升」，會把門檻校準帶往完全錯誤的方向。
+
+_IDENTITY_LOGGER = "app.services.rag.claim_verification.identity"
+
+
+def _identity_stages(caplog):
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == _IDENTITY_LOGGER
+        and record.getMessage().startswith("stage=")
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [({"same": True}, "outcome=same"), ({"same": False}, "outcome=different")],
+)
+async def test_is_same_claim_logs_judgement_outcome(caplog, payload, expected):
+    verifier = GeminiClaimIdentityVerifier(
+        invoke_identity=AsyncMock(return_value=payload)
+    )
+
+    with caplog.at_level(logging.INFO, logger=_IDENTITY_LOGGER):
+        await verifier.is_same_claim(_USER_CLAIM, _CHECKED_CLAIM)
+
+    stages = _identity_stages(caplog)
+    assert len(stages) == 1
+    assert "stage=claim_identity" in stages[0]
+    assert expected in stages[0]
+
+
+@pytest.mark.asyncio
+async def test_is_same_claim_logs_error_outcome_when_call_fails(caplog):
+    """呼叫失敗記 error，不得記成 different——這正是要與判定分開的那一半。"""
+    verifier = GeminiClaimIdentityVerifier(
+        invoke_identity=AsyncMock(side_effect=RuntimeError("gemini timeout"))
+    )
+
+    with caplog.at_level(logging.INFO, logger=_IDENTITY_LOGGER):
+        result = await verifier.is_same_claim(_USER_CLAIM, _CHECKED_CLAIM)
+
+    assert result is False
+    stages = _identity_stages(caplog)
+    assert len(stages) == 1
+    assert "outcome=error" in stages[0]
+
+
+@pytest.mark.asyncio
+async def test_is_same_claim_logs_unparsable_outcome_when_payload_is_broken(caplog):
+    """回應解析不出 bool 也不是「判定不同」，同樣要能從攔截量裡扣掉。"""
+    verifier = GeminiClaimIdentityVerifier(
+        invoke_identity=AsyncMock(return_value={"same": "yes"})
+    )
+
+    with caplog.at_level(logging.INFO, logger=_IDENTITY_LOGGER):
+        result = await verifier.is_same_claim(_USER_CLAIM, _CHECKED_CLAIM)
+
+    assert result is False
+    stages = _identity_stages(caplog)
+    assert len(stages) == 1
+    assert "outcome=unparsable" in stages[0]

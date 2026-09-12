@@ -111,6 +111,35 @@ class FamilyTreeService:
         )
         return invitation
 
+    @staticmethod
+    def _is_usable(invitation: PendingInvitation) -> bool:
+        """這筆邀請此刻還能不能被接受。
+
+        「可用」的定義只寫在這裡一處。`verify_invitation`、`accept_invitation`
+        與 QR 圖片端點都問這支——三邊各自判斷的話，只要有一邊算法不同，就會
+        出現「QR 看起來還有效、按下去卻 410」這種使用者無從理解的狀態。
+        """
+        if invitation.status == "accepted":
+            return False
+
+        expires_at = invitation.expires_at
+        # Mongo 取回的 datetime 多半是 naive UTC；已經帶時區的就不要動它，
+        # 無條件 replace() 會把別的時區當成 UTC 而算錯瞬間。
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+        return datetime.now(tz=timezone.utc) <= expires_at
+
+    async def is_invitation_usable(self, code: str) -> bool:
+        """邀請碼是否有效。不存在與已失效一律回 False。
+
+        給 QR 圖片端點用。那支端點刻意不區分這兩種情況——區分了就等於送出
+        一個可以枚舉有效邀請碼的預言機。需要區分的呼叫端請用
+        `verify_invitation`，它會用 404／410 分開回報。
+        """
+        invitation = await self._repo.get_invitation(code)
+        return invitation is not None and self._is_usable(invitation)
+
     async def verify_invitation(self, code: str) -> PendingInvitation:
         """
         驗證邀請碼並取得邀請者名稱。
@@ -120,15 +149,7 @@ class FamilyTreeService:
         if invitation is None:
             raise HTTPException(status_code=404, detail="邀請連結無效")
 
-        if invitation.status == "accepted":
-            raise HTTPException(status_code=410, detail="邀請連結已失效")
-
-        now = datetime.now(tz=timezone.utc)
-        expires_at = invitation.expires_at
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
-
-        if now > expires_at:
+        if not self._is_usable(invitation):
             raise HTTPException(status_code=410, detail="邀請連結已失效")
 
         return invitation
@@ -145,9 +166,7 @@ class FamilyTreeService:
         if invitation is None:
             raise HTTPException(status_code=404, detail="邀請連結無效")
 
-        if invitation.status == "accepted" or invitation.expires_at.replace(
-            tzinfo=timezone.utc
-        ) < datetime.now(tz=timezone.utc):
+        if not self._is_usable(invitation):
             raise HTTPException(status_code=410, detail="邀請連結已失效")
 
         owner_id = invitation.target_owner_id

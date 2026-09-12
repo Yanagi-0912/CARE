@@ -624,6 +624,59 @@ class MedicationRepository:
         )
         return result.matched_count > 0
 
+    @staticmethod
+    async def list_visits(user_id: str, collection=None) -> List[dict]:
+        """把使用者的用藥紀錄彙整成「看診紀錄」。
+
+        **以 `(institution, dispensed_date)` 分組，不是以掃描分組。** 實測同一
+        個藥袋在 42 分鐘內被掃了三次，產生三筆 `draft_id` 但只有一次看診——
+        按掃描列會讓畫面上同一家醫院出現三次，而長輩只去了一次。
+
+        日期取藥袋上印的 `dispensed_date` 而非 `created_at`：長輩可能拖三天
+        才掃，掃描時間不是看診日。
+
+        **兩者皆缺的藥不成為一次看診**，而是歸入 `institution=None` 的那一組：
+        手動新增的藥、以及本欄位落地之前的舊紀錄都沒有這兩個值，把它們各自
+        當成獨立看診會產生一堆空白列。呈現面據此顯示「未記錄來源」。
+
+        回傳依日期新到舊排序；同一天有多家機構時，機構名字典序固定，讓同一
+        份資料永遠產生同一個畫面順序。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_medications_collection()
+
+        pipeline = [
+            {"$match": {"user_id": user_id}},
+            {
+                "$group": {
+                    "_id": {
+                        "institution": "$institution",
+                        "dispensed_date": "$dispensed_date",
+                    },
+                    "medication_ids": {"$push": "$_id"},
+                    "medication_names": {"$push": "$name"},
+                    "draft_ids": {"$addToSet": "$draft_id"},
+                    "first_created_at": {"$min": "$created_at"},
+                }
+            },
+            # dispensed_date 是 YYYY-MM-DD 字串，字典序即時序。null 排在最後
+            # （MongoDB 的 null 小於任何字串，降冪排序時自然沉底）——沒有日期
+            # 的那組是「未記錄來源」，不該擠在最上面。
+            {"$sort": {"_id.dispensed_date": -1, "_id.institution": 1}},
+        ]
+        rows = await collection.aggregate(pipeline).to_list(length=None)
+        return [
+            {
+                "institution": row["_id"].get("institution"),
+                "dispensed_date": row["_id"].get("dispensed_date"),
+                "medication_ids": row.get("medication_ids") or [],
+                "medication_names": [n for n in (row.get("medication_names") or []) if n],
+                "scan_count": len([d for d in (row.get("draft_ids") or []) if d]),
+                "first_created_at": row.get("first_created_at"),
+            }
+            for row in rows
+        ]
+
 
 class MedicationLogRepository:
     """

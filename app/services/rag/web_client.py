@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -28,7 +29,13 @@ class ScrapedPage:
 
 
 class WebSearchClient(Protocol):
-    async def search(self, query: str, *, limit: int = 5) -> list[WebSearchHit]: ...
+    async def search(
+        self,
+        query: str,
+        *,
+        limit: int = 5,
+        include_domains: Sequence[str] | None = None,
+    ) -> list[WebSearchHit]: ...
 
     async def scrape(self, url: str) -> str: ...  # 保留，web_search_service.py 仍在用
 

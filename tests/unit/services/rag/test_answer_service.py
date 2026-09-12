@@ -43,6 +43,7 @@ from app.services.rag.answer_service import (
     dedup_ranked_docs,
 )
 from app.services.rag.cohere_reranker import VectorScoreReranker
+from app.services.rag.query_rewriter import RewrittenQuery
 from app.services.rag.retrieval_grader import Grade
 
 
@@ -388,7 +389,7 @@ def test_append_sources_renumbers_after_skipping_missing_and_duplicate_urls():
 
 @pytest.mark.asyncio
 async def test_answer_logs_model_refuse_diagnostics(caplog):
-    answer_content = "根據現有資料無法提供建議。"
+    answer_content = "[NO_ANSWER] 根據現有資料無法提供建議。"
     docs = [
         Document(
             page_content="無關片段",
@@ -410,17 +411,18 @@ async def test_answer_logs_model_refuse_diagnostics(caplog):
         if "rag_fail code=MODEL_REFUSE" in rec.getMessage()
     ]
     assert len(refuse_logs) == 1
-    assert "matched_marker=無法提供" in refuse_logs[0]
+    assert "matched_marker=[NO_ANSWER]" in refuse_logs[0]
     assert f"answer_preview={answer_content}" in refuse_logs[0]
 
 
 @pytest.mark.parametrize(
     "answer_content",
     [
-        "我不知道這個問題的答案。",
-        "根據現有資料無法提供建議。",
-        "未找到足夠資訊。",
-        "找不到相關的衛教說明。",
+        "[NO_ANSWER]\n提供的資料中沒有相關資訊。",
+        "[NO_ANSWER] 根據現有資料無法提供建議。",
+        # 字眼比對時期漏抓的語言：清單裡從來沒有越南文、泰文
+        "[NO_ANSWER] Không tìm thấy thông tin liên quan.",
+        "[NO_ANSWER] ไม่พบข้อมูลที่เกี่ยวข้อง",
     ],
 )
 @pytest.mark.asyncio
@@ -451,8 +453,10 @@ async def test_answer_returns_no_answer_when_model_cannot_answer(answer_content)
             "河魨毒素結構穩定，無法透過加熱破壞，請勿自行處理。",
             False,
         ),
-        ("我不知道", True),
-        ("無法提供相關資訊", True),
+        ("[NO_ANSWER]\n找不到相關資料。", True),
+        # 字眼比對時期會被整段丟掉的正常回答
+        ("很多人不知道自己有高血壓，建議定期量血壓 [1]。", False),
+        ("PGAD 是一種罕見疾病 [1]。資料沒有提到治療方式，無法提供更多說明。", False),
         ("", True),
         ("   ", True),
     ],
@@ -542,7 +546,7 @@ async def test_crag_ambiguous_rewrite_then_correct():
     grader = MagicMock()
     grader.grade = AsyncMock(side_effect=[Grade.AMBIGUOUS, Grade.CORRECT])
     rewriter = MagicMock()
-    rewriter.rewrite = AsyncMock(return_value="改寫後的高血壓問題")
+    rewriter.rewrite = AsyncMock(return_value=RewrittenQuery(kb_query="改寫後的高血壓問題"))
 
     gemini_service = MagicMock()
     gemini_service.chat_model = MagicMock()
@@ -573,7 +577,7 @@ async def test_crag_ambiguous_exhausted_calls_web():
     grader = MagicMock()
     grader.grade = AsyncMock(side_effect=[Grade.AMBIGUOUS, Grade.INCORRECT])
     rewriter = MagicMock()
-    rewriter.rewrite = AsyncMock(return_value="改寫問句")
+    rewriter.rewrite = AsyncMock(return_value=RewrittenQuery(kb_query="改寫問句"))
     docs = [_kb_doc()]
     web_search = MagicMock()
     web_search.answer = AsyncMock(return_value="以下參考網路公開資料\n\n網路補充答案")
@@ -597,8 +601,13 @@ async def test_crag_ambiguous_exhausted_calls_web():
     )
     result = await svc.answer("高血壓？")
     assert result == "以下參考網路公開資料\n\n網路補充答案"
-    web_search.answer.assert_awaited_once_with("高血壓？")
-    gemini_service.chat_model.ainvoke.assert_not_awaited()
+    # 改寫結果一併交給網搜挑查詢；生成仍用原句（見 WebSearchService.answer）
+    web_search.answer.assert_awaited_once_with(
+        "高血壓？", search_queries=RewrittenQuery(kb_query="改寫問句")
+    )
+    # 不檢查 ainvoke 沒被呼叫：等改寫任務時事件迴圈會讓出，投機生成因此真的
+    # 跑了一次再被丟棄——這是正式環境本來就有的行為。要保證的是它的結果沒有
+    # 出現在回答裡，上面的 result 相等已經確認這件事。
 
 
 @pytest.mark.asyncio
@@ -606,7 +615,7 @@ async def test_crag_ambiguous_rewrite_still_insufficient():
     grader = MagicMock()
     grader.grade = AsyncMock(side_effect=[Grade.AMBIGUOUS, Grade.INCORRECT])
     rewriter = MagicMock()
-    rewriter.rewrite = AsyncMock(return_value="改寫問句")
+    rewriter.rewrite = AsyncMock(return_value=RewrittenQuery(kb_query="改寫問句"))
     docs = [_kb_doc()]
     gemini_service = MagicMock()
     gemini_service.chat_model = MagicMock()
@@ -625,8 +634,9 @@ async def test_crag_ambiguous_rewrite_still_insufficient():
         crag_enabled=True,
     )
     result = await svc.answer("高血壓？")
+    # 不檢查 ainvoke 沒被呼叫，理由同 test_crag_ambiguous_exhausted_calls_web：
+    # 投機生成可能已經跑完再被丟棄，要保證的是它沒有變成回答。
     assert result == NO_HITS_MESSAGE
-    gemini_service.chat_model.ainvoke.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -847,10 +857,47 @@ async def test_degraded_path_keeps_documents_above_floor():
 
 
 @pytest.mark.asyncio
-async def test_degraded_path_falls_back_to_vector_score():
-    """Cohere 降級時沒有 rerank_score，要退回融合／向量分數判斷。"""
+async def test_degraded_path_rejects_when_cohere_score_is_missing():
+    """
+    Cohere 也失效時沒有 rerank_score，整批視為不合格——不退回 `score`。
+
+    量測依據見 `_filter_by_degraded_score` 的 docstring：融合分數與原始
+    cosine 都無法區分相關與不相關（前者的不相關均值甚至更高），在那兩個
+    尺度上不存在有意義的門檻。
+    """
     service, gemini, _ = _make_service(
-        docs=[_scored_doc("只有向量分", score=0.8)], answer_content="回答 [1]",
+        docs=[_scored_doc("只有融合分", score=0.8)],
+        grader=_BoomGrader(), crag_enabled=True, web_fallback_enabled=False,
+    )
+    service.degraded_min_score = 0.3
+
+    await service.answer("問題")
+    gemini.chat_model.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_degraded_floor_is_independent_of_fusion_scale():
+    """
+    同一個門檻不該因為換了融合模式就換行為：RRF 的分數在 1/61 量級、凸組合
+    在 0~1，兩者都不該影響這張網。有 rerank_score 才算數。
+    """
+    for fusion_score in (0.033, 0.95):
+        service, gemini, _ = _make_service(
+            docs=[_scored_doc("融合分不同但都沒有 rerank_score", score=fusion_score)],
+            grader=_BoomGrader(), crag_enabled=True, web_fallback_enabled=False,
+        )
+        service.degraded_min_score = 0.3
+
+        await service.answer("問題")
+        gemini.chat_model.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_degraded_floor_still_uses_cohere_score_when_available():
+    """Cohere 活著時行為完全不變——那個尺度上 0.3 有語意。"""
+    service, _, _ = _make_service(
+        docs=[_scored_doc("Cohere 高分", rerank=0.9, score=0.01)],
+        answer_content="回答 [1]",
         grader=_BoomGrader(), crag_enabled=True, web_fallback_enabled=False,
     )
     service.degraded_min_score = 0.3
@@ -1129,7 +1176,11 @@ def test_rewrite_budget_zero_means_unlimited():
 
 @pytest.mark.asyncio
 async def test_crag_ambiguous_skips_rewrite_when_budget_exhausted():
-    """預算用完就拿第一輪結果生成——不改寫，也不轉網搜（網搜比第二輪更慢）。"""
+    """預算用完就拿第一輪結果生成——不跑第二輪，也不轉網搜（網搜比第二輪更慢）。
+
+    改寫本身已經與分級並行起跑，所以這裡不檢查它有沒有被呼叫；要檢查的是
+    它的結果沒有被拿去做第二輪檢索與分級。
+    """
     # 全 mock 的第一輪跑不到 0.1ms，設不出「已經超支」的狀態；讓 grader 真的
     # 花掉一段時間，才測得到預算是依「已花時間」而非呼叫次數判斷。
     grader = MagicMock()
@@ -1140,7 +1191,9 @@ async def test_crag_ambiguous_skips_rewrite_when_budget_exhausted():
 
     grader.grade = AsyncMock(side_effect=_slow_grade)
     rewriter = MagicMock()
-    rewriter.rewrite = AsyncMock(return_value="不該被呼叫")
+    rewriter.rewrite = AsyncMock(
+        return_value=RewrittenQuery(kb_query="不該被拿去重查")
+    )
     web_search = MagicMock()
     web_search.answer = AsyncMock(return_value="不該走網搜")
 
@@ -1155,7 +1208,6 @@ async def test_crag_ambiguous_skips_rewrite_when_budget_exhausted():
     )
     result = await service.answer("高血壓？")
 
-    assert rewriter.rewrite.await_count == 0
     assert grader.grade.await_count == 1
     assert web_search.answer.await_count == 0
     assert retriever.ainvoke.await_count == 1
@@ -1172,7 +1224,7 @@ async def test_crag_ambiguous_still_rewrites_when_budget_unlimited():
     grader = MagicMock()
     grader.grade = AsyncMock(side_effect=[Grade.AMBIGUOUS, Grade.CORRECT])
     rewriter = MagicMock()
-    rewriter.rewrite = AsyncMock(return_value="改寫後的問題")
+    rewriter.rewrite = AsyncMock(return_value=RewrittenQuery(kb_query="改寫後的問題"))
 
     gemini_service = MagicMock()
     gemini_service.chat_model = MagicMock()
@@ -1260,7 +1312,7 @@ async def test_speculative_discarded_and_regenerated_after_rewrite():
     retriever = MagicMock()
     retriever.ainvoke = AsyncMock(side_effect=[first_docs, second_docs])
     rewriter = MagicMock()
-    rewriter.rewrite = AsyncMock(return_value="改寫後的問題")
+    rewriter.rewrite = AsyncMock(return_value=RewrittenQuery(kb_query="改寫後的問題"))
 
     # 分級必須真的讓出事件迴圈，投機任務才會起跑；AsyncMock 立即回覆時任務
     # 還沒被排到就被取消了（那其實更省，但不是生產環境會發生的情況）。
@@ -1335,3 +1387,293 @@ async def test_speculative_not_started_without_crag():
         docs=[_kb_doc()], crag_enabled=False, speculative_generate=True
     )
     assert service.speculative_generate is False
+
+
+# ── Gemini list-of-parts 回應 ────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_answer_flattens_list_of_parts_instead_of_str_repr():
+    """
+    Gemini 開著 thinking 時 `.content` 是 list-of-parts，且每個 part 帶一段
+    數千字的 `signature`。過去用 `str()` 轉型，等於把整個 Python repr 連同
+    簽章當成答案往下傳——實測一則 400 字的衛教回覆會被包成 4,600~7,000 字，
+    進 agent context、進引用解析、也會進 Flex 卡。
+    """
+    content = [
+        {
+            "type": "text",
+            "text": "根據 RAG 資訊，高血壓要少鹽 [1]。",
+            "extras": {"signature": "EusbCugbARFNMg" * 300},
+        }
+    ]
+    service, gemini, _ = _make_service(
+        docs=[_scored_doc("內容", rerank=0.9)], answer_content=content
+    )
+
+    answer = await service.answer("高血壓要注意什麼")
+
+    assert "根據 RAG 資訊，高血壓要少鹽 [1]。" in answer
+    assert "'type':" not in answer
+    assert "signature" not in answer
+    assert "EusbCugb" not in answer
+
+
+@pytest.mark.asyncio
+async def test_answer_falls_back_when_parts_carry_no_text():
+    """只有簽章、沒有文字的回應等同空答案，要走既有的 fallback 文案。"""
+    service, _, _ = _make_service(
+        docs=[_scored_doc("內容", rerank=0.9)],
+        answer_content=[{"type": "text", "extras": {"signature": "abc"}}],
+    )
+
+    answer = await service.answer("問題")
+
+    assert "signature" not in answer
+    assert "abc" not in answer
+
+
+class _ScoredReranker:
+    """模擬 Cohere：在 metadata 寫入 rerank_score，依分數由高到低排序。"""
+
+    def __init__(self, scores):
+        self._scores = scores
+
+    async def rerank(self, query, docs, top_n):
+        scored = [
+            Document(
+                page_content=doc.page_content,
+                metadata={**doc.metadata, "rerank_score": score},
+            )
+            for doc, score in zip(docs, self._scores)
+        ]
+        scored.sort(key=lambda d: d.metadata["rerank_score"], reverse=True)
+        return scored[:top_n]
+
+
+def _distinct_docs(n):
+    return [
+        Document(
+            page_content=f"片段{i}",
+            metadata={"source_name": "國健署", "url": f"https://www.hpa.gov.tw/{i}"},
+        )
+        for i in range(n)
+    ]
+
+
+def _rag_answer_log(caplog):
+    lines = [
+        rec.getMessage()
+        for rec in caplog.records
+        if rec.getMessage().startswith("stage=rag_answer ")
+    ]
+    assert len(lines) == 1
+    return lines[0]
+
+
+@pytest.mark.asyncio
+async def test_rag_answer_log_records_top_rerank_score(caplog):
+    svc, _gemini, _retriever = _make_service(
+        docs=_distinct_docs(3), reranker=_ScoredReranker([0.12, 0.81234, 0.4])
+    )
+    with caplog.at_level("INFO"):
+        await svc.answer("高血壓可以吃葡萄柚嗎")
+    line = _rag_answer_log(caplog)
+    assert "top_rerank=0.8123" in line
+    assert "path=kb " in line or line.endswith("path=kb")
+
+
+@pytest.mark.asyncio
+async def test_rag_answer_log_omits_top_rerank_without_cohere(caplog):
+    """Cohere 失效（VectorScoreReranker 不寫 rerank_score）時不輸出欄位，
+    才不會在校準時被誤當成低分樣本。"""
+    svc, _gemini, _retriever = _make_service(docs=_distinct_docs(2))
+    with caplog.at_level("INFO"):
+        await svc.answer("高血壓可以吃葡萄柚嗎")
+    assert "top_rerank=" not in _rag_answer_log(caplog)
+
+
+@pytest.mark.asyncio
+async def test_rag_answer_log_omits_top_rerank_on_empty_retrieval(caplog):
+    svc, _gemini, _retriever = _make_service(docs=[], web_fallback_enabled=False)
+    with caplog.at_level("INFO"):
+        await svc.answer("冷門問題")
+    line = _rag_answer_log(caplog)
+    assert "top_rerank=" not in line
+    assert "path=web_empty_retrieval" in line
+
+
+@pytest.mark.asyncio
+async def test_model_refuse_is_not_logged_as_kb(caplog):
+    """拒答記成 path=kb 會讓門檻校準把它當成「知識庫答得出來」的樣本。"""
+    svc, _gemini, _retriever = _make_service(
+        docs=_distinct_docs(2),
+        reranker=_ScoredReranker([0.35, 0.2]),
+        answer_content="[NO_ANSWER] 根據現有資料無法提供建議。",
+    )
+    with caplog.at_level("INFO"):
+        result = await svc.answer("某個冷門問題")
+    assert result == NO_ANSWER_MESSAGE
+    line = _rag_answer_log(caplog)
+    assert "path=kb_model_refuse" in line
+    assert "top_rerank=0.35" in line
+
+
+# --- 查詢改寫與 CRAG 分級並行 ---
+
+_PGAD_REWRITE = RewrittenQuery(
+    kb_query="持續性性興奮症候群是什麼？",
+    zh_terms="持續性性興奮症候群",
+    en_terms="persistent genital arousal disorder",
+)
+
+
+@pytest.mark.asyncio
+async def test_rewrite_starts_before_grading_finishes():
+    """核心保證：改寫必須在分級結束前就開跑，否則網搜路徑要多等一整段改寫。"""
+    order = []
+
+    async def _slow_grade(query, docs):
+        await asyncio.sleep(0.05)
+        order.append("grade_done")
+        return Grade.INCORRECT
+
+    async def _rewrite(query, docs):
+        order.append("rewrite_start")
+        return _PGAD_REWRITE
+
+    grader = MagicMock()
+    grader.grade = AsyncMock(side_effect=_slow_grade)
+    rewriter = MagicMock()
+    rewriter.rewrite = AsyncMock(side_effect=_rewrite)
+    web_search = MagicMock()
+    web_search.answer = AsyncMock(return_value="網搜答案")
+    service, _, _ = _make_service(
+        docs=[_kb_doc()],
+        grader=grader,
+        rewriter=rewriter,
+        crag_enabled=True,
+        web_search=web_search,
+        speculative_generate=False,
+    )
+
+    await service.answer("PGAD 是什麼病")
+
+    assert order == ["rewrite_start", "grade_done"], order
+    assert rewriter.rewrite.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_crag_incorrect_passes_rewritten_queries_to_web():
+    rewriter = MagicMock()
+    rewriter.rewrite = AsyncMock(return_value=_PGAD_REWRITE)
+    web_search = MagicMock()
+    web_search.answer = AsyncMock(return_value="網搜答案")
+    service, _, _ = _make_service(
+        docs=[_kb_doc()],
+        grader=_grader_returning(Grade.INCORRECT),
+        rewriter=rewriter,
+        crag_enabled=True,
+        web_search=web_search,
+    )
+
+    result = await service.answer("PGAD 是什麼病")
+
+    assert result == "網搜答案"
+    web_search.answer.assert_awaited_once_with(
+        "PGAD 是什麼病", search_queries=_PGAD_REWRITE
+    )
+
+
+@pytest.mark.asyncio
+async def test_web_falls_back_to_original_question_when_rewrite_fails():
+    """改寫失敗不能讓整題失敗：網搜退回用原句，行為與導入改寫前相同。"""
+    rewriter = MagicMock()
+    rewriter.rewrite = AsyncMock(side_effect=RuntimeError("gemini down"))
+    web_search = MagicMock()
+    web_search.answer = AsyncMock(return_value="網搜答案")
+    service, _, _ = _make_service(
+        docs=[_kb_doc()],
+        grader=_grader_returning(Grade.INCORRECT),
+        rewriter=rewriter,
+        crag_enabled=True,
+        web_search=web_search,
+    )
+
+    result = await service.answer("PGAD 是什麼病")
+
+    assert result == "網搜答案"
+    web_search.answer.assert_awaited_once_with("PGAD 是什麼病")
+
+
+@pytest.mark.asyncio
+async def test_crag_correct_does_not_wait_for_rewrite():
+    """分級放行時改寫結果用不到：就算改寫卡住，回答也不能被它拖住。"""
+    never = asyncio.Event()
+
+    async def _stuck_rewrite(query, docs):
+        await never.wait()
+
+    rewriter = MagicMock()
+    rewriter.rewrite = AsyncMock(side_effect=_stuck_rewrite)
+    service, _, _ = _make_service(
+        docs=[_kb_doc()],
+        answer_content="知識庫答案 [1]",
+        grader=_grader_returning(Grade.CORRECT),
+        rewriter=rewriter,
+        crag_enabled=True,
+    )
+
+    result = await asyncio.wait_for(service.answer("高血壓？"), timeout=1)
+
+    assert "知識庫答案" in result
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_reuses_the_parallel_rewrite():
+    """ambiguous 不再另外改寫：拿並行那次的 kb_query 重查知識庫與重新分級。"""
+    first_docs = [_kb_doc("模糊內容")]
+    second_docs = [_kb_doc("精準內容", url="https://www.hpa.gov.tw/b")]
+    rewriter = MagicMock()
+    rewriter.rewrite = AsyncMock(return_value=_PGAD_REWRITE)
+    grader = _grader_returning(Grade.AMBIGUOUS, Grade.CORRECT)
+    service, _, retriever = _make_service(
+        docs=first_docs,
+        answer_content="改寫後回答 [1]",
+        grader=grader,
+        rewriter=rewriter,
+        crag_enabled=True,
+        crag_rewrite_budget_seconds=0.0,
+    )
+    retriever.ainvoke = AsyncMock(side_effect=[first_docs, second_docs])
+
+    result = await service.answer("PGAD 是什麼病")
+
+    assert "https://www.hpa.gov.tw/b" in result
+    assert rewriter.rewrite.await_count == 1
+    assert retriever.ainvoke.await_args_list[1].args[0] == "持續性性興奮症候群是什麼？"
+    assert grader.grade.await_args_list[1].args[0] == "持續性性興奮症候群是什麼？"
+
+
+@pytest.mark.asyncio
+async def test_empty_retrieval_rewrites_before_web():
+    """檢索為空時沒有分級可以並行，改寫當場跑完再交給網搜。"""
+    rewriter = MagicMock()
+    rewriter.rewrite = AsyncMock(return_value=_PGAD_REWRITE)
+    web_search = MagicMock()
+    web_search.answer = AsyncMock(return_value="網搜答案")
+    service, _, _ = _make_service(
+        docs=[],
+        grader=_grader_returning(),
+        rewriter=rewriter,
+        crag_enabled=True,
+        web_search=web_search,
+    )
+
+    result = await service.answer("PGAD 是什麼病")
+
+    assert result == "網搜答案"
+    rewriter.rewrite.assert_awaited_once_with("PGAD 是什麼病", [])
+    web_search.answer.assert_awaited_once_with(
+        "PGAD 是什麼病", search_queries=_PGAD_REWRITE
+    )

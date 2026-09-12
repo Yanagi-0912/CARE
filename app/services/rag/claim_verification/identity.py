@@ -34,6 +34,18 @@ Task 3 review 記錄的 gemini_service 疏漏風險相同）。若也吞成 Fals
 完全沒有能力判斷，而且沒有任何錯誤訊息會提示這件事，等於把整條同一性
 防線悄悄拔掉卻無人發現。寧可讓它在送出 LLM 請求前就大聲失敗，逼出忘記
 接線的錯誤，也不要讓它偽裝成一個保守但正常運作的驗證器。
+
+## 為什麼回傳 bool 還要另外記一行 `stage=claim_identity`
+
+fail-closed 讓「模型判定不是同一主張」與「這次根本沒判成」（逾時、例外、
+回應解析不出 bool）都變成同一個 `False`。對呼叫端來說那是對的——兩者都
+不該採用該篇判定；但對「這道防線擋掉的量裡，有多少其實是 Gemini 出問題」
+這個問題來說，兩者混在一起就永遠答不出來，而一次上游不穩會偽裝成「防線
+攔截率上升」，把門檻校準帶往完全錯誤的方向。
+
+所以 outcome 記在這裡、不靠上層推導：回傳型別維持 `bool`（那是刻意的設計，
+見上文），四種出口各自留下自己的 outcome。`service.py` 的 `stage=claim_verify`
+只記得到 same／different，兩行靠同一個 rid 對起來就能把 error 扣掉。
 """
 
 from __future__ import annotations
@@ -43,6 +55,7 @@ from typing import Any, Awaitable, Callable, Protocol
 
 from langchain_core.messages import HumanMessage
 
+from app.core.request_logging import log_stage
 from app.services.gemini import GeminiService
 
 logger = logging.getLogger(__name__)
@@ -104,6 +117,7 @@ class GeminiClaimIdentityVerifier:
                 exc,
                 exc_info=True,
             )
+            log_stage(logger, "claim_identity", outcome="error")
             return False
 
         same = raw.get("same") if isinstance(raw, dict) else None
@@ -113,7 +127,9 @@ class GeminiClaimIdentityVerifier:
             logger.warning(
                 "claim identity verification returned unparsable payload: %r", raw
             )
+            log_stage(logger, "claim_identity", outcome="unparsable")
             return False
+        log_stage(logger, "claim_identity", outcome="same" if same else "different")
         return same
 
     async def _call(self, prompt: str) -> dict[str, Any]:

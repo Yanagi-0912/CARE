@@ -18,7 +18,15 @@ from typing import Any
 from langchain_core.documents import Document
 from app.db.mongo_client import get_shared_client
 
-from app.services.rag.rank_fusion import DEFAULT_RRF_K, reciprocal_rank_fusion
+from app.services.rag.rank_fusion import (
+    DEFAULT_FUSION_ALPHA,
+    DEFAULT_RRF_K,
+    FUSION_MODE_CONVEX,
+    FUSION_MODE_RRF,
+    FUSION_MODES,
+    convex_combination_fusion,
+    reciprocal_rank_fusion,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -305,11 +313,20 @@ class MongoAtlasTextRetriever:
 
 
 class HybridRetriever:
-    """並行跑向量與文字檢索，再以 RRF 融合成單一排名。
+    """並行跑向量與文字檢索，再融合成單一排名。
 
     任一邊失敗只記錄並降級為另一邊的結果（fail-open）。這讓本類別在
     Atlas Search index 還沒建好時也能安全上線 —— 那時 `$search` 會報錯，
     行為自動退化為原本的純向量檢索。
+
+    融合方式由 `fusion_mode` 決定，預設維持 `rrf`（既有線上行為）。要換成
+    凸組合前必須先用 `scripts/rag_fusion_sweep.py` 把 `alpha` 掃出來。
+
+    兩種融合的分數尺度完全不同（RRF 約 1/60 量級、凸組合是 0~1），所以
+    **任何以融合分數為基準的絕對門檻都會隨模式改變行為**。目前沒有這種
+    門檻：`RAG_DEGRADED_MIN_SCORE` 已改為只認 Cohere 的 relevance_score
+    （見 `answer_service._filter_by_degraded_score` 的量測），切換融合模式
+    因此只影響排序，不影響醫療答案的把關。新增這類門檻前請先確認這件事。
     """
 
     def __init__(
@@ -319,11 +336,24 @@ class HybridRetriever:
         text_retriever: Any,
         rrf_k: int = DEFAULT_RRF_K,
         limit: int | None = None,
+        fusion_mode: str = FUSION_MODE_RRF,
+        alpha: float = DEFAULT_FUSION_ALPHA,
     ) -> None:
+        if fusion_mode not in FUSION_MODES:
+            raise ValueError(
+                f"unknown fusion_mode {fusion_mode!r}; expected one of {FUSION_MODES}"
+            )
+        if not 0.0 <= alpha <= 1.0:
+            raise ValueError(f"alpha must be within [0, 1], got {alpha}")
         self.vector_retriever = vector_retriever
         self.text_retriever = text_retriever
         self.rrf_k = rrf_k
         self.limit = limit
+        self.fusion_mode = fusion_mode
+        # alpha 是「向量腿的權重」，文字腿拿 1-alpha。取這個方向是因為向量
+        # 是本專案原本唯一的那條腿，alpha=1.0 等於回到純向量，語意上是可讀的
+        # 端點；反過來定義則要靠記憶。
+        self.alpha = alpha
 
     async def warmup(self) -> None:
         """兩條腿一起暖。共用 client 之下第二次是瞬間完成，但不假設一定共用。"""
@@ -342,19 +372,34 @@ class HybridRetriever:
             self._safe_invoke(self.text_retriever, TEXT_SOURCE_NAME, query),
         )
 
-        fused = reciprocal_rank_fusion(
-            [
-                (VECTOR_SOURCE_NAME, vector_docs),
-                (TEXT_SOURCE_NAME, text_docs),
-            ],
-            k=self.rrf_k,
-            limit=self.limit,
-        )
+        ranked_lists = [
+            (VECTOR_SOURCE_NAME, vector_docs),
+            (TEXT_SOURCE_NAME, text_docs),
+        ]
+        if self.fusion_mode == FUSION_MODE_CONVEX:
+            fused = convex_combination_fusion(
+                ranked_lists,
+                weights={
+                    VECTOR_SOURCE_NAME: self.alpha,
+                    TEXT_SOURCE_NAME: 1.0 - self.alpha,
+                },
+                limit=self.limit,
+            )
+        else:
+            fused = reciprocal_rank_fusion(
+                ranked_lists,
+                k=self.rrf_k,
+                limit=self.limit,
+            )
+        # 融合模式進日誌：線上要比對兩種模式的行為時，光看分數分不出來
+        # （凸組合的 0.5 與 RRF 的 1/61 都只是數字），必須有這個欄位才能
+        # 把一筆回覆歸到某一種融合。
         logger.info(
-            "hybrid_retrieve vector=%d text=%d fused=%d",
+            "hybrid_retrieve vector=%d text=%d fused=%d fusion=%s",
             len(vector_docs),
             len(text_docs),
             len(fused),
+            self.fusion_mode,
         )
         return fused
 

@@ -15,6 +15,7 @@ from app.models.medication import (
     MedicationLog,
     MedicationReminder,
     MedicationReminderWithMedications,
+    MedicationVisit,
     ReminderEntry,
     UpdateMedicationReminderRequest,
     derive_entry_fields,
@@ -838,3 +839,11 @@ class MedicationService:
             )
             return []
 
+    async def get_user_visits(self, user_id: str) -> List[MedicationVisit]:
+        """使用者的看診紀錄。
+
+        彙整留在 repository（那是一次 aggregate），這裡只負責轉成模型——
+        比照本服務其餘方法的分工。
+        """
+        rows = await self._medication_repository.list_visits(user_id)
+        return [MedicationVisit(**row) for row in rows]

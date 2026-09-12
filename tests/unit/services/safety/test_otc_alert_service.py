@@ -9,10 +9,19 @@ from typing import Any, Optional
 
 import pytest
 
-from app.services.safety.ingredient_overlap import IngredientWatchlist
+from app.services.safety.ingredient_overlap import IngredientClass, IngredientWatchlist
+from app.services.medication.tcm_catalog_service import TcmCatalogEntry, TcmCatalogService
+from app.services.safety.atc_interaction import ClassPairTable
 from app.services.safety.otc_alert_service import OtcAlertService
+from app.services.safety.tcm_interaction import TcmInteractionTable
 
 WATCHLIST = IngredientWatchlist(["ACETAMINOPHEN", "CHLORPHENIRAMINE MALEATE"])
+# 抗膽鹼疊加清單。CHLORPHENIRAMINE 同時在兩份清單上是刻意的——真實資料就是
+# 這樣（它既是最常重複的成分，也是最常見的第一代抗組織胺），優先序因此必須
+# 被測試釘住。
+ANTICHOLINERGICS = IngredientClass(
+    ["CHLORPHENIRAMINE MALEATE", "DIPHENHYDRAMINE HCL", "DIMENHYDRINATE"]
+)
 
 
 @dataclass
@@ -20,6 +29,7 @@ class _Entry:
     drug_class: str
     ingredients: tuple[str, ...]
     dosage_form: str = "膜衣錠"
+    atc_codes: tuple[str, ...] = ()
 
 
 @dataclass
@@ -103,6 +113,11 @@ def _build(
     auth_raises: bool = False,
     local_forms=frozenset(),
     profiles: Any = None,
+    anticholinergics: Any = None,
+    tcm_catalog: Any = None,
+    tcm_interactions: Any = None,
+    class_pairs: Any = None,
+    tcm_watch_herbs: Any = None,
 ):
     replier = _Replier()
     auth = _Auth(recipients, raises=auth_raises)
@@ -112,6 +127,17 @@ def _build(
         reminder_repository=_ReminderRepo(reminders),
         replier=replier,
         watchlist=WATCHLIST,
+        anticholinergics=(
+            ANTICHOLINERGICS if anticholinergics is None else anticholinergics
+        ),
+        class_pairs=ClassPairTable(()) if class_pairs is None else class_pairs,
+        tcm_watch_herbs=(
+            IngredientWatchlist(()) if tcm_watch_herbs is None else tcm_watch_herbs
+        ),
+        tcm_catalog_service=tcm_catalog,
+        tcm_interactions=(
+            TcmInteractionTable(()) if tcm_interactions is None else tcm_interactions
+        ),
         local_action_forms=local_forms,
         authorization_service=auth,
         user_profile_service=profiles if profiles is not None else _Profiles(),
@@ -411,3 +437,414 @@ async def test_indication_reaches_the_card_but_never_the_alt_text():
     assert "退燒" not in flex.alt_text
     assert "普拿疼" not in flex.alt_text
     assert "退燒、止痛" in str(flex.contents.to_dict())
+
+
+# --- 抗膽鹼疊加 -----------------------------------------------------------
+#
+# 補上成分重複抓不到的那一半：兩個藥含**不同**成分，但作用會加在一起。
+# 實測藥證庫，含第一代抗組織胺的非處方藥 3,099 種，其中 2,112 種含
+# CHLORPHENIRAMINE——同成分那三分之二由成分重複涵蓋，這條規則補的是
+# 另外 987 種的交叉組合（感冒藥 + 暈車藥）。
+
+
+@pytest.mark.asyncio
+async def test_stacking_notifies_family_and_patient():
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="綜合感冒膠囊", license_number="L-NEW"),
+            "old": _Med(id="old", name="暈車藥", license_number="L-OLD"),
+        },
+        catalog={
+            "L-NEW": _Entry("otc", ("CHLORPHENIRAMINE MALEATE",)),
+            "L-OLD": _Entry("otc", ("DIMENHYDRINATE",)),
+        },
+        reminders=[_Reminder(medication_ids=["old"])],
+    )
+
+    await service.check("patient-1", ["new"])
+
+    assert [u for u, _ in replier.flexes] == ["family-1"]
+    assert [u for u, _ in replier.texts] == ["patient-1"]
+    ((_, text),) = replier.texts
+    assert "綜合感冒膠囊" in text and "暈車藥" in text
+    # 措辭紅線：SHALL NOT 指示停藥、SHALL NOT 給劑量建議。
+    assert "停" not in text
+    assert "劑量" not in text
+    # 講他自己感覺得到的後果，那是當事人當下唯一能採取的安全動作。
+    assert "小心" in text
+
+
+@pytest.mark.asyncio
+async def test_overlap_takes_precedence_over_stacking():
+    """兩者同時成立時只發成分重複那則。
+
+    使用者該做的事一模一樣（把兩盒藥拿去問藥師），發兩則只會稀釋，而
+    「每一則都值得看」是這條通道全部價值的來源。
+    """
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="綜合感冒膠囊", license_number="L-NEW"),
+            "old": _Med(id="old", name="鼻炎膠囊", license_number="L-OLD"),
+        },
+        catalog={
+            # 兩邊都有 CHLORPHENIRAMINE（重複），新藥另含 DIPHENHYDRAMINE（疊加）
+            "L-NEW": _Entry("otc", ("CHLORPHENIRAMINE MALEATE", "DIPHENHYDRAMINE HCL")),
+            "L-OLD": _Entry("otc", ("CHLORPHENIRAMINE MALEATE",)),
+        },
+        reminders=[_Reminder(medication_ids=["old"])],
+    )
+
+    await service.check("patient-1", ["new"])
+
+    assert len(replier.texts) == 1
+    assert "相同成分" in replier.texts[0][1]
+
+
+@pytest.mark.asyncio
+async def test_stacking_within_one_submission():
+    """同一個藥袋裡買了感冒藥又買了暈車藥——這條規則最典型的情境。"""
+    service, replier, _ = _build(
+        meds={
+            "a": _Med(id="a", name="綜合感冒膠囊", license_number="L-A"),
+            "b": _Med(id="b", name="暈車藥", license_number="L-B"),
+        },
+        catalog={
+            "L-A": _Entry("otc", ("CHLORPHENIRAMINE MALEATE",)),
+            "L-B": _Entry("otc", ("DIMENHYDRINATE",)),
+        },
+        reminders=[],
+    )
+
+    await service.check("patient-1", ["a", "b"])
+
+    assert len(replier.texts) == 1
+
+
+@pytest.mark.asyncio
+async def test_local_action_form_is_excluded_from_stacking():
+    """點眼劑的抗組織胺全身吸收量可忽略，這種疊加沒有臨床意義。
+
+    排除只作用在比對上——家人仍會收到「新增了非處方藥」的通知。
+    """
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="抗過敏眼藥水", license_number="L-NEW"),
+            "old": _Med(id="old", name="暈車藥", license_number="L-OLD"),
+        },
+        catalog={
+            "L-NEW": _Entry("otc", ("CHLORPHENIRAMINE MALEATE",), dosage_form="點眼液劑"),
+            "L-OLD": _Entry("otc", ("DIMENHYDRINATE",)),
+        },
+        reminders=[_Reminder(medication_ids=["old"])],
+        local_forms=frozenset({"點眼液劑"}),
+    )
+
+    await service.check("patient-1", ["new"])
+
+    assert [u for u, _ in replier.flexes] == ["family-1"]
+    assert replier.texts == [], "當事人不該收到疊加提醒"
+
+
+@pytest.mark.asyncio
+async def test_empty_anticholinergic_list_disables_stacking_only():
+    """清單載入失敗時退化成「不偵測疊加」，成分重複與新增通知不受影響。"""
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="綜合感冒膠囊", license_number="L-NEW"),
+            "old": _Med(id="old", name="暈車藥", license_number="L-OLD"),
+        },
+        catalog={
+            "L-NEW": _Entry("otc", ("CHLORPHENIRAMINE MALEATE",)),
+            "L-OLD": _Entry("otc", ("DIMENHYDRINATE",)),
+        },
+        reminders=[_Reminder(medication_ids=["old"])],
+        anticholinergics=IngredientClass(()),
+    )
+
+    await service.check("patient-1", ["new"])
+
+    assert [u for u, _ in replier.flexes] == ["family-1"], "新增通知仍要發"
+    assert replier.texts == []
+
+
+@pytest.mark.asyncio
+async def test_stacking_with_no_family_uses_solo_wording():
+    """沒有合格收件人時不能說「也讓家人幫你看一下」。"""
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="綜合感冒膠囊", license_number="L-NEW"),
+            "old": _Med(id="old", name="暈車藥", license_number="L-OLD"),
+        },
+        catalog={
+            "L-NEW": _Entry("otc", ("CHLORPHENIRAMINE MALEATE",)),
+            "L-OLD": _Entry("otc", ("DIMENHYDRINATE",)),
+        },
+        reminders=[_Reminder(medication_ids=["old"])],
+        recipients=(),
+    )
+
+    await service.check("patient-1", ["new"])
+
+    assert replier.flexes == []
+    ((_, text),) = replier.texts
+    assert "家人" not in text
+
+
+# --- 中西藥交互作用 -------------------------------------------------------
+#
+# 補上健保雲端藥歷與現有規則都看不到的那一格：藥局買的成藥（雲端藥歷沒有）
+# 配上中藥（成分是中文名，字串比對永遠對不上西藥學名）。橋接靠的是衛福部
+# 維護的配對表，不是我們推測的對應。
+
+GE_GEN = TcmCatalogEntry(code="P025", name_zh="葛根湯", herbs=("葛根", "麻黃", "桂枝"))
+TCM_CATALOG = TcmCatalogService([GE_GEN])
+TCM_PAIRS = TcmInteractionTable(
+    [
+        {"tcm": "葛根湯", "western": "ASPIRIN", "western_kind": "ingredient", "summary": "機制未明"},
+        {"tcm": "甘草", "western": "利尿劑", "western_kind": "class", "summary": ""},
+    ]
+)
+
+
+@pytest.mark.asyncio
+async def test_new_tcm_against_existing_western_notifies():
+    """自費看中醫拿了葛根湯，家裡還有醫師開的阿斯匹靈。"""
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="順天堂葛根湯濃縮顆粒"),
+            "old": _Med(id="old", name="阿斯匹靈腸溶錠", license_number="L-OLD"),
+        },
+        catalog={"L-OLD": _Entry("prescription", ("ASPIRIN",))},
+        reminders=[_Reminder(medication_ids=["old"])],
+        tcm_catalog=TCM_CATALOG,
+        tcm_interactions=TCM_PAIRS,
+    )
+
+    await service.check("patient-1", ["new"])
+
+    assert [u for u, _ in replier.flexes] == ["family-1"]
+    ((_, text),) = replier.texts
+    assert "葛根湯" in text and "阿斯匹靈腸溶錠" in text
+    # 先破除「中藥溫和、可以配著吃」，否則後面導向藥師會被當成小題大作。
+    assert "溫和" in text
+    # 措辭紅線不變。
+    assert "停" not in text and "劑量" not in text
+
+
+@pytest.mark.asyncio
+async def test_new_otc_against_existing_tcm_notifies():
+    """反方向：在吃中藥期間自己去買了成藥。只查一個方向會漏掉一半。"""
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="阿斯匹靈錠", license_number="L-NEW"),
+            "old": _Med(id="old", name="葛根湯"),
+        },
+        catalog={"L-NEW": _Entry("otc", ("ASPIRIN",))},
+        reminders=[_Reminder(medication_ids=["old"])],
+        tcm_catalog=TCM_CATALOG,
+        tcm_interactions=TCM_PAIRS,
+    )
+
+    await service.check("patient-1", ["new"])
+
+    ((_, text),) = replier.texts
+    assert "阿斯匹靈錠" in text and "葛根湯" in text
+
+
+@pytest.mark.asyncio
+async def test_tcm_alone_triggers_no_interaction_message():
+    """只加了中藥、沒有對得上的西藥——家人仍收到「新增了藥」，當事人不打擾。"""
+    service, replier, _ = _build(
+        meds={"new": _Med(id="new", name="葛根湯")},
+        catalog={},
+        reminders=[],
+        tcm_catalog=TCM_CATALOG,
+        tcm_interactions=TCM_PAIRS,
+    )
+
+    await service.check("patient-1", ["new"])
+
+    assert [u for u, _ in replier.flexes] == ["family-1"]
+    assert replier.texts == []
+
+
+@pytest.mark.asyncio
+async def test_overlap_takes_precedence_over_tcm():
+    """三條規則的優先序：成分重複 → 疊加 → 中西藥。一次只發一則。"""
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="阿斯匹靈錠", license_number="L-NEW"),
+            "old1": _Med(id="old1", name="葛根湯"),
+            "old2": _Med(id="old2", name="普拿疼", license_number="L-OLD"),
+        },
+        catalog={
+            "L-NEW": _Entry("otc", ("ASPIRIN", "ACETAMINOPHEN")),
+            "L-OLD": _Entry("otc", ("ACETAMINOPHEN",)),
+        },
+        reminders=[_Reminder(medication_ids=["old1", "old2"])],
+        tcm_catalog=TCM_CATALOG,
+        tcm_interactions=TCM_PAIRS,
+    )
+
+    await service.check("patient-1", ["new"])
+
+    assert len(replier.texts) == 1
+    assert "相同成分" in replier.texts[0][1]
+
+
+@pytest.mark.asyncio
+async def test_empty_tcm_table_disables_only_that_rule():
+    """配對表載入失敗時退化成「不偵測中西藥」，其餘不受影響。"""
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="葛根湯"),
+            "old": _Med(id="old", name="阿斯匹靈腸溶錠", license_number="L-OLD"),
+        },
+        catalog={"L-OLD": _Entry("prescription", ("ASPIRIN",))},
+        reminders=[_Reminder(medication_ids=["old"])],
+        tcm_catalog=TCM_CATALOG,
+        tcm_interactions=TcmInteractionTable(()),
+    )
+
+    await service.check("patient-1", ["new"])
+
+    assert [u for u, _ in replier.flexes] == ["family-1"], "新增通知仍要發"
+    assert replier.texts == []
+
+
+@pytest.mark.asyncio
+async def test_without_tcm_catalog_nothing_is_identified_as_tcm():
+    """未註冊中藥庫時行為與過去完全一致——中藥不被辨識，這條通道不啟動。"""
+    service, replier, _ = _build(
+        meds={"new": _Med(id="new", name="葛根湯")},
+        catalog={},
+        reminders=[],
+        tcm_catalog=None,
+    )
+
+    await service.check("patient-1", ["new"])
+
+    assert replier.flexes == []
+    assert replier.texts == []
+
+
+# --- 出血風險與中藥材重複 -------------------------------------------------
+
+CLASS_PAIRS = ClassPairTable.load_from_path()
+TCM_HERBS = IngredientWatchlist(["甘草", "炙甘草", "麻黃"])
+
+
+@pytest.mark.asyncio
+async def test_otc_nsaid_against_prescribed_anticoagulant():
+    """成藥止痛藥 × 處方抗凝血劑。三條成分層級的規則全部落空，但這是最重要的
+    成藥 × 處方藥組合之一，而健保雲端藥歷也看不到成藥那一側。"""
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="布洛芬錠", license_number="L-NEW"),
+            "old": _Med(id="old", name="可邁丁錠", license_number="L-OLD"),
+        },
+        catalog={
+            "L-NEW": _Entry("otc_guided", ("IBUPROFEN",), atc_codes=("M01AE01",)),
+            "L-OLD": _Entry("prescription", ("WARFARIN SODIUM",), atc_codes=("B01AA03",)),
+        },
+        reminders=[_Reminder(medication_ids=["old"])],
+        class_pairs=CLASS_PAIRS,
+    )
+
+    await service.check("patient-1", ["new"])
+
+    ((_, text),) = replier.texts
+    assert "布洛芬錠" in text and "可邁丁錠" in text
+    # 要讓人現在就注意得到的徵兆。
+    assert "黑" in text
+    # 抗凝血劑自行停用會中風，比出血更嚴重——這則 SHALL 明講不要自行停藥。
+    assert "不要自己停掉" in text
+
+
+@pytest.mark.asyncio
+async def test_bleeding_outranks_the_other_rules():
+    """優先序即嚴重度：出血是四條規則裡唯一可能致命的。"""
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="止痛感冒錠", license_number="L-NEW"),
+            "old": _Med(id="old", name="可邁丁錠", license_number="L-OLD"),
+        },
+        catalog={
+            # 兩邊都有 ACETAMINOPHEN（成分重複也會成立），但出血優先。
+            "L-NEW": _Entry("otc", ("IBUPROFEN", "ACETAMINOPHEN"), atc_codes=("M01AE01",)),
+            "L-OLD": _Entry(
+                "prescription", ("WARFARIN SODIUM", "ACETAMINOPHEN"), atc_codes=("B01AA03",)
+            ),
+        },
+        reminders=[_Reminder(medication_ids=["old"])],
+        class_pairs=CLASS_PAIRS,
+    )
+
+    await service.check("patient-1", ["new"])
+
+    assert len(replier.texts) == 1
+    assert "出血" in replier.texts[0][1]
+
+
+@pytest.mark.asyncio
+async def test_two_tcm_formulas_sharing_a_watched_herb():
+    """兩帖方含同一味藥材，與兩盒成藥含同一個成分是同一件事，用的也是同一個
+    判定函式（find_overlap），只是換一份白名單。"""
+    ge_gen = TcmCatalogEntry(code="P025", name_zh="葛根湯", herbs=("葛根", "麻黃", "炙甘草"))
+    shao_yao = TcmCatalogEntry(code="P030", name_zh="芍藥甘草湯", herbs=("白芍", "炙甘草"))
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="葛根湯"),
+            "old": _Med(id="old", name="芍藥甘草湯"),
+        },
+        catalog={},
+        reminders=[_Reminder(medication_ids=["old"])],
+        tcm_catalog=TcmCatalogService([ge_gen, shao_yao]),
+        tcm_watch_herbs=TCM_HERBS,
+    )
+
+    await service.check("patient-1", ["new"])
+
+    ((_, text),) = replier.texts
+    assert "炙甘草" in text
+
+
+@pytest.mark.asyncio
+async def test_common_herbs_outside_the_watchlist_are_not_reported():
+    """茯苓、當歸、白芍在基準方裡各出現 50~63 次，兩帖共用是常態。
+    全比對會讓警報被它們淹沒——與西藥白名單排除維生素同一個理由。"""
+    a = TcmCatalogEntry(code="P1", name_zh="甲方", herbs=("當歸", "茯苓"))
+    b = TcmCatalogEntry(code="P2", name_zh="乙方", herbs=("當歸", "白芍"))
+    service, replier, _ = _build(
+        meds={"new": _Med(id="new", name="甲方"), "old": _Med(id="old", name="乙方")},
+        catalog={},
+        reminders=[_Reminder(medication_ids=["old"])],
+        tcm_catalog=TcmCatalogService([a, b]),
+        tcm_watch_herbs=TCM_HERBS,
+    )
+
+    await service.check("patient-1", ["new"])
+
+    assert replier.texts == []
+
+
+@pytest.mark.asyncio
+async def test_missing_atc_codes_disable_only_the_bleeding_rule():
+    """atc_codes 覆蓋率 58.4%，查無 ATC 是常態，退化方向是少偵測。"""
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="布洛芬錠", license_number="L-NEW"),
+            "old": _Med(id="old", name="可邁丁錠", license_number="L-OLD"),
+        },
+        catalog={
+            "L-NEW": _Entry("otc_guided", ("IBUPROFEN",)),
+            "L-OLD": _Entry("prescription", ("WARFARIN SODIUM",)),
+        },
+        reminders=[_Reminder(medication_ids=["old"])],
+        class_pairs=CLASS_PAIRS,
+    )
+
+    await service.check("patient-1", ["new"])
+
+    assert [u for u, _ in replier.flexes] == ["family-1"], "新增通知仍要發"
+    assert replier.texts == []

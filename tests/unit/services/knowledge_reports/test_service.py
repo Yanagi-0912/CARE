@@ -1253,3 +1253,90 @@ async def test_run_ingest_fails_when_snapshot_was_replaced(
     assert result.ingest_job is not None
     assert result.ingest_job.status == "failed"
     mock_ingest.ingest_content.assert_not_awaited()
+
+
+# ── web_fallback 自動建報的主題閘門 ─────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_create_from_web_fallback_skips_off_topic_question(mock_repo: MagicMock):
+    """
+    2026-09-10「軍艦進行曲」觸發網搜降級，搜到的 gov.tw 網頁自動變成待審報告，
+    核准後 130 個非醫療 chunk 進了知識庫。白名單照設計放行 gov.tw，主題把關
+    必須另外做。
+    """
+    guard = AsyncMock(return_value=False)
+    service = KnowledgeReportService(repository=mock_repo, topic_guard=guard)
+
+    report = await service.create_from_web_fallback(
+        question="軍艦進行曲",
+        urls=[ALLOWED_URL],
+        line_user_id="U_TEST",
+    )
+
+    assert report is None
+    guard.assert_awaited_once_with("軍艦進行曲")
+    mock_repo.insert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_off_topic_question_does_not_delete_existing_reports(mock_repo: MagicMock):
+    """
+    閘門必須在 delete_pending_or_reviewing_by_urls 之前。放在後面的話，非醫療
+    問題雖然不建報告，卻會順手刪掉別人針對同一網址的待審報告。
+    """
+    service = KnowledgeReportService(
+        repository=mock_repo, topic_guard=AsyncMock(return_value=False)
+    )
+
+    await service.create_from_web_fallback(
+        question="法國國歌", urls=[ALLOWED_URL], line_user_id="U_TEST"
+    )
+
+    mock_repo.delete_pending_or_reviewing_by_urls.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_from_web_fallback_creates_when_on_topic(mock_repo: MagicMock):
+    guard = AsyncMock(return_value=True)
+    service = KnowledgeReportService(repository=mock_repo, topic_guard=guard)
+
+    report = await service.create_from_web_fallback(
+        question="高血壓飲食？", urls=[ALLOWED_URL], line_user_id="U_TEST"
+    )
+
+    assert report is not None
+    assert report.source == "web_fallback"
+    mock_repo.delete_pending_or_reviewing_by_urls.assert_awaited_once_with([ALLOWED_URL])
+    mock_repo.insert.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_topic_guard_failure_fails_open(mock_repo: MagicMock):
+    """
+    閘門出錯時照舊建報告：報告還要人工核准才會入庫，放行的代價只是佇列多一筆；
+    fail-closed 的代價是 guardrail 故障期間所有健康問題的回報靜默消失。
+    """
+    guard = AsyncMock(side_effect=RuntimeError("Gemini 逾時"))
+    service = KnowledgeReportService(repository=mock_repo, topic_guard=guard)
+
+    report = await service.create_from_web_fallback(
+        question="高血壓飲食？", urls=[ALLOWED_URL], line_user_id="U_TEST"
+    )
+
+    assert report is not None
+    mock_repo.insert.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_topic_guard_not_consulted_when_there_are_no_urls(mock_repo: MagicMock):
+    """沒有網址就不會建報告，不必為此付一次 guardrail 呼叫。"""
+    guard = AsyncMock(return_value=True)
+    service = KnowledgeReportService(repository=mock_repo, topic_guard=guard)
+
+    report = await service.create_from_web_fallback(
+        question="問題", urls=["", "  "], line_user_id="U_TEST"
+    )
+
+    assert report is None
+    guard.assert_not_awaited()

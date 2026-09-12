@@ -56,13 +56,21 @@ from app.services.medication.prescription_ocr_service import PrescriptionOcrServ
 from app.services.medication.prescription_scan_service import PrescriptionScanService
 from app.services.safety.drug_mention_extractor import DrugMentionExtractor
 from app.services.safety.ingredient_overlap import (
+    IngredientClass,
     IngredientWatchlist,
     load_local_action_forms,
 )
+from app.services.medication.tcm_catalog_service import TcmCatalogService
 from app.services.safety.otc_alert_service import OtcAlertService
+from app.services.safety.atc_interaction import ClassPairTable
+from app.services.safety.tcm_interaction import TcmInteractionTable
 from app.services.safety.safety_alert_service import SafetyAlertService
 from app.services.gemini import GeminiService
-from app.services.guardrail import GuardrailService
+from app.services.guardrail import (
+    CascadeGuardrailService,
+    GuardrailService,
+    LocalGuardrailClassifier,
+)
 from app.services.history.history_service import LineMessageHistoryService
 from app.services.knowledge_reports.preview_service import ContentPreviewService
 from app.services.knowledge_reports.service import KnowledgeReportService
@@ -102,9 +110,13 @@ from app.services.rag.whitelist import default_url_policy
 from app.services.rag.user_document_answer_service import UserDocumentAnswerService
 from app.services.rag.user_document_ingest_service import UserDocumentIngestService
 from app.services.rag.user_document_retriever import UserDocumentVectorRetriever
-from app.services.rag.query_rewriter import GeminiQueryRewriter
+from app.services.rag.query_rewriter import (
+    REWRITE_THINKING_LEVEL,
+    GeminiQueryRewriter,
+)
 from app.services.rag.retrieval_grader import GeminiRetrievalGrader
 from app.services.rag.web_search_service import WebSearchService
+from app.services.medical_news.article_grader import GeminiKbArticleGrader
 from app.services.medical_news.grader import GeminiNewsGrader
 from app.services.medical_news.index_service import DrugNewsIndexService
 from app.services.medical_news.kb_digest_service import KbDigestService
@@ -126,9 +138,28 @@ _gemini_service = GeminiService(
     model_name=settings.MODEL_NAME,
 )
 
-_guardrail_service = GuardrailService(
+_llm_guardrail_service = GuardrailService(
     async_text_to_bool=_gemini_service.invoke_boolean_structured_output,
 )
+
+# 串接式 guardrail：本地分類器有把握時直接判，中間地帶才問 Gemini。
+#
+# 為什麼值得：guardrail 跑在每一則訊息的關鍵路徑上（graph 是
+# START → guardrail → agent，沒有並行），線上實測 p50 2,036ms、最快也要
+# 1,098ms。本地推論是次毫秒級，holdout 上 83.4% 的訊息不必再問 Gemini。
+#
+# 載入失敗就退回純 LLM 版本，不讓服務起不來——模型檔是建置期產出物
+# （scripts/build_guardrail_model.py），它不在時的正確行為是「跟導入前
+# 一模一樣」，而不是整個 RAG 守門失效。
+try:
+    _guardrail_service = CascadeGuardrailService(
+        local=LocalGuardrailClassifier.load(),
+        fallback=_llm_guardrail_service,
+    )
+    logger.info("Guardrail cascade enabled (local classifier + LLM fallback)")
+except Exception:
+    logger.exception("本地 guardrail 模型載入失敗，退回純 LLM 判斷")
+    _guardrail_service = _llm_guardrail_service
 
 _query_embeddings_kwargs: dict = {
     "model": settings.EMBEDDING_MODEL,
@@ -178,12 +209,16 @@ if settings.RAG_HYBRID_ENABLED and settings.MONGODB_TEXT_INDEX:
         text_retriever=_rag_text_retriever,
         rrf_k=settings.RAG_RRF_K,
         limit=settings.RAG_RETRIEVE_CANDIDATES,
+        fusion_mode=settings.RAG_FUSION_MODE,
+        alpha=settings.RAG_FUSION_ALPHA,
     )
     logger.info(
-        "RAG hybrid retrieval enabled: vector=%s text=%s rrf_k=%s",
+        "RAG hybrid retrieval enabled: vector=%s text=%s fusion=%s rrf_k=%s alpha=%s",
         settings.MONGODB_VECTOR_INDEX,
         settings.MONGODB_TEXT_INDEX,
+        settings.RAG_FUSION_MODE,
         settings.RAG_RRF_K,
+        settings.RAG_FUSION_ALPHA,
     )
 else:
     _rag_retriever = _rag_vector_retriever
@@ -212,7 +247,15 @@ _rag_grader = None
 _rag_rewriter = None
 if settings.RAG_CRAG_ENABLED:
     _rag_grader = GeminiRetrievalGrader(gemini_service=_gemini_service)
-    _rag_rewriter = GeminiQueryRewriter(gemini_service=_gemini_service)
+    # 改寫用獨立的低 thinking 實例：它與 CRAG 分級同時起跑，要比分級先跑完
+    # 才不會讓使用者多等（數字見 query_rewriter.REWRITE_THINKING_LEVEL）。
+    _rag_rewriter = GeminiQueryRewriter(
+        gemini_service=GeminiService(
+            api_key=settings.GEMINI_API_KEY,
+            model_name=settings.MODEL_NAME,
+            thinking_level=REWRITE_THINKING_LEVEL,
+        )
+    )
 else:
     logger.info("RAG_CRAG_ENABLED=false; skipping retrieval grader")
 
@@ -250,6 +293,11 @@ _knowledge_report_service = KnowledgeReportService(
     ingest_service=_ingest_service,
     url_policy=default_url_policy(),
     preview_service=_content_preview_service,
+    # 網搜降級自動建報前，先用與 agent 相同的 guardrail 判斷問題是否與健康
+    # 醫療相關（理由見 KnowledgeReportService._is_health_related）。刻意接
+    # cascade 而不是只接本地分類器：「法國國歌」「軍艦進行曲」這類短問句本地
+    # 模型給 p≈0.48、落在升級區，真正判出「不相關」的是 LLM 那一層。
+    topic_guard=_guardrail_service.allow_rag_tool,
 )
 configure_knowledge_report_tool(_knowledge_report_service)
 
@@ -270,6 +318,7 @@ _web_search_service = WebSearchService(
     web_client=_firecrawl_client,
     on_web_fallback_success=_knowledge_report_service.create_from_web_fallback,
     link_checker=_link_checker,
+    en_search_domains=settings.RAG_WEB_SEARCH_EN_DOMAINS.split(","),
 )
 
 _rag_answer_service = RagAnswerService(
@@ -523,6 +572,20 @@ _enabled_safety_alert_service = (
 # 靜態設定，每次偵測重讀只是白花 I/O；讀不到時 IngredientWatchlist 回空清單，
 # 效果是「不偵測任何重複」，與整條路徑對主流程 fail-open 的方向一致。
 _otc_watchlist = IngredientWatchlist.load_from_path()
+# 抗膽鹼疊加清單。同樣是靜態設定，讀不到時回空清單＝不偵測疊加。
+_anticholinergics = IngredientClass.load_from_path()
+# 中藥庫與中西藥配對表。同樣是建置期產出的靜態檔，執行期不對外連線；
+# 讀不到時兩者都退化成「不辨識中藥／不偵測中西藥交互作用」。
+_class_pairs = ClassPairTable.load_from_path()
+_tcm_watch_herbs = IngredientWatchlist(
+    entry.get("name", "")
+    for entry in (
+        IngredientWatchlist._load_payload("resources/tcm_watch_herbs.json").get("herbs")
+        or []
+    )
+)
+_tcm_catalog_service = TcmCatalogService.load_from_path()
+_tcm_interactions = TcmInteractionTable.load_from_path()
 _otc_local_action_forms = load_local_action_forms()
 _otc_alert_service = OtcAlertService(
     catalog_service=_drug_catalog_service,
@@ -530,6 +593,11 @@ _otc_alert_service = OtcAlertService(
     reminder_repository=MedicationReminderRepository,
     replier=_line_replier,
     watchlist=_otc_watchlist,
+    anticholinergics=_anticholinergics,
+    class_pairs=_class_pairs,
+    tcm_watch_herbs=_tcm_watch_herbs,
+    tcm_catalog_service=_tcm_catalog_service,
+    tcm_interactions=_tcm_interactions,
     local_action_forms=_otc_local_action_forms,
     # 與高風險通報走同一個決策點，只是查 NOTIFICATION_POLICY 裡的另一個種類
     # （otc_medication_added）。收到通知 SHALL NOT 改變收件人的資料存取權。
@@ -616,11 +684,23 @@ if _firecrawl_client is not None:
     )
 
 # Tier 2 讀的是 CARE-data 每日 ETL 維護的同一個 collection，不新增外部依賴。
+#
+# grader 是可選的第二道內容過濾（第一道是標題黑名單，在 relevance 裡、不花額度）。
+# 它與 Tier 1 的 `DrugNewsIndexService` 刻意不共用降級條件：Tier 1 缺 Firecrawl 就
+# 整個不存在，Tier 2 缺 grader 只是品質退一層，仍照常供應。
+_kb_article_grader = None
+if settings.MEDICAL_NEWS_TIER2_GRADER_ENABLED:
+    _kb_article_grader = GeminiKbArticleGrader(gemini_service=_gemini_service)
+else:
+    logger.info("MEDICAL_NEWS_TIER2_GRADER_ENABLED=false; Tier 2 只套用標題黑名單")
+
 _kb_digest_service = None
 if settings.MONGODB_URI and settings.MONGODB_COLLECTION:
     _kb_digest_service = KbDigestService(
         collection=MongoDBManager.get_database()[settings.MONGODB_COLLECTION],
         max_age_days=settings.MEDICAL_NEWS_MAX_AGE_DAYS,
+        grader=_kb_article_grader,
+        max_grade_calls=settings.MEDICAL_NEWS_TIER2_GRADE_MAX_CALLS,
     )
 
 _medical_news_share_service = MedicalNewsShareService(

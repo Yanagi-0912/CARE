@@ -683,7 +683,8 @@ if _firecrawl_client is not None:
         search_limit=settings.MEDICAL_NEWS_SEARCH_LIMIT,
     )
 
-# Tier 2 讀的是 CARE-data 每日 ETL 維護的同一個 collection，不新增外部依賴。
+# Tier 2 讀 CARE-data 每日 ETL 維護的兩個 collection：官方與 TFC 的知識庫（與 RAG 共用），
+# 以及健康媒體（daily_health_news，只給推播用）。不新增外部依賴。
 #
 # grader 是可選的第二道內容過濾（第一道是標題黑名單，在 relevance 裡、不花額度）。
 # 它與 Tier 1 的 `DrugNewsIndexService` 刻意不共用降級條件：Tier 1 缺 Firecrawl 就
@@ -701,6 +702,9 @@ if settings.MONGODB_URI and settings.MONGODB_COLLECTION:
         max_age_days=settings.MEDICAL_NEWS_MAX_AGE_DAYS,
         grader=_kb_article_grader,
         max_grade_calls=settings.MEDICAL_NEWS_TIER2_GRADE_MAX_CALLS,
+        # 健康媒體，官方當天沒有新內容時補位（kb_digest_service.recent_articles）。
+        # 沒有開關：collection 空的時候媒體那一群就是空的，行為與加入之前相同。
+        media_collection=MongoDBManager.get_daily_health_news_collection(),
     )
 
 _medical_news_share_service = MedicalNewsShareService(

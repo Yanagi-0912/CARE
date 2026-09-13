@@ -162,6 +162,17 @@ class MongoDBManager:
         return cls.get_database()["drug_news"]
 
     @classmethod
+    def get_daily_health_news_collection(cls):
+        """
+        取得 daily_health_news collection（健康媒體的每日文章，由 CARE-data 寫入）
+
+        刻意與 MONGODB_COLLECTION（health_articles_chunks）分開：那個 collection 同時是
+        RAG `$vectorSearch` 的檢索範圍，而檢索沒有依來源過濾——媒體文章寫進去就會變成
+        回答與查核判定卡的引用來源。這一個只給每日推播的 Tier 2 選材讀。
+        """
+        return cls.get_database()["daily_health_news"]
+
+    @classmethod
     def get_medical_news_deliveries_collection(cls):
         """
         取得 medical_news_deliveries collection（某位使用者收過哪些消息卡）

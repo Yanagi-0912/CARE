@@ -488,3 +488,55 @@ async def test_nothing_pushed_when_every_pool_article_already_seen():
     await scheduler.run_once("2026-09-02")
 
     assert replier.pushed == []
+
+
+# ── 官方優先、媒體補位 ────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_higher_priority_group_is_exhausted_before_lower():
+    """只要前一群還有這位使用者沒收過的，就不得跳到後一群。
+
+    群內仍做 user_id 錯開；但錯開若做在整個池子上，起點會隨機落在任何一群，
+    「官方優先」就退化成「官方與媒體隨機」——而媒體一天十幾篇，隨機起點幾乎
+    總落在媒體那群。
+    """
+    official = _article(url="https://www.hpa.gov.tw/fresh")._replace(priority=0)
+    media = [
+        _article(url=f"https://health.udn.com/{i}")._replace(priority=1)
+        for i in range(9)
+    ]
+    replier = FakeReplier()
+    scheduler = _scheduler(
+        replier=replier,
+        kb_digest=FakeKbDigest([official] + media),
+        user_repository=FakeUserRepo([f"U{i}" for i in range(10)]),
+        delivery_repository=FakeDeliveryRepo(),
+    )
+
+    await scheduler.run_once("2026-09-14")
+
+    assert len(replier.pushed) == 10
+    assert all("hpa.gov.tw/fresh" in str(flex) for _, flex in replier.pushed)
+
+
+@pytest.mark.asyncio
+async def test_falls_to_media_when_official_already_seen():
+    """官方那篇收過了，才輪到媒體。"""
+    from app.models.medical_news import make_news_ref
+
+    official = _article(url="https://www.hpa.gov.tw/fresh")._replace(priority=0)
+    media = _article(url="https://health.udn.com/1")._replace(priority=1)
+    # FakeDeliveryRepo 不記得 claim 過什麼，所以「收過官方那篇」要預先放進去，
+    # 而不是跑兩次 run_once。
+    deliveries = FakeDeliveryRepo(pushed={make_news_ref("kb_article", official.url)})
+    scheduler = _scheduler(
+        kb_digest=FakeKbDigest([official, media]),
+        delivery_repository=deliveries,
+    )
+
+    await scheduler.run_once("2026-09-14")
+
+    assert [ref for _, ref, _ in deliveries.claims] == [
+        make_news_ref("kb_article", media.url)
+    ]

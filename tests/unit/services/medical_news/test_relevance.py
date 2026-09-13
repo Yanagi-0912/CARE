@@ -181,3 +181,54 @@ def test_genuine_health_education_is_not_flagged(title):
 def test_empty_title_is_not_a_policy_announcement():
     assert relevance.is_policy_announcement("") is False
     assert relevance.is_policy_announcement(None) is False
+
+
+# ── 健康媒體過濾 ──────────────────────────────────────────────────────
+
+from app.services.medical_news.relevance import (  # noqa: E402
+    MEDIA_ALLOWED_CATEGORIES,
+    is_allowed_media_article,
+)
+
+
+def test_media_category_is_an_allowlist():
+    """沒見過的分類預設不收：封鎖清單漏列一個「性愛」，推出去的就是不該給長輩的卡。"""
+    assert is_allowed_media_article("醫療", "健檢發現甲狀腺結節會癌變嗎？")
+    for category in ("性愛", "退休力", "名人", "醫聲", "寵物", "ESG", "某個新分類", None, ""):
+        assert not is_allowed_media_article(category, "健檢發現甲狀腺結節會癌變嗎？"), category
+
+
+def test_covid_category_is_allowed():
+    """樣本沒抽到，但它是導覽列上的頂層分類、內容是疫情衛教。"""
+    assert "新冠肺炎" in MEDIA_ALLOWED_CATEGORIES
+
+
+def test_media_noise_titles_are_blocked():
+    """全部取自 2026-09-13 元氣網樣本的真實標題。"""
+    for title in (
+        "飯店入住別急著太早到 這時間Check-in更有機會免費升等房型",
+        "冰箱壽命10至15年，為何你家8年就壞？維修師揭6個常見使用錯誤",
+        "陽明山驚爆殺人棄屍 37歲男友起初還裝傻",
+        "鬼月醫院不能說的禁忌！一張病床1年「送走近20人」",
+        "違法吸金2.5億…昔「房仲金童」遭重判 卻驚傳因流感猝逝",
+        "突破困境不用英雄 歐嘉隆台灣總經理帶隊打團體戰",
+        "我的助聽人生／母親戴上助聽器 重新聽見我呼喚",
+    ):
+        assert not is_allowed_media_article("焦點", title), title
+
+
+def test_words_deliberately_left_out_do_not_block_real_health_content():
+    """「禁忌」「保險」「股市」「詐騙」刻意不收，因為會誤擋正是要推的內容。"""
+    for title in (
+        "降血壓藥的用藥禁忌 這3種食物別一起吃",
+        "全民健康保險新制上路 慢性病處方箋怎麼領",
+        "股市一震盪就失眠、心悸？醫見科技人焦慮求診增2成 一情況建議就醫",
+        "長輩接到假藥商詐騙電話 藥師教3招辨別",
+    ):
+        assert is_allowed_media_article("醫療", title), title
+
+
+def test_media_policy_announcements_are_blocked_too():
+    """「誰辦了什麼」不分官方或媒體都不是衛教，沿用 is_policy_announcement。"""
+    assert not is_allowed_media_article(
+        "焦點", "成大醫院呼吸道疾病衛教週登場，氣喘、肺阻塞團隊攜手守護全齡呼吸健康")

@@ -284,11 +284,17 @@ class MedicalNewsPushScheduler:
         """
         if not pool:
             return None
-        offset = _pool_offset(user_id, len(pool))
-        for index in range(len(pool)):
-            article = pool[(offset + index) % len(pool)]
-            if make_news_ref("kb_article", article.url) not in pushed_refs:
-                return article
+        # 依 priority 分群，先把前面的群挑完才輪到後面的群；群內才做 user_id
+        # 錯開。若對整個池子做錯開，起點會隨機落在任何一群，「官方優先、媒體
+        # 補位」就退化成「官方與媒體隨機」——而媒體一天十幾篇、官方兩篇，隨機
+        # 起點幾乎總是落在媒體那一群。
+        for priority in sorted({article.priority for article in pool}):
+            group = [article for article in pool if article.priority == priority]
+            offset = _pool_offset(user_id, len(group))
+            for index in range(len(group)):
+                article = group[(offset + index) % len(group)]
+                if make_news_ref("kb_article", article.url) not in pushed_refs:
+                    return article
         return None
 
     async def _send(

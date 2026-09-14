@@ -39,14 +39,24 @@ DEFAULT_SLOT_TIMES: dict[str, str] = {
 }
 
 # 錯過多久之後就不再補推播。對應 APScheduler 的 misfire_grace_time。
-# 預設取 20 分鐘（＝T+20 催促的門檻）：短暫部署造成的延遲仍會正常送達，
-# 超過這個範圍代表整條 T+0／T+20／T+30 時序已經失去意義，補推只會變成連環轟炸。
+# 預設取 20 分鐘（＝預設的催促時機 URGENT_AFTER_ANCHOR_MINUTES）：短暫部署造成
+# 的延遲仍會正常送達，超過這個範圍代表整條 T+0／T+20／T+30 時序已經失去意義，
+# 補推只會變成連環轟炸。「寬限＝催促時機」這個關係保證晚送的 T+0 不會在同一輪
+# 緊接著催促；用藥提醒拉霸挑的 +10／+15 會打破它，所以拉霸只對準時送出的 T+0
+# 套用催促時機（見 MedicationScheduler._reminder_tone）。
 #
 # 放在模型層是因為有兩個消費者，而且它們必須用同一個值：`MedicationScheduler`
 # 用它判斷展開出來的時段算不算錯過，`MedicationService` 用它判斷「改排程到已經
 # 過去的時刻」要不要先把該時刻註銷掉（見 `update_reminder`）。兩邊一旦分岔，
 # 服務層會擋掉排程器其實還會正常推播的時段，或反過來漏擋。
 DEFAULT_MISFIRE_GRACE_MINUTES = 20
+
+# T+20 催促與 T+30 家屬通報距離最晚服藥時刻（timeout_anchor_time）的分鐘數。
+# 排程器展開紀錄、服務層在長輩改提醒設定時對齊紀錄，都用這兩個值；拉霸改寫催促
+# 時間時，也靠 CAREGIVER_ALERT_AFTER_ANCHOR_MINUTES 從 timeout_at 反推最晚服藥
+# 時刻。放在模型層的理由同上：幾個使用端必須同值。
+URGENT_AFTER_ANCHOR_MINUTES = 20
+CAREGIVER_ALERT_AFTER_ANCHOR_MINUTES = 30
 
 SLOT_DISPLAY_NAMES: dict[str, str] = {
     "morning": "早",

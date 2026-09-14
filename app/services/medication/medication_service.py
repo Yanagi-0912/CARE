@@ -5,10 +5,12 @@ from fastapi import HTTPException
 
 from app.models.family_tree import FamilyTree
 from app.models.medication import (
+    CAREGIVER_ALERT_AFTER_ANCHOR_MINUTES,
     DEFAULT_MISFIRE_GRACE_MINUTES,
     DEFAULT_SLOT_TIMES,
     SLOT_DISPLAY_NAMES,
     TAIPEI_TZ,
+    URGENT_AFTER_ANCHOR_MINUTES,
     CreateMedicationReminderRequest,
     CreateMedicationRequest,
     Medication,
@@ -476,8 +478,8 @@ class MedicationService:
                 reminder_id,
                 scheduled_at=new_scheduled_at,
                 slot_type=updated.slot_type,
-                urgent_at=new_anchor_at + timedelta(minutes=20),
-                timeout_at=new_anchor_at + timedelta(minutes=30),
+                urgent_at=new_anchor_at + timedelta(minutes=URGENT_AFTER_ANCHOR_MINUTES),
+                timeout_at=new_anchor_at + timedelta(minutes=CAREGIVER_ALERT_AFTER_ANCHOR_MINUTES),
             )
             if cancelled or retagged:
                 logger.info(
@@ -505,8 +507,8 @@ class MedicationService:
                 reminder_id,
                 scheduled_at=scheduled_at,
                 slot_type=updated.slot_type,
-                urgent_at=anchor_at + timedelta(minutes=20),
-                timeout_at=anchor_at + timedelta(minutes=30),
+                urgent_at=anchor_at + timedelta(minutes=URGENT_AFTER_ANCHOR_MINUTES),
+                timeout_at=anchor_at + timedelta(minutes=CAREGIVER_ALERT_AFTER_ANCHOR_MINUTES),
             )
             if cancelled or retagged:
                 logger.info(

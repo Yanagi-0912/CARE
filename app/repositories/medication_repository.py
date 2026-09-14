@@ -1227,8 +1227,9 @@ class MedicationLogRepository:
         log_id: str,
         *,
         tone: str,
-        nudge_minutes: int,
-        urgent_at: datetime,
+        nudge_minutes: Optional[int],
+        urgent_at: Optional[datetime],
+        expected_timeout_at: datetime,
         collection: Optional[Any] = None,
     ) -> Optional[MedicationLog]:
         """寫入用藥提醒拉霸替這一頓挑的選項，回傳資料庫讀回的紀錄。
@@ -1240,21 +1241,29 @@ class MedicationLogRepository:
 
         `urgent_at` 一併改寫成最晚服藥時刻＋`nudge_minutes`：T+20 催促的查詢
         （`list_pending_urgent_reminders`）讀的就是這個欄位，改了它就改了催促
-        時機，查詢本身不必動。
+        時機，查詢本身不必動。T+0 晚送的那一頓兩者都傳 None：只記語氣，催促時間
+        維持展開時的預設值。
+
+        `expected_timeout_at` 是挑選時看到的逾時時間，也是寫入條件：長輩剛好在這
+        一刻改了提醒設定（`resync_pending_by_reminder` 已經對齊好新的
+        `urgent_at`／`timeout_at`），寫入就會落空，不會用舊的最晚時刻蓋回去。
+
+        寫入與讀回是同一次原子操作，不會出現「寫進去了、讀回卻失敗」而讓 T+0 卡片
+        與資料庫記的版本不一致。
         """
         if collection is None:
             collection = MongoDBManager.get_medication_logs_collection()
-        await collection.update_one(
-            {"_id": log_id, "reminder_tone": None},
-            {
-                "$set": {
-                    "reminder_tone": tone,
-                    "nudge_minutes": nudge_minutes,
-                    "urgent_at": urgent_at,
-                }
-            },
+        fields: dict = {"reminder_tone": tone, "nudge_minutes": nudge_minutes}
+        if urgent_at is not None:
+            fields["urgent_at"] = urgent_at
+        doc = await collection.find_one_and_update(
+            {"_id": log_id, "reminder_tone": None, "timeout_at": expected_timeout_at},
+            {"$set": fields},
+            return_document=ReturnDocument.AFTER,
         )
-        doc = await collection.find_one({"_id": log_id})
+        if doc is None:
+            # 沒有寫入：已經有人寫過，或逾時時間在挑選之後被改掉了。照資料庫那一份。
+            doc = await collection.find_one({"_id": log_id})
         if not doc:
             return None
         doc["_id"] = str(doc["_id"])
@@ -1273,7 +1282,14 @@ class MedicationLogRepository:
         if collection is None:
             collection = MongoDBManager.get_medication_logs_collection()
         cursor = collection.find(
-            {"reminder_tone": {"$ne": None}, "status": {"$in": ["taken", "missed"]}}
+            {
+                "reminder_tone": {"$ne": None},
+                "status": {"$in": ["taken", "missed"]},
+                # T+0 重試用完、根本沒送達的那一頓（旗標停在「已送出」，見
+                # release_push_claim）：長輩沒看到訊息，結果與挑了哪一版無關。
+                # 用 $not/$gte 而不是 $lt：欄位不存在的紀錄才不會被一併排除。
+                "patient_reminder_attempts": {"$not": {"$gte": MAX_PUSH_ATTEMPTS}},
+            }
         )
         docs = await cursor.to_list(length=None)
         return [MedicationLog(**{**doc, "_id": str(doc["_id"])}) for doc in docs]

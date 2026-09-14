@@ -6,8 +6,10 @@ from typing import Any, Callable, Optional
 
 from app.core.request_logging import log_stage
 from app.models.medication import (
+    CAREGIVER_ALERT_AFTER_ANCHOR_MINUTES,
     DEFAULT_MISFIRE_GRACE_MINUTES,
     TAIPEI_TZ,
+    URGENT_AFTER_ANCHOR_MINUTES,
     Medication,
     MedicationLog,
     MedicationReminder,
@@ -31,7 +33,12 @@ from app.services.line_messaging.reply.reply import LineReplier
 from app.services.medication.drug_appearance_image_service import (
     resolve_drug_appearance_image_url,
 )
-from app.services.medication.reminder_variants import TONE_CONTROL, choose_variant
+from app.services.medication.reminder_variants import (
+    TONE_CONTROL,
+    VariantStats,
+    build_variant_stats,
+    choose_variant,
+)
 from app.services.scheduling.push_tick_scheduler import PushTickScheduler, RecipientPrefs
 from app.services.users.user_profile_service import UserProfileService
 
@@ -42,9 +49,11 @@ logger = logging.getLogger(__name__)
 # 停擺一整天都還在它的正常範圍內，當不了 liveness 依據。
 HEARTBEAT_NAME = "medication"
 
-# T+30 家屬逾時通報距離最晚服藥時刻（timeout_anchor_time）多久。展開紀錄時用它算
-# timeout_at；拉霸改寫催促時間時，用它從 timeout_at 反推最晚服藥時刻。
-_CAREGIVER_ALERT_AFTER_ANCHOR = timedelta(minutes=30)
+# T+0 在排定時刻之後多久以內送出算「準時」。排程每 60 秒一輪，準時的 T+0 會在排定
+# 後一輪內送出；多留一輪給第一次推播失敗後的重送。超過這個時間才送的那一頓（排程器
+# 停過、長輩把時段改到剛過去、時段剛重新啟用），拉霸只挑語氣、不挑催促時機：催促若
+# 照 +10 算，可能在送 T+0 的同一輪就緊接著送出（見 DEFAULT_MISFIRE_GRACE_MINUTES）。
+_ON_TIME_T0 = timedelta(minutes=2)
 
 
 # 收件人偏好的型別已移到與掛號提醒共用的排程骨架（push_tick_scheduler）；
@@ -384,7 +393,8 @@ class MedicationScheduler(PushTickScheduler):
         self,
         log: MedicationLog,
         medication_cache: _TickMedicationNameCache,
-        variant_history: Optional[list[MedicationLog]] = None,
+        variant_stats: Optional[VariantStats] = None,
+        now: Optional[datetime] = None,
     ) -> bool:
         prefs = await self._resolve_prefs(log.user_id)
         if not prefs.notify_reminder:
@@ -399,7 +409,7 @@ class MedicationScheduler(PushTickScheduler):
             return True
         language, font_size = prefs.language, prefs.font_size
         # 關掉提醒的那一頓在上面就回傳了，不會進拉霸：訊息沒送出去，沒有東西可學。
-        tone = await self._reminder_tone(log, variant_history)
+        tone = await self._reminder_tone(log, variant_stats, now)
         # 用藥者的提醒卡要看得出「哪一顆」，走 get_entries() 帶出縮圖 URL；
         # 家屬警報只需要藥名，見 _send_caregiver_alert 仍是 get()。
         medication_entries = await medication_cache.get_entries(log)
@@ -419,46 +429,77 @@ class MedicationScheduler(PushTickScheduler):
         return await self._replier.push_flex(log.user_id, flex_msg)
 
     async def _reminder_tone(
-        self, log: MedicationLog, history: Optional[list[MedicationLog]]
+        self,
+        log: MedicationLog,
+        stats: Optional[VariantStats],
+        now: Optional[datetime] = None,
     ) -> str:
-        """這一頓 T+0 用哪種語氣，並把拉霸的選擇寫進紀錄（催促時間一併改寫）。
+        """這一頓 T+0 用哪種語氣，並把拉霸的選擇寫進紀錄。
 
-        推播失敗後重送時，紀錄上已經有選項，照用、不重挑。`history` 為 None 代表
+        推播失敗後重送時，紀錄上已經有選項，照用、不重挑。`stats` 為 None 代表
         這一輪讀不到歷史（或呼叫端沒給）。拉霸出任何狀況都退回現行版本照常送出
         ——提醒不能因為學習機制出錯而送不出去；退回時不寫入選項，這一頓也就不會
         被當成拉霸的結果拿去學。
+
+        準時送出的 T+0 才套用拉霸挑的催促時機（改寫 urgent_at）；晚送的只挑語氣，
+        催促維持展開時的預設值，理由見 `_ON_TIME_T0`。
         """
         if log.reminder_tone:
             return log.reminder_tone
-        if history is None:
+        if stats is None:
             return TONE_CONTROL
+        sent_at = ensure_aware_utc(now or datetime.now(TAIPEI_TZ))
+        on_time = sent_at - ensure_aware_utc(log.scheduled_at) <= _ON_TIME_T0
         try:
-            variant = choose_variant(log, history, sample=self._variant_sample)
-            # 催促從最晚服藥時刻起算（飯前飯後分兩批時，最晚那批才是該催的時刻），
-            # 不是從 T+0 的 scheduled_at。
-            anchor = ensure_aware_utc(log.timeout_at) - _CAREGIVER_ALERT_AFTER_ANCHOR
+            variant = choose_variant(
+                log, stats, sample=self._variant_sample, apply_timing=on_time
+            )
+            urgent_at = None
+            if variant.nudge_minutes is not None:
+                # 催促從最晚服藥時刻起算（飯前飯後分兩批時，最晚那批才是該催的
+                # 時刻），不是從 T+0 的 scheduled_at。
+                anchor = ensure_aware_utc(log.timeout_at) - timedelta(
+                    minutes=CAREGIVER_ALERT_AFTER_ANCHOR_MINUTES
+                )
+                urgent_at = anchor + timedelta(minutes=variant.nudge_minutes)
             stored = await self._log_repository.assign_reminder_variant(
                 log.id,
                 tone=variant.tone,
                 nudge_minutes=variant.nudge_minutes,
-                urgent_at=anchor + timedelta(minutes=variant.nudge_minutes),
+                urgent_at=urgent_at,
+                # 挑選時看到的逾時時間。長輩剛好改了提醒設定時寫入會落空，不會
+                # 用舊的最晚時刻蓋掉剛對齊好的催促時間。
+                expected_timeout_at=log.timeout_at,
             )
         except Exception:
             logger.exception(
-                "[MedicationScheduler] Failed to choose reminder variant for %s; "
-                "sending current wording",
+                "[MedicationScheduler] Failed to record reminder variant for %s; "
+                "re-reading the log to stay consistent",
                 log.id,
             )
-            return TONE_CONTROL
+            stored = await self._reread_log(log.id)
         if stored is None or not stored.reminder_tone:
             return TONE_CONTROL
         log_stage(logger, "med_variant", tone=stored.reminder_tone, nudge=stored.nudge_minutes)
         return stored.reminder_tone
 
-    async def _load_variant_history(self) -> Optional[list[MedicationLog]]:
-        """讀出拉霸學習用的歷史；失敗時回 None，這一輪的 T+0 全部照現行版本送。"""
+    async def _reread_log(self, log_id: str) -> Optional[MedicationLog]:
+        """寫入時出錯，但寫入可能其實已經生效（例如回應在網路上丟了）：重讀一次，
+        讓 T+0 卡片跟資料庫記的那一版一致（T+20 會照資料庫送）。讀不到就當作沒寫入。"""
         try:
-            return await self._log_repository.list_variant_outcomes()
+            return await self._log_repository.get_log_by_id(log_id)
+        except Exception:
+            logger.exception(
+                "[MedicationScheduler] Failed to re-read log %s; sending current wording",
+                log_id,
+            )
+            return None
+
+    async def _load_variant_stats(self) -> Optional[VariantStats]:
+        """讀出拉霸學習用的歷史並彙整成計數表；失敗時回 None，這一輪的 T+0 全部照
+        現行版本送。"""
+        try:
+            return build_variant_stats(await self._log_repository.list_variant_outcomes())
         except Exception:
             logger.exception(
                 "[MedicationScheduler] Failed to load reminder variant history; "
@@ -702,8 +743,8 @@ class MedicationScheduler(PushTickScheduler):
                 anchor_dt = datetime.strptime(
                     f"{today_date_str} {reminder.timeout_anchor_time}", "%Y-%m-%d %H:%M"
                 ).replace(tzinfo=current_time.tzinfo)
-                urgent_at = anchor_dt + timedelta(minutes=20)
-                timeout_dt = anchor_dt + _CAREGIVER_ALERT_AFTER_ANCHOR
+                urgent_at = anchor_dt + timedelta(minutes=URGENT_AFTER_ANCHOR_MINUTES)
+                timeout_dt = anchor_dt + timedelta(minutes=CAREGIVER_ALERT_AFTER_ANCHOR_MINUTES)
 
                 # 不為「提醒建立之前」的時段補建 log。
                 # 否則 20:00 新增一筆早上 08:00 的提醒，會在同一個 tick 內連續
@@ -771,10 +812,9 @@ class MedicationScheduler(PushTickScheduler):
         # 同一個時段（例如 08:00）時，藥名查詢不會隨 log 數量線性增加。這裡只是建立
         # 查表物件本身（不發查詢），迴圈與 _dispatch 的搶佔／推播流程完全不變。
         initial_medication_cache = self._medication_cache(pending_initial_logs)
-        # 用藥提醒拉霸的歷史每一輪只讀一次，給這一輪所有 T+0 共用；沒有要送的就不讀。
-        variant_history = (
-            await self._load_variant_history() if pending_initial_logs else None
-        )
+        # 用藥提醒拉霸的歷史每一輪只讀一次、彙整成計數表，給這一輪所有 T+0 共用；
+        # 沒有要送的就不讀。
+        variant_stats = await self._load_variant_stats() if pending_initial_logs else None
         for log in pending_initial_logs:
             await self._dispatch(
                 stage="T+0min initial reminder",
@@ -782,7 +822,11 @@ class MedicationScheduler(PushTickScheduler):
                 claim=self._log_repository.claim_patient_reminder,
                 release=self._log_repository.release_patient_reminder,
                 send=partial(
-                    self._send_patient_reminder, log, initial_medication_cache, variant_history
+                    self._send_patient_reminder,
+                    log,
+                    initial_medication_cache,
+                    variant_stats,
+                    current_time,
                 ),
             )
 

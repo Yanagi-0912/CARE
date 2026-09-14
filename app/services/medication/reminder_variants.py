@@ -12,6 +12,9 @@
 成功率當起點，份量相當於 PRIOR_WEIGHT 次提醒，再疊上這位長輩自己的成功與失敗
 次數，從這個 Beta 分佈抽一個值，抽到最大的選項勝出。抽樣本身就是探索：資料少的
 選項分佈寬，偶爾會抽到高值而被試到。
+
+計數每一輪排程彙整一次（`build_variant_stats`），之後每一頓只查表，不再逐頓掃過
+全部歷史。
 """
 
 from __future__ import annotations
@@ -19,16 +22,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Hashable, Iterable, Mapping, Optional, Sequence
 
-from app.models.medication import MedicationLog, ensure_aware_utc
+from app.models.medication import URGENT_AFTER_ANCHOR_MINUTES, MedicationLog, ensure_aware_utc
 
 TONE_CONTROL = "control"
 TONE_FAMILY = "family"
 TONE_BRIEF = "brief"
 TONES: tuple[str, ...] = (TONE_CONTROL, TONE_FAMILY, TONE_BRIEF)
 
-# 催促在最晚服藥時刻之後幾分鐘送。20 是上線前的固定值（對照組）。T+30 的家屬
-# 通報不動，所以選項最晚只到 20：再晚，長輩收到催促後只剩不到 10 分鐘可以回應。
-NUDGE_CONTROL = 20
+# 催促在最晚服藥時刻之後幾分鐘送。對照組是上線前的固定值。T+30 的家屬通報不動，
+# 所以選項最晚只到 20：再晚，長輩收到催促後只剩不到 10 分鐘可以回應。
+NUDGE_CONTROL = URGENT_AFTER_ANCHOR_MINUTES
 NUDGE_MINUTES: tuple[int, ...] = (NUDGE_CONTROL, 15, 10)
 
 # 其他長輩的成功率當起點時，份量相當於幾次提醒。一位長輩自己累積到這個次數
@@ -36,28 +39,27 @@ NUDGE_MINUTES: tuple[int, ...] = (NUDGE_CONTROL, 15, 10)
 # 前幾天才不會因為一兩次沒按就把某個選項打入冷宮。
 PRIOR_WEIGHT = 10.0
 
-ArmCounts = dict[Hashable, tuple[int, int]]
-"""{選項: (成功次數, 失敗次數)}"""
+Counts = tuple[int, int]
+"""(成功次數, 失敗次數)"""
 
 
 @dataclass(frozen=True)
 class ReminderVariant:
     tone: str
-    nudge_minutes: int
+    # None：這一頓不進時機拉霸（T+0 晚送），催促維持展開時的預設值。
+    nudge_minutes: Optional[int]
 
 
-CONTROL_VARIANT = ReminderVariant(tone=TONE_CONTROL, nudge_minutes=NUDGE_CONTROL)
+def is_family_managed(log: MedicationLog) -> bool:
+    """逾時會通知「別人」的提醒，也就是家屬替長輩設的。長輩自己設的提醒（或自己
+    掃藥袋建立的），逾時通報的對象就是他本人。"""
+    return bool(log.alert_notify_user_id) and log.alert_notify_user_id != log.user_id
 
 
 def eligible_tones(log: MedicationLog) -> tuple[str, ...]:
-    """這一頓可以用哪些語氣。
-
-    家人版寫的是「家人就知道你吃過了」，只有逾時會通知「別人」的提醒才成立。
-    長輩自己設的提醒（或自己掃藥袋建立的），逾時通報的對象就是他本人。
-    """
-    if log.alert_notify_user_id and log.alert_notify_user_id != log.user_id:
-        return TONES
-    return (TONE_CONTROL, TONE_BRIEF)
+    """這一頓可以用哪些語氣。家人版寫的是「家人就知道你吃過了」，只有家屬設的提醒
+    才成立。"""
+    return TONES if is_family_managed(log) else (TONE_CONTROL, TONE_BRIEF)
 
 
 def outcome_of(log: MedicationLog) -> Optional[bool]:
@@ -73,34 +75,53 @@ def outcome_of(log: MedicationLog) -> Optional[bool]:
     return None
 
 
-def arm_counts(
-    logs: Iterable[MedicationLog],
-    arm_of: Callable[[MedicationLog], Optional[Hashable]],
-    *,
-    user_id: str,
-) -> tuple[ArmCounts, ArmCounts]:
-    """把有結果的紀錄依選項計數，回傳 `(其他長輩, 這位長輩)`。
+@dataclass(frozen=True)
+class VariantStats:
+    """一輪排程彙整一次的計數。
 
-    全體起點刻意排除這位長輩自己的紀錄：他的紀錄會以個人證據再疊一次，
-    算進起點等於同一筆資料用了兩次。
+    語氣依提醒是誰設的分兩群計數（鍵的第一個 bool 是 `is_family_managed`）：家人版
+    只會出現在家屬設的提醒上，兩群長輩原本的準時率若不同，混在一起算就會把這個差距
+    當成語氣的效果。催促時機兩群都會被分配到三個選項，不必分開。
     """
-    others: ArmCounts = {}
-    mine: ArmCounts = {}
-    for log in logs:
-        arm = arm_of(log)
-        outcome = outcome_of(log)
-        if arm is None or outcome is None:
+
+    tone: Mapping[tuple[bool, str], Counts]
+    tone_by_user: Mapping[tuple[str, bool, str], Counts]
+    nudge: Mapping[int, Counts]
+    nudge_by_user: Mapping[tuple[str, int], Counts]
+
+
+def _add(table: dict, key: Hashable, success: bool) -> None:
+    successes, failures = table.get(key, (0, 0))
+    table[key] = (successes + 1, failures) if success else (successes, failures + 1)
+
+
+def build_variant_stats(history: Iterable[MedicationLog]) -> VariantStats:
+    """把 `list_variant_outcomes()` 讀出的紀錄彙整成計數表（掃一次）。
+
+    時機被清掉的那一頓（長輩當天改了提醒設定）只算進語氣。
+    """
+    tone: dict = {}
+    tone_by_user: dict = {}
+    nudge: dict = {}
+    nudge_by_user: dict = {}
+    for log in history:
+        success = outcome_of(log)
+        if success is None:
             continue
-        bucket = mine if log.user_id == user_id else others
-        successes, failures = bucket.get(arm, (0, 0))
-        bucket[arm] = (successes + 1, failures) if outcome else (successes, failures + 1)
-    return others, mine
+        if log.reminder_tone is not None:
+            group = is_family_managed(log)
+            _add(tone, (group, log.reminder_tone), success)
+            _add(tone_by_user, (log.user_id, group, log.reminder_tone), success)
+        if log.nudge_minutes is not None:
+            _add(nudge, log.nudge_minutes, success)
+            _add(nudge_by_user, (log.user_id, log.nudge_minutes), success)
+    return VariantStats(tone, tone_by_user, nudge, nudge_by_user)
 
 
 def choose_arm(
     arms: Sequence[Hashable],
-    others: Mapping[Hashable, tuple[int, int]],
-    mine: Mapping[Hashable, tuple[int, int]],
+    others: Mapping[Hashable, Counts],
+    mine: Mapping[Hashable, Counts],
     *,
     sample: Callable[[float, float], float],
     prior_weight: float = PRIOR_WEIGHT,
@@ -125,26 +146,51 @@ def choose_arm(
     return best
 
 
+def _split(
+    arms: Sequence[Hashable],
+    total_of: Callable[[Hashable], Counts],
+    mine_of: Callable[[Hashable], Counts],
+) -> tuple[dict, dict]:
+    """(其他長輩, 這位長輩)。全體起點扣掉這位長輩自己的紀錄：他的紀錄會以個人
+    證據再疊一次，算進起點等於同一筆資料用了兩次。"""
+    mine = {arm: mine_of(arm) for arm in arms}
+    others = {
+        arm: (total_of(arm)[0] - mine[arm][0], total_of(arm)[1] - mine[arm][1]) for arm in arms
+    }
+    return others, mine
+
+
 def choose_variant(
     log: MedicationLog,
-    history: Sequence[MedicationLog],
+    stats: VariantStats,
     *,
     sample: Callable[[float, float], float],
+    apply_timing: bool = True,
 ) -> ReminderVariant:
-    """替這一頓挑語氣與催促時機：兩台拉霸各看自己的欄位、各自計數。
+    """替這一頓挑語氣與催促時機：兩台拉霸各看自己的計數。
 
-    `history` 是 `MedicationLogRepository.list_variant_outcomes()` 讀出來的
-    紀錄。時機那台只看 `nudge_minutes` 還在的紀錄——長輩當天改了提醒設定時，
-    那一頓的時機已經被清掉（見 `resync_pending_by_reminder`）。
+    `apply_timing=False`（T+0 晚送，見排程器的 `_ON_TIME_T0`）時只挑語氣。
     """
+    group = is_family_managed(log)
+    tones = eligible_tones(log)
     tone = choose_arm(
-        eligible_tones(log),
-        *arm_counts(history, lambda past: past.reminder_tone, user_id=log.user_id),
+        tones,
+        *_split(
+            tones,
+            lambda arm: stats.tone.get((group, arm), (0, 0)),
+            lambda arm: stats.tone_by_user.get((log.user_id, group, arm), (0, 0)),
+        ),
         sample=sample,
     )
+    if not apply_timing:
+        return ReminderVariant(tone=tone, nudge_minutes=None)
     nudge_minutes = choose_arm(
         NUDGE_MINUTES,
-        *arm_counts(history, lambda past: past.nudge_minutes, user_id=log.user_id),
+        *_split(
+            NUDGE_MINUTES,
+            lambda arm: stats.nudge.get(arm, (0, 0)),
+            lambda arm: stats.nudge_by_user.get((log.user_id, arm), (0, 0)),
+        ),
         sample=sample,
     )
     return ReminderVariant(tone=tone, nudge_minutes=nudge_minutes)

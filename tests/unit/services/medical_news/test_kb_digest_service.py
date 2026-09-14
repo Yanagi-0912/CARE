@@ -2,7 +2,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services.medical_news.article_grader import ArticleJudgement
 from app.services.medical_news.kb_digest_service import KbDigestService
 
 
@@ -160,7 +159,7 @@ async def test_articles_without_title_excluded():
     assert articles == []
 
 
-# ── 政策新聞稿過濾（第一道：標題黑名單，不花額度）─────────────────
+# ── 政策新聞稿過濾（標題黑名單，不花額度）─────────────────
 
 
 @pytest.mark.asyncio
@@ -195,115 +194,14 @@ async def test_policy_announcements_are_excluded():
     assert [a.url for a in articles] == ["https://www.hpa.gov.tw/a/4"]
 
 
-# ── grader（第二道：擋黑名單擋不掉的）───────────────────────────────
-
-
-class FakeArticleGrader:
-    """依標題決定判定；`raises` 裡的標題直接拋例外。"""
-
-    def __init__(self, useful_titles=None, raises=()):
-        self._useful = set(useful_titles or [])
-        self._raises = set(raises)
-        self.calls = []
-
-    async def judge_article(self, title, excerpt):
-        self.calls.append(title)
-        if title in self._raises:
-            raise RuntimeError("quota exhausted")
-        return ArticleJudgement(
-            is_useful_for_elderly=title in self._useful, reason="測試"
-        )
-
-
 @pytest.mark.asyncio
-async def test_grader_rejects_articles_not_useful_for_elderly():
-    """標題像衛教、內容也是真衛教，但對象不是長輩——黑名單擋不到，grader 要擋。"""
-    docs = [
-        _chunk(url="https://a.gov.tw/kid", original_title="翻轉兒童肥胖"),
-        _chunk(url="https://a.gov.tw/old", original_title="長者掌握3要訣防跌"),
-    ]
-    grader = FakeArticleGrader(useful_titles=["長者掌握3要訣防跌"])
-    service = KbDigestService(
-        collection=_collection(docs=docs),
-        max_age_days=30,
-        grader=grader,
-        max_grade_calls=10,
-    )
+async def test_non_elderly_health_content_is_no_longer_filtered():
+    """針對非高齡族群的真衛教照常推出。
 
-    articles = await service.recent_articles("2026-09-02", limit=5)
-
-    assert [a.url for a in articles] == ["https://a.gov.tw/old"]
-
-
-@pytest.mark.asyncio
-async def test_grader_failure_excludes_the_article():
-    """判定沒有發生時 fail closed——主動推播沒有人在等，沒推遠比推錯好。"""
-    docs = [
-        _chunk(url="https://a.gov.tw/1", original_title="判定會爆炸的一篇"),
-        _chunk(url="https://a.gov.tw/2", original_title="長者掌握3要訣防跌"),
-    ]
-    grader = FakeArticleGrader(
-        useful_titles=["長者掌握3要訣防跌"], raises=["判定會爆炸的一篇"]
-    )
-    service = KbDigestService(
-        collection=_collection(docs=docs),
-        max_age_days=30,
-        grader=grader,
-        max_grade_calls=10,
-    )
-
-    articles = await service.recent_articles("2026-09-02", limit=5)
-
-    assert [a.url for a in articles] == ["https://a.gov.tw/2"]
-
-
-@pytest.mark.asyncio
-async def test_grade_budget_stops_selection_instead_of_admitting_the_rest():
-    """額度用完要停止選材，不得把剩下的一律放行。
-
-    放行等於在額度吃緊那天悄悄關掉這道防線，而那正是最需要它的時候。
+    2026-09-14 拿掉了判「對高齡讀者有沒有用」的 LLM grader：推播對象不只長輩，
+    那個判準本身不成立。這個測試釘住的是那個決定——要把年齡過濾加回來，先回頭
+    看 kb_digest_service 的模組說明。
     """
-    docs = [
-        _chunk(url=f"https://a.gov.tw/{i}", original_title=f"文章{i}")
-        for i in range(6)
-    ]
-    grader = FakeArticleGrader(useful_titles=[])
-    service = KbDigestService(
-        collection=_collection(docs=docs),
-        max_age_days=30,
-        grader=grader,
-        max_grade_calls=2,
-    )
-
-    articles = await service.recent_articles("2026-09-02", limit=5)
-
-    assert articles == []
-    assert len(grader.calls) == 2
-
-
-@pytest.mark.asyncio
-async def test_blacklisted_titles_never_reach_the_grader():
-    """黑名單擋在 grader 之前，才省得到額度。"""
-    docs = [
-        _chunk(url="https://a.gov.tw/1", original_title="國健署攜手軍醫局 打造無菸健康戰力"),
-        _chunk(url="https://a.gov.tw/2", original_title="長者掌握3要訣防跌"),
-    ]
-    grader = FakeArticleGrader(useful_titles=["長者掌握3要訣防跌"])
-    service = KbDigestService(
-        collection=_collection(docs=docs),
-        max_age_days=30,
-        grader=grader,
-        max_grade_calls=10,
-    )
-
-    await service.recent_articles("2026-09-02", limit=5)
-
-    assert grader.calls == ["長者掌握3要訣防跌"]
-
-
-@pytest.mark.asyncio
-async def test_no_grader_falls_back_to_blacklist_only():
-    """grader 缺席時 Tier 2 仍照常供應，只是品質退回黑名單那一層。"""
     docs = [_chunk(url="https://a.gov.tw/1", original_title="翻轉兒童肥胖")]
     service = KbDigestService(collection=_collection(docs=docs), max_age_days=30)
 
@@ -332,9 +230,9 @@ def _media(**overrides):
 async def test_pool_order_is_official_fresh_then_media_then_official_stock():
     """三群依序：官方新 > 媒體新 > 官方存量。
 
-    媒體一天約 15.8 篇、官方約 2 篇，單純依日期混排時池子幾乎全是媒體——這是
-    `test_blacklisted_titles_never_reach_the_grader` 那批量測（衛福部佔滿窗口
-    33/50）的同一個失效形狀，換成媒體而已。
+    媒體一天約 15.8 篇、官方約 2 篇，單純依日期混排時池子幾乎全是媒體——與
+    2026-09-04 量到「衛福部那批佔滿選材窗口 33/50」是同一個失效形狀，換成媒體
+    而已。
     """
     official = _collection(docs=[
         _chunk(url="https://a.gov.tw/fresh", published_at="2026-09-13"),
@@ -425,24 +323,6 @@ async def test_media_query_is_bounded_by_fresh_window():
     await service.recent_articles("2026-09-14", limit=5)
 
     assert media.find.call_args.args[0] == {"published_at": {"$gte": "2026-09-13"}}
-
-
-@pytest.mark.asyncio
-async def test_media_never_goes_through_the_grader():
-    """grader 的判準（對高齡讀者有沒有用）已被否決過，媒體只靠分類與標題防線。"""
-    grader = MagicMock()
-    grader.judge_article = AsyncMock(
-        return_value=ArticleJudgement(is_useful_for_elderly=True, reason=""))
-    service = KbDigestService(
-        collection=_collection(), max_age_days=30,
-        grader=grader, max_grade_calls=30,
-        media_collection=_collection(docs=[_media()]),
-    )
-
-    pool = await service.recent_articles("2026-09-14", limit=5)
-
-    assert len(pool) == 1
-    grader.judge_article.assert_not_called()
 
 
 @pytest.mark.asyncio

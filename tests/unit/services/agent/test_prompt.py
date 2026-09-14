@@ -74,6 +74,20 @@ def test_system_prompt_routes_medication_status_questions_to_the_status_tool():
     assert "漏吃降血壓藥要補吃嗎" in SYSTEM_PROMPT
 
 
+def test_system_prompt_declines_requests_unrelated_to_health():
+    """guardrail 不放行只是不給 RAG 工具，回答照樣會產生。2026-09-14 正式環境
+    「推導高等微積分」拿到一整篇數學推導，當時 (a)–(j) 沒有任何一條處理
+    「不是健康、也不是寒暄」的請求。"""
+    assert "(k)" in SYSTEM_PROMPT
+    assert "婉拒" in SYSTEM_PROMPT
+    assert "推導高等微積分" in SYSTEM_PROMPT
+    # 寒暄照舊簡短回應，不能被新規則一起婉拒。
+    assert "(j) 純寒暄" in SYSTEM_PROMPT
+    assert "不要婉拒" in SYSTEM_PROMPT
+    # 問 CARE 本身怎麼用（例如怎麼邀請家人）不算離題。
+    assert "CARE 本身的功能" in SYSTEM_PROMPT
+
+
 def test_date_context_gives_the_taipei_date_and_weekday():
     """模型要把「昨天」「禮拜一」換成幾天前，得先知道今天是台北的哪一天。"""
     from datetime import datetime, timezone

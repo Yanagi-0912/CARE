@@ -207,7 +207,14 @@ AGENT_RECURSION_LIMIT = 2 + 2 * MAX_TOOL_ROUNDS + 1
 # 被攔下的工具呼叫回給模型的內容。刻意**不**提參數名或用法：2026-09-10 的
 # 事件裡，ToolNode 回的參數驗證錯誤（「query: Field required, Please fix the
 # error」）等於把正確的呼叫方式教給了模型，它照著改完就成功繞過了 guardrail。
-_BLOCKED_TOOL_REPLY = "此工具本輪不可用。請不要再呼叫未提供的工具，直接依對話內容回覆使用者。"
+#
+# 第二句要求婉拒離題請求：只有 RAG 類工具會隨 guardrail 開關，所以呼叫被攔多半
+# 代表這一輪 guardrail 沒放行。只寫「直接回覆使用者」，遇到離題問題就等於叫模型
+# 自己回答。婉拒的完整規則在 prompt 的規則 (k)。
+_BLOCKED_TOOL_REPLY = (
+    "此工具本輪不可用，請不要再呼叫未提供的工具，改為直接回覆使用者。"
+    "若請求與健康／醫療識詐無關，依規則用一兩句話婉拒，不要回答內容本身。"
+)
 
 
 def _offered_tool_names(state: State) -> set[str]:

@@ -67,6 +67,15 @@ async def test_blocked_reply_does_not_teach_the_tool_signature():
 
 
 @pytest.mark.asyncio
+async def test_blocked_reply_tells_the_model_to_decline_off_topic_requests():
+    """
+    只有 RAG 類工具會隨 guardrail 開關，所以呼叫被攔多半代表這一輪 guardrail
+    沒放行。拒絕訊息若只寫「直接回覆使用者」，遇到離題問題就等於叫模型自己回答。
+    """
+    assert "婉拒" in _BLOCKED_TOOL_REPLY
+
+
+@pytest.mark.asyncio
 async def test_offered_rag_call_executes_unchanged():
     """allow_rag=True 時行為與導入前相同：原 state 原封不動交給 ToolNode。"""
     executor = _FakeExecutor()

@@ -3,6 +3,7 @@ from typing import Any, Optional
 from datetime import datetime
 import mimetypes
 from app.core.config import settings
+from app.core.user_language import get_request_language
 
 import asyncio
 import logging
@@ -196,6 +197,12 @@ class MediaProcessorService:
                 response = requests.post(
                     MEDIA_PARSE_WEBHOOK_URL,
                     files=files,
+                    # 使用者設定的語言（zh-TW、id…）交給 faster-whisper 當語言提示；n8n 會把
+                    # 這個欄位轉給 local-asr，由那邊換成 whisper 的語言碼。沒有提示時 small
+                    # 模型會把真實的 LINE 語音判成緬甸語、日文而轉出亂碼，亂碼再觸發重解碼，
+                    # 2026-09-14 一則 9.7 秒的語音因此轉了 133 秒、撞上下面的逾時。
+                    # 圖片與文件也會帶著這個欄位，n8n 那兩條分支不讀它。
+                    data={"language": get_request_language()},
                     timeout=WEBHOOK_TIMEOUT_SECONDS,
                 )
 

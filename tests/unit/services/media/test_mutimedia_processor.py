@@ -126,3 +126,48 @@ async def test_process_media_does_not_block_event_loop(svc, tmp_path):
     assert ticks >= (BLOCK_SECONDS / TICK) / 3, (
         f"事件迴圈在 process_media 期間被阻塞：只前進了 {ticks} 個 tick"
     )
+
+
+# 語音送 n8n 時附上使用者的語言，讓 faster-whisper 不必自己猜。
+# 沒有提示時，small 模型把真實的 LINE 語音判成緬甸語、日文而轉出亂碼；亂碼再觸發
+# temperature 重解碼，2026-09-14 一則 9.7 秒的語音在 2 核上轉了 133 秒，
+# 超過 WEBHOOK_TIMEOUT_SECONDS（120 秒）而失敗。給了語言後同一段只要 4.4 秒。
+@pytest.mark.parametrize("lang", ["zh-TW", "id", "vi"])
+def test_webhook_sends_user_language_for_asr(svc, tmp_path, lang):
+    from app.core.user_language import reset_request_language, set_request_language
+
+    p = tmp_path / "a.m4a"
+    p.write_bytes(b"x")
+    token = set_request_language(lang)
+    try:
+        with patch("app.services.media.mutimedia_processor.MEDIA_PARSE_WEBHOOK_URL", "https://x"), \
+             patch("app.services.media.mutimedia_processor.requests.post", return_value=FakePostResponse(
+                 headers={"Content-Type": "application/json"},
+                 text='{"user_text":"hello"}',
+                 payload={"user_text": "hello"},
+             )) as post:
+            svc._extract_user_text_via_webhook(p)
+    finally:
+        reset_request_language(token)
+    assert post.call_args.kwargs["data"] == {"language": lang}
+
+
+@pytest.mark.asyncio
+async def test_user_language_reaches_webhook_through_to_thread(svc, tmp_path):
+    """process_media 以 asyncio.to_thread 呼叫 webhook；語言要能跟著 context 過去。"""
+    from app.core.user_language import reset_request_language, set_request_language
+
+    p = tmp_path / "a.m4a"
+    p.write_bytes(b"x")
+    token = set_request_language("th")
+    try:
+        with patch("app.services.media.mutimedia_processor.MEDIA_PARSE_WEBHOOK_URL", "https://x"), \
+             patch("app.services.media.mutimedia_processor.requests.post", return_value=FakePostResponse(
+                 headers={"Content-Type": "application/json"},
+                 text='{"user_text":"hello"}',
+                 payload={"user_text": "hello"},
+             )) as post:
+            await asyncio.to_thread(svc._extract_user_text_via_webhook, p)
+    finally:
+        reset_request_language(token)
+    assert post.call_args.kwargs["data"] == {"language": "th"}

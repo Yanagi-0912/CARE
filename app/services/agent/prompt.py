@@ -1,5 +1,8 @@
+from datetime import datetime
+
 from app.core.user_language import normalize_user_language
 from app.i18n.messages import t
+from app.models.medication import TAIPEI_TZ
 
 _LANGUAGE_NAMES: dict[str, str] = {
     "zh-TW": "繁體中文",
@@ -80,15 +83,24 @@ def build_system_prompt(language: str) -> str:
         "`suggest_department_for_symptom` → 必須呼叫該工具，`symptom` 填入使用者"
         "描述症狀的原文（例如「肚子好痛」），禁止自行改寫成醫學名詞，也禁止填入科別名稱；"
         "此情況禁止改走 `get_rag_answer`。"
-        "注意：只有症狀描述而沒有問科別時不適用本項，須依 (h) 走 `get_rag_answer`。\n"
-        "   (h) 症狀、疾病、用藥、保健、官方衛教，或疑似醫療詐騙／假藥／假醫師／假醫院簡訊／"
+        "注意：只有症狀描述而沒有問科別時不適用本項，須依 (i) 走 `get_rag_answer`。\n"
+        "   (h) 詢問本人或家人的用藥安排或服藥紀錄（例如「我今天要吃什麼藥」「我早上的藥吃了嗎」"
+        "「媽媽昨天有沒有吃藥」「阿公這禮拜有沒有漏吃」）→ 必須呼叫 `get_medication_status`，"
+        "禁止呼叫 `get_rag_answer`，也禁止自己推測使用者吃了哪些藥。"
+        "`person` 填使用者指稱對象的原話（問自己時留空）；原話是親屬稱謂時，"
+        "`relationship` 另外填 parent／child／spouse／sibling／grandparent／grandchild。"
+        "只問某一天填 `days_ago`（今天 0、昨天 1）；問「這禮拜」「最近幾天」等一段期間填 "
+        "`last_n_days`（這禮拜填 7）。上一輪若反問是哪一位家人，使用者這輪回答名字時，"
+        "把名字填進 `person` 再呼叫一次。"
+        "藥物本身的作用、副作用、能不能併用、漏吃要不要補吃，屬於 (i)。\n"
+        "   (i) 症狀、疾病、用藥、保健、官方衛教，或疑似醫療詐騙／假藥／假醫師／假醫院簡訊／"
         "以醫療或健保名義要求匯款或點連結，且本輪已提供 `get_rag_answer` → "
         "必須先呼叫 `get_rag_answer`，再依工具結果回答；禁止只靠自己知識直接給衛教或識詐結論。\n"
-        "   (i) 純寒暄且與健康／醫療識詐無關 → 可不呼叫工具。\n"
+        "   (j) 純寒暄且與健康／醫療識詐無關 → 可不呼叫工具。\n"
         "6. 反例（請嚴格比對意圖）：\n"
-        "   - 「我有孕痛」「我曬傷」「被海星咬到」→ 屬於 (h)，必須先 `get_rag_answer`。\n"
+        "   - 「我有孕痛」「我曬傷」「被海星咬到」→ 屬於 (i)，必須先 `get_rag_answer`。\n"
         "   - 「我肚子痛」「肚子痛怎麼辦」「肚子痛要吃什麼」→ 只有症狀、沒有問科別，"
-        "屬於 (h)，必須 `get_rag_answer`，禁止 `suggest_department_for_symptom`。\n"
+        "屬於 (i)，必須 `get_rag_answer`，禁止 `suggest_department_for_symptom`。\n"
         "   - 「我肚子痛要掛哪一科」「這樣要看什麼科」「頭暈看哪科」→ 症狀加掛號意圖，"
         "屬於 (g)，必須 `suggest_department_for_symptom` 且 `symptom` 填「肚子痛」"
         "「頭暈」等原文；禁止 `get_rag_answer`，也禁止自行請求位置。\n"
@@ -107,6 +119,10 @@ def build_system_prompt(language: str) -> str:
         "`facility_type` 填「大醫院」；但「附近有醫院嗎」「我要去醫院」分享位置後，"
         "禁止設定 `facility_type`，因為使用者只是泛稱要看病，並非指定規模。\n"
         "   - 「台大醫院在哪／查某某診所」→ 屬於 (c)，必須 `lookup_medical_facility`。\n"
+        "   - 「我今天要吃什麼藥」「媽媽早上的藥吃了沒」「我昨天有吃藥嗎」→ 屬於 (h)，"
+        "必須 `get_medication_status`，禁止 `get_rag_answer`。\n"
+        "   - 「普拿疼可以跟感冒藥一起吃嗎」「漏吃降血壓藥要補吃嗎」→ 屬於 (i)，"
+        "必須 `get_rag_answer`，禁止 `get_medication_status`。\n"
         "7. RAG 識別標籤：\n"
         "   - 只有當你「實際呼叫」了 `get_rag_answer` 並參考其回傳內容回答時，"
         f"才必須在回覆首行加入：「{rag_prefix}」。\n"
@@ -127,6 +143,20 @@ def build_system_prompt(language: str) -> str:
         "不要把錯誤代碼原樣唸給使用者聽。"
         "若使用者正要依可疑醫療訊息匯款或點不明連結，必須強烈勸阻，並提示可向 165 反詐騙諮詢專線查證。\n"
     )
+
+
+_WEEKDAYS = ("一", "二", "三", "四", "五", "六", "日")
+
+
+def build_date_context(now: datetime | None = None) -> str:
+    """今天的台北日期與星期，接在 system prompt 後面。
+
+    模型要把「昨天」「禮拜一」換成 `days_ago`，得先知道今天是台北的哪一天。刻意
+    不併進 `build_system_prompt`：`SYSTEM_PROMPT` 是 import 時算好的常數，併進去
+    日期就會停在服務啟動那天。
+    """
+    moment = (now or datetime.now(TAIPEI_TZ)).astimezone(TAIPEI_TZ)
+    return f"\n今天是 {moment:%Y-%m-%d}（星期{_WEEKDAYS[moment.weekday()]}，台北時間）。\n"
 
 
 SYSTEM_PROMPT = build_system_prompt("zh-TW")

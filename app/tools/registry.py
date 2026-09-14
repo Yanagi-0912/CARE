@@ -6,6 +6,7 @@ from app.tools.medical_tools import (
     lookup_medical_facility,
     request_location_quick_reply,
 )
+from app.tools.medication_status_tools import get_medication_status
 from app.tools.official_site_tools import open_official_site
 from app.tools.rag_tools import get_rag_answer
 from app.tools.symptom_tools import suggest_department_for_symptom
@@ -25,6 +26,9 @@ def get_all_tools(include_rag_tool: bool = True) -> list:
         # 哪一科」問的是掛號科別而非查知識庫，guardrail 是否放行 RAG 與這件事
         # 無關。
         suggest_department_for_symptom,
+        # 查本人或家人的服藥狀況。查的是資料庫裡的紀錄、不是知識庫，同樣不隨
+        # include_rag_tool 開關——guardrail 放不放行 RAG 與這件事無關。
+        get_medication_status,
     ]
     if include_rag_tool:
         tools.extend([get_rag_answer, answer_from_uploaded_document])

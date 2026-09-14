@@ -8,7 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 
 from app.core.request_logging import log_stage
 from app.core.user_language import normalize_user_language
-from app.services.agent.prompt import build_system_prompt
+from app.services.agent.prompt import build_date_context, build_system_prompt
 from app.services.agent.utils.state import State
 from app.services.medical.department_matcher import (
     extract_department_intent,
@@ -684,7 +684,8 @@ class AgentNodes:
 
         user_profile_text = format_user_profile_prompt(state.get("user_profile"))
         language = self._resolve_user_language(state.get("user_profile"))
-        full_prompt = build_system_prompt(language) + user_profile_text
+        # 日期接在固定規則之後：模型要把「昨天」「禮拜一」換成查服藥狀況的 days_ago。
+        full_prompt = build_system_prompt(language) + build_date_context() + user_profile_text
         messages = [SystemMessage(content=full_prompt)] + state["messages"]
 
         t0 = time.perf_counter()

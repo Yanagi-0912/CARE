@@ -31,6 +31,7 @@ from app.repositories.knowledge_report_preview_repository import (
 from app.repositories.knowledge_report_repository import KnowledgeReportRepository
 from app.repositories.appointment_repository import AppointmentReminderRepository
 from app.repositories.medication_repository import (
+    MedicationLogRepository,
     MedicationRepository,
     MedicationReminderRepository,
 )
@@ -57,6 +58,7 @@ from app.services.medication.drug_appearance_image_service import (
 from app.services.medication.drug_catalog_service import DrugCatalogService
 from app.services.medication.drug_indication_service import DrugIndicationService
 from app.services.medication.medication_service import MedicationService
+from app.services.medication.medication_status_service import MedicationStatusService
 from app.services.medication.medication_scheduler import start_medication_scheduler
 from app.services.medication.prescription_ocr_service import PrescriptionOcrService
 from app.services.medication.prescription_scan_service import PrescriptionScanService
@@ -150,6 +152,7 @@ from app.services.medical_news.share_service import MedicalNewsShareService
 from app.services.users.user_profile_service import UserProfileService
 from app.tools.claim_tools import configure_claim_tool
 from app.tools.knowledge_report_tools import configure_knowledge_report_tool
+from app.tools.medication_status_tools import configure_medication_status_tool
 from app.tools.medical_tools import configure_medical_tools
 from app.tools.official_site_tools import configure_official_site_tool
 from app.tools.rag_tools import configure_rag_tool
@@ -644,6 +647,17 @@ _family_authorization_service = FamilyAuthorizationService(
     # 的原始資料來源；寫入失敗一律吞掉，不影響授權。
     metrics_repository=FamilyRbacMetricsRepository,
 )
+
+# 查服藥狀況（LINE 裡問「我今天要吃什麼藥」「媽媽吃藥了沒」）。查家人時經過同一個
+# 授權決策點；repository 同樣直接傳類別本身。
+_medication_status_service = MedicationStatusService(
+    family_tree_repository=FamilyTreeRepository,
+    authorization_service=_family_authorization_service,
+    reminder_repository=MedicationReminderRepository,
+    medication_repository=MedicationRepository,
+    log_repository=MedicationLogRepository,
+)
+configure_medication_status_tool(_medication_status_service)
 
 _safety_alert_service = SafetyAlertService(
     extractor=_drug_mention_extractor,

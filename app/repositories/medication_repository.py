@@ -698,6 +698,19 @@ class MedicationLogRepository:
                 "請先清除 (reminder_id, scheduled_at) 重複的紀錄，否則多實例並存時會重複推播"
             )
 
+        # 依人、依時間查用藥歷史（查服藥狀況，見 list_logs_by_user_between）。沒有這個
+        # 索引，依人查詢會掃過整張表。與上面分開處理：這個建不起來只會變慢，不該跟
+        # 唯一索引的錯誤訊息混在一起。
+        try:
+            await col.create_index(
+                [("user_id", 1), ("scheduled_at", 1)],
+                name="user_scheduled",
+            )
+        except Exception:
+            logger.exception(
+                "[MedicationLogRepository] 無法建立 medication_logs 的 (user_id, scheduled_at) 索引"
+            )
+
     @staticmethod
     async def upsert_log(log: MedicationLog) -> tuple[MedicationLog, bool]:
         """
@@ -1221,5 +1234,25 @@ class MedicationLogRepository:
             .sort("scheduled_at", -1)
             .limit(limit)
         )
+        docs = await cursor.to_list(length=None)
+        return [MedicationLog(**{**doc, "_id": str(doc["_id"])}) for doc in docs]
+
+    @staticmethod
+    async def list_logs_by_user_between(
+        user_id: str, start: datetime, end: datetime
+    ) -> List[MedicationLog]:
+        """列出 [start, end) 之間的用藥歷史，由早到晚，不含已註銷的紀錄（理由同上）。
+
+        查服藥狀況用（見 MedicationStatusService）：一次取回要看的那幾天，再依台北
+        日期分組。
+        """
+        col = MongoDBManager.get_medication_logs_collection()
+        cursor = col.find(
+            {
+                "user_id": user_id,
+                "status": {"$ne": "cancelled"},
+                "scheduled_at": {"$gte": start, "$lt": end},
+            }
+        ).sort("scheduled_at", 1)
         docs = await cursor.to_list(length=None)
         return [MedicationLog(**{**doc, "_id": str(doc["_id"])}) for doc in docs]

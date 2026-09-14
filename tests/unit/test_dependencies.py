@@ -161,3 +161,18 @@ def test_dispatcher_receives_share_service():
     assert (
         dispatcher._medical_news_share_service is get_medical_news_share_service()
     )
+
+
+def test_medication_status_tool_is_wired_to_the_shared_authorization_service():
+    """查家人的服藥狀況必須經過同一個授權決策點。
+
+    工具的服務是模組層級注入的：漏了 configure 不會拋任何例外，只會讓工具永遠
+    回「暫時查不到用藥紀錄」。
+    """
+    from app.repositories.medication_repository import MedicationLogRepository
+    from app.tools import medication_status_tools
+
+    service = medication_status_tools._medication_status_service
+    assert service is dependencies._medication_status_service
+    assert service._authz is dependencies._family_authorization_service
+    assert service._logs is MedicationLogRepository

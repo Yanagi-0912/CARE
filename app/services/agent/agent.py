@@ -26,6 +26,7 @@ from app.services.medical.symptom_classification.urgency import (
 from app.services.gemini.shared.parser import content_to_text
 from app.services.rag.fail_messages import is_rag_fail
 from app.tools.user_document_tools import is_document_answer_unavailable
+from app.tools.medication_status_tools import MEDICATION_STATUS_TOOL_NAME
 from app.tools.registry import get_all_tools
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,15 @@ def _trailing_tool_messages(messages: list[AnyMessage]) -> list[ToolMessage]:
         collected.append(msg)
     collected.reverse()
     return collected
+
+
+def _is_lone_success(tool_messages: list[ToolMessage], name: str) -> bool:
+    """這一輪只呼叫了 `name` 一個工具，而且沒有出錯。"""
+    return (
+        len(tool_messages) == 1
+        and getattr(tool_messages[0], "name", None) == name
+        and getattr(tool_messages[0], "status", None) != "error"
+    )
 
 
 def _route_after_tools(state: State) -> str:
@@ -71,16 +81,21 @@ def _route_after_tools(state: State) -> str:
       輸出合成一段話。
     - **RAG 失敗訊息**（`is_rag_fail`）不直通。那些文案是給模型當素材用的
       錯誤說明，直接丟給使用者會漏掉既有的降級話術。
+    - `get_medication_status` 同理直通（見 `_medication_direct_reply_node`），條件
+      一樣收緊：這一輪只有它一個工具、而且沒有出錯。
     - 其餘工具（附近院所、查核卡）本來就有自己的直通路徑，不經過這裡。
 
     已知取捨：多輪追問（「那芒果呢」）時，模型那一步看得到完整對話歷史，
     直通看不到——送出的是 RAG 工具針對單一 query 寫的答案。
     """
+    tool_messages = _trailing_tool_messages(state.get("messages") or [])
+    # 查服藥狀況不隨 RAG 開關提供，所以排在 allow_rag 之前判斷。
+    if _is_lone_success(tool_messages, MEDICATION_STATUS_TOOL_NAME):
+        return "medication_direct"
     # 本輪沒提供 RAG 就不可能有合法的 RAG 結果可直通；會走到這裡的只剩被
     # `_execute_offered_tools` 攔下的呼叫。
     if not state.get("allow_rag"):
         return "agent"
-    tool_messages = _trailing_tool_messages(state.get("messages") or [])
     if len(tool_messages) != 1:
         return "agent"
     only = tool_messages[0]
@@ -145,6 +160,19 @@ def _rag_direct_reply_node(state: State) -> dict:
     return {"messages": [AIMessage(content=answer)]}
 
 
+def _medication_direct_reply_node(state: State) -> dict:
+    """查服藥狀況的回覆原樣送出。
+
+    藥名、時間、有沒有確認都是 MedicationStatusService 從資料庫組好的；交回模型
+    重寫，只是多一次把藥名寫錯的機會，也多等一次生成。它不是知識庫答案，所以不加
+    RAG 前綴與醫療提醒。
+    """
+    tool_messages = _trailing_tool_messages(state.get("messages") or [])
+    answer = content_to_text(tool_messages[-1].content).strip()
+    log_stage(logger, "medication_direct_reply", chars=len(answer))
+    return {"messages": [AIMessage(content=answer)]}
+
+
 # LangGraph 基本概念：
 # - State：流程共用資料（例如 messages、allow_rag）
 # - Node：每一步要做的事（函式）
@@ -159,11 +187,11 @@ TOOL_RESULT_PREVIEW_LEN = 120
 #   2. 工具回來後模型直接回話，但 `agent_node` 的 force_rag 條件成立，強制
 #      補一次 `get_rag_answer`（nodes.py；例如先 verify_claim 再補 RAG）。
 #   3. 某次呼叫被 `_execute_offered_tools` 攔下後，模型改呼叫有提供的工具。
-# prompt 的工具規則 (a)-(i) 都是一個意圖對一個工具，沒有要求串接。
+# prompt 的工具規則 (a)-(j) 都是一個意圖對一個工具，沒有要求串接。
 MAX_TOOL_ROUNDS = 3
 
 # 最長合法路徑的節點數：guardrail＋agent，之後每次往返是 tools＋agent（或以
-# rag_direct 收尾），2 + 2×3 = 8。recursion_limit 不是節點數本身：實測
+# rag_direct／medication_direct 收尾），2 + 2×3 = 8。recursion_limit 不是節點數本身：實測
 # LangGraph 1.1.10 上 N 個節點的路徑要 limit ≥ N+1 才跑得完（只有
 # guardrail→agent 的 2 節點路徑，limit=2 就會丟錯），所以再加 1。
 # 這個對應由 tests/unit/services/agent/test_recursion_limit.py 釘住：
@@ -367,6 +395,7 @@ class Agent:
         builder.add_node("agent", nodes.agent_node)
         builder.add_node("tools", tools_node)
         builder.add_node("rag_direct", _rag_direct_reply_node)
+        builder.add_node("medication_direct", _medication_direct_reply_node)
 
         builder.add_edge(START, "guardrail")
         # 急迫度短路：判定為緊急時直接產生卡片，不進 agent。安全檢查不能是 agent
@@ -386,9 +415,14 @@ class Agent:
         builder.add_conditional_edges(
             "tools",
             _route_after_tools,
-            {"rag_direct": "rag_direct", "agent": "agent"},
+            {
+                "rag_direct": "rag_direct",
+                "medication_direct": "medication_direct",
+                "agent": "agent",
+            },
         )
         builder.add_edge("rag_direct", END)
+        builder.add_edge("medication_direct", END)
 
         return builder.compile()
 

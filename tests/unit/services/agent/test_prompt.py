@@ -61,6 +61,43 @@ def test_build_system_prompt_unknown_language_falls_back_to_zh_tw():
     assert t("agent.rag_prefix", "zh-TW") in prompt
 
 
+def test_system_prompt_routes_medication_status_questions_to_the_status_tool():
+    assert "get_medication_status" in SYSTEM_PROMPT
+    assert "我今天要吃什麼藥" in SYSTEM_PROMPT
+    # 藥物本身的衛教照舊走知識庫，不能被新規則吃掉。
+    assert "漏吃降血壓藥要補吃嗎" in SYSTEM_PROMPT
+
+
+def test_date_context_gives_the_taipei_date_and_weekday():
+    """模型要把「昨天」「禮拜一」換成幾天前，得先知道今天是台北的哪一天。"""
+    from datetime import datetime, timezone
+
+    from app.services.agent.prompt import build_date_context
+
+    # UTC 9/13 16:30 已經是台北 9/14 00:30（星期一）。
+    text = build_date_context(datetime(2026, 9, 13, 16, 30, tzinfo=timezone.utc))
+    assert "2026-09-14" in text
+    assert "星期一" in text
+
+
+async def test_agent_node_puts_the_date_context_into_the_system_prompt(monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock
+
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    from app.services.agent.utils import nodes as nodes_module
+
+    monkeypatch.setattr(nodes_module, "build_date_context", lambda: "\n［日期標記］\n")
+    llm = MagicMock()
+    llm.bind_tools.return_value.ainvoke = AsyncMock(return_value=AIMessage(content="好"))
+    nodes = nodes_module.AgentNodes(llm=llm, guardrail_service=MagicMock())
+
+    await nodes.agent_node({"messages": [HumanMessage(content="你好")], "allow_rag": False})
+
+    system_msg = llm.bind_tools.return_value.ainvoke.call_args[0][0][0]
+    assert "［日期標記］" in system_msg.content
+
+
 def test_system_prompt_rule_9_lists_verify_claim_among_flex_verbatim_tools():
     """次要 finding 3：規則 9 的 Flex 原樣輸出工具清單過去只列了
     find_nearby_hospitals／find_nearby_facilities_by_department／

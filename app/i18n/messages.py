@@ -1919,6 +1919,200 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "zh-TW": "其他", "en": "Other", "id": "Lainnya",
         "vi": "Khác", "th": "อื่น ๆ", "ja": "その他",
     },
+    # --- 查服藥狀況（直通給使用者、不經模型改寫，見 medication_status_service）---
+    # 用詞只講資料證明得了的事：系統只知道有沒有按下【已服用】，所以是「已確認
+    # 服用」「逾時未確認」，不是「吃了」「漏吃」。
+    "medstatus.header.day_self": {
+        "zh-TW": "您{day}的用藥", "en": "Your medicines {day}", "id": "Obat Anda {day}",
+        "vi": "Thuốc của bạn {day}", "th": "ยาของคุณ {day}", "ja": "{day}のお薬",
+    },
+    "medstatus.header.day_other": {
+        "zh-TW": "{name}{day}的用藥", "en": "{name}'s medicines {day}",
+        "id": "Obat {name} {day}", "vi": "Thuốc của {name} {day}",
+        "th": "ยาของ {name} {day}", "ja": "{name}さんの{day}のお薬",
+    },
+    "medstatus.header.range_self": {
+        "zh-TW": "您最近 {n} 天的服藥紀錄",
+        "en": "Your medicine record for the last {n} days",
+        "id": "Catatan obat Anda {n} hari terakhir",
+        "vi": "Lịch sử uống thuốc của bạn trong {n} ngày gần đây",
+        "th": "บันทึกการกินยาของคุณ {n} วันล่าสุด",
+        "ja": "直近{n}日間のお薬の記録",
+    },
+    "medstatus.header.range_other": {
+        "zh-TW": "{name}最近 {n} 天的服藥紀錄",
+        "en": "{name}'s medicine record for the last {n} days",
+        "id": "Catatan obat {name} {n} hari terakhir",
+        "vi": "Lịch sử uống thuốc của {name} trong {n} ngày gần đây",
+        "th": "บันทึกการกินยาของ {name} {n} วันล่าสุด",
+        "ja": "{name}さんの直近{n}日間のお薬の記録",
+    },
+    "medstatus.day.today": {
+        "zh-TW": "今天（{date}）", "en": "today ({date})", "id": "hari ini ({date})",
+        "vi": "hôm nay ({date})", "th": "วันนี้ ({date})", "ja": "今日（{date}）",
+    },
+    "medstatus.day.yesterday": {
+        "zh-TW": "昨天（{date}）", "en": "yesterday ({date})", "id": "kemarin ({date})",
+        "vi": "hôm qua ({date})", "th": "เมื่อวาน ({date})", "ja": "昨日（{date}）",
+    },
+    # 中文日期前後留空格，「您 9/12 的用藥」才不會黏成一串。
+    "medstatus.day.other": {
+        "zh-TW": " {date} ", "en": "on {date}", "id": "tanggal {date}",
+        "vi": "ngày {date}", "th": "วันที่ {date}", "ja": "{date}",
+    },
+    # 印尼、越南、泰國慣用日在前；「9/10」在那裡會被讀成十月九日。
+    "medstatus.date": {
+        "zh-TW": "{m}/{d}", "en": "{m}/{d}", "id": "{d}/{m}",
+        "vi": "{d}/{m}", "th": "{d}/{m}", "ja": "{m}/{d}",
+    },
+    "medstatus.slot_line": {
+        "zh-TW": "{slot} {time}　{state}", "en": "{slot} {time} – {state}",
+        "id": "{slot} {time} – {state}", "vi": "{slot} {time} – {state}",
+        "th": "{slot} {time} – {state}", "ja": "{slot} {time}　{state}",
+    },
+    "medstatus.med_with_timing": {
+        "zh-TW": "{name}（{meal} {time}）", "en": "{name} ({meal} {time})",
+        "id": "{name} ({meal} {time})", "vi": "{name} ({meal} {time})",
+        "th": "{name} ({meal} {time})", "ja": "{name}（{meal} {time}）",
+    },
+    "medstatus.state.taken_at": {
+        "zh-TW": "已確認服用（{time}）", "en": "Taken, confirmed at {time}",
+        "id": "Sudah dikonfirmasi diminum ({time})", "vi": "Đã xác nhận uống ({time})",
+        "th": "ยืนยันว่ากินแล้ว ({time})", "ja": "服用を確認済み（{time}）",
+    },
+    "medstatus.state.taken": {
+        "zh-TW": "已確認服用", "en": "Taken, confirmed",
+        "id": "Sudah dikonfirmasi diminum", "vi": "Đã xác nhận uống",
+        "th": "ยืนยันว่ากินแล้ว", "ja": "服用を確認済み",
+    },
+    "medstatus.state.pending": {
+        "zh-TW": "還沒確認", "en": "Not confirmed yet", "id": "Belum dikonfirmasi",
+        "vi": "Chưa xác nhận", "th": "ยังไม่ได้ยืนยัน", "ja": "まだ確認されていません",
+    },
+    "medstatus.state.missed": {
+        "zh-TW": "逾時未確認", "en": "Not confirmed in time",
+        "id": "Tidak dikonfirmasi tepat waktu", "vi": "Quá giờ chưa xác nhận",
+        "th": "ไม่ได้ยืนยันภายในเวลา", "ja": "時間内に確認なし",
+    },
+    "medstatus.state.upcoming": {
+        "zh-TW": "還沒到", "en": "Coming up", "id": "Belum waktunya",
+        "vi": "Chưa đến giờ", "th": "ยังไม่ถึงเวลา", "ja": "まだ時間前",
+    },
+    "medstatus.summary.counts": {
+        "zh-TW": "{date}：已確認 {taken}/{total}", "en": "{date}: {taken}/{total} confirmed",
+        "id": "{date}: {taken}/{total} dikonfirmasi", "vi": "{date}: đã xác nhận {taken}/{total}",
+        "th": "{date}: ยืนยันแล้ว {taken}/{total}", "ja": "{date}：確認済み {taken}/{total}",
+    },
+    "medstatus.summary.slots": {
+        "zh-TW": "{state}：{slots}", "en": "{state}: {slots}", "id": "{state}: {slots}",
+        "vi": "{state}: {slots}", "th": "{state}: {slots}", "ja": "{state}：{slots}",
+    },
+    "medstatus.summary.joiner": {
+        "zh-TW": "，", "en": "; ", "id": "; ", "vi": "; ", "th": "; ", "ja": "、",
+    },
+    "medstatus.summary.none": {
+        "zh-TW": "{date}：沒有紀錄", "en": "{date}: no record",
+        "id": "{date}: tidak ada catatan", "vi": "{date}: không có dữ liệu",
+        "th": "{date}: ไม่มีบันทึก", "ja": "{date}：記録なし",
+    },
+    "medstatus.list_sep": {
+        "zh-TW": "、", "en": ", ", "id": ", ", "vi": ", ", "th": ", ", "ja": "、",
+    },
+    "medstatus.no_slots": {
+        "zh-TW": "這天沒有要吃的藥。", "en": "No medicines are scheduled for this day.",
+        "id": "Tidak ada obat yang dijadwalkan untuk hari ini.",
+        "vi": "Không có thuốc cần uống trong ngày này.",
+        "th": "วันนี้ไม่มียาที่ต้องกิน", "ja": "この日に飲むお薬はありません。",
+    },
+    "medstatus.no_record": {
+        "zh-TW": "這天沒有紀錄。", "en": "There is no record for this day.",
+        "id": "Tidak ada catatan untuk hari tersebut.", "vi": "Không có dữ liệu cho ngày này.",
+        "th": "ไม่มีบันทึกของวันนั้น", "ja": "この日の記録はありません。",
+    },
+    "medstatus.clamped": {
+        "zh-TW": "目前只能查最近 {n} 天，以下是最近 {n} 天的紀錄。",
+        "en": "I can only look back {n} days for now. Here are the last {n} days.",
+        "id": "Saat ini hanya bisa melihat {n} hari terakhir. Berikut catatan {n} hari terakhir.",
+        "vi": "Hiện chỉ xem được {n} ngày gần đây. Dưới đây là {n} ngày gần đây.",
+        "th": "ตอนนี้ดูย้อนหลังได้แค่ {n} วัน นี่คือบันทึก {n} วันล่าสุด",
+        "ja": "現在は直近{n}日間のみ確認できます。以下は直近{n}日間の記録です。",
+    },
+    "medstatus.out_of_range": {
+        "zh-TW": "目前只能查最近 {n} 天的紀錄。", "en": "I can only look back {n} days for now.",
+        "id": "Saat ini hanya bisa melihat catatan {n} hari terakhir.",
+        "vi": "Hiện chỉ xem được dữ liệu {n} ngày gần đây.",
+        "th": "ตอนนี้ดูบันทึกย้อนหลังได้แค่ {n} วัน",
+        "ja": "現在は直近{n}日間の記録のみ確認できます。",
+    },
+    "medstatus.no_reminders.self": {
+        "zh-TW": "您目前沒有設定用藥提醒。要查家人的話，可以說他的名字或關係，例如「媽媽今天吃藥了嗎」。",
+        "en": "You don't have any medication reminders set up. To check on a family member, "
+              "say their name or how they are related to you, for example “Did Mom take her medicine today?”",
+        "id": "Anda belum mengatur pengingat obat. Untuk mengecek anggota keluarga, sebutkan nama "
+              "atau hubungannya, misalnya “Apakah Ibu sudah minum obat hari ini?”",
+        "vi": "Bạn chưa cài đặt nhắc uống thuốc. Muốn xem cho người thân, hãy nói tên hoặc mối quan hệ, "
+              "ví dụ “Hôm nay mẹ đã uống thuốc chưa?”",
+        "th": "คุณยังไม่ได้ตั้งการแจ้งเตือนกินยา ถ้าต้องการดูของคนในครอบครัว ให้บอกชื่อหรือความสัมพันธ์ "
+              "เช่น “วันนี้แม่กินยาหรือยัง”",
+        "ja": "お薬のリマインダーが設定されていません。ご家族のことを確認するには、お名前か続柄を"
+              "伝えてください。例：「母は今日お薬を飲みましたか」",
+    },
+    "medstatus.no_reminders.other": {
+        "zh-TW": "{name}目前沒有設定用藥提醒。",
+        "en": "{name} doesn't have any medication reminders set up.",
+        "id": "{name} belum memiliki pengingat obat.",
+        "vi": "{name} chưa được cài đặt nhắc uống thuốc.",
+        "th": "{name} ยังไม่ได้ตั้งการแจ้งเตือนกินยา",
+        "ja": "{name}さんにはお薬のリマインダーが設定されていません。",
+    },
+    "medstatus.ambiguous": {
+        "zh-TW": "您的家人裡有好幾位符合：{names}。請問是哪一位？",
+        "en": "More than one family member matches: {names}. Which one do you mean?",
+        "id": "Ada lebih dari satu anggota keluarga yang cocok: {names}. Yang mana maksud Anda?",
+        "vi": "Có nhiều người thân phù hợp: {names}. Bạn muốn hỏi ai?",
+        "th": "มีคนในครอบครัวที่ตรงกันหลายคน: {names} หมายถึงคนไหน",
+        "ja": "該当するご家族が複数います：{names}。どなたのことですか？",
+    },
+    "medstatus.not_found": {
+        "zh-TW": "在您的家人名單裡找不到「{query}」。名單上有：{names}。可以直接說名字。",
+        "en": "I couldn't find “{query}” in your family list. Your list has: {names}. "
+              "You can just say their name.",
+        "id": "“{query}” tidak ditemukan di daftar keluarga Anda. Daftar Anda: {names}. "
+              "Anda bisa langsung menyebut namanya.",
+        "vi": "Không tìm thấy “{query}” trong danh sách người thân của bạn. Danh sách gồm: {names}. "
+              "Bạn có thể nói thẳng tên.",
+        "th": "ไม่พบ “{query}” ในรายชื่อครอบครัวของคุณ ในรายชื่อมี: {names} บอกชื่อได้เลย",
+        "ja": "ご家族の一覧に「{query}」が見つかりません。一覧にいるのは：{names}。お名前で伝えてください。",
+    },
+    "medstatus.no_family": {
+        "zh-TW": "您的家人名單裡還沒有其他人，目前只能查您自己的用藥。",
+        "en": "There's no one else in your family list yet, so for now you can only check your own medicines.",
+        "id": "Belum ada orang lain di daftar keluarga Anda, jadi saat ini Anda hanya bisa mengecek obat Anda sendiri.",
+        "vi": "Danh sách người thân của bạn chưa có ai khác, hiện chỉ xem được thuốc của chính bạn.",
+        "th": "ยังไม่มีคนอื่นในรายชื่อครอบครัวของคุณ ตอนนี้ดูได้เฉพาะยาของคุณเอง",
+        "ja": "ご家族の一覧にまだ誰もいないため、今はご自身のお薬のみ確認できます。",
+    },
+    "medstatus.no_permission": {
+        "zh-TW": "您沒有查看{name}用藥的權限。",
+        "en": "You don't have permission to view {name}'s medicines.",
+        "id": "Anda tidak memiliki izin untuk melihat obat {name}.",
+        "vi": "Bạn không có quyền xem thuốc của {name}.",
+        "th": "คุณไม่มีสิทธิ์ดูยาของ {name}",
+        "ja": "{name}さんのお薬を見る権限がありません。",
+    },
+    "medstatus.error": {
+        "zh-TW": "暫時查不到用藥紀錄，請稍後再試。",
+        "en": "I can't look up the medicine record right now. Please try again later.",
+        "id": "Catatan obat tidak dapat dilihat saat ini. Silakan coba lagi nanti.",
+        "vi": "Hiện không tra được dữ liệu thuốc. Vui lòng thử lại sau.",
+        "th": "ตอนนี้ยังดูบันทึกยาไม่ได้ กรุณาลองใหม่ภายหลัง",
+        "ja": "現在お薬の記録を確認できません。しばらくしてからもう一度お試しください。",
+    },
+    "medstatus.unnamed": {
+        "zh-TW": "未設定名字的家人", "en": "a family member with no name set",
+        "id": "anggota keluarga tanpa nama", "vi": "người thân chưa đặt tên",
+        "th": "คนในครอบครัวที่ยังไม่ได้ตั้งชื่อ", "ja": "名前未設定のご家族",
+    },
     # --- Flex：用藥提醒 ---
     "flex.med.alt.reminder": {
         "zh-TW": "CARE 用藥提醒：{slot} 服藥時間到了",

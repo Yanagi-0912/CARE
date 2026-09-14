@@ -13,6 +13,20 @@ from app.services.gemini import GeminiService
 
 logger = logging.getLogger(__name__)
 
+# 分級呼叫用的 thinking 等級。理由同 `query_rewriter.REWRITE_THINKING_LEVEL`：
+# gemini-3.8-flash 關不掉 thinking，low 是有文件保證的最低檔。
+#
+# 2026-09-14 實測（golden set 55 題，每題同一批 docs、兩檔各 3 次、交錯執行）：
+# 延遲中位數 1.87 → 1.26 秒，p90 都是 3.0 秒；low 的尾巴沒有比較好（>5 秒
+# 7/165 次 vs 3/165，最慢 13.4 vs 7.4 秒）。多數決判定 51/55 相同，31 題 kb
+# 題兩檔都 3/3 判 correct。4 題分歧全是 ambiguous → incorrect，且全是知識庫
+# 確定沒有答案的查核負樣本（verdict-010/014/015/016）——ambiguous 在那些題
+# 只會多跑一輪改寫檢索、最後仍轉網搜，low 等於少繞一圈。
+#
+# 判 correct 時分級與投機生成並行，使用者等的是 max(分級, 生成)，而生成比
+# 分級慢，所以這條路上幾乎省不到；省到的是 ambiguous／incorrect 那條路。
+GRADE_THINKING_LEVEL = "low"
+
 GRADE_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {

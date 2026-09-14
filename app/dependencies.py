@@ -138,7 +138,10 @@ from app.services.rag.query_rewriter import (
     REWRITE_THINKING_LEVEL,
     GeminiQueryRewriter,
 )
-from app.services.rag.retrieval_grader import GeminiRetrievalGrader
+from app.services.rag.retrieval_grader import (
+    GRADE_THINKING_LEVEL,
+    GeminiRetrievalGrader,
+)
 from app.services.rag.web_search_service import WebSearchService
 from app.services.medical_news.grader import GeminiNewsGrader
 from app.services.medical_news.index_service import DrugNewsIndexService
@@ -270,7 +273,15 @@ else:
 _rag_grader = None
 _rag_rewriter = None
 if settings.RAG_CRAG_ENABLED:
-    _rag_grader = GeminiRetrievalGrader(gemini_service=_gemini_service)
+    # 分級也用獨立的低 thinking 實例（數字見 retrieval_grader.GRADE_THINKING_LEVEL）。
+    # 不改共用的 _gemini_service：guardrail、問診等也在用它，沒一起量過。
+    _rag_grader = GeminiRetrievalGrader(
+        gemini_service=GeminiService(
+            api_key=settings.GEMINI_API_KEY,
+            model_name=settings.MODEL_NAME,
+            thinking_level=GRADE_THINKING_LEVEL,
+        )
+    )
     # 改寫用獨立的低 thinking 實例：它與 CRAG 分級同時起跑，要比分級先跑完
     # 才不會讓使用者多等（數字見 query_rewriter.REWRITE_THINKING_LEVEL）。
     _rag_rewriter = GeminiQueryRewriter(

@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
 from langchain_core.documents import Document
 from motor.motor_asyncio import AsyncIOMotorClient
 
+from app.core.request_logging import stage_timer
 from app.services.rag.retriever import _NUM_CANDIDATES_MULTIPLIER
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_USER_DOCS_TOP_K = 5
 
@@ -73,7 +77,10 @@ class UserDocumentVectorRetriever:
         if not (line_user_id or "").strip():
             return []
 
-        query_embedding = await self.embeddings.aembed_query(query)
+        # 與 KB 檢索同樣分開計時；這條路徑帶 line_user_id 過濾，是對話記憶
+        # 檢索（同樣依使用者過濾）最接近的實測代理。
+        with stage_timer(logger, "embed_query", retriever="user_docs"):
+            query_embedding = await self.embeddings.aembed_query(query)
         if not query_embedding:
             raise ValueError("query_embedding cannot be empty")
         if self.vector_dim is not None and len(query_embedding) != self.vector_dim:
@@ -108,7 +115,10 @@ class UserDocumentVectorRetriever:
             },
         ]
 
-        raw_docs = await self._ensure_collection().aggregate(pipeline).to_list(length=None)
+        with stage_timer(logger, "vector_search", retriever="user_docs"):
+            raw_docs = await self._ensure_collection().aggregate(pipeline).to_list(
+                length=None
+            )
 
         documents: list[Document] = []
         for doc in raw_docs:

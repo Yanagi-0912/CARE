@@ -16,6 +16,7 @@ import logging
 from typing import Any
 
 from langchain_core.documents import Document
+from app.core.request_logging import stage_timer
 from app.db.mongo_client import get_shared_client
 
 from app.services.rag.rank_fusion import (
@@ -104,7 +105,10 @@ class MongoAtlasVectorRetriever:
         await self._ensure_collection().database.client.admin.command("ping")
 
     async def ainvoke(self, query: str) -> list[Document]:
-        query_embedding = await self.embeddings.aembed_query(query)
+        # embedding 與向量搜尋分開計時：rag_retrieve 只有總數，分不出慢在
+        # Gemini 還是 Atlas（實測有 94 秒的肥尾，疑似 embedding 被限流）。
+        with stage_timer(logger, "embed_query", retriever="kb"):
+            query_embedding = await self.embeddings.aembed_query(query)
         if not query_embedding:
             raise ValueError("query_embedding cannot be empty")
         if self.vector_dim is not None and len(query_embedding) != self.vector_dim:
@@ -145,7 +149,10 @@ class MongoAtlasVectorRetriever:
             },
         ]
 
-        raw_docs = await self._ensure_collection().aggregate(pipeline).to_list(length=None)
+        with stage_timer(logger, "vector_search", retriever="kb"):
+            raw_docs = await self._ensure_collection().aggregate(pipeline).to_list(
+                length=None
+            )
 
         documents: list[Document] = []
         for doc in raw_docs:

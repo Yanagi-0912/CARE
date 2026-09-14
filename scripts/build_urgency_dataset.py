@@ -19,7 +19,8 @@
    泰文、日文可以直接用。
 
 另外沿用 guardrail 資料集裡**明顯不可能是急症**的 bucket 當簡單負例（閒聊、
-日常請求、用藥與慢性病問題等），那是真實流量的大宗，而且不必再花一次生成。
+日常請求、用藥與慢性病問題等），那是真實流量的大宗。中文直接沿用現成的列；
+guardrail 資料集只有中文，外語就用同一份 bucket 定義生成（`EVERYDAY_BUCKETS`）。
 刻意排除 `symptom_worry`、`mental_health`、`care_context`、`elderly_colloquial`
 ——那幾個 bucket 可能含有正在發生的急症或自傷意念，當負例會教錯。
 
@@ -29,6 +30,7 @@
 用法（專案根目錄，需先 source .venv）：
   python scripts/build_urgency_dataset.py --per-bucket 5 --per-bucket-other 2 --out /tmp/u.jsonl
   python scripts/build_urgency_dataset.py
+  python scripts/build_urgency_dataset.py --fill-missing   # 每格補到目標筆數，既有的列不動
 """
 
 from __future__ import annotations
@@ -39,6 +41,7 @@ import json
 import random
 import sys
 from collections import Counter
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -53,6 +56,7 @@ load_dotenv(_PROJECT_ROOT / ".env")
 
 from app.core.config import settings  # noqa: E402
 from app.services.gemini import GeminiService  # noqa: E402
+from scripts.build_guardrail_dataset import BUCKETS as GUARDRAIL_BUCKETS  # noqa: E402
 from scripts.build_guardrail_dataset import _normalize  # noqa: E402
 
 DEFAULT_OUT = _PROJECT_ROOT / "evals" / "urgency" / "dataset.jsonl"
@@ -140,11 +144,55 @@ REUSED_GUARDRAIL_BUCKETS: frozenset[str] = frozenset(
     }
 )
 
+# 外語的日常訊息。中文沿用 guardrail 資料集的現成列；外語沒有現成的，就用同一份
+# bucket 定義生成，每格筆數同 --per-bucket-other。bucket 名稱沿用 `guardrail:`
+# 前綴，同一類訊息才能跨語言比放行率（來源看 `source` 欄）。
+#
+# 為什麼要補：少了這幾類，外語資料只有急症與困難負例，模型沒看過外語的日常訊息
+# ——在台灣的外籍看護實際傳的多半是這種——holdout 也量不到它們的放行率。
+#
+# 標籤一律 0：guardrail 把用藥、慢性病問題標成 1（是醫療問題），但它們不是急症。
+EVERYDAY_BUCKETS: tuple[tuple[str, int, str], ...] = tuple(
+    (f"guardrail:{name}", 0, description)
+    for name, _, description in GUARDRAIL_BUCKETS
+    if name in REUSED_GUARDRAIL_BUCKETS
+)
+
+# 這兩類在每種語言都至少生成這麼多筆（與中文的 --per-bucket 預設相同）。
+# 本地放行門檻 low 以「交叉驗證零漏判」選定，等於 train 裡機率最低的那則急症，而那則
+# 急症幾乎都落在自傷兩類，尤其是沒有急症詞的隱晦道別。加入外語日常訊息後，交叉驗證
+# 機率最低的 20 則急症有 18 則屬於這兩類、其中 15 則是外語：外語每類只有 60 筆時，
+# 模型分不清「謝謝、再見」是客套還是訣別，low 從 0.106 被壓到 0.030。
+MIN_PER_BUCKET: dict[str, int] = {"self_harm": 150, "indirect_self_harm": 150}
+
 _GENERATION_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {"messages": {"type": "array", "items": {"type": "string"}}},
     "required": ["messages"],
 }
+
+
+def planned_cells(
+    existing: Mapping[tuple[str, str], int],
+    *,
+    per_bucket: int,
+    per_bucket_other: int,
+) -> list[tuple[str, str, int, str, int]]:
+    """這一輪要生成的格子：(語言, bucket, label, 描述, 還要生成幾筆)。
+
+    `existing` 是資料集裡每格已有的筆數，已達目標的格子不列。
+    """
+    cells: list[tuple[str, str, int, str, int]] = []
+    for language in LANGUAGES:
+        is_primary = language == PRIMARY_LANGUAGE
+        buckets = BUCKETS if is_primary else BUCKETS + EVERYDAY_BUCKETS
+        for bucket, label, description in buckets:
+            default = per_bucket if is_primary else per_bucket_other
+            target = max(default, MIN_PER_BUCKET.get(bucket, 0))
+            remaining = target - existing.get((language, bucket), 0)
+            if remaining > 0:
+                cells.append((language, bucket, label, description, remaining))
+    return cells
 
 
 def _prompt(description: str, label: int, language: str, count: int, seed: int) -> str:
@@ -193,6 +241,11 @@ def _parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="不沿用 guardrail 資料集的簡單負例",
     )
+    parser.add_argument(
+        "--fill-missing",
+        action="store_true",
+        help="每格只補到目標筆數（--out 裡已有的算進去）；既有的列與 train／holdout 切分不動",
+    )
     return parser.parse_args(argv)
 
 
@@ -226,6 +279,12 @@ async def _generate_batch(
                 return cleaned
         print(f"  ! {tag} 第 {seed} 批放棄", file=sys.stderr)
         return []
+
+
+def _read_rows(path: Path) -> list[dict[str, Any]]:
+    return [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
 
 
 def _reused_guardrail_rows() -> list[dict[str, Any]]:
@@ -265,32 +324,40 @@ async def _run(args: argparse.Namespace) -> int:
     )
     sem = asyncio.Semaphore(args.concurrency)
 
-    tasks = []
-    for language in LANGUAGES:
-        per_bucket = args.per_bucket if language == PRIMARY_LANGUAGE else args.per_bucket_other
-        for bucket, label, description in BUCKETS:
-            remaining = per_bucket
-            seed = 0
-            while remaining > 0:
-                seed += 1
-                take = min(args.batch, remaining)
-                remaining -= take
-                tag = f"{language}/{bucket}"
-                tasks.append(
-                    (
-                        bucket,
-                        label,
-                        language,
-                        _generate_batch(
-                            gemini, description, label, language, take, seed, sem, tag
-                        ),
-                    )
-                )
+    # 補格子模式：既有的列原封不動（包含 split——重切會讓 holdout 混進訓練過的
+    # 資料），每格只補到目標筆數。
+    existing_rows = _read_rows(args.out) if args.fill_missing and args.out.exists() else []
+    cells = planned_cells(
+        Counter((row["lang"], row["bucket"]) for row in existing_rows),
+        per_bucket=args.per_bucket,
+        per_bucket_other=args.per_bucket_other,
+    )
 
-    print(f"共 {len(LANGUAGES)} 種語言、{len(BUCKETS)} 個 bucket、{len(tasks)} 次呼叫，開始產生…")
+    tasks = []
+    for language, bucket, label, description, remaining in cells:
+        seed = 0
+        while remaining > 0:
+            seed += 1
+            take = min(args.batch, remaining)
+            remaining -= take
+            tag = f"{language}/{bucket}"
+            tasks.append(
+                (
+                    bucket,
+                    label,
+                    language,
+                    _generate_batch(
+                        gemini, description, label, language, take, seed, sem, tag
+                    ),
+                )
+            )
+
+    print(f"共 {len(cells)} 個 (語言, bucket) 格子、{len(tasks)} 次呼叫，開始產生…")
     results = await asyncio.gather(*(t[3] for t in tasks))
 
-    seen: set[str] = set()
+    # 既有的列也要進去重集合：新生成的句子不能跟它們重複，沿用的 guardrail 列也
+    # 不能再加一次。
+    seen: set[str] = {_normalize(row["text"]) for row in existing_rows}
     rows: list[dict[str, Any]] = []
     dropped = 0
     for (bucket, label, language, _), messages in zip(tasks, results):
@@ -332,6 +399,8 @@ async def _run(args: argparse.Namespace) -> int:
             rows.append(row)
 
     rng.shuffle(rows)  # NOSONAR：列序打散，非安全用途（見切分處註解）
+    # 既有的列照原順序放前面、新的接在後面：檔案的 diff 只有新增的列，審得出這次補了什麼。
+    rows = existing_rows + rows
     out = args.out
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", encoding="utf-8") as fh:

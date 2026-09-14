@@ -239,6 +239,14 @@ class FamilyAuthorizationService:
                 raise self._forbidden(classification, action)
             return role
 
+        if operator_id == target_owner_id:
+            # 自己的資料：OWNER 在矩陣裡什麼都能做，legacy 也一律放行，兩種模式的
+            # 結果必然相同，不必讀遷移狀態。總閘打開後少了這一步，每一支端點（包括
+            # 只動自己資料的）都會多一趟族譜查詢。判定照常計數，遷移指標的分母
+            # 與變更前相同。
+            await self._count_decision(target_owner_id)
+            return role
+
         state = await self.migration_state(target_owner_id)
 
         await self._count_decision(target_owner_id)
@@ -637,6 +645,10 @@ class FamilyAuthorizationService:
         支裝置上不同步、也可以在使用者按了「完成」卻其實沒設定任何人時被設
         起來。要決定一個家庭能不能安全地進入強制，唯一可信的依據是那份族譜
         文件裡實際存了什麼。
+
+        `rbac_migration_state` 回報的是**實際生效**的狀態：總閘關閉時一律
+        shadow，不論族譜存了什麼。前端據此決定要不要告訴擁有者「目前所有
+        家人都看得到您的資料」——拿存的值，會在總閘關閉時對他說謊。
         """
         tree = await self._get_tree(owner_id)
         if tree is None:
@@ -654,5 +666,7 @@ class FamilyAuthorizationService:
             # 沒有任何成員時視為完成：沒有人要指派，不該把擁有者卡在引導畫面。
             is_complete=not unassigned,
             unassigned_member_ids=unassigned,
-            rbac_migration_state=tree.rbac_migration_state,
+            rbac_migration_state=(
+                tree.rbac_migration_state if self._enforcement_enabled else "shadow"
+            ),
         )

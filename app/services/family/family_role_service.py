@@ -19,6 +19,7 @@ from app.models.family_tree import (
     FamilyRoleEntry,
     FamilyTree,
 )
+from app.services.family.rbac_migration import enforce_if_assignment_complete
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +138,14 @@ class FamilyRoleService:
             via_delegation=via_delegation,
             event="role_change",
         )
+
+        # 指派的可能正是最後一位未設定的成員：那一刻起這個家庭的角色設定才生效。
+        # 失敗不影響這次指派——角色已經寫進去了；下一次指派或 backfill 腳本會補切。
+        try:
+            await enforce_if_assignment_complete(self._trees, owner_id)
+        except Exception:
+            logger.exception("切換家庭權限為強制失敗：owner=%s", owner_id)
+
         logger.info(
             "家庭角色已指派：owner=%s, member=%s, role=%s, via_delegation=%s",
             owner_id,

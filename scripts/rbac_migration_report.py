@@ -45,6 +45,11 @@ async def report(owner_id: str | None) -> int:
         FamilyRbacMetricsRepository,
     )
     from app.repositories.family_tree_repository import FamilyTreeRepository
+    from app.core.config import settings
+    from app.db.mongodb import MongoDBManager
+
+    # App 啟動時由 app.dependencies 設定；腳本不經過那裡，沒有這行就是「未設定 MongoDB_url」。
+    MongoDBManager.configure(settings.MONGODB_URI)
 
     if owner_id:
         counters = await FamilyRbacMetricsRepository.get(owner_id)

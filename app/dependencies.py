@@ -753,7 +753,8 @@ _location_handler = LineLocationHandler(
     replier=_line_replier,
     loading_animation_service=_line_loading_animation_service,
 )
-_family_tree_service = FamilyTreeService()
+# 稽核與角色指派共用同一份：移除成員收回的是全部權限，要跟角色變更排在同一條時序上。
+_family_tree_service = FamilyTreeService(audit_repository=FamilyRoleAuditRepository)
 _family_role_service = FamilyRoleService(
     authorization_service=_family_authorization_service,
     family_tree_repository=FamilyTreeRepository,

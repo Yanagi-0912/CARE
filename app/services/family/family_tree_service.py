@@ -14,6 +14,7 @@ from app.models.family_tree import (
 )
 from app.models.family_authorization import ASSIGNABLE_FAMILY_ROLES
 from app.repositories.family_tree_repository import FamilyTreeRepository
+from app.services.family.rbac_migration import enforce_if_assignment_complete
 logger = logging.getLogger(__name__)
 
 
@@ -22,11 +23,18 @@ class FamilyTreeService:
     家庭服務功能。
     """
 
-    def __init__(self, repository: Any = FamilyTreeRepository) -> None:
+    def __init__(
+        self,
+        repository: Any = FamilyTreeRepository,
+        audit_repository: Any = None,
+    ) -> None:
         """repository 可注入，讓測試以假物件替代而不必 monkey patch
         （openspec/config.yaml 的測試規則）。預設值即原本直接呼叫的那個類別，
-        既有呼叫端與既有測試都不受影響。"""
+        既有呼叫端與既有測試都不受影響。
+
+        `audit_repository` 給移除成員寫稽核用；未注入時不寫（只有測試會這樣建）。"""
         self._repo = repository
+        self._audit = audit_repository
 
     async def get_family_tree(self, user_id: str) -> FamilyTree:
         """
@@ -267,4 +275,65 @@ class FamilyTreeService:
                 detail=f"在 {user_id} 的族譜中找不到成員 {member_id}",
             )
         return updated_tree
+
+    async def remove_member(self, operator_id: str, member_id: str) -> None:
+        """切斷操作者與某位家人之間的連結，**兩個方向一起**。
+
+        族譜是雙向登記的（見 `add_to_family`）：我的族譜裡有他（帶他對我的角色），
+        他的族譜裡也有我。只拿掉一邊，另一個方向的存取與推播都還在——使用者按的
+        是「移除這位家人」，不會預期自己仍看得到對方、或仍收到對方的逾時通報。
+
+        兩個方向都不需要額外授權，各有各的理由：
+
+        - 從**自己**的族譜拿掉對方：自己的族譜只有自己能寫，這是擁有者的權利。
+        - 把**自己**從對方的族譜拿掉：只會收回自己對對方資料的存取，是放棄權限
+          而不是取得權限。所以受邀的家人也能用同一支端點「退出」長輩的家庭。
+
+        動不到第三者：寫入的兩份文件恆為「操作者的族譜」與「對方的族譜」，
+        而且各自只拿掉彼此。
+        """
+        if member_id == operator_id:
+            raise HTTPException(status_code=400, detail="無法移除自己")
+
+        removed_from_mine = await self._repo.remove_member(operator_id, member_id)
+        removed_from_theirs = await self._repo.remove_member(member_id, operator_id)
+        if removed_from_mine is None and removed_from_theirs is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"在您的家庭中找不到成員 {member_id}",
+            )
+
+        await self._audit_removal(operator_id, removed_from_mine, operator_id)
+        await self._audit_removal(member_id, removed_from_theirs, operator_id)
+
+        # 移除的可能正是最後一位未設定角色的人：那一刻起剩下的角色設定才生效。
+        # 失敗不影響這次移除——成員已經拿掉了；下一次指派或 backfill 腳本會補切。
+        for owner_id in (operator_id, member_id):
+            try:
+                await enforce_if_assignment_complete(self._repo, owner_id)
+            except Exception:
+                logger.exception("切換家庭權限為強制失敗：owner=%s", owner_id)
+
+        logger.info("成員已移除：operator=%s, member=%s", operator_id, member_id)
+
+    async def _audit_removal(
+        self, owner_id: str, removed: Optional[FamilyMember], changed_by: str
+    ) -> None:
+        """移除的稽核。寫不進去只記 log，不讓已經完成的移除變成一個 500——
+        使用者會以為沒移除成功而重按，第二次拿到的是 404。"""
+        if removed is None or self._audit is None:
+            return
+        try:
+            await self._audit.append(
+                owner_id=owner_id,
+                member_id=removed.user_id,
+                changed_by=changed_by,
+                from_role=removed.family_role,
+                to_role=None,
+                event="member_removed",
+            )
+        except Exception:
+            logger.exception(
+                "移除成員的稽核寫入失敗：owner=%s, member=%s", owner_id, removed.user_id
+            )
 

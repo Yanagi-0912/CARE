@@ -314,10 +314,11 @@ class FamilyRoleAuditEntry(BaseModel):
     changed_at: datetime
     changed_by: str
     via_delegation: bool = False
-    # 角色指派以外的事件（委任建立／撤銷／到期）也走同一份稽核，用這個欄位
-    # 區分，避免為了兩三種事件各開一個 collection 而讓時序拼不回來。
-    event: Literal["role_change", "delegation_granted", "delegation_revoked"] = (
-        "role_change"
-    )
+    # 角色指派以外的事件（委任建立／撤銷／到期、成員被移除）也走同一份稽核，
+    # 用這個欄位區分，避免為了兩三種事件各開一個 collection 而讓時序拼不回來。
+    # 移除成員收回的是全部權限，事後同樣要答得出「誰在什麼時候拿掉了誰」。
+    event: Literal[
+        "role_change", "delegation_granted", "delegation_revoked", "member_removed"
+    ] = "role_change"
 
 

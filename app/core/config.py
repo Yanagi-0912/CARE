@@ -384,15 +384,24 @@ class Settings:
     PRESCRIPTION_SCAN_ENABLED: bool = os.getenv(
         "PRESCRIPTION_SCAN_ENABLED", "true"
     ).lower() in ("1", "true", "yes", "on")
-    # 家庭 RBAC 的全域總閘（kill switch）。預設 **關閉**——本能力比既有行為
-    # 嚴格，切換當下會中斷既有的照顧行為，因此先跑影子模式：照常計算兩種
-    # 判定並記錄差異，但依 legacy 放行，行為與導入前完全相同。
+    # 家庭 RBAC 的全域總閘（kill switch）。預設**開啟**。
     #
-    # 開啟後仍不是全體一起強制：強制以**資料擁有者**為邊界逐一啟用（見
-    # FamilyTree.rbac_migration_state），兩者是 AND 關係。這個開關的角色是
-    # 出事時讓全體立刻回到變更前的行為，不必逐一改資料。
+    # 開啟不等於全體強制：強制以**資料擁有者**為邊界逐一啟用（見
+    # FamilyTree.rbac_migration_state），兩者是 AND 關係。擁有者替每一位家人都
+    # 指派角色的那一刻才會切成 enforced（app/services/family/rbac_migration.py）；
+    # 還沒指派完的家庭照舊跑影子模式，行為與導入前相同。
+    #
+    # 原本預設關閉的理由是「切換當下會中斷既有的照顧行為」。那時沒有任何路徑會
+    # 把擁有者切成 enforced，開關打開也沒有人被強制；改成擁有者指派完才切之後，
+    # 被強制的只有親手做完決定的家庭，不會有人在沒人決定的情況下失去功能。
+    #
+    # 這個開關的角色是出事時讓全體立刻回到變更前的行為，不必逐一改資料：
+    # 讓 backend 與 scheduler 的 pod 拿到 FAMILY_RBAC_ENFORCED=false。注意
+    # CARE-infra 的 backend ConfigMap 是逐一列鍵的
+    # （helm/care/templates/configmap-backend.yaml），只在 values.yaml 加這個鍵
+    # 進不到 pod，要連模板那一行一起加。
     FAMILY_RBAC_ENFORCED: bool = os.getenv(
-        "FAMILY_RBAC_ENFORCED", "false"
+        "FAMILY_RBAC_ENFORCED", "true"
     ).lower() in ("1", "true", "yes", "on")
     # 委任授權的**啟用**閘門。預設關閉，且在核可流程（身分驗證、醫療證明、
     # 法定監護證明）由後續的產品／法務 change 定義之前不得開啟。

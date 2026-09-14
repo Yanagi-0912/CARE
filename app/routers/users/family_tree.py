@@ -236,6 +236,26 @@ async def set_care_recipient(
     )
 
 
+@router.delete(
+    "/members/{memberId}",
+    summary="移除家人（雙向）",
+    description=(
+        "切斷目前使用者與某位家人之間的連結：我的族譜移除他，他的族譜也移除我。"
+        "家人或長輩任一方都可呼叫；移除後雙方都看不到對方的資料，"
+        "也不再收到對方的通知。要再加入需重新邀請。"
+    ),
+)
+async def remove_member(
+    memberId: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: FamilyTreeService = Depends(get_family_tree_service),
+):
+    await service.remove_member(
+        operator_id=current_user.line_user_id, member_id=memberId
+    )
+    return {"removed": True}
+
+
 
 # ── 角色管理 ──────────────────────────────────────────────────────────────
 #

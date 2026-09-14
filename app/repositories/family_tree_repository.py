@@ -365,6 +365,43 @@ class FamilyTreeRepository:
         doc = await col.find_one({"user_id": user_id})
         return FamilyTree(**doc)
 
+    @staticmethod
+    async def remove_member(
+        user_id: str,
+        member_id: str,
+        collection: Optional[Any] = None,
+    ) -> Optional[FamilyMember]:
+        """把一位成員從 `user_id` 的族譜移除，回傳被移除的那一筆；不在族譜內時回 None。
+
+        回傳移除前的成員項目，是為了讓呼叫端寫稽核時記得住他原本是什麼角色——
+        移除之後就查不回來了。讀取與移除在同一次 `find_one_and_update` 裡完成
+        （預設回傳更新前的文件），不先讀再刪：兩次之間角色若被改掉，稽核記下的
+        就是錯的值。
+
+        **SHALL NOT 觸碰 `rbac_migration_state`**：與加入成員、指派角色同一個
+        理由，見 `set_migration_state`。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_family_tree_collection()
+        now = datetime.now(tz=timezone.utc)
+
+        before = await collection.find_one_and_update(
+            {"user_id": user_id, "family_members.user_id": member_id},
+            {
+                "$pull": {"family_members": {"user_id": member_id}},
+                "$set": {"updated_at": now},
+            },
+            projection={"family_members": {"$elemMatch": {"user_id": member_id}}},
+        )
+        if not before:
+            return None
+        removed = before.get("family_members") or []
+        if not removed:
+            return FamilyMember(user_id=member_id)
+        return FamilyMember(
+            user_id=member_id, family_role=removed[0].get("family_role")
+        )
+
 
     # ── PendingInvitation ─────────────────────────────────────────────────────
 

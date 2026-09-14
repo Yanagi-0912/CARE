@@ -365,9 +365,10 @@ async def test_taiwanese_is_converted_then_spoken_by_taigi_as_mp3():
         assert engine.calls == []
         assert path.endswith(".mp3")
         assert Path(path).read_bytes() == data
-        # 存下來的是解得開的 mp3，長度照 WAV 算
-        speech_audio.decode_to_pcm16_mono(Path(path))
-        assert duration_ms == 1500
+        # 存下來的是解得開的 16 kHz mp3（轉檔成本見 TAIGI_MP3_SAMPLE_RATE），長度照 WAV 算
+        _, rate = speech_audio.decode_to_pcm16_mono(Path(path))
+        assert rate == 16_000
+        assert abs(duration_ms - 1500) <= 10
     finally:
         _cleanup(path)
 

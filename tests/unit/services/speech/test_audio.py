@@ -99,6 +99,16 @@ def test_importing_speech_callers_does_not_load_pyav():
     assert out.stdout.strip().splitlines()[-1] == "False"
 
 
+def test_encode_mp3_with_fast_compression_level_decodes_back():
+    pcm = _tone(1.0, rate=16_000)
+
+    mp3 = audio.encode_mp3(pcm, 16_000, bit_rate=48_000, compression_level=7)
+    back, rate = audio.decode_to_pcm16_mono(io.BytesIO(mp3))
+
+    assert rate == 16_000
+    assert abs(_seconds(back, rate) - 1.0) < 0.1
+
+
 def test_encode_mp3_decodes_back_with_same_length():
     pcm = _tone(1.5, rate=22_050)
 

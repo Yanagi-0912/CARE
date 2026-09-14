@@ -70,9 +70,15 @@ DEFAULT_VOICE_RATE = "normal"
 EDGE_TTS_CONNECT_TIMEOUT_SECONDS = 5
 EDGE_TTS_RECEIVE_TIMEOUT_SECONDS = 15
 
-# 台語 TTS 回 WAV，轉成跟 edge-tts 同規格的 48 kbps 單聲道 mp3（edge-tts 固定輸出
-# audio-24khz-48kbitrate-mono-mp3），LINE 那頭收到的格式不變。
+# 台語 TTS 回 WAV（22,050 Hz），轉成 48 kbps 單聲道 mp3 給 LINE（edge-tts 送的也是
+# 48 kbps 單聲道：audio-24khz-48kbitrate-mono-mp3）。轉檔在正式環境很貴：backend 的
+# CPU limit 是 500m，2026-09-14 在 pod 內實測 110 秒音檔用預設設定要 5.0 秒，降到
+# 16 kHz、LAME 品質等級 7 只要 1.5 秒。本機把同一段念稿轉檔後丟回台語 STT，相似度
+# 預設 0.92、16 kHz＋等級 7 也是 0.92。16 kHz 與 edge-tts 的 24 kHz 同屬 MPEG-2 的
+# mp3 取樣率，LINE 本來就在播這一類。
 TAIGI_MP3_BIT_RATE = 48_000
+TAIGI_MP3_SAMPLE_RATE = 16_000
+TAIGI_MP3_COMPRESSION_LEVEL = 7
 
 
 class SpeechEngine(Protocol):
@@ -215,9 +221,15 @@ class TTSService:
                     speed=TAIGI_SPEED_BY_RATE.get(voice_rate, TAIGI_DEFAULT_SPEED),
                 )
                 t_tts["ok"] = "True"
-            pcm, rate = await asyncio.to_thread(audio.decode_to_pcm16_mono, io.BytesIO(wav))
+            pcm, rate = await asyncio.to_thread(
+                audio.decode_to_pcm16_mono, io.BytesIO(wav), TAIGI_MP3_SAMPLE_RATE
+            )
             mp3 = await asyncio.to_thread(
-                audio.encode_mp3, pcm, rate, bit_rate=TAIGI_MP3_BIT_RATE
+                audio.encode_mp3,
+                pcm,
+                rate,
+                bit_rate=TAIGI_MP3_BIT_RATE,
+                compression_level=TAIGI_MP3_COMPRESSION_LEVEL,
             )
         except Exception:
             logger.warning("台語 TTS 失敗，改念國語", exc_info=True)

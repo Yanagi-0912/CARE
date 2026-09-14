@@ -132,12 +132,20 @@ def split_on_pauses(
     return chunks
 
 
-def encode_mp3(pcm: bytes, sample_rate: int, *, bit_rate: int) -> bytes:
-    """16-bit 單聲道 PCM → mp3。"""
+def encode_mp3(
+    pcm: bytes, sample_rate: int, *, bit_rate: int, compression_level: int | None = None
+) -> bytes:
+    """16-bit 單聲道 PCM → mp3。
+
+    `compression_level` 是 LAME 的演算法品質（0 最好最慢、9 最快），None 用預設。
+    """
     av = _av()
+    options = {} if compression_level is None else {"compression_level": str(compression_level)}
     buf = io.BytesIO()
     with av.open(buf, mode="w", format="mp3") as container:
-        stream = container.add_stream("libmp3lame", rate=sample_rate, layout="mono")
+        stream = container.add_stream(
+            "libmp3lame", rate=sample_rate, layout="mono", options=options
+        )
         stream.bit_rate = bit_rate
         frame = av.AudioFrame(
             format="s16", layout="mono", samples=len(pcm) // _BYTES_PER_SAMPLE

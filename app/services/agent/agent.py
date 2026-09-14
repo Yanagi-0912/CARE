@@ -150,6 +150,27 @@ def _rag_direct_reply_node(state: State) -> dict:
 
 TOOL_RESULT_PREVIEW_LEN = 120
 
+# 一輪對話最多幾次「agent → tools」往返。3 是從程式裡的合法路徑數出來的：
+#   1. 模型自己選的工具（同一次可呼叫多個，仍算一次往返）。
+#   2. 工具回來後模型直接回話，但 `agent_node` 的 force_rag 條件成立，強制
+#      補一次 `get_rag_answer`（nodes.py；例如先 verify_claim 再補 RAG）。
+#   3. 某次呼叫被 `_execute_offered_tools` 攔下後，模型改呼叫有提供的工具。
+# prompt 的工具規則 (a)-(i) 都是一個意圖對一個工具，沒有要求串接。
+MAX_TOOL_ROUNDS = 3
+
+# 最長合法路徑的節點數：guardrail＋agent，之後每次往返是 tools＋agent（或以
+# rag_direct 收尾），2 + 2×3 = 8。recursion_limit 不是節點數本身：實測
+# LangGraph 1.1.10 上 N 個節點的路徑要 limit ≥ N+1 才跑得完（只有
+# guardrail→agent 的 2 節點路徑，limit=2 就會丟錯），所以再加 1。
+# 這個對應由 tests/unit/services/agent/test_recursion_limit.py 釘住：
+# 升級 LangGraph 後計步方式若改變，那裡會先壞。
+#
+# 必須明確傳入：不傳時用的是 LangGraph 1.1.10 的預設 10007（不是舊版的 25，
+# 見 langgraph/_internal/_config.py），模型卡在「呼叫 → 被攔 → 再呼叫」時
+# 等於沒有上限，每一步都是一次 Gemini 呼叫。超過時丟 GraphRecursionError，
+# 由 message_handler 回 line.fallback_process_error。
+AGENT_RECURSION_LIMIT = 2 + 2 * MAX_TOOL_ROUNDS + 1
+
 
 # 被攔下的工具呼叫回給模型的內容。刻意**不**提參數名或用法：2026-09-10 的
 # 事件裡，ToolNode 回的參數驗證錯誤（「query: Field required, Please fix the
@@ -189,8 +210,8 @@ async def _execute_offered_tools(state: State, config: Any, tool_executor: Any) 
 
     沒有任何呼叫被攔時，行為與導入前逐位元相同——直接把原 state 交給 ToolNode。
 
-    殘餘風險：模型收到拒絕後仍可能再呼叫一次。那會一路被攔、直到 LangGraph
-    的遞迴上限，屬有界失效；拒絕訊息已明確要求它直接回覆。
+    殘餘風險：模型收到拒絕後仍可能再呼叫一次。那會一路被攔，直到
+    `AGENT_RECURSION_LIMIT` 中止這一輪；拒絕訊息已明確要求它直接回覆。
     """
     names = _tool_names_from_state(state)
     t0 = time.perf_counter()
@@ -376,7 +397,8 @@ class Agent:
                     "messages": messages,
                     "allow_rag": False,
                     "user_profile": user_profile,
-                }
+                },
+                config={"recursion_limit": AGENT_RECURSION_LIMIT},
             )
             timing["msgs"] = len(result.get("messages") or ())
 

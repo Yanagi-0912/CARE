@@ -101,6 +101,7 @@ from app.services.medical.symptom_classification import (
     UrgencyClassifier,
     load_symptom_table,
 )
+from app.services.medical.symptom_classification.urgency import URGENCY_MODEL_PATH
 from app.services.medical.symptom_classification.vector_index import (
     DEFAULT_VECTOR_PATH,
     EMBEDDING_TASK_TYPE,
@@ -529,7 +530,18 @@ configure_symptom_tool(_symptom_department_service)
 
 # 急迫度判斷。刻意與科別建議分開建構：它擋在整個 agent 之前，不屬於任何工具，
 # 也不依賴對照表——對照表壞掉時科別建議可以不上線，安全檢查不行。
-_urgency_classifier = UrgencyClassifier(gemini_service=_gemini_service)
+#
+# 本地模型先判、沒把握才問 Gemini（見 urgency.py 模組註解）。模型檔不在或壞掉時
+# 退回純 LLM 判斷——與導入前一模一樣，而不是整個安全檢查失效。
+try:
+    _urgency_local = LocalGuardrailClassifier.load(URGENCY_MODEL_PATH)
+    logger.info("Urgency cascade enabled (local classifier + LLM fallback)")
+except Exception:
+    logger.exception("本地急迫度模型載入失敗，退回純 LLM 判斷")
+    _urgency_local = None
+_urgency_classifier = UrgencyClassifier(
+    gemini_service=_gemini_service, local=_urgency_local
+)
 if not _symptom_table.verified:
     logger.warning(
         "症狀對照表尚未經人工審定（status != verified），"

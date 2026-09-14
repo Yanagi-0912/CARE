@@ -26,13 +26,38 @@
     都不成立。現在改回納入，並且緊急判定會同時觸發家人通報（見
     app/services/safety/emergency_alert_service.py），行動不再只有一張卡。
 
-為什麼失敗方向是 fail-open（與前一版相反）：
-    前一版是 fail-closed，理由是「漏放沒有補救機會」。那個理由的前提是偵測器
-    為本地 regex——它只會因為程式寫壞而失敗，機率極低且該讓人立刻發現。換成
-    LLM 之後失敗來源變成網路、配額、逾時，是常態而非異常；fail-closed 會讓
-    每一次 API 中斷都變成「所有使用者都被叫去打 119」。那不是保守，是把卡片
-    變成雜訊，使用者會很快學會忽略它——連帶真的急症也被忽略。
-    這是純 LLM 方案必須接受的代價：沒有地板，中斷期間就沒有安全網。
+為什麼先過本地模型：
+    純 LLM 版本讓每一則訊息都要等一次 Gemini（它擋在所有回覆前面），而絕大多數
+    訊息是閒聊與一般健康問題，根本不需要問。現在先由本地字元 n-gram 模型
+    （resources/urgency_model.json）算機率，低於 `low` 的直接放行，其餘才問
+    Gemini。本地推論是查表加總，不打任何 API。
+
+    本地模型**只放行，不判定緊急**。緊急判定會推播給家人，誤報收不回來；而本地
+    模型在合成資料上已經出現「笑到快死了」這類高信心誤判，外語尤其多。所以模型
+    檔裡的 `high` 門檻刻意不用——判定緊急一律由 LLM 確認。
+
+    `low` 以「交叉驗證零漏判」選定：本地放行的訊息裡不能有任何一則是急症。
+    代價是放行比例較低，但這是唯一一種放行錯了就完全沒有補救的判斷。資料與訓練
+    見 scripts/build_urgency_dataset.py、scripts/build_guardrail_model.py；
+    tests/unit/services/medical/test_urgency_local_model.py 釘住不得被放行的句子。
+
+    實測（合成資料 holdout 1,876 筆，2026-09-14）：本地漏判 0 則（六種語言皆然）；
+    沿用自 guardrail 資料集的日常中文訊息 79.7% 由本地放行，外語的非急症只有
+    30.5%——外語使用者多數訊息仍要等 Gemini。本地推論平均 0.05ms／則。
+    這些是合成資料上的數字，與真實長輩訊息之間必然有分佈差距（理由見
+    app/services/guardrail/cascade.py），上線後以 `stage=urgency_local` 的
+    outcome 比例校對。
+
+失效方向：
+    升級給 LLM 的訊息若逾時或失敗，改以本地機率決定（>= 0.5 視為緊急），不再
+    一律 fail-open。會被升級的訊息本來就帶有急症的語彙，這時丟掉本地已經算出來的
+    機率、直接當成不緊急，是白白放掉唯一的證據。前一版反對 fail-closed 的理由——
+    「每次 API 中斷都變成所有人被叫去打 119」——在這裡不成立：中斷期間只有本地
+    沒把握、且機率偏向緊急的訊息會出紅卡，一般訊息仍由本地放行。
+    同一份 holdout 上模擬中斷：急症 95.4% 仍出紅卡（純 LLM 版是 0%），非急症
+    3.3% 會誤出紅卡並通報家人——這是只在 LLM 中斷期間才付的代價。
+
+    本地模型載入失敗時（dependencies 退回純 LLM），行為與前一版相同：fail-open。
 """
 
 from __future__ import annotations
@@ -41,20 +66,33 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from langchain_core.messages import HumanMessage
 
+from app.core.request_logging import log_stage
+from app.services.guardrail.local import LocalGuardrailClassifier
+
 logger = logging.getLogger(__name__)
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[4]
+# 格式與 guardrail 模型相同（字元 n-gram TF-IDF + 邏輯回歸），由
+# scripts/build_urgency_dataset.py 產生資料、scripts/build_guardrail_model.py 訓練。
+URGENCY_MODEL_PATH = _PROJECT_ROOT / "resources" / "urgency_model.json"
 
 LOGGER_HEADER_TEXT = "[Services:Urgency]"
 
 URGENCY_EMERGENCY = "emergency"
 URGENCY_NONE = "none"
 
-# 判斷器的逾時。這個判斷擋在所有回覆前面，慢了等於整個 bot 慢；judge 沒有在
-# 這個時間內回來時走 fail-open，理由見模組註解。
+# LLM 判斷的逾時。只有本地模型沒把握的訊息才會走到 LLM；沒有在這個時間內回來
+# 時改以本地機率決定，理由見模組註解「失效方向」。
 DEFAULT_TIMEOUT_SECONDS = 4.0
+
+# LLM 無法判斷時，本地機率達到這個值就視為緊急。0.5 是邏輯回歸本身的決策邊界，
+# 不另外調：這條路徑只在 LLM 中斷時才走，沒有真實流量可以校準它。
+LOCAL_FALLBACK_CUTOFF = 0.5
 
 
 # 全形數字 → 半形。re 的 \D 在 Unicode 模式下不會濾掉全形數字（它們屬於 Nd
@@ -183,34 +221,60 @@ class UrgencyClassifier:
         gemini_service=None,
         invoke: Callable[[str], Awaitable[dict[str, Any]]] | None = None,
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+        local: LocalGuardrailClassifier | None = None,
     ) -> None:
         # invoke 可注入，測試才能在不打 API 的情況下驗證判斷結果的處置。
         self._gemini = gemini_service
         self._invoke = invoke
         self._timeout = timeout_seconds
+        # 本地模型不在時（載入失敗、或測試沒給），行為與純 LLM 版完全相同。
+        self._local = local
 
     async def classify(self, text: str, *, language: str = "繁體中文") -> UrgencyVerdict:
         cleaned = (text or "").strip()
         if not cleaned:
             return NOT_URGENT
 
+        # 本地模型只放行「明顯不緊急」，不直接判定緊急——模型檔裡的 high 門檻刻意
+        # 不用。理由見模組註解。
+        probability = self._local_probability(cleaned)
+        if probability is not None:
+            if probability < self._local.low:
+                log_stage(logger, "urgency_local", outcome="none", p=round(probability, 4))
+                return NOT_URGENT
+            log_stage(logger, "urgency_local", outcome="escalate", p=round(probability, 4))
+
         prompt = _PROMPT_TEMPLATE.format(language=language, text=cleaned)
         try:
             raw = await asyncio.wait_for(self._call(prompt), timeout=self._timeout)
         except asyncio.TimeoutError:
-            logger.warning(
-                f"{LOGGER_HEADER_TEXT} 判斷逾時（%.1fs），依 fail-open 視為不緊急",
-                self._timeout,
-            )
-            return NOT_URGENT
+            logger.warning(f"{LOGGER_HEADER_TEXT} 判斷逾時（%.1fs）", self._timeout)
+            return self._when_llm_unavailable(probability)
         except Exception:  # noqa: BLE001
-            logger.error(
-                f"{LOGGER_HEADER_TEXT} 判斷失敗，依 fail-open 視為不緊急",
-                exc_info=True,
-            )
-            return NOT_URGENT
+            logger.error(f"{LOGGER_HEADER_TEXT} 判斷失敗", exc_info=True)
+            return self._when_llm_unavailable(probability)
 
         return self._to_verdict(raw)
+
+    def _local_probability(self, text: str) -> float | None:
+        if self._local is None:
+            return None
+        try:
+            return self._local.probability(text)
+        except Exception:  # noqa: BLE001
+            # 本地推論不該有例外，但真的有的話，交給 LLM 而不是自己決定。
+            logger.exception(f"{LOGGER_HEADER_TEXT} 本地推論失敗，改問 LLM")
+            return None
+
+    def _when_llm_unavailable(self, probability: float | None) -> UrgencyVerdict:
+        """LLM 逾時或失敗時的判定。理由見模組註解「失效方向」。"""
+        if probability is not None and probability >= LOCAL_FALLBACK_CUTOFF:
+            logger.warning(
+                f"{LOGGER_HEADER_TEXT} LLM 無法判斷，依本地機率 %.3f 視為緊急", probability
+            )
+            return UrgencyVerdict(level=URGENCY_EMERGENCY)
+        logger.warning(f"{LOGGER_HEADER_TEXT} LLM 無法判斷，視為不緊急")
+        return NOT_URGENT
 
     def _to_verdict(self, raw: Any) -> UrgencyVerdict:
         if not isinstance(raw, dict):

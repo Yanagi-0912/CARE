@@ -102,6 +102,27 @@ async def test_notifies_eligible_recipients():
     assert [uid for uid, _ in replier.flex] == ["U_SON", "U_DAUGHTER"]
 
 
+async def test_blank_reason_is_replaced_in_the_recipients_language():
+    """
+    本地模型判定的緊急不帶白話說明，LLM 也可能回空字串。理由那一格若是空字串，
+    LINE 會以 400 拒收整張卡，家人只剩純文字退路。
+    """
+    from app.i18n.messages import t
+
+    replier = FakeReplier()
+    service = _service(
+        recipients=("U_SON",),
+        profiles={"U_SON": {"settings": {"language": "en"}}},
+        replier=replier,
+    )
+
+    assert await service.notify(PATIENT, "") is True
+    (_, flex), = replier.flex
+    card = json.dumps(flex.contents.to_dict(), ensure_ascii=False)
+    assert t("emergency_family.default_reason", "en") in card
+    assert replier.texts == []
+
+
 async def test_asks_the_authorization_service_for_the_right_kind():
     auth = FakeAuthorization(("U_SON",))
     service = EmergencyFamilyAlertService(

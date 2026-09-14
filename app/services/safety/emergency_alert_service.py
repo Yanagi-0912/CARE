@@ -94,7 +94,9 @@ class EmergencyFamilyAlertService:
                 continue
             flex = build_emergency_family_flex(
                 patient_name=patient_name,
-                reason=reason,
+                # 本地模型判定的緊急不帶白話說明，LLM 也可能回空字串；卡片上
+                # 那一格不能空著，改用收件人語言的泛稱。
+                reason=reason or t("emergency_family.default_reason", language),
                 patient_words=patient_words,
                 language=language,
                 font_size=font_size,

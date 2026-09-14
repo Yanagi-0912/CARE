@@ -62,6 +62,17 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "เหตุผลที่แจ้งเตือน",
         "ja": "判定の理由",
     },
+    # 急迫度判斷沒有給出白話說明時（本地模型判定、或 LLM 回了空字串）的理由。
+    # 不能留空：text 元件是空字串時 LINE 會以 400 拒收整則訊息（verdict_flex.py
+    # 的 _BLANK_*_FALLBACK 已因此踩過）。
+    "emergency_family.default_reason": {
+        "zh-TW": "對話內容顯示可能正在發生需要立即處置的狀況",
+        "en": "The conversation suggests something may need immediate care right now",
+        "id": "Percakapan menunjukkan mungkin ada kondisi yang perlu penanganan segera",
+        "vi": "Nội dung trò chuyện cho thấy có thể đang có tình trạng cần xử trí ngay",
+        "th": "บทสนทนาบ่งชี้ว่าอาจมีเหตุการณ์ที่ต้องได้รับการดูแลทันที",
+        "ja": "会話の内容から、今すぐ処置が必要な状況の可能性があります",
+    },
     "emergency_family.action_label": {
         "zh-TW": "現在可以做的事",
         "en": "What you can do now",

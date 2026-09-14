@@ -89,7 +89,10 @@ async def test_missing_or_null_fields_are_not_emergency(payload):
     assert (await _classifier(payload).classify("測試")).level == URGENCY_NONE
 
 
-# --- 失效行為（fail-open）---------------------------------------------------
+# --- 失效行為：沒有本地模型時（fail-open）-------------------------------------
+#
+# 本地模型載入失敗時 dependencies 退回純 LLM，這幾條就是那時的行為。有本地模型
+# 時的失效行為見檔尾「串接」一節。
 
 
 @pytest.mark.asyncio
@@ -252,3 +255,107 @@ async def test_out_of_scope_verdict_produces_no_emergency_card():
     assert verdict.level == URGENCY_NONE
     assert verdict.hotlines == ()
     assert verdict.display == ""
+
+
+# --- 串接：本地模型先判，沒把握才問 LLM -----------------------------------------
+
+
+class _FakeLocal:
+    """與 LocalGuardrailClassifier 同介面：probability() 與 low／high 門檻。"""
+
+    def __init__(self, probability=0.5, *, low=0.1, high=0.9, exc=None):
+        self._probability = probability
+        self._exc = exc
+        self.low = low
+        self.high = high
+
+    def probability(self, _text):
+        if self._exc is not None:
+            raise self._exc
+        return self._probability
+
+
+def _cascade(local, payload=None, *, exc=None, delay=0.0, timeout=4.0):
+    calls = []
+
+    async def invoke(prompt):
+        calls.append(prompt)
+        if delay:
+            await asyncio.sleep(delay)
+        if exc is not None:
+            raise exc
+        return payload
+
+    classifier = UrgencyClassifier(invoke=invoke, timeout_seconds=timeout, local=local)
+    return classifier, calls
+
+
+@pytest.mark.asyncio
+async def test_confident_not_urgent_never_calls_the_llm():
+    """這是整個串接的目的：大部分訊息不必再等一次 Gemini。"""
+    classifier, calls = _cascade(_FakeLocal(0.01), _emergency_payload())
+    assert (await classifier.classify("今天天氣真好")) is NOT_URGENT
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_local_never_declares_an_emergency_on_its_own():
+    """
+    緊急判定會推播給家人，誤報收不回來。本地模型在合成資料上已經出現「笑到快死了」
+    這類高信心誤判（外語尤其多），所以再有把握也要交給 LLM 確認。
+    """
+    classifier, calls = _cascade(_FakeLocal(0.999, high=0.9), {"happening_now": False})
+    assert (await classifier.classify("ngakak sampe mau mati")).level == URGENCY_NONE
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_uncertain_band_defers_to_the_llm():
+    classifier, calls = _cascade(_FakeLocal(0.5), {"happening_now": False})
+    assert (await classifier.classify("昏迷的原因有哪些")).level == URGENCY_NONE
+    assert len(calls) == 1
+
+    classifier, calls = _cascade(_FakeLocal(0.5), _emergency_payload())
+    verdict = await classifier.classify("我阿公昏迷")
+    assert verdict.is_emergency is True
+    assert verdict.display == "你提到有人失去意識、叫不醒"
+
+
+@pytest.mark.asyncio
+async def test_probability_equal_to_low_is_not_confident():
+    """與 CascadeGuardrailService 相同：嚴格小於 low 才由本地放行。"""
+    at_low, calls = _cascade(_FakeLocal(0.1, low=0.1), {"happening_now": False})
+    await at_low.classify("x")
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "llm_failure", [{"delay": 0.2, "timeout": 0.01}, {"exc": RuntimeError("boom")}]
+)
+async def test_llm_unavailable_falls_back_to_the_local_probability(llm_failure):
+    """
+    有本地模型時不再一律 fail-open。會升級給 LLM 的訊息本來就帶有急症語彙，
+    這時候丟掉本地模型已經算出來的機率、直接當成不緊急，是白白放掉唯一的證據。
+    """
+    leaning_yes, _ = _cascade(_FakeLocal(0.7), _emergency_payload(), **llm_failure)
+    assert (await leaning_yes.classify("我阿公好像昏過去")).is_emergency is True
+
+    leaning_no, _ = _cascade(_FakeLocal(0.3), _emergency_payload(), **llm_failure)
+    assert (await leaning_no.classify("昏迷的原因有哪些")) is NOT_URGENT
+
+
+@pytest.mark.asyncio
+async def test_local_failure_defers_to_the_llm():
+    classifier, calls = _cascade(_FakeLocal(exc=RuntimeError("bad model")), _emergency_payload())
+    assert (await classifier.classify("我阿公昏迷")).is_emergency is True
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_local_failure_and_llm_failure_is_not_urgent():
+    """兩邊都沒有證據時只剩 fail-open，與沒有本地模型時相同。"""
+    classifier, _ = _cascade(
+        _FakeLocal(exc=RuntimeError("bad model")), exc=RuntimeError("boom")
+    )
+    assert (await classifier.classify("我阿公昏迷")) is NOT_URGENT

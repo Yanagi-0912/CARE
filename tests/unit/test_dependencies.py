@@ -86,6 +86,20 @@ def test_handlers_only_get_the_safety_service_when_the_flag_is_on():
     assert handler._media_handler._safety_alert_service is expected
 
 
+def test_media_handler_gets_the_emergency_family_alert_service():
+    """語音、圖片、影片、檔案裡的急症也要通知家人。
+
+    建構子參數是可選的，漏傳不會拋任何例外，只會讓媒體訊息的家人通報悄悄
+    消失——PR #123 合併時就是這樣，只接了文字那一條。
+    """
+    handler = dependencies.get_line_event_handler()
+    service = dependencies._emergency_family_alert_service
+
+    assert service is not None
+    assert handler._message_handler._emergency_family_alert_service is service
+    assert handler._media_handler._emergency_family_alert_service is service
+
+
 def test_claim_verification_service_is_wired_with_identity_verifier():
     """Task 10 教訓比照 Task 3 review 記錄的 gemini_service 疏漏：
     identity_verifier 是可選參數，忘記在這裡注入不會拋任何例外，只會讓

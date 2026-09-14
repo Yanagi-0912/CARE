@@ -642,3 +642,15 @@ async def test_diet_guide_pdf_does_not_force_rag_or_location(
     mock_log.assert_called_once()
     assert mock_log.call_args[1].get("force_rag") is None
     assert mock_log.call_args[1].get("force_location") is None
+
+
+@pytest.mark.parametrize(
+    "prefix, expected",
+    [("image", True), ("video", True), ("file", True), ("audio", False)],
+)
+def test_only_extracted_image_video_file_text_counts_as_media_content(prefix, expected):
+    """語音逐字稿是使用者親口的問題，不是抽出的全文，不能讓它跳過知識庫與院所意圖。"""
+    from app.services.agent.utils.nodes import _is_media_extracted_content
+
+    text = f"以下為使用者傳送的{prefix}媒體內容：\n肚子痛的原因是什麼啊"
+    assert _is_media_extracted_content(text) is expected

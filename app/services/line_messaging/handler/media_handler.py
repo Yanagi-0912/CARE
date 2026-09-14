@@ -137,6 +137,12 @@ class LineMediaHandler(BaseLineMessageHandler):
                 )
 
         image_text = media_content if media_type == "image" else ""
+        if media_type == "audio":
+            # 語音逐字稿就是使用者親口問的問題，要跟打字一樣進 agent。包上媒體前綴的話，
+            # agent 會把它當成圖片／文件抽出的全文而禁止查知識庫（nodes.py 的
+            # _is_media_extracted_content 與 prompt 規則 (e)）；2026-09-14 用語音問
+            # 「肚子痛的原因是什麼啊」就因此沒有查知識庫。語音回覆看的是 message_type。
+            return cleaned_content, media_type, image_text
         return (
             f"以下為使用者傳送的{media_type}媒體內容：\n{media_content}",
             media_type,

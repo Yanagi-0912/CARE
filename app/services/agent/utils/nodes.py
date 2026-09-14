@@ -425,8 +425,9 @@ _FACILITY_TERM_RE = re.compile(
 )
 # LineMediaHandler 會把 OCR／抽字結果包成此前綴再送進 agent。
 # 文件全文常含「就醫／診所」等衛教用語，不能當成使用者要找附近院所。
+# 語音不在此列：逐字稿不包前綴（見 media_handler），是使用者親口的提問，照一般訊息處理。
 _MEDIA_EXTRACTED_CONTENT_RE = re.compile(
-    r"^以下為使用者傳送的(?:image|video|audio|file)媒體內容："
+    r"^以下為使用者傳送的(?:image|video|file)媒體內容："
 )
 
 

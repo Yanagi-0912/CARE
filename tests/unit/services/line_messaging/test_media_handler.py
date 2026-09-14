@@ -467,3 +467,46 @@ async def test_emergency_reply_is_not_preceded_by_a_table_card(
     assert len(sent) == 1
     assert isinstance(sent[0], TextMessage)
     assert sent[0].text == "緊急卡"
+
+
+# 語音逐字稿就是使用者親口問的問題，要跟打字一樣進 agent：能查知識庫、能觸發找院所。
+# 包上「以下為使用者傳送的audio媒體內容：」的話，nodes.py 的 _is_media_extracted_content
+# 與 prompt 規則 (e) 會把它當成 OCR／文件抽字而禁止 get_rag_answer——2026-09-14 用語音問
+# 「肚子痛的原因是什麼啊」就因此沒有查知識庫。那個前綴是給圖片、文件抽出的全文用的。
+@pytest.mark.asyncio
+async def test_voice_message_transcript_reaches_agent_as_plain_text(media_handler):
+    from linebot.v3.webhooks import AudioMessageContent, ContentProvider
+
+    message = AudioMessageContent(
+        id="M_AUDIO", duration=4000, contentProvider=ContentProvider(type="line")
+    )
+    message.type = "audio"
+    with patch(
+        "app.services.media.mutimedia_processor.media_processor_service.process_media",
+        new_callable=AsyncMock,
+        return_value="肚子痛的原因是什麼啊",
+    ):
+        user_text, media_type, image_text = await media_handler._extract_media_text(
+            message, "U12345"
+        )
+
+    assert user_text == "肚子痛的原因是什麼啊"
+    assert media_type == "audio"
+    assert image_text == ""
+
+
+@pytest.mark.asyncio
+async def test_uploaded_audio_file_transcript_reaches_agent_as_plain_text(media_handler):
+    message = FileMessageContent(id="M_M4A", fileName="question.m4a", fileSize=100)
+    message.type = "file"
+    with patch(
+        "app.services.media.mutimedia_processor.media_processor_service.process_media",
+        new_callable=AsyncMock,
+        return_value="我頭痛該怎麼辦",
+    ):
+        user_text, media_type, _ = await media_handler._extract_media_text(
+            message, "U12345"
+        )
+
+    assert user_text == "我頭痛該怎麼辦"
+    assert media_type == "audio"

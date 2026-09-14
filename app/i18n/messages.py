@@ -2929,6 +2929,33 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "CARE ให้ข้อมูลด้านสุขภาพ ไม่ใช่การวินิจฉัยของแพทย์ กรณีฉุกเฉินโทร 119",
         "ja": "CARE は健康情報を提供するもので、医師の診断に代わるものではありません。緊急時は 119 に電話してください。",
     },
+    # --- 諮詢摘要下載（純文字檔的檔頭） ------------------------------------
+    #
+    # 標題與 LIFF 的 consultRecord.summaryTitle 用同一組譯文，兩邊用詞一致。
+    "consultation_export.title": {
+        "zh-TW": "醫療諮詢紀錄摘要",
+        "en": "Medical Consultation Summary",
+        "id": "Ringkasan Konsultasi Medis",
+        "vi": "Tóm tắt tư vấn y tế",
+        "th": "สรุปการปรึกษาทางการแพทย์",
+        "ja": "医療相談記録の要約",
+    },
+    "consultation_export.exported_at": {
+        "zh-TW": "匯出時間：",
+        "en": "Exported at: ",
+        "id": "Diekspor pada: ",
+        "vi": "Thời gian xuất: ",
+        "th": "ส่งออกเมื่อ: ",
+        "ja": "出力日時：",
+    },
+    "consultation_export.empty": {
+        "zh-TW": "目前沒有摘要資料",
+        "en": "No summary data available.",
+        "id": "Belum ada data ringkasan.",
+        "vi": "Hiện không có dữ liệu tóm tắt.",
+        "th": "ยังไม่มีข้อมูลสรุป",
+        "ja": "要約データがありません。",
+    },
 }
 
 

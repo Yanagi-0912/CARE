@@ -312,7 +312,7 @@ def test_prompt_sits_between_candidates_and_sources():
 def test_quick_reply_text_is_routable_by_the_existing_nearby_intent():
     """按鈕文字必須被既有路由接住，否則點了等於沒反應。"""
     from app.services.agent.utils.nodes import _is_nearby_department_intent
-    from app.services.medical.department_matcher import extract_department_intent
+    from app.services.medical.department_matcher import extract_department_intents
 
     for name in ("皮膚科", "內科", "眼科", "家醫科"):
         payload = build_symptom_department_flex(
@@ -320,8 +320,7 @@ def test_quick_reply_text_is_routable_by_the_existing_nearby_intent():
         )
         text = payload["quickReply"]["items"][0]["action"]["text"]
         assert _is_nearby_department_intent(text) is True
-        match = extract_department_intent(text)
-        assert match is not None and match.canonical == name
+        assert [m.canonical for m in extract_department_intents(text)] == [name]
 
 
 def test_fallback_card_offers_its_own_primary_department():

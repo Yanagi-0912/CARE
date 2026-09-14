@@ -133,7 +133,7 @@ class ConsultationService:
             ):
                 return existing
 
-        language = await self._resolve_summary_language(user_id)
+        language = await self.resolve_summary_language(user_id)
         summary_text = await self._generate_summary(
             user_id,
             target_date,
@@ -150,7 +150,8 @@ class ConsultationService:
         await self._repository.upsert_summary(summary)
         return summary
 
-    async def _resolve_summary_language(self, user_id: str) -> str:
+    # 摘要與下載檔的檔頭都用使用者目前的語言設定
+    async def resolve_summary_language(self, user_id: str) -> str:
         settings = await self._user_profile_service.get_user_settings(user_id)
         language = (settings or {}).get("language")
         if language not in SUPPORTED_SUMMARY_LANGUAGES:

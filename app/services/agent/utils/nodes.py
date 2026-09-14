@@ -11,7 +11,7 @@ from app.core.user_language import normalize_user_language
 from app.services.agent.prompt import build_date_context, build_system_prompt
 from app.services.agent.utils.state import State
 from app.services.medical.department_matcher import (
-    extract_department_intent,
+    extract_department_intents,
     normalize_department_text,
 )
 from app.services.medical.facility_name_index import covers_known_facility_name
@@ -126,7 +126,7 @@ _DEPARTMENT_INTENT_LOOKBACK = 4
 
 # 「使用者有沒有指名某一科」與「那是哪一科」是兩個不同的問題，這裡只回答前者。
 #
-# 為什麼不能只靠 extract_department_intent：它解析不出來就回 None，於是
+# 為什麼不能只靠 extract_department_intents：它解析不出來就回空的，於是
 # 「指名了某一科，但別名表裡沒有」與「根本沒指名科別」在下游長得一模一樣。
 # 前者應該讓 medical_service 用 LLM 兜底、真的兜不出來就誠實說看不懂；後者才該
 # 做不分科搜尋。兩者混在一起的後果是科別被靜默丟掉——使用者說「大腸科」，卻拿到
@@ -219,9 +219,9 @@ def _extract_department_from_history(messages) -> str | None:
         if scanned > _DEPARTMENT_INTENT_LOOKBACK:
             return None
 
-        match = extract_department_intent(text)
-        if match is not None:
-            return match.requested
+        matches = extract_department_intents(text)
+        if matches:
+            return matches[0].requested
 
         # 別名表查不到，但字面上確實指名了某一科 → 原樣往下傳，讓 service 層去對應。
         mention = _looks_like_department_mention(text)
@@ -453,7 +453,7 @@ def _is_nearby_department_intent(text: str) -> bool:
         return False
     if not _PROXIMITY_RE.search(text):
         return False
-    return extract_department_intent(text) is not None
+    return bool(extract_department_intents(text))
 
 
 # 「我要看大腸科」既沒有鄰近詞，也沒有醫院／診所字眼，上面兩道判定都抓不到，
@@ -478,10 +478,8 @@ def _is_department_visit_intent(text: str) -> bool:
 
     # 別名表查不到時沿用 _looks_like_department_mention 的字面判定，
     # 「我要看腹腔鏡科」這類未收錄的說法才不會因為查表落空就掉回 RAG。
-    match = extract_department_intent(text)
-    term = (
-        match.requested if match is not None else _looks_like_department_mention(text)
-    )
+    matches = extract_department_intents(text)
+    term = matches[0].requested if matches else _looks_like_department_mention(text)
     if not term:
         return False
 

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from urllib.parse import parse_qs
@@ -5,6 +6,7 @@ from urllib.parse import parse_qs
 from linebot.v3.webhooks import (
     AudioMessageContent,
     FileMessageContent,
+    FollowEvent,
     ImageMessageContent,
     LocationMessageContent,
     MessageEvent,
@@ -41,6 +43,7 @@ from app.services.line_messaging.flex.appointment_flex import (
     format_when,
 )
 from app.services.line_messaging.flex.medication_flex import build_patient_medication_flex
+from app.services.line_messaging.flex.welcome_flex import build_welcome_flex
 from app.services.line_messaging.handler.message_handler import (
     LineMessageHandler,
     LineValidationError,
@@ -89,6 +92,8 @@ class LineEventDispatcher:
         medication_service=None,
         medical_news_share_service=None,
         appointment_service=None,
+        line_language_service=None,
+        liff_url: str = "",
     ):
         self._message_handler = message_handler
         self._media_handler = media_handler
@@ -101,6 +106,10 @@ class LineEventDispatcher:
         self._medical_news_share_service = medical_news_share_service
         # 掛號提醒卡片上的「我已出發／我已到診」。未設定時同樣只記 log。
         self._appointment_service = appointment_service
+        # 加好友歡迎卡：新好友還沒有 profile，語言改向 LINE 查。未設定時用預設
+        # 語言；liff_url 為空時卡片省略填資料按鈕。
+        self._line_language_service = line_language_service
+        self._liff_url = liff_url
 
 
     async def handle(self, event: MessageEvent) -> None:
@@ -435,6 +444,44 @@ class LineEventDispatcher:
             user_id=user_id,
         )
 
+    async def _handle_FollowEvent(self, event: FollowEvent) -> None:
+        """加好友（含解除封鎖後加回）時回一張歡迎卡。
+
+        任何失敗都只記 log、不往外拋：外層 handle() 的例外處理會回「處理訊息時
+        發生錯誤」，那不該是新好友收到的第一則訊息。
+        """
+        user_id = getattr(event.source, "user_id", "")
+        try:
+            language, font_size = await self._welcome_preferences(user_id)
+            await self._replier.reply_flex(
+                reply_token=event.reply_token,
+                flex_message=build_welcome_flex(
+                    self._liff_url, language=language, font_size=font_size
+                ),
+                user_id=user_id,
+            )
+        except Exception:
+            logger.exception("Failed to send welcome card")
+
+    async def _welcome_preferences(self, user_id: str) -> tuple[str, str]:
+        """歡迎卡的語言與字級。
+
+        已有 profile（封鎖後再加回）照使用者的設定；沒有的話向 LINE 查 App 語言，
+        規則與 LIFF 首次登入相同——不在支援清單內就退回預設語言。
+        """
+        profile = None
+        if self._user_profile_service:
+            profile = await self._user_profile_service.get_user_profile(user_id)
+        if profile:
+            return self._language_from_profile(profile), self._font_size_from_profile(profile)
+
+        line_language = None
+        if self._line_language_service:
+            # get_language 是同步 requests，丟到 thread 避免卡住 event loop
+            line_language = await asyncio.to_thread(
+                self._line_language_service.get_language, user_id
+            )
+        return normalize_user_language(line_language), normalize_user_font_size(None)
 
     async def _handle_unsupported_event(self, event) -> None:
         logger.warning("Unsupported LINE event type: %s", type(event).__name__)

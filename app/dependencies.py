@@ -817,6 +817,11 @@ _medical_news_share_service = MedicalNewsShareService(
     daily_share_limit=settings.MEDICAL_NEWS_DAILY_SHARE_LIMIT,
 )
 
+# 加好友歡迎卡與 LIFF 首次登入共用：兩者都要替還沒有 profile 的人決定語言。
+_line_language_service = LineLanguageService(
+    get_access_token=_line_token_manager.get_token,
+)
+
 _line_event_handler = LineEventHandler(
     message_handler=_message_handler,
     media_handler=_media_handler,
@@ -826,6 +831,8 @@ _line_event_handler = LineEventHandler(
     medication_service=_medication_service,
     medical_news_share_service=_medical_news_share_service,
     appointment_service=_appointment_service,
+    line_language_service=_line_language_service,
+    liff_url=settings.LIFF_URL,
 )
 
 
@@ -842,10 +849,6 @@ _consultation_download_token_service = AppJwtService(
     algorithm=settings.AUTH_JWT_ALGORITHM,
     expires_minutes=5,
     issuer="care-consultation-download",
-)
-
-_line_language_service = LineLanguageService(
-    get_access_token=_line_token_manager.get_token,
 )
 
 _liff_auth_application_service = LiffAuthApplicationService(

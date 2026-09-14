@@ -2634,6 +2634,98 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "「{new_drug}」 ที่คุณเพิ่งเพิ่ม กับ 「{existing_drug}」 ที่คุณกินอยู่ เป็นยาสองกลุ่มที่กินร่วมกันแล้วเพิ่มความเสี่ยงเลือดออก ({ingredients})\n\nโปรดสังเกต: อุจจาระสีดำ เลือดออกตอนแปรงฟัน รอยช้ำไม่ทราบสาเหตุ หรืออ่อนเพลียผิดปกติ หากมีอย่างใดอย่างหนึ่ง ให้รีบไปพบแพทย์\n\nกรุณานำยาทั้งสองไปถามเภสัชกรโดยเร็ว หรือกลับไปถามแพทย์ที่สั่งยาให้คุณ ก่อนจะได้คำตอบ อย่าหยุดยาที่แพทย์สั่งเอง เพราะอาจอันตรายกว่า",
         "ja": "追加された「{new_drug}」と、すでに飲んでいる「{existing_drug}」は、一緒に飲むと出血しやすくなる2種類の薬です（{ingredients}）。\n\n黒い便、歯みがきのときの出血、身に覚えのないあざ、いつもより疲れやすい——このいずれかがあれば早めに受診してください。\n\nできるだけ早く両方を薬剤師に見せるか、処方した医師に相談してください。相談できるまで、処方された薬を自己判断でやめないでください。かえって危険なことがあります。",
     },
+    # ── 加好友歡迎卡 ─────────────────────────────────────────────────────
+    #
+    # 範例問句按下去會原樣送出，所以每種語言都要是使用者自己會打的句子，
+    # 不是功能說明。挑題理由見 welcome_flex.py 開頭。
+    "welcome.title": {
+        "zh-TW": "歡迎使用 CARE 健康管家",
+        "en": "Welcome to CARE Health Assistant",
+        "id": "Selamat datang di CARE Asisten Kesehatan",
+        "vi": "Chào mừng bạn đến với CARE Trợ lý Sức khỏe",
+        "th": "ยินดีต้อนรับสู่ CARE ผู้ช่วยสุขภาพ",
+        "ja": "CARE 健康アシスタントへようこそ",
+    },
+    "welcome.lead": {
+        "zh-TW": "有健康上的疑問，直接傳訊息問我就可以。",
+        "en": "Have a health question? Just send me a message.",
+        "id": "Punya pertanyaan kesehatan? Langsung kirim pesan ke saya.",
+        "vi": "Có thắc mắc về sức khỏe? Cứ nhắn tin hỏi tôi.",
+        "th": "มีคำถามเรื่องสุขภาพ ส่งข้อความถามได้เลย",
+        "ja": "健康について気になることは、そのままメッセージで聞いてください。",
+    },
+    "welcome.examples_title": {
+        "zh-TW": "可以這樣問我",
+        "en": "Try asking",
+        "id": "Coba tanyakan",
+        "vi": "Thử hỏi tôi",
+        "th": "ลองถามแบบนี้",
+        "ja": "たとえばこんな質問",
+    },
+    "welcome.examples_hint": {
+        "zh-TW": "點一下就會送出",
+        "en": "Tap one to send it",
+        "id": "Ketuk untuk mengirim",
+        "vi": "Chạm để gửi",
+        "th": "แตะเพื่อส่ง",
+        "ja": "タップすると送信されます",
+    },
+    "welcome.example.health": {
+        "zh-TW": "血壓多少算高？",
+        "en": "What blood pressure counts as high?",
+        "id": "Tekanan darah berapa yang dianggap tinggi?",
+        "vi": "Huyết áp bao nhiêu là cao?",
+        "th": "ความดันเท่าไหร่ถึงเรียกว่าสูง?",
+        "ja": "血圧はいくつから高いと言えますか？",
+    },
+    "welcome.example.rumor": {
+        "zh-TW": "聽說紅豆的營養價值比牛肉還高，這是真的嗎？",
+        "en": "I heard red beans are more nutritious than beef. Is that true?",
+        "id": "Katanya kacang merah lebih bergizi daripada daging sapi, benarkah?",
+        "vi": "Nghe nói đậu đỏ bổ dưỡng hơn thịt bò, có đúng không?",
+        "th": "ได้ยินว่าถั่วแดงมีคุณค่าทางอาหารมากกว่าเนื้อวัว จริงไหม?",
+        "ja": "小豆は牛肉より栄養価が高いって本当ですか？",
+    },
+    "welcome.example.nearby": {
+        "zh-TW": "附近有哪些診所？",
+        "en": "Are there any clinics nearby?",
+        "id": "Ada klinik apa saja di dekat sini?",
+        "vi": "Gần đây có phòng khám nào không?",
+        "th": "แถวนี้มีคลินิกอะไรบ้าง?",
+        "ja": "近くにどんなクリニックがありますか？",
+    },
+    "welcome.photo_hint": {
+        "zh-TW": "也可以直接拍藥袋或藥品的照片傳給我。",
+        "en": "You can also send me a photo of your medicine bag or pills.",
+        "id": "Anda juga bisa mengirim foto kantong obat atau obat Anda.",
+        "vi": "Bạn cũng có thể gửi ảnh túi thuốc hoặc viên thuốc cho tôi.",
+        "th": "ส่งรูปถ่ายซองยาหรือตัวยามาให้ได้เช่นกัน",
+        "ja": "お薬の袋や薬の写真を送ってもらうこともできます。",
+    },
+    "welcome.profile_button": {
+        "zh-TW": "填寫我的健康資料",
+        "en": "Fill in my health info",
+        "id": "Isi data kesehatan saya",
+        "vi": "Điền thông tin sức khỏe",
+        "th": "กรอกข้อมูลสุขภาพ",
+        "ja": "健康情報を入力する",
+    },
+    "welcome.profile_hint": {
+        "zh-TW": "填好年齡、慢性病等資料，回答會更貼近你的狀況。語言和字體大小可以在「設定」調整。",
+        "en": "Add your age, chronic conditions and more so answers fit your situation. Language and text size can be changed in Settings.",
+        "id": "Isi usia, penyakit kronis, dan lainnya agar jawaban lebih sesuai dengan kondisi Anda. Bahasa dan ukuran huruf bisa diubah di Pengaturan.",
+        "vi": "Điền tuổi, bệnh mãn tính… để câu trả lời sát với tình trạng của bạn hơn. Ngôn ngữ và cỡ chữ có thể đổi trong Cài đặt.",
+        "th": "กรอกอายุ โรคประจำตัว ฯลฯ เพื่อให้คำตอบตรงกับสภาพของคุณมากขึ้น เปลี่ยนภาษาและขนาดตัวอักษรได้ในการตั้งค่า",
+        "ja": "年齢や持病などを入力すると、あなたの状況に合った回答になります。言語と文字サイズは「設定」で変更できます。",
+    },
+    "welcome.disclaimer": {
+        "zh-TW": "CARE 提供衛教資訊，不能取代醫師診斷。緊急狀況請撥 119。",
+        "en": "CARE provides health information, not a medical diagnosis. In an emergency, call 119.",
+        "id": "CARE memberikan informasi kesehatan, bukan diagnosis dokter. Dalam keadaan darurat, hubungi 119.",
+        "vi": "CARE cung cấp thông tin sức khỏe, không thay thế chẩn đoán của bác sĩ. Khi khẩn cấp, hãy gọi 119.",
+        "th": "CARE ให้ข้อมูลด้านสุขภาพ ไม่ใช่การวินิจฉัยของแพทย์ กรณีฉุกเฉินโทร 119",
+        "ja": "CARE は健康情報を提供するもので、医師の診断に代わるものではありません。緊急時は 119 に電話してください。",
+    },
 }
 
 

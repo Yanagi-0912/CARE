@@ -494,27 +494,6 @@ class Settings:
     MEDICAL_NEWS_SEARCH_LIMIT: int = int(
         os.getenv("MEDICAL_NEWS_SEARCH_LIMIT", "5")
     )
-    # Tier 2 選材是否用 LLM 判「這篇對高齡讀者有沒有用」。
-    #
-    # 關掉時只剩 `relevance.is_policy_announcement` 的標題黑名單，那一道擋得掉
-    # 活動與政績新聞稿，擋不掉「內容是真衛教但對象不是長輩」（嬰幼兒篩檢、
-    # 青少年菸害、孕產補助）。
-    #
-    # 成本是 O(每日候選數) 而**不是** O(使用者數)：池子全體共用，選材一天只跑
-    # 一次，上限即下面那個值。撞到 Gemini 配額時這是第一個該關的東西——關掉
-    # Tier 2 仍然照常供應，只是內容品質退回黑名單那一層。
-    MEDICAL_NEWS_TIER2_GRADER_ENABLED: bool = os.getenv(
-        "MEDICAL_NEWS_TIER2_GRADER_ENABLED", "true"
-    ).lower() in ("1", "true", "yes", "on")
-    # 每日 Tier 2 選材最多送幾篇進 grader。上限用完即停止選材（不是「剩下的
-    # 放行」——那會在額度吃緊那天悄悄關掉防線）。
-    #
-    # 30 的來由：選材的候選窗口是 `limit × _OVERFETCH_FACTOR` = 10 × 5 = 50 篇，
-    # 而其中先被日期與標題黑名單篩掉一部分。30 容得下「要湊滿 10 篇池子」的
-    # 正常最壞情況，又不至於在 grader 大量拒絕時把整個窗口都送進模型。
-    MEDICAL_NEWS_TIER2_GRADE_MAX_CALLS: int = int(
-        os.getenv("MEDICAL_NEWS_TIER2_GRADE_MAX_CALLS", "30")
-    )
     # 每位使用者每日的分享次數上限。防的是把族譜當廣播用。
     MEDICAL_NEWS_DAILY_SHARE_LIMIT: int = int(
         os.getenv("MEDICAL_NEWS_DAILY_SHARE_LIMIT", "5")

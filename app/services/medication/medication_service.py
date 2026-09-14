@@ -571,7 +571,8 @@ class MedicationService:
                     scheduled_at=scheduled_at,
                     # 與排程器的 T+30 對齊。`cancelled` 的紀錄不會被任何推播階段
                     # 挑中，這個值實際上不會被讀到，但欄位是必填的。
-                    timeout_at=scheduled_at + timedelta(minutes=30),
+                    timeout_at=scheduled_at
+                    + timedelta(minutes=CAREGIVER_ALERT_AFTER_ANCHOR_MINUTES),
                     status="cancelled",
                 )
             )

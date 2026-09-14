@@ -9,6 +9,7 @@ from pymongo.errors import DuplicateKeyError
 from app.db.mongodb import MongoDBManager
 from app.models.medication import (
     TAIPEI_TZ,
+    URGENT_AFTER_ANCHOR_MINUTES,
     Medication,
     MedicationLog,
     MedicationReminder,
@@ -1191,7 +1192,11 @@ class MedicationLogRepository:
         """
         if collection is None:
             collection = MongoDBManager.get_medication_logs_collection()
-        legacy_condition = {"scheduled_at": {"$lte": threshold_time - timedelta(minutes=20)}}
+        legacy_condition = {
+            "scheduled_at": {
+                "$lte": threshold_time - timedelta(minutes=URGENT_AFTER_ANCHOR_MINUTES)
+            }
+        }
         query = {
             "status": "pending",
             "patient_reminder_sent": True,

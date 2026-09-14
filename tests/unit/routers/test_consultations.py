@@ -340,3 +340,18 @@ def test_get_member_raw_consultations_allows_self_without_family_lookup(
     # 也不該因為族譜讀取失敗而消失。
     assert family_service.tree_reads == []
     fake_service.get_raw_view.assert_awaited_once_with("U123")
+
+
+def test_raw_consultations_returns_503_when_conversation_log_is_unavailable(
+    client, override_current_user, override_consultation_service
+):
+    """原文改存 Mongo 之後，資料庫連不上要回 503，不能變成未處理的例外。"""
+    from pymongo.errors import PyMongoError
+
+    override_current_user("U123")
+    fake_service = override_consultation_service(FakeConsultationService())
+    fake_service.get_raw_view.side_effect = PyMongoError("mongo down")
+
+    response = client.get("/api/consultations/me/messages/raw")
+
+    assert response.status_code == 503

@@ -14,7 +14,7 @@ from app.core.logging_setup import configure_logging
 from app.core.upload_limits import MaxUploadSizeMiddleware
 from app.dependencies import (
     get_consultation_service,
-    get_chat_history_repository,
+    get_conversation_log_repository,
     get_drug_news_index_service,
     get_kb_digest_service,
     get_line_replier,
@@ -24,6 +24,7 @@ from app.dependencies import (
     warm_rag_connections,
 )
 from app.repositories.consultation_repository import ConsultationRepository
+from app.repositories.conversation_log_repository import ConversationLogRepository
 from app.repositories.knowledge_report_repository import KnowledgeReportRepository
 from app.repositories.medication_repository import MedicationLogRepository
 from app.repositories.prescription_draft_repository import PrescriptionDraftRepository
@@ -61,8 +62,11 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # FastAPI lifespan 會在 yield 前執行 startup 邏輯。
-    # 先確認 MongoDB 摘要 collection 有 TTL index，讓摘要只保留 7 天。
+    # 摘要 collection 的 (line_id, summary_date) 查詢索引。
     await ConsultationRepository.ensure_indexes()
+    # 對話原文的正式紀錄：expires_at 的 TTL 索引負責 30 天的保存期限，
+    # 應用端不需要另外排程刪除。
+    await ConversationLogRepository.ensure_indexes()
     await KnowledgeReportRepository.ensure_indexes()
     # 用藥 log 的 (reminder_id, scheduled_at) 唯一索引：多實例並存時，
     # 它是「同一個時段只有一份 log」的唯一保證，推播權搶佔才有意義。
@@ -125,7 +129,7 @@ async def lifespan(app: FastAPI):
             enabled=True,  # 啟動自動排程
             run_time=settings.CONSULTATION_DAILY_SUMMARY_TIME,
             consultation_service=get_consultation_service(),
-            consultation_store=get_chat_history_repository(),
+            consultation_store=get_conversation_log_repository(),
         )
 
         # 啟動雙階遞進用藥提醒排程引擎

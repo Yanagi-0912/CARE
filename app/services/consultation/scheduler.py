@@ -1,13 +1,14 @@
-# 這是一個每天定時執行的排程，負責對當天有對話記錄的使用者進行摘要
+# 這是一個每天定時執行的排程，負責把 Redis 裡還有對話記錄的每個台北日期補上摘要
 from __future__ import annotations
 
 import asyncio
 import logging
 from contextlib import suppress
-from datetime import date, datetime, time, timedelta
+from datetime import datetime, time, timedelta
 from app.core import scheduler_heartbeat
+from app.models.medication import TAIPEI_TZ
 from app.services.consultation.consultation_service import ConsultationService
-from app.repositories.chat_history_repository import ChatHistoryRepository
+from app.repositories.conversation_log_repository import ConversationLogRepository
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ class ConsultationDailySummaryScheduler:
         self,
         *,
         consultation_service: ConsultationService,
-        consultation_store: ChatHistoryRepository,
+        consultation_store: ConversationLogRepository,
         run_time: str,
     ) -> None:
         self._consultation_service = consultation_service
@@ -60,7 +61,7 @@ class ConsultationDailySummaryScheduler:
 
     async def _run_loop(self) -> None:
         while True:
-            now = datetime.now()
+            now = datetime.now(TAIPEI_TZ)
             next_run = self._next_run_at(now)
             wait_seconds = max(0.0, (next_run - now).total_seconds())
             # 等到下一次排程時間；執行完 _run_once 後會回到 while True，繼續等待隔天。
@@ -76,8 +77,10 @@ class ConsultationDailySummaryScheduler:
             await self._run_once()
 
     def _next_run_at(self, now: datetime) -> datetime:
+        # run_time 是台北時間。容器時區是 UTC，照容器時鐘解讀的話 02:00 會變成台北 10:00。
+        now = now.astimezone(TAIPEI_TZ)
         run_time = self._parse_time(self._run_time)
-        today_target = datetime.combine(now.date(), run_time)
+        today_target = datetime.combine(now.date(), run_time, tzinfo=TAIPEI_TZ)
         if today_target <= now:
             return today_target + timedelta(days=1)
         return today_target
@@ -92,9 +95,9 @@ class ConsultationDailySummaryScheduler:
         return time(hour=hour, minute=minute)
 
     async def _run_once(self) -> None:
-        target_date = date.today()
-        # 從 Redis 找出今天有對話記錄的 line_id，然後逐一呼叫 summarize_today_if_needed
-        line_ids = await self._consultation_store.list_line_ids_by_date(target_date)
+        target_date = datetime.now(TAIPEI_TZ).date()
+        # 保存期內有對話的使用者，逐一補上每個台北日期的摘要（已是最新的直接沿用）
+        line_ids = await self._consultation_store.list_line_ids()
         # 如果沒有任何 line_id 就直接印出訊息並結束
         if not line_ids:
             logger.warning(  # 用logger warning，並將文字大寫
@@ -111,7 +114,7 @@ class ConsultationDailySummaryScheduler:
 
         for line_id in line_ids:
             try:
-                await self._consultation_service.summarize_today_if_needed(line_id)
+                await self._consultation_service.summarize_pending_dates(line_id)
             except Exception:
                 logger.exception(
                     "[ConsultationDailySummaryScheduler] summarize failed, line_id=%s",
@@ -125,7 +128,7 @@ def start_consultation_daily_summary_scheduler(
     enabled: bool,
     run_time: str,
     consultation_service: ConsultationService,
-    consultation_store: ChatHistoryRepository,
+    consultation_store: ConversationLogRepository,
 ) -> ConsultationDailySummaryScheduler | None:
     if not enabled:
         logger.info("[ConsultationDailySummaryScheduler] disabled")

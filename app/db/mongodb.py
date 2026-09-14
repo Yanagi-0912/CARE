@@ -198,3 +198,10 @@ class MongoDBManager:
         """
         return cls.get_database()["safety_alerts"]
 
+    @classmethod
+    def get_conversation_messages_collection(cls):
+        """
+        取得 conversation_messages collection（對話原文的正式紀錄，保存 30 天）
+        """
+        return cls.get_database()["conversation_messages"]
+

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import timedelta
 from typing import Any, Protocol
 
 from app.db.redis import RedisManager
@@ -21,21 +21,18 @@ class ChatHistoryRepository(Protocol):
 
     async def list_messages(self, line_id: str) -> list[ChatMessage]: ...
 
-    async def list_dates(self, line_id: str) -> list[date]: ...
-
-    async def list_line_ids_by_date(self, summary_date: date) -> list[str]: ...
-
 
 class RedisChatHistoryRepository:
     """
-    Redis 對話歷史儲存實作
-    將使用者訊息和 AI 回覆存入 Redis list，以使用者分組
-    支援依訊息時間戳回推日期做查詢
-    自動設定 1 天 TTL，過期自動清除
+    Redis 對話歷史快取：只給 agent 讀最近幾則當上下文。
+    將使用者訊息和 AI 回覆存入 Redis list，以使用者分組，只保留最近
+    max_messages 則，自動設定 1 天 TTL。對話原文的正式紀錄在 Mongo
+    （ConversationLogRepository），摘要與原始訊息查詢都讀那份。
     """
 
-    def __init__(self, client: Any) -> None:
+    def __init__(self, client: Any, max_messages: int) -> None:
         self._client = client
+        self._max_messages = max_messages
 
     async def append_message(self, line_id: str, message: ChatMessage) -> None:
         """
@@ -49,6 +46,8 @@ class RedisChatHistoryRepository:
         key = self._build_key(line_id)
         payload = message.model_dump(mode="json")
         await self._client.rpush(key, json.dumps(payload, ensure_ascii=False))
+        # 只留 agent 會讀的最近幾則，天天聊天的人列表才不會無上限變長
+        await self._client.ltrim(key, -self._max_messages, -1)
         # 設定 TTL 為 1 天
         await self._client.expire(key, int(timedelta(days=1).total_seconds()))
         logger.info(
@@ -70,39 +69,12 @@ class RedisChatHistoryRepository:
             messages.append(ChatMessage.model_validate(json.loads(raw_item)))
         return messages
 
-    async def list_dates(self, line_id: str) -> list[date]:
-        """
-        取出該使用者在 Redis 內所有對話訊息所涵蓋的日期。
-        直接讀取該使用者的完整對話列表
-        從每筆訊息的 timestamp 取出日期
-        """
-        dates: list[date] = []
-        for message in await self.list_messages(line_id):
-            dates.append(message.timestamp.date())
-        return sorted(set(dates))
-
-    async def list_line_ids_by_date(self, summary_date: date) -> list[str]:
-        # 現在 Redis 只按 user 分組，這裡回傳目前仍在 TTL 內的所有 user key。
-        key_pattern = "consultationRecord:*"
-        keys = await self._client.keys(key_pattern)
-        line_ids: set[str] = set()
-        prefix = "consultationRecord:"
-        for key in keys:
-            if isinstance(key, bytes):
-                key = key.decode("utf-8")
-            if not key.startswith(prefix):
-                continue
-            line_id = key[len(prefix) :]
-            if line_id:
-                line_ids.add(line_id)
-        return sorted(line_ids)
-
     @staticmethod
     def _build_key(line_id: str) -> str:
         # 組合 Redis key，格式為 consultationRecord:{line_id}
         return f"consultationRecord:{line_id}"
 
 
-def build_chat_history_repository() -> RedisChatHistoryRepository:
-    # 建立 Redis 對話歷史存放器
-    return RedisChatHistoryRepository(RedisManager.get_client())
+def build_chat_history_repository(max_messages: int) -> RedisChatHistoryRepository:
+    # 建立 Redis 對話歷史快取
+    return RedisChatHistoryRepository(RedisManager.get_client(), max_messages)

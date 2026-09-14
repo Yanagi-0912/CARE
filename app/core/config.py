@@ -92,7 +92,7 @@ class Settings:
     # Consultation / Redis 配置
     REDIS_URL: str = os.getenv("REDIS_URL", "")
 
-    # Consultation daily summary scheduler
+    # Consultation daily summary scheduler（台北時間 HH:MM；容器時區是 UTC 也照台北解讀）
     CONSULTATION_DAILY_SUMMARY_TIME: str = os.getenv(
         "CONSULTATION_DAILY_SUMMARY_TIME", "02:00"
     )

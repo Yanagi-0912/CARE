@@ -75,8 +75,8 @@ async def get_my_consultations(
 @router.get(
     "/me/messages/raw",
     response_model=ConsultationViewResponse,
-    summary="取得原始諮詢快取",
-    description="直接回傳 Redis 內的原始對話。",
+    summary="取得原始對話",
+    description="回傳最近一個有對話的台北日期的原始對話（Mongo 正式紀錄，保存 30 天）。",
 )
 async def get_raw_consultations(
     current_user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -91,7 +91,7 @@ async def get_raw_consultations(
             view_type="raw",
             messages=messages,
         )
-    except RedisError:
+    except PyMongoError:
         raise HTTPException(status_code=503, detail=DB_ERROR_DETAIL)
 
 
@@ -222,7 +222,7 @@ async def get_member_summary_history(
 @router.get(
     "/{userId}/messages/raw",
     response_model=ConsultationViewResponse,
-    summary="取得指定家庭成員的原始諮詢快取",
+    summary="取得指定家庭成員的原始對話",
     description=(
         "供 LIFF 家庭頁查看家人的原始對話，回傳格式與 /me/messages/raw 相同。"
         "出於安全考量，請求者與目標使用者必須在同一個家庭族譜內。"
@@ -238,7 +238,7 @@ async def get_member_raw_consultations(
         FamilyAuthorizationService, Depends(get_family_authorization_service)
     ],
 ) -> ConsultationViewResponse:
-    # 原始逐句對話存於 Redis，授權必須先於讀取（同上）。
+    # 原始逐句對話是最敏感的一份，授權必須先於讀取（同上）。
     await authz.authorize(current_user.line_user_id, userId, "PRIVATE", "READ")
     try:
         messages = await consultation_service.get_raw_view(userId)
@@ -247,5 +247,5 @@ async def get_member_raw_consultations(
             view_type="raw",
             messages=messages,
         )
-    except RedisError:
+    except PyMongoError:
         raise HTTPException(status_code=503, detail=DB_ERROR_DETAIL)

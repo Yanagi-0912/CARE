@@ -14,6 +14,7 @@ from app.db.mongodb import MongoDBManager
 from app.db.redis import RedisManager
 from app.repositories.chat_history_repository import build_chat_history_repository
 from app.repositories.consultation_repository import ConsultationRepository
+from app.repositories.conversation_log_repository import ConversationLogRepository
 from app.repositories.family_delegation_repository import (
     FamilyDelegationRepository,
 )
@@ -71,7 +72,10 @@ from app.services.guardrail import (
     GuardrailService,
     LocalGuardrailClassifier,
 )
-from app.services.history.history_service import LineMessageHistoryService
+from app.services.history.history_service import (
+    RECENT_CONTEXT_MESSAGES,
+    LineMessageHistoryService,
+)
 from app.services.knowledge_reports.preview_service import ContentPreviewService
 from app.services.knowledge_reports.service import KnowledgeReportService
 from app.services.liff.auth_service import LiffAuthApplicationService
@@ -337,7 +341,10 @@ _rag_answer_service = RagAnswerService(
     link_checker=_link_checker,
 )
 
-_chat_history_repository = build_chat_history_repository()
+_chat_history_repository = build_chat_history_repository(
+    max_messages=RECENT_CONTEXT_MESSAGES
+)
+_conversation_log_repository = ConversationLogRepository()
 _consultation_repository = ConsultationRepository()
 configure_rag_tool(_rag_answer_service)
 configure_web_tool(_web_search_service)
@@ -480,7 +487,9 @@ _care_agent = Agent(
     guardrail_service=_guardrail_service,
 )
 
-_line_history_service = LineMessageHistoryService(_chat_history_repository)
+_line_history_service = LineMessageHistoryService(
+    _chat_history_repository, conversation_log=_conversation_log_repository
+)
 
 _line_token_manager = LineTokenManager(
     channel_id=settings.LINE_CHANNEL_ID,
@@ -500,7 +509,7 @@ _user_profile_service = UserProfileService(
 )
 
 _consultation_service = ConsultationService(
-    chat_history_repository=_chat_history_repository,
+    chat_history_repository=_conversation_log_repository,
     repository=_consultation_repository,
     gemini_service=_gemini_service,
     user_profile_service=_user_profile_service,
@@ -772,6 +781,10 @@ def get_consultation_service() -> ConsultationService:
 
 def get_chat_history_repository():
     return _chat_history_repository
+
+
+def get_conversation_log_repository() -> ConversationLogRepository:
+    return _conversation_log_repository
 
 
 def get_line_token_manager() -> LineTokenManager:

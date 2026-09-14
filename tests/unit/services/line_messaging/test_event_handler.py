@@ -414,7 +414,7 @@ async def test_history_service_load_converts_correctly():
         ]
     )
 
-    svc = LineMessageHistoryService(mock_repo)
+    svc = LineMessageHistoryService(mock_repo, conversation_log=AsyncMock())
     chat_history = await svc.load_history("user_1", "當前問題", "text")
 
     assert len(chat_history) == 2
@@ -429,7 +429,7 @@ async def test_history_service_save_turn_appends_messages():
     mock_repo = MagicMock()
     mock_repo.append_message = AsyncMock()
 
-    svc = LineMessageHistoryService(mock_repo)
+    svc = LineMessageHistoryService(mock_repo, conversation_log=AsyncMock())
     dt = datetime.now()
     await svc.save_turn("user_1", "哈囉", "回答", "text", dt)
 
@@ -463,7 +463,7 @@ async def test_history_service_load_slices_to_last_five():
         ]
     )
 
-    svc = LineMessageHistoryService(mock_repo)
+    svc = LineMessageHistoryService(mock_repo, conversation_log=AsyncMock())
     chat_history = await svc.load_history("user_1", "當前問題", "text")
 
     assert len(chat_history) == 5

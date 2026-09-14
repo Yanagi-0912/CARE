@@ -12,6 +12,7 @@ from app.models.consultation import (
 )
 from app.models.chat_message import ChatMessage
 from app.services.consultation.consultation_service import ConsultationService
+from app.services.consultation.scheduler import ConsultationDailySummaryScheduler
 
 
 class FakeChatHistoryRepository:
@@ -24,13 +25,19 @@ class FakeChatHistoryRepository:
     async def list_messages(self, line_id: str) -> list[ChatMessage]:
         return list(self.messages.get(line_id, []))
 
+    async def list_line_ids(self) -> list[str]:
+        return sorted(self.messages)
+
 
 class FakeRepository:
     def __init__(self) -> None:
         self.summary: ConsultationSummary | None = None
         self.summaries: list[ConsultationSummary] = []
+        self.by_date: dict[tuple[str, date], ConsultationSummary] = {}
 
     async def get_summary_by_date(self, line_id: str, target_date: date):
+        if (line_id, target_date) in self.by_date:
+            return self.by_date[(line_id, target_date)]
         if (
             self.summary
             and self.summary.line_id == line_id
@@ -46,6 +53,7 @@ class FakeRepository:
 
     async def upsert_summary(self, summary: ConsultationSummary):
         self.summary = summary
+        self.by_date[(summary.line_id, summary.summary_date)] = summary
         return summary
 
     async def get_all_summaries(self, line_id: str):
@@ -141,13 +149,11 @@ async def test_get_raw_view_returns_messages(
         line_id="U123",
         message_type="text",
         content="肚子痛",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime(2026, 5, 17, 8, 0, tzinfo=timezone.utc),
     )
     await consultation_service._chat_history_repository.append_message("U123", msg)
 
-    messages = await consultation_service.get_raw_view(
-        "U123", datetime.now(timezone.utc).date()
-    )
+    messages = await consultation_service.get_raw_view("U123", date(2026, 5, 17))
 
     assert len(messages) == 1
     assert messages[0].content == "肚子痛"
@@ -209,3 +215,162 @@ async def test_summarize_passes_user_language_into_prompt(
     ].content
     assert "使用者資料庫語言：en（英文）" in prompt
     assert "請以該語言撰寫各欄位內容。" in prompt
+
+
+# ── 摘要的「一天」以台北日期為準 ─────────────────────────────────────────
+#
+# 以下時間戳都寫 UTC，括號內是對應的台北時間（UTC+8）。
+
+
+def _echo_gemini(service: ConsultationService) -> None:
+    """讓假 Gemini 把收到的 prompt 原樣當摘要回傳，摘要內容即可反映餵進去的對話。"""
+    service._gemini_service.chat_model.ainvoke = AsyncMock(
+        side_effect=lambda messages: SimpleNamespace(content=messages[0].content)
+    )
+
+
+async def _add_text(service: ConsultationService, content: str, timestamp: datetime):
+    await service._chat_history_repository.append_message(
+        "U123",
+        ChatMessage(
+            line_id="U123", message_type="text", content=content, timestamp=timestamp
+        ),
+    )
+
+
+# Redis 的 TTL 每寫一則就重設，天天聊天的人列表會跨好幾天；
+# 某天的摘要不能混進別天的對話。
+async def test_summary_excludes_messages_from_other_taipei_days(
+    consultation_service: ConsultationService,
+):
+    _echo_gemini(consultation_service)
+    # 9/13 22:00
+    await _add_text(consultation_service, "昨天頭痛", datetime(2026, 9, 13, 14, 0, tzinfo=timezone.utc))
+    # 9/14 10:00
+    await _add_text(consultation_service, "今天咳嗽", datetime(2026, 9, 14, 2, 0, tzinfo=timezone.utc))
+
+    summary = await consultation_service.summarize("U123", ConsultationSummarizeRequest())
+
+    assert summary.summary_date == date(2026, 9, 14)
+    assert "今天咳嗽" in summary.summary
+    assert "昨天頭痛" not in summary.summary
+
+
+async def test_message_after_taipei_midnight_belongs_to_next_day(
+    consultation_service: ConsultationService,
+):
+    _echo_gemini(consultation_service)
+    # UTC 仍是 9/13，台北已是 9/14 01:30
+    await _add_text(consultation_service, "半夜胸悶", datetime(2026, 9, 13, 17, 30, tzinfo=timezone.utc))
+
+    summary = await consultation_service.summarize("U123", ConsultationSummarizeRequest())
+
+    assert summary.summary_date == date(2026, 9, 14)
+
+
+# 當天稍早（排程或手動）已產生過摘要，之後又有新對話：
+# 若直接沿用舊摘要，後面的對話就永遠不會被摘要。
+async def test_stale_summary_is_regenerated_when_day_has_newer_messages(
+    consultation_service: ConsultationService,
+):
+    _echo_gemini(consultation_service)
+    # 9/14 08:30
+    await _add_text(consultation_service, "早上頭暈", datetime(2026, 9, 14, 0, 30, tzinfo=timezone.utc))
+    # 9/14 14:00，在舊摘要之後
+    await _add_text(consultation_service, "下午胸悶", datetime(2026, 9, 14, 6, 0, tzinfo=timezone.utc))
+    await consultation_service._repository.upsert_summary(
+        ConsultationSummary(
+            line_id="U123",
+            summary_date=date(2026, 9, 14),
+            summary="早上摘要",
+            language="zh-TW",
+            # 9/14 09:00
+            created_at=datetime(2026, 9, 14, 1, 0, tzinfo=timezone.utc),
+        )
+    )
+
+    summary = await consultation_service.summarize("U123", ConsultationSummarizeRequest())
+
+    assert "下午胸悶" in summary.summary
+
+
+async def test_up_to_date_summary_is_reused(
+    consultation_service: ConsultationService,
+):
+    _echo_gemini(consultation_service)
+    await _add_text(consultation_service, "早上頭暈", datetime(2026, 9, 14, 0, 30, tzinfo=timezone.utc))
+    await _add_text(consultation_service, "下午胸悶", datetime(2026, 9, 14, 6, 0, tzinfo=timezone.utc))
+    await consultation_service._repository.upsert_summary(
+        ConsultationSummary(
+            line_id="U123",
+            summary_date=date(2026, 9, 14),
+            summary="既有摘要",
+            language="zh-TW",
+            # Motor 未開 tz_aware，從 Mongo 讀回的是 naive UTC（9/14 16:00）
+            created_at=datetime(2026, 9, 14, 8, 0),
+        )
+    )
+
+    summary = await consultation_service.summarize("U123", ConsultationSummarizeRequest())
+
+    assert summary.summary == "既有摘要"
+
+
+async def test_get_raw_view_filters_by_taipei_date(
+    consultation_service: ConsultationService,
+):
+    # 9/14 01:30
+    await _add_text(consultation_service, "半夜胸悶", datetime(2026, 9, 13, 17, 30, tzinfo=timezone.utc))
+
+    messages = await consultation_service.get_raw_view("U123", date(2026, 9, 14))
+
+    assert [message.content for message in messages] == ["半夜胸悶"]
+
+
+# LIFF 的原始紀錄頁把訊息攤成一整串、沒有日期標示。原文改存 30 天之後，
+# 不帶日期時若全部回傳，會變成分不清是哪天的長串；只給最近有對話的那天。
+async def test_raw_view_without_date_returns_latest_taipei_day(
+    consultation_service: ConsultationService,
+):
+    await _add_text(consultation_service, "昨天頭痛", datetime(2026, 9, 13, 14, 0, tzinfo=timezone.utc))
+    await _add_text(consultation_service, "今天咳嗽", datetime(2026, 9, 14, 2, 0, tzinfo=timezone.utc))
+
+    messages = await consultation_service.get_raw_view("U123")
+
+    assert [message.content for message in messages] == ["今天咳嗽"]
+
+
+# 每日排程要把 Redis 裡每個台北日期都摘要到，而不只是最新的那天。
+async def test_daily_run_summarizes_every_pending_taipei_day(
+    consultation_service: ConsultationService,
+):
+    _echo_gemini(consultation_service)
+    await _add_text(consultation_service, "昨天頭痛", datetime(2026, 9, 13, 14, 0, tzinfo=timezone.utc))
+    await _add_text(consultation_service, "今天咳嗽", datetime(2026, 9, 14, 2, 0, tzinfo=timezone.utc))
+    scheduler = ConsultationDailySummaryScheduler(
+        consultation_service=consultation_service,
+        consultation_store=consultation_service._chat_history_repository,
+        run_time="02:00",
+    )
+
+    await scheduler._run_once()
+
+    stored = consultation_service._repository.by_date
+    assert sorted(day for _, day in stored) == [date(2026, 9, 13), date(2026, 9, 14)]
+    assert "昨天頭痛" in stored[("U123", date(2026, 9, 13))].summary
+    assert "今天咳嗽" not in stored[("U123", date(2026, 9, 13))].summary
+    assert "今天咳嗽" in stored[("U123", date(2026, 9, 14))].summary
+
+
+# 排程時間是台北時間：容器預設 UTC，若照容器時鐘解讀，02:00 會變成台北 10:00。
+def test_next_run_is_computed_in_taipei_time():
+    scheduler = ConsultationDailySummaryScheduler(
+        consultation_service=MagicMock(),
+        consultation_store=MagicMock(),
+        run_time="02:00",
+    )
+
+    # 現在是台北 9/14 09:30，今天的 02:00 已過，下次是台北 9/15 02:00
+    next_run = scheduler._next_run_at(datetime(2026, 9, 14, 1, 30, tzinfo=timezone.utc))
+
+    assert next_run == datetime(2026, 9, 14, 18, 0, tzinfo=timezone.utc)

@@ -2,7 +2,12 @@ import logging
 from typing import TYPE_CHECKING
 
 from app.models.family_authorization import PROXY_WRITE_FORBIDDEN_FIELDS
-from app.models.user import UserProfile, UserSettings, UserSettingsUpdate
+from app.models.user import (
+    UserProfile,
+    UserSettings,
+    UserSettingsUpdate,
+    without_legacy_placeholders,
+)
 from app.repositories.user_profile_repository import UserProfileRepository
 
 if TYPE_CHECKING:
@@ -58,7 +63,10 @@ class UserProfileService:
         return await self._repo.upsert_user_profile(line_id, payload)
 
     async def get_user_profile(self, line_id: str):
-        return await self._repo.get_user_profile(line_id)
+        # 所有讀取端（LIFF、agent prompt、症狀分科、推播）都經過這裡。舊文件的
+        # 佔位值在這一處換成 None，就不必每個讀取端各自記得過濾。
+        profile = await self._repo.get_user_profile(line_id)
+        return without_legacy_placeholders(profile) if profile else profile
 
     async def update_voice_reply_enabled(self, line_id: str, enabled: bool) -> bool:
         return await self._repo.update_voice_reply_enabled(line_id, enabled)
@@ -110,9 +118,10 @@ class UserProfileService:
         default_payload = {
             "name": (display_name or "LINE User").strip() or "LINE User",
             "gender": "unknown",
-            "height": 1.0,
-            "weight": 1.0,
-            "age": 0,
+            # 沒填就是沒填：存 None，不塞假值（見 LEGACY_PROFILE_PLACEHOLDERS）。
+            "height": None,
+            "weight": None,
+            "age": None,
             "chronic_diseases": [],
             "chronic_custom": [],
             "major_illness_history": "",

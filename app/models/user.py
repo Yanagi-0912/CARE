@@ -20,7 +20,9 @@ class UserProfileData(BaseModel):
     )
     height: float = Field(..., gt=0, description="身高（公分）")
     weight: float = Field(..., gt=0, description="體重（公斤）")
-    age: int = Field(..., ge=0, le=130, description="年齡")
+    # 下限 1 而不是 0：0 是舊的佔位值，讀取時會被當成沒填（見
+    # LEGACY_PROFILE_PLACEHOLDERS）。收下 0，使用者下次打開就看到空白，值等於靜靜消失。
+    age: int = Field(..., ge=1, le=130, description="年齡")
     # 慢性病拆成兩欄而非一個 "、" 串起來的字串：固定選項要依使用者語言翻譯，
     # 自行輸入的病名則必須原文照留。混在同一個字串裡就分不出哪個是哪個，
     # 讀取端只能猜，猜錯就會把使用者打的字拿去翻譯。
@@ -59,7 +61,7 @@ class ProxyHealthUpdate(BaseModel):
     gender: Optional[Literal["male", "female", "unknown"]] = Field(default=None)
     height: Optional[float] = Field(default=None, gt=0, description="身高（公分）")
     weight: Optional[float] = Field(default=None, gt=0, description="體重（公斤）")
-    age: Optional[int] = Field(default=None, ge=0, le=130, description="年齡")
+    age: Optional[int] = Field(default=None, ge=1, le=130, description="年齡")
     chronic_diseases: Optional[list[str]] = Field(default=None)
     chronic_custom: Optional[list[str]] = Field(default=None)
     major_illness_history: Optional[str] = Field(default=None)
@@ -141,8 +143,36 @@ class UserSettingsUpdate(BaseModel):
     )
 
 
+# 2026-09 之前，建帳號時會把沒填的身高、體重、年齡寫成這組佔位值（UserProfile
+# 當時要求三者必填，只好塞假值）。它們一路被當成真資料讀走：agent 的 prompt 寫出
+# 「身高 1.0 cm、體重 1.0 kg」，年齡 0 讓症狀分科把大人當成兒童
+# （is_pediatric_age），LIFF 表單也原樣帶入、還存得回去。
+#
+# 新帳號改存 None；舊文件在讀取時換成 None（UserProfileService.get_user_profile），
+# 所有讀取端因此不必各自記得過濾。真人的 LINE 帳號不會是 0 歲、1 公分或 1 公斤，
+# 換掉不會誤傷真實資料。
+LEGACY_PROFILE_PLACEHOLDERS: Dict[str, float] = {"age": 0, "height": 1.0, "weight": 1.0}
+
+
+def without_legacy_placeholders(profile: Dict[str, Any]) -> Dict[str, Any]:
+    """回傳一份把舊佔位值換成 None 的副本；其他欄位原樣保留。"""
+    cleaned = dict(profile)
+    for field, placeholder in LEGACY_PROFILE_PLACEHOLDERS.items():
+        value = cleaned.get(field)
+        if value is not None and not isinstance(value, bool) and value == placeholder:
+            cleaned[field] = None
+    return cleaned
+
+
 class UserProfile(UserProfileData):
     """資料庫中的 user profile 文件模型。"""
+
+    # 身高、體重、年齡在資料庫文件裡可以缺席：帳號建立時使用者還沒填，存 None
+    # 而不是假值（見 LEGACY_PROFILE_PLACEHOLDERS）。API 的請求模型
+    # UserProfileData 仍然要求三者必填——本人送出的是整份表單，缺欄位代表沒填完。
+    height: Optional[float] = Field(default=None, gt=0, description="身高（公分）")
+    weight: Optional[float] = Field(default=None, gt=0, description="體重（公斤）")
+    age: Optional[int] = Field(default=None, ge=1, le=130, description="年齡")
 
     line_id: str = Field(..., min_length=1, description="LINE 使用者 ID")
     role: Literal["admin", "user"] = Field(default="user", description="使用者角色")
@@ -162,4 +192,11 @@ class UserProfile(UserProfileData):
         return self.model_dump(exclude={"created_at", "updated_at"})
 
 
-__all__ = ["UserProfileData", "UserProfile", "UserSettings", "UserSettingsUpdate"]
+__all__ = [
+    "UserProfileData",
+    "UserProfile",
+    "UserSettings",
+    "UserSettingsUpdate",
+    "LEGACY_PROFILE_PLACEHOLDERS",
+    "without_legacy_placeholders",
+]

@@ -17,6 +17,21 @@ def get_slot_display_name(slot_type: str, language: str | None = None) -> str:
     return t(f"slot.{slot_type}", language)
 
 
+# 用藥提醒拉霸的語氣（MedicationLog.reminder_tone，見
+# app/services/medication/reminder_variants.py）→ 說明句的 i18n key。這裡刻意用
+# 字面值而不 import 拉霸模組：卡片是顯示層，不該反過來依賴排程與學習的邏輯；兩邊
+# 的名稱由 test_medication_flex_tones.py 交叉檢查。不在表裡的語氣（包含 control，
+# 以及之後拿掉的選項）一律用現行文字。
+_INSTRUCTION_KEYS = {
+    "family": "flex.med.instruction.family",
+    "brief": "flex.med.instruction.brief",
+}
+_URGENT_BODY_KEYS = {
+    "family": "flex.med.urgent_body.family",
+    "brief": "flex.med.urgent_body.brief",
+}
+
+
 def _header(label: str, ft: theme.FlexTheme, background: str = theme.BRAND) -> dict[str, Any]:
     return {
         "type": "box",
@@ -436,9 +451,13 @@ def build_patient_medication_flex(
     medication_groups: Optional[list[MedicationGroup]] = None,
     language: str | None = None,
     font_size: str | None = None,
+    tone: str = "control",
 ) -> FlexMessage:
     """
     建立傳送給用藥者的服藥提醒 Flex Message。
+
+    `tone` 只換說明那一句（見 `_INSTRUCTION_KEYS`），標題、藥品清單與按鈕不變；
+    預設的 control 就是上線前的文字。
     - disabled=False: 顯示【我已用藥】可點擊按鈕
     - disabled=True: 顯示已完成的停用狀態 (點擊後動態替換)
 
@@ -471,9 +490,8 @@ def build_patient_medication_flex(
             if med_block is not None:
                 body_contents.append(med_block)
             taken_label = t("flex.med.button.taken", language)
-        body_contents.append(
-            _paragraph(t("flex.med.instruction", language), ft, margin="md")
-        )
+        instruction_key = _INSTRUCTION_KEYS.get(tone, "flex.med.instruction")
+        body_contents.append(_paragraph(t(instruction_key, language), ft, margin="md"))
         bubble_dict = {
             "type": "bubble",
             "header": _header(t("flex.med.header.reminder", language), ft),
@@ -549,8 +567,11 @@ def build_patient_urgent_reminder_flex(
     medication_groups: Optional[list[MedicationGroup]] = None,
     language: str | None = None,
     font_size: str | None = None,
+    tone: str = "control",
 ) -> FlexMessage:
     """T+20min 傳送給用藥者的二次催促 Flex Message
+
+    `tone` 與同一頓的 T+0 提醒相同，只換說明那一句（見 `_URGENT_BODY_KEYS`）。
 
     `medication_names` 為 None／空清單時版面與本參數新增前完全相同，見
     `_medication_list_block`。
@@ -574,9 +595,8 @@ def build_patient_urgent_reminder_flex(
         if med_block is not None:
             body_contents.append(med_block)
         taken_label = t("flex.med.button.taken", language)
-    body_contents.append(
-        _paragraph(t("flex.med.urgent_body", language), ft, margin="md")
-    )
+    urgent_body_key = _URGENT_BODY_KEYS.get(tone, "flex.med.urgent_body")
+    body_contents.append(_paragraph(t(urgent_body_key, language), ft, margin="md"))
 
     bubble_dict = {
         "type": "bubble",

@@ -2203,6 +2203,25 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "กรุณาทานยาภายใน 30 นาที แล้วแตะปุ่มด้านล่างเพื่อยืนยัน",
         "ja": "30 分以内に服薬し、下のボタンをタップして確認してください。",
     },
+    # 用藥提醒拉霸的語氣版本（見 app/services/medication/reminder_variants.py）。
+    # 現行版就是上面的 flex.med.instruction；這兩版只換說法、不換要做的事，都是
+    # 吃完藥按按鈕。家人版只給家屬設定的提醒——「家人就知道」只有那時才成立。
+    "flex.med.instruction.family": {
+        "zh-TW": "吃完藥按一下下面的按鈕，家人就知道你吃過了。",
+        "en": "After taking your medicine, tap the button below so your family knows you've taken it.",
+        "id": "Setelah minum obat, ketuk tombol di bawah supaya keluarga tahu Anda sudah minum.",
+        "vi": "Uống thuốc xong, nhấn nút bên dưới để gia đình biết bạn đã uống.",
+        "th": "ทานยาเสร็จแล้วแตะปุ่มด้านล่าง ครอบครัวจะได้รู้ว่าคุณทานแล้ว",
+        "ja": "薬を飲んだら下のボタンを押してください。ご家族に飲んだことが伝わります。",
+    },
+    "flex.med.instruction.brief": {
+        "zh-TW": "吃藥時間到了，吃完按下面的按鈕。",
+        "en": "Time for your medicine. Tap the button below when you're done.",
+        "id": "Waktunya minum obat. Setelah minum, ketuk tombol di bawah.",
+        "vi": "Đến giờ uống thuốc rồi. Uống xong nhấn nút bên dưới.",
+        "th": "ถึงเวลาทานยาแล้ว ทานเสร็จแตะปุ่มด้านล่าง",
+        "ja": "お薬の時間です。飲んだら下のボタンを押してください。",
+    },
     "flex.med.button.taken": {
         "zh-TW": "我已用藥",
         "en": "I took it",
@@ -2250,6 +2269,24 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "vi": 'Bạn chưa nhấn "Tôi đã uống". Vui lòng uống thuốc ngay và xác nhận bên dưới.',
         "th": 'คุณยังไม่ได้แตะ "ทานยาแล้ว" กรุณาทานยาทันทีและยืนยันด้านล่าง',
         "ja": "「服薬しました」がまだタップされていません。すぐに服薬し、下のボタンで確認してください。",
+    },
+    # T+20 催促卡的語氣版本，與 flex.med.instruction.family／.brief 成對：
+    # 同一頓藥的 T+0 與 T+20 用同一種語氣。
+    "flex.med.urgent_body.family": {
+        "zh-TW": "還沒收到你的確認。吃完按一下，家人就不用擔心。",
+        "en": "We haven't received your confirmation yet. Tap the button after taking your medicine so your family won't worry.",
+        "id": "Kami belum menerima konfirmasi Anda. Ketuk tombol setelah minum obat supaya keluarga tidak khawatir.",
+        "vi": "Chúng tôi chưa nhận được xác nhận của bạn. Uống xong nhấn nút để gia đình khỏi lo.",
+        "th": "ยังไม่ได้รับการยืนยันจากคุณ ทานยาเสร็จแตะปุ่ม ครอบครัวจะได้ไม่ต้องกังวล",
+        "ja": "まだ確認が届いていません。飲んだらボタンを押してください。ご家族が安心します。",
+    },
+    "flex.med.urgent_body.brief": {
+        "zh-TW": "還沒按喔，吃完藥記得按下面的按鈕。",
+        "en": "You haven't tapped yet. Remember to tap the button below after taking your medicine.",
+        "id": "Belum diketuk nih. Setelah minum obat, jangan lupa ketuk tombol di bawah.",
+        "vi": "Bạn chưa nhấn nút. Uống thuốc xong nhớ nhấn nút bên dưới nhé.",
+        "th": "ยังไม่ได้แตะเลยนะ ทานยาเสร็จอย่าลืมแตะปุ่มด้านล่าง",
+        "ja": "まだ押されていません。飲んだら下のボタンを押すのを忘れずに。",
     },
     "flex.med.overdue": {
         "zh-TW": "逾時 30 分鐘仍未完成用藥確認。",

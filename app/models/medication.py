@@ -350,10 +350,17 @@ class MedicationLog(BaseModel):
     timeout_at: datetime
     status: MedicationLogStatus = "pending"
     taken_at: Optional[datetime] = None
-    # T+20 二次催促送出的時刻。本欄位之前寫入的紀錄沒有這個 key，讀回時為
-    # None，與過去行為一致——它只是催促文案「什麼時候開始催的」的顯示用途，
-    # 不是任何判定的輸入。
+    # T+20 二次催促的送出時刻，也是排程器挑出「該催促了」的依據（見
+    # MedicationLogRepository.list_pending_urgent_reminders）。展開時預設為最晚
+    # 服藥時刻＋20 分鐘，送 T+0 提醒時由拉霸改寫成＋nudge_minutes 分鐘。本欄位
+    # 之前寫入的紀錄沒有這個 key，讀回時為 None，查詢端有退回分支。
     urgent_at: Optional[datetime] = None
+    # 用藥提醒拉霸在送 T+0 時挑的選項（見 app/services/medication/reminder_variants.py）。
+    # None 代表這一頓沒有進拉霸：本功能上線前的紀錄、長輩關掉提醒而沒送出的那頓、
+    # 或拉霸出錯而退回現行版本的那頓。`nudge_minutes` 另外會在長輩當天改了提醒
+    # 設定、催促時間被重設時清成 None——那一頓的催促時機已經不是拉霸挑的。
+    reminder_tone: Optional[str] = None
+    nudge_minutes: Optional[int] = None
     # 逐藥確認累積的藥品 id 集合（見 spec「逐藥確認」）。集合語意由服務層
     # 保證冪等，這裡只是純粹的儲存欄位。本欄位之前寫入的紀錄沒有這個 key，
     # 讀回時為空陣列，不影響既有的整批確認行為。

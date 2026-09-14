@@ -1342,10 +1342,13 @@ async def test_resync_retags_urgent_and_timeout_when_slot_type_unchanged():
             {"timeout_at": {"$ne": new_timeout}},
         ],
     }
+    # 改寫 urgent_at 時一併清掉拉霸挑的催促分鐘數，見
+    # test_medication_reminder_variants_repository.py。
     assert retag_update["$set"] == {
         "slot_type": "morning",
         "urgent_at": new_urgent,
         "timeout_at": new_timeout,
+        "nudge_minutes": None,
     }
 
 

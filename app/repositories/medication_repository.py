@@ -942,6 +942,10 @@ class MedicationLogRepository:
             if urgent_at is not None:
                 or_clauses.append({"urgent_at": {"$ne": urgent_at}})
                 retag_set["urgent_at"] = urgent_at
+                # 催促時間被重設回固定的 +20 分鐘：拉霸替這一頓挑的催促時機已經
+                # 不成立，清掉它，這一頓才不會被當成那個時機的結果拿去學。語氣
+                # 不清——T+0 卡片已經照那個語氣送出去了。
+                retag_set["nudge_minutes"] = None
             if timeout_at is not None:
                 or_clauses.append({"timeout_at": {"$ne": timeout_at}})
                 retag_set["timeout_at"] = timeout_at
@@ -1215,6 +1219,62 @@ class MedicationLogRepository:
             "timeout_at": {"$lte": threshold_time},
         }
         cursor = col.find(query)
+        docs = await cursor.to_list(length=None)
+        return [MedicationLog(**{**doc, "_id": str(doc["_id"])}) for doc in docs]
+
+    @staticmethod
+    async def assign_reminder_variant(
+        log_id: str,
+        *,
+        tone: str,
+        nudge_minutes: int,
+        urgent_at: datetime,
+        collection: Optional[Any] = None,
+    ) -> Optional[MedicationLog]:
+        """寫入用藥提醒拉霸替這一頓挑的選項，回傳資料庫讀回的紀錄。
+
+        只在還沒寫過時寫入（`reminder_tone: None` 同時命中「欄位不存在」與
+        「值為 null」兩種形狀）：T+0 推播失敗重試、或多個實例同時送同一筆時，
+        先寫的為準，後到的讀回那一份照著送。同一頓的 T+0 與 T+20 必須是同一種
+        語氣，學習時才知道那一頓用的是哪一版。
+
+        `urgent_at` 一併改寫成最晚服藥時刻＋`nudge_minutes`：T+20 催促的查詢
+        （`list_pending_urgent_reminders`）讀的就是這個欄位，改了它就改了催促
+        時機，查詢本身不必動。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_medication_logs_collection()
+        await collection.update_one(
+            {"_id": log_id, "reminder_tone": None},
+            {
+                "$set": {
+                    "reminder_tone": tone,
+                    "nudge_minutes": nudge_minutes,
+                    "urgent_at": urgent_at,
+                }
+            },
+        )
+        doc = await collection.find_one({"_id": log_id})
+        if not doc:
+            return None
+        doc["_id"] = str(doc["_id"])
+        return MedicationLog(**doc)
+
+    @staticmethod
+    async def list_variant_outcomes(collection: Optional[Any] = None) -> List[MedicationLog]:
+        """用藥提醒拉霸學習用：有進拉霸、而且已經有結果的紀錄。
+
+        結果只看 `taken`／`missed`（算不算成功由 `reminder_variants.outcome_of`
+        判定）；`pending` 還沒走完，`cancelled` 是規則被關掉，都沒有東西可學。
+
+        目前整批讀出、在應用程式端計數，排程器每一輪只在有 T+0 要送時讀一次。
+        資料量大到拖慢排程時，改成在 MongoDB 端依長輩與選項 `$group` 計數。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_medication_logs_collection()
+        cursor = collection.find(
+            {"reminder_tone": {"$ne": None}, "status": {"$in": ["taken", "missed"]}}
+        )
         docs = await cursor.to_list(length=None)
         return [MedicationLog(**{**doc, "_id": str(doc["_id"])}) for doc in docs]
 

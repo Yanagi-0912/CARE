@@ -66,6 +66,10 @@ def log_repository():
     repo.release_patient_reminder = AsyncMock(return_value=True)
     repo.release_patient_urgent_reminder = AsyncMock(return_value=True)
     repo.release_caregiver_alert = AsyncMock(return_value=True)
+    # 用藥提醒拉霸：預設沒有歷史、寫入選項也拿不回紀錄，排程器因此照現行版本
+    # 送出。拉霸本身的行為見 test_medication_scheduler_variants.py。
+    repo.list_variant_outcomes = AsyncMock(return_value=[])
+    repo.assign_reminder_variant = AsyncMock(return_value=None)
     return repo
 
 

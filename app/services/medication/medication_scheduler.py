@@ -1,8 +1,10 @@
 import logging
+import random
 from datetime import datetime, timedelta
 from functools import partial
 from typing import Any, Callable, Optional
 
+from app.core.request_logging import log_stage
 from app.models.medication import (
     DEFAULT_MISFIRE_GRACE_MINUTES,
     TAIPEI_TZ,
@@ -29,6 +31,7 @@ from app.services.line_messaging.reply.reply import LineReplier
 from app.services.medication.drug_appearance_image_service import (
     resolve_drug_appearance_image_url,
 )
+from app.services.medication.reminder_variants import TONE_CONTROL, choose_variant
 from app.services.scheduling.push_tick_scheduler import PushTickScheduler, RecipientPrefs
 from app.services.users.user_profile_service import UserProfileService
 
@@ -38,6 +41,10 @@ logger = logging.getLogger(__name__)
 # 「排程器 pod 是否還健康」最靈敏的訊號——每日諮詢摘要睡到隔天才醒，
 # 停擺一整天都還在它的正常範圍內，當不了 liveness 依據。
 HEARTBEAT_NAME = "medication"
+
+# T+30 家屬逾時通報距離最晚服藥時刻（timeout_anchor_time）多久。展開紀錄時用它算
+# timeout_at；拉霸改寫催促時間時，用它從 timeout_at 反推最晚服藥時刻。
+_CAREGIVER_ALERT_AFTER_ANCHOR = timedelta(minutes=30)
 
 
 # 收件人偏好的型別已移到與掛號提醒共用的排程骨架（push_tick_scheduler）；
@@ -320,7 +327,8 @@ class MedicationScheduler(PushTickScheduler):
     """
     雙階遞進定時排程引擎 (MedicationScheduler)
     1. T+0min  首刷提醒建立與推播
-    2. T+20min 第二次溫馨催促推播 (若逾時未用藥)
+    2. T+20min 第二次溫馨催促推播 (若逾時未用藥)；實際在最晚服藥時刻後 10／15／20
+       分鐘，由用藥提醒拉霸替每一頓挑選（見 reminder_variants.py）
     3. T+30min 第三次家屬逾時通報警報 (若仍未用藥)
 
     迴圈、心跳、推播權搶佔與收件人偏好解析在 `PushTickScheduler`，與掛號提醒
@@ -339,6 +347,7 @@ class MedicationScheduler(PushTickScheduler):
         reminder_repository=MedicationReminderRepository,
         log_repository=MedicationLogRepository,
         medication_repository=MedicationRepository,
+        variant_sample: Optional[Callable[[float, float], float]] = None,
     ) -> None:
         super().__init__(
             replier=replier,
@@ -354,6 +363,10 @@ class MedicationScheduler(PushTickScheduler):
         self._reminder_repository = reminder_repository
         self._log_repository = log_repository
         self._medication_repository = medication_repository
+        # 用藥提醒拉霸的抽樣函式（從 Beta 分佈抽一個值）。測試注入期望值讓挑選
+        # 可預期；正式路徑用 SystemRandom——不需要可重現，而 SonarCloud 會把
+        # random 模組的偽亂數標成安全熱點，此專案又不理會 NOSONAR。
+        self._variant_sample = variant_sample or random.SystemRandom().betavariate
 
     def _medication_cache(self, logs: list[MedicationLog]) -> _TickMedicationNameCache:
         """建立一個階段共用的藥名查表，並把注入的 repository 帶下去。
@@ -368,7 +381,10 @@ class MedicationScheduler(PushTickScheduler):
         )
 
     async def _send_patient_reminder(
-        self, log: MedicationLog, medication_cache: _TickMedicationNameCache
+        self,
+        log: MedicationLog,
+        medication_cache: _TickMedicationNameCache,
+        variant_history: Optional[list[MedicationLog]] = None,
     ) -> bool:
         prefs = await self._resolve_prefs(log.user_id)
         if not prefs.notify_reminder:
@@ -382,6 +398,8 @@ class MedicationScheduler(PushTickScheduler):
             )
             return True
         language, font_size = prefs.language, prefs.font_size
+        # 關掉提醒的那一頓在上面就回傳了，不會進拉霸：訊息沒送出去，沒有東西可學。
+        tone = await self._reminder_tone(log, variant_history)
         # 用藥者的提醒卡要看得出「哪一顆」，走 get_entries() 帶出縮圖 URL；
         # 家屬警報只需要藥名，見 _send_caregiver_alert 仍是 get()。
         medication_entries = await medication_cache.get_entries(log)
@@ -396,8 +414,57 @@ class MedicationScheduler(PushTickScheduler):
             medication_groups=await medication_cache.get_groups(log),
             language=language,
             font_size=font_size,
+            tone=tone,
         )
         return await self._replier.push_flex(log.user_id, flex_msg)
+
+    async def _reminder_tone(
+        self, log: MedicationLog, history: Optional[list[MedicationLog]]
+    ) -> str:
+        """這一頓 T+0 用哪種語氣，並把拉霸的選擇寫進紀錄（催促時間一併改寫）。
+
+        推播失敗後重送時，紀錄上已經有選項，照用、不重挑。`history` 為 None 代表
+        這一輪讀不到歷史（或呼叫端沒給）。拉霸出任何狀況都退回現行版本照常送出
+        ——提醒不能因為學習機制出錯而送不出去；退回時不寫入選項，這一頓也就不會
+        被當成拉霸的結果拿去學。
+        """
+        if log.reminder_tone:
+            return log.reminder_tone
+        if history is None:
+            return TONE_CONTROL
+        try:
+            variant = choose_variant(log, history, sample=self._variant_sample)
+            # 催促從最晚服藥時刻起算（飯前飯後分兩批時，最晚那批才是該催的時刻），
+            # 不是從 T+0 的 scheduled_at。
+            anchor = ensure_aware_utc(log.timeout_at) - _CAREGIVER_ALERT_AFTER_ANCHOR
+            stored = await self._log_repository.assign_reminder_variant(
+                log.id,
+                tone=variant.tone,
+                nudge_minutes=variant.nudge_minutes,
+                urgent_at=anchor + timedelta(minutes=variant.nudge_minutes),
+            )
+        except Exception:
+            logger.exception(
+                "[MedicationScheduler] Failed to choose reminder variant for %s; "
+                "sending current wording",
+                log.id,
+            )
+            return TONE_CONTROL
+        if stored is None or not stored.reminder_tone:
+            return TONE_CONTROL
+        log_stage(logger, "med_variant", tone=stored.reminder_tone, nudge=stored.nudge_minutes)
+        return stored.reminder_tone
+
+    async def _load_variant_history(self) -> Optional[list[MedicationLog]]:
+        """讀出拉霸學習用的歷史；失敗時回 None，這一輪的 T+0 全部照現行版本送。"""
+        try:
+            return await self._log_repository.list_variant_outcomes()
+        except Exception:
+            logger.exception(
+                "[MedicationScheduler] Failed to load reminder variant history; "
+                "this tick sends current wording"
+            )
+            return None
 
     async def _send_urgent_reminder(
         self, log: MedicationLog, medication_cache: _TickMedicationNameCache
@@ -416,6 +483,8 @@ class MedicationScheduler(PushTickScheduler):
             medication_groups=await medication_cache.get_groups(log),
             language=language,
             font_size=font_size,
+            # 與同一頓的 T+0 同一種語氣；拉霸上線前的紀錄沒有這個欄位，照現行版本。
+            tone=log.reminder_tone or TONE_CONTROL,
         )
         return await self._replier.push_flex(log.user_id, urgent_flex)
 
@@ -634,7 +703,7 @@ class MedicationScheduler(PushTickScheduler):
                     f"{today_date_str} {reminder.timeout_anchor_time}", "%Y-%m-%d %H:%M"
                 ).replace(tzinfo=current_time.tzinfo)
                 urgent_at = anchor_dt + timedelta(minutes=20)
-                timeout_dt = anchor_dt + timedelta(minutes=30)
+                timeout_dt = anchor_dt + _CAREGIVER_ALERT_AFTER_ANCHOR
 
                 # 不為「提醒建立之前」的時段補建 log。
                 # 否則 20:00 新增一筆早上 08:00 的提醒，會在同一個 tick 內連續
@@ -702,13 +771,19 @@ class MedicationScheduler(PushTickScheduler):
         # 同一個時段（例如 08:00）時，藥名查詢不會隨 log 數量線性增加。這裡只是建立
         # 查表物件本身（不發查詢），迴圈與 _dispatch 的搶佔／推播流程完全不變。
         initial_medication_cache = self._medication_cache(pending_initial_logs)
+        # 用藥提醒拉霸的歷史每一輪只讀一次，給這一輪所有 T+0 共用；沒有要送的就不讀。
+        variant_history = (
+            await self._load_variant_history() if pending_initial_logs else None
+        )
         for log in pending_initial_logs:
             await self._dispatch(
                 stage="T+0min initial reminder",
                 log_id=log.id,
                 claim=self._log_repository.claim_patient_reminder,
                 release=self._log_repository.release_patient_reminder,
-                send=partial(self._send_patient_reminder, log, initial_medication_cache),
+                send=partial(
+                    self._send_patient_reminder, log, initial_medication_cache, variant_history
+                ),
             )
 
         # ── 階段 2：T+20min 第二次溫馨催促 ─────────────────────────────

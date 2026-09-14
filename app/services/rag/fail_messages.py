@@ -15,6 +15,7 @@ class RagFailCode:
     WEB_EMPTY = "WEB_EMPTY"  # 知識庫不足後，官方網搜仍無可用內容
     WEB_ERROR = "WEB_ERROR"  # web fallback 例外
     MODEL_REFUSE = "MODEL_REFUSE"  # 有文件但模型判定無法回答
+    TIMEOUT = "TIMEOUT"  # 整條管線超過總逾時（answer_service.DEFAULT_RAG_ANSWER_TIMEOUT_SECONDS）
 
 
 _FAIL_CODE_TO_KEY: dict[str, str] = {
@@ -22,6 +23,7 @@ _FAIL_CODE_TO_KEY: dict[str, str] = {
     RagFailCode.WEB_EMPTY: "rag.fail.WEB_EMPTY",
     RagFailCode.WEB_ERROR: "rag.fail.WEB_ERROR",
     RagFailCode.MODEL_REFUSE: "rag.fail.MODEL_REFUSE",
+    RagFailCode.TIMEOUT: "rag.fail.TIMEOUT",
 }
 
 

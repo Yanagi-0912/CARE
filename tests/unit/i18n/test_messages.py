@@ -8,6 +8,7 @@ REQUIRED_KEYS = (
     "rag.fail.WEB_EMPTY",
     "rag.fail.WEB_ERROR",
     "rag.fail.MODEL_REFUSE",
+    "rag.fail.TIMEOUT",
     "agent.rag_prefix",
     "agent.sources_heading",
     "rag.web_source_label",

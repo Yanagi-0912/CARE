@@ -22,6 +22,15 @@ def test_compat_aliases():
     assert not is_rag_fail("正常衛教回答")
 
 
+def test_timeout_has_its_own_code_and_asks_to_retry():
+    """逾時不是「查無資料」：使用者該做的是稍後再問，不是換個說法。"""
+    text = rag_fail(RagFailCode.TIMEOUT, language="en")
+    assert text.startswith("[RAG_ERR:TIMEOUT]")
+    assert parse_rag_fail_code(text) == RagFailCode.TIMEOUT
+    assert "try again" in text.lower()
+    assert "稍後" in rag_fail(RagFailCode.TIMEOUT, language="zh-TW")
+
+
 def test_rag_fail_with_explicit_language_en():
     text = rag_fail(RagFailCode.KB_EMPTY, language="en")
     assert text.startswith("[RAG_ERR:KB_EMPTY]")

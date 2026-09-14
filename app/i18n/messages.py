@@ -378,6 +378,15 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "การค้นหาจากแหล่งข้อมูลทางการล้มเหลวชั่วคราว กรุณาลองใหม่ภายหลัง",
         "ja": "公式情報の検索に一時的に失敗しました。しばらくしてから再度お試しください。",
     },
+    # 逾時不是查無資料：使用者該做的是稍後再問，不是換個說法描述。
+    "rag.fail.TIMEOUT": {
+        "zh-TW": "這次查詢花太久，暫時沒有完成。請稍後再問一次。",
+        "en": "This lookup took too long and could not be completed. Please try again later.",
+        "id": "Pencarian ini memakan waktu terlalu lama dan belum selesai. Silakan coba lagi nanti.",
+        "vi": "Lần tra cứu này mất quá nhiều thời gian và chưa hoàn tất. Vui lòng thử lại sau.",
+        "th": "การค้นหาครั้งนี้ใช้เวลานานเกินไปและยังไม่เสร็จสิ้น กรุณาลองใหม่ภายหลัง",
+        "ja": "今回の検索に時間がかかりすぎたため、完了できませんでした。しばらくしてから再度お試しください。",
+    },
     "rag.fail.MODEL_REFUSE": {
         "zh-TW": "找到的資料不足以安全回答此問題。請換個方式描述，或必要時就醫。",
         "en": (

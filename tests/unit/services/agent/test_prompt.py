@@ -28,6 +28,12 @@ def test_system_prompt_bans_markdown_and_routes_tools():
     assert "WEB_EMPTY" in SYSTEM_PROMPT
 
 
+def test_system_prompt_rule_10_asks_user_to_retry_on_timeout():
+    """逾時要請使用者稍後再問，不能跟其他代碼一樣說成「暫無相符資料」。"""
+    assert "TIMEOUT" in SYSTEM_PROMPT
+    assert "稍後再問一次" in SYSTEM_PROMPT
+
+
 def test_build_system_prompt_en_requires_english_not_traditional_chinese():
     prompt = build_system_prompt("en")
     assert "必須只使用繁體中文" not in prompt

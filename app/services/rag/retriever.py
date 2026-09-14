@@ -42,6 +42,19 @@ DEFAULT_MIN_SCORE = 0.0
 # BM25 比對標題時的權重。小於 1 是刻意的降權，理由見 config.RAG_TEXT_TITLE_BOOST。
 DEFAULT_TITLE_BOOST = 0.3
 
+# Hybrid 檢索每條腿（向量／BM25）的逾時（秒）。0＝不設限。
+#
+# 實測過 rag_retrieve 卡 94 秒才回 0 筆（疑似 embedding 被限流；google-genai 在
+# 沒給 retry_options 時只打一次、不重試，所以不是重試累積出來的，原因未查明）。
+# 沒有這道逾時，一個卡住的請求就讓整條檢索陪它等。逾時的那條腿當作失敗，走
+# `_safe_invoke` 既有的 fail-open：用另一條腿的結果繼續，不是整題失敗。
+#
+# 5 秒的來由（2026-09-14 本機實測）：golden 55 題的 rag_retrieve（兩腿並行）
+# 最慢 0.54 秒（n=59）；query embedding 另外連打 110 次最慢 0.41 秒，管線裡
+# 59 次最慢 0.46 秒。5 秒約是正常最慢的 9 倍，只切病態長尾。刻意放寬：誤切的
+# 代價是少一條腿——非中文的問題 BM25 幾乎比對不到，丟掉向量腿就等於沒有結果。
+DEFAULT_LEG_TIMEOUT_SECONDS = 5.0
+
 VECTOR_SOURCE_NAME = "vector"
 TEXT_SOURCE_NAME = "text"
 
@@ -322,7 +335,8 @@ class MongoAtlasTextRetriever:
 class HybridRetriever:
     """並行跑向量與文字檢索，再融合成單一排名。
 
-    任一邊失敗只記錄並降級為另一邊的結果（fail-open）。這讓本類別在
+    任一邊失敗或逾時（`leg_timeout_seconds`）只記錄並降級為另一邊的結果
+    （fail-open）。這讓本類別在
     Atlas Search index 還沒建好時也能安全上線 —— 那時 `$search` 會報錯，
     行為自動退化為原本的純向量檢索。
 
@@ -345,6 +359,7 @@ class HybridRetriever:
         limit: int | None = None,
         fusion_mode: str = FUSION_MODE_RRF,
         alpha: float = DEFAULT_FUSION_ALPHA,
+        leg_timeout_seconds: float = DEFAULT_LEG_TIMEOUT_SECONDS,
     ) -> None:
         if fusion_mode not in FUSION_MODES:
             raise ValueError(
@@ -361,6 +376,7 @@ class HybridRetriever:
         # 是本專案原本唯一的那條腿，alpha=1.0 等於回到純向量，語意上是可讀的
         # 端點；反過來定義則要靠記憶。
         self.alpha = alpha
+        self.leg_timeout_seconds = leg_timeout_seconds
 
     async def warmup(self) -> None:
         """兩條腿一起暖。共用 client 之下第二次是瞬間完成，但不假設一定共用。"""
@@ -410,10 +426,21 @@ class HybridRetriever:
         )
         return fused
 
-    @staticmethod
-    async def _safe_invoke(retriever: Any, name: str, query: str) -> list[Document]:
+    async def _safe_invoke(self, retriever: Any, name: str, query: str) -> list[Document]:
+        limit = self.leg_timeout_seconds if self.leg_timeout_seconds > 0 else None
+        deadline = asyncio.timeout(limit)
         try:
-            return await retriever.ainvoke(query)
+            async with deadline:
+                return await retriever.ainvoke(query)
         except Exception:
-            logger.exception("hybrid_retrieve_failed source=%s; degrading", name)
+            # 逾時與其他失敗分開記：逾時是「慢」（embedding 限流、Atlas 卡住），
+            # 例外是「壞」（索引不存在、金鑰錯誤），兩者查的地方不同。
+            if deadline.expired():
+                logger.warning(
+                    "hybrid_retrieve_timeout source=%s timeout_s=%s; degrading",
+                    name,
+                    self.leg_timeout_seconds,
+                )
+            else:
+                logger.exception("hybrid_retrieve_failed source=%s; degrading", name)
             return []

@@ -1,5 +1,6 @@
 import asyncio
 import sys
+import time
 import types
 from unittest.mock import AsyncMock, MagicMock
 
@@ -61,6 +62,7 @@ def _make_service(
     crag_rewrite_budget_seconds=DEFAULT_CRAG_REWRITE_BUDGET_SECONDS,
     speculative_generate=DEFAULT_SPECULATIVE_GENERATE,
     link_checker=None,
+    **service_kwargs,
 ):
     gemini_service = MagicMock()
     gemini_service.chat_model = MagicMock()
@@ -85,6 +87,7 @@ def _make_service(
             web_search=web_search,
             web_fallback_enabled=web_fallback_enabled,
             link_checker=link_checker,
+            **service_kwargs,
         ),
         gemini_service,
         retriever,
@@ -1677,3 +1680,137 @@ async def test_empty_retrieval_rewrites_before_web():
     web_search.answer.assert_awaited_once_with(
         "PGAD 是什麼病", search_queries=_PGAD_REWRITE
     )
+
+
+# ── 總逾時 ────────────────────────────────────────────────────────
+
+
+async def _hang(*_args, **_kwargs):
+    await asyncio.sleep(5)
+    return []
+
+
+@pytest.mark.asyncio
+async def test_answer_returns_timeout_fail_when_pipeline_exceeds_total_timeout():
+    """整條管線到點就停，回可辨識的 TIMEOUT，不讓使用者陪卡住的那一段等。"""
+    service, _, retriever = _make_service(docs=[], total_timeout_seconds=0.05)
+    retriever.ainvoke = AsyncMock(side_effect=_hang)
+
+    started = time.perf_counter()
+    result = await service.answer("高血壓要注意什麼")
+    elapsed = time.perf_counter() - started
+
+    assert result.startswith("[RAG_ERR:TIMEOUT]")
+    assert elapsed < 1.0
+
+
+@pytest.mark.asyncio
+async def test_timeout_is_logged_under_its_own_path(caplog):
+    """逾時不能留在 path=kb：分流門檻的校準會把它當成「知識庫答得出來」的樣本。
+
+    last_path 記下逾時當下走到哪條路，查的時候才分得出卡在知識庫還是網搜。
+    """
+    service, _, retriever = _make_service(docs=[], total_timeout_seconds=0.05)
+    retriever.ainvoke = AsyncMock(side_effect=_hang)
+
+    with caplog.at_level("INFO"):
+        await service.answer("高血壓要注意什麼")
+
+    line = _rag_answer_log(caplog)
+    assert "path=timeout" in line
+    assert "last_path=kb" in line
+
+
+@pytest.mark.asyncio
+async def test_timeout_cancels_in_flight_speculative_generation():
+    """使用者已經拿到逾時訊息，背景那次生成只會白燒配額，必須收掉。"""
+    cancelled = asyncio.Event()
+
+    async def _hanging_generate(_messages):
+        try:
+            await asyncio.sleep(5)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+        return AIMessage(content="不該用到")
+
+    async def _hanging_grade(_query, _docs):
+        await asyncio.sleep(5)
+        return Grade.CORRECT
+
+    grader = MagicMock()
+    grader.grade = AsyncMock(side_effect=_hanging_grade)
+    service, gemini_service, _ = _make_service(
+        docs=[_doc(source="A", url="https://a.example/1")],
+        grader=grader,
+        crag_enabled=True,
+        total_timeout_seconds=0.05,
+    )
+    gemini_service.chat_model.ainvoke = AsyncMock(side_effect=_hanging_generate)
+
+    result = await service.answer("高血壓要注意什麼")
+
+    assert result.startswith("[RAG_ERR:TIMEOUT]")
+    await asyncio.wait_for(cancelled.wait(), timeout=1.0)
+
+
+@pytest.mark.asyncio
+async def test_timeout_clears_sources_set_before_the_deadline():
+    """網搜路徑可能已把來源交給呈現層才逾時；逾時訊息不能掛著那組來源按鈕。"""
+    from app.core.rag_sources import (
+        SourceRef,
+        begin_request_rag_sources,
+        get_request_rag_sources,
+        reset_request_rag_sources,
+        set_request_rag_sources,
+    )
+
+    async def _web_sets_sources_then_hangs(_query, **_kwargs):
+        set_request_rag_sources(
+            [SourceRef(index=1, label="疾管署", url="https://www.cdc.gov.tw/a")]
+        )
+        await asyncio.sleep(5)
+        return "不該用到"
+
+    web_search = MagicMock()
+    web_search.answer = AsyncMock(side_effect=_web_sets_sources_then_hangs)
+    service, _, _ = _make_service(
+        docs=[], web_search=web_search, total_timeout_seconds=0.05
+    )
+
+    token = begin_request_rag_sources()
+    try:
+        result = await service.answer("高血壓要注意什麼")
+        assert result.startswith("[RAG_ERR:TIMEOUT]")
+        assert get_request_rag_sources() == ()
+    finally:
+        reset_request_rag_sources(token)
+
+
+@pytest.mark.asyncio
+async def test_total_timeout_zero_means_unlimited():
+    docs = [_doc(source="A", url="https://a.example/1")]
+
+    async def _slow_retrieve(_query):
+        await asyncio.sleep(0.1)
+        return docs
+
+    service, _, retriever = _make_service(
+        docs=docs, answer_content="回答 [1]", total_timeout_seconds=0
+    )
+    retriever.ainvoke = AsyncMock(side_effect=_slow_retrieve)
+
+    result = await service.answer("高血壓要注意什麼")
+
+    assert result.startswith("回答 [1]")
+
+
+@pytest.mark.asyncio
+async def test_timeout_error_from_inside_pipeline_is_not_reported_as_deadline():
+    """只有總逾時本身到點才回 TIMEOUT。管線裡別處拋出的 TimeoutError 照舊往上拋，
+    否則另一種故障會被記成「逾時」，查錯方向就錯了。"""
+    service, _, retriever = _make_service(docs=[], total_timeout_seconds=30)
+    retriever.ainvoke = AsyncMock(side_effect=TimeoutError("inner"))
+
+    with pytest.raises(TimeoutError):
+        await service.answer("高血壓要注意什麼")

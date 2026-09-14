@@ -241,6 +241,7 @@ if settings.RAG_HYBRID_ENABLED and settings.MONGODB_TEXT_INDEX:
         limit=settings.RAG_RETRIEVE_CANDIDATES,
         fusion_mode=settings.RAG_FUSION_MODE,
         alpha=settings.RAG_FUSION_ALPHA,
+        leg_timeout_seconds=settings.RAG_RETRIEVE_LEG_TIMEOUT_SECONDS,
     )
     logger.info(
         "RAG hybrid retrieval enabled: vector=%s text=%s fusion=%s rrf_k=%s alpha=%s",
@@ -374,6 +375,7 @@ _rag_answer_service = RagAnswerService(
     web_fallback_enabled=settings.RAG_WEB_FALLBACK_ENABLED,
     degraded_min_score=settings.RAG_DEGRADED_MIN_SCORE,
     link_checker=_link_checker,
+    total_timeout_seconds=settings.RAG_ANSWER_TIMEOUT_SECONDS,
 )
 
 _chat_history_repository = build_chat_history_repository(

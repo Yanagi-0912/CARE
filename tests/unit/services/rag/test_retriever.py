@@ -1,4 +1,6 @@
+import asyncio
 import sys
+import time
 import types
 from unittest.mock import AsyncMock, MagicMock
 
@@ -382,6 +384,61 @@ async def test_hybrid_applies_limit_and_passes_query_to_both():
     assert len(docs) == 2
     vector.ainvoke.assert_awaited_once_with("高血壓")
     text.ainvoke.assert_awaited_once_with("高血壓")
+
+
+def _slow_retriever(delay: float, docs=None):
+    async def _ainvoke(query):
+        await asyncio.sleep(delay)
+        return docs or []
+
+    stub = MagicMock()
+    stub.ainvoke = AsyncMock(side_effect=_ainvoke)
+    return stub
+
+
+@pytest.mark.asyncio
+async def test_hybrid_drops_leg_that_exceeds_leg_timeout():
+    """一條腿卡住時丟掉它、用另一條腿的結果，而不是整條檢索陪它等。
+
+    實測過 rag_retrieve 卡 94 秒才回 0 筆。逾時就當那條腿失敗，走既有的
+    fail-open 降級。
+    """
+    hybrid = HybridRetriever(
+        vector_retriever=_slow_retriever(5.0, [_d("v1")]),
+        text_retriever=_stub_retriever([_d("t1")]),
+        leg_timeout_seconds=0.05,
+    )
+
+    started = time.perf_counter()
+    docs = await hybrid.ainvoke("查詢")
+    elapsed = time.perf_counter() - started
+
+    assert [d.metadata["id"] for d in docs] == ["t1"]
+    assert elapsed < 1.0
+
+
+@pytest.mark.asyncio
+async def test_hybrid_returns_empty_when_both_legs_time_out():
+    hybrid = HybridRetriever(
+        vector_retriever=_slow_retriever(5.0, [_d("v1")]),
+        text_retriever=_slow_retriever(5.0, [_d("t1")]),
+        leg_timeout_seconds=0.05,
+    )
+
+    assert await hybrid.ainvoke("查詢") == []
+
+
+@pytest.mark.asyncio
+async def test_hybrid_leg_timeout_zero_means_unlimited():
+    hybrid = HybridRetriever(
+        vector_retriever=_slow_retriever(0.1, [_d("v1")]),
+        text_retriever=_stub_retriever([_d("t1")]),
+        leg_timeout_seconds=0,
+    )
+
+    docs = await hybrid.ainvoke("查詢")
+
+    assert {d.metadata["id"] for d in docs} == {"v1", "t1"}
 
 
 def test_ensure_collection_creates_motor_collection_once():

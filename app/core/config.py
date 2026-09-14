@@ -117,6 +117,12 @@ class Settings:
         "yes",
     )
     RAG_RRF_K: int = int(os.getenv("RAG_RRF_K", "60"))
+    # 每條腿（向量／BM25）的逾時（秒）。0＝不設限。逾時的那條腿當作失敗，用另
+    # 一條腿的結果繼續。5 秒是實測正常最慢（0.54 秒）的約 9 倍，來由見
+    # rag/retriever.DEFAULT_LEG_TIMEOUT_SECONDS。
+    RAG_RETRIEVE_LEG_TIMEOUT_SECONDS: float = float(
+        os.getenv("RAG_RETRIEVE_LEG_TIMEOUT_SECONDS", "5")
+    )
 
     # 融合方式：convex（預設，正規化分數的凸組合）或 rrf（Reciprocal Rank Fusion）。
     #
@@ -246,6 +252,14 @@ class Settings:
     # 更慢的路沒有意義。細節見 rag/answer_service.DEFAULT_CRAG_REWRITE_BUDGET_SECONDS。
     RAG_CRAG_REWRITE_BUDGET_SECONDS: float = float(
         os.getenv("RAG_CRAG_REWRITE_BUDGET_SECONDS", "12")
+    )
+
+    # 整條 RAG 管線的總逾時（秒）。0＝不設限。到點回 [RAG_ERR:TIMEOUT]，agent
+    # 請使用者稍後再問。45 秒＝LINE loading 動畫上限 60 秒，扣掉 RAG 以外的段落；
+    # 實測最慢一題 18.7 秒，正常題目不會被切。來由見
+    # rag/answer_service.DEFAULT_RAG_ANSWER_TIMEOUT_SECONDS。
+    RAG_ANSWER_TIMEOUT_SECONDS: float = float(
+        os.getenv("RAG_ANSWER_TIMEOUT_SECONDS", "45")
     )
 
     # 投機生成：CRAG 分級期間先把生成跑起來，分級放行同一批 docs 就直接採用。

@@ -86,6 +86,26 @@ DEFAULT_CRAG_REWRITE_BUDGET_SECONDS = 12.0
 # 不是延遲，並讓單次請求的 Gemini 併發從 1 升到 2。要關掉設 false。
 DEFAULT_SPECULATIVE_GENERATE = True
 
+# 整條管線的總逾時（秒）。0＝不設限。
+#
+# 為什麼需要：各段各自有逾時（Cohere、Firecrawl、連結檢查），但加起來沒有上限；
+# Gemini 的呼叫則根本沒有逾時（langchain-google-genai 4.2.2 預設 timeout=None、
+# 重試 6 次）。實測過 rag_retrieve 卡 94 秒才回 0 筆，使用者等 107 秒換一句
+# 「查無資料」。檢索那段另有每條腿的逾時（retriever.DEFAULT_LEG_TIMEOUT_SECONDS），
+# 這裡是最後一道：不管卡在哪一段，到點就停。
+#
+# 45 秒的來由：
+#   - 上界：LINE loading 動畫最長 60 秒（官方文件：「5 to 60 seconds」），超過
+#     使用者連「還在處理」都看不到。60 秒要分給 RAG 以外的段落：guardrail＋
+#     agent 決策＋最終回覆實測合計約 5 秒（2026-09-02）；語音回覆的 TTS 沒量過
+#     （上限是連線 5＋接收 15 秒）。這裡留 15 秒給它們。
+#   - 下界：golden 55 題完整管線（2026-09-14，本機 gemini-3.8-flash，各 1 次）
+#     最慢 18.7 秒（網搜路徑），p90 14.9 秒。45 秒是最慢那題的 2.4 倍，正常
+#     題目不會被切掉。
+#
+# 到點回 [RAG_ERR:TIMEOUT]，agent 依 prompt 規則 10 請使用者稍後再問。
+DEFAULT_RAG_ANSWER_TIMEOUT_SECONDS = 45.0
+
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 
 
@@ -119,6 +139,7 @@ class RagAnswerService:
         crag_rewrite_budget_seconds: float = DEFAULT_CRAG_REWRITE_BUDGET_SECONDS,
         link_checker: LinkChecker | None = None,
         speculative_generate: bool = DEFAULT_SPECULATIVE_GENERATE,
+        total_timeout_seconds: float = DEFAULT_RAG_ANSWER_TIMEOUT_SECONDS,
     ) -> None:
         self.gemini_service = gemini_service
         self.retriever = retriever
@@ -136,12 +157,44 @@ class RagAnswerService:
         self.link_checker = link_checker
         # 只有 CRAG 開啟時才有東西可以並行——沒有分級就沒有等待可以填。
         self.speculative_generate = bool(speculative_generate and self.crag_enabled)
+        self.total_timeout_seconds = total_timeout_seconds
 
     async def answer(self, user_text: str) -> str:
         # 總計時的 path 欄位標出這一輪實際走了哪條路——同樣是 40 秒，
         # 走 kb 與走 web 要查的地方完全不同。
         with stage_timer(logger, "rag_answer") as timing:
-            return await self._answer(user_text, timing)
+            limit = self.total_timeout_seconds if self.total_timeout_seconds > 0 else None
+            deadline = asyncio.timeout(limit)
+            try:
+                async with deadline:
+                    return await self._answer(user_text, timing)
+            except TimeoutError:
+                # 只接自己這個總逾時。管線裡別處拋出的 TimeoutError 是另一種
+                # 故障，照舊往上拋——記成「逾時」會把查錯方向帶歪。
+                if not deadline.expired():
+                    raise
+                return self._timed_out(timing)
+
+    def _timed_out(self, timing: dict[str, Any]) -> str:
+        """總逾時到點：記錄、清掉已交出的來源，回 TIMEOUT。
+
+        進行中的投機生成與改寫已由 `_answer` 的 finally 取消（逾時是以取消
+        送進去的），這裡不必再收。
+        """
+        # 不能留在原本的 path：記成 kb 會讓分流門檻的校準把它當成「這個分數帶
+        # 知識庫答得出來」的樣本（理由同 kb_model_refuse）。last_path 記逾時
+        # 當下走到哪條路，才分得出卡在知識庫還是網搜。
+        timing["last_path"] = timing.get("path")
+        timing["path"] = "timeout"
+        # 網搜路徑可能已把來源交給呈現層才逾時，逾時訊息不能掛著那組按鈕。
+        set_request_rag_sources(())
+        logger.warning(
+            "rag_fail code=%s timeout_s=%s last_path=%s",
+            RagFailCode.TIMEOUT,
+            self.total_timeout_seconds,
+            timing["last_path"],
+        )
+        return rag_fail(RagFailCode.TIMEOUT)
 
     async def _answer(self, user_text: str, timing: dict[str, Any]) -> str:
         # 預算從這裡起算，涵蓋第一輪檢索、精排與 grade——預算要防的是整體

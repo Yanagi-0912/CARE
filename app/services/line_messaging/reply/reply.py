@@ -38,6 +38,7 @@ from app.services.line_messaging.flex.rag_answer_flex import (
     build_document_answer_flex,
     build_rag_answer_flex,
 )
+from app.services.line_messaging.flex.table_flex import build_table_flex_from_text
 from app.services.line_messaging.token_manager import LineTokenManager
 from resources.flex_messages.size_guard import fits
 from resources.flex_messages.theme import resolve_theme
@@ -67,8 +68,13 @@ class LineReplier:
         voice_gender: str = "female",
         answer_kind: str | None = None,
         user_question: str = "",
+        image_text: str = "",
     ) -> bool:
-        """發送 LINE 訊息（包含文字訊息、Flex Message 與選填的 TTS 語音訊息）"""
+        """發送 LINE 訊息（包含文字訊息、Flex Message 與選填的 TTS 語音訊息）
+
+        `image_text` 是圖片辨識的原文（不含媒體前綴）；裡面有表格時，回答前面
+        會多送一張表格卡。
+        """
         try:
             if not reply_token or not reply_token.strip():
                 raise ValueError("LINE 事件缺少 reply_token")
@@ -137,6 +143,14 @@ class LineReplier:
                         voice_rate=voice_rate,
                         voice_gender=voice_gender,
                     )
+
+            # 表格卡排在回答前面：回答是照這份辨識結果寫的，長輩要先看到機器讀到
+            # 什麼，才核對得出讀錯的地方。插在最前面，下面的 quickReply 就照舊掛在
+            # 回答（或語音）上。加上它最多三則，在 LINE 單次回覆五則的上限內。
+            table_card = self._build_table_card(image_text)
+            if table_card is not None:
+                logger.info(f"{LOGGER_HEADER_TEXT} 圖片辨識出表格，回答前附上表格卡")
+                messages.insert(0, table_card)
 
             # quickReply 只會顯示在陣列最後一則訊息上，因此統一在此處掛到最後一則，
             # 避免 TTS 語音訊息排在文字訊息之後時，導致 Quick Reply 被 LINE 忽略。
@@ -279,6 +293,25 @@ class LineReplier:
                 exc_info=True,
             )
             return None, message_text
+
+    def _build_table_card(self, image_text: str) -> Optional[FlexMessage]:
+        """圖片辨識文字裡有 Markdown 表格時組成表格卡，沒有就回 None。
+
+        在 replier 組而不是在 media handler：卡片要吃使用者的字級，而字級要等
+        `_process_and_reply` 載入個人檔案、寫進 request context 之後才讀得到
+        （同 `_build_answer_card`）。
+
+        任何失敗都回 None：表格卡是附在回答前面的，不能因為它讓整則回覆送不出去。
+        """
+        if not image_text:
+            return None
+        try:
+            return build_table_flex_from_text(image_text, resolve_theme())
+        except Exception:
+            logger.warning(
+                f"{LOGGER_HEADER_TEXT} 表格卡組裝失敗，只送回答", exc_info=True
+            )
+            return None
 
     @staticmethod
     def _try_parse_flex_message(

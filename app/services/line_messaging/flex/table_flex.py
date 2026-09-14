@@ -332,16 +332,28 @@ def _build_bubble(
     }
 
 
+def _is_notice(line: str) -> bool:
+    """整行包在全形括號裡的是上游的警語（例如「（數值為推估，僅供參考）」），不是標題。"""
+    return line.startswith("（") and line.endswith("）")
+
+
 def build_table_flex_from_text(
     text: str, ft: theme.FlexTheme
 ) -> FlexMessage | None:
-    """從上游那段文字直接組卡；沒有可用表格時回傳 None。"""
+    """從上游那段文字直接組卡；沒有可用表格時回傳 None。
+
+    標題取表格前第一行不是警語的文字：n8n 的 Code 節點把推估警語加在 text
+    的第一行，照順序取的話，卡片抬頭會變成一句警告。
+    """
     parsed = parse_markdown_table(text)
     if parsed is None:
         return None
     preamble, columns, rows = parsed
-    title = preamble[0] if preamble else _HEADER_DEFAULT
-    notices = preamble[1:]
+    title_index = next(
+        (i for i, line in enumerate(preamble) if not _is_notice(line)), None
+    )
+    title = _HEADER_DEFAULT if title_index is None else preamble[title_index]
+    notices = [line for i, line in enumerate(preamble) if i != title_index]
     try:
         return build_table_flex(
             columns=columns, rows=rows, ft=ft, title=title, notices=notices

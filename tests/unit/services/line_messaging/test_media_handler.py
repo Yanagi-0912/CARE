@@ -54,7 +54,7 @@ async def test_extract_media_text_file_success_calls_ingest(media_handler):
         new_callable=AsyncMock,
         return_value=raw_content,
     ):
-        user_text, media_type = await media_handler._extract_media_text(
+        user_text, media_type, _ = await media_handler._extract_media_text(
             message, "U12345"
         )
 
@@ -85,7 +85,7 @@ async def test_extract_media_text_ingest_failure_still_returns_prefixed_text(
         new_callable=AsyncMock,
         return_value=raw_content,
     ):
-        user_text, media_type = await media_handler._extract_media_text(
+        user_text, media_type, _ = await media_handler._extract_media_text(
             message, "U12345"
         )
 
@@ -274,7 +274,7 @@ async def test_media_processor_call_is_unchanged_by_the_safety_check(
         new_callable=AsyncMock,
         return_value="PDF extracted text content",
     ) as mock_process:
-        user_text, media_type = await handler._extract_media_text(message, "U12345")
+        user_text, media_type, _ = await handler._extract_media_text(message, "U12345")
 
     mock_process.assert_awaited_once_with(
         media_message_id="M_PDF",
@@ -334,3 +334,136 @@ async def test_failed_media_pipeline_never_reaches_the_safety_check(
             await handler.handle(event)
 
     assert safety.calls == []
+
+
+# n8n 影像解析節點對手寫表格的輸出形式：標題一行、空行、Markdown 表格
+TABLE_TEXT = """血壓紀錄
+
+| 日期 | 收縮壓 | 舒張壓 |
+| --- | --- | --- |
+| 9/1 | 138 | 82 |
+| 9/2 | 138（↓同上） | 80 |"""
+
+
+def _event(message):
+    from datetime import datetime
+
+    from linebot.v3.webhooks import DeliveryContext, MessageEvent, UserSource
+
+    return MessageEvent(
+        timestamp=int(datetime.now().timestamp() * 1000),
+        mode="active",
+        webhookEventId="01HZTEST000000000000000003",
+        deliveryContext=DeliveryContext(isRedelivery=False),
+        replyToken="rt",
+        source=UserSource(type="user", userId="U12345"),
+        message=message,
+    )
+
+
+def _handler_with_real_replier(agent, history_service, user_profile_service):
+    from app.services.line_messaging.reply.reply import LineReplier
+    from tests.conftest import fake_line_token_manager
+
+    return LineMediaHandler(
+        agent=agent,
+        history_service=history_service,
+        user_profile_service=user_profile_service,
+        replier=LineReplier(
+            token_manager=fake_line_token_manager("token"), tts_service=None
+        ),
+    )
+
+
+async def _handle_and_capture(handler, event, recognized_text):
+    """跑完整條 handle()，只擋掉影像解析與對外的 LINE SDK 呼叫，回傳實際送出的訊息。"""
+    with patch(
+        "app.services.media.mutimedia_processor.media_processor_service.process_media",
+        new_callable=AsyncMock,
+        return_value=recognized_text,
+    ), patch("app.services.line_messaging.reply.reply.Configuration"), patch(
+        "app.services.line_messaging.reply.reply.ApiClient"
+    ), patch(
+        "app.services.line_messaging.reply.reply.MessagingApi"
+    ) as mock_messaging_api:
+        messaging_api = MagicMock()
+        mock_messaging_api.return_value = messaging_api
+        await handler.handle(event)
+    return messaging_api.reply_message.call_args[0][0].messages
+
+
+@pytest.mark.asyncio
+async def test_photo_of_a_table_gets_a_table_card_before_the_answer(
+    mock_agent, mock_history_service, mock_user_profile_service
+):
+    """卡片要用辨識原文組：誤用加了「以下為使用者傳送的…」前綴的字串，標題會變成那行前綴。"""
+    from linebot.v3.messaging import FlexMessage, TextMessage
+    from linebot.v3.webhooks import ContentProvider, ImageMessageContent
+
+    handler = _handler_with_real_replier(
+        mock_agent, mock_history_service, mock_user_profile_service
+    )
+    event = _event(
+        ImageMessageContent(
+            id="M_IMG", quoteToken="qt", contentProvider=ContentProvider(type="line")
+        )
+    )
+
+    sent = await _handle_and_capture(handler, event, TABLE_TEXT)
+
+    assert len(sent) == 2
+    assert isinstance(sent[0], FlexMessage)
+    assert sent[0].contents.to_dict()["header"]["contents"][0]["text"] == "血壓紀錄"
+    assert isinstance(sent[1], TextMessage)
+    assert sent[1].text == "AI 回覆"
+
+
+@pytest.mark.asyncio
+async def test_pdf_with_a_table_gets_no_table_card(
+    mock_agent, mock_history_service, mock_user_profile_service
+):
+    """表格卡只給圖片：PDF 在 n8n 走的是另一條解析路徑，不是產出這種表格格式的影像 prompt。"""
+    from linebot.v3.messaging import TextMessage
+
+    message = FileMessageContent(id="M_PDF", fileName="report.pdf", fileSize=100)
+    message.type = "file"
+    handler = _handler_with_real_replier(
+        mock_agent, mock_history_service, mock_user_profile_service
+    )
+
+    sent = await _handle_and_capture(handler, _event(message), TABLE_TEXT)
+
+    assert len(sent) == 1
+    assert isinstance(sent[0], TextMessage)
+
+
+@pytest.mark.asyncio
+async def test_emergency_reply_is_not_preceded_by_a_table_card(
+    mock_history_service, mock_user_profile_service
+):
+    """緊急時紅卡要是第一則（見 _process_and_reply 家人通報處的註解），表格卡不送。"""
+    from linebot.v3.messaging import TextMessage
+    from linebot.v3.webhooks import ContentProvider, ImageMessageContent
+
+    agent = MagicMock()
+    agent.invoke = AsyncMock(
+        return_value={
+            "response": "緊急卡",
+            "emergency": True,
+            "emergency_reason": "紀錄上寫胸口痛",
+        }
+    )
+    handler = _handler_with_real_replier(
+        agent, mock_history_service, mock_user_profile_service
+    )
+    event = _event(
+        ImageMessageContent(
+            id="M_IMG", quoteToken="qt", contentProvider=ContentProvider(type="line")
+        )
+    )
+
+    sent = await _handle_and_capture(handler, event, TABLE_TEXT)
+
+    assert len(sent) == 1
+    assert isinstance(sent[0], TextMessage)
+    assert sent[0].text == "緊急卡"

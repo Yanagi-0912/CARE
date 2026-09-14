@@ -159,6 +159,27 @@ class TestLayout:
         ]
         assert len(boxes) == 1
 
+    def test_estimate_notice_on_first_line_is_not_the_title(self):
+        """n8n 的 Code 節點把推估警語加在 text 第一行（`${ESTIMATED_NOTICE}\\n${text}`）。
+
+        照順序拿第一行當標題，抬頭會變成一句警告，真正的標題反而被排成警語。
+        """
+        text = "（數值為推估，僅供參考）\n體重紀錄\n\n| 日期 | 體重 |\n| --- | --- |\n| 9/1 | 62 |"
+        bubble = _bubble(build_table_flex_from_text(text, _theme()))
+        assert bubble["header"]["contents"][0]["text"] == "體重紀錄"
+        notice = next(
+            n
+            for n in _nodes(bubble["body"], "text")
+            if n["text"] == "（數值為推估，僅供參考）"
+        )
+        assert notice["color"] == theme.STATUS_PENDING
+
+    def test_notice_without_title_stays_out_of_header(self):
+        text = "（數值為推估，僅供參考）\n| 日期 | 體重 |\n| --- | --- |\n| 9/1 | 62 |"
+        bubble = _bubble(build_table_flex_from_text(text, _theme()))
+        assert "推估" not in bubble["header"]["contents"][0]["text"]
+        assert "（數值為推估，僅供參考）" in _texts(bubble["body"])
+
 
 class TestSizeAndDegradation:
     def test_long_table_is_truncated_with_a_note(self):

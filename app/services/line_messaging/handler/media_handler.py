@@ -62,10 +62,22 @@ class LineMediaHandler(BaseLineMessageHandler):
             raise ValueError("Expected Media Message Content")
 
         user_id = getattr(event.source, "user_id", "")
-        user_text, message_type = await self._extract_media_text(message, user_id)
-        await self._process_and_reply(event, user_text, message_type)
+        user_text, message_type, image_text = await self._extract_media_text(
+            message, user_id
+        )
+        await self._process_and_reply(
+            event, user_text, message_type, image_text=image_text
+        )
 
-    async def _extract_media_text(self, message, user_id: str) -> tuple[str, str]:
+    async def _extract_media_text(
+        self, message, user_id: str
+    ) -> tuple[str, str, str]:
+        """回傳 (給 agent 的文字, 媒體類型, 圖片辨識原文)。
+
+        第三項只有圖片才有值，其餘是空字串：n8n 裡只有圖片走影像解析的 prompt，
+        表格卡吃的「值（註記）」Markdown 表格是那個 prompt 產的，文件與語音走的
+        是其他解析節點。它是未加前綴的原文——前綴那行會被表格卡當成標題。
+        """
         media_id = message.id
         media_type = message.type
         file_name = getattr(message, "file_name", None)
@@ -124,4 +136,9 @@ class LineMediaHandler(BaseLineMessageHandler):
                     file_name or "upload",
                 )
 
-        return f"以下為使用者傳送的{media_type}媒體內容：\n{media_content}", media_type
+        image_text = media_content if media_type == "image" else ""
+        return (
+            f"以下為使用者傳送的{media_type}媒體內容：\n{media_content}",
+            media_type,
+            image_text,
+        )

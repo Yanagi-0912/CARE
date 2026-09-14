@@ -66,6 +66,8 @@ class BaseLineMessageHandler:
         event: MessageEvent,
         user_text: str,
         message_type: str,
+        *,
+        image_text: str = "",
     ) -> None:
         user_id = getattr(event.source, "user_id", "")
         reply_token = getattr(event, "reply_token", "")
@@ -189,6 +191,8 @@ class BaseLineMessageHandler:
                 voice_gender=voice_gender,
                 answer_kind=agent_response.get("answer_kind"),
                 user_question=user_text,
+                # 緊急時紅卡要是第一則（理由同上方家人通報），表格卡會把它擠到第二則，不送。
+                image_text="" if agent_response.get("emergency") else image_text,
             )
             log_stage(
                 logger,

@@ -630,3 +630,170 @@ async def test_quick_reply_still_on_last_message(replier):
     assert ok is True
     sent = messaging_api.reply_message.call_args[0][0].messages
     assert sent[-1].quick_reply is not None
+
+
+# n8n 影像解析對手寫表格的輸出形式：標題一行、空行、Markdown 表格，
+# 同上箭頭已展開成「值（註記）」。
+IMAGE_TABLE_TEXT = """血壓紀錄
+
+| 日期 | 收縮壓 | 舒張壓 |
+| --- | --- | --- |
+| 9/1 | 138 | 82 |
+| 9/2 | 138（↓同上） | 80 |"""
+
+ANSWER = "這兩天血壓都在 140 以下。"
+
+
+def _header_title(flex: FlexMessage) -> str:
+    return flex.contents.to_dict()["header"]["contents"][0]["text"]
+
+
+def _text_node(node, text: str) -> dict:
+    """在 Flex 樹裡找出內容等於 text 的 text 節點。"""
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, dict):
+            if current.get("type") == "text" and current.get("text") == text:
+                return current
+            stack.extend(current.values())
+        elif isinstance(current, list):
+            stack.extend(current)
+    raise AssertionError(f"卡片裡找不到「{text}」")
+
+
+@pytest.mark.asyncio
+async def test_image_table_card_is_sent_before_the_answer(replier):
+    """長輩要能核對機器從照片讀到什麼：表格卡先到，回答接在後面。"""
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text=ANSWER,
+        user_id="U1",
+        voice_reply_enabled=False,
+        image_text=IMAGE_TABLE_TEXT,
+    )
+
+    assert ok is True
+    sent = messaging_api.reply_message.call_args[0][0].messages
+    assert len(sent) == 2
+    assert isinstance(sent[0], FlexMessage)
+    assert _header_title(sent[0]) == "血壓紀錄"
+    assert isinstance(sent[1], TextMessage)
+    assert sent[1].text == ANSWER
+
+
+@pytest.mark.asyncio
+async def test_image_text_without_a_table_sends_only_the_answer(replier):
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text=ANSWER,
+        user_id="U1",
+        voice_reply_enabled=False,
+        image_text="今天血壓 138/82，還好。",
+    )
+
+    assert ok is True
+    sent = messaging_api.reply_message.call_args[0][0].messages
+    assert len(sent) == 1
+    assert isinstance(sent[0], TextMessage)
+
+
+@pytest.mark.asyncio
+async def test_table_card_failure_still_sends_the_answer(replier, monkeypatch):
+    """表格卡是附加的，組卡失敗不能讓整則回覆送不出去。
+
+    patch 的理由同 test_builder_failure_falls_back_to_text。
+    """
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("builder 壞了")
+
+    monkeypatch.setattr(
+        "app.services.line_messaging.reply.reply.build_table_flex_from_text", _boom
+    )
+
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text=ANSWER,
+        user_id="U1",
+        voice_reply_enabled=False,
+        image_text=IMAGE_TABLE_TEXT,
+    )
+
+    assert ok is True
+    sent = messaging_api.reply_message.call_args[0][0].messages
+    assert len(sent) == 1
+    assert sent[0].text == ANSWER
+
+
+@pytest.mark.asyncio
+async def test_location_quick_reply_stays_on_the_answer_after_a_table_card(replier):
+    """quickReply 只顯示在最後一則，排在前面的表格卡不能把按鈕搶走。"""
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text="請分享你的位置。",
+        user_id="U1",
+        request_location=True,
+        voice_reply_enabled=False,
+        image_text=IMAGE_TABLE_TEXT,
+    )
+
+    assert ok is True
+    sent = messaging_api.reply_message.call_args[0][0].messages
+    assert isinstance(sent[0], FlexMessage)
+    assert sent[0].quick_reply is None
+    assert isinstance(sent[-1], TextMessage)
+    assert sent[-1].quick_reply is not None
+
+
+@pytest.mark.asyncio
+async def test_table_card_follows_the_users_font_size(replier):
+    """字級要等個人檔案載入、寫進 request context 之後才讀得到，卡片得在那之後組。"""
+    from app.core.user_font_size import reset_request_font_size, set_request_font_size
+
+    token = set_request_font_size("xlarge")
+    try:
+        ok, messaging_api = await _send_reply(
+            replier,
+            reply_token="rt",
+            message_text=ANSWER,
+            user_id="U1",
+            voice_reply_enabled=False,
+            image_text=IMAGE_TABLE_TEXT,
+        )
+    finally:
+        reset_request_font_size(token)
+
+    assert ok is True
+    card = messaging_api.reply_message.call_args[0][0].messages[0]
+    assert _text_node(card.contents.to_dict(), "82")["size"] == "xl"
+
+
+@pytest.mark.asyncio
+async def test_table_card_is_not_read_aloud():
+    """語音念的是回答；表格卡給眼睛核對，音檔排在回答後面。"""
+    fake_tts = FakeTTSService()
+    replier = LineReplier(
+        token_manager=fake_line_token_manager("token"), tts_service=fake_tts
+    )
+
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text=ANSWER,
+        user_id="U1",
+        voice_reply_enabled=True,
+        image_text=IMAGE_TABLE_TEXT,
+    )
+
+    assert ok is True
+    sent = messaging_api.reply_message.call_args[0][0].messages
+    assert len(sent) == 3
+    assert isinstance(sent[0], FlexMessage)
+    assert sent[1].text == ANSWER
+    assert sent[2].original_content_url == "https://example.com/audio.mp3"
+    assert [call["text"] for call in fake_tts.calls] == [ANSWER]

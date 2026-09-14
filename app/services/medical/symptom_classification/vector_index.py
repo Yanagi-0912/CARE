@@ -177,7 +177,12 @@ class SymptomVectorIndex:
             # 且載入不必逐個 parse 浮點數字串。
             "vectors": [_pack(v) for v in self._vectors],
         }
-        path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        # 唯一的呼叫端是開發者手動執行的 scripts/build_symptom_vectors.py，path 來自
+        # 它的 --out 參數或預設路徑，執行期不會把使用者輸入傳進來。SonarCloud 的
+        # 路徑穿越規則把 CLI 參數當成不可信輸入，這裡不適用，故標 NOSONAR。
+        path.write_text(  # NOSONAR：開發者 CLI 參數，非使用者輸入（見上）
+            json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+        )
         logger.info(
             f"{LOGGER_HEADER_TEXT} 已寫入 %s（%d 條、%d 維）",
             path,

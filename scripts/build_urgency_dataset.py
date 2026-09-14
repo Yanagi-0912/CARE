@@ -304,12 +304,15 @@ async def _run(args: argparse.Namespace) -> int:
 
     # 分層切分：每個 (語言, bucket) 各自抽 holdout，否則小語言的 bucket 可能整個
     # 落在同一邊，holdout 就量不到那個語言。
+    #
+    # 這裡的亂數只決定哪些樣本進 holdout、檔案內的列序，與任何安全性無關；而且
+    # 必須能以 --seed 重現，不能換成 secrets。故對 SonarCloud S2245 標 NOSONAR。
     rng = random.Random(args.seed)
     groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for row in rows:
         groups.setdefault((row["lang"], row["bucket"]), []).append(row)
     for group_rows in groups.values():
-        rng.shuffle(group_rows)
+        rng.shuffle(group_rows)  # NOSONAR：資料切分，非安全用途（見上）
         cut = int(len(group_rows) * args.holdout_ratio)
         for i, row in enumerate(group_rows):
             row["split"] = "holdout" if i < cut else "train"
@@ -328,7 +331,7 @@ async def _run(args: argparse.Namespace) -> int:
             seen.add(key)
             rows.append(row)
 
-    rng.shuffle(rows)
+    rng.shuffle(rows)  # NOSONAR：列序打散，非安全用途（見切分處註解）
     out = args.out
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", encoding="utf-8") as fh:

@@ -199,11 +199,13 @@ def _looks_like_department_mention(text: str) -> str | None:
     return None
 
 
-def _extract_department_from_history(messages) -> str | None:
+def _extract_department_from_history(messages) -> list[str]:
     """
-    由新到舊掃描使用者訊息，找出最近一次提到的科別（回傳使用者的原始說法）。
+    由新到舊掃描使用者訊息，找出最近一次提到的科別（使用者的原始說法）。
 
-    只掃最近幾則，避免把很久以前、已經聊完的科別誤套到這次搜尋上。
+    同一則訊息列舉了多科（保底卡按鈕的「搜尋附近的家醫科、內科、不分科」）就全部
+    帶上；沒提到科別時回傳空清單。只掃最近幾則，避免把很久以前、已經聊完的科別
+    誤套到這次搜尋上。
     """
     scanned = 0
     for message in reversed(messages):
@@ -217,11 +219,11 @@ def _extract_department_from_history(messages) -> str | None:
 
         scanned += 1
         if scanned > _DEPARTMENT_INTENT_LOOKBACK:
-            return None
+            return []
 
         matches = extract_department_intents(text)
         if matches:
-            return matches[0].requested
+            return [match.requested for match in matches]
 
         # 別名表查不到，但字面上確實指名了某一科 → 原樣往下傳，讓 service 層去對應。
         mention = _looks_like_department_mention(text)
@@ -230,9 +232,9 @@ def _extract_department_from_history(messages) -> str | None:
                 "[Agent] 別名表未收錄但字面指名了科別，交由 service 層解析：%r",
                 mention,
             )
-            return mention
+            return [mention]
 
-    return None
+    return []
 
 
 # 「現在有開的」是使用者主動加上的限定，不能從「附近有診所嗎」推論出來 ——
@@ -709,13 +711,13 @@ class AgentNodes:
             lat, lng = shared_location
             # 使用者稍早若指定過科別（「附近有腸胃科嗎」），座標進來時必須沿用，
             # 否則會退化成搜尋所有科別，回傳一堆牙科、婦產科。
-            department = _extract_department_from_history(state["messages"])
+            departments = _extract_department_from_history(state["messages"])
             # 類型（大醫院／診所／藥局）與科別是各自獨立的維度，需分開判斷，
             # 兩者可同時帶入同一次工具呼叫（見 _facility_type_intent 的說明）。
             facility_type = _extract_facility_type_from_history(state["messages"])
-            if department:
+            if departments:
                 forced_tool_name = "find_nearby_facilities_by_department"
-                forced_args = {"lat": lat, "lng": lng, "department": department}
+                forced_args = {"lat": lat, "lng": lng, "departments": departments}
             else:
                 forced_tool_name = "find_nearby_hospitals"
                 forced_args = {"lat": lat, "lng": lng}

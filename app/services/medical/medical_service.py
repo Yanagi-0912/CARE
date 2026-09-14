@@ -1,5 +1,7 @@
+import asyncio
 import logging
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
@@ -126,8 +128,12 @@ class NearbySearchResult:
 class DepartmentSearchResult(NearbySearchResult):
     """依科別搜尋的結果，額外帶上科別解析的來龍去脈。"""
 
-    match: DepartmentMatch | None = None
-    """解析出的科別；為 None 代表看不懂使用者說的科別，未執行查詢。"""
+    matches: tuple[DepartmentMatch, ...] = ()
+    """解析出的科別，同一個部定專科只留一個；為空代表一科都看不懂，未執行查詢。"""
+
+    unresolved_departments: tuple[str, ...] = ()
+    """看不懂的科別，原樣保留使用者的說法。matches 不為空時代表「只查了看得懂的
+    那幾科」，呈現層 SHALL 說明哪幾科沒被搜尋，不能讓使用者以為每一科都查了。"""
 
     unspecified_ids: frozenset[str] = frozenset()
     """facilities 之中屬於「補充梯次」的院所 id——它們的 departments 沒有申報專科。
@@ -326,7 +332,7 @@ class MedicalService:
         self,
         lat: float,
         lng: float,
-        department: str,
+        departments: Sequence[str],
         target_count: int = DEFAULT_TARGET_COUNT,
         open_now: bool = False,
         facility_type: str | None = None,
@@ -335,18 +341,26 @@ class MedicalService:
         找出鄰近、且有指定科別的院所，同樣逐級放寬到 50 公里；
         facility_type 可再疊加類型過濾（兩個條件以 $and 組合，見 _combine_filters）。
 
+        departments 可一次給多科（保底卡按鈕的「家醫科、內科、不分科」）：院所有其中
+        任一科即命中，仍只打一次 DB，結果照樣由近到遠。有幾科看不懂時照查看得懂的，
+        看不懂的放進 unresolved_departments；一科都看不懂才不查 DB。
+
         facility_type 解析失敗時比照科別解析失敗：不查 DB，
         回傳 facility_type_unresolved=True 讓呼叫端能分辨「看不懂類型」；
         但空字串／純空白視同未提供（見 _normalize_optional_arg）。
         """
+        if isinstance(departments, str):
+            # 字串本身也是 Sequence[str]，照收會被拆成一個個字去解析。
+            raise TypeError("departments 必須是科別清單，不能是單一字串")
+
         facility_type = _normalize_optional_arg(facility_type)
-        match = await self._resolve_department_with_fallback(department)
-        if match is None:
+        matches, unresolved = await self._resolve_departments(departments)
+        if not matches:
             logger.info(
-                f"{LOGGER_HEADER_TEXT} 無法解析科別（含 LLM 兜底），department=%r",
-                department,
+                f"{LOGGER_HEADER_TEXT} 無法解析科別（含 LLM 兜底），departments=%r",
+                unresolved,
             )
-            return DepartmentSearchResult(match=None)
+            return DepartmentSearchResult(unresolved_departments=unresolved)
 
         type_match: FacilityTypeMatch | None = None
         type_query: dict[str, Any] | None = None
@@ -357,19 +371,26 @@ class MedicalService:
                     f"{LOGGER_HEADER_TEXT} 無法解析院所類型，facility_type=%r",
                     facility_type,
                 )
-                return DepartmentSearchResult(match=match, facility_type_unresolved=True)
+                return DepartmentSearchResult(
+                    matches=matches,
+                    unresolved_departments=unresolved,
+                    facility_type_unresolved=True,
+                )
             type_query = build_facility_type_query(type_match.category)
 
+        canonicals = tuple(match.canonical for match in matches)
         logger.info(
             f"{LOGGER_HEADER_TEXT} 依科別搜尋 ({lat}, {lng})，"
-            f"requested=%r → canonical=%r, 上限=%s 公尺, target=%s, facility_type=%s",
-            match.requested,
-            match.canonical,
+            f"requested=%r → canonical=%r, 看不懂=%r, 上限=%s 公尺, target=%s, "
+            f"facility_type=%s",
+            [match.requested for match in matches],
+            canonicals,
+            unresolved,
             NEARBY_SEARCH_STEPS[-1],
             target_count,
             type_match.category if type_match else None,
         )
-        query = self._combine_filters(build_department_query(match.canonical), type_query)
+        query = self._combine_filters(build_department_query(*canonicals), type_query)
         result = await self._search_tiered(
             lat,
             lng,
@@ -383,7 +404,7 @@ class MedicalService:
             lat,
             lng,
             target_count,
-            canonical=match.canonical,
+            canonicals=canonicals,
             type_query=type_query,
             open_now=open_now,
             type_match=type_match,
@@ -391,13 +412,14 @@ class MedicalService:
         logger.info(
             f"{LOGGER_HEADER_TEXT} 科別搜尋完成，canonical=%r, 回傳=%s 筆, "
             f"涵蓋範圍=%s 公尺, 湊滿目標=%s",
-            match.canonical,
+            canonicals,
             len(result.facilities),
             result.reached_meters,
             result.satisfied,
         )
         return DepartmentSearchResult(
-            match=match,
+            matches=matches,
+            unresolved_departments=unresolved,
             facilities=result.facilities,
             reached_meters=result.reached_meters,
             satisfied=result.satisfied,
@@ -407,6 +429,31 @@ class MedicalService:
             unspecified_ids=unspecified_ids,
         )
 
+    async def _resolve_departments(
+        self, departments: Sequence[str]
+    ) -> tuple[tuple[DepartmentMatch, ...], tuple[str, ...]]:
+        """
+        逐科解析，回傳（解析出的科別, 看不懂的原始說法）。
+
+        同一個部定專科只留第一次出現的說法：「腸胃科、心臟科」都是內科，查一次就夠，
+        別名告知也沿用使用者的第一個說法。要動用 LLM 兜底的科別並行解析，多科時
+        延遲不會一科一科疊上去。
+        """
+        requested = list(
+            dict.fromkeys(text.strip() for text in departments if (text or "").strip())
+        )
+        resolved = await asyncio.gather(
+            *(self._resolve_department_with_fallback(text) for text in requested)
+        )
+        matches: dict[str, DepartmentMatch] = {}
+        unresolved: list[str] = []
+        for text, match in zip(requested, resolved):
+            if match is None:
+                unresolved.append(text)
+            else:
+                matches.setdefault(match.canonical, match)
+        return tuple(matches.values()), tuple(unresolved)
+
     async def _supplement_with_unspecified(
         self,
         result: NearbySearchResult,
@@ -414,7 +461,7 @@ class MedicalService:
         lng: float,
         target_count: int,
         *,
-        canonical: str,
+        canonicals: tuple[str, ...],
         type_query: dict[str, Any] | None,
         open_now: bool,
         type_match: FacilityTypeMatch | None,
@@ -430,10 +477,12 @@ class MedicalService:
         正牌的專科院所永遠優先，補進來的只是「附近就這幾家，你可以先去電問問」，
         並由呈現層標示清楚（見 DepartmentSearchResult.unspecified_ids）。
 
-        通科型科別不走這裡：它們的主查詢已經涵蓋未申報專科的院所，再補一次只會
+        有任一科是通科型就不走這裡：主查詢已經涵蓋未申報專科的院所，再補一次只會
         撈到同一批。
         """
-        if result.satisfied or canonical in GENERAL_PRACTICE_DEPARTMENTS:
+        if result.satisfied or any(
+            canonical in GENERAL_PRACTICE_DEPARTMENTS for canonical in canonicals
+        ):
             return result, frozenset()
 
         missing = target_count - len(result.facilities)
@@ -458,7 +507,7 @@ class MedicalService:
         logger.info(
             f"{LOGGER_HEADER_TEXT} 科別 %r 湊不滿（%s 筆），"
             "補上 %s 筆未申報科別的鄰近院所",
-            canonical,
+            canonicals,
             len(result.facilities),
             len(extra),
         )

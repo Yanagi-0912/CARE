@@ -202,9 +202,11 @@ def _to_payload(facility: MedicalFacility) -> FacilityPayload:
 
 
 def _department_payload(result: NearbySearchResult) -> DepartmentMatchPayload | None:
-    match = getattr(result, "match", None)
-    if match is None:
+    # /nearby 一次只收一科，解析結果最多一個。
+    matches = getattr(result, "matches", ())
+    if not matches:
         return None
+    match = matches[0]
     return DepartmentMatchPayload(
         requested=match.requested,
         canonical=match.canonical,
@@ -303,12 +305,13 @@ async def get_nearby_hospitals(
     try:
         # 有帶科別就走科別搜尋——service 層的兩支方法共用同一套階梯與類型過濾，
         # 差別只在多一層科別解析，因此這裡只需要選對入口，不必自己組查詢條件。
+        # service 可一次查多科，但 /nearby 的參數與回傳格式都還是單科，前端不必跟著改。
         if (department or "").strip():
             result: NearbySearchResult = (
                 await service.find_nearby_facilities_by_department(
                     lat=lat,
                     lng=lng,
-                    department=department,
+                    departments=[department],
                     target_count=limit,
                     open_now=open_now,
                     facility_type=facility_type,
@@ -336,7 +339,7 @@ async def get_nearby_hospitals(
     is_department_search = bool((department or "").strip())
     unresolved_department = (
         department
-        if is_department_search and getattr(result, "match", None) is None
+        if is_department_search and not getattr(result, "matches", ())
         else None
     )
     unresolved_facility_type = facility_type if result.facility_type_unresolved else None

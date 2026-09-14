@@ -7,7 +7,12 @@ TBD - created by archiving change voice-rate-and-multilingual-tts. Update Purpos
 
 產生語音回覆時，系統 SHALL 以該使用者 `settings.language` 決定合成語言與音色。可選的值為 `zh-TW`、`en`、`id`、`vi`、`th`、`ja` 與 `nan-TW`（台語）；未設定、為空或不在其中時 SHALL fallback 為 `zh-TW`。除 `nan-TW` 外，系統 SHALL NOT 將文字回覆的語言與語音的合成語言分離。
 
-`nan-TW` 只換語音：文字回覆 SHALL 以 `zh-TW` 撰寫；語音 SHALL 先把要念的內容改寫成台語漢字，再以台語 TTS 合成。台語合成（含改寫）失敗或未設定時 SHALL 改以 `zh-TW` 音色合成，SHALL NOT 因此只回文字。
+`nan-TW` 只換語音：文字回覆 SHALL 以 `zh-TW` 完整撰寫；語音 SHALL 先把要念的內容濃縮成重點（約 120 字內，最要緊的放最前面）並改寫成台語漢字，再以台語 TTS 合成。台語合成（含改寫）失敗或未設定時 SHALL 改以 `zh-TW` 音色合成，SHALL NOT 因此只回文字。
+
+#### Scenario: 台語語音只念重點
+
+- **WHEN** 使用者 `settings.language` 為 `nan-TW` 且回覆超過 120 字
+- **THEN** 文字回覆為完整原文，語音只念重點且不超過 180 字
 
 #### Scenario: 日文使用者取得日文語音
 

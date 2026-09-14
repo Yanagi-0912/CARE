@@ -32,6 +32,29 @@ async def test_to_taigi_sends_source_text_and_strips_result():
     assert out == "阿公，你今仔日藥仔食矣未？"
     prompt = gemini.chat_model.calls[0][0].content
     assert "爺爺，你今天吃藥了沒有？" in prompt
+    # 要求只念重點的字數有真的寫進提示
+    assert f"不超過 {taigi_text_module.TAIGI_SPEECH_MAX_CHARS} 字" in prompt
+    # 9/14 Gemini 實測把「右下腹」寫成「倒手」（左）、「上午」寫成「下晡」（下午）；
+    # 兩條對照規則拿掉就會再犯。
+    assert "正爿下腹" in prompt and "上午寫「早起」" in prompt
+
+
+# 模型沒守字數時截在句尾，念稿不會又拖回十幾秒（正式環境 389 字念了 14.1 秒）。
+async def test_overlong_speech_is_capped_at_a_sentence_end():
+    limit = taigi_text_module.TAIGI_SPEECH_HARD_MAX_CHARS
+    sentence = "記得飯後食藥仔，若是有頭殼眩就愛緊去看醫生。"  # 22 字
+    gemini = FakeGemini(sentence * 12)  # 264 字
+
+    out = await TaigiTextConverter(gemini).to_taigi("很長的回答")
+
+    assert len(out) <= limit
+    assert out.endswith("。")
+    assert out == sentence * (limit // len(sentence))
+
+
+async def test_speech_within_hard_limit_is_not_cut():
+    text = "記得飯後食藥仔。" * 10  # 80 字
+    assert await TaigiTextConverter(FakeGemini(text)).to_taigi("回答") == text
 
 
 # thinking 模型的 content 可能是 parts 清單而不是字串。

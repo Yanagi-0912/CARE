@@ -57,6 +57,10 @@ HEARTBEAT_NAME = "medication"
 # DEFAULT_MISFIRE_GRACE_MINUTES）。
 _ON_TIME_T0 = timedelta(minutes=2)
 
+# 逾時通報的推播種類。家屬名單走家庭授權的通知政策（`NOTIFICATION_POLICY`），
+# 與高風險藥物、緊急通報、掛號提醒是同一個 resolver，不在這裡另外判斷誰是家屬。
+NOTIFICATION_KIND = "medication_missed"
+
 
 # 收件人偏好的型別已移到與掛號提醒共用的排程骨架（push_tick_scheduler）；
 # 這個名稱保留給既有的 import。
@@ -359,6 +363,7 @@ class MedicationScheduler(PushTickScheduler):
         log_repository=MedicationLogRepository,
         medication_repository=MedicationRepository,
         variant_sample: Optional[Callable[[float, float], float]] = None,
+        authorization_service: Any = None,
     ) -> None:
         super().__init__(
             replier=replier,
@@ -366,6 +371,9 @@ class MedicationScheduler(PushTickScheduler):
             check_interval_seconds=check_interval_seconds,
         )
         self._misfire_grace_minutes = misfire_grace_minutes
+        # 家庭授權服務：T+30 逾時通報與停機彙整的家屬名單都由它決定（見
+        # `_family_recipients`）。正式路徑一律注入；只有測試會不帶。
+        self._authorization_service = authorization_service
         # 三個 repository 全部走注入，預設就是真正的那三個 class（方法皆為
         # staticmethod，傳 class 本身即可當成物件用），因此正式路徑的行為與
         # 注入前完全相同。開這個縫是為了讓測試餵假的 repository，不必用
@@ -534,35 +542,86 @@ class MedicationScheduler(PushTickScheduler):
     async def _send_caregiver_alert(
         self, log: MedicationLog, medication_cache: _TickMedicationNameCache
     ) -> bool:
+        """T+30 家屬逾時通報，逐一推給家庭授權選出的每位家屬。
+
+        以前只送給規則的建立者（`alert_notify_user_id`）：家屬替長輩設的提醒家屬
+        收得到，長輩自己在 LIFF 設的則推回長輩本人，家屬一則都收不到。
+
+        回傳值與掛號提醒的 `_fan_out` 同一個判定：至少送達一人、或沒有任何人該收，
+        都算處理完；只有「該收的人全部送失敗」或「名單判定失敗」才把推播權還回去
+        重試（有上限，見 `release_caregiver_alert`）。部分失敗不重試——重試會讓
+        已經收到的人再收一次，一位封鎖官方帳號的家屬就能讓其他人被連環轟炸。
+        """
+        recipients = await self._family_recipients(log.user_id)
+        if recipients is None:
+            return False
+        if not recipients:
+            return True
+
         patient_name = await self._resolve_patient_name(log.user_id)
         # 藥名查表與 T+0／T+20 共用同一套機制（見 _TickMedicationNameCache）：
         # 家屬警報同樣是一個 tick 內可能有多筆，逐筆查「規則→藥品」沒有道理。
         medication_names = await medication_cache.get(log)
 
-        # 這則推播的收件人是家屬，語言、字級與通知意願都取家屬本人的設定。
-        # 用藥者關掉自己的提醒不影響家屬收不收得到逾時通報，反之亦然。
-        prefs = await self._resolve_prefs(log.alert_notify_user_id)
-        if not prefs.notify_family:
-            # 抑制的只有推播。`claim_caregiver_alert` 在搶佔的同一次更新裡就
-            # 已把 status 設為 missed，因此紀錄仍然正確——家屬事後在 LIFF 上
-            # 看得到這個時段錯過了，只是當下不會被推播打擾。
-            logger.info(
-                "[MedicationScheduler] caregiver %s opted out of family alerts; "
-                "skipping %s",
-                log.alert_notify_user_id,
-                log.id,
+        attempted = False
+        delivered = False
+        for member_id in recipients:
+            # 語言、字級與通知意願都取收件人自己的設定。用藥者關掉自己的提醒
+            # 不影響家屬收不收得到逾時通報，反之亦然。
+            prefs = await self._resolve_prefs(member_id)
+            if not prefs.notify_family:
+                # 抑制的只有推播。`claim_caregiver_alert` 在搶佔的同一次更新裡就
+                # 已把 status 設為 missed，因此紀錄仍然正確——家屬事後在 LIFF 上
+                # 看得到這個時段錯過了，只是當下不會被推播打擾。
+                logger.info(
+                    "[MedicationScheduler] caregiver %s opted out of family alerts; "
+                    "skipping %s",
+                    member_id,
+                    log.id,
+                )
+                continue
+            attempted = True
+            alert_flex = build_caregiver_alert_flex(
+                patient_name=patient_name,
+                slot_type=log.slot_type,
+                scheduled_time=to_taipei_hm(log.scheduled_at, default="08:00"),
+                medication_names=medication_names,
+                language=prefs.language,
+                font_size=prefs.font_size,
             )
-            return True
-        language, font_size = prefs.language, prefs.font_size
-        alert_flex = build_caregiver_alert_flex(
-            patient_name=patient_name,
-            slot_type=log.slot_type,
-            scheduled_time=to_taipei_hm(log.scheduled_at, default="08:00"),
-            medication_names=medication_names,
-            language=language,
-            font_size=font_size,
-        )
-        return await self._replier.push_flex(log.alert_notify_user_id, alert_flex)
+            delivered = await self._push(member_id, alert_flex) or delivered
+
+        return delivered or not attempted
+
+    async def _family_recipients(self, patient_id: str) -> Optional[list[str]]:
+        """用藥逾時通報的家屬名單；用藥者本人恆不在其中。判定失敗回 None。
+
+        名單來自 `FamilyAuthorizationService.notification_recipients`，與高風險
+        藥物、緊急通報、掛號提醒是同一個 resolver，這裡不另外判斷誰算家屬。
+
+        失敗時不能學掛號提醒退成空名單：掛號除了 T+30 還有送本人的階段，這裡的
+        T+30 只送家屬，退成空名單等於靜靜吞掉一則通報。回 None 讓呼叫端把推播權
+        還回去，下一個 tick 重試。
+        """
+        if self._authorization_service is None:
+            logger.warning(
+                "%s 沒有家庭授權服務，無法判定家屬名單，本則不送", self.LOG_PREFIX
+            )
+            return []
+        try:
+            recipients = await self._authorization_service.notification_recipients(
+                patient_id, NOTIFICATION_KIND
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "%s 家屬名單判定失敗：%s", self.LOG_PREFIX, type(exc).__name__
+            )
+            return None
+        unique: list[str] = []
+        for uid in recipients or []:
+            if uid and uid != patient_id and uid not in unique:
+                unique.append(uid)
+        return unique
 
     async def _resolve_suppressed_reminder_ids(
         self, reminders: list["MedicationReminder"], date_str: str
@@ -619,9 +678,7 @@ class MedicationScheduler(PushTickScheduler):
             if not any(mid in active_ids for mid in ids)
         }
 
-    async def _notify_missed_summary(
-        self, misfired_by_caregiver: dict[str, list[MedicationLog]]
-    ) -> None:
+    async def _notify_missed_summary(self, misfired_logs: list[MedicationLog]) -> None:
         """
         把本次 tick 新發現的錯過時段，依家屬彙整成一則通知送出。
 
@@ -634,9 +691,19 @@ class MedicationScheduler(PushTickScheduler):
         """
         name_cache: dict[str, str] = {}
 
-        for caregiver_id, logs in misfired_by_caregiver.items():
-            if not caregiver_id:
-                continue
+        # 收件人與 T+30 逾時通報同一份名單，依收件人分組：一位家屬照顧兩位長輩
+        # 時仍然只收一則。名單判定失敗的那位長輩就略過——這是補充告知，不重試。
+        recipients_by_patient: dict[str, Optional[list[str]]] = {}
+        by_recipient: dict[str, list[MedicationLog]] = {}
+        for log in misfired_logs:
+            if log.user_id not in recipients_by_patient:
+                recipients_by_patient[log.user_id] = await self._family_recipients(
+                    log.user_id
+                )
+            for member_id in recipients_by_patient[log.user_id] or []:
+                by_recipient.setdefault(member_id, []).append(log)
+
+        for caregiver_id, logs in by_recipient.items():
             # 錯過時段的彙整通知與 T+30 逾時通報是同一類訊息（都是「你關心的
             # 人漏服了」），受同一個 notify_family 開關管。錯過的時段本身仍以
             # status=missed 留在資料庫，家屬事後查得到。
@@ -724,8 +791,8 @@ class MedicationScheduler(PushTickScheduler):
                         today_date_str,
                     )
 
-        # 本次 tick 才發現的錯過時段，依通報家屬分組，稍後彙整成一則通知。
-        misfired_by_caregiver: dict[str, list[MedicationLog]] = {}
+        # 本次 tick 才發現的錯過時段，稍後依家屬彙整成一則通知。
+        misfired_logs: list[MedicationLog] = []
         for reminder in active_reminders:
             try:
                 # 沒有有效藥品的時段不展開紀錄——沒有紀錄，後續三個階段的
@@ -794,17 +861,15 @@ class MedicationScheduler(PushTickScheduler):
                         scheduled_dt.isoformat(),
                         self._misfire_grace_minutes,
                     )
-                    misfired_by_caregiver.setdefault(
-                        reminder.creator_user_id, []
-                    ).append(saved_log)
+                    misfired_logs.append(saved_log)
             except Exception:
                 logger.exception(
                     f"[MedicationScheduler] Failed to upsert T+0min log for user {reminder.user_id}"
                 )
 
         # 1b. 中斷期間錯過的時段：每位家屬彙整成一則通知（措辭與 T+30 逾時警報不同）
-        if misfired_by_caregiver:
-            await self._notify_missed_summary(misfired_by_caregiver)
+        if misfired_logs:
+            await self._notify_missed_summary(misfired_logs)
 
         # 2. 使用 list_pending_patient_reminders 查詢已到期 (scheduled_at <= current_time) 且未發送首刷的紀錄推播
         pending_initial_logs = await self._log_repository.list_pending_patient_reminders(
@@ -875,6 +940,7 @@ def start_medication_scheduler(
     enabled: bool = True,
     replier: LineReplier,
     user_profile_service: Optional[UserProfileService] = None,
+    authorization_service: Any = None,
 ) -> Optional[MedicationScheduler]:
     if not enabled:
         logger.info("[MedicationScheduler] disabled")
@@ -883,6 +949,7 @@ def start_medication_scheduler(
     scheduler = MedicationScheduler(
         replier=replier,
         user_profile_service=user_profile_service,
+        authorization_service=authorization_service,
     )
     scheduler.start()
     return scheduler

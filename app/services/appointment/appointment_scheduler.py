@@ -283,13 +283,6 @@ class AppointmentScheduler(PushTickScheduler):
             return profile["name"]
         return None
 
-    async def _push(self, user_id: str, card: Any) -> bool:
-        try:
-            return bool(await self._replier.push_flex(user_id, card))
-        except Exception:  # noqa: BLE001
-            logger.exception("%s push to %s failed", self.LOG_PREFIX, user_id)
-            return False
-
 
 def start_appointment_scheduler(
     *,

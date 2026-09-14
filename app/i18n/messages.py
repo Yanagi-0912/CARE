@@ -2422,9 +2422,9 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "ยาที่ทานแล้ว",
         "ja": "服用した薬",
     },
-    # 家屬逾時警報的標題。收件人是規則的建立者（alert_notify_user_id ==
-    # creator_user_id），也就是當初替家人設定這些藥的人；讓警報講清楚是哪幾種
-    # 藥沒吃，家屬才知道這次漏掉的嚴重程度，不必再回頭翻 LIFF 才能判斷。
+    # 家屬逾時警報的標題。收件人是家庭授權通知政策（medication_missed）選出的
+    # 家屬，依授權本來就看得到用藥設定；讓警報講清楚是哪幾種藥沒吃，家屬才知道
+    # 這次漏掉的嚴重程度，不必再回頭翻 LIFF 才能判斷。
     "flex.med.medication_list_heading_missed": {
         "zh-TW": "尚未服用的藥品",
         "en": "Medications not yet taken",

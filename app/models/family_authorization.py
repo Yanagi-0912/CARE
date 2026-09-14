@@ -246,12 +246,13 @@ PROXY_WRITE_FORBIDDEN_FIELDS: frozenset[str] = frozenset(
     {"name", "display_name", "picture_url", "role", "settings", "line_id"}
 )
 
-# 推播種類，包含:高風險藥物、加入非處方藥、緊急事件偵測、掛號提醒
+# 推播種類，包含:高風險藥物、加入非處方藥、緊急事件偵測、掛號提醒、用藥逾時未確認
 NotificationKind = Literal[
     "high_risk_drug_alert",
     "otc_medication_added",
     "emergency_detected",
     "appointment_reminder",
+    "medication_missed",
 ]
 
 # 通知政策。**與 PERMISSIONS 分開宣告，兩者的變更互不牽動。**
@@ -288,6 +289,19 @@ NOTIFICATION_POLICY: dict[NotificationKind, frozenset[FamilyRole]] = {
     # 模式下同樣是嚴格判定，推播若在影子模式下擴及全員，MEMBER 就會收到按了必定
     # 403 的卡片。
     "appointment_reminder": frozenset({"GUARDIAN", "CAREGIVER"}),
+    # 用藥 T+30 逾時未確認的家屬通報，以及停機期間錯過時段的彙整通知。
+    #
+    # 本變更前只送給**規則的建立者**：家屬替長輩設的提醒家屬收得到，長輩自己
+    # 設的則推回長輩本人，家屬一則都收不到。
+    #
+    # 刻意**不**列入 STRICT_NOTIFICATION_KINDS，理由與掛號提醒相反：
+    # - 掛號卡片上有要寫入權的按鈕，MEMBER 收到會按了必定 403；這張卡片沒有任何
+    #   按鈕，只是告知。
+    # - 影子模式下送族譜全員，是以前「只送建立者」的超集——建立者本來就在族譜裡
+    #   （能替長輩設提醒就是家人），今天收得到的人一個都不會漏掉。嚴格篩選的話，
+    #   還沒指派角色的家庭（目前的預設狀態）會連建立者都收不到。
+    # 強制之後照這一列篩選，只送給能管理用藥設定的 GUARDIAN 與 CAREGIVER。
+    "medication_missed": frozenset({"GUARDIAN", "CAREGIVER"}),
 }
 
 # 影子模式下**仍然**依 NOTIFICATION_POLICY 篩選收件人的推播種類。

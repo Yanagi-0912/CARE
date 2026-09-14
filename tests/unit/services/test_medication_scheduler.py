@@ -81,12 +81,23 @@ def medication_repository():
 
 
 @pytest.fixture()
+def authorization_service():
+    """T+30 與停機彙整的家屬名單來源。預設回 U_CARE 一人，與這支檔案既有測試
+    假設的「通報家屬」相同；名單本身的行為（誰在、誰不在、失敗怎麼退）見
+    test_medication_caregiver_recipients.py。"""
+    service = MagicMock()
+    service.notification_recipients = AsyncMock(return_value=["U_CARE"])
+    return service
+
+
+@pytest.fixture()
 def scheduler(
     mock_replier,
     mock_user_profile_service,
     reminder_repository,
     log_repository,
     medication_repository,
+    authorization_service,
 ):
     return MedicationScheduler(
         replier=mock_replier,
@@ -95,6 +106,7 @@ def scheduler(
         reminder_repository=reminder_repository,
         log_repository=log_repository,
         medication_repository=medication_repository,
+        authorization_service=authorization_service,
     )
 
 

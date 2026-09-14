@@ -634,10 +634,11 @@ def build_caregiver_alert_flex(
 ) -> FlexMessage:
     """T+30min 傳送給通報對象家屬的逾時未用藥關心 Flex Message
 
-    `medication_names` 列出這個時段漏掉的是哪幾種藥。收件人是規則的建立者
-    （`alert_notify_user_id` 取自 `reminder.creator_user_id`），也就是當初替家人
-    設定這些藥的人，藥名對他不是新揭露的資訊；少了它，警報只說得出「某人某個
-    時段沒吃藥」，家屬無從判斷這次漏掉的是保養用藥還是不能斷的處方。
+    `medication_names` 列出這個時段漏掉的是哪幾種藥。收件人是家庭授權通知政策
+    （`medication_missed`）選出的家屬：影子模式下是族譜全員，強制後是 GUARDIAN
+    與 CAREGIVER——兩者依授權本來就讀得到用藥設定（GENERAL），藥名對他們不是
+    新揭露的資訊；少了它，警報只說得出「某人某個時段沒吃藥」，家屬無從判斷這次
+    漏掉的是保養用藥還是不能斷的處方。
     仍然只放藥名——適應症不得進入任何推播訊息（見 `Medication.indication`）。
     為 None／空清單時版面與本參數新增前完全相同，見 `_medication_list_block`。
     """

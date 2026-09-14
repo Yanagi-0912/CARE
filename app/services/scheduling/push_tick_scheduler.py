@@ -112,6 +112,15 @@ class PushTickScheduler:
             pass
         return "成員"
 
+    async def _push(self, user_id: str, card: Any) -> bool:
+        """推一則 Flex 給一位收件人。例外吞在這裡並回 False：同一則要推給多位
+        家屬時，一位封鎖了官方帳號（推播永遠失敗）不該讓後面的人都收不到。"""
+        try:
+            return bool(await self._replier.push_flex(user_id, card))
+        except Exception:  # noqa: BLE001
+            logger.exception("%s push to %s failed", self.LOG_PREFIX, user_id)
+            return False
+
     # ── 推播權搶佔 ────────────────────────────────────────────────────
 
     async def _dispatch(

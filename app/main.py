@@ -17,6 +17,7 @@ from app.dependencies import (
     get_consultation_service,
     get_conversation_log_repository,
     get_drug_news_index_service,
+    get_family_authorization_service,
     get_kb_digest_service,
     get_line_replier,
     get_user_profile_service,
@@ -143,6 +144,8 @@ async def lifespan(app: FastAPI):
             enabled=True,
             replier=get_line_replier(),
             user_profile_service=get_user_profile_service(),
+            # 逾時通報的家屬名單。與掛號、高風險藥物、緊急通報同一個 resolver。
+            authorization_service=get_family_authorization_service(),
         )
 
         # 掛號提醒（T-1h／T+0／T+30、當日結束標記 missed）。與用藥共用排程骨架，

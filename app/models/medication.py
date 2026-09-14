@@ -354,7 +354,10 @@ class MedicationLog(BaseModel):
 
     reminder_id: str
     user_id: str                           # 服用藥物的使用者 LINE userId
-    alert_notify_user_id: str              # 逾時未用藥通報對象 (家屬) LINE userId
+    # 建立這條提醒的人（取自 reminder.creator_user_id）。本欄位曾是 T+30 逾時通報
+    # 的唯一收件人；現在收件人改由家庭授權的通知政策決定（medication_missed），
+    # 這裡只留作紀錄，推播路徑不再讀它。
+    alert_notify_user_id: str
     slot_type: MedicationSlotType
     scheduled_at: datetime
     timeout_at: datetime

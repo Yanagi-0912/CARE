@@ -3,6 +3,11 @@
 用 PyAV（wheel 內附 FFmpeg 函式庫）而不是在映像裡 apt 裝 ffmpeg：後端映像沒有
 ffmpeg，也不必呼叫外部程式。
 
+PyAV 在用到時才載入（見 `_av`）：它會帶進 FFmpeg 函式庫，常駐記憶體多 20 MB 以上。
+backend 與 scheduler 啟動時都會匯入這個模組（scheduler 從不處理音檔），而兩者平常
+就吃到上限的九成（2026-09-14 實測 475／467 Mi，上限 512 Mi）；1600cca 在模組頂端
+直接 import，兩個 pod 啟動約 30 秒就被 OOMKilled。
+
 為什麼兩頭都要轉檔：
 - 台語 STT 只吃 wav／mp3／ogg。2026-09-14 實測送 m4a、webm 都回 HTTP 500
   "Format not recognised"（廠商文件寫支援 m4a，實際不收），而 CARE 收到的
@@ -18,9 +23,10 @@ import io
 import sys
 import wave
 from pathlib import Path
-from typing import BinaryIO
+from typing import TYPE_CHECKING, BinaryIO
 
-import av
+if TYPE_CHECKING:
+    import av
 
 # 廠商文件的建議格式：PCM WAV、單聲道、16 kHz。
 STT_SAMPLE_RATE = 16_000
@@ -40,6 +46,12 @@ PAUSE_WINDOW_SECONDS = 0.05
 _BYTES_PER_SAMPLE = 2
 
 
+def _av():
+    import av  # 延遲載入，理由見模組說明
+
+    return av
+
+
 def decode_to_pcm16_mono(
     source: str | Path | BinaryIO, sample_rate: int | None = None
 ) -> tuple[bytes, int]:
@@ -47,6 +59,7 @@ def decode_to_pcm16_mono(
 
     `sample_rate` 為 None 時保留原取樣率。
     """
+    av = _av()
     with av.open(str(source) if isinstance(source, Path) else source) as container:
         stream = container.streams.audio[0]
         rate = sample_rate or stream.rate
@@ -121,6 +134,7 @@ def split_on_pauses(
 
 def encode_mp3(pcm: bytes, sample_rate: int, *, bit_rate: int) -> bytes:
     """16-bit 單聲道 PCM → mp3。"""
+    av = _av()
     buf = io.BytesIO()
     with av.open(buf, mode="w", format="mp3") as container:
         stream = container.add_stream("libmp3lame", rate=sample_rate, layout="mono")

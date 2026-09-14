@@ -79,6 +79,26 @@ def test_decode_m4a_to_16k_mono():
     assert abs(_seconds(pcm, rate) - 2.0) < 0.1
 
 
+# 1600cca 在模組頂端 import av，backend 與 scheduler 啟動時多吃的記憶體讓兩個 pod
+# 超過 512 Mi 上限被 OOMKilled。啟動會匯入的模組都不可以順便載入 PyAV。
+def test_importing_speech_callers_does_not_load_pyav():
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[4]
+    code = (
+        "import sys\n"
+        "import app.services.line_messaging.reply.tts_service\n"
+        "import app.services.media.mutimedia_processor\n"
+        "print('av' in sys.modules)\n"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", code], cwd=repo_root, capture_output=True, text=True, check=True
+    )
+    assert out.stdout.strip().splitlines()[-1] == "False"
+
+
 def test_encode_mp3_decodes_back_with_same_length():
     pcm = _tone(1.5, rate=22_050)
 

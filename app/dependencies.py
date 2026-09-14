@@ -29,6 +29,7 @@ from app.repositories.knowledge_report_preview_repository import (
     KnowledgeReportPreviewRepository,
 )
 from app.repositories.knowledge_report_repository import KnowledgeReportRepository
+from app.repositories.appointment_repository import AppointmentReminderRepository
 from app.repositories.medication_repository import (
     MedicationRepository,
     MedicationReminderRepository,
@@ -37,6 +38,10 @@ from app.repositories.prescription_draft_repository import PrescriptionDraftRepo
 from app.repositories.safety_alert_repository import SafetyAlertRepository
 from app.repositories.user_profile_repository import UserProfileRepository
 from app.services.agent.agent import Agent
+from app.services.appointment.appointment_scheduler import (
+    start_appointment_scheduler as _start_appointment_scheduler,
+)
+from app.services.appointment.appointment_service import AppointmentService
 from app.services.consultation.consultation_service import ConsultationService
 from app.services.family.family_authorization_service import (
     FamilyAuthorizationService,
@@ -61,6 +66,7 @@ from app.services.safety.ingredient_overlap import (
     IngredientWatchlist,
     load_local_action_forms,
 )
+from app.services.safety.emergency_alert_service import EmergencyFamilyAlertService
 from app.services.medication.tcm_catalog_service import TcmCatalogService
 from app.services.safety.otc_alert_service import OtcAlertService
 from app.services.safety.atc_interaction import ClassPairTable
@@ -93,6 +99,20 @@ from app.services.line_messaging.rich_menu_service import RichMenuService
 from app.services.line_messaging.token_manager import LineTokenManager
 from app.services.medical.facility_name_index import configure_facility_names
 from app.services.medical.medical_service import MedicalService, medical_service
+from app.services.medical.symptom_classification import (
+    SymptomDepartmentService,
+    SymptomNormalizer,
+    UrgencyClassifier,
+    load_symptom_table,
+)
+from app.services.medical.symptom_classification.urgency import URGENCY_MODEL_PATH
+from app.services.medical.symptom_classification.vector_index import (
+    DEFAULT_VECTOR_PATH,
+    EMBEDDING_TASK_TYPE,
+    VECTOR_DIM,
+    SymptomVectorIndex,
+    table_content_hash,
+)
 from app.services.line_messaging.handler.facility_detail_handler import (
     LineFacilityDetailHandler,
 )
@@ -130,6 +150,7 @@ from app.tools.knowledge_report_tools import configure_knowledge_report_tool
 from app.tools.medical_tools import configure_medical_tools
 from app.tools.official_site_tools import configure_official_site_tool
 from app.tools.rag_tools import configure_rag_tool
+from app.tools.symptom_tools import configure_symptom_tool
 from app.tools.user_document_tools import configure_user_document_tool
 from app.tools.web_tools import configure_web_tool
 
@@ -482,9 +503,63 @@ if settings.CLAIM_VERIFICATION_ENABLED:
 else:
     logger.info("CLAIM_VERIFICATION_ENABLED=false; verify_claim tool not configured")
 
+# 表壞掉時刻意不降級：帶著解析不出科別的對照表提供服務，會產生「系統說查過了
+# 但附近沒有」的回覆，比功能不存在更難察覺（見 symptom_table 模組註解）。
+_symptom_table = load_symptom_table()
+
+# 症狀比對的向量索引。task_type 與維度刻意不沿用 RAG 那組（見 design 決策 12）：
+# RAG 是「問句 → 文件段落」的非對稱檢索，症狀比對是短語對短語的對稱相似度。
+_symptom_embeddings = GoogleGenerativeAIEmbeddings(
+    model=settings.EMBEDDING_MODEL,
+    google_api_key=settings.GEMINI_API_KEY,
+    task_type=EMBEDDING_TASK_TYPE,
+    output_dimensionality=VECTOR_DIM,
+)
+
+# 向量檔缺席或與表不同步時回 None，比對層自動退回 LLM 全表兜底——降級而非中斷。
+# 表改過就要重跑 scripts/build_symptom_vectors.py。
+_symptom_vector_index = SymptomVectorIndex.load(
+    DEFAULT_VECTOR_PATH,
+    expected_hash=table_content_hash(_symptom_table.terms),
+    # 與上面 _symptom_embeddings 查詢用的是同一個設定值；向量檔以別的模型建立時拒用。
+    expected_model=settings.EMBEDDING_MODEL,
+)
+
+_symptom_department_service = SymptomDepartmentService(
+    table=_symptom_table,
+    normalizer=SymptomNormalizer(
+        table_terms=_symptom_table.terms,
+        vector_index=_symptom_vector_index,
+        embed_query=_symptom_embeddings.aembed_query,
+        gemini_service=_gemini_service,
+    ),
+)
+configure_symptom_tool(_symptom_department_service)
+
+# 急迫度判斷。刻意與科別建議分開建構：它擋在整個 agent 之前，不屬於任何工具，
+# 也不依賴對照表——對照表壞掉時科別建議可以不上線，安全檢查不行。
+#
+# 本地模型先判、沒把握才問 Gemini（見 urgency.py 模組註解）。模型檔不在或壞掉時
+# 退回純 LLM 判斷——與導入前一模一樣，而不是整個安全檢查失效。
+try:
+    _urgency_local = LocalGuardrailClassifier.load(URGENCY_MODEL_PATH)
+    logger.info("Urgency cascade enabled (local classifier + LLM fallback)")
+except Exception:
+    logger.exception("本地急迫度模型載入失敗，退回純 LLM 判斷")
+    _urgency_local = None
+_urgency_classifier = UrgencyClassifier(
+    gemini_service=_gemini_service, local=_urgency_local
+)
+if not _symptom_table.verified:
+    logger.warning(
+        "症狀對照表尚未經人工審定（status != verified），"
+        "科別建議的正確性未經驗證"
+    )
+
 _care_agent = Agent(
     llm=_gemini_service.chat_model,
     guardrail_service=_guardrail_service,
+    urgency_classifier=_urgency_classifier,
 )
 
 _line_history_service = LineMessageHistoryService(
@@ -616,6 +691,15 @@ _enabled_otc_alert_service = (
     _otc_alert_service if settings.OTC_ALERT_ENABLED else None
 )
 
+# 對話中判定為緊急時通報家人。與 OTC 通報走同一個決策點（家庭授權服務），
+# 只是查 NOTIFICATION_POLICY 裡的 emergency_detected。刻意沒有開關：
+# 這是安全通報，不是可選功能——沒有合格收件人時它自己就不會送出。
+_emergency_family_alert_service = EmergencyFamilyAlertService(
+    replier=_line_replier,
+    authorization_service=_family_authorization_service,
+    user_profile_service=_user_profile_service,
+)
+
 _message_handler = LineMessageHandler(
     agent=_care_agent,
     history_service=_line_history_service,
@@ -623,6 +707,7 @@ _message_handler = LineMessageHandler(
     replier=_line_replier,
     loading_animation_service=_line_loading_animation_service,
     safety_alert_service=_enabled_safety_alert_service,
+    emergency_family_alert_service=_emergency_family_alert_service,
 )
 _media_handler = LineMediaHandler(
     agent=_care_agent,
@@ -632,6 +717,7 @@ _media_handler = LineMediaHandler(
     loading_animation_service=_line_loading_animation_service,
     user_document_ingest_service=_user_document_ingest_service,
     safety_alert_service=_enabled_safety_alert_service,
+    emergency_family_alert_service=_emergency_family_alert_service,
 )
 _location_handler = LineLocationHandler(
     agent=_care_agent,
@@ -653,6 +739,15 @@ _family_delegation_service = FamilyDelegationService(
     activation_enabled=settings.FAMILY_DELEGATION_ACTIVATION_ENABLED,
 )
 _medication_service = MedicationService(indication_service=_drug_indication_service)
+
+# 掛號提醒。出發／到診的授權在服務層（LIFF 與 LINE postback 兩個入口共用），
+# 所以授權服務注入給服務本身；CRUD 的授權仍在 router，與用藥相同。
+_appointment_repository = AppointmentReminderRepository()
+_appointment_service = AppointmentService(
+    repository=_appointment_repository,
+    authorization_service=_family_authorization_service,
+    user_profile_service=_user_profile_service,
+)
 
 # 藥袋辨識。藥證庫沿用上面已經載入的那一份（見 _drug_catalog_service）。
 _prescription_ocr_service = PrescriptionOcrService(
@@ -719,6 +814,7 @@ _line_event_handler = LineEventHandler(
     replier=_line_replier,
     medication_service=_medication_service,
     medical_news_share_service=_medical_news_share_service,
+    appointment_service=_appointment_service,
 )
 
 
@@ -885,6 +981,26 @@ def get_family_authorization_service() -> FamilyAuthorizationService:
 
 def get_medication_service() -> MedicationService:
     return _medication_service
+
+
+def get_appointment_service() -> AppointmentService:
+    return _appointment_service
+
+
+def get_appointment_repository() -> AppointmentReminderRepository:
+    return _appointment_repository
+
+
+def start_appointment_scheduler(*, enabled: bool = True):
+    """掛號提醒排程器。家屬名單走家庭授權服務的 `notification_recipients`，
+    與高風險藥物、OTC、緊急通報是同一個 resolver。"""
+    return _start_appointment_scheduler(
+        enabled=enabled,
+        replier=_line_replier,
+        repository=_appointment_repository,
+        authorization_service=_family_authorization_service,
+        user_profile_service=_user_profile_service,
+    )
 
 
 def get_drug_news_index_service():

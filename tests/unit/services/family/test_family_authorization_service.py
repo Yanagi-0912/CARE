@@ -721,6 +721,94 @@ async def test_notification_does_not_grant_any_read_permission():
     assert await service.can(OPERATOR, OWNER, "SENSITIVE", "WRITE") is False
 
 
+@pytest.mark.asyncio
+async def test_appointment_recipients_are_filtered_even_in_shadow():
+    """掛號提醒是導入 RBAC 之後才有的推播，影子模式下也只送 GUARDIAN、CAREGIVER。
+
+    掛號的寫入在影子模式下同樣是嚴格判定；送給 MEMBER 的卡片上「我已出發／我已
+    到診」按下去必定 403。其他種類的影子模式行為不變。
+    """
+    service = make_service(_mixed_family("shadow"))
+    assert set(
+        await service.notification_recipients(OWNER, "appointment_reminder")
+    ) == {"U-g", "U-c"}
+    assert set(
+        await service.notification_recipients(OWNER, "high_risk_drug_alert")
+    ) == {"U-g", "U-c", "U-m", "U-unset"}
+
+
+class _BatchTrees:
+    def __init__(self, rows: dict):
+        self.rows = rows
+
+    async def get_roles_for_operator(self, operator_id, owner_ids):
+        return {owner: row for owner, row in self.rows.items() if owner in owner_ids}
+
+
+class _BatchDelegations:
+    def __init__(self, delegated_owner_ids=()):
+        self.delegated_owner_ids = list(delegated_owner_ids)
+
+    async def list_delegated_owner_ids(self, delegate_user_id, owner_ids, now=None):
+        return [owner for owner in owner_ids if owner in self.delegated_owner_ids]
+
+
+def _described_member(role: str, state: str, delegated: bool = False) -> dict:
+    return FamilyAuthorizationService(
+        family_tree_repository=_BatchTrees(
+            {OWNER: {"family_role": role, "rbac_migration_state": state}}
+        ),
+        delegation_repository=_BatchDelegations([OWNER] if delegated else []),
+        enforcement_enabled=True,
+    ).describe_members(OPERATOR, [OWNER])
+
+
+@pytest.mark.asyncio
+async def test_strict_permissions_ignore_shadow_mode():
+    """影子模式下 my_permissions 照 legacy 回報 GENERAL WRITE；嚴格的那份不回報。"""
+    described = (await _described_member("MEMBER", "shadow"))[OWNER]
+    assert described["my_permissions"]["general"] == ["READ", "WRITE"]
+    assert described["my_strict_permissions"] == {
+        "general": ["READ"],
+        "sensitive": [],
+        "private": [],
+    }
+
+
+@pytest.mark.asyncio
+async def test_strict_permissions_include_an_active_delegation():
+    """委任讓一位 MEMBER 暫時具備 GUARDIAN 的資料權限，嚴格的那份要看得到。"""
+    described = (await _described_member("MEMBER", "shadow", delegated=True))[OWNER]
+    assert described["my_strict_permissions"]["general"] == ["READ", "WRITE"]
+    assert described["my_strict_permissions"]["sensitive"] == ["READ", "WRITE"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["shadow", "enforced"])
+async def test_strict_permissions_of_a_caregiver_do_not_depend_on_the_state(state):
+    described = (await _described_member("CAREGIVER", state))[OWNER]
+    assert described["my_strict_permissions"] == {
+        "general": ["READ", "WRITE"],
+        "sensitive": ["READ"],
+        "private": [],
+    }
+
+
+@pytest.mark.asyncio
+async def test_strict_permissions_are_empty_for_a_stranger():
+    service = FamilyAuthorizationService(
+        family_tree_repository=_BatchTrees({}),
+        delegation_repository=_BatchDelegations(),
+        enforcement_enabled=True,
+    )
+    described = (await service.describe_members(STRANGER, [OWNER]))[OWNER]
+    assert described["my_strict_permissions"] == {
+        "general": [],
+        "sensitive": [],
+        "private": [],
+    }
+
+
 # ── 引導式角色指派的完成判定 ────────────────────────────────────────
 
 

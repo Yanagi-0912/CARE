@@ -842,6 +842,8 @@ def test_family_me_reports_both_directions_and_effective_permissions(client):
     assert member["rbac_migration_state"] == "enforced"
     assert member["my_permissions"]["sensitive"] == ["READ", "WRITE"]
     assert member["my_permissions"]["private"] == ["READ"]
+    # 純 RBAC 的那份一併回；強制模式下兩份相同
+    assert member["my_strict_permissions"] == member["my_permissions"]
     # 引導式指派狀態一併回，族譜頁不必多打一次
     assert body["role_assignment"]["is_complete"] is False
     assert body["role_assignment"]["unassigned_member_ids"] == ["U_OTHER"]
@@ -888,3 +890,4 @@ def test_family_me_gives_no_permissions_for_a_member_whose_tree_excludes_me(clie
     member = client.get("/api/family/me").json()["family_tree"]["family_members"][0]
     assert member["my_role"] is None
     assert member["my_permissions"] == {"general": [], "sensitive": [], "private": []}
+    assert member["my_strict_permissions"] == {"general": [], "sensitive": [], "private": []}

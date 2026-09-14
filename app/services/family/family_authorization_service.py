@@ -34,6 +34,7 @@ from app.models.family_authorization import (
     MigrationState,
     NotificationKind,
     ResourceName,
+    STRICT_NOTIFICATION_KINDS,
     is_allowed,
     notification_recipient_roles,
 )
@@ -476,6 +477,12 @@ class FamilyAuthorizationService:
         者，其權限描述與變更前一致。前端因此只需要回答「後端說我能不能」，
         不必知道「這個家庭切換了沒」——後者一旦在前端重算，就是第二個安全
         邊界，而它必然會與第一個漂移。
+
+        `my_strict_permissions` 是同一份權限的純 RBAC 值（`is_allowed(角色, …)`，
+        與 `can()` 同一個判定、角色同樣含委任解析），不受遷移狀態影響。它給以
+        `has_legacy_equivalent=False` 判定的功能用（掛號提醒的寫入）：那些路徑在
+        影子模式下也是嚴格的，照 `my_permissions` 渲染就會出現按了必定 403 的按鈕。
+        不逐位呼叫 `can()`，是因為那會變回每位成員各查一次的 N+1。
         """
         if not owner_ids:
             return {}
@@ -497,6 +504,11 @@ class FamilyAuthorizationService:
                     "my_role": None,
                     "rbac_migration_state": "shadow",
                     "my_permissions": {"general": [], "sensitive": [], "private": []},
+                    "my_strict_permissions": {
+                        "general": [],
+                        "sensitive": [],
+                        "private": [],
+                    },
                 }
                 continue
 
@@ -512,21 +524,28 @@ class FamilyAuthorizationService:
             )
 
             permissions: Dict[str, List[str]] = {}
+            strict_permissions: Dict[str, List[str]] = {}
             for classification in ("GENERAL", "SENSITIVE", "PRIVATE"):
                 actions = []
+                strict_actions = []
                 for action in ("READ", "WRITE"):
+                    rbac_permitted = is_allowed(role, classification, action)
                     if state == "enforced":
-                        permitted = is_allowed(role, classification, action)
+                        permitted = rbac_permitted
                     else:
                         permitted = self._legacy_permits(classification, action)
                     if permitted:
                         actions.append(action)
+                    if rbac_permitted:
+                        strict_actions.append(action)
                 permissions[classification.lower()] = actions
+                strict_permissions[classification.lower()] = strict_actions
 
             described[owner_id] = {
                 "my_role": role,
                 "rbac_migration_state": state,
                 "my_permissions": permissions,
+                "my_strict_permissions": strict_permissions,
             }
         return described
 
@@ -582,6 +601,9 @@ class FamilyAuthorizationService:
         相同」，因此只在 `enforced` 才篩選。少了這一步，某位家人會在沒有任何
         切換的情況下突然收不到長輩的用藥風險通報——而通報是使用者最不該
         「安靜地少收到」的一種訊息。
+
+        例外是 `STRICT_NOTIFICATION_KINDS`：導入之後才有的推播沒有「導入前」
+        可言，兩種模式都依政策表篩選（見該表的說明）。
         """
         tree = await self._get_tree(subject_owner_id)
         if tree is None:
@@ -589,7 +611,7 @@ class FamilyAuthorizationService:
 
         member_ids = [m.user_id for m in tree.family_members if m.user_id]
         state = await self.migration_state(subject_owner_id)
-        if state != "enforced":
+        if state != "enforced" and kind not in STRICT_NOTIFICATION_KINDS:
             return member_ids
 
         moment = now or datetime.now(tz=timezone.utc)

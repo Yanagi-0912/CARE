@@ -13,6 +13,7 @@ from app.core.config import settings, should_run_schedulers
 from app.core.logging_setup import configure_logging
 from app.core.upload_limits import MaxUploadSizeMiddleware
 from app.dependencies import (
+    get_appointment_repository,
     get_consultation_service,
     get_conversation_log_repository,
     get_drug_news_index_service,
@@ -20,6 +21,7 @@ from app.dependencies import (
     get_line_replier,
     get_user_profile_service,
     preload_facility_name_index,
+    start_appointment_scheduler,
     start_medication_scheduler,
     warm_rag_connections,
 )
@@ -50,6 +52,7 @@ from app.routers.users.family_tree import router as family_tree_router
 from app.routers.users.knowledge_reports import router as knowledge_reports_router
 from app.routers.users.medical import router as medical_router
 from app.routers.users.medications import router as medications_router
+from app.routers.users.appointments import router as appointments_router
 from app.routers.admin.knowledge_reports import router as admin_knowledge_reports_router
 from app.routers.tts.tts import router as tts_router
 from app.routers.drug_appearance.images import router as drug_appearance_router
@@ -71,6 +74,8 @@ async def lifespan(app: FastAPI):
     # 用藥 log 的 (reminder_id, scheduled_at) 唯一索引：多實例並存時，
     # 它是「同一個時段只有一份 log」的唯一保證，推播權搶佔才有意義。
     await MedicationLogRepository.ensure_indexes()
+    # 掛號提醒三組查詢的索引（列表、三個推播階段、當日結束的掃描）。
+    await get_appointment_repository().ensure_indexes()
     # 藥袋辨識草稿的 TTL 索引：草稿以 PRESCRIPTION_DRAFT_TTL_MINUTES 為存活
     # 時間，交由資料庫自動清除，應用端不需要另外排程刪除。
     await PrescriptionDraftRepository.ensure_indexes()
@@ -120,6 +125,7 @@ async def lifespan(app: FastAPI):
     run_schedulers = should_run_schedulers(settings.APP_ROLE)
     scheduler = None
     medication_scheduler = None
+    appointment_scheduler = None
     news_index_scheduler = None
     news_push_scheduler = None
 
@@ -138,6 +144,10 @@ async def lifespan(app: FastAPI):
             replier=get_line_replier(),
             user_profile_service=get_user_profile_service(),
         )
+
+        # 掛號提醒（T-1h／T+0／T+30、當日結束標記 missed）。與用藥共用排程骨架，
+        # 但各自一個 task、各自一個心跳——一邊卡住不該拖著另一邊。
+        appointment_scheduler = start_appointment_scheduler(enabled=True)
 
         # 每日醫療消息卡。索引與推播是兩支獨立的排程：成本模型不同（前者是
         # O(不重複藥數)、後者是 O(使用者數)），失敗模式也不同——政府站台逾時
@@ -173,6 +183,8 @@ async def lifespan(app: FastAPI):
             await scheduler.stop()
         if medication_scheduler is not None:
             await medication_scheduler.stop()
+        if appointment_scheduler is not None:
+            await appointment_scheduler.stop()
         if news_index_scheduler is not None:
             await news_index_scheduler.stop()
         if news_push_scheduler is not None:
@@ -210,6 +222,7 @@ app.include_router(
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(family_tree_router, prefix="/api/family", tags=["Family Tree"])
 app.include_router(medications_router, prefix="/api/medications", tags=["Medications"])
+app.include_router(appointments_router, prefix="/api/appointments", tags=["Appointments"])
 # 前綴必須是 /api/medical：CARE-LIFF 的 medicalApi.ts 已經在打 /api/medical/nearby，
 # 「附近醫院」整頁（路由、側邊欄、i18n）都已上線，缺的一直只有這一行掛載。
 app.include_router(medical_router, prefix="/api/medical", tags=["Medical"])

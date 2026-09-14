@@ -21,13 +21,15 @@ from resources.flex_messages import theme
 
 def _build_flex_map_uri(facility: MedicalFacility) -> str:
     """生成最符合 LINE 導航按鈕規格的 Google Map 連結"""
-    # 優先級:經緯度->名稱->地址
-    if facility.latitude and facility.longitude:
-        query = f"{facility.latitude},{facility.longitude}"
+    # 優先級:地址->經緯度->名稱
+    if facility.address:
+        query = facility.address
+    elif facility.latitude and facility.longitude:
+            query = f"{facility.latitude},{facility.longitude}"
     elif facility.name:
         query = facility.name
-    elif facility.address:
-        query = facility.address
+    
+        
     else:
         query = "醫療院所"
 
@@ -180,8 +182,14 @@ def create_facility_item_box(
     facility: MedicalFacility,
     ft: theme.FlexTheme | None = None,
     language: str | None = None,
+    *,
+    unspecified_department: bool = False,
 ) -> dict[str, Any]:
-    """建立單一醫療院所的 Flex Message Box 結構"""
+    """建立單一醫療院所的 Flex Message Box 結構。
+
+    unspecified_department 為真時多一行說明：這筆是科別搜尋湊不滿時依距離補上的，
+    院所資料本身沒有申報科別。不標的話使用者會以為那間診所真的有他要的那一科。
+    """
     ft = ft or theme.resolve_theme()
 
     if facility.distance_meters is None:
@@ -258,6 +266,21 @@ def create_facility_item_box(
         },
     ]
 
+    # 未載明科別的提醒排在按鈕之後、院所註記之前：它講的是「這筆為什麼在這裡」，
+    # 屬於這次搜尋的脈絡，比院所本身的註記更該先讀到。
+    if unspecified_department:
+        contents.append(
+            {
+                "type": "text",
+                "text": t("flex.facility.unspecified_department", language),
+                "size": ft.caption,
+                "weight": "bold",
+                "color": theme.TEXT_MUTED,
+                "margin": "lg",
+                "wrap": True,
+            }
+        )
+
     # 院所註記（notes）放在整張卡片的最底部、按鈕之後。
     if facility.notes:
         contents.append(
@@ -297,6 +320,7 @@ def generate_facility_list_flex_message(
     font_size: str | None = None,
     title_override: str | None = None,
     subtitle_override: str | None = None,
+    unspecified_ids: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """
     根據醫療院所列表，動態渲染完整的 LINE Flex Message 物件結構 (含 Wrapper)。
@@ -307,6 +331,9 @@ def generate_facility_list_flex_message(
 
     科別搜尋情境需要說明「查的是哪一科」與「搜到多遠」，這類脈絡無法由筆數推導，
     因此開放 title_override／subtitle_override 由呼叫端直接指定文案。
+
+    unspecified_ids 是本次結果中「未申報科別、依距離補上」的院所 id，會在那幾張
+    卡片各加一行說明（見 DepartmentSearchResult.unspecified_ids）。
     """
     ft = theme.resolve_theme(font_size)
 
@@ -344,8 +371,16 @@ def generate_facility_list_flex_message(
         theme.divider("md"),
     ]
 
+    unspecified = unspecified_ids or frozenset()
     for idx, facility in enumerate(facilities):
-        contents.append(create_facility_item_box(facility, ft, language))
+        contents.append(
+            create_facility_item_box(
+                facility,
+                ft,
+                language,
+                unspecified_department=facility.id in unspecified,
+            )
+        )
         if idx < len(facilities) - 1:
             contents.append(theme.divider("xxl"))
 

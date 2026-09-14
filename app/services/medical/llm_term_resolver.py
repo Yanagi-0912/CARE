@@ -14,7 +14,8 @@
 安全性質沿用 department_matcher 的紅線：只做「科別名稱的別稱／身體部位」的同義
 對應，遇到症狀描述一律回 UNKNOWN。由症狀推科別是醫療判斷，猜錯的代價是把可能
 需要急診的人導去一般門診——這條線不因為改用 LLM 就放寬，而是寫進 prompt 並在
-下方 _SAFETY_RULES 集中維護。
+下方 _SAFETY_RULES 集中維護。症狀 → 科別的建議另由
+app/services/medical/symptom_classification 負責，本模組的紅線不因此放寬。
 
 失敗一律降級成 None（＝維持原本「我看不懂這個科別」的回覆）。兜底層本身不該有
 能力讓找院所的主流程壞掉，因此這裡吞掉所有例外，只留 log。

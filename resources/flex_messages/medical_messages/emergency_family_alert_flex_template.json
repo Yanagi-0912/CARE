@@ -1,0 +1,225 @@
+{
+  "type": "bubble",
+  "size": "mega",
+  "header": {
+    "type": "box",
+    "layout": "vertical",
+    "backgroundColor": "#B3261E",
+    "paddingAll": "20px",
+    "contents": [
+      {
+        "type": "text",
+        "text": "家人可能需要立即協助",
+        "size": "md",
+        "color": "#F2DEDC",
+        "wrap": true,
+        "weight": "bold"
+      },
+      {
+        "type": "text",
+        "text": "王小明",
+        "size": "3xl",
+        "color": "#FFFFFF",
+        "wrap": true,
+        "weight": "bold",
+        "margin": "sm"
+      }
+    ]
+  },
+  "body": {
+    "type": "box",
+    "layout": "vertical",
+    "paddingAll": "20px",
+    "spacing": "md",
+    "backgroundColor": "#FFFFFF",
+    "contents": [
+      {
+        "type": "text",
+        "text": "王小明 剛才在 CARE 描述的狀況，系統判定可能需要立即處置。",
+        "size": "lg",
+        "color": "#111111",
+        "wrap": true
+      },
+      {
+        "type": "box",
+        "layout": "vertical",
+        "spacing": "sm",
+        "backgroundColor": "#F5F5F5",
+        "borderColor": "#DDDDDD",
+        "borderWidth": "1px",
+        "cornerRadius": "8px",
+        "paddingAll": "16px",
+        "margin": "md",
+        "contents": [
+          {
+            "type": "text",
+            "text": "王小明 剛才說的話",
+            "size": "md",
+            "color": "#555555",
+            "wrap": true,
+            "weight": "bold"
+          },
+          {
+            "type": "box",
+            "layout": "horizontal",
+            "margin": "sm",
+            "contents": [
+              {
+                "type": "box",
+                "layout": "vertical",
+                "width": "4px",
+                "backgroundColor": "#8C1D18",
+                "cornerRadius": "2px",
+                "contents": [
+                  {
+                    "type": "filler"
+                  }
+                ],
+                "flex": 0
+              },
+              {
+                "type": "text",
+                "text": "我剛剛喝了3瓶農藥，現在肚子很痛",
+                "size": "lg",
+                "color": "#111111",
+                "wrap": true,
+                "margin": "md",
+                "weight": "bold"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "box",
+        "layout": "vertical",
+        "spacing": "sm",
+        "backgroundColor": "#FBEEEC",
+        "borderColor": "#E7C9C5",
+        "borderWidth": "1px",
+        "cornerRadius": "8px",
+        "paddingAll": "16px",
+        "margin": "md",
+        "contents": [
+          {
+            "type": "text",
+            "text": "系統為什麼判定為緊急",
+            "size": "md",
+            "color": "#555555",
+            "wrap": true,
+            "weight": "bold"
+          },
+          {
+            "type": "text",
+            "text": "提到喝下大量農藥",
+            "size": "lg",
+            "color": "#111111",
+            "wrap": true,
+            "margin": "xs"
+          }
+        ]
+      },
+      {
+        "type": "separator",
+        "margin": "xl",
+        "color": "#E0E0E0"
+      },
+      {
+        "type": "text",
+        "text": "現在可以做的事",
+        "size": "md",
+        "color": "#555555",
+        "wrap": true,
+        "weight": "bold",
+        "margin": "xl"
+      },
+      {
+        "type": "box",
+        "layout": "baseline",
+        "margin": "md",
+        "contents": [
+          {
+            "type": "text",
+            "text": "1.",
+            "size": "lg",
+            "color": "#8C1D18",
+            "weight": "bold",
+            "flex": 0
+          },
+          {
+            "type": "text",
+            "text": "先打電話給 王小明，確認他現在的狀況。",
+            "size": "lg",
+            "color": "#333333",
+            "wrap": true,
+            "margin": "sm"
+          }
+        ]
+      },
+      {
+        "type": "box",
+        "layout": "baseline",
+        "margin": "md",
+        "contents": [
+          {
+            "type": "text",
+            "text": "2.",
+            "size": "lg",
+            "color": "#8C1D18",
+            "weight": "bold",
+            "flex": 0
+          },
+          {
+            "type": "text",
+            "text": "聯絡不上、或情況危急時，直接撥 119 並前往他所在的位置。",
+            "size": "lg",
+            "color": "#333333",
+            "wrap": true,
+            "margin": "sm"
+          }
+        ]
+      },
+      {
+        "type": "box",
+        "layout": "vertical",
+        "backgroundColor": "#8C1D18",
+        "borderColor": "#8C1D18",
+        "borderWidth": "1px",
+        "cornerRadius": "md",
+        "paddingAll": "lg",
+        "margin": "md",
+        "action": {
+          "type": "uri",
+          "label": "打電話給 王小明",
+          "uri": "tel:0912345678"
+        },
+        "contents": [
+          {
+            "type": "text",
+            "text": "打電話給 王小明",
+            "size": "xl",
+            "color": "#FFFFFF",
+            "wrap": true,
+            "weight": "bold",
+            "align": "center"
+          }
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "type": "box",
+    "layout": "vertical",
+    "paddingAll": "16px",
+    "backgroundColor": "#F4F6F4",
+    "contents": [
+      {
+        "type": "text",
+        "text": "這是系統依對話內容做的判斷，不是醫療診斷，也可能判斷錯誤。請以你實際聯繫到的情況為準。",
+        "size": "md",
+        "color": "#777777",
+        "wrap": true
+      }
+    ]
+  }
+}

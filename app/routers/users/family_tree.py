@@ -81,6 +81,10 @@ async def get_my_tree(
                 "my_permissions",
                 {"general": [], "sensitive": [], "private": []},
             ),
+            my_strict_permissions=described.get(m.user_id, {}).get(
+                "my_strict_permissions",
+                {"general": [], "sensitive": [], "private": []},
+            ),
             rbac_migration_state=described.get(m.user_id, {}).get(
                 "rbac_migration_state", "shadow"
             ),

@@ -224,8 +224,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"\nwrote {args.out}  ({len(kept)} 個片段, {size_mb:.1f} MB)")
 
     ranked = sorted(kept.items(), key=lambda kv: kv[1][1])
-    print("\n最能代表「不相關」的片段：", "、".join(t for t, _ in ranked[:12]))
-    print("最能代表「健康醫療」的片段：", "、".join(t for t, _ in ranked[-12:]))
+    print("\n最能代表負例（label 0）的片段：", "、".join(t for t, _ in ranked[:12]))
+    print("最能代表正例（label 1）的片段：", "、".join(t for t, _ in ranked[-12:]))
     return 0
 
 

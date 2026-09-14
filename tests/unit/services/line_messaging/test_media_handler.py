@@ -179,6 +179,81 @@ async def test_ocr_text_reaches_the_safety_check(
     assert "合利他命強効錠 EX PLUS" in safety.calls[0][1]
 
 
+class FakeEmergencyFamilyAlertService:
+    def __init__(self):
+        self.calls = []
+
+    async def notify(self, user_id, reason, patient_words=""):
+        self.calls.append((user_id, reason, patient_words))
+        return False
+
+
+@pytest.mark.asyncio
+async def test_an_emergency_described_in_a_voice_message_notifies_the_family(
+    mock_history_service, mock_user_profile_service
+):
+    """
+    語音、圖片、檔案抽出的文字判定為緊急時，家人通報要和文字訊息一樣發出。
+    先前正式組裝的 LineMediaHandler 沒有收到通報服務：當事人拿到紅卡，家人什麼
+    都沒收到——而長輩最常用的就是語音。
+    """
+    from datetime import datetime
+
+    from linebot.v3.webhooks import (
+        AudioMessageContent,
+        ContentProvider,
+        DeliveryContext,
+        MessageEvent,
+        UserSource,
+    )
+
+    agent = MagicMock()
+    agent.invoke = AsyncMock(
+        return_value={
+            "response": "緊急卡",
+            "emergency": True,
+            "emergency_reason": "你提到有人叫不醒",
+        }
+    )
+    emergency = FakeEmergencyFamilyAlertService()
+    replier = MagicMock()
+    replier.reply = AsyncMock(return_value=True)
+    handler = LineMediaHandler(
+        agent=agent,
+        history_service=mock_history_service,
+        user_profile_service=mock_user_profile_service,
+        replier=replier,
+        emergency_family_alert_service=emergency,
+    )
+    event = MessageEvent(
+        timestamp=int(datetime.now().timestamp() * 1000),
+        mode="active",
+        webhookEventId="01HZTEST000000000000000002",
+        deliveryContext=DeliveryContext(isRedelivery=False),
+        replyToken="rt",
+        source=UserSource(type="user", userId="U12345"),
+        message=AudioMessageContent(
+            id="M_AUDIO",
+            duration=3000,
+            contentProvider=ContentProvider(type="line"),
+        ),
+    )
+
+    with patch(
+        "app.services.media.mutimedia_processor.media_processor_service.process_media",
+        new_callable=AsyncMock,
+        return_value="阿公叫不醒",
+    ):
+        await handler.handle(event)
+    await _drain(handler)
+
+    assert len(emergency.calls) == 1
+    user_id, reason, words = emergency.calls[0]
+    assert user_id == "U12345"
+    assert reason == "你提到有人叫不醒"
+    assert "阿公叫不醒" in words
+
+
 @pytest.mark.asyncio
 async def test_media_processor_call_is_unchanged_by_the_safety_check(
     mock_agent, mock_history_service, mock_user_profile_service

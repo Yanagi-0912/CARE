@@ -22,6 +22,7 @@ from linebot.v3.messaging import (
     FlexContainer,
     FlexMessage,
     LocationAction,
+    MessageAction,
     MessagingApi,
     PushMessageRequest,
     QuickReply,
@@ -315,14 +316,47 @@ class LineReplier:
             contents = FlexContainer.from_dict(data["contents"])
             speech_text = data.get("speechText")
             speech_text = speech_text.strip() if isinstance(speech_text, str) else ""
+            # 工具以純 dict 描述 quickReply（科別建議卡的「附近哪裡有○○科」），
+            # SDK 需要的是物件。少了這行轉換，按鈕會被無聲丟掉——卡片照常送出、
+            # 按鈕不出現、也沒有任何錯誤訊息。
+            quick_reply = LineReplier._parse_quick_reply(data.get("quickReply"))
             logger.info(
-                f"{LOGGER_HEADER_TEXT} Flex JSON 解析成功，altText=%s, has_speech=%s",
+                f"{LOGGER_HEADER_TEXT} Flex JSON 解析成功，altText=%s, has_speech=%s, "
+                "has_quick_reply=%s",
                 alt_text,
                 bool(speech_text),
+                quick_reply is not None,
             )
-            return FlexMessage(altText=alt_text, contents=contents), speech_text
+            return (
+                FlexMessage(
+                    altText=alt_text, contents=contents, quickReply=quick_reply
+                ),
+                speech_text,
+            )
 
         return None, ""
+
+    @staticmethod
+    def _parse_quick_reply(payload: Any) -> Optional[QuickReply]:
+        #把 Flex payload 裡的 quickReply 轉成 SDK 物件。
+        if not isinstance(payload, dict):
+            return None
+        items = []
+        for raw_item in payload.get("items") or ():
+            action = raw_item.get("action") if isinstance(raw_item, dict) else None
+            if not isinstance(action, dict) or action.get("type") != "message":
+                continue
+            label, text = action.get("label"), action.get("text")
+            if not label or not text:
+                continue
+            items.append(QuickReplyItem(action=MessageAction(label=label, text=text)))
+        if not items:
+            if payload:
+                logger.warning(
+                    f"{LOGGER_HEADER_TEXT} quickReply 內容無法解析，已略過：%r", payload
+                )
+            return None
+        return QuickReply(items=items)
 
     @staticmethod
     def _normalize_message_text(message_text: Any) -> str:

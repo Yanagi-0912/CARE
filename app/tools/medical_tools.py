@@ -319,6 +319,7 @@ async def find_nearby_facilities_by_department(
                 department=department_label
             ),
             subtitle_override=_build_range_subtitle(result),
+            unspecified_ids=result.unspecified_ids,
         )
     )
 

@@ -25,6 +25,7 @@ from app.models.family_authorization import (
     is_allowed,
     notification_recipient_roles,
 )
+from app.models.appointment import AppointmentReminderResponse
 from app.models.medication import Medication, MedicationReminderWithMedications
 from app.models.user import UserProfile
 
@@ -54,8 +55,19 @@ ACTIONS = ["READ", "WRITE"]
 CROSS_USER_MODELS = {
     "medication_reminder": MedicationReminderWithMedications,
     "medication": Medication,
+    "appointment_reminder": AppointmentReminderResponse,
     "health_profile": UserProfile,
 }
+
+
+def test_appointment_reminder_recipients_are_the_general_writers():
+    """掛號卡片上有「我已出發／我已到診」，收件人必須按得下去——也就是
+    GENERAL 寫入者。MEMBER 只有讀，收到的會是一張按下去必定 403 的卡片。"""
+    general_writers = {
+        role for role in ROLES if role != "OWNER" and is_allowed(role, "GENERAL", "WRITE")
+    }
+    assert notification_recipient_roles("appointment_reminder") == general_writers
+    assert CLASSIFICATION_OF["appointment_reminder"] == "GENERAL"
 
 
 @pytest.mark.parametrize("role", ROLES)

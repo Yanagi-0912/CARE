@@ -1,6 +1,6 @@
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 from app.repositories.medical_facility_repository import MedicalFacilityRepository
@@ -9,7 +9,9 @@ from app.i18n.messages import t
 from app.services.medical.business_hours import resolve_business_hours
 from app.services.medical.department_matcher import (
     DepartmentMatch,
+    GENERAL_PRACTICE_DEPARTMENTS,
     build_department_query,
+    build_unspecified_department_query,
     resolve_department,
 )
 from app.services.medical.facility_type_matcher import (
@@ -126,6 +128,14 @@ class DepartmentSearchResult(NearbySearchResult):
 
     match: DepartmentMatch | None = None
     """解析出的科別；為 None 代表看不懂使用者說的科別，未執行查詢。"""
+
+    unspecified_ids: frozenset[str] = frozenset()
+    """facilities 之中屬於「補充梯次」的院所 id——它們的 departments 沒有申報專科。
+
+    專科搜尋湊不滿時才會有值。呈現層 SHALL 據此標示這幾筆未載明科別：它們是
+    因為「附近就這幾家」才被列出來的，不是資料顯示它們有這一科，混在一起排
+    等於讓使用者以為那間診所真的看那一科。
+    """
 class MedicalService:
     def __init__(
         self,
@@ -368,6 +378,16 @@ class MedicalService:
             open_now=open_now,
             facility_type_match=type_match,
         )
+        result, unspecified_ids = await self._supplement_with_unspecified(
+            result,
+            lat,
+            lng,
+            target_count,
+            canonical=match.canonical,
+            type_query=type_query,
+            open_now=open_now,
+            type_match=type_match,
+        )
         logger.info(
             f"{LOGGER_HEADER_TEXT} 科別搜尋完成，canonical=%r, 回傳=%s 筆, "
             f"涵蓋範圍=%s 公尺, 湊滿目標=%s",
@@ -384,7 +404,66 @@ class MedicalService:
             open_now_requested=result.open_now_requested,
             open_now_fallback=result.open_now_fallback,
             facility_type_match=result.facility_type_match,
+            unspecified_ids=unspecified_ids,
         )
+
+    async def _supplement_with_unspecified(
+        self,
+        result: NearbySearchResult,
+        lat: float,
+        lng: float,
+        target_count: int,
+        *,
+        canonical: str,
+        type_query: dict[str, Any] | None,
+        open_now: bool,
+        type_match: FacilityTypeMatch | None,
+    ) -> tuple[NearbySearchResult, frozenset[str]]:
+        """
+        專科搜尋湊不滿時，把附近未申報專科的院所補進來墊底。
+
+        為什麼要有這一段：資料庫有一批院所的 departments 只有「不分科」，它們
+        對任何專科查詢都不會命中。使用者站在那間診所旁邊搜「附近的皮膚科」，
+        拿到的是「50 公里內查無」——但那不是附近沒有院所，是那家沒有申報科別。
+
+        為什麼只在湊不滿時補、而且排在後面：一間沒申報科別的診所不等於有那一科。
+        正牌的專科院所永遠優先，補進來的只是「附近就這幾家，你可以先去電問問」，
+        並由呈現層標示清楚（見 DepartmentSearchResult.unspecified_ids）。
+
+        通科型科別不走這裡：它們的主查詢已經涵蓋未申報專科的院所，再補一次只會
+        撈到同一批。
+        """
+        if result.satisfied or canonical in GENERAL_PRACTICE_DEPARTMENTS:
+            return result, frozenset()
+
+        missing = target_count - len(result.facilities)
+        if missing <= 0:
+            return result, frozenset()
+
+        supplement = await self._search_tiered(
+            lat,
+            lng,
+            missing,
+            query=self._combine_filters(
+                build_unspecified_department_query(), type_query
+            ),
+            open_now=open_now,
+            facility_type_match=type_match,
+        )
+        seen = {f.id for f in result.facilities}
+        extra = [f for f in supplement.facilities if f.id not in seen][:missing]
+        if not extra:
+            return result, frozenset()
+
+        logger.info(
+            f"{LOGGER_HEADER_TEXT} 科別 %r 湊不滿（%s 筆），"
+            "補上 %s 筆未申報科別的鄰近院所",
+            canonical,
+            len(result.facilities),
+            len(extra),
+        )
+        merged = replace(result, facilities=[*result.facilities, *extra])
+        return merged, frozenset(f.id for f in extra)
 
     @staticmethod
     def _combine_filters(

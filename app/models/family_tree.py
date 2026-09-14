@@ -143,6 +143,13 @@ class FamilyMemberWithPermissions(FamilyMember):
     my_permissions: Dict[str, List[str]] = Field(
         default_factory=lambda: {"general": [], "sensitive": [], "private": []}
     )
+    # 同一份權限的**純 RBAC** 版本：不受遷移狀態影響，含委任。給「導入 RBAC 之後才
+    # 有、一律嚴格判定」的功能（掛號提醒的寫入）決定要不要顯示按鈕——影子模式下
+    # `my_permissions` 會替 MEMBER 回報 GENERAL WRITE，照它渲染就是按了必定 403。
+    # 同樣 SHALL NOT 構成授權。
+    my_strict_permissions: Dict[str, List[str]] = Field(
+        default_factory=lambda: {"general": [], "sensitive": [], "private": []}
+    )
     # 對方的遷移狀態。前端不需要拿它做判斷（權限已經套用過了），但呈現面
     # 可能要據此說明「這位家人的家庭尚未啟用權限管理」。
     rbac_migration_state: MigrationState = DEFAULT_MIGRATION_STATE

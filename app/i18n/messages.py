@@ -10,6 +10,320 @@ from app.core.user_language import (
 )
 
 _MESSAGES: dict[str, dict[str, str]] = {
+    # --- 緊急狀況家人通報卡 ----------------------------------------------
+    #
+    # 收件人是家屬，不是當事人。措辭要能讓人立刻做一件事（打電話），
+    # 而不是先讀完一段說明。
+    "emergency_family.alt_text": {
+        "zh-TW": "{name} 可能需要立即協助",
+        "en": "{name} may need immediate help",
+        "id": "{name} mungkin butuh bantuan segera",
+        "vi": "{name} có thể cần trợ giúp ngay",
+        "th": "{name} อาจต้องการความช่วยเหลือทันที",
+        "ja": "{name} さんに今すぐ助けが必要かもしれません",
+    },
+    "emergency_family.title": {
+        "zh-TW": "家人可能需要立即協助",
+        "en": "A family member may need help now",
+        "id": "Anggota keluarga mungkin butuh bantuan sekarang",
+        "vi": "Người thân có thể cần trợ giúp ngay",
+        "th": "สมาชิกในครอบครัวอาจต้องการความช่วยเหลือตอนนี้",
+        "ja": "ご家族に今すぐ助けが必要かもしれません",
+    },
+    "emergency_family.lead": {
+        "zh-TW": "{name} 剛才在 CARE 描述的狀況，系統判定可能需要立即處置。",
+        "en": (
+            "What {name} just described in CARE looks like it may need "
+            "immediate care."
+        ),
+        "id": (
+            "Apa yang baru saja {name} sampaikan di CARE tampaknya "
+            "memerlukan penanganan segera."
+        ),
+        "vi": (
+            "Điều {name} vừa mô tả trong CARE có thể cần được xử trí ngay."
+        ),
+        "th": "สิ่งที่ {name} เพิ่งบอกใน CARE อาจต้องได้รับการดูแลทันที",
+        "ja": "{name} さんが CARE で伝えた内容は、すぐの対応が必要かもしれません。",
+    },
+    "emergency_family.words_label": {
+        "zh-TW": "{name} 剛才說的話",
+        "en": "What {name} just said",
+        "id": "Yang baru saja dikatakan {name}",
+        "vi": "{name} vừa nói",
+        "th": "สิ่งที่ {name} เพิ่งพูด",
+        "ja": "{name} さんが今言ったこと",
+    },
+    "emergency_family.reason_label": {
+        "zh-TW": "系統為什麼判定為緊急",
+        "en": "Why the system flagged this",
+        "id": "Alasan peringatan ini",
+        "vi": "Lý do cảnh báo",
+        "th": "เหตุผลที่แจ้งเตือน",
+        "ja": "判定の理由",
+    },
+    # 急迫度判斷沒有給出白話說明時（本地模型判定、或 LLM 回了空字串）的理由。
+    # 不能留空：text 元件是空字串時 LINE 會以 400 拒收整則訊息（verdict_flex.py
+    # 的 _BLANK_*_FALLBACK 已因此踩過）。
+    "emergency_family.default_reason": {
+        "zh-TW": "對話內容顯示可能正在發生需要立即處置的狀況",
+        "en": "The conversation suggests something may need immediate care right now",
+        "id": "Percakapan menunjukkan mungkin ada kondisi yang perlu penanganan segera",
+        "vi": "Nội dung trò chuyện cho thấy có thể đang có tình trạng cần xử trí ngay",
+        "th": "บทสนทนาบ่งชี้ว่าอาจมีเหตุการณ์ที่ต้องได้รับการดูแลทันที",
+        "ja": "会話の内容から、今すぐ処置が必要な状況の可能性があります",
+    },
+    "emergency_family.action_label": {
+        "zh-TW": "現在可以做的事",
+        "en": "What you can do now",
+        "id": "Yang bisa Anda lakukan sekarang",
+        "vi": "Việc bạn có thể làm ngay",
+        "th": "สิ่งที่คุณทำได้ตอนนี้",
+        "ja": "今できること",
+    },
+    "emergency_family.step.1": {
+        "zh-TW": "先打電話給 {name}，確認他現在的狀況。",
+        "en": "Call {name} first and check how they are right now.",
+        "id": "Hubungi {name} lebih dulu dan pastikan keadaannya sekarang.",
+        "vi": "Hãy gọi cho {name} trước để xem hiện giờ họ thế nào.",
+        "th": "โทรหา {name} ก่อน เพื่อดูว่าตอนนี้เป็นอย่างไร",
+        "ja": "まず {name} さんに電話して、今の様子を確かめてください。",
+    },
+    "emergency_family.step.2": {
+        "zh-TW": "聯絡不上、或情況危急時，直接撥 119 並前往他所在的位置。",
+        "en": (
+            "If you cannot reach them, or it sounds serious, call 119 and go "
+            "to where they are."
+        ),
+        "id": (
+            "Jika tidak bisa dihubungi atau terdengar serius, hubungi 119 dan "
+            "datangi lokasinya."
+        ),
+        "vi": (
+            "Nếu không liên lạc được hoặc tình hình nghiêm trọng, hãy gọi 119 "
+            "và đến chỗ họ."
+        ),
+        "th": "หากติดต่อไม่ได้หรือดูรุนแรง ให้โทร 119 และไปหาเขา",
+        "ja": "連絡がつかない、または深刻な場合は 119 に通報し、その場所へ向かってください。",
+    },
+    "emergency_family.call_patient": {
+        "zh-TW": "打電話給 {name}",
+        "en": "Call {name}",
+        "id": "Hubungi {name}",
+        "vi": "Gọi cho {name}",
+        "th": "โทรหา {name}",
+        "ja": "{name} さんに電話",
+    },
+    "emergency_family.open_chat": {
+        "zh-TW": "在 CARE 傳訊息給他",
+        "en": "Message them in CARE",
+        "id": "Kirim pesan lewat CARE",
+        "vi": "Nhắn tin trong CARE",
+        "th": "ส่งข้อความใน CARE",
+        "ja": "CARE でメッセージを送る",
+    },
+    "emergency_family.footer": {
+        "zh-TW": "這是系統依對話內容做的判斷，不是醫療診斷，也可能判斷錯誤。請以你實際聯繫到的情況為準。",
+        "en": (
+            "This is an automated judgement from the conversation, not a "
+            "medical diagnosis, and it can be wrong. Trust what you find when "
+            "you reach them."
+        ),
+        "id": (
+            "Ini penilaian otomatis dari percakapan, bukan diagnosis medis, "
+            "dan bisa saja keliru. Percayai apa yang Anda temukan saat "
+            "menghubunginya."
+        ),
+        "vi": (
+            "Đây là đánh giá tự động từ cuộc trò chuyện, không phải chẩn đoán "
+            "y khoa và có thể sai. Hãy tin vào những gì bạn thấy khi liên hệ "
+            "được với họ."
+        ),
+        "th": (
+            "นี่คือการประเมินอัตโนมัติจากบทสนทนา ไม่ใช่การวินิจฉัยทางการแพทย์ "
+            "และอาจผิดพลาดได้ โปรดยึดตามสิ่งที่คุณพบเมื่อติดต่อได้"
+        ),
+        "ja": (
+            "これは会話内容からの自動判定であり、医学的診断ではなく、"
+            "誤ることもあります。実際に連絡して確かめた状況を優先してください。"
+        ),
+    },
+    "emergency_family.fallback_name": {
+        "zh-TW": "你的家人",
+        "en": "Your family member",
+        "id": "Anggota keluarga Anda",
+        "vi": "Người thân của bạn",
+        "th": "สมาชิกในครอบครัวของคุณ",
+        "ja": "ご家族",
+    },
+    # 通知當事人「家人已經知道了」。措辭刻意是支持性的而非警告式的——
+    # 這則訊息的收件人正處於危機中，讀起來必須像有人來陪，不是像被舉報。
+    "text.emergency.family_notified": {
+        "zh-TW": "我已經讓你的家人知道你現在需要有人陪。你不用一個人撐著。",
+        "en": (
+            "I've let your family know you need someone with you right now. "
+            "You don't have to get through this alone."
+        ),
+        "id": (
+            "Saya sudah memberi tahu keluarga Anda bahwa Anda butuh seseorang "
+            "di dekat Anda sekarang. Anda tidak perlu menghadapinya sendiri."
+        ),
+        "vi": (
+            "Tôi đã báo cho người thân biết rằng bạn đang cần ai đó ở bên. "
+            "Bạn không phải một mình vượt qua chuyện này."
+        ),
+        "th": (
+            "ฉันได้แจ้งครอบครัวของคุณแล้วว่าตอนนี้คุณต้องการใครสักคนอยู่ด้วย "
+            "คุณไม่ต้องผ่านเรื่องนี้คนเดียว"
+        ),
+        "ja": (
+            "今そばに誰かが必要だということを、ご家族に伝えました。"
+            "ひとりで抱えなくて大丈夫です。"
+        ),
+    },
+    # --- 緊急狀況卡片 ---------------------------------------------------
+    #
+    # 這張卡是急救指示，SHALL 全部隨使用者語言切換。混語言比全中文更糟：
+    # 副標（急迫度判斷器產生的 display）本來就會跟著語言走，若其餘文案是中文，
+    # 使用者會以為系統支援他的語言，卻看不懂最關鍵的行動指示。
+    "emergency.alt_text": {
+        "zh-TW": "請立即就醫",
+        "en": "Seek emergency care now",
+        "id": "Segera cari pertolongan medis",
+        "vi": "Hãy đi cấp cứu ngay",
+        "th": "โปรดไปพบแพทย์ทันที",
+        "ja": "すぐに受診してください",
+    },
+    "emergency.headline": {
+        "zh-TW": "請立即就醫",
+        "en": "Seek emergency care now",
+        "id": "Segera cari pertolongan medis",
+        "vi": "Hãy đi cấp cứu ngay",
+        "th": "โปรดไปพบแพทย์ทันที",
+        "ja": "すぐに受診してください",
+    },
+    "emergency.default_display": {
+        "zh-TW": "你描述的狀況可能需要立即處置",
+        "en": "What you described may need immediate care",
+        "id": "Kondisi yang Anda sebutkan mungkin perlu penanganan segera",
+        "vi": "Tình trạng bạn mô tả có thể cần xử trí ngay",
+        "th": "อาการที่คุณอธิบายอาจต้องได้รับการรักษาทันที",
+        "ja": "お話しの状況はすぐの処置が必要かもしれません",
+    },
+    "emergency.body.1": {
+        "zh-TW": "你描述的狀況可能需要緊急處置，不建議等待一般門診掛號。",
+        "en": (
+            "What you described may need emergency care. "
+            "Do not wait for a regular outpatient appointment."
+        ),
+        "id": (
+            "Kondisi yang Anda sebutkan mungkin memerlukan penanganan darurat. "
+            "Jangan menunggu jadwal rawat jalan biasa."
+        ),
+        "vi": (
+            "Tình trạng bạn mô tả có thể cần cấp cứu. "
+            "Không nên chờ đặt lịch khám ngoại trú thông thường."
+        ),
+        "th": (
+            "อาการที่คุณอธิบายอาจต้องได้รับการรักษาฉุกเฉิน "
+            "ไม่ควรรอคิวตรวจผู้ป่วยนอกตามปกติ"
+        ),
+        "ja": (
+            "お話しの状況は緊急の処置が必要な可能性があります。"
+            "通常の外来予約を待たないでください。"
+        ),
+    },
+    "emergency.body.2": {
+        "zh-TW": "請儘快前往最近的急診，或撥打 119 請求協助。",
+        "en": "Go to the nearest emergency room as soon as possible, or call 119 for help.",
+        "id": (
+            "Segera pergi ke unit gawat darurat terdekat, "
+            "atau hubungi 119 untuk meminta bantuan."
+        ),
+        "vi": "Hãy đến phòng cấp cứu gần nhất càng sớm càng tốt, hoặc gọi 119 để được trợ giúp.",
+        "th": "โปรดไปห้องฉุกเฉินที่ใกล้ที่สุดโดยเร็วที่สุด หรือโทร 119 เพื่อขอความช่วยเหลือ",
+        "ja": "できるだけ早く最寄りの救急外来へ行くか、119 に電話して助けを求めてください。",
+    },
+    "emergency.body.3": {
+        "zh-TW": "若身邊有人，請讓對方陪同前往。",
+        "en": "If someone is with you, ask them to go with you.",
+        "id": "Jika ada orang di dekat Anda, mintalah mereka menemani Anda.",
+        "vi": "Nếu có người bên cạnh, hãy nhờ họ đi cùng bạn.",
+        "th": "หากมีคนอยู่ด้วย โปรดขอให้เขาไปเป็นเพื่อน",
+        "ja": "そばに誰かいる場合は、付き添ってもらってください。",
+    },
+    "emergency.hotline_label": {
+        "zh-TW": "可以馬上撥打",
+        "en": "Call now",
+        "id": "Bisa langsung dihubungi",
+        "vi": "Có thể gọi ngay",
+        "th": "โทรได้ทันที",
+        "ja": "すぐに電話できます",
+    },
+    "emergency.call_button": {
+        "zh-TW": "撥打 {name} {number}",
+        "en": "Call {name} {number}",
+        "id": "Hubungi {name} {number}",
+        "vi": "Gọi {name} {number}",
+        "th": "โทร {name} {number}",
+        "ja": "{name} {number} に電話",
+    },
+    "emergency.footer": {
+        "zh-TW": "本訊息不是醫療診斷。情況緊急時請以撥打 119 或前往急診為優先。",
+        "en": (
+            "This message is not a medical diagnosis. In an emergency, "
+            "calling 119 or going to the emergency room comes first."
+        ),
+        "id": (
+            "Pesan ini bukan diagnosis medis. Dalam keadaan darurat, "
+            "utamakan menghubungi 119 atau pergi ke unit gawat darurat."
+        ),
+        "vi": (
+            "Tin nhắn này không phải là chẩn đoán y khoa. Khi khẩn cấp, "
+            "hãy ưu tiên gọi 119 hoặc đến phòng cấp cứu."
+        ),
+        "th": (
+            "ข้อความนี้ไม่ใช่การวินิจฉัยทางการแพทย์ ในกรณีฉุกเฉิน "
+            "ให้โทร 119 หรือไปห้องฉุกเฉินก่อนเป็นอันดับแรก"
+        ),
+        "ja": (
+            "このメッセージは医学的診断ではありません。緊急時は "
+            "119 への通報または救急外来の受診を最優先してください。"
+        ),
+    },
+    # 專線名稱。號碼是台灣的固定值，不翻譯；名稱要讓使用者知道打過去是什麼單位。
+    "emergency.hotline.119": {
+        "zh-TW": "緊急救護",
+        "en": "Emergency Medical Services",
+        "id": "Layanan Gawat Darurat",
+        "vi": "Cấp cứu y tế",
+        "th": "หน่วยแพทย์ฉุกเฉิน",
+        "ja": "救急",
+    },
+    "emergency.hotline.119.note": {
+        "zh-TW": "救護車與消防",
+        "en": "Ambulance and fire service",
+        "id": "Ambulans dan pemadam kebakaran",
+        "vi": "Xe cứu thương và cứu hỏa",
+        "th": "รถพยาบาลและดับเพลิง",
+        "ja": "救急車・消防",
+    },
+    "emergency.hotline.110": {
+        "zh-TW": "警察報案",
+        "en": "Police",
+        "id": "Polisi",
+        "vi": "Cảnh sát",
+        "th": "ตำรวจ",
+        "ja": "警察",
+    },
+    "emergency.hotline.110.note": {
+        "zh-TW": "意外或人身安全",
+        "en": "Accidents or personal safety",
+        "id": "Kecelakaan atau keselamatan pribadi",
+        "vi": "Tai nạn hoặc an toàn cá nhân",
+        "th": "อุบัติเหตุหรือความปลอดภัยส่วนบุคคล",
+        "ja": "事故・身の安全",
+    },
     "rag.fail.KB_EMPTY": {
         "zh-TW": "知識庫目前沒有與此問題相符的資料。請換個方式描述，或必要時就醫。",
         "en": (
@@ -913,6 +1227,29 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "เปิด{day} {time}",
         "ja": "{day} {time} 開始",
     },
+    "flex.facility.unspecified_department": {
+        "zh-TW": "此院所資料未載明科別，是依距離補列的鄰近選項，建議先去電確認有無此診。",
+        "en": (
+            "This facility lists no specialty; it is included as a nearby option "
+            "by distance. Please call ahead to confirm."
+        ),
+        "id": (
+            "Fasilitas ini tidak mencantumkan spesialisasi; ditampilkan sebagai "
+            "opsi terdekat. Sebaiknya telepon dulu untuk memastikan."
+        ),
+        "vi": (
+            "Cơ sở này không ghi chuyên khoa; được đưa vào theo khoảng cách. "
+            "Vui lòng gọi trước để xác nhận."
+        ),
+        "th": (
+            "สถานพยาบาลนี้ไม่ได้ระบุแผนก แสดงเป็นตัวเลือกใกล้เคียงตามระยะทาง "
+            "แนะนำให้โทรสอบถามก่อน"
+        ),
+        "ja": (
+            "この医療機関は診療科の記載がなく、距離順で補足表示しています。"
+            "受診前に電話でご確認ください。"
+        ),
+    },
     "flex.facility.note": {
         "zh-TW": "院所註記：{note}",
         "en": "Facility note: {note}",
@@ -1019,6 +1356,300 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "vi": "Tối",
         "th": "เย็น",
         "ja": "夜間",
+    },
+    # --- 掛號提醒卡片（appointment_flex）---
+    #
+    # 隱私邊界：推播只含日期時間與醫院名稱，任何一則都不得出現科別、醫師、看診號。
+    # 家屬每次門診最多收三則，文案裡的每個字都會躺在他們的聊天室列表上。
+    "flex.appt.when": {
+        "zh-TW": "{month}/{day}（{weekday}）{time}",
+        "en": "{weekday} {month}/{day}, {time}",
+        "id": "{weekday}, {day}/{month} pukul {time}",
+        "vi": "{time} {weekday}, {day}/{month}",
+        "th": "{weekday} {day}/{month} เวลา {time} น.",
+        "ja": "{month}/{day}（{weekday}）{time}",
+    },
+    "flex.appt.fallback_name": {
+        "zh-TW": "您的家人",
+        "en": "Your family member",
+        "id": "Anggota keluarga Anda",
+        "vi": "Người thân của bạn",
+        "th": "สมาชิกในครอบครัวของคุณ",
+        "ja": "ご家族",
+    },
+    "flex.appt.you": {
+        "zh-TW": "您",
+        "en": "you",
+        "id": "Anda",
+        "vi": "bạn",
+        "th": "คุณ",
+        "ja": "あなた",
+    },
+    "flex.appt.patient_label": {
+        "zh-TW": "{name} 的門診",
+        "en": "{name}'s appointment",
+        "id": "Jadwal periksa {name}",
+        "vi": "Lịch khám của {name}",
+        "th": "นัดหมายของ {name}",
+        "ja": "{name} さんの受診",
+    },
+    "flex.appt.button.depart": {
+        "zh-TW": "我已出發",
+        "en": "I'm on my way",
+        "id": "Saya sudah berangkat",
+        "vi": "Tôi đã xuất phát",
+        "th": "ออกเดินทางแล้ว",
+        "ja": "出発しました",
+    },
+    "flex.appt.button.attend": {
+        "zh-TW": "我已到診",
+        "en": "I've arrived",
+        "id": "Saya sudah tiba",
+        "vi": "Tôi đã đến nơi",
+        "th": "มาถึงแล้ว",
+        "ja": "到着しました",
+    },
+    "flex.appt.header.pre": {
+        "zh-TW": "門診提醒",
+        "en": "Appointment reminder",
+        "id": "Pengingat jadwal periksa",
+        "vi": "Nhắc lịch khám",
+        "th": "แจ้งเตือนนัดหมายแพทย์",
+        "ja": "受診のお知らせ",
+    },
+    "flex.appt.pre_body.self": {
+        "zh-TW": "出發時請按下方的「我已出發」。",
+        "en": "Tap “I'm on my way” below when you leave.",
+        "id": "Ketuk “Saya sudah berangkat” di bawah saat Anda berangkat.",
+        "vi": "Hãy bấm “Tôi đã xuất phát” bên dưới khi bạn rời nhà.",
+        "th": "เมื่อออกเดินทาง กด “ออกเดินทางแล้ว” ด้านล่าง",
+        "ja": "出発したら、下の「出発しました」を押してください。",
+    },
+    "flex.appt.pre_body.family": {
+        "zh-TW": "{name} 出發時，您或{name}本人都可以按下方的「我已出發」。",
+        "en": "When {name} leaves, either you or {name} can tap “I'm on my way” below.",
+        "id": "Saat {name} berangkat, Anda atau {name} dapat mengetuk “Saya sudah berangkat” di bawah.",
+        "vi": "Khi {name} xuất phát, bạn hoặc {name} đều có thể bấm “Tôi đã xuất phát” bên dưới.",
+        "th": "เมื่อ {name} ออกเดินทาง คุณหรือ {name} กด “ออกเดินทางแล้ว” ด้านล่างได้",
+        "ja": "{name} さんが出発したら、あなたか {name} さんが下の「出発しました」を押してください。",
+    },
+    "flex.appt.header.start": {
+        "zh-TW": "門診時間到了",
+        "en": "It's appointment time",
+        "id": "Sudah waktunya periksa",
+        "vi": "Đã đến giờ khám",
+        "th": "ถึงเวลานัดแล้ว",
+        "ja": "受診の時間です",
+    },
+    "flex.appt.start_body.self": {
+        "zh-TW": "到了之後請按下方的「我已到診」，後續的提醒就會停止。",
+        "en": "Once you arrive, tap “I've arrived” below and the remaining reminders will stop.",
+        "id": "Setelah tiba, ketuk “Saya sudah tiba” di bawah dan pengingat berikutnya akan berhenti.",
+        "vi": "Khi đến nơi, hãy bấm “Tôi đã đến nơi” bên dưới, các lời nhắc sau đó sẽ dừng.",
+        "th": "เมื่อถึงแล้ว กด “มาถึงแล้ว” ด้านล่าง การแจ้งเตือนที่เหลือจะหยุด",
+        "ja": "着いたら下の「到着しました」を押してください。以降のお知らせは止まります。",
+    },
+    "flex.appt.start_body.family": {
+        "zh-TW": "{name} 到了之後，您或{name}本人都可以按下方的「我已到診」。",
+        "en": "Once {name} arrives, either you or {name} can tap “I've arrived” below.",
+        "id": "Setelah {name} tiba, Anda atau {name} dapat mengetuk “Saya sudah tiba” di bawah.",
+        "vi": "Khi {name} đến nơi, bạn hoặc {name} đều có thể bấm “Tôi đã đến nơi” bên dưới.",
+        "th": "เมื่อ {name} มาถึง คุณหรือ {name} กด “มาถึงแล้ว” ด้านล่างได้",
+        "ja": "{name} さんが着いたら、あなたか {name} さんが下の「到着しました」を押してください。",
+    },
+    "flex.appt.header.not_departed": {
+        "zh-TW": "還沒出發嗎？",
+        "en": "Haven't left yet?",
+        "id": "Belum berangkat?",
+        "vi": "Chưa xuất phát sao?",
+        "th": "ยังไม่ได้ออกเดินทางหรือ?",
+        "ja": "まだ出発していませんか？",
+    },
+    "flex.appt.not_departed_body.self": {
+        "zh-TW": "門診時間已經到了，還沒有收到「我已出發」的回報。如果已經到了，請直接按「我已到診」。",
+        "en": "It's appointment time and we haven't received “I'm on my way” yet. If you're already there, tap “I've arrived”.",
+        "id": "Sudah waktunya periksa, tetapi belum ada konfirmasi “Saya sudah berangkat”. Jika sudah tiba, langsung ketuk “Saya sudah tiba”.",
+        "vi": "Đã đến giờ khám nhưng chưa nhận được xác nhận “Tôi đã xuất phát”. Nếu bạn đã đến nơi, hãy bấm “Tôi đã đến nơi”.",
+        "th": "ถึงเวลานัดแล้ว แต่ยังไม่ได้รับการยืนยัน “ออกเดินทางแล้ว” หากถึงแล้ว กด “มาถึงแล้ว” ได้เลย",
+        "ja": "受診の時間になりましたが、「出発しました」がまだ押されていません。すでに着いている場合は「到着しました」を押してください。",
+    },
+    "flex.appt.not_departed_body.family": {
+        "zh-TW": "門診時間已經到了，{name} 還沒有回報出發。如果已經到了，您或{name}本人都可以直接按「我已到診」。",
+        "en": "It's appointment time and {name} hasn't reported leaving yet. If they're already there, either of you can tap “I've arrived”.",
+        "id": "Sudah waktunya periksa, tetapi {name} belum melapor berangkat. Jika sudah tiba, Anda atau {name} dapat langsung mengetuk “Saya sudah tiba”.",
+        "vi": "Đã đến giờ khám nhưng {name} chưa báo đã xuất phát. Nếu đã đến nơi, bạn hoặc {name} đều có thể bấm “Tôi đã đến nơi”.",
+        "th": "ถึงเวลานัดแล้ว แต่ {name} ยังไม่ได้แจ้งว่าออกเดินทาง หากถึงแล้ว คุณหรือ {name} กด “มาถึงแล้ว” ได้เลย",
+        "ja": "受診の時間になりましたが、{name} さんからまだ出発の連絡がありません。すでに着いている場合は、あなたか {name} さんが「到着しました」を押してください。",
+    },
+    "flex.appt.header.caregiver": {
+        "zh-TW": "尚未確認到診",
+        "en": "Arrival not confirmed",
+        "id": "Kedatangan belum dikonfirmasi",
+        "vi": "Chưa xác nhận đã đến",
+        "th": "ยังไม่ยืนยันการมาถึง",
+        "ja": "到着が未確認です",
+    },
+    "flex.appt.caregiver_body.departed": {
+        "zh-TW": "{name} 已在 {time} 回報出發，但門診開始 30 分鐘後仍未確認到診，可能在路上遇到狀況，請聯絡關心。",
+        "en": "{name} reported leaving at {time}, but arrival still isn't confirmed 30 minutes after the appointment time. Something may have happened on the way — please check in.",
+        "id": "{name} melapor berangkat pukul {time}, tetapi 30 menit setelah jadwal periksa kedatangan belum dikonfirmasi. Mungkin ada kendala di jalan — mohon hubungi.",
+        "vi": "{name} đã báo xuất phát lúc {time}, nhưng 30 phút sau giờ khám vẫn chưa xác nhận đã đến. Có thể đã gặp chuyện trên đường — hãy liên lạc hỏi thăm.",
+        "th": "{name} แจ้งว่าออกเดินทางเมื่อ {time} แต่ผ่านเวลานัดไป 30 นาทีแล้วยังไม่ยืนยันว่ามาถึง อาจเกิดเหตุระหว่างทาง โปรดติดต่อสอบถาม",
+        "ja": "{name} さんは {time} に出発の連絡がありましたが、受診時刻から 30 分たっても到着が確認できません。途中で何かあったかもしれません。連絡してみてください。",
+    },
+    "flex.appt.caregiver_body.not_departed": {
+        "zh-TW": "門診開始 30 分鐘後，{name} 仍未回報出發或到診，請聯絡確認。",
+        "en": "30 minutes after the appointment time, {name} still hasn't reported leaving or arriving. Please check in.",
+        "id": "30 menit setelah jadwal periksa, {name} belum melapor berangkat maupun tiba. Mohon hubungi untuk memastikan.",
+        "vi": "30 phút sau giờ khám, {name} vẫn chưa báo xuất phát hay đã đến. Hãy liên lạc để xác nhận.",
+        "th": "ผ่านเวลานัดไป 30 นาทีแล้ว {name} ยังไม่ได้แจ้งว่าออกเดินทางหรือมาถึง โปรดติดต่อสอบถาม",
+        "ja": "受診時刻から 30 分たっても、{name} さんから出発・到着の連絡がありません。確認してみてください。",
+    },
+    "flex.appt.header.departed_done": {
+        "zh-TW": "已記錄出發",
+        "en": "Departure recorded",
+        "id": "Keberangkatan tercatat",
+        "vi": "Đã ghi nhận xuất phát",
+        "th": "บันทึกการออกเดินทางแล้ว",
+        "ja": "出発を記録しました",
+    },
+    "flex.appt.header.attended_done": {
+        "zh-TW": "已記錄到診",
+        "en": "Arrival recorded",
+        "id": "Kedatangan tercatat",
+        "vi": "Đã ghi nhận đã đến",
+        "th": "บันทึกการมาถึงแล้ว",
+        "ja": "到着を記録しました",
+    },
+    "flex.appt.reported_by": {
+        "zh-TW": "{time}　由 {name} 回報",
+        "en": "Reported by {name} at {time}",
+        "id": "Dilaporkan oleh {name} pukul {time}",
+        "vi": "{name} đã báo lúc {time}",
+        "th": "{name} แจ้งเมื่อ {time}",
+        "ja": "{time}　{name}が連絡しました",
+    },
+    "flex.appt.departed_done_hint": {
+        "zh-TW": "到了之後記得按「我已到診」。",
+        "en": "Remember to tap “I've arrived” when you get there.",
+        "id": "Jangan lupa ketuk “Saya sudah tiba” setelah sampai.",
+        "vi": "Nhớ bấm “Tôi đã đến nơi” khi đến.",
+        "th": "เมื่อถึงแล้ว อย่าลืมกด “มาถึงแล้ว”",
+        "ja": "着いたら「到着しました」を押してください。",
+    },
+    "flex.appt.attended_done_hint": {
+        "zh-TW": "這次門診後續的提醒已全部停止。",
+        "en": "All remaining reminders for this appointment have stopped.",
+        "id": "Semua pengingat berikutnya untuk jadwal ini telah dihentikan.",
+        "vi": "Mọi lời nhắc còn lại cho lịch khám này đã dừng.",
+        "th": "การแจ้งเตือนที่เหลือของนัดนี้หยุดแล้วทั้งหมด",
+        "ja": "この受診の残りのお知らせはすべて停止しました。",
+    },
+    "flex.appt.alt.family_prefix": {
+        "zh-TW": "【{name}】",
+        "en": "[{name}] ",
+        "id": "[{name}] ",
+        "vi": "[{name}] ",
+        "th": "[{name}] ",
+        "ja": "【{name}】",
+    },
+    "flex.appt.alt.pre": {
+        "zh-TW": "門診提醒：{when} {hospital}",
+        "en": "Appointment reminder: {when}, {hospital}",
+        "id": "Pengingat jadwal periksa: {when}, {hospital}",
+        "vi": "Nhắc lịch khám: {when}, {hospital}",
+        "th": "แจ้งเตือนนัดหมาย: {when} {hospital}",
+        "ja": "受診のお知らせ：{when} {hospital}",
+    },
+    "flex.appt.alt.start": {
+        "zh-TW": "門診時間到了：{hospital}",
+        "en": "It's appointment time: {hospital}",
+        "id": "Sudah waktunya periksa: {hospital}",
+        "vi": "Đã đến giờ khám: {hospital}",
+        "th": "ถึงเวลานัดแล้ว: {hospital}",
+        "ja": "受診の時間です：{hospital}",
+    },
+    "flex.appt.alt.not_departed": {
+        "zh-TW": "門診時間到了，還沒出發嗎？{hospital}",
+        "en": "It's appointment time — haven't left yet? {hospital}",
+        "id": "Sudah waktunya periksa — belum berangkat? {hospital}",
+        "vi": "Đã đến giờ khám — chưa xuất phát sao? {hospital}",
+        "th": "ถึงเวลานัดแล้ว ยังไม่ได้ออกเดินทางหรือ? {hospital}",
+        "ja": "受診の時間です。まだ出発していませんか？{hospital}",
+    },
+    "flex.appt.alt.caregiver": {
+        "zh-TW": "{name} 的門診尚未確認到診",
+        "en": "{name}'s arrival at the appointment isn't confirmed",
+        "id": "Kedatangan {name} di jadwal periksa belum dikonfirmasi",
+        "vi": "Chưa xác nhận {name} đã đến buổi khám",
+        "th": "ยังไม่ยืนยันว่า {name} มาถึงนัดหมาย",
+        "ja": "{name} さんの受診の到着が未確認です",
+    },
+    "flex.appt.alt.departed_done": {
+        "zh-TW": "已記錄出發：{hospital}",
+        "en": "Departure recorded: {hospital}",
+        "id": "Keberangkatan tercatat: {hospital}",
+        "vi": "Đã ghi nhận xuất phát: {hospital}",
+        "th": "บันทึกการออกเดินทางแล้ว: {hospital}",
+        "ja": "出発を記録しました：{hospital}",
+    },
+    "flex.appt.alt.attended_done": {
+        "zh-TW": "已記錄到診：{hospital}",
+        "en": "Arrival recorded: {hospital}",
+        "id": "Kedatangan tercatat: {hospital}",
+        "vi": "Đã ghi nhận đã đến: {hospital}",
+        "th": "บันทึกการมาถึงแล้ว: {hospital}",
+        "ja": "到着を記録しました：{hospital}",
+    },
+    # 出發／到診失敗的回覆。繁中版同時是 API 的 detail（前端原樣顯示），
+    # 其餘語言只用在 LINE 卡片按鈕的回覆。
+    "appt.error.not_found": {
+        "zh-TW": "找不到這筆掛號提醒，可能已經被刪除。",
+        "en": "This appointment reminder wasn't found. It may have been deleted.",
+        "id": "Pengingat jadwal periksa ini tidak ditemukan. Mungkin sudah dihapus.",
+        "vi": "Không tìm thấy lời nhắc lịch khám này. Có thể đã bị xóa.",
+        "th": "ไม่พบการแจ้งเตือนนัดหมายนี้ อาจถูกลบไปแล้ว",
+        "ja": "この受診のお知らせが見つかりません。削除された可能性があります。",
+    },
+    "appt.error.forbidden_report": {
+        "zh-TW": "您沒有權限替這位家人回報出發或到診。",
+        "en": "You don't have permission to report departure or arrival for this person.",
+        "id": "Anda tidak memiliki izin untuk melaporkan keberangkatan atau kedatangan orang ini.",
+        "vi": "Bạn không có quyền báo xuất phát hoặc đã đến thay cho người này.",
+        "th": "คุณไม่มีสิทธิ์แจ้งการออกเดินทางหรือการมาถึงแทนบุคคลนี้",
+        "ja": "この方の出発・到着を連絡する権限がありません。",
+    },
+    "appt.error.depart_after_attend": {
+        "zh-TW": "已經回報到診了，不需要再回報出發。",
+        "en": "Arrival has already been reported, so there's no need to report departure.",
+        "id": "Kedatangan sudah dilaporkan, tidak perlu melapor berangkat lagi.",
+        "vi": "Đã báo đến nơi rồi, không cần báo xuất phát nữa.",
+        "th": "แจ้งว่ามาถึงแล้ว ไม่ต้องแจ้งออกเดินทางอีก",
+        "ja": "すでに到着の連絡があるため、出発の連絡は不要です。",
+    },
+    "appt.error.missed": {
+        "zh-TW": "這個門診的當天已經結束，無法再回報出發或到診。",
+        "en": "The day of this appointment has ended, so departure or arrival can no longer be reported.",
+        "id": "Hari jadwal periksa ini sudah berakhir, keberangkatan atau kedatangan tidak bisa dilaporkan lagi.",
+        "vi": "Ngày của buổi khám này đã qua, không thể báo xuất phát hoặc đã đến nữa.",
+        "th": "วันนัดหมายนี้ผ่านไปแล้ว ไม่สามารถแจ้งการออกเดินทางหรือการมาถึงได้อีก",
+        "ja": "この受診日は終了したため、出発・到着の連絡はできません。",
+    },
+    "appt.error.cancelled": {
+        "zh-TW": "這筆掛號提醒已經取消，無法回報出發或到診。",
+        "en": "This appointment reminder has been cancelled, so departure or arrival can't be reported.",
+        "id": "Pengingat jadwal periksa ini sudah dibatalkan, keberangkatan atau kedatangan tidak bisa dilaporkan.",
+        "vi": "Lời nhắc lịch khám này đã bị hủy, không thể báo xuất phát hoặc đã đến.",
+        "th": "การแจ้งเตือนนัดหมายนี้ถูกยกเลิกแล้ว ไม่สามารถแจ้งการออกเดินทางหรือการมาถึงได้",
+        "ja": "この受診のお知らせは取り消されたため、出発・到着の連絡はできません。",
+    },
+    "appt.error.too_early": {
+        "zh-TW": "門診當天才能回報出發或到診。",
+        "en": "Departure and arrival can only be reported on the day of the appointment.",
+        "id": "Keberangkatan dan kedatangan hanya bisa dilaporkan pada hari jadwal periksa.",
+        "vi": "Chỉ có thể báo xuất phát hoặc đã đến vào ngày khám.",
+        "th": "แจ้งการออกเดินทางหรือการมาถึงได้เฉพาะในวันนัดเท่านั้น",
+        "ja": "出発・到着の連絡は受診日当日にのみできます。",
     },
     # --- 星期 ---
     "weekday.monday": {

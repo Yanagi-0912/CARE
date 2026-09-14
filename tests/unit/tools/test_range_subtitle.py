@@ -63,7 +63,7 @@ def test_partial_reports_search_limit():
 
 def test_alias_note_appended_only_for_department_alias():
     expanded_result = DepartmentSearchResult(
-        match=resolve_department("腸胃科"),
+        matches=(resolve_department("腸胃科"),),
         facilities=[_facility(800)],
         reached_meters=5_000,
         satisfied=True,
@@ -72,7 +72,7 @@ def test_alias_note_appended_only_for_department_alias():
     assert "腸胃科" in subtitle and "內科" in subtitle
 
     exact_result = DepartmentSearchResult(
-        match=resolve_department("內科"),
+        matches=(resolve_department("內科"),),
         facilities=[_facility(800)],
         reached_meters=5_000,
         satisfied=True,
@@ -81,7 +81,7 @@ def test_alias_note_appended_only_for_department_alias():
 
 
 def test_general_search_has_no_alias_note():
-    """不分科別的結果沒有 match 屬性可用，不得因此爆炸。"""
+    """不分科別的結果沒有 matches 屬性可用，不得因此爆炸。"""
     result = NearbySearchResult(
         facilities=[_facility(800)], reached_meters=5_000, satisfied=True
     )

@@ -149,7 +149,7 @@ async def test_open_now_and_department_combine(
     assert call["args"] == {
         "lat": 25.033,
         "lng": 121.56,
-        "department": "腸胃科",
+        "departments": ["腸胃科"],
         "open_now": True,
     }
 

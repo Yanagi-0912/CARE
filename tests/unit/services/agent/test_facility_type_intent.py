@@ -419,7 +419,7 @@ async def test_shared_location_with_only_department(
     assert call["args"] == {
         "lat": 25.033,
         "lng": 121.56,
-        "department": "腸胃科",
+        "departments": ["腸胃科"],
     }
 
 
@@ -472,7 +472,7 @@ async def test_shared_location_with_department_and_facility_type(
     assert call["args"] == {
         "lat": 25.033,
         "lng": 121.56,
-        "department": "腸胃科",
+        "departments": ["腸胃科"],
         "facility_type": "大醫院",
     }
 

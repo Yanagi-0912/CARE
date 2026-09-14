@@ -83,7 +83,7 @@ async def test_clinic_next_door_is_found_when_searching_internal_medicine():
     repository = QueryAwareRepository([_facility("巷口診所", 80, ["不分科"])])
     service = MedicalService(repository=repository)
 
-    result = await service.find_nearby_facilities_by_department(25.0, 121.0, "內科")
+    result = await service.find_nearby_facilities_by_department(25.0, 121.0, ["內科"])
 
     assert [f.name for f in result.facilities] == ["巷口診所"]
     assert result.unspecified_ids == frozenset()
@@ -104,7 +104,7 @@ async def test_specialist_search_supplements_when_short():
     )
     service = MedicalService(repository=repository)
 
-    result = await service.find_nearby_facilities_by_department(25.0, 121.0, "皮膚科")
+    result = await service.find_nearby_facilities_by_department(25.0, 121.0, ["皮膚科"])
 
     names = [f.name for f in result.facilities]
     assert names[0] == "皮膚科診所", "正牌專科永遠排在補列的前面"
@@ -120,7 +120,7 @@ async def test_supplement_does_not_duplicate_the_primary_results():
     )
     service = MedicalService(repository=repository)
 
-    result = await service.find_nearby_facilities_by_department(25.0, 121.0, "皮膚科")
+    result = await service.find_nearby_facilities_by_department(25.0, 121.0, ["皮膚科"])
 
     assert [f.name for f in result.facilities] == ["兩者皆有"]
     assert result.unspecified_ids == frozenset()
@@ -140,7 +140,7 @@ async def test_satisfied_specialist_search_never_supplements():
     )
     service = MedicalService(repository=repository)
 
-    result = await service.find_nearby_facilities_by_department(25.0, 121.0, "皮膚科")
+    result = await service.find_nearby_facilities_by_department(25.0, 121.0, ["皮膚科"])
 
     assert "巷口診所" not in [f.name for f in result.facilities]
     assert result.unspecified_ids == frozenset()
@@ -157,6 +157,6 @@ async def test_supplement_keeps_the_result_within_the_target_count():
     )
     service = MedicalService(repository=repository)
 
-    result = await service.find_nearby_facilities_by_department(25.0, 121.0, "皮膚科")
+    result = await service.find_nearby_facilities_by_department(25.0, 121.0, ["皮膚科"])
 
     assert len(result.facilities) == DEFAULT_TARGET_COUNT

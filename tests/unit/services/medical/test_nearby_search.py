@@ -122,7 +122,7 @@ async def test_general_and_department_search_share_the_same_tiers():
     ).find_nearby_hospitals(25.0, 121.0)
     department = await MedicalService(
         repository=FakeRepository(facilities)
-    ).find_nearby_facilities_by_department(25.0, 121.0, "腸胃科")
+    ).find_nearby_facilities_by_department(25.0, 121.0, ["腸胃科"])
 
     assert general.reached_meters == department.reached_meters == 20_000
     assert general.satisfied == department.satisfied is True

@@ -2,7 +2,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services.medical_news.article_grader import ArticleJudgement
 from app.services.medical_news.kb_digest_service import KbDigestService
 
 
@@ -160,7 +159,7 @@ async def test_articles_without_title_excluded():
     assert articles == []
 
 
-# ── 政策新聞稿過濾（第一道：標題黑名單，不花額度）─────────────────
+# ── 政策新聞稿過濾（標題黑名單，不花額度）─────────────────
 
 
 @pytest.mark.asyncio
@@ -195,118 +194,142 @@ async def test_policy_announcements_are_excluded():
     assert [a.url for a in articles] == ["https://www.hpa.gov.tw/a/4"]
 
 
-# ── grader（第二道：擋黑名單擋不掉的）───────────────────────────────
-
-
-class FakeArticleGrader:
-    """依標題決定判定；`raises` 裡的標題直接拋例外。"""
-
-    def __init__(self, useful_titles=None, raises=()):
-        self._useful = set(useful_titles or [])
-        self._raises = set(raises)
-        self.calls = []
-
-    async def judge_article(self, title, excerpt):
-        self.calls.append(title)
-        if title in self._raises:
-            raise RuntimeError("quota exhausted")
-        return ArticleJudgement(
-            is_useful_for_elderly=title in self._useful, reason="測試"
-        )
-
-
 @pytest.mark.asyncio
-async def test_grader_rejects_articles_not_useful_for_elderly():
-    """標題像衛教、內容也是真衛教，但對象不是長輩——黑名單擋不到，grader 要擋。"""
-    docs = [
-        _chunk(url="https://a.gov.tw/kid", original_title="翻轉兒童肥胖"),
-        _chunk(url="https://a.gov.tw/old", original_title="長者掌握3要訣防跌"),
-    ]
-    grader = FakeArticleGrader(useful_titles=["長者掌握3要訣防跌"])
-    service = KbDigestService(
-        collection=_collection(docs=docs),
-        max_age_days=30,
-        grader=grader,
-        max_grade_calls=10,
-    )
+async def test_non_elderly_health_content_is_no_longer_filtered():
+    """針對非高齡族群的真衛教照常推出。
 
-    articles = await service.recent_articles("2026-09-02", limit=5)
-
-    assert [a.url for a in articles] == ["https://a.gov.tw/old"]
-
-
-@pytest.mark.asyncio
-async def test_grader_failure_excludes_the_article():
-    """判定沒有發生時 fail closed——主動推播沒有人在等，沒推遠比推錯好。"""
-    docs = [
-        _chunk(url="https://a.gov.tw/1", original_title="判定會爆炸的一篇"),
-        _chunk(url="https://a.gov.tw/2", original_title="長者掌握3要訣防跌"),
-    ]
-    grader = FakeArticleGrader(
-        useful_titles=["長者掌握3要訣防跌"], raises=["判定會爆炸的一篇"]
-    )
-    service = KbDigestService(
-        collection=_collection(docs=docs),
-        max_age_days=30,
-        grader=grader,
-        max_grade_calls=10,
-    )
-
-    articles = await service.recent_articles("2026-09-02", limit=5)
-
-    assert [a.url for a in articles] == ["https://a.gov.tw/2"]
-
-
-@pytest.mark.asyncio
-async def test_grade_budget_stops_selection_instead_of_admitting_the_rest():
-    """額度用完要停止選材，不得把剩下的一律放行。
-
-    放行等於在額度吃緊那天悄悄關掉這道防線，而那正是最需要它的時候。
+    2026-09-14 拿掉了判「對高齡讀者有沒有用」的 LLM grader：推播對象不只長輩，
+    那個判準本身不成立。這個測試釘住的是那個決定——要把年齡過濾加回來，先回頭
+    看 kb_digest_service 的模組說明。
     """
-    docs = [
-        _chunk(url=f"https://a.gov.tw/{i}", original_title=f"文章{i}")
-        for i in range(6)
-    ]
-    grader = FakeArticleGrader(useful_titles=[])
-    service = KbDigestService(
-        collection=_collection(docs=docs),
-        max_age_days=30,
-        grader=grader,
-        max_grade_calls=2,
-    )
-
-    articles = await service.recent_articles("2026-09-02", limit=5)
-
-    assert articles == []
-    assert len(grader.calls) == 2
-
-
-@pytest.mark.asyncio
-async def test_blacklisted_titles_never_reach_the_grader():
-    """黑名單擋在 grader 之前，才省得到額度。"""
-    docs = [
-        _chunk(url="https://a.gov.tw/1", original_title="國健署攜手軍醫局 打造無菸健康戰力"),
-        _chunk(url="https://a.gov.tw/2", original_title="長者掌握3要訣防跌"),
-    ]
-    grader = FakeArticleGrader(useful_titles=["長者掌握3要訣防跌"])
-    service = KbDigestService(
-        collection=_collection(docs=docs),
-        max_age_days=30,
-        grader=grader,
-        max_grade_calls=10,
-    )
-
-    await service.recent_articles("2026-09-02", limit=5)
-
-    assert grader.calls == ["長者掌握3要訣防跌"]
-
-
-@pytest.mark.asyncio
-async def test_no_grader_falls_back_to_blacklist_only():
-    """grader 缺席時 Tier 2 仍照常供應，只是品質退回黑名單那一層。"""
     docs = [_chunk(url="https://a.gov.tw/1", original_title="翻轉兒童肥胖")]
     service = KbDigestService(collection=_collection(docs=docs), max_age_days=30)
 
     articles = await service.recent_articles("2026-09-02", limit=5)
 
     assert [a.url for a in articles] == ["https://a.gov.tw/1"]
+
+
+# ── 官方優先、媒體補位 ────────────────────────────────────────────────
+
+
+def _media(**overrides):
+    doc = {
+        "url": "https://health.udn.com/health/story/6037/1",
+        "title": "年紀大吃得少血糖反而升高？醫師揭老人常見血糖NG行為",
+        "source_name": "udn 元氣網",
+        "published_at": "2026-09-14",
+        "category": "焦點",
+        "excerpt": "高齡者食量變小，血糖卻可能不降反升。",
+    }
+    doc.update(overrides)
+    return doc
+
+
+@pytest.mark.asyncio
+async def test_pool_order_is_official_fresh_then_media_then_official_stock():
+    """三群依序：官方新 > 媒體新 > 官方存量。
+
+    媒體一天約 15.8 篇、官方約 2 篇，單純依日期混排時池子幾乎全是媒體——與
+    2026-09-04 量到「衛福部那批佔滿選材窗口 33/50」是同一個失效形狀，換成媒體
+    而已。
+    """
+    official = _collection(docs=[
+        _chunk(url="https://a.gov.tw/fresh", published_at="2026-09-13"),
+        _chunk(url="https://a.gov.tw/stock", published_at="2026-08-30"),
+    ])
+    media = _collection(docs=[_media()])
+    service = KbDigestService(collection=official, max_age_days=30, media_collection=media)
+
+    pool = await service.recent_articles("2026-09-14", limit=5)
+
+    assert [a.url for a in pool] == [
+        "https://a.gov.tw/fresh",
+        "https://health.udn.com/health/story/6037/1",
+        "https://a.gov.tw/stock",
+    ]
+    assert [a.priority for a in pool] == [0, 1, 2]
+
+
+@pytest.mark.asyncio
+async def test_yesterday_still_counts_as_fresh():
+    """「新」是今天或昨天：ETL 在台北 08:00、推播在 09:00，昨天下午發布的
+    文章今天早上才進庫，對使用者而言就是今天第一次看到。"""
+    official = _collection(docs=[_chunk(published_at="2026-09-13")])
+    service = KbDigestService(collection=official, max_age_days=30)
+
+    pool = await service.recent_articles("2026-09-14", limit=5)
+
+    assert pool[0].priority == 0
+
+
+@pytest.mark.asyncio
+async def test_media_disallowed_category_is_excluded():
+    """分類是允許清單：不在清單內的（性愛、退休力、名人…）一律不收。"""
+    media = _collection(docs=[
+        _media(url="https://u/1", category="性愛"),
+        _media(url="https://u/2", category="退休力"),
+        _media(url="https://u/3", category=None),
+        _media(url="https://u/4", category="醫療"),
+    ])
+    service = KbDigestService(
+        collection=_collection(), max_age_days=30, media_collection=media)
+
+    pool = await service.recent_articles("2026-09-14", limit=5)
+
+    assert [a.url for a in pool] == ["https://u/4"]
+
+
+@pytest.mark.asyncio
+async def test_media_noise_titles_in_allowed_category_are_excluded():
+    """允許分類裡的旅遊、兇殺、命理不得推出——都是 2026-09-13 樣本裡真實出現的標題。"""
+    media = _collection(docs=[
+        _media(url="https://u/1", category="養生",
+               title="搭飛機別花2種冤枉錢！旅遊專家評8項航空福利"),
+        _media(url="https://u/2", title="陽明山驚爆殺人棄屍 37歲男友起初還裝傻"),
+        _media(url="https://u/3", title="鬼月醫院不能說的禁忌！一張病床1年送走近20人"),
+        _media(url="https://u/4", title="開學遇流感升溫！單周10萬人次就醫 疾管署示警"),
+    ])
+    service = KbDigestService(
+        collection=_collection(), max_age_days=30, media_collection=media)
+
+    pool = await service.recent_articles("2026-09-14", limit=5)
+
+    assert [a.url for a in pool] == ["https://u/4"]
+
+
+@pytest.mark.asyncio
+async def test_media_older_than_fresh_window_is_excluded():
+    """媒體只當「今天的」補位，舊文不收——存量有官方那一群負責。"""
+    media = _collection(docs=[
+        _media(url="https://u/old", published_at="2026-09-10"),
+        _media(url="https://u/new", published_at="2026-09-14"),
+    ])
+    service = KbDigestService(
+        collection=_collection(), max_age_days=30, media_collection=media)
+
+    pool = await service.recent_articles("2026-09-14", limit=5)
+
+    assert [a.url for a in pool] == ["https://u/new"]
+
+
+@pytest.mark.asyncio
+async def test_media_query_is_bounded_by_fresh_window():
+    """查詢端就只撈窗口內的，不把整個 collection 拉進記憶體。"""
+    media = _collection(docs=[])
+    service = KbDigestService(
+        collection=_collection(), max_age_days=30, media_collection=media)
+
+    await service.recent_articles("2026-09-14", limit=5)
+
+    assert media.find.call_args.args[0] == {"published_at": {"$gte": "2026-09-13"}}
+
+
+@pytest.mark.asyncio
+async def test_without_media_collection_pool_is_official_only():
+    """沒有媒體 collection 時池子只有官方——與加入媒體之前相同。"""
+    service = KbDigestService(collection=_collection(docs=[_chunk()]), max_age_days=30)
+
+    pool = await service.recent_articles("2026-09-14", limit=5)
+
+    assert all(a.source_name != "udn 元氣網" for a in pool)

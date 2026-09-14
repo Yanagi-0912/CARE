@@ -201,10 +201,14 @@ async def test_run_ingest_success(mock_repo: MagicMock, mock_ingest: AsyncMock):
     assert result.ingest_job.error is None
     assert result.ingest_job.finished_at is not None
     assert len(result.ingest_job.results) == 1
-    # 背景收錄改讀快照內容，不再自行抓取
+    # 背景收錄改讀快照內容，不再自行抓取。頁面標題同時是 embedding 的「主題」
+    # 與 original_title（與 ETL 同格式），也仍是來源名的預設值。
     mock_ingest.ingest_url.assert_not_awaited()
     mock_ingest.ingest_content.assert_awaited_once_with(
-        ALLOWED_URL, SNAPSHOT_CONTENT, default_source_name="高血壓防治"
+        ALLOWED_URL,
+        SNAPSHOT_CONTENT,
+        title="高血壓防治",
+        default_source_name="高血壓防治",
     )
 
 
@@ -935,7 +939,10 @@ async def test_approve_falls_back_to_user_source_urls(
     await service.run_ingest("KR-20260802-AB12")
     mock_ingest.ingest_url.assert_not_awaited()
     mock_ingest.ingest_content.assert_awaited_once_with(
-        ALLOWED_URL, SNAPSHOT_CONTENT, default_source_name="高血壓防治"
+        ALLOWED_URL,
+        SNAPSHOT_CONTENT,
+        title="高血壓防治",
+        default_source_name="高血壓防治",
     )
 
 
@@ -1191,7 +1198,10 @@ async def test_run_ingest_uses_snapshot_content_and_never_scrapes(
     assert result.status == "resolved"
     mock_ingest.ingest_url.assert_not_awaited()
     mock_ingest.ingest_content.assert_awaited_once_with(
-        ALLOWED_URL, SNAPSHOT_CONTENT, default_source_name="高血壓防治"
+        ALLOWED_URL,
+        SNAPSHOT_CONTENT,
+        title="高血壓防治",
+        default_source_name="高血壓防治",
     )
 
 

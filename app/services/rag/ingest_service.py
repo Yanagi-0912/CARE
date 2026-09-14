@@ -6,12 +6,23 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from app.services.rag.chunking import split_text_to_chunks
+from app.services.rag.chunking import KB_CHUNKER_VERSION, split_kb_chunks
 from app.services.rag.whitelist import UrlPolicy, default_url_policy
 
 logger = logging.getLogger(__name__)
 
 IngestStatus = Literal["ok", "rejected", "empty", "error"]
+
+MISSING_TITLE_MESSAGE = "頁面沒有標題，無法依知識庫格式收錄"
+
+
+def kb_embedding_input(title: str, chunk: str) -> str:
+    """知識庫 chunk 的向量化輸入，與 CARE-data/main_pipeline.py 同一個格式。
+
+    標題是整篇文章最強的主題訊號，而切塊後的內文不含標題。只 embed 內文的
+    chunk 與 ETL 收進來的 chunk 不在同一種輸入上，分數也就不在同一個基準上比。
+    """
+    return f"主題：{title}\n內容：{chunk}"
 
 
 @dataclass(frozen=True)
@@ -105,6 +116,7 @@ class IngestService:
             normalized=normalized,
             final_norm=final_norm,
             text=text,
+            title=page.title,
             source_name=source_name,
             default_source_name=default_source_name,
         )
@@ -114,6 +126,7 @@ class IngestService:
         url: str,
         content: str,
         *,
+        title: str = "",
         source_name: str | None = None,
         default_source_name: str | None = None,
     ) -> IngestResult:
@@ -121,6 +134,9 @@ class IngestService:
 
         知識回報核准後的背景收錄走這一支：寫進向量庫的位元組就是 admin 在
         審核頁看過的那一份，approve 與 ingest 之間不再有抓取的時間差。
+
+        *title* 是頁面標題，會成為向量化輸入的「主題」與 original_title；
+        沒有標題就不收（見 `_write`）。
         """
         normalized = self.url_policy.normalize(url)
         if normalized is None or not self.url_policy.is_allowed(url):
@@ -146,6 +162,7 @@ class IngestService:
             normalized=normalized,
             final_norm=None,
             text=content,
+            title=title,
             source_name=source_name,
             default_source_name=default_source_name,
         )
@@ -191,11 +208,29 @@ class IngestService:
         normalized: str,
         final_norm: str | None,
         text: str,
+        title: str,
         source_name: str | None,
         default_source_name: str | None,
     ) -> IngestResult:
-        """切塊、向量化並覆寫該 URL 的全部 chunk。ingest_url 與 ingest_content 共用。"""
-        chunks = split_text_to_chunks(text)
+        """切塊、向量化並覆寫該 URL 的全部 chunk。ingest_url 與 ingest_content 共用。
+
+        寫出來的 chunk 與 CARE-data ETL 同格式：同一套切法（chunker_version）、
+        同一種向量化輸入（`kb_embedding_input`）、帶 original_title、chunk_index
+        從 1 起算。檢索時這兩個來源的 chunk 混在同一個索引裡互相比分數。
+        """
+        # 沒有標題就不收，與 ETL（CARE-data/scraper_api.py）同一條規則：向量化
+        # 輸入會變成空白的「主題：」，BM25 的標題比對也對它無效。這個檢查排在
+        # delete_many 之前，庫裡既有的這個 URL 不會因此被清掉。
+        title = (title or "").strip()
+        if not title:
+            return IngestResult(
+                status="empty",
+                url=url,
+                chunk_count=0,
+                message=MISSING_TITLE_MESSAGE,
+            )
+
+        chunks = split_kb_chunks(text)
         if not chunks:
             return IngestResult(
                 status="empty",
@@ -205,7 +240,9 @@ class IngestService:
             )
 
         try:
-            vectors = await self.embeddings.aembed_documents(chunks)
+            vectors = await self.embeddings.aembed_documents(
+                [kb_embedding_input(title, chunk) for chunk in chunks]
+            )
         except Exception as exc:
             return IngestResult(
                 status="error",
@@ -256,14 +293,19 @@ class IngestService:
         include_final_url = final_norm is not None and final_norm != normalized
 
         docs = []
-        for index, (chunk, vector) in enumerate(zip(chunks, vectors)):
+        # chunk_index 從 1 起算，與 ETL 一致：kb_digest_service 以
+        # chunk_index == 1 取每篇文章的第一片。
+        for index, (chunk, vector) in enumerate(zip(chunks, vectors), start=1):
             doc = {
                 self.text_field: chunk,
                 self.vector_field: vector,
                 "source_name": resolved_source,
                 "url": normalized,
+                "original_title": title,
                 "content_hash": hashlib.sha256(chunk.encode()).hexdigest(),
                 "chunk_index": index,
+                "total_chunks": len(chunks),
+                "chunker_version": KB_CHUNKER_VERSION,
                 "ingested_at": ingested_at,
             }
             if include_final_url:

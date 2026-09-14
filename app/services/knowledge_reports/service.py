@@ -440,7 +440,9 @@ class KnowledgeReportService:
                 ingest_result = await self._ingest_service.ingest_content(
                     url,
                     item.content,
-                    # 頁面標題只當預設值：庫裡既有的策展來源名優先，不被 <title> 蓋掉
+                    # 頁面標題是向量化輸入的「主題」與 original_title（與 ETL 同格式）
+                    title=item.title,
+                    # 當來源名則只是預設值：庫裡既有的策展來源名優先，不被 <title> 蓋掉
                     default_source_name=item.title or None,
                 )
                 results.append(

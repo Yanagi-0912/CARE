@@ -19,9 +19,13 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from app.core.config import settings
-from app.services.rag.chunking import split_text_to_chunks
+from app.services.rag.chunking import split_kb_chunks
 from app.services.rag.firecrawl_client import FirecrawlClient
-from app.services.rag.ingest_service import IngestResult, IngestService
+from app.services.rag.ingest_service import (
+    MISSING_TITLE_MESSAGE,
+    IngestResult,
+    IngestService,
+)
 from app.services.rag.whitelist import is_allowed_url, normalize_url
 
 
@@ -86,20 +90,30 @@ async def _dry_run(url: str) -> None:
 
     web_client = _require_firecrawl()
     try:
-        scraped = await web_client.scrape(url)
+        page = await web_client.scrape_page(url)
     except Exception as exc:
         print("status=error")
         print(f"url={url}")
         print(f"message={exc}")
         sys.exit(1)
 
+    scraped = page.text
     if not scraped or not scraped.strip():
         print("status=empty")
         print(f"url={url}")
         print("message=Scrape returned empty content")
         sys.exit(1)
 
-    chunks = split_text_to_chunks(scraped)
+    # 試跑要與實際收錄同一套規則（IngestService._write）：沒有標題不收、
+    # 用知識庫切法。否則試跑看到的片數與實際寫進庫的對不上。
+    title = page.title.strip()
+    if not title:
+        print("status=empty")
+        print(f"url={url}")
+        print(f"message={MISSING_TITLE_MESSAGE}")
+        sys.exit(1)
+
+    chunks = split_kb_chunks(scraped)
     if not chunks:
         print("status=empty")
         print(f"url={url}")
@@ -108,12 +122,13 @@ async def _dry_run(url: str) -> None:
 
     print("status=dry-run")
     print(f"url={url}")
+    print(f"title={title}")
     print(f"chunk_count={len(chunks)}")
     print("chunk_lengths:")
-    for index, chunk in enumerate(chunks):
+    for index, chunk in enumerate(chunks, start=1):
         print(f"  [{index}] {len(chunk)} chars")
     print("chunk_previews:")
-    for index, chunk in enumerate(chunks):
+    for index, chunk in enumerate(chunks, start=1):
         preview = " ".join(chunk.split())
         if len(preview) > 160:
             preview = preview[:160] + "…"

@@ -65,7 +65,7 @@ async def main() -> int:
         vectors.extend(await embeddings.aembed_documents(batch))
         logger.info("  %d/%d", len(vectors), len(terms))
 
-    index = build_index(terms, vectors)
+    index = build_index(terms, vectors, embedding_model=settings.EMBEDDING_MODEL)
     index.save(args.out)
     logger.info("完成。table_hash=%s", index.table_hash)
     logger.info("對照表若再更動，必須重跑本腳本。")

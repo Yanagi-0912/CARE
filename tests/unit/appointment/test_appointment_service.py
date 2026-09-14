@@ -234,6 +234,38 @@ async def test_rows_that_predate_the_rule_stay_editable(service, repo):
     assert updated.note == "帶健保卡"
 
 
+async def _both_pass_the_check(**_kwargs):
+    """模擬兩個請求同時送出：兩邊都在對方寫入之前做完應用層的重複檢查。"""
+    return None
+
+
+async def test_two_simultaneous_creates_do_not_both_succeed(service, repo, monkeypatch):
+    """連點兩下送出、或本人與家人同時建立同一張掛號單：唯一索引擋下後到的那一筆，
+    回的是同一個 409，而不是 500，也不是兩筆各推一輪。"""
+    await repo.ensure_indexes()
+    monkeypatch.setattr(service, "_ensure_not_duplicate", _both_pass_the_check)
+
+    await service.create(PATIENT, create_request())
+    await expect_error(service.create(DAUGHTER, create_request()), 409, DUPLICATE_DETAIL)
+
+
+async def test_a_simultaneous_reschedule_onto_a_taken_slot_is_a_409(
+    service, repo, monkeypatch
+):
+    await repo.ensure_indexes()
+    await service.create(PATIENT, create_request())
+    later = await service.create(
+        PATIENT, create_request(appointment_at="2026-09-15T14:00:00+08:00")
+    )
+    monkeypatch.setattr(service, "_ensure_not_duplicate", _both_pass_the_check)
+
+    await expect_error(
+        service.update(later.id, update(appointment_at="2026-09-15T09:30:00+08:00")),
+        409,
+        DUPLICATE_DETAIL,
+    )
+
+
 # ── 修改：exclude_unset ───────────────────────────────────────────────
 
 

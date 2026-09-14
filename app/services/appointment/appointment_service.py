@@ -28,7 +28,10 @@ from app.models.appointment import (
     day_end_for,
     utc_offset_minutes,
 )
-from app.repositories.appointment_repository import AppointmentReminderRepository
+from app.repositories.appointment_repository import (
+    AppointmentReminderRepository,
+    DuplicateAppointmentError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -282,7 +285,11 @@ class AppointmentService:
             created_at=now,
             updated_at=now,
         )
-        saved = await self._repository.create(reminder)
+        try:
+            saved = await self._repository.create(reminder)
+        except DuplicateAppointmentError:
+            # 兩個請求同時通過了上面的檢查，唯一索引擋下了後到的那一筆。
+            raise AppointmentError(409, DUPLICATE_DETAIL) from None
         logger.info(
             "[AppointmentService] 已建立掛號提醒 %s: creator=%s, target=%s",
             saved.id,
@@ -349,11 +356,15 @@ class AppointmentService:
         # 改時間是條件式寫入：上面檢查的 current 是讀到的那一刻，寫入前可能有人剛
         # 回報到診或取消。無條件寫入會套用 _RESET_ON_RESCHEDULE，把狀態改回
         # scheduled、洗掉那筆紀錄，家屬還會再收到提醒。
-        updated = await self._repository.update_fields(
-            reminder_id,
-            set_doc,
-            only_if_status_in=_RESCHEDULABLE_STATUSES if rescheduling else None,
-        )
+        try:
+            updated = await self._repository.update_fields(
+                reminder_id,
+                set_doc,
+                only_if_status_in=_RESCHEDULABLE_STATUSES if rescheduling else None,
+            )
+        except DuplicateAppointmentError:
+            # 同 create：另一筆同一時間的掛號在上面的檢查之後才寫進去。
+            raise AppointmentError(409, DUPLICATE_DETAIL) from None
         if updated is None:
             latest = await self.get(reminder_id)  # 讀到之後被刪掉了 → 404
             # 文件還在卻沒寫入：狀態在讀取之後變成了到診或取消。兩者都是終局，
@@ -377,10 +388,10 @@ class AppointmentService:
         `cancelled` 不算：那一筆已經不會推播了。取消了 9/15 09:30 那一筆，再建一筆
         9/15 09:30 要能建。其餘狀態都算。
 
-        這是應用層的檢查，不是唯一索引。規則收斂成「同一瞬間」之後，部分唯一索引
-        其實表達得了，但舊規則（同醫院、同科別才擋）下可能已經存在同一瞬間的兩筆，
-        建索引會失敗。兩個請求在同一瞬間送出時仍可能都通過；前端已經先擋，這裡是
-        清單過期時（家人剛在另一支手機建了同一時間的掛號）的最後一道防線。
+        這裡先擋是為了回清楚的錯誤。兩個請求同時送出時兩邊都會通過這一步，後到的
+        那一筆由 repository 的部分唯一索引（`user_appointment_at_unique_slot`）擋下，
+        create／update 再轉成同一個 409。舊規則（同醫院、同科別才擋）下已經存在同一
+        瞬間兩筆的環境，索引會建不起來（啟動時記錯誤 log），那時只剩這一道檢查。
         """
         others = await self._repository.list_by_user_at(user_id, appointment_at)
         if any(other.id != exclude_id and other.status != "cancelled" for other in others):
@@ -500,7 +511,9 @@ class AppointmentService:
         )
         if updated is not None:
             logger.info(
-                "[AppointmentService] 已取消掛號提醒 %s: by=%s", reminder_id, operator_id
+                # 記資料庫讀回的 id，不記請求路徑原樣傳進來的 reminder_id：日誌注入
+                # （SonarCloud pythonsecurity:S5145），與用藥服務在 #125 的處理相同。
+                "[AppointmentService] 已取消掛號提醒 %s: by=%s", updated.id, operator_id
             )
             return updated
 

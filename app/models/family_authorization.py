@@ -246,7 +246,7 @@ PROXY_WRITE_FORBIDDEN_FIELDS: frozenset[str] = frozenset(
     {"name", "display_name", "picture_url", "role", "settings", "line_id"}
 )
 
-# 推播種類，包含:高風險藥物、加入非處方藥、警急事件偵測、掛號提醒
+# 推播種類，包含:高風險藥物、加入非處方藥、緊急事件偵測、掛號提醒
 NotificationKind = Literal[
     "high_risk_drug_alert",
     "otc_medication_added",

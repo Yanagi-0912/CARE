@@ -21,7 +21,7 @@ from functools import partial
 from typing import Any, Awaitable, Callable, List, Optional
 
 from app.i18n import t
-from app.models.appointment import AppointmentReminder
+from app.models.appointment import OPEN_STATUSES, AppointmentReminder
 from app.services.line_messaging.flex.appointment_flex import (
     build_caregiver_alert_flex,
     build_pre_reminder_flex,
@@ -38,6 +38,12 @@ NOTIFICATION_KIND = "appointment_reminder"
 
 # (家屬看到的就診者名稱；本人收到時為 None, 語言, 字級) -> FlexMessage
 _CardBuilder = Callable[[Optional[str], str, str], Any]
+
+
+def _still_due(reminder: Optional[AppointmentReminder], statuses: tuple[str, ...]) -> bool:
+    """搶到推播權之後重讀的那一刻，這一則還該不該送。與 repository 搶佔時的狀態
+    條件相同；它存在是因為搶佔與推播之間有人按了取消、到診，或關掉了提醒。"""
+    return reminder is not None and reminder.enabled and reminder.status in statuses
 
 
 class AppointmentScheduler(PushTickScheduler):
@@ -131,11 +137,14 @@ class AppointmentScheduler(PushTickScheduler):
     # ── 三個階段 ──────────────────────────────────────────────────────
     #
     # 搶到推播權之後重讀一次文件再組卡片：T+0 要看的是「此刻」有沒有按過出發，
-    # 不是清單查出來那一刻。
+    # 不是清單查出來那一刻。重讀時也重新確認狀態——搶佔之後才取消、到診或關掉
+    # 提醒的，這一則就不送（回 True：推播權不還回去，這個階段算處理完）。重讀與
+    # 推播之間仍有毫秒級空檔；推播是外部呼叫，無法與資料庫一起原子化，這是能縮到
+    # 的最小窗口。
 
     async def _send_pre_reminder(self, reminder_id: str) -> bool:
         reminder = await self._repository.get_by_id(reminder_id)
-        if reminder is None:
+        if not _still_due(reminder, ("scheduled",)):
             return True
 
         def build(patient_name: Optional[str], language: str, font_size: str) -> Any:
@@ -152,7 +161,7 @@ class AppointmentScheduler(PushTickScheduler):
 
     async def _send_start_reminder(self, reminder_id: str) -> bool:
         reminder = await self._repository.get_by_id(reminder_id)
-        if reminder is None:
+        if not _still_due(reminder, OPEN_STATUSES):
             return True
         departed = reminder.status == "departed"
 
@@ -171,7 +180,7 @@ class AppointmentScheduler(PushTickScheduler):
 
     async def _send_caregiver_alert(self, reminder_id: str) -> bool:
         reminder = await self._repository.get_by_id(reminder_id)
-        if reminder is None:
+        if not _still_due(reminder, OPEN_STATUSES):
             return True
         departed_time = (
             format_hm(reminder.local(reminder.departed_at))

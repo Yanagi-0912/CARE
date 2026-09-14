@@ -65,7 +65,7 @@ def _normalizer(query_vector, *, invoke=None, **kwargs):
 
     return SymptomNormalizer(
         table_terms=_FAKE_TERMS,
-        vector_index=build_index(_FAKE_TERMS, _FAKE_VECTORS),
+        vector_index=build_index(_FAKE_TERMS, _FAKE_VECTORS, embedding_model="test-embedding-model"),
         embed_query=embed,
         invoke=invoke,
         **kwargs,
@@ -142,7 +142,7 @@ async def test_embedding_failure_degrades_to_full_table_llm():
 
     normalizer = SymptomNormalizer(
         table_terms=_FAKE_TERMS,
-        vector_index=build_index(_FAKE_TERMS, _FAKE_VECTORS),
+        vector_index=build_index(_FAKE_TERMS, _FAKE_VECTORS, embedding_model="test-embedding-model"),
         embed_query=embed,
         invoke=invoke,
     )

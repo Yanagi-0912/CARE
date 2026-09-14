@@ -2,7 +2,10 @@ from datetime import datetime
 
 import pytest
 
-from app.repositories.appointment_repository import AppointmentReminderRepository
+from app.repositories.appointment_repository import (
+    AppointmentReminderRepository,
+    DuplicateAppointmentError,
+)
 from app.repositories.push_claim import MAX_PUSH_ATTEMPTS
 
 from .support import APPOINTMENT_AT, PATIENT, TPE, FakeCollection, make_appointment
@@ -70,7 +73,67 @@ async def test_ensure_indexes(repo, col):
         "user_appointment_at",
         "status_appointment_at",
         "status_day_end_at",
+        "user_appointment_at_unique_slot",
     }
+    unique = next(
+        kwargs for _, kwargs in col.indexes
+        if kwargs["name"] == "user_appointment_at_unique_slot"
+    )
+    assert unique["unique"] is True
+    assert unique["partialFilterExpression"] == {
+        "status": {"$in": ["scheduled", "departed", "attended", "missed"]}
+    }
+
+
+# ── 同一時段只能有一筆：唯一索引 ───────────────────────────────────────
+
+
+async def test_the_unique_slot_index_blocks_a_second_active_reminder(repo):
+    """應用層的「先查再寫」擋不住同時送出的兩個請求；這一層是原子的。"""
+    await repo.ensure_indexes()
+    await seed(repo)
+    with pytest.raises(DuplicateAppointmentError):
+        await seed(repo, department="眼科")
+
+
+async def test_a_cancelled_reminder_does_not_hold_its_slot(repo):
+    await repo.ensure_indexes()
+    first = await seed(repo)
+    await repo.mark_cancelled(first.id, by_user_id=PATIENT, at=at(8, 0, day=14))
+    await seed(repo)
+
+
+async def test_rescheduling_onto_a_held_slot_is_blocked(repo):
+    await repo.ensure_indexes()
+    await seed(repo)
+    later = await seed(repo, at=at(14, 0))
+    with pytest.raises(DuplicateAppointmentError):
+        await repo.update_fields(later.id, {"appointment_at": APPOINTMENT_AT})
+
+
+# ── 搶佔時重驗時間窗 ─────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "stage, now, flag",
+    [
+        ("pre_reminder", at(8, 45), "pre_reminder_sent"),
+        ("start_reminder", at(9, 40), "start_reminder_sent"),
+        ("caregiver_alert", at(10, 5), "caregiver_alert_sent"),
+    ],
+)
+async def test_a_claim_rechecks_the_window_after_a_reschedule(repo, stage, now, flag):
+    """清單查出來之後門診被改到三天後：只驗狀態的話，這一階段的推播會提早三天
+    送出，旗標也被吃掉，到了真正的時間反而不會送。"""
+    reminder = await seed(repo)
+    list_due = getattr(repo, f"list_due_{stage}s")
+    claim = getattr(repo, f"claim_{stage}")
+    assert await ids(list_due(now)) == [reminder.id]
+
+    await repo.update_fields(reminder.id, {"appointment_at": at(9, 30, day=18)})
+
+    assert await claim(reminder.id, now=now) is False
+    assert getattr(await repo.get_by_id(reminder.id), flag) is False
 
 
 # ── 三個推播階段的時間窗 ──────────────────────────────────────────────

@@ -3,7 +3,9 @@
 推播權搶佔的設計與 `MedicationLogRepository` 相同，理由也相同（見該檔的「推播權
 搶佔」段落）：查清單 → 逐筆搶佔 → 推播之間沒有原子性，多實例並存時會重複推播；
 而清單查出來的那一刻起就是過期資料，使用者隨時可能在空檔按下「我已到診」。
-所以**每一支 claim 都把清單查詢用過的狀態條件再斷言一次**，不能只看旗標。
+所以**每一支 claim 都把清單查詢用過的條件——狀態與時間窗——再斷言一次**，不能只看
+旗標：清單與搶佔之間門診可能被改時間，只驗狀態的話，新時間的推播會被提早送出、
+旗標也被吃掉。
 
 與用藥不同的一點：這裡是 instance 而非一組 staticmethod，collection 由建構子注入。
 測試因此能直接餵假的 collection，不必 monkeypatch 掉 `MongoDBManager`。
@@ -11,10 +13,11 @@
 
 import logging
 from datetime import datetime
-from typing import Any, Callable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, List, Optional, Sequence, Tuple, get_args
 
 from bson import ObjectId
 from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from app.db.mongodb import MongoDBManager
 from app.models.appointment import (
@@ -23,12 +26,23 @@ from app.models.appointment import (
     PRE_REMINDER_LEAD,
     AppointmentListScope,
     AppointmentReminder,
+    AppointmentStatus,
 )
 from app.repositories.push_claim import release_push_claim
 
 logger = logging.getLogger(__name__)
 
 LOG_PREFIX = "[AppointmentReminderRepository]"
+
+# 佔用門診時段的狀態：取消以外全部。取消了 9/15 09:30 那一筆，要能再建一筆
+# 9/15 09:30（與 AppointmentService._ensure_not_duplicate 同一條規則）。
+SLOT_HOLDING_STATUSES: tuple[str, ...] = tuple(
+    status for status in get_args(AppointmentStatus) if status != "cancelled"
+)
+
+
+class DuplicateAppointmentError(Exception):
+    """同一位就診者、同一個門診瞬間已有一筆未取消的提醒，被唯一索引擋下。"""
 
 
 def _from_doc(doc: dict) -> AppointmentReminder:
@@ -52,6 +66,41 @@ def scope_filter(scope: AppointmentListScope, now: datetime) -> dict:
     return past if scope == "past" else {"$nor": [past]}
 
 
+# ── 推播階段的挑選條件 ──────────────────────────────────────────────
+#
+# 清單查詢與搶佔共用同一份，見模組註解。
+#
+#   T-1h   [T-1h, T+0)        status = scheduled
+#   T+0    [T+0,  T+30)       status ∈ {scheduled, departed}
+#   T+30   [T+30, 當日結束)   status ∈ {scheduled, departed}
+
+
+def _pre_window(now: datetime) -> dict:
+    return {
+        "enabled": True,
+        "status": "scheduled",
+        "appointment_at": {"$lte": now + PRE_REMINDER_LEAD, "$gt": now},
+    }
+
+
+def _start_window(now: datetime) -> dict:
+    return {
+        "enabled": True,
+        "status": {"$in": list(OPEN_STATUSES)},
+        "appointment_at": {"$lte": now, "$gt": now - CAREGIVER_ALERT_DELAY},
+        "day_end_at": {"$gt": now},
+    }
+
+
+def _caregiver_window(now: datetime) -> dict:
+    return {
+        "enabled": True,
+        "status": {"$in": list(OPEN_STATUSES)},
+        "appointment_at": {"$lte": now - CAREGIVER_ALERT_DELAY},
+        "day_end_at": {"$gt": now},
+    }
+
+
 class AppointmentReminderRepository:
     def __init__(
         self,
@@ -67,10 +116,15 @@ class AppointmentReminderRepository:
 
     async def ensure_indexes(self) -> None:
         """三組查詢各一個索引：列表（user_id）、三個推播階段（status +
-        appointment_at）、當日結束的掃描（status + day_end_at）。
+        appointment_at）、當日結束的掃描（status + day_end_at）；外加一個部分唯一
+        索引，擋同一位就診者同一瞬間的第二筆未取消提醒。
 
-        不需要唯一索引：每一筆提醒就是一份文件，搶佔是單一文件的原子更新，
-        不存在用藥那種「同一個時段被展開兩次」的問題。
+        唯一索引是 `AppointmentService._ensure_not_duplicate` 的原子版本：應用層的
+        「先查再寫」擋不住兩個同時送出的請求（連點兩下送出、本人與家人同時建立），
+        而重複的那一筆會各自推三個階段。部分索引只涵蓋 `SLOT_HOLDING_STATUSES`，
+        取消的那筆不佔時段。以下行為已在 MongoDB 8.0（與 Atlas 同版）實測：
+        `$in` 可用於 partialFilterExpression、可與同鍵的一般索引並存、取消後可再建
+        同一時段、改時間撞到已佔用的時段會被擋。
         """
         try:
             await self._col.create_index(
@@ -85,6 +139,19 @@ class AppointmentReminderRepository:
         except Exception:
             # 索引只影響查詢效率，不影響正確性；建不起來不該讓 app 起不來。
             logger.exception("%s 無法建立 appointment_reminders 索引", LOG_PREFIX)
+        try:
+            await self._col.create_index(
+                [("user_id", 1), ("appointment_at", 1)],
+                name="user_appointment_at_unique_slot",
+                unique=True,
+                partialFilterExpression={"status": {"$in": list(SLOT_HOLDING_STATUSES)}},
+            )
+        except Exception:
+            # 既有資料裡已有同一瞬間的兩筆（舊規則只擋同醫院、同科別）時建不起來。
+            # app 照常啟動，重複檢查退回只有應用層；清掉重複資料後重啟即會建立。
+            logger.exception(
+                "%s 無法建立掛號時段唯一索引，同時送出的重複建立將擋不住", LOG_PREFIX
+            )
 
     # ── CRUD ──────────────────────────────────────────────────────────
 
@@ -93,7 +160,10 @@ class AppointmentReminderRepository:
         doc = reminder.model_dump(by_alias=True)
         if not doc.get("_id"):
             doc["_id"] = str(ObjectId())
-        await self._col.insert_one(doc)
+        try:
+            await self._col.insert_one(doc)
+        except DuplicateKeyError as exc:
+            raise DuplicateAppointmentError() from exc
         return _from_doc(doc)
 
     async def get_by_id(self, reminder_id: str) -> Optional[AppointmentReminder]:
@@ -184,9 +254,13 @@ class AppointmentReminderRepository:
         query: dict = {"_id": reminder_id}
         if only_if_status_in is not None:
             query["status"] = {"$in": list(only_if_status_in)}
-        doc = await self._col.find_one_and_update(
-            query, {"$set": set_doc}, return_document=ReturnDocument.AFTER
-        )
+        try:
+            doc = await self._col.find_one_and_update(
+                query, {"$set": set_doc}, return_document=ReturnDocument.AFTER
+            )
+        except DuplicateKeyError as exc:
+            # 改到的時間已有另一筆未取消的提醒，而且是在服務層檢查之後才出現的。
+            raise DuplicateAppointmentError() from exc
         return _from_doc(doc) if doc else None
 
     async def delete(self, reminder_id: str) -> bool:
@@ -297,25 +371,12 @@ class AppointmentReminderRepository:
         return result.modified_count > 0
 
     async def list_due_pre_reminders(self, now: datetime) -> List[AppointmentReminder]:
-        return await self._list(
-            {
-                "enabled": True,
-                "status": "scheduled",
-                "pre_reminder_sent": False,
-                "appointment_at": {"$lte": now + PRE_REMINDER_LEAD, "$gt": now},
-            }
-        )
+        return await self._list({**_pre_window(now), "pre_reminder_sent": False})
 
     async def claim_pre_reminder(self, reminder_id: str, now: datetime) -> bool:
         """`status: scheduled` 不是多餘的：已經按了出發的人不該再收到「出發了嗎」。"""
         return await self._claim(
-            {
-                "_id": reminder_id,
-                "enabled": True,
-                "status": "scheduled",
-                "pre_reminder_sent": False,
-                "appointment_at": {"$gt": now},
-            },
+            {"_id": reminder_id, **_pre_window(now), "pre_reminder_sent": False},
             "pre_reminder_sent",
         )
 
@@ -330,26 +391,12 @@ class AppointmentReminderRepository:
         )
 
     async def list_due_start_reminders(self, now: datetime) -> List[AppointmentReminder]:
-        return await self._list(
-            {
-                "enabled": True,
-                "status": {"$in": list(OPEN_STATUSES)},
-                "start_reminder_sent": False,
-                "appointment_at": {"$lte": now, "$gt": now - CAREGIVER_ALERT_DELAY},
-                "day_end_at": {"$gt": now},
-            }
-        )
+        return await self._list({**_start_window(now), "start_reminder_sent": False})
 
     async def claim_start_reminder(self, reminder_id: str, now: datetime) -> bool:
         """`status` 條件擋的是「剛按完我已到診，又收到門診時間到了」。"""
         return await self._claim(
-            {
-                "_id": reminder_id,
-                "enabled": True,
-                "status": {"$in": list(OPEN_STATUSES)},
-                "start_reminder_sent": False,
-                "appointment_at": {"$gt": now - CAREGIVER_ALERT_DELAY},
-            },
+            {"_id": reminder_id, **_start_window(now), "start_reminder_sent": False},
             "start_reminder_sent",
         )
 
@@ -366,27 +413,13 @@ class AppointmentReminderRepository:
     async def list_due_caregiver_alerts(self, now: datetime) -> List[AppointmentReminder]:
         """判定是「不是 attended」，不是「不是 departed」：出發了卻沒到，比從頭
         沒動作更值得家人關心（已拍板）。"""
-        return await self._list(
-            {
-                "enabled": True,
-                "status": {"$in": list(OPEN_STATUSES)},
-                "caregiver_alert_sent": False,
-                "appointment_at": {"$lte": now - CAREGIVER_ALERT_DELAY},
-                "day_end_at": {"$gt": now},
-            }
-        )
+        return await self._list({**_caregiver_window(now), "caregiver_alert_sent": False})
 
     async def claim_caregiver_alert(self, reminder_id: str, now: datetime) -> bool:
         """與用藥不同，搶下家屬警報**不改狀態**：錯過（missed）只在當日結束時
         標記，T+30 之後本人或家屬仍然可以回報到診。"""
         return await self._claim(
-            {
-                "_id": reminder_id,
-                "enabled": True,
-                "status": {"$in": list(OPEN_STATUSES)},
-                "caregiver_alert_sent": False,
-                "day_end_at": {"$gt": now},
-            },
+            {"_id": reminder_id, **_caregiver_window(now), "caregiver_alert_sent": False},
             "caregiver_alert_sent",
         )
 

@@ -136,6 +136,30 @@ async def test_attending_cancels_every_remaining_push(h):
     assert (await h.repo.get_by_id(reminder.id)).status == "attended"
 
 
+@pytest.mark.parametrize(
+    "act",
+    [
+        lambda repo, rid: repo.mark_cancelled(rid, by_user_id=PATIENT, at=at(8, 30)),
+        lambda repo, rid: repo.mark_attended(rid, by_user_id=PATIENT, at=at(8, 30)),
+        lambda repo, rid: repo.update_fields(rid, {"enabled": False}),
+    ],
+    ids=["剛取消", "剛回報到診", "剛關掉提醒"],
+)
+async def test_a_change_between_claim_and_push_stops_the_push(h, act):
+    """搶到推播權之後、推播之前有人取消（或回報到診、關掉提醒）：重讀時要看到，
+    這一則不送。只驗「文件還在不在」的話，剛取消的門診仍會收到一輪提醒。"""
+    await h.seed()
+    claim = h.repo.claim_pre_reminder
+
+    async def claim_then_someone_acts(reminder_id, now):
+        claimed = await claim(reminder_id, now=now)
+        await act(h.repo, reminder_id)
+        return claimed
+
+    h.repo.claim_pre_reminder = claim_then_someone_acts
+    assert await h.tick(at(8, 30)) == []
+
+
 async def test_end_of_day_marks_missed_without_pushing(h):
     reminder = await h.seed()
     assert await h.tick(at(0, 0, day=16)) == []

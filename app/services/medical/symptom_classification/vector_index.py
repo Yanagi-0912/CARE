@@ -70,7 +70,9 @@ DEFAULT_VECTOR_PATH = (
     / "symptom_vectors.json"
 )
 
-_FORMAT_VERSION = 1
+# 2：加上 embedding_model。第 1 版的檔案沒有記模型，換成同維度的另一個模型時
+# 每一道檢查都會通過、靜默比對不相容的向量，所以舊檔一律拒用、重建。
+_FORMAT_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -111,16 +113,25 @@ class SymptomVectorIndex:
         vectors: Sequence[Sequence[float]],
         table_hash: str,
         dim: int = VECTOR_DIM,
+        embedding_model: str = "",
     ) -> None:
         if len(terms) != len(vectors):
             raise ValueError(
                 f"條目數 {len(terms)} 與向量數 {len(vectors)} 不符"
             )
+        # 每一條都要檢查：search() 以 zip 逐維相乘，長度不符的向量會被靜默截斷、
+        # 算出一個看似正常的分數，而不是像查詢向量維度不符那樣炸開。
+        for position, vector in enumerate(vectors):
+            if len(vector) != dim:
+                raise ValueError(
+                    f"第 {position} 條向量維度為 {len(vector)}，索引為 {dim}"
+                )
         self._terms = tuple(terms)
         # 一律在此正規化，之後比對只做內積。來源是否已正規化不影響結果。
         self._vectors = [normalize(v) for v in vectors]
         self._table_hash = table_hash
         self._dim = dim
+        self._embedding_model = embedding_model
 
     @property
     def terms(self) -> tuple[str, ...]:
@@ -158,6 +169,7 @@ class SymptomVectorIndex:
         payload = {
             "format_version": _FORMAT_VERSION,
             "model_task_type": EMBEDDING_TASK_TYPE,
+            "embedding_model": self._embedding_model,
             "dim": self._dim,
             "table_hash": self._table_hash,
             "terms": list(self._terms),
@@ -174,7 +186,9 @@ class SymptomVectorIndex:
         )
 
     @classmethod
-    def load(cls, path: Path, *, expected_hash: str) -> "SymptomVectorIndex | None":
+    def load(
+        cls, path: Path, *, expected_hash: str, expected_model: str
+    ) -> "SymptomVectorIndex | None":
         """
         載入向量檔。任何不一致都回 None 而不是拋錯——呼叫端會退回 LLM 全表
         兜底，那是可用的降級；帶著對不上的向量提供服務則會靜默給錯答案。
@@ -192,11 +206,36 @@ class SymptomVectorIndex:
             logger.error(f"{LOGGER_HEADER_TEXT} 向量檔讀取失敗，改用兜底", exc_info=True)
             return None
 
+        if not isinstance(payload, dict):
+            logger.error(
+                f"{LOGGER_HEADER_TEXT} 向量檔最外層是 %s 而不是物件，改用兜底",
+                type(payload).__name__,
+            )
+            return None
+
         if payload.get("format_version") != _FORMAT_VERSION:
             logger.warning(
                 f"{LOGGER_HEADER_TEXT} 向量檔格式版本為 %r，本版本需要 %r，拒用",
                 payload.get("format_version"),
                 _FORMAT_VERSION,
+            )
+            return None
+
+        # 模型或 task_type 不同的向量仍是同維度的數字，其餘檢查都會通過，查詢卻是
+        # 在比對兩個不相容的空間——分數看起來正常，對到的條目是錯的。
+        if payload.get("model_task_type") != EMBEDDING_TASK_TYPE:
+            logger.warning(
+                f"{LOGGER_HEADER_TEXT} 向量檔的 task_type 為 %r，查詢用 %r，拒用",
+                payload.get("model_task_type"),
+                EMBEDDING_TASK_TYPE,
+            )
+            return None
+        if payload.get("embedding_model") != expected_model:
+            logger.warning(
+                f"{LOGGER_HEADER_TEXT} 向量檔以 %r 建立，查詢用 %r，拒用。"
+                "換模型後必須重跑 scripts/build_symptom_vectors.py",
+                payload.get("embedding_model"),
+                expected_model,
             )
             return None
 
@@ -218,6 +257,7 @@ class SymptomVectorIndex:
                 vectors=vectors,
                 table_hash=payload["table_hash"],
                 dim=dim,
+                embedding_model=payload["embedding_model"],
             )
         except Exception:  # noqa: BLE001
             logger.error(f"{LOGGER_HEADER_TEXT} 向量檔內容不合法，改用兜底", exc_info=True)
@@ -227,6 +267,8 @@ class SymptomVectorIndex:
 def build_index(
     terms: Sequence[str],
     embedded: Iterable[Sequence[float]],
+    *,
+    embedding_model: str,
 ) -> SymptomVectorIndex:
     """由已算好的向量組成索引。取向量的 I/O 留在呼叫端，本模組不打網路。"""
     vectors = list(embedded)
@@ -239,4 +281,5 @@ def build_index(
         vectors=vectors,
         table_hash=table_content_hash(terms),
         dim=len(vectors[0]),
+        embedding_model=embedding_model,
     )

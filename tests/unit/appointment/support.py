@@ -17,6 +17,7 @@ from types import SimpleNamespace
 from typing import Any, Iterable, Optional
 
 from fastapi import HTTPException
+from pymongo.errors import DuplicateKeyError
 
 from app.models.appointment import AppointmentReminder, day_end_for, utc_offset_minutes
 from app.models.family_tree import FamilyMember, FamilyTree
@@ -131,11 +132,41 @@ class FakeCollection:
         self.indexes.append((keys, kwargs))
         return kwargs.get("name")
 
+    def _check_unique(self, candidate: dict) -> None:
+        """照 Mongo 的語意執行 unique 索引（含 partialFilterExpression）：只有兩份文件
+        都落在部分條件內、且鍵值相同時才衝突。寫入前呼叫，衝突時不寫。"""
+        for keys, options in self.indexes:
+            if not options.get("unique"):
+                continue
+            partial = options.get("partialFilterExpression") or {}
+            if not matches(candidate, partial):
+                continue
+            fields = [field for field, _ in keys]
+            key = [candidate.get(field) for field in fields]
+            for other in self.docs:
+                if other["_id"] == candidate["_id"] or not matches(other, partial):
+                    continue
+                if [other.get(field) for field in fields] == key:
+                    raise DuplicateKeyError(
+                        f"E11000 duplicate key error index: {options.get('name')}",
+                        code=11000,
+                    )
+
     async def insert_one(self, doc: dict):
         stored = to_storage(copy.deepcopy(doc))
         assert all(existing["_id"] != stored["_id"] for existing in self.docs)
+        self._check_unique(stored)
         self.docs.append(stored)
         return SimpleNamespace(inserted_id=stored["_id"])
+
+    def _updated(self, index: int, update: dict) -> dict:
+        """算出更新後的文件並檢查唯一索引，通過才替換。回傳更新前的內容。"""
+        before = self.docs[index]
+        candidate = copy.deepcopy(before)
+        _apply(candidate, update)
+        self._check_unique(candidate)
+        self.docs[index] = candidate
+        return before
 
     async def find_one(self, query: dict):
         for doc in self.docs:
@@ -150,27 +181,27 @@ class FakeCollection:
         return sum(1 for doc in self.docs if matches(doc, query))
 
     async def update_one(self, query: dict, update: dict):
-        for doc in self.docs:
+        for index, doc in enumerate(self.docs):
             if matches(doc, query):
-                before = copy.deepcopy(doc)
-                _apply(doc, update)
-                return SimpleNamespace(matched_count=1, modified_count=int(doc != before))
+                before = self._updated(index, update)
+                return SimpleNamespace(
+                    matched_count=1, modified_count=int(self.docs[index] != before)
+                )
         return SimpleNamespace(matched_count=0, modified_count=0)
 
     async def update_many(self, query: dict, update: dict):
         modified = 0
-        for doc in self.docs:
+        for index, doc in enumerate(self.docs):
             if matches(doc, query):
-                before = copy.deepcopy(doc)
-                _apply(doc, update)
-                modified += int(doc != before)
+                before = self._updated(index, update)
+                modified += int(self.docs[index] != before)
         return SimpleNamespace(modified_count=modified)
 
     async def find_one_and_update(self, query: dict, update: dict, return_document=None):
-        for doc in self.docs:
+        for index, doc in enumerate(self.docs):
             if matches(doc, query):
-                _apply(doc, update)
-                return copy.deepcopy(doc)
+                self._updated(index, update)
+                return copy.deepcopy(self.docs[index])
         return None
 
     async def delete_one(self, query: dict):

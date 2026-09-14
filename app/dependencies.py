@@ -515,6 +515,8 @@ _symptom_embeddings = GoogleGenerativeAIEmbeddings(
 _symptom_vector_index = SymptomVectorIndex.load(
     DEFAULT_VECTOR_PATH,
     expected_hash=table_content_hash(_symptom_table.terms),
+    # 與上面 _symptom_embeddings 查詢用的是同一個設定值；向量檔以別的模型建立時拒用。
+    expected_model=settings.EMBEDDING_MODEL,
 )
 
 _symptom_department_service = SymptomDepartmentService(
@@ -707,6 +709,7 @@ _media_handler = LineMediaHandler(
     loading_animation_service=_line_loading_animation_service,
     user_document_ingest_service=_user_document_ingest_service,
     safety_alert_service=_enabled_safety_alert_service,
+    emergency_family_alert_service=_emergency_family_alert_service,
 )
 _location_handler = LineLocationHandler(
     agent=_care_agent,

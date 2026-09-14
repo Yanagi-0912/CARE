@@ -21,8 +21,14 @@ import json
 from pathlib import Path
 
 import pytest
+from linebot.v3.messaging import FlexContainer
 
+from app.core.user_age import PEDIATRIC_AGE_LIMIT
 from app.services.medical.symptom_classification.symptom_department_service import (
+    FALLBACK_DEPARTMENTS,
+    PEDIATRIC_DEPARTMENT,
+    PEDIATRIC_REASON_AGE,
+    PEDIATRIC_REASON_MENTIONED_CHILD,
     RESULT_FALLBACK,
     RESULT_SUGGESTION,
     SymptomTriageResult,
@@ -323,16 +329,115 @@ def test_quick_reply_text_is_routable_by_the_existing_nearby_intent():
         assert [m.canonical for m in extract_department_intents(text)] == [name]
 
 
-def test_fallback_card_offers_its_own_primary_department():
-    """保底卡的第一順位是家醫科，追問與按鈕都要跟著它，不能沿用建議卡的科別。"""
-    fallback = SymptomTriageResult(
+_CHILD_FALLBACK = (PEDIATRIC_DEPARTMENT, *FALLBACK_DEPARTMENTS)
+
+
+def _fallback(names=FALLBACK_DEPARTMENTS, pediatric_reason=None):
+    return SymptomTriageResult(
         kind=RESULT_FALLBACK,
         user_input="全身不舒服",
         fallback_reason="無法對應到已知的症狀條目",
-        candidates=(_candidate("家醫科", sources=0), _candidate("內科", sources=0)),
+        candidates=tuple(_candidate(name, sources=0) for name in names),
+        pediatric_reason=pediatric_reason,
     )
-    payload = build_symptom_department_flex(fallback, references=())
-    assert "家醫科" in payload["quickReply"]["items"][0]["action"]["text"]
+
+
+def _quick_reply_action(result) -> dict:
+    payload = build_symptom_department_flex(result, references=())
+    return payload["quickReply"]["items"][0]["action"]
+
+
+def test_fallback_prompt_names_every_department_the_button_searches():
+    """
+    保底卡的按鈕一次搜尋全部初診方向。追問只寫「附近的醫院」會讓人以為是不分科別
+    的搜尋，所以要講明按下去會搜哪幾科。
+    """
+    _, _, prompt, _, _ = _body_parts(_bubble(_fallback()))
+    assert prompt["text"] == (
+        "是否需要搜尋附近的醫院或診所？下方按鈕會一次搜尋家醫科、內科、不分科。"
+    )
+
+
+def test_fallback_quick_reply_searches_every_fallback_department():
+    """按鈕上看到的就是送出的句子，沒有被 20 字的標籤上限截掉。"""
+    action = _quick_reply_action(_fallback())
+    assert action["text"] == "搜尋附近的家醫科、內科、不分科"
+    assert action["label"] == action["text"]
+
+
+def test_fallback_quick_reply_follows_the_candidates_on_the_card():
+    """按鈕的科別取自卡上的候選，保底清單改了卡片就跟著改，不能另外寫死一份。"""
+    action = _quick_reply_action(_fallback(("家醫科", "內科")))
+    assert action["text"] == "搜尋附近的家醫科、內科"
+
+
+def test_fallback_quick_reply_is_routed_to_every_department():
+    """點下去要三科都搜。只接住一科的話，使用者看到的承諾與實際搜尋對不上。"""
+    from app.services.agent.utils.nodes import _is_nearby_department_intent
+    from app.services.medical.department_matcher import extract_department_intents
+
+    text = _quick_reply_action(_fallback())["text"]
+    assert _is_nearby_department_intent(text) is True
+    assert [m.canonical for m in extract_department_intents(text)] == list(
+        FALLBACK_DEPARTMENTS
+    )
+
+
+@pytest.mark.parametrize("font_size", ["normal", "large", "xlarge"])
+@pytest.mark.parametrize(
+    "pediatric_reason", [None, PEDIATRIC_REASON_MENTIONED_CHILD, PEDIATRIC_REASON_AGE]
+)
+def test_fallback_card_passes_line_validation(font_size, pediatric_reason):
+    """保底卡的追問與孩童說明都讓文字變長，各字級下都仍要是 LINE 收得下的 Flex。"""
+    names = FALLBACK_DEPARTMENTS if pediatric_reason is None else _CHILD_FALLBACK
+    bubble = _bubble(_fallback(names, pediatric_reason), font_size=font_size)
+    FlexContainer.from_json(json.dumps(bubble, ensure_ascii=False))
+
+
+# --- 孩童的保底 ----------------------------------------------------------------
+#
+# 哪種情況算孩童、說明寫什麼，由 test_symptom_acceptance 的 T29–T33 對著字面值驗；
+# 這裡守卡片本身：按鈕跟著四科走、標題換成兒科、建議卡不會混進說明。
+
+
+def test_child_fallback_prompt_and_button_cover_pediatrics():
+    """四科的按鈕句子 18 個字，標籤上限 20，看到的就是送出的。"""
+    result = _fallback(_CHILD_FALLBACK, PEDIATRIC_REASON_AGE)
+    _, _, prompt, _, _ = _body_parts(_bubble(result))
+    assert prompt["text"] == (
+        "是否需要搜尋附近的醫院或診所？下方按鈕會一次搜尋兒科、家醫科、內科、不分科。"
+    )
+    action = _quick_reply_action(result)
+    assert action["text"] == "搜尋附近的兒科、家醫科、內科、不分科"
+    assert action["label"] == action["text"]
+
+
+def test_child_fallback_button_is_routed_to_all_four_departments():
+    from app.services.agent.utils.nodes import _is_nearby_department_intent
+    from app.services.medical.department_matcher import extract_department_intents
+
+    text = _quick_reply_action(_fallback(_CHILD_FALLBACK, PEDIATRIC_REASON_AGE))["text"]
+    assert _is_nearby_department_intent(text) is True
+    assert [m.canonical for m in extract_department_intents(text)] == list(
+        _CHILD_FALLBACK
+    )
+
+
+def test_child_fallback_header_leads_with_pediatrics():
+    bubble = _bubble(_fallback(_CHILD_FALLBACK, PEDIATRIC_REASON_MENTIONED_CHILD))
+    assert bubble["header"]["contents"][1]["contents"][0]["text"] == "兒科"
+
+
+def test_under_age_note_follows_the_age_limit():
+    """說明裡的歲數取自年齡界線，界線改了文案跟著改，不會一邊 15 一邊 18。"""
+    label, _, _, _, _ = _body_parts(_bubble(_fallback(_CHILD_FALLBACK, PEDIATRIC_REASON_AGE)))
+    assert f"你還未滿 {PEDIATRIC_AGE_LIMIT} 歲" in label["text"]
+
+
+def test_pediatric_note_never_appears_on_a_suggestion_card():
+    """孩童的建議卡（例如尿床只給兒科）不是保底，沒有「另外列出」可言。"""
+    payload = json.dumps(_bubble(_suggestion((_candidate("兒科"),))), ensure_ascii=False)
+    assert "另外列出兒科" not in payload
 
 
 def test_quick_reply_survives_the_reply_path():

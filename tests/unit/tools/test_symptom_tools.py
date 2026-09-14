@@ -3,6 +3,8 @@ import json
 import pytest
 
 from app.services.medical.symptom_classification.symptom_department_service import (
+    PEDIATRIC_REASON_AGE,
+    PEDIATRIC_REASON_MENTIONED_CHILD,
     RESULT_FALLBACK,
     RESULT_SUGGESTION,
     SymptomTriageResult,
@@ -156,3 +158,34 @@ def test_plain_reply_never_contains_emergency_content():
         text = symptom_tools._format_plain_reply(result)
         for token in ("119", "110", "1925", "急診", "tel:"):
             assert token not in text
+
+
+def _fallback(*names, pediatric_reason=None):
+    return SymptomTriageResult(
+        kind=RESULT_FALLBACK,
+        user_input="x",
+        fallback_reason="無法對應到已知的症狀條目",
+        candidates=tuple(DepartmentCandidate(name, None, 0, ()) for name in names),
+        pediatric_reason=pediatric_reason,
+    )
+
+
+@pytest.mark.parametrize(
+    ("pediatric_reason", "note"),
+    [
+        (PEDIATRIC_REASON_MENTIONED_CHILD, "因為是幫孩子詢問，另外列出兒科。"),
+        (PEDIATRIC_REASON_AGE, "因為你還未滿 15 歲，另外列出兒科。"),
+    ],
+)
+def test_plain_reply_explains_pediatrics_in_child_fallback(pediatric_reason, note):
+    """卡片建不起來時的純文字回覆，同樣要說明為什麼多了兒科。"""
+    text = symptom_tools._format_plain_reply(
+        _fallback("兒科", "家醫科", "內科", "不分科", pediatric_reason=pediatric_reason)
+    )
+    assert note in text
+    assert "1. 兒科" in text and "4. 不分科" in text
+
+
+def test_plain_reply_for_adult_fallback_has_no_pediatric_note():
+    text = symptom_tools._format_plain_reply(_fallback("家醫科", "內科", "不分科"))
+    assert "另外列出兒科" not in text

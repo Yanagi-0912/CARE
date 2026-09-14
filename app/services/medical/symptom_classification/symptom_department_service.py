@@ -51,11 +51,17 @@ LOGGER_HEADER_TEXT = "[Services:SymptomTriage]"
 # 保底建議（design 決策 6）。家醫科與內科的職責本就包含初步評估與轉診，把不確定
 # 的人導到這裡是既有醫療體系的設計，不是系統在猜。不分科是未申報專科的一般西醫
 # 診所，民眾最常就近去的地方，列出來是讓人知道「一般診所也可以」。
-# 順序：家醫科在前，診所層級密度最高，也是卡片首選與「搜尋附近」按鈕的科別。
+# 順序：家醫科在前，診所層級密度最高，也是卡片標題列的首選；「搜尋附近」按鈕則
+# 一次搜尋這裡列出的全部科別。為孩童詢問時，另在最前面多列兒科（見 _fallback）。
 FALLBACK_DEPARTMENTS: tuple[str, ...] = ("家醫科", "內科", "不分科")
 
 # 兒科的 canonical 值。過濾用，不寫死在方法裡以免與對照表脫鉤。
 PEDIATRIC_DEPARTMENT = "兒科"
+
+# 保底多列兒科的原因。卡片依原因用不同說法：提到孩童是家長在問，年齡未滿界線則是
+# 孩童本人在問。
+PEDIATRIC_REASON_MENTIONED_CHILD = "mentioned_child"
+PEDIATRIC_REASON_AGE = "age"
 
 RESULT_SUGGESTION = "suggestion"
 RESULT_FALLBACK = "fallback"
@@ -68,6 +74,20 @@ def _term_sources(entry: SymptomEntry) -> tuple[str, ...]:
         for code in candidate.sources:
             codes.setdefault(code, None)
     return tuple(codes)
+
+
+def _pediatric_reason(text: str) -> str | None:
+    """
+    這次是不是為孩童詢問；是的話回傳原因（PEDIATRIC_REASON_*），否則 None。
+
+    訊息提到孩童優先於年齡：12 歲使用者問妹妹時，要看病的是被提到的孩子，
+    卡片要用「幫孩子詢問」的說法，而不是「你還未滿 15 歲」。
+    """
+    if mentions_child(text):
+        return PEDIATRIC_REASON_MENTIONED_CHILD
+    if is_pediatric_age(get_request_age()):
+        return PEDIATRIC_REASON_AGE
+    return None
 
 @dataclass(frozen=True)
 class SymptomTriageResult:
@@ -88,6 +108,9 @@ class SymptomTriageResult:
     （分子 M）的差別在於粒度：後者是「這一家把這個症狀掛在這一科」，前者只是
     「這一家的表上找得到這個症狀」。沒收錄這個症狀的醫院不算反對，所以不進分母。
     """
+
+    pediatric_reason: str | None = None
+    """保底多列了兒科的原因（PEDIATRIC_REASON_*）；非孩童詢問、或不是保底時為 None。"""
 
     @property
     def primary_department(self) -> str | None:
@@ -144,7 +167,7 @@ class SymptomDepartmentService:
         self, candidates: tuple[DepartmentCandidate, ...], text: str
     ) -> tuple[DepartmentCandidate, ...]:
         """成人的提問不給兒科。濾光時回傳空序列，由呼叫端走保底。"""
-        if is_pediatric_age(get_request_age()) or mentions_child(text):
+        if _pediatric_reason(text) is not None:
             return candidates
         without = tuple(c for c in candidates if c.canonical != PEDIATRIC_DEPARTMENT)
         if without:
@@ -161,6 +184,13 @@ class SymptomDepartmentService:
     def _fallback(
         self, text: str, reason: str, *, matched_term: str | None = None
     ) -> SymptomTriageResult:
+        # 孩童的初診方向以兒科為首，其後照舊；非孩童的保底不含兒科。
+        pediatric_reason = _pediatric_reason(text)
+        names = (
+            (PEDIATRIC_DEPARTMENT, *FALLBACK_DEPARTMENTS)
+            if pediatric_reason is not None
+            else FALLBACK_DEPARTMENTS
+        )
         candidates = tuple(
             DepartmentCandidate(
                 canonical=name,
@@ -168,7 +198,7 @@ class SymptomDepartmentService:
                 facility_count=0,
                 sources=(),
             )
-            for name in FALLBACK_DEPARTMENTS
+            for name in names
         )
         return SymptomTriageResult(
             kind=RESULT_FALLBACK,
@@ -176,4 +206,5 @@ class SymptomDepartmentService:
             matched_term=matched_term,
             candidates=candidates,
             fallback_reason=reason,
+            pediatric_reason=pediatric_reason,
         )

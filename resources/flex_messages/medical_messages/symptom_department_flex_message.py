@@ -4,7 +4,8 @@
 兩種版面，對應 SymptomTriageResult 的兩種 kind：
     suggestion 建議卡。主要科別 + 至多 MAX_CANDIDATES 個候選（各附來源標註）
                + 逐條參考來源 + 免責。
-    fallback   保底卡。明說系統無法判斷，給初診方向。
+    fallback   保底卡。明說系統無法判斷，給初診方向；追問與按鈕一次涵蓋全部方向。
+               為孩童詢問時多列兒科，並說明為什麼多列。
 
 字級：
     文字大小走 theme.resolve_theme()，跟隨 UserSettings.font_size，不寫死。
@@ -21,7 +22,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.core.user_age import PEDIATRIC_AGE_LIMIT
 from app.services.medical.symptom_classification.symptom_department_service import (
+    PEDIATRIC_REASON_AGE,
+    PEDIATRIC_REASON_MENTIONED_CHILD,
     RESULT_FALLBACK,
     SymptomTriageResult,
 )
@@ -61,19 +65,25 @@ _DISCLAIMER = (
 
 _NEARBY_PROMPT_COLOR = "#37474F"
 
-# 追問下一步。刻意只是一句話 + 一顆 Quick Reply 按鈕，不主動索取位置：
-
+# 追問下一步。刻意只是一句話 + 一顆 Quick Reply 按鈕，不主動索取位置（design 決策 13）。
+# 建議卡只問第一順位那一科；保底卡列的是一組不確定時的初診方向，按鈕一次全部搜尋，
+# 所以追問要講明按下去會搜哪幾科——只寫「附近的醫院」會讓人以為是不分科別的搜尋。
 _NEARBY_PROMPT = "是否需要搜尋附近{department}的醫院或診所？"
+_FALLBACK_NEARBY_PROMPT = "是否需要搜尋附近的醫院或診所？下方按鈕會一次搜尋{departments}。"
 _NEARBY_QUICK_REPLY_TEXT = "搜尋附近的{department}"
+_DEPARTMENT_SEPARATOR = "、"
 
 _HEADER_TITLE = "推薦掛號科別"
 _TAG_SUGGESTION = "(建議優先)"
 _TAG_FALLBACK = "(不確定時的方向)"
 _SOURCE_LABEL = "參考來源"
 
-# 保底卡在標題列仍要顯示一個科別，否則版面會空一塊。用 FALLBACK_DEPARTMENTS
-# 的第一個（家醫科），與 body 的候選一致。
-_DEFAULT_PRIMARY = "家醫科"
+# 孩童的保底多列了兒科，卡片要說明為什麼。提到孩童是家長在問，年齡未滿界線則是
+# 孩童本人在問——同一句話對另一種讀者都說不通。
+_PEDIATRIC_NOTES = {
+    PEDIATRIC_REASON_MENTIONED_CHILD: "因為是幫孩子詢問，另外列出兒科。",
+    PEDIATRIC_REASON_AGE: f"因為你還未滿 {PEDIATRIC_AGE_LIMIT} 歲，另外列出兒科。",
+}
 
 
 def _header(primary: str, tag: str, ft: theme.FlexTheme) -> dict[str, Any]:
@@ -276,7 +286,7 @@ def _cited_references(
 
 
 def _source_section(
-    references: tuple[SourceReference, ...], label: str, ft: theme.FlexTheme
+    references: tuple[SourceReference, ...], ft: theme.FlexTheme
 ) -> list[dict[str, Any]]:
     """
     參考來源。逐條列出且各自可點，不把醫院擠成一段敘述——來源存在的目的是
@@ -295,7 +305,7 @@ def _source_section(
             "contents": [
                 {
                     "type": "text",
-                    "text": label,
+                    "text": _SOURCE_LABEL,
                     "size": ft.caption,
                     "color": _TPL_LABEL_COLOR,
                     "weight": "bold",
@@ -309,11 +319,29 @@ def _source_section(
     ]
 
 
-def _nearby_prompt(primary: str, ft: theme.FlexTheme) -> dict[str, Any]:
+def pediatric_note(result: SymptomTriageResult) -> str | None:
+    """保底多列兒科時的說明；卡片與純文字回覆共用這一份文案。"""
+    if result.pediatric_reason is None:
+        return None
+    return _PEDIATRIC_NOTES[result.pediatric_reason]
+
+
+def _nearby_departments(result: SymptomTriageResult) -> str:
+    """按鈕要搜尋的科別：建議卡是第一順位那一科，保底卡是卡上列出的全部初診方向。"""
+    if result.kind == RESULT_FALLBACK:
+        return _DEPARTMENT_SEPARATOR.join(c.canonical for c in result.candidates)
+    return result.primary_department
+
+
+def _nearby_prompt(result: SymptomTriageResult, ft: theme.FlexTheme) -> dict[str, Any]:
     """候選之下、來源之上的一句追問。搭配 Quick Reply 按鈕使用。"""
+    if result.kind == RESULT_FALLBACK:
+        text = _FALLBACK_NEARBY_PROMPT.format(departments=_nearby_departments(result))
+    else:
+        text = _NEARBY_PROMPT.format(department=_nearby_departments(result))
     return {
         "type": "text",
-        "text": _NEARBY_PROMPT.format(department=primary),
+        "text": text,
         "size": ft.body,
         "color": _NEARBY_PROMPT_COLOR,
         "weight": "bold",
@@ -322,12 +350,12 @@ def _nearby_prompt(primary: str, ft: theme.FlexTheme) -> dict[str, Any]:
     }
 
 
-def _nearby_quick_reply(primary: str) -> dict[str, Any]:
+def _nearby_quick_reply(departments: str) -> dict[str, Any]:
     """
-    按鈕送出的是明確語句（「搜尋附近的皮膚科」），送出後由既有的
-    `_is_nearby_department_intent()` 直接接住，科別搜尋流程一行都不用改。
+    按鈕送出的是明確語句（「搜尋附近的皮膚科」「搜尋附近的家醫科、內科、不分科」），
+    送出後由既有的 `_is_nearby_department_intent()` 接住，列舉的科別會一起帶進搜尋。
     """
-    text = _NEARBY_QUICK_REPLY_TEXT.format(department=primary)
+    text = _NEARBY_QUICK_REPLY_TEXT.format(department=departments)
     return {
         "items": [
             {
@@ -363,13 +391,16 @@ def _build_suggestion_bubble(
     ft: theme.FlexTheme,
 ) -> dict[str, Any]:
     is_fallback = result.kind == RESULT_FALLBACK
-    primary = result.primary_department or _DEFAULT_PRIMARY
+    primary = result.primary_department
 
     if is_fallback:
         label = (
             f"系統無法判斷你描述的狀況該掛哪一科（{result.fallback_reason}），"
             "以下是常見的初診方向"
         )
+        note = pediatric_note(result)
+        if note is not None:
+            label = f"{label}。{note}"
         tag = _TAG_FALLBACK
     else:
         label = f"依「{result.matched_term}」整理的可能科別與評估原因"
@@ -413,8 +444,8 @@ def _build_suggestion_bubble(
                     )
                     for index, candidate in enumerate(result.candidates, start=1)
                 ),
-                _nearby_prompt(primary, ft),
-                *_source_section(references, _SOURCE_LABEL, ft),
+                _nearby_prompt(result, ft),
+                *_source_section(references, ft),
             ],
         },
         "footer": _footer(ft),
@@ -437,10 +468,9 @@ def build_symptom_department_flex(
     resolved = load_source_references() if references is None else references
     resolved = _cited_references(result, resolved)
     ft = theme.resolve_theme(font_size)
-    primary = result.primary_department or _DEFAULT_PRIMARY
     return {
         "type": "flex",
         "altText": ALT_TEXT_SUGGESTION,
         "contents": _build_suggestion_bubble(result, resolved, ft),
-        "quickReply": _nearby_quick_reply(primary),
+        "quickReply": _nearby_quick_reply(_nearby_departments(result)),
     }

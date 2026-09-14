@@ -19,6 +19,7 @@ from app.services.safety.emergency_alert_service import (
 )
 from app.core.user_language import (
     DEFAULT_USER_LANGUAGE,
+    normalize_language_choice,
     normalize_user_language,
     reset_request_language,
     set_request_language,
@@ -112,8 +113,11 @@ class BaseLineMessageHandler:
                     user_id
                 )
 
-            user_language = self._language_from_profile(user_profile)
-            lang_token = set_request_language(user_language)
+            # 文字與語音可能不同：選台語的使用者文字是 zh-TW、語音是 nan-TW。
+            # ContextVar 存使用者的選擇，get_request_language() 取出來的是文字語言。
+            language_choice = self._language_choice_from_profile(user_profile)
+            user_language = normalize_user_language(language_choice)
+            lang_token = set_request_language(language_choice)
             # Agent 產生的 Flex Message 走 LangChain tool，拿不到 user_profile，
             # 因此字級也比照語言存進 request-scoped ContextVar
             font_token = set_request_font_size(
@@ -193,6 +197,7 @@ class BaseLineMessageHandler:
                 user_question=user_text,
                 # 緊急時紅卡要是第一則（理由同上方家人通報），表格卡會把它擠到第二則，不送。
                 image_text="" if agent_response.get("emergency") else image_text,
+                speech_language=language_choice,
             )
             log_stage(
                 logger,
@@ -282,10 +287,16 @@ class BaseLineMessageHandler:
 
     @staticmethod
     def _language_from_profile(user_profile: Optional[dict]) -> str:
-        if not user_profile:
-            return DEFAULT_USER_LANGUAGE
-        settings = user_profile.get("settings") or {}
-        return normalize_user_language(settings.get("language"))
+        """文字語言（台語 → zh-TW）。"""
+        return normalize_user_language(
+            BaseLineMessageHandler._language_choice_from_profile(user_profile)
+        )
+
+    @staticmethod
+    def _language_choice_from_profile(user_profile: Optional[dict]) -> str:
+        """使用者選的語言，含只換語音的台語。"""
+        settings = (user_profile or {}).get("settings") or {}
+        return normalize_language_choice(settings.get("language"))
 
     @staticmethod
     def _font_size_from_profile(user_profile: Optional[dict]) -> str:

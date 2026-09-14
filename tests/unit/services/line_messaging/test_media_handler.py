@@ -510,3 +510,70 @@ async def test_uploaded_audio_file_transcript_reaches_agent_as_plain_text(media_
 
     assert user_text == "我頭痛該怎麼辦"
     assert media_type == "audio"
+
+
+# 辨識語音之前就要設好使用者的語言：選台語的才會走台語 STT，其他語言的提示也才送得到
+# faster-whisper。以前語言要到 _process_and_reply 才設，辨識時一律是預設的 zh-TW。
+async def _handle_voice_and_capture_languages(profiles):
+    from linebot.v3.webhooks import AudioMessageContent, ContentProvider
+
+    from app.core.user_language import get_request_language, get_request_speech_language
+
+    agent = MagicMock()
+    agent.invoke = AsyncMock(return_value={"response": "AI 回覆"})
+    history = MagicMock()
+    history.load_history = AsyncMock(return_value=[])
+    history.save_turn = AsyncMock()
+    replier = MagicMock()
+    replier.reply = AsyncMock(return_value=True)
+    handler = LineMediaHandler(
+        agent=agent, history_service=history, user_profile_service=profiles, replier=replier
+    )
+    seen = {}
+
+    async def _process_media(**_kwargs):
+        seen["speech"] = get_request_speech_language()
+        seen["text"] = get_request_language()
+        return "阿公，你食飽未？"
+
+    event = _event(
+        AudioMessageContent(
+            id="M_AUDIO", duration=3000, contentProvider=ContentProvider(type="line")
+        )
+    )
+    with patch(
+        "app.services.media.mutimedia_processor.media_processor_service.process_media",
+        new_callable=AsyncMock,
+        side_effect=_process_media,
+    ):
+        await handler.handle(event)
+    return seen, replier.reply.call_args.kwargs
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "stored,speech,text",
+    [("nan-TW", "nan-TW", "zh-TW"), ("vi", "vi", "vi"), (None, "zh-TW", "zh-TW")],
+)
+async def test_user_language_is_set_before_transcription(stored, speech, text):
+    profiles = MagicMock()
+    profiles.get_user_profile = AsyncMock(return_value={"settings": {"language": stored}})
+
+    seen, reply_kwargs = await _handle_voice_and_capture_languages(profiles)
+
+    assert seen == {"speech": speech, "text": text}
+    # 回覆時文字用文字語言、語音用語音語言
+    assert reply_kwargs["language"] == text
+    assert reply_kwargs["speech_language"] == speech
+
+
+@pytest.mark.asyncio
+async def test_profile_read_failure_before_transcription_uses_default_language():
+    profiles = MagicMock()
+    profiles.get_user_profile = AsyncMock(
+        side_effect=[RuntimeError("mongo down"), {"settings": {"language": "nan-TW"}}]
+    )
+
+    seen, _ = await _handle_voice_and_capture_languages(profiles)
+
+    assert seen == {"speech": "zh-TW", "text": "zh-TW"}

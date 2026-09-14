@@ -120,6 +120,31 @@ async def test_reply_passes_language_and_voice_rate_to_tts():
     assert reply_req.messages[1].duration == 1500
 
 
+# 台語使用者的文字是 zh-TW、語音是 nan-TW：文字（Quick Reply 標籤）照 language，
+# 合成語音照 speech_language。
+@pytest.mark.asyncio
+async def test_reply_speech_language_goes_to_tts_while_text_keeps_language():
+    fake_tts = FakeTTSService()
+    replier = LineReplier(token_manager=fake_line_token_manager("token"), tts_service=fake_tts)
+
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text="記得吃藥",
+        user_id="U1",
+        request_location=True,
+        voice_reply_enabled=True,
+        language="zh-TW",
+        speech_language="nan-TW",
+    )
+
+    assert ok is True
+    assert fake_tts.calls[0]["language"] == "nan-TW"
+    reply_req = messaging_api.reply_message.call_args[0][0]
+    qr_label = reply_req.messages[-1].quick_reply.items[0].action.label
+    assert qr_label == t("location.share_qr_label", "zh-TW")
+
+
 @pytest.mark.asyncio
 async def test_reply_passes_voice_gender_to_tts():
     fake_tts = FakeTTSService()

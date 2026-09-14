@@ -69,12 +69,17 @@ class LineReplier:
         answer_kind: str | None = None,
         user_question: str = "",
         image_text: str = "",
+        speech_language: str | None = None,
     ) -> bool:
         """發送 LINE 訊息（包含文字訊息、Flex Message 與選填的 TTS 語音訊息）
 
         `image_text` 是圖片辨識的原文（不含媒體前綴）；裡面有表格時，回答前面
         會多送一張表格卡。
+
+        `speech_language` 是語音用的語言：選台語的使用者文字是 zh-TW、語音是
+        nan-TW。沒給就跟 `language` 相同。
         """
+        tts_language = speech_language or language
         try:
             if not reply_token or not reply_token.strip():
                 raise ValueError("LINE 事件缺少 reply_token")
@@ -104,7 +109,7 @@ class LineReplier:
                         messages,
                         tool_speech_text,
                         voice_reply_enabled=voice_reply_enabled,
-                        language=language,
+                        language=tts_language,
                         voice_rate=voice_rate,
                         voice_gender=voice_gender,
                     )
@@ -125,7 +130,7 @@ class LineReplier:
                         messages,
                         card_text,
                         voice_reply_enabled=voice_reply_enabled,
-                        language=language,
+                        language=tts_language,
                         voice_rate=voice_rate,
                         voice_gender=voice_gender,
                     )
@@ -139,7 +144,7 @@ class LineReplier:
                         messages,
                         message_text,
                         voice_reply_enabled=voice_reply_enabled,
-                        language=language,
+                        language=tts_language,
                         voice_rate=voice_rate,
                         voice_gender=voice_gender,
                     )

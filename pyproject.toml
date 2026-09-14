@@ -20,6 +20,10 @@ dependencies = [
     "edge-tts==7.2.8",
     "gTTS==2.5.4",
     "mutagen==1.47.0",
+    # 台語語音的轉檔（app/services/speech/audio.py）：LINE 錄音 m4a → 台語 STT 收的 wav、
+    # 台語 TTS 的 WAV → LINE 用的 mp3。wheel 內附 FFmpeg 函式庫（裝起來約 44 MB），
+    # 映像不必另外 apt 裝 ffmpeg。
+    "av==18.1.0",
 
     # 環境變數設定
     "python-dotenv==1.1.1",

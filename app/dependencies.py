@@ -97,6 +97,8 @@ from app.services.line_messaging.handler.message_handler import LineMessageHandl
 from app.services.line_messaging.loading_animation import LineLoadingAnimationService
 from app.services.line_messaging.reply.reply import LineReplier
 from app.services.line_messaging.reply.tts_service import TTSService
+from app.services.speech.taigi_client import TaigiClient
+from app.services.speech.taigi_text import TAIGI_TEXT_THINKING_LEVEL, TaigiTextConverter
 from app.services.line_messaging.rich_menu_service import RichMenuService
 from app.services.line_messaging.token_manager import LineTokenManager
 from app.services.medical.facility_name_index import configure_facility_names
@@ -606,7 +608,18 @@ _consultation_service = ConsultationService(
     user_profile_service=_user_profile_service,
 )
 
-_tts_service = TTSService()
+# 語言選台語的使用者：語音回覆先改寫成台語漢字（低 thinking，理由見
+# taigi_text.TAIGI_TEXT_THINKING_LEVEL），再用 Taigi 台語 TTS 念。
+_tts_service = TTSService(
+    taigi_client=TaigiClient(),
+    taigi_text_converter=TaigiTextConverter(
+        GeminiService(
+            api_key=settings.GEMINI_API_KEY,
+            model_name=settings.MODEL_NAME,
+            thinking_level=TAIGI_TEXT_THINKING_LEVEL,
+        )
+    ),
+)
 
 _line_replier = LineReplier(
     token_manager=_line_token_manager,

@@ -5,7 +5,7 @@ TBD - created by archiving change reply-language-from-settings. Update Purpose a
 ## Requirements
 ### Requirement: 支援語系與 normalize
 
-系統 SHALL 支援與 LIFF／Rich Menu 相同的語系集合：`zh-TW`、`en`、`id`、`vi`、`th`、`ja`。解析使用者語言時，若不在集合內或為空，SHALL fallback 為 `zh-TW`。
+系統 SHALL 支援與 LIFF／Rich Menu 相同的語系集合：`zh-TW`、`en`、`id`、`vi`、`th`、`ja`。解析使用者語言時，若不在集合內或為空，SHALL fallback 為 `zh-TW`。使用者另可選 `nan-TW`（台語），它只影響語音（見 voice-reply）：解析文字語言時 SHALL 視為 `zh-TW`。
 
 #### Scenario: 已知語系原樣通過
 
@@ -17,9 +17,14 @@ TBD - created by archiving change reply-language-from-settings. Update Purpose a
 - **WHEN** 輸入語言為 `ko` 或空值
 - **THEN** normalize 結果為 `zh-TW`
 
+#### Scenario: 台語的文字語言是中文
+
+- **WHEN** 輸入語言為 `nan-TW`
+- **THEN** 文字語言的 normalize 結果為 `zh-TW`
+
 ### Requirement: 請求處理期間可取得使用者語言
 
-處理 LINE 使用者訊息時，系統 SHALL 自該使用者 profile 的 `settings.language` 解析語言，並使同一次處理路徑內的工具與固定字串查表可取得該語言（例如 ContextVar）。未設定時 SHALL 使用 `zh-TW`。
+處理 LINE 使用者訊息時，系統 SHALL 自該使用者 profile 的 `settings.language` 解析語言，並使同一次處理路徑內的工具與固定字串查表可取得該語言（例如 ContextVar）。媒體訊息 SHALL 在辨識內容之前就取得語言。未設定時 SHALL 使用 `zh-TW`。
 
 #### Scenario: 從 profile 設定語言
 

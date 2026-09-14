@@ -305,3 +305,129 @@ async def test_synthesize_raises_when_both_engines_fail():
 
     with pytest.raises(RuntimeError, match="gtts unavailable"):
         await service.synthesize("hello", language="en", voice_rate="normal")
+
+
+# ── 台語（nan-TW）：先改寫成台語漢字，再用 Taigi 台語 TTS 念 ─────────
+
+from app.services.speech import audio as speech_audio
+
+
+def _wav(seconds: float = 0.5, rate: int = 22_050) -> bytes:
+    return speech_audio.pcm16_to_wav(bytes(int(seconds * rate) * 2), rate)
+
+
+class FakeTaigiClient:
+    def __init__(self, wav: Optional[bytes] = None, exc: Optional[Exception] = None, available=True):
+        self.wav = wav or _wav()
+        self.exc = exc
+        self._available = available
+        self.calls: list[dict] = []
+
+    def available(self) -> bool:
+        return self._available
+
+    def synthesize_wav(self, text: str, *, voice_label: str, speed: float) -> bytes:
+        self.calls.append({"text": text, "voice_label": voice_label, "speed": speed})
+        if self.exc is not None:
+            raise self.exc
+        return self.wav
+
+
+class FakeTaigiText:
+    def __init__(self, exc: Optional[Exception] = None):
+        self.exc = exc
+        self.calls: list[str] = []
+
+    async def to_taigi(self, text: str) -> str:
+        self.calls.append(text)
+        if self.exc is not None:
+            raise self.exc
+        return f"台語：{text}"
+
+
+async def test_taiwanese_is_converted_then_spoken_by_taigi_as_mp3():
+    engine = FakeSpeechEngine()
+    taigi = FakeTaigiClient(wav=_wav(1.5))
+    converter = FakeTaigiText()
+    service = TTSService(
+        engine=engine,
+        fallback_engine=FakeFallbackEngine(),
+        taigi_client=taigi,
+        taigi_text_converter=converter,
+    )
+
+    data, path, duration_ms = await service.synthesize(
+        "記得吃藥", language="nan-TW", voice_rate="slow", voice_gender="male"
+    )
+    try:
+        assert converter.calls == ["記得吃藥"]
+        assert taigi.calls == [{"text": "台語：記得吃藥", "voice_label": "normal_m2", "speed": 0.9}]
+        assert engine.calls == []
+        assert path.endswith(".mp3")
+        assert Path(path).read_bytes() == data
+        # 存下來的是解得開的 mp3，長度照 WAV 算
+        speech_audio.decode_to_pcm16_mono(Path(path))
+        assert duration_ms == 1500
+    finally:
+        _cleanup(path)
+
+
+@pytest.mark.parametrize(
+    "taigi,converter",
+    [
+        (FakeTaigiClient(exc=RuntimeError("HTTP 502")), FakeTaigiText()),
+        (FakeTaigiClient(), FakeTaigiText(exc=RuntimeError("Gemini 400"))),
+        (None, None),
+    ],
+    ids=["taigi-fails", "conversion-fails", "not-configured"],
+)
+async def test_taiwanese_falls_back_to_mandarin_edge_tts(taigi, converter):
+    engine = FakeSpeechEngine()
+    service = TTSService(
+        engine=engine,
+        fallback_engine=FakeFallbackEngine(),
+        taigi_client=taigi,
+        taigi_text_converter=converter,
+    )
+
+    _, path, _ = await service.synthesize("記得吃藥", language="nan-TW", voice_gender="female")
+    try:
+        assert engine.calls[0]["voice"] == "zh-TW-HsiaoChenNeural"
+        assert engine.calls[0]["text"] == "記得吃藥"
+    finally:
+        _cleanup(path)
+
+
+# 沒金鑰時不該先花一次 Gemini 改寫才發現念不了。
+async def test_taiwanese_without_key_skips_conversion():
+    converter = FakeTaigiText()
+    service = TTSService(
+        engine=FakeSpeechEngine(),
+        fallback_engine=FakeFallbackEngine(),
+        taigi_client=FakeTaigiClient(available=False),
+        taigi_text_converter=converter,
+    )
+
+    _, path, _ = await service.synthesize("記得吃藥", language="nan-TW")
+    try:
+        assert converter.calls == []
+    finally:
+        _cleanup(path)
+
+
+async def test_other_languages_never_touch_taigi():
+    taigi = FakeTaigiClient()
+    converter = FakeTaigiText()
+    service = TTSService(
+        engine=FakeSpeechEngine(),
+        fallback_engine=FakeFallbackEngine(),
+        taigi_client=taigi,
+        taigi_text_converter=converter,
+    )
+
+    _, path, _ = await service.synthesize("hello", language="zh-TW")
+    try:
+        assert taigi.calls == []
+        assert converter.calls == []
+    finally:
+        _cleanup(path)

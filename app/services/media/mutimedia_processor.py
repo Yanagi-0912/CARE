@@ -3,7 +3,14 @@ from typing import Any, Optional
 from datetime import datetime
 import mimetypes
 from app.core.config import settings
-from app.core.user_language import get_request_language
+from app.core.request_logging import stage_timer
+from app.core.user_language import (
+    TAIWANESE_LANGUAGE,
+    get_request_language,
+    get_request_speech_language,
+)
+from app.services.speech import audio
+from app.services.speech.taigi_client import TaigiClient
 
 import asyncio
 import logging
@@ -43,11 +50,19 @@ MEDIA_EXTENSIONS = {
     "file": ".bin",
 }
 
+# 長錄音切成好幾段時，同時送台語 STT 的段數上限。廠商沒寫速率限制，只說太密會回
+# 429，所以不一次全丟；一般的 LINE 語音在 25 秒內，只有一段。
+TAIGI_STT_CONCURRENCY = 3
+
+# 語音裡沒有聽到內容時，跟 webhook 沒抽到字時回同一句。
+NO_CONTENT_TEXT = "Unable to extract text from media file (no content extracted)"
+
 
 class MediaProcessorService:
     """Handle incoming LINE text and send replies based on Gemini tool output."""
 
-    def __init__(self):
+    def __init__(self, taigi_client: Optional[TaigiClient] = None):
+        self._taigi_client = taigi_client if taigi_client is not None else TaigiClient()
         logger.info("MediaProcessorService initialized")
 
     async def process_media(
@@ -76,9 +91,16 @@ class MediaProcessorService:
                 user_media_type,
                 source_file_name=source_file_name,
             )
-            user_text = await asyncio.to_thread(
-                self._extract_user_text_via_webhook, temp_file_path
-            )
+            user_text = None
+            if (
+                user_media_type.lower().strip() == "audio"
+                and get_request_speech_language() == TAIWANESE_LANGUAGE
+            ):
+                user_text = await self._transcribe_taiwanese_or_none(temp_file_path)
+            if user_text is None:
+                user_text = await asyncio.to_thread(
+                    self._extract_user_text_via_webhook, temp_file_path
+                )
             # TODO: 清洗user_text，移除不必要的空白或控制字元，確保回覆格式整潔。
             logger.info(f"Successfully processed and replied to user {user_id}")
             return user_text
@@ -90,6 +112,42 @@ class MediaProcessorService:
             # 不論成功或失敗都嘗試清理，避免暫存檔堆積。
             if temp_file_path:
                 self._cleanup_temp_file(temp_file_path)
+
+    async def _transcribe_taiwanese_or_none(self, file_path: Path) -> Optional[str]:
+        """語言選台語的使用者，語音改走 Taigi 台語 STT。
+
+        失敗回 None，由呼叫端改走 n8n／faster-whisper（此時送的語言提示是文字語言
+        zh-TW，whisper 不認得台語）。
+        """
+        if not self._taigi_client.available():
+            logger.warning("TAIGI_API_KEY 未設定，台語語音改走 faster-whisper")
+            return None
+        try:
+            with stage_timer(logger, "taigi_stt", chunks=0, ok="False") as t_stt:
+                chunks, rate = await asyncio.to_thread(self._decode_and_split, file_path)
+                t_stt["chunks"] = len(chunks)
+                semaphore = asyncio.Semaphore(TAIGI_STT_CONCURRENCY)
+
+                async def _transcribe(chunk: bytes) -> str:
+                    async with semaphore:
+                        return await asyncio.to_thread(
+                            self._taigi_client.transcribe_wav, audio.pcm16_to_wav(chunk, rate)
+                        )
+
+                parts = await asyncio.gather(*(_transcribe(c) for c in chunks))
+                t_stt["ok"] = "True"
+        except Exception:
+            logger.warning("台語 STT 失敗，改走 faster-whisper", exc_info=True)
+            return None
+        text = " ".join(p for p in parts if p)
+        return text or NO_CONTENT_TEXT
+
+    @staticmethod
+    def _decode_and_split(file_path: Path) -> tuple[list[bytes], int]:
+        # LINE 錄音是 m4a，台語 STT 不收（見 app/services/speech/audio.py）；
+        # 過長的錄音後段會亂掉，要先在停頓處切段。
+        pcm, rate = audio.decode_to_pcm16_mono(file_path, audio.STT_SAMPLE_RATE)
+        return audio.split_on_pauses(pcm, rate), rate
 
     def _download_media_to_tmp(
         self,
@@ -202,6 +260,8 @@ class MediaProcessorService:
                     # 模型會把真實的 LINE 語音判成緬甸語、日文而轉出亂碼，亂碼再觸發重解碼，
                     # 2026-09-14 一則 9.7 秒的語音因此轉了 133 秒、撞上下面的逾時。
                     # 圖片與文件也會帶著這個欄位，n8n 那兩條分支不讀它。
+                    # 送的是文字語言：選台語的使用者在台語 STT 失敗時退到這裡，whisper
+                    # 不認得台語，給 zh-TW。
                     data={"language": get_request_language()},
                     timeout=WEBHOOK_TIMEOUT_SECONDS,
                 )
@@ -248,7 +308,7 @@ class MediaProcessorService:
 
         if not parsed_text:
             logger.warning("Webhook returned no extractable text content")
-            return "Unable to extract text from media file (no content extracted)"
+            return NO_CONTENT_TEXT
 
         return parsed_text
 

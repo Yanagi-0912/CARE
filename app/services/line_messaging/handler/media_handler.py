@@ -8,6 +8,11 @@ from linebot.v3.webhooks import (
     AudioMessageContent,
     FileMessageContent,
 )
+from app.core.user_language import (
+    DEFAULT_USER_LANGUAGE,
+    reset_request_language,
+    set_request_language,
+)
 from app.services.media.mutimedia_processor import media_processor_service
 from app.services.line_messaging.handler.message_handler import (
     BaseLineMessageHandler,
@@ -62,12 +67,31 @@ class LineMediaHandler(BaseLineMessageHandler):
             raise ValueError("Expected Media Message Content")
 
         user_id = getattr(event.source, "user_id", "")
-        user_text, message_type, image_text = await self._extract_media_text(
-            message, user_id
-        )
+        # 辨識語音之前就要知道使用者的語言：選台語的走台語 STT，其他語言交給
+        # faster-whisper 當提示。語言原本要到 _process_and_reply 讀了 profile 才
+        # 設定，那時辨識早就做完了——所有語音都是用預設的 zh-TW 辨識的
+        # （2026-09-14 發現，ba9bf1b 的語言提示因此從沒生效）。
+        lang_token = set_request_language(await self._language_choice_for(user_id))
+        try:
+            user_text, message_type, image_text = await self._extract_media_text(
+                message, user_id
+            )
+        finally:
+            reset_request_language(lang_token)
         await self._process_and_reply(
             event, user_text, message_type, image_text=image_text
         )
+
+    async def _language_choice_for(self, user_id: str) -> str:
+        """讀使用者設定的語言（含台語）；讀不到就用預設，不擋辨識。"""
+        if not self._user_profile_service or not user_id:
+            return DEFAULT_USER_LANGUAGE
+        try:
+            profile = await self._user_profile_service.get_user_profile(user_id)
+        except Exception:
+            logger.warning("辨識前讀取使用者語言失敗，以預設語言辨識", exc_info=True)
+            return DEFAULT_USER_LANGUAGE
+        return self._language_choice_from_profile(profile)
 
     async def _extract_media_text(
         self, message, user_id: str

@@ -9,7 +9,20 @@ from typing import Optional, Protocol, Tuple
 import requests
 
 from app.core.config import settings
-from app.core.user_language import DEFAULT_USER_LANGUAGE, SUPPORTED_LANGUAGES
+from app.core.request_logging import stage_timer
+from app.core.user_language import (
+    DEFAULT_USER_LANGUAGE,
+    SUPPORTED_LANGUAGES,
+    TAIWANESE_LANGUAGE,
+)
+from app.services.speech import audio
+from app.services.speech.taigi_client import (
+    DEFAULT_SPEED as TAIGI_DEFAULT_SPEED,
+    DEFAULT_VOICE_LABEL as TAIGI_DEFAULT_VOICE_LABEL,
+    SPEED_BY_RATE as TAIGI_SPEED_BY_RATE,
+    VOICE_LABEL_BY_GENDER as TAIGI_VOICE_LABEL_BY_GENDER,
+    TaigiClient,
+)
 
 try:
     import edge_tts
@@ -57,6 +70,10 @@ DEFAULT_VOICE_RATE = "normal"
 EDGE_TTS_CONNECT_TIMEOUT_SECONDS = 5
 EDGE_TTS_RECEIVE_TIMEOUT_SECONDS = 15
 
+# 台語 TTS 回 WAV，轉成跟 edge-tts 同規格的 48 kbps 單聲道 mp3（edge-tts 固定輸出
+# audio-24khz-48kbitrate-mono-mp3），LINE 那頭收到的格式不變。
+TAIGI_MP3_BIT_RATE = 48_000
+
 
 class SpeechEngine(Protocol):
     """主要合成引擎介面（edge-tts）：以 voice/rate 產生語音位元組。"""
@@ -68,6 +85,12 @@ class FallbackSpeechEngine(Protocol):
     """備援合成引擎介面（gTTS）：以語言代碼產生語音位元組。"""
 
     async def synthesize(self, text: str, *, language: str) -> bytes: ...
+
+
+class TaigiTextConverterLike(Protocol):
+    """華語 → 台語漢字（app/services/speech/taigi_text.TaigiTextConverter）。"""
+
+    async def to_taigi(self, text: str) -> str: ...
 
 
 class EdgeTTSEngine:
@@ -113,6 +136,9 @@ class GTTSEngine:
 class TTSService:
     """Text-to-speech service：edge-tts 為主引擎，gTTS 為備援。
 
+    語言是台語（nan-TW）時先把華語改寫成台語漢字、交給 Taigi 台語 TTS 念；
+    任何一步失敗就改用 zh-TW 念國語——文字回覆本來就是華語，有聲音總比沒有好。
+
     synthesize(text, language, voice_rate, voice_gender) -> (bytes, path_or_url, duration_ms)。
     """
 
@@ -120,9 +146,13 @@ class TTSService:
         self,
         engine: SpeechEngine = EdgeTTSEngine(),
         fallback_engine: FallbackSpeechEngine = GTTSEngine(),
+        taigi_client: Optional[TaigiClient] = None,
+        taigi_text_converter: Optional[TaigiTextConverterLike] = None,
     ) -> None:
         self._engine = engine
         self._fallback_engine = fallback_engine
+        self._taigi_client = taigi_client
+        self._taigi_text_converter = taigi_text_converter
 
     async def synthesize(
         self,
@@ -136,23 +166,63 @@ class TTSService:
         The second value is either a local file path or a public audio URL.
         """
         try:
+            if language == TAIWANESE_LANGUAGE:
+                taiwanese = await self._synthesize_taiwanese_or_none(
+                    text, voice_rate, voice_gender
+                )
+                if taiwanese is not None:
+                    return taiwanese
+                language = DEFAULT_USER_LANGUAGE
+
             if settings.N8N_TTS_WEBHOOK_URL.strip():
                 return await self._synthesize_via_n8n(text, language)
 
-            TTS_TMP_DIR.mkdir(parents=True, exist_ok=True)
-            self.cleanup_expired_audio_files()
-
             data = await self._synthesize_bytes(text, language, voice_rate, voice_gender)
-            duration_ms = self._get_duration_ms(data, text)
-            filename = f"tts_{uuid.uuid4().hex}.mp3"
-            tmp_path = TTS_TMP_DIR / filename
-            with tmp_path.open("wb") as f:
-                f.write(data)
-            logger.debug("TTS synthesized audio: %s, saved to %s", filename, tmp_path)
-            return data, str(tmp_path), duration_ms
+            return self._save_mp3(data, self._get_duration_ms(data, text))
         except Exception:
             logger.exception("TTS synthesis failed")
             raise
+
+    def _save_mp3(self, data: bytes, duration_ms: int) -> Tuple[bytes, str, int]:
+        TTS_TMP_DIR.mkdir(parents=True, exist_ok=True)
+        self.cleanup_expired_audio_files()
+        filename = f"tts_{uuid.uuid4().hex}.mp3"
+        tmp_path = TTS_TMP_DIR / filename
+        with tmp_path.open("wb") as f:
+            f.write(data)
+        logger.debug("TTS synthesized audio: %s, saved to %s", filename, tmp_path)
+        return data, str(tmp_path), duration_ms
+
+    async def _synthesize_taiwanese_or_none(
+        self, text: str, voice_rate: str, voice_gender: str
+    ) -> Optional[Tuple[bytes, str, int]]:
+        client = self._taigi_client
+        converter = self._taigi_text_converter
+        if client is None or converter is None or not client.available():
+            logger.warning("台語 TTS 未設定（TAIGI_API_KEY），改念國語")
+            return None
+        try:
+            with stage_timer(logger, "taigi_text", chars=len(text or ""), ok="False") as t_text:
+                taigi_text = await converter.to_taigi(text)
+                t_text["ok"] = "True"
+            with stage_timer(logger, "taigi_tts", chars=len(taigi_text), ok="False") as t_tts:
+                wav = await asyncio.to_thread(
+                    client.synthesize_wav,
+                    taigi_text,
+                    voice_label=TAIGI_VOICE_LABEL_BY_GENDER.get(
+                        voice_gender, TAIGI_DEFAULT_VOICE_LABEL
+                    ),
+                    speed=TAIGI_SPEED_BY_RATE.get(voice_rate, TAIGI_DEFAULT_SPEED),
+                )
+                t_tts["ok"] = "True"
+            pcm, rate = await asyncio.to_thread(audio.decode_to_pcm16_mono, io.BytesIO(wav))
+            mp3 = await asyncio.to_thread(
+                audio.encode_mp3, pcm, rate, bit_rate=TAIGI_MP3_BIT_RATE
+            )
+        except Exception:
+            logger.warning("台語 TTS 失敗，改念國語", exc_info=True)
+            return None
+        return self._save_mp3(mp3, max(DEFAULT_DURATION_MS, audio.pcm_duration_ms(pcm, rate)))
 
     async def _synthesize_bytes(
         self, text: str, language: str, voice_rate: str, voice_gender: str = DEFAULT_VOICE_GENDER

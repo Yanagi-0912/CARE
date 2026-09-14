@@ -58,6 +58,12 @@ class Settings:
     N8N_TTS_TIMEOUT_SECONDS: int = int(os.getenv("N8N_TTS_TIMEOUT_SECONDS", "20"))
     TTS_DEFAULT_VOICE: str = os.getenv("TTS_DEFAULT_VOICE", "")
 
+    # 台語語音（Taigi AI Labs，見 app/services/speech/taigi_client.py）。金鑰由
+    # care-backend-secret 注入；沒設時語言選台語的使用者照舊走 faster-whisper 與
+    # edge-tts 國語。
+    TAIGI_API_KEY: str = os.getenv("TAIGI_API_KEY", "")
+    TAIGI_BASE_URL: str = os.getenv("TAIGI_BASE_URL", "https://learn-language.tokyo")
+
     # LINE LIFF 配置
     LIFF_CHANNEL_ID: str = os.getenv("LIFF_CHANNEL_ID", "")
     LIFF_URL: str = os.getenv("LIFF_URL", "")

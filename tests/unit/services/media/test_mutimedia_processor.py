@@ -1,10 +1,16 @@
+import array
 import asyncio
+import io
+import math
 import time
+import wave
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 import pytest
 
-from app.services.media.mutimedia_processor import MediaProcessorService
+from app.core.user_language import reset_request_language, set_request_language
+from app.services.media.mutimedia_processor import NO_CONTENT_TEXT, MediaProcessorService
+from app.services.speech import audio as speech_audio
 
 class FakeGetResponse:
     def __init__(self, headers=None, chunks=None, status_code=200):
@@ -134,8 +140,6 @@ async def test_process_media_does_not_block_event_loop(svc, tmp_path):
 # 超過 WEBHOOK_TIMEOUT_SECONDS（120 秒）而失敗。給了語言後同一段只要 4.4 秒。
 @pytest.mark.parametrize("lang", ["zh-TW", "id", "vi"])
 def test_webhook_sends_user_language_for_asr(svc, tmp_path, lang):
-    from app.core.user_language import reset_request_language, set_request_language
-
     p = tmp_path / "a.m4a"
     p.write_bytes(b"x")
     token = set_request_language(lang)
@@ -155,8 +159,6 @@ def test_webhook_sends_user_language_for_asr(svc, tmp_path, lang):
 @pytest.mark.asyncio
 async def test_user_language_reaches_webhook_through_to_thread(svc, tmp_path):
     """process_media 以 asyncio.to_thread 呼叫 webhook；語言要能跟著 context 過去。"""
-    from app.core.user_language import reset_request_language, set_request_language
-
     p = tmp_path / "a.m4a"
     p.write_bytes(b"x")
     token = set_request_language("th")
@@ -171,3 +173,140 @@ async def test_user_language_reaches_webhook_through_to_thread(svc, tmp_path):
     finally:
         reset_request_language(token)
     assert post.call_args.kwargs["data"] == {"language": "th"}
+
+
+# faster-whisper 不認得台語；台語 STT 失敗退到 webhook 時要給國語提示。
+def test_webhook_gets_zh_tw_hint_for_taiwanese_user(svc, tmp_path):
+    p = tmp_path / "a.m4a"
+    p.write_bytes(b"x")
+    token = set_request_language("nan-TW")
+    try:
+        with patch("app.services.media.mutimedia_processor.MEDIA_PARSE_WEBHOOK_URL", "https://x"), \
+             patch("app.services.media.mutimedia_processor.requests.post", return_value=FakePostResponse(
+                 headers={"Content-Type": "application/json"},
+                 text='{"user_text":"hello"}',
+                 payload={"user_text": "hello"},
+             )) as post:
+            svc._extract_user_text_via_webhook(p)
+    finally:
+        reset_request_language(token)
+    assert post.call_args.kwargs["data"] == {"language": "zh-TW"}
+
+
+# ── 語言選台語的使用者，語音走 Taigi 台語 STT ─────────────────────────
+
+RATE = 16_000
+
+
+def _tone(seconds: float) -> bytes:
+    n = int(seconds * RATE)
+    return array.array(
+        "h", (int(8000 * math.sin(2 * math.pi * 440 * i / RATE)) for i in range(n))
+    ).tobytes()
+
+
+def _silence(seconds: float) -> bytes:
+    return bytes(int(seconds * RATE) * 2)
+
+
+def _wav_seconds(wav: bytes) -> float:
+    with wave.open(io.BytesIO(wav)) as w:
+        return w.getnframes() / w.getframerate()
+
+
+class FakeTaigiClient:
+    """回傳「N秒」，N 是收到那段音檔的長度，用來確認分段順序。"""
+
+    def __init__(self, text=None, exc=None, available=True):
+        self.text = text
+        self.exc = exc
+        self._available = available
+        self.wavs: list[bytes] = []
+
+    def available(self):
+        return self._available
+
+    def transcribe_wav(self, wav: bytes) -> str:
+        self.wavs.append(wav)
+        if self.exc is not None:
+            raise self.exc
+        if self.text is not None:
+            return self.text
+        return f"{round(_wav_seconds(wav))}秒"
+
+
+async def _process_as(lang, media_type, taigi, tmp_path, pcm=None, webhook_text="whisper 結果"):
+    p = tmp_path / "voice.wav"
+    p.write_bytes(speech_audio.pcm16_to_wav(pcm or _tone(2), RATE))
+    svc = MediaProcessorService(taigi_client=taigi)
+    token = set_request_language(lang)
+    try:
+        with patch.object(svc, "_download_media_to_tmp", return_value=p), \
+             patch.object(svc, "_extract_user_text_via_webhook", return_value=webhook_text) as webhook:
+            out = await svc.process_media("mid", media_type, user_id="U1")
+    finally:
+        reset_request_language(token)
+    return out, webhook
+
+
+@pytest.mark.asyncio
+async def test_taiwanese_audio_goes_to_taigi_as_16k_wav(tmp_path):
+    taigi = FakeTaigiClient(text="阿公，你食飽未？")
+
+    out, webhook = await _process_as("nan-TW", "audio", taigi, tmp_path)
+
+    assert out == "阿公，你食飽未？"
+    webhook.assert_not_called()
+    assert len(taigi.wavs) == 1
+    with wave.open(io.BytesIO(taigi.wavs[0])) as w:
+        assert (w.getframerate(), w.getnchannels()) == (RATE, 1)
+
+
+@pytest.mark.asyncio
+async def test_long_taiwanese_audio_is_split_and_joined_in_order(tmp_path):
+    taigi = FakeTaigiClient()
+    pcm = _tone(18) + _silence(0.5) + _tone(21.5) + _silence(0.5) + _tone(10)
+
+    out, _ = await _process_as("nan-TW", "audio", taigi, tmp_path, pcm=pcm)
+
+    assert out == "18秒 22秒 10秒"
+    assert all(_wav_seconds(w) <= speech_audio.MAX_STT_CHUNK_SECONDS for w in taigi.wavs)
+
+
+@pytest.mark.asyncio
+async def test_silent_taiwanese_audio_returns_no_content_text(tmp_path):
+    out, webhook = await _process_as("nan-TW", "audio", FakeTaigiClient(text=""), tmp_path)
+
+    assert out == NO_CONTENT_TEXT
+    webhook.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_taigi_failure_falls_back_to_webhook(tmp_path):
+    taigi = FakeTaigiClient(exc=RuntimeError("HTTP 500"))
+
+    out, webhook = await _process_as("nan-TW", "audio", taigi, tmp_path)
+
+    assert out == "whisper 結果"
+    webhook.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_missing_taigi_key_falls_back_without_calling_taigi(tmp_path):
+    taigi = FakeTaigiClient(available=False)
+
+    out, _ = await _process_as("nan-TW", "audio", taigi, tmp_path)
+
+    assert out == "whisper 結果"
+    assert taigi.wavs == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("lang,media_type", [("zh-TW", "audio"), ("nan-TW", "image")])
+async def test_taigi_only_for_taiwanese_audio(tmp_path, lang, media_type):
+    taigi = FakeTaigiClient()
+
+    out, _ = await _process_as(lang, media_type, taigi, tmp_path)
+
+    assert out == "whisper 結果"
+    assert taigi.wavs == []

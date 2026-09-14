@@ -5,7 +5,9 @@ TBD - created by archiving change voice-rate-and-multilingual-tts. Update Purpos
 ## Requirements
 ### Requirement: 語音語言跟隨使用者語言設定
 
-產生語音回覆時，系統 SHALL 以該使用者 `settings.language`（經 normalize，集合為 `zh-TW`、`en`、`id`、`vi`、`th`、`ja`）決定合成語言與音色。語言未設定、為空或不在支援集合內時 SHALL fallback 為 `zh-TW`。系統 SHALL NOT 將文字回覆的語言與語音的合成語言分離。
+產生語音回覆時，系統 SHALL 以該使用者 `settings.language` 決定合成語言與音色。可選的值為 `zh-TW`、`en`、`id`、`vi`、`th`、`ja` 與 `nan-TW`（台語）；未設定、為空或不在其中時 SHALL fallback 為 `zh-TW`。除 `nan-TW` 外，系統 SHALL NOT 將文字回覆的語言與語音的合成語言分離。
+
+`nan-TW` 只換語音：文字回覆 SHALL 以 `zh-TW` 撰寫；語音 SHALL 先把要念的內容改寫成台語漢字，再以台語 TTS 合成。台語合成（含改寫）失敗或未設定時 SHALL 改以 `zh-TW` 音色合成，SHALL NOT 因此只回文字。
 
 #### Scenario: 日文使用者取得日文語音
 
@@ -16,6 +18,30 @@ TBD - created by archiving change voice-rate-and-multilingual-tts. Update Purpos
 
 - **WHEN** 使用者 `settings.language` 為 `ko` 或空值且需要產生語音
 - **THEN** 語音以 `zh-TW` 音色合成
+
+#### Scenario: 台語使用者的文字是中文、語音是台語
+
+- **WHEN** 使用者 `settings.language` 為 `nan-TW` 且系統產生一則回覆並附加語音
+- **THEN** 文字回覆為繁體中文，語音以台語合成
+
+#### Scenario: 台語合成失敗改念國語
+
+- **WHEN** 使用者 `settings.language` 為 `nan-TW` 且台語改寫或台語 TTS 失敗
+- **THEN** 語音以 `zh-TW` 音色合成，文字回覆不受影響
+
+### Requirement: 語音訊息依使用者語言辨識
+
+使用者傳送語音訊息時，系統 SHALL 在辨識之前取得該使用者的 `settings.language`。語言為 `nan-TW` 時 SHALL 以台語 STT 辨識；台語 STT 失敗或未設定時 SHALL 改走一般辨識流程，並以 `zh-TW` 作為語言提示。其他語言 SHALL 以該語言作為一般辨識流程的語言提示。
+
+#### Scenario: 台語使用者的語音走台語辨識
+
+- **WHEN** 使用者 `settings.language` 為 `nan-TW` 並傳送一則語音訊息
+- **THEN** 語音以台語 STT 辨識，不送一般辨識流程
+
+#### Scenario: 其他語言的語音帶語言提示
+
+- **WHEN** 使用者 `settings.language` 為 `vi` 並傳送一則語音訊息
+- **THEN** 一般辨識流程收到的語言提示為 `vi`
 
 ### Requirement: 語音語速可由使用者設定
 

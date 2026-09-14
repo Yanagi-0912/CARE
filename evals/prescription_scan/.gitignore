@@ -1,0 +1,3 @@
+# 樣本圖取自 Wikimedia Commons（CC BY-SA）與新聞、部落格（版權屬原作者），
+# 只供本機量測，不進版控。出處記在 golden.jsonl 的 source 欄位。
+samples/

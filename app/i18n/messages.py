@@ -661,15 +661,61 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "{department} ใกล้เคียง",
         "ja": "近くの{department}",
     },
+    # 列表裡沒有一家登記所查科別時的標題（附近全是沒登記專科的診所）。長輩可能只看
+    # 標題不看副標，因此標題本身就要揭露「沒有搜尋到該科診所」，不能只寫搜尋條件。
+    "location.department.title_unspecified": {
+        "zh-TW": "附近沒有搜尋到「{department}」診所",
+        "en": 'No nearby clinic found for "{department}"',
+        "id": 'Tidak ditemukan klinik "{department}" di sekitar Anda',
+        "vi": 'Không tìm thấy phòng khám "{department}" gần đây',
+        "th": 'ไม่พบคลินิก "{department}" ใกล้เคียง',
+        "ja": "近くに「{department}」の診療所は見つかりませんでした",
+    },
+    "location.department.all_unspecified": {
+        "zh-TW": (
+            "※ 下面 {count} 間都沒有登記{department}。原因是健保院所資料只標示它們"
+            "未登記專科（多為一般門診），系統因為距離近而一併列出；是否有看"
+            "{department}，請先去電確認。"
+        ),
+        "en": (
+            "※ None of the {count} below list {department}: they have no specialty "
+            "registered in the NHI facility data (mostly general practice) and are "
+            "shown because they are closest to you. Please call ahead to check "
+            "whether they see {department} patients."
+        ),
+        "id": (
+            "※ Tidak satu pun dari {count} fasilitas di bawah mencantumkan {department}: "
+            "dalam data fasilitas NHI mereka tidak memiliki spesialisasi terdaftar "
+            "(umumnya praktik umum) dan ditampilkan karena paling dekat dengan Anda. "
+            "Sebaiknya telepon dulu untuk memastikan layanan {department}."
+        ),
+        "vi": (
+            "※ Cả {count} cơ sở bên dưới đều không ghi {department}: trong dữ liệu "
+            "cơ sở y tế NHI, họ không đăng ký chuyên khoa (phần lớn là khám tổng quát) "
+            "và được hiển thị vì gần bạn nhất. Vui lòng gọi trước để hỏi có khám "
+            "{department} không."
+        ),
+        "th": (
+            "※ สถานพยาบาลทั้ง {count} แห่งด้านล่างไม่ได้ระบุ{department}: "
+            "ในข้อมูลสถานพยาบาล NHI ไม่ได้ลงทะเบียนแผนกเฉพาะทาง (ส่วนใหญ่เป็นการตรวจโรคทั่วไป) "
+            "และแสดงเพราะอยู่ใกล้คุณที่สุด แนะนำให้โทรสอบถามก่อนว่ามีบริการ{department}หรือไม่"
+        ),
+        "ja": (
+            "※ 以下の {count} 件はいずれも{department}の登録がありません。健保の医療機関"
+            "データで専門科の登録がなく（主に一般診療）、最も近いため表示しています。"
+            "{department}を受診できるか、事前に電話でご確認ください。"
+        ),
+    },
     # 使用者說的科別在健保資料裡不存在時（例如腸胃科屬於內科），必須誠實說明這層
-    # 對應，否則使用者會以為系統真的找到了腸胃專科。
+    # 對應，否則使用者會以為系統真的找到了腸胃專科。句尾寫「依…搜尋」而非「以下為
+    # …院所」：搜內科會一併列出沒登記專科的一般門診，不能保證每一家都是內科。
     "location.department.alias_note": {
-        "zh-TW": "※「{requested}」在健保院所資料中歸類於「{canonical}」，以下為{canonical}院所。",
-        "en": '※ "{requested}" is classified under "{canonical}" in the NHI facility data. Results below are {canonical} facilities.',
-        "id": '※ "{requested}" diklasifikasikan sebagai "{canonical}" dalam data fasilitas NHI. Hasil di bawah adalah fasilitas {canonical}.',
-        "vi": '※ "{requested}" được xếp vào "{canonical}" trong dữ liệu cơ sở y tế NHI. Kết quả bên dưới là các cơ sở {canonical}.',
-        "th": "※ \"{requested}\" ถูกจัดอยู่ในหมวด \"{canonical}\" ในข้อมูลสถานพยาบาล NHI ผลลัพธ์ด้านล่างคือสถานพยาบาล{canonical}",
-        "ja": "※「{requested}」は健保の医療機関データでは「{canonical}」に分類されます。以下は{canonical}の医療機関です。",
+        "zh-TW": "※「{requested}」在健保院所資料中歸類於「{canonical}」，以下依{canonical}搜尋。",
+        "en": '※ "{requested}" is classified under "{canonical}" in the NHI facility data. Results below are from a {canonical} search.',
+        "id": '※ "{requested}" diklasifikasikan sebagai "{canonical}" dalam data fasilitas NHI. Hasil di bawah berdasarkan pencarian {canonical}.',
+        "vi": '※ "{requested}" được xếp vào "{canonical}" trong dữ liệu cơ sở y tế NHI. Kết quả bên dưới được tìm theo {canonical}.',
+        "th": "※ \"{requested}\" ถูกจัดอยู่ในหมวด \"{canonical}\" ในข้อมูลสถานพยาบาล NHI ผลลัพธ์ด้านล่างค้นหาตาม{canonical}",
+        "ja": "※「{requested}」は健保の医療機関データでは「{canonical}」に分類されます。以下は{canonical}で検索した結果です。",
     },
     "location.nearby.found_within": {
         "zh-TW": "已為您找到 {radius_km} 公里內最近的 {count} 間，點擊查看詳細資訊",
@@ -1407,25 +1453,32 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "ja": "{day} {time} 開始",
     },
     "flex.facility.unspecified_department": {
-        "zh-TW": "此院所資料未載明科別，是依距離補列的鄰近選項，建議先去電確認有無此診。",
+        "zh-TW": (
+            "此院所資料未載明科別（屬一般門診），因離您近而一併列出，"
+            "不一定有您要找的科別，建議先去電確認。"
+        ),
         "en": (
-            "This facility lists no specialty; it is included as a nearby option "
-            "by distance. Please call ahead to confirm."
+            "This facility lists no specialty (general practice). It is shown "
+            "because it is nearby and may not offer the specialty you need. "
+            "Please call ahead to confirm."
         ),
         "id": (
-            "Fasilitas ini tidak mencantumkan spesialisasi; ditampilkan sebagai "
-            "opsi terdekat. Sebaiknya telepon dulu untuk memastikan."
+            "Fasilitas ini tidak mencantumkan spesialisasi (praktik umum). "
+            "Ditampilkan karena lokasinya dekat dan belum tentu memiliki "
+            "spesialisasi yang Anda cari. Sebaiknya telepon dulu untuk memastikan."
         ),
         "vi": (
-            "Cơ sở này không ghi chuyên khoa; được đưa vào theo khoảng cách. "
+            "Cơ sở này không ghi chuyên khoa (khám tổng quát). Được hiển thị vì "
+            "ở gần bạn, có thể không có chuyên khoa bạn cần. "
             "Vui lòng gọi trước để xác nhận."
         ),
         "th": (
-            "สถานพยาบาลนี้ไม่ได้ระบุแผนก แสดงเป็นตัวเลือกใกล้เคียงตามระยะทาง "
-            "แนะนำให้โทรสอบถามก่อน"
+            "สถานพยาบาลนี้ไม่ได้ระบุแผนก (ตรวจโรคทั่วไป) แสดงเพราะอยู่ใกล้คุณ "
+            "อาจไม่มีแผนกที่คุณต้องการ แนะนำให้โทรสอบถามก่อน"
         ),
         "ja": (
-            "この医療機関は診療科の記載がなく、距離順で補足表示しています。"
+            "この医療機関は診療科の記載がありません（一般診療）。"
+            "お近くのため表示していますが、お探しの診療科がない場合があります。"
             "受診前に電話でご確認ください。"
         ),
     },

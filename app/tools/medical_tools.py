@@ -71,6 +71,20 @@ def _pharmacy_data_gap_note(result: NearbySearchResult) -> str | None:
     )
 
 
+def _all_unspecified(result: NearbySearchResult) -> bool:
+    """
+    列表裡沒有一家登記了所查科別。
+
+    搜內科時會一併列出沒登記專科的一般門診（見 DepartmentSearchResult.unspecified_ids），
+    附近若全是這種診所，標題「附近的內科」底下五家都不是內科。此時標題與副標要換成
+    講清楚原因的文案；搜尋結果本身不變。
+    """
+    unspecified = getattr(result, "unspecified_ids", frozenset())
+    return bool(result.facilities) and all(
+        facility.id in unspecified for facility in result.facilities
+    )
+
+
 def _build_range_subtitle(
     result: NearbySearchResult, *, late_night_auto: bool = False
 ) -> str:
@@ -117,6 +131,13 @@ def _build_range_subtitle(
     if match is not None and match.is_alias:
         note = t("location.department.alias_note").format(
             requested=match.requested, canonical=match.canonical
+        )
+        subtitle = f"{subtitle}\n{note}"
+
+    if _all_unspecified(result) and match is not None:
+        note = t("location.department.all_unspecified").format(
+            count=count,
+            department=match.canonical,
         )
         subtitle = f"{subtitle}\n{note}"
 
@@ -342,12 +363,20 @@ async def find_nearby_facilities_by_department(
     department_label = result.match.canonical
     if result.facility_type_match is not None:
         department_label = f"{department_label}（{result.facility_type_match.category}）"
+    title_key = (
+        "location.department.title_unspecified"
+        if _all_unspecified(result)
+        else "location.department.title"
+    )
+    title_department = (
+        result.match.canonical
+        if title_key == "location.department.title_unspecified"
+        else department_label
+    )
     return _to_flex_message_text(
         generate_facility_list_flex_message(
             result.facilities,
-            title_override=t("location.department.title").format(
-                department=department_label
-            ),
+            title_override=t(title_key).format(department=title_department),
             subtitle_override=_build_range_subtitle(result),
             unspecified_ids=result.unspecified_ids,
         )

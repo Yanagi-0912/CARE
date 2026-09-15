@@ -11,6 +11,7 @@ from linebot.v3.webhooks import (
     LocationMessageContent,
     MessageEvent,
     PostbackEvent,
+    StickerMessageContent,
     TextMessageContent,
     VideoMessageContent,
 )
@@ -31,7 +32,7 @@ from app.core.user_language import (
     reset_request_language,
     set_request_language,
 )
-from app.core.request_logging import log_done, log_start
+from app.core.request_logging import log_done, log_stage, log_start
 from app.i18n.messages import t
 from app.models.medication import to_taipei_hm
 from app.services.appointment.appointment_service import AppointmentError
@@ -52,6 +53,7 @@ from app.services.line_messaging.handler.facility_detail_handler import LineFaci
 from app.services.line_messaging.handler.media_handler import LineMediaHandler
 from app.services.line_messaging.handler.location_handler import LineLocationHandler
 from app.services.line_messaging.reply.reply import LineReplier
+from app.services.line_messaging.sticker_reply import sticker_reply_key
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +67,8 @@ def _event_label(event) -> str:
             return "text"
         if isinstance(message, LocationMessageContent):
             return "location"
+        if isinstance(message, StickerMessageContent):
+            return "sticker"
         if isinstance(
             message,
             (
@@ -176,8 +180,38 @@ class LineEventDispatcher:
             ),
         ):
             await self._media_handler.handle(event)
+        elif isinstance(message, StickerMessageContent):
+            await self._reply_to_sticker(event, message)
         else:
             logger.warning("Unsupported message content type: %s", type(message).__name__)
+
+    async def _reply_to_sticker(
+        self, event: MessageEvent, message: StickerMessageContent
+    ) -> None:
+        """貼圖回一句固定的話，不進 agent（理由見 sticker_reply 模組說明）。
+
+        不唸語音、不寫進對話紀錄：跟按鈕回覆的「已記錄」一樣只是一句應答；對話
+        紀錄只帶最近五則進 agent，貼圖寫進去會把前面真正的提問擠出去。
+        """
+        user_id = getattr(event.source, "user_id", "")
+        key = sticker_reply_key(message.keywords, message.text)
+        # 關鍵字是實驗性欄位：記下每張貼圖帶了幾個、落在哪一類，才看得出
+        # fallback 的比例高不高、值不值得改成讓模型看圖。
+        log_stage(
+            logger,
+            "sticker",
+            reply=key,
+            keywords=len(message.keywords or []),
+            has_text=bool(message.text),
+        )
+        language = await self._resolve_user_language(user_id)
+        await self._replier.reply(
+            reply_token=event.reply_token,
+            message_text=t(key, language=language),
+            user_id=user_id,
+            voice_reply_enabled=False,
+            language=language,
+        )
 
     async def _handle_PostbackEvent(self, event: PostbackEvent) -> None:
         user_id = getattr(event.source, "user_id", "")

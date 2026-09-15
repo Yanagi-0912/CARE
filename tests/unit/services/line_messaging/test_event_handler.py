@@ -12,10 +12,12 @@ from linebot.v3.webhooks import (
     MessageEvent,
     PostbackContent,
     PostbackEvent,
+    StickerMessageContent,
     TextMessageContent,
     UserSource,
 )
 
+from app.i18n.messages import t
 from app.models.chat_message import ChatMessage
 from app.schemas import MedicalFacility
 from app.services.history.history_service import LineMessageHistoryService
@@ -906,4 +908,69 @@ async def test_handle_text_message_emits_start_done_and_stage_logs(
     assert any(m.startswith("stage=agent_done") for m in messages)
     assert any(m.startswith("stage=reply") for m in messages)
     assert any(m.startswith("DONE status=ok") for m in messages)
+
+
+def _sticker(**overrides) -> StickerMessageContent:
+    fields = {
+        "id": "M_STK",
+        "packageId": "11537",
+        "stickerId": "52002738",
+        "stickerResourceType": "ANIMATION",
+        "quoteToken": "qt",
+    }
+    fields.update(overrides)
+    return StickerMessageContent(**fields)
+
+
+@pytest.mark.asyncio
+async def test_handle_sticker_replies_without_agent(
+    handler,
+    mock_agent,
+    mock_line_api,
+    mock_tts_service,
+    mock_history_service,
+):
+    """貼圖回一句固定的話：不進 agent、不唸語音、不寫進對話紀錄。"""
+    message = _sticker(keywords=["hi", "Hello", "greetings"])
+
+    await handler.handle(_message_event(message))
+
+    mock_agent.invoke.assert_not_called()
+    mock_tts_service.synthesize.assert_not_called()
+    mock_history_service.save_turn.assert_not_called()
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert reply_req.reply_token == "dummy_token"
+    assert len(reply_req.messages) == 1
+    assert reply_req.messages[0].text == t("sticker.reply.greeting", "zh-TW")
+
+
+@pytest.mark.asyncio
+async def test_handle_sticker_without_keywords_follows_user_language(
+    handler,
+    mock_user_profile_service,
+    mock_line_api,
+):
+    mock_user_profile_service.get_user_profile.return_value = {
+        "settings": {"language": "en"}
+    }
+
+    await handler.handle(_message_event(_sticker(stickerResourceType="STATIC")))
+
+    reply_req = mock_line_api.reply_message.call_args[0][0]
+    assert reply_req.messages[0].text == t("sticker.reply.fallback", "en")
+
+
+@pytest.mark.asyncio
+async def test_handle_sticker_logs_event_and_reply(handler, caplog):
+    import logging
+
+    with caplog.at_level(logging.INFO):
+        await handler.handle(_message_event(_sticker(keywords=["Thank you"])))
+
+    messages = [r.getMessage() for r in caplog.records]
+    assert any(m.startswith("START event=sticker") for m in messages)
+    assert any(
+        m.startswith("stage=sticker") and "reply=sticker.reply.thanks" in m
+        for m in messages
+    )
 

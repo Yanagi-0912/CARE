@@ -499,6 +499,98 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "ขออภัย เกิดข้อผิดพลาดขณะประมวลผลข้อความของคุณ กรุณาลองใหม่ภายหลัง",
         "ja": "申し訳ありません。メッセージの処理中にエラーが発生しました。しばらくしてから再度お試しください。",
     },
+    # --- 貼圖的簡短回覆 ----------------------------------------------------
+    #
+    # 依 LINE 附上的貼圖關鍵字挑一句（見 app/services/line_messaging/sticker_reply.py）。
+    # 只是應答，不進 agent；對不上任何一類時回 fallback。
+    "sticker.reply.thanks": {
+        "zh-TW": "不客氣！有健康上的問題，隨時都可以問我。",
+        "en": "You're welcome! Ask me about your health anytime.",
+        "id": "Sama-sama! Tanyakan soal kesehatan Anda kapan saja.",
+        "vi": "Không có gì! Bạn cứ hỏi tôi về sức khỏe bất cứ lúc nào.",
+        "th": "ด้วยความยินดี! มีคำถามเรื่องสุขภาพ ถามได้ตลอดเลย",
+        "ja": "どういたしまして！健康のことはいつでも聞いてくださいね。",
+    },
+    "sticker.reply.sorry": {
+        "zh-TW": "沒關係，不用放在心上。",
+        "en": "No worries at all.",
+        "id": "Tidak apa-apa, jangan dipikirkan.",
+        "vi": "Không sao đâu, bạn đừng bận tâm.",
+        "th": "ไม่เป็นไรเลย ไม่ต้องคิดมาก",
+        "ja": "大丈夫ですよ、気にしないでください。",
+    },
+    "sticker.reply.good_night": {
+        "zh-TW": "晚安，早點休息，祝您好夢。",
+        "en": "Good night. Get some rest and sleep well.",
+        "id": "Selamat malam. Istirahatlah dan tidur yang nyenyak.",
+        "vi": "Chúc ngủ ngon. Bạn nghỉ ngơi sớm nhé.",
+        "th": "ราตรีสวัสดิ์ พักผ่อนเยอะ ๆ นอนหลับฝันดี",
+        "ja": "おやすみなさい。ゆっくり休んでくださいね。",
+    },
+    "sticker.reply.good_morning": {
+        "zh-TW": "早安！祝您今天精神好、身體健康。",
+        "en": "Good morning! Wishing you a healthy, energetic day.",
+        "id": "Selamat pagi! Semoga hari Anda sehat dan penuh semangat.",
+        "vi": "Chào buổi sáng! Chúc bạn một ngày khỏe mạnh, tràn đầy năng lượng.",
+        "th": "สวัสดีตอนเช้า! ขอให้วันนี้สุขภาพแข็งแรงและสดชื่น",
+        "ja": "おはようございます！今日も元気に過ごせますように。",
+    },
+    "sticker.reply.bye": {
+        "zh-TW": "掰掰，有需要隨時再來找我。",
+        "en": "Bye! Come back anytime you need me.",
+        "id": "Sampai jumpa! Hubungi saya kapan saja jika perlu.",
+        "vi": "Tạm biệt! Cần gì cứ quay lại tìm tôi nhé.",
+        "th": "แล้วพบกันใหม่! มีอะไรกลับมาหาได้ตลอด",
+        "ja": "それではまた！必要なときはいつでも声をかけてください。",
+    },
+    "sticker.reply.greeting": {
+        "zh-TW": "您好！有什麼健康上的問題，都可以問我喔。",
+        "en": "Hello! Feel free to ask me any health question.",
+        "id": "Halo! Silakan tanyakan apa saja tentang kesehatan.",
+        "vi": "Xin chào! Bạn có câu hỏi nào về sức khỏe cứ hỏi tôi nhé.",
+        "th": "สวัสดี! มีคำถามเรื่องสุขภาพอะไร ถามได้เลย",
+        "ja": "こんにちは！健康のことなら何でも聞いてください。",
+    },
+    "sticker.reply.unwell": {
+        "zh-TW": "怎麼了嗎？心情不好或身體不舒服，都可以跟我說。",
+        "en": "Is something wrong? If you're feeling down or unwell, you can tell me.",
+        "id": "Ada apa? Kalau sedang sedih atau kurang enak badan, ceritakan saja kepada saya.",
+        "vi": "Có chuyện gì vậy? Nếu bạn buồn hay thấy không khỏe, cứ nói với tôi nhé.",
+        "th": "เป็นอะไรหรือเปล่า? ถ้ารู้สึกไม่สบายใจหรือไม่สบายตัว บอกได้เลยนะ",
+        "ja": "どうしましたか？気分が落ち込んでいたり体調が悪かったりしたら、教えてくださいね。",
+    },
+    "sticker.reply.love": {
+        "zh-TW": "謝謝您，我也很關心您的健康！",
+        "en": "Thank you! I care about your health too.",
+        "id": "Terima kasih! Saya juga peduli dengan kesehatan Anda.",
+        "vi": "Cảm ơn bạn! Tôi cũng luôn quan tâm đến sức khỏe của bạn.",
+        "th": "ขอบคุณ! ฉันก็ใส่ใจสุขภาพของคุณเช่นกัน",
+        "ja": "ありがとうございます！私もあなたの健康を大切に思っています。",
+    },
+    "sticker.reply.happy": {
+        "zh-TW": "看到您開心，我也很開心！",
+        "en": "Glad to see you happy!",
+        "id": "Senang melihat Anda bahagia!",
+        "vi": "Thấy bạn vui, tôi cũng vui lắm!",
+        "th": "เห็นคุณมีความสุข ฉันก็ดีใจด้วย!",
+        "ja": "楽しそうで、私もうれしいです！",
+    },
+    "sticker.reply.ok": {
+        "zh-TW": "好的，收到！",
+        "en": "Okay, got it!",
+        "id": "Baik, sudah saya terima!",
+        "vi": "Vâng, tôi đã nhận được!",
+        "th": "ได้เลย รับทราบ!",
+        "ja": "はい、承知しました！",
+    },
+    "sticker.reply.fallback": {
+        "zh-TW": "收到您的貼圖了！有健康上的問題，可以直接打字或傳語音問我。",
+        "en": "Got your sticker! If you have a health question, just type it or send a voice message.",
+        "id": "Stiker Anda sudah saya terima! Kalau ada pertanyaan kesehatan, ketik saja atau kirim pesan suara.",
+        "vi": "Tôi đã nhận được sticker của bạn! Nếu có câu hỏi về sức khỏe, bạn cứ nhắn chữ hoặc gửi tin nhắn thoại nhé.",
+        "th": "ได้รับสติกเกอร์แล้ว! ถ้ามีคำถามเรื่องสุขภาพ พิมพ์หรือส่งข้อความเสียงมาได้เลย",
+        "ja": "スタンプを受け取りました！健康について聞きたいことがあれば、文字か音声で送ってください。",
+    },
     "location.share_prompt": {
         "zh-TW": (
             "請點擊下方的『分享位置資訊』按鈕傳送您的位置，"

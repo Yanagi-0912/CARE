@@ -103,6 +103,10 @@ class LineReplier:
                     f"{LOGGER_HEADER_TEXT} 解析為工具 Flex Message，將以 Flex 形式回覆"
                 )
                 messages = [tool_flex]
+                # 分享卡附的加好友連結緊接在卡片後面（理由見 _tool_follow_up_text）。
+                follow_up_text = self._tool_follow_up_text(message_text)
+                if follow_up_text:
+                    messages.append(TextMessage(text=follow_up_text))
                 if tool_speech_text:
                     await self._append_tts_audio_message(
                         messages,
@@ -372,6 +376,22 @@ class LineReplier:
             )
 
         return None, ""
+
+    @staticmethod
+    def _tool_follow_up_text(message_text: str) -> str:
+        """工具 Flex 選填的頂層鍵 `followUpText`：緊接在卡片後面送出的一則純文字。
+
+        分享卡用它附上加好友連結——卡片裡的字不能長按複製，純文字才能複製、
+        轉貼。跟 `speechText` 一樣只被讀走，不會進到送出的 FlexMessage。另寫
+        一支而不是擴充 `_try_parse_flex_message` 的回傳值，是因為那個二元組
+        已有呼叫端依賴（test_symptom_department_flex）。
+        """
+        try:
+            data = json.loads(message_text)
+        except (TypeError, ValueError):
+            return ""
+        text = data.get("followUpText") if isinstance(data, dict) else None
+        return text.strip() if isinstance(text, str) else ""
 
     @staticmethod
     def _parse_quick_reply(payload: Any) -> Optional[QuickReply]:

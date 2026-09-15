@@ -209,11 +209,11 @@ def test_generate_facility_list_flex_message_candidate_list_no_hint_when_full():
     assert "結果超過顯示上限" not in full_str
 
 
-# --- 未載明科別的補列院所 ----------------------------------------------------
+# --- 未載明科別的院所 --------------------------------------------------------
 #
-# 專科搜尋湊不滿時會依距離補上沒有申報科別的院所（見
-# MedicalService._supplement_with_unspecified）。不標示的話使用者會以為那間
-# 診所真的有他要的那一科。
+# 搜內科、家醫科時會一併列出只申報不分科的院所，專科搜尋湊不滿時也會補上這種
+# 院所（見 MedicalService._unspecified_ids）。不標示的話使用者會以為那間
+# 診所的資料寫著他要的那一科。
 
 
 def _clinic(name: str, facility_id: str) -> MedicalFacility:

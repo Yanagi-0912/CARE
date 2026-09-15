@@ -8,8 +8,10 @@ departments 只有「不分科」的院所，要怎麼被科別搜尋看見。
 
 處置分兩段（見 department_matcher 與 MedicalService._supplement_with_unspecified）：
     通科型科別（內科、家醫科）主查詢就一併涵蓋未申報專科的院所。
-    專科（眼科、骨科…）維持精確比對，只有湊不滿時才依距離補上並標示清楚——
+    專科（眼科、骨科…）維持精確比對，只有湊不滿時才依距離補上——
     一間沒申報科別的診所不等於有那一科，混進去等於把人導去白跑一趟。
+兩段列出的不分科院所都要進 unspecified_ids 讓卡片標示（MedicalService._unspecified_ids）：
+搜內科時附近若全是不分科診所，「附近的內科」底下五家可以一家都沒寫內科。
 """
 
 import re
@@ -86,8 +88,49 @@ async def test_clinic_next_door_is_found_when_searching_internal_medicine():
     result = await service.find_nearby_facilities_by_department(25.0, 121.0, ["內科"])
 
     assert [f.name for f in result.facilities] == ["巷口診所"]
-    assert result.unspecified_ids == frozenset()
+    assert result.unspecified_ids == {"id-巷口診所"}, "列出來了，但卡片要標示它沒寫內科"
     assert len(repository.calls) == 1, "通科型已涵蓋，不該再打第二次 DB"
+
+
+@pytest.mark.asyncio
+async def test_internal_medicine_marks_only_facilities_without_it():
+    """實測回報的情境：搜內科，附近的不分科診所排在前面，卡片上看不出為什麼列出它們。"""
+    repository = QueryAwareRepository(
+        [
+            _facility("巷口診所", 80, ["不分科"]),
+            _facility("一般診所", 150, ["西醫一般科"]),
+            _facility("兩者皆有", 300, ["內科", "不分科"]),
+            _facility("醫學中心", 900, ["家醫科、內科、外科"]),
+            _facility("內科診所", 1_200, ["內科"]),
+        ]
+    )
+    service = MedicalService(repository=repository)
+
+    result = await service.find_nearby_facilities_by_department(25.0, 121.0, ["內科"])
+
+    assert [f.name for f in result.facilities] == [
+        "巷口診所", "一般診所", "兩者皆有", "醫學中心", "內科診所",
+    ], "只加標示，搜尋結果與排序不變"
+    assert result.unspecified_ids == {"id-巷口診所", "id-一般診所"}
+
+
+@pytest.mark.asyncio
+async def test_unspecified_is_not_marked_when_requested():
+    """保底卡本來就在找不分科，不分科院所正是使用者要的，不該被標成未載明科別。"""
+    repository = QueryAwareRepository(
+        [
+            _facility("巷口診所", 80, ["不分科"]),
+            _facility("一般診所", 150, ["西醫一般科"]),
+        ]
+    )
+    service = MedicalService(repository=repository)
+
+    result = await service.find_nearby_facilities_by_department(
+        25.0, 121.0, ["家醫科", "內科", "不分科"]
+    )
+
+    assert len(result.facilities) == 2
+    assert result.unspecified_ids == frozenset()
 
 
 # --- 專科：湊不滿才補，且要標示 ----------------------------------------------

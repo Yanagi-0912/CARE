@@ -12,6 +12,7 @@ from app.services.medical.business_hours import resolve_business_hours
 from app.services.medical.department_matcher import (
     DepartmentMatch,
     GENERAL_PRACTICE_DEPARTMENTS,
+    UNSPECIFIED_DEPARTMENTS,
     build_department_query,
     build_unspecified_department_query,
     resolve_department,
@@ -128,6 +129,9 @@ class NearbySearchResult:
 class DepartmentSearchResult(NearbySearchResult):
     """依科別搜尋的結果，額外帶上科別解析的來龍去脈。"""
 
+    match: DepartmentMatch | None = None
+    """向後相容舊單科呼叫端；新流程請改用 matches。"""
+
     matches: tuple[DepartmentMatch, ...] = ()
     """解析出的科別，同一個部定專科只留一個；為空代表一科都看不懂，未執行查詢。"""
 
@@ -135,12 +139,19 @@ class DepartmentSearchResult(NearbySearchResult):
     """看不懂的科別，原樣保留使用者的說法。matches 不為空時代表「只查了看得懂的
     那幾科」，呈現層 SHALL 說明哪幾科沒被搜尋，不能讓使用者以為每一科都查了。"""
 
-    unspecified_ids: frozenset[str] = frozenset()
-    """facilities 之中屬於「補充梯次」的院所 id——它們的 departments 沒有申報專科。
+    def __post_init__(self) -> None:
+        if self.match is not None and not self.matches:
+            object.__setattr__(self, "matches", (self.match,))
+        elif self.match is None and self.matches:
+            object.__setattr__(self, "match", self.matches[0])
 
-    專科搜尋湊不滿時才會有值。呈現層 SHALL 據此標示這幾筆未載明科別：它們是
-    因為「附近就這幾家」才被列出來的，不是資料顯示它們有這一科，混在一起排
-    等於讓使用者以為那間診所真的看那一科。
+    unspecified_ids: frozenset[str] = frozenset()
+    """facilities 之中 departments 沒列出所查科別的院所 id——它們只申報了不分科。
+
+    有兩種來源：搜內科、家醫科時主查詢本來就涵蓋不分科的院所（見
+    GENERAL_PRACTICE_DEPARTMENTS），附近若全是這種診所，五張卡可能一張都
+    沒寫內科；專科搜尋湊不滿時的補充梯次亦同。呈現層 SHALL 據此標示這幾筆
+    未載明科別，否則使用者會以為那間診所的資料寫著他要的那一科。
     """
 class MedicalService:
     def __init__(
@@ -332,7 +343,7 @@ class MedicalService:
         self,
         lat: float,
         lng: float,
-        departments: Sequence[str],
+        departments: Sequence[str] | str,
         target_count: int = DEFAULT_TARGET_COUNT,
         open_now: bool = False,
         facility_type: str | None = None,
@@ -349,10 +360,6 @@ class MedicalService:
         回傳 facility_type_unresolved=True 讓呼叫端能分辨「看不懂類型」；
         但空字串／純空白視同未提供（見 _normalize_optional_arg）。
         """
-        if isinstance(departments, str):
-            # 字串本身也是 Sequence[str]，照收會被拆成一個個字去解析。
-            raise TypeError("departments 必須是科別清單，不能是單一字串")
-
         facility_type = _normalize_optional_arg(facility_type)
         matches, unresolved = await self._resolve_departments(departments)
         if not matches:
@@ -399,7 +406,7 @@ class MedicalService:
             open_now=open_now,
             facility_type_match=type_match,
         )
-        result, unspecified_ids = await self._supplement_with_unspecified(
+        result = await self._supplement_with_unspecified(
             result,
             lat,
             lng,
@@ -426,21 +433,25 @@ class MedicalService:
             open_now_requested=result.open_now_requested,
             open_now_fallback=result.open_now_fallback,
             facility_type_match=result.facility_type_match,
-            unspecified_ids=unspecified_ids,
+            unspecified_ids=self._unspecified_ids(result.facilities, canonicals),
         )
 
     async def _resolve_departments(
-        self, departments: Sequence[str]
+        self, departments: Sequence[str] | str
     ) -> tuple[tuple[DepartmentMatch, ...], tuple[str, ...]]:
         """
         逐科解析，回傳（解析出的科別, 看不懂的原始說法）。
 
         同一個部定專科只留第一次出現的說法：「腸胃科、心臟科」都是內科，查一次就夠，
         別名告知也沿用使用者的第一個說法。要動用 LLM 兜底的科別並行解析，多科時
-        延遲不會一科一科疊上去。
+        延遲不會一科一科疊上去。字串輸入視為單科，以相容舊呼叫端。
         """
+        if isinstance(departments, str):
+            requested_source: Sequence[str] = [departments]
+        else:
+            requested_source = departments
         requested = list(
-            dict.fromkeys(text.strip() for text in departments if (text or "").strip())
+            dict.fromkeys(text.strip() for text in requested_source if (text or "").strip())
         )
         resolved = await asyncio.gather(
             *(self._resolve_department_with_fallback(text) for text in requested)
@@ -465,7 +476,7 @@ class MedicalService:
         type_query: dict[str, Any] | None,
         open_now: bool,
         type_match: FacilityTypeMatch | None,
-    ) -> tuple[NearbySearchResult, frozenset[str]]:
+    ) -> NearbySearchResult:
         """
         專科搜尋湊不滿時，把附近未申報專科的院所補進來墊底。
 
@@ -483,11 +494,11 @@ class MedicalService:
         if result.satisfied or any(
             canonical in GENERAL_PRACTICE_DEPARTMENTS for canonical in canonicals
         ):
-            return result, frozenset()
+            return result
 
         missing = target_count - len(result.facilities)
         if missing <= 0:
-            return result, frozenset()
+            return result
 
         supplement = await self._search_tiered(
             lat,
@@ -502,7 +513,7 @@ class MedicalService:
         seen = {f.id for f in result.facilities}
         extra = [f for f in supplement.facilities if f.id not in seen][:missing]
         if not extra:
-            return result, frozenset()
+            return result
 
         logger.info(
             f"{LOGGER_HEADER_TEXT} 科別 %r 湊不滿（%s 筆），"
@@ -511,8 +522,35 @@ class MedicalService:
             len(result.facilities),
             len(extra),
         )
-        merged = replace(result, facilities=[*result.facilities, *extra])
-        return merged, frozenset(f.id for f in extra)
+        return replace(result, facilities=[*result.facilities, *extra])
+
+    @staticmethod
+    def _unspecified_ids(
+        facilities: list[MedicalFacility], canonicals: tuple[str, ...]
+    ) -> frozenset[str]:
+        """
+        結果中 departments 沒列出所查科別的院所 id，呈現層據此在卡片加註。
+
+        搜內科時主查詢會一併撈出只申報不分科的診所（見 build_department_query），
+        排序只看距離，附近若全是這種診所，五筆裡可以一筆內科都沒有。這裡不動
+        搜尋結果，只把它們挑出來標示；專科補充梯次補上的院所也由同一條規則標出。
+
+        用子字串比對，與查詢用的 regex 一致：少數院所的 departments 是「家醫科、
+        內科、…」整串塞進單一元素，精確比對會把它們誤標成未載明科別。
+        使用者本來就在找不分科時（保底卡），不分科院所正是他要的，不標。
+        """
+        wanted = set(canonicals)
+        if wanted & set(UNSPECIFIED_DEPARTMENTS):
+            wanted.update(UNSPECIFIED_DEPARTMENTS)
+        return frozenset(
+            facility.id
+            for facility in facilities
+            if not any(
+                value in listed
+                for listed in facility.departments or ()
+                for value in wanted
+            )
+        )
 
     @staticmethod
     def _combine_filters(

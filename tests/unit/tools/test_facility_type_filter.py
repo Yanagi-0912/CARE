@@ -50,10 +50,18 @@ class _StubMedicalService:
         return self._hospitals_result
 
     async def find_nearby_facilities_by_department(
-        self, lat, lng, departments, target_count=5, open_now=False, facility_type=None
+        self,
+        lat,
+        lng,
+        departments=None,
+        target_count=5,
+        open_now=False,
+        facility_type=None,
+        department=None,
     ) -> DepartmentSearchResult:
+        recorded = departments if departments is not None else department
         self.department_calls.append(
-            {"departments": departments, "facility_type": facility_type}
+            {"departments": recorded, "facility_type": facility_type}
         )
         return self._department_result
 
@@ -242,6 +250,28 @@ async def test_several_departments_are_passed_through_and_titled_together(
     ]
     expected_title = t("location.department.title").format(department="家醫科、內科、不分科")
     assert expected_title in payload
+
+
+@pytest.mark.asyncio
+async def test_department_title_does_not_claim_department_when_none_lists_it(
+    inject_medical_service,
+):
+    """附近全是沒登記專科的診所時，標題不能再寫「附近的內科」，改寫搜尋條件。"""
+    result = DepartmentSearchResult(
+        matches=(DepartmentMatch(canonical="內科", requested="內科"),),
+        facilities=[_facility()],
+        reached_meters=5_000,
+        satisfied=True,
+        unspecified_ids=frozenset({"id"}),
+    )
+    inject_medical_service(_StubMedicalService(department_result=result))
+
+    payload = await medical_tools.find_nearby_facilities_by_department.ainvoke(
+        {"lat": 25.0, "lng": 121.0, "departments": ["內科"]}
+    )
+
+    assert t("location.department.title").format(department="內科") not in payload
+    assert t("location.department.title_unspecified").format(department="內科") in payload
 
 
 @pytest.mark.asyncio

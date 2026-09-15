@@ -2,6 +2,7 @@
 
 import pytest
 
+from app.i18n.messages import t
 from app.schemas import MedicalFacility
 from app.services.medical.department_matcher import resolve_department
 from app.services.medical.medical_service import (
@@ -86,3 +87,43 @@ def test_general_search_has_no_alias_note():
         facilities=[_facility(800)], reached_meters=5_000, satisfied=True
     )
     assert "※" not in _build_range_subtitle(result)
+
+
+def _clinic(facility_id: str) -> MedicalFacility:
+    return MedicalFacility(
+        id=facility_id,
+        name="巷口診所",
+        latitude=25.0,
+        longitude=121.0,
+        address="測試地址",
+        type="診所",
+        departments=["不分科"],
+        distance_meters=300,
+    )
+
+
+def test_all_unspecified_explains_why_none_lists_the_department():
+    """實測回報：搜內科，附近五家全是沒登記專科的診所，副標要講為什麼沒有內科。"""
+    result = DepartmentSearchResult(
+        matches=(resolve_department("內科"),),
+        facilities=[_clinic("a"), _clinic("b")],
+        reached_meters=5_000,
+        satisfied=True,
+        unspecified_ids=frozenset({"a", "b"}),
+    )
+    subtitle = _build_range_subtitle(result)
+    assert t("location.department.all_unspecified").format(
+        count=2, department="內科"
+    ) in subtitle
+
+
+def test_mixed_list_has_no_all_unspecified_note():
+    """列表裡有一家登記內科就不能說「都沒有內科」。"""
+    result = DepartmentSearchResult(
+        matches=(resolve_department("內科"),),
+        facilities=[_clinic("a"), _clinic("b")],
+        reached_meters=5_000,
+        satisfied=True,
+        unspecified_ids=frozenset({"a"}),
+    )
+    assert "都沒有登記" not in _build_range_subtitle(result)

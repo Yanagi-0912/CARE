@@ -86,8 +86,28 @@ def _partial_unknown_note(result: NearbySearchResult) -> str | None:
     )
 
 
-def _build_range_subtitle(result: NearbySearchResult) -> str:
-    """依「搜到多遠、湊不湊得滿」組出副標，讓使用者知道結果的實際涵蓋範圍。"""
+def _all_unspecified(result: NearbySearchResult) -> bool:
+    """
+    列表裡沒有一家登記了所查科別。
+
+    搜內科時會一併列出沒登記專科的一般門診（見 DepartmentSearchResult.unspecified_ids），
+    附近若全是這種診所，標題「附近的內科」底下五家都不是內科。此時標題與副標要換成
+    講清楚原因的文案；搜尋結果本身不變。
+    """
+    unspecified = getattr(result, "unspecified_ids", frozenset())
+    return bool(result.facilities) and all(
+        facility.id in unspecified for facility in result.facilities
+    )
+
+
+def _build_range_subtitle(
+    result: NearbySearchResult, *, late_night_auto: bool = False
+) -> str:
+    """
+    依「搜到多遠、湊不湊得滿」組出副標，讓使用者知道結果的實際涵蓋範圍。
+
+    late_night_auto 目前只供有深夜自動搜尋的分支使用；此分支未啟用時維持 False。
+    """
     count = len(result.facilities)
 
     # 要求營業中卻一家都沒開：這件事比搜尋範圍重要，優先講。
@@ -120,6 +140,15 @@ def _build_range_subtitle(result: NearbySearchResult) -> str:
     partial_note = _partial_unknown_note(result)
     if partial_note is not None:
         subtitle = f"{subtitle}\n{partial_note}"
+
+    if _all_unspecified(result):
+        note = t("location.department.all_unspecified").format(
+            count=count,
+            department=_DEPARTMENT_SEPARATOR.join(
+                match.canonical for match in result.matches
+            ),
+        )
+        subtitle = f"{subtitle}\n{note}"
 
     # 藥局收錄量遠低於實際家數，「查到了但很遠」時必須揭露這層資料缺口，
     # 否則卡片會讓使用者以為附近真的只有 18 公里外那幾家藥局。
@@ -228,7 +257,8 @@ async def _search_nearby_facilities(
 async def find_nearby_facilities_by_department(
     lat: float,
     lng: float,
-    departments: list[str],
+    departments: list[str] | None = None,
+    department: str | None = None,
     open_now: bool = False,
     facility_type: str | None = None,
 ) -> str:
@@ -240,12 +270,12 @@ async def find_nearby_facilities_by_department(
     departments 一個元素放一個科別，填使用者的原始說法（例如 ["腸胃科"]），不需要
     自行換算成部定專科。使用者一次提到多科時每科各放一個元素（例如「家醫科、內科、
     不分科」→ ["家醫科", "內科", "不分科"]），結果是有其中任一科的院所；只呼叫一次，
-    不要拆成多次呼叫。
+    不要拆成多次呼叫。department 是舊呼叫端相容參數，新呼叫請用 departments。
     只有在使用者明確表達「現在有開的／還在看診的」時才把 open_now 設為 true。
     若使用者只是要找一般醫院、沒有指定科別，請改用 find_nearby_hospitals。
 
-    facility_type 為選填的院所類型過濾，可與 department 同時使用（例如使用者說
-    「大醫院的腸胃科」→ department="腸胃科", facility_type="大醫院"）。傳入時機
+    facility_type 為選填的院所類型過濾，可與 departments 同時使用（例如使用者說
+    「大醫院的腸胃科」→ departments=["腸胃科"], facility_type="大醫院"）。傳入時機
     比照 find_nearby_hospitals：只有使用者明確講「大醫院」「大型醫院」「要住院」
     → 傳「大醫院」；講「診所」「小診所」→ 傳「診所」；講「藥局」「藥房」→ 傳「藥局」。
     使用者泛稱「醫院」時不要傳，理由同 find_nearby_hospitals——會誤刪絕大多數診所。
@@ -253,12 +283,15 @@ async def find_nearby_facilities_by_department(
     if _medical_service is None:
         return "醫療服務未初始化，請稍後再試。"
 
-    # departments 雖是必填，但 LLM function calling 對必填參數送空值（[]、[""]）是
-    # 實測會發生的行為。此時回「我不確定「」對應到哪一個診療科別」等於讓整個找院所
-    # 的流程斷在一個模型端的失誤上；改為退回不分科別的一般搜尋，使用者至少拿得到
-    # 附近院所，而且 facility_type 若有帶仍然沿用。取捨：這會讓「模型漏填科別」變得
-    # 比較不顯眼，但比起把錯誤丟回給使用者，給出可用結果才是正確的降級方向。
     requested = [text for text in (departments or []) if (text or "").strip()]
+    if not requested and department is not None:
+        requested = [department] if (department or "").strip() else []
+
+    # departments 雖是必填，但 LLM function calling 對必填參數送空值（[]、[""]）是
+    # 實測會發生的行為。舊參數 department 送空字串時也視為同一類降級。
+    # 此時回「我不確定「」對應到哪一個診療科別」等於讓整個找院所的流程斷在
+    # 一個模型端的失誤上；改為退回不分科別的一般搜尋，使用者至少拿得到附近院所，
+    # 而且 facility_type 若有帶仍然沿用。
     if not requested:
         logger.info(
             "[Tool:find_nearby_facilities_by_department] departments 為空，"
@@ -287,7 +320,7 @@ async def find_nearby_facilities_by_department(
             requested,
         )
         return t("location.department.unknown").format(
-            department=_DEPARTMENT_SEPARATOR.join(result.unresolved_departments)
+            department=_DEPARTMENT_SEPARATOR.join(result.unresolved_departments or requested)
         )
 
     canonicals = [match.canonical for match in result.matches]
@@ -344,12 +377,15 @@ async def find_nearby_facilities_by_department(
     department_label = _DEPARTMENT_SEPARATOR.join(canonicals)
     if result.facility_type_match is not None:
         department_label = f"{department_label}（{result.facility_type_match.category}）"
+    title_key = (
+        "location.department.title_unspecified"
+        if _all_unspecified(result)
+        else "location.department.title"
+    )
     return _to_flex_message_text(
         generate_facility_list_flex_message(
             result.facilities,
-            title_override=t("location.department.title").format(
-                department=department_label
-            ),
+            title_override=t(title_key).format(department=department_label),
             subtitle_override=_build_range_subtitle(result),
             unspecified_ids=result.unspecified_ids,
         )

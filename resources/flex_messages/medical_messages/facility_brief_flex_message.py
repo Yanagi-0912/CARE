@@ -187,8 +187,9 @@ def create_facility_item_box(
 ) -> dict[str, Any]:
     """建立單一醫療院所的 Flex Message Box 結構。
 
-    unspecified_department 為真時多一行說明：這筆是科別搜尋湊不滿時依距離補上的，
-    院所資料本身沒有申報科別。不標的話使用者會以為那間診所真的有他要的那一科。
+    unspecified_department 為真時多一行說明：院所資料只申報了不分科，是因為離得近
+    才出現在科別搜尋結果裡。搜內科時附近常全是這種診所，不標的話使用者看到
+    「附近的內科」底下五家都沒寫內科，不知道為什麼會列出它們。
     """
     ft = ft or theme.resolve_theme()
 
@@ -332,8 +333,8 @@ def generate_facility_list_flex_message(
     科別搜尋情境需要說明「查的是哪一科」與「搜到多遠」，這類脈絡無法由筆數推導，
     因此開放 title_override／subtitle_override 由呼叫端直接指定文案。
 
-    unspecified_ids 是本次結果中「未申報科別、依距離補上」的院所 id，會在那幾張
-    卡片各加一行說明（見 DepartmentSearchResult.unspecified_ids）。
+    unspecified_ids 是本次結果中「只申報不分科、沒列出所查科別」的院所 id，會在
+    那幾張卡片各加一行說明（見 DepartmentSearchResult.unspecified_ids）。
     """
     ft = theme.resolve_theme(font_size)
 

@@ -122,3 +122,24 @@ def test_shipped_model_separates_the_obvious_cases():
     lowest_health = min(local.probability(t) for t in HEALTH)
     highest_chat = max(local.probability(t) for t in ("今天天氣好熱", "幫我訂高鐵票"))
     assert lowest_health > highest_chat
+
+
+FOREIGN_HEALTH = [
+    "I have a stomach ache and my knee is hurt.",
+    "Can I take ibuprofen with my blood pressure pills?",
+    "Saya sakit perut dan lutut saya sakit.",
+    "Tôi bị đau bụng và đau đầu gối.",
+    "ปวดท้องและปวดเข่า",
+    "胃が痛くて、膝も痛いです。",
+]
+
+
+def test_shipped_model_does_not_deny_foreign_health_questions():
+    """
+    只用中文訓練的模型把英文健康問題幾乎全擋掉（2026-09-15 外語 holdout：英文 198 題
+    漏 195 題），第一句就是當天一則真實的英文語音。本地擋下＝拿不到知識庫的答案。
+    """
+    local = LocalGuardrailClassifier.load()
+    for text in FOREIGN_HEALTH:
+        assert local.probability(text) >= local.low, text
+    assert local.probability("Book me a train ticket to Taichung.") < local.low

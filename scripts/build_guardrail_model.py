@@ -23,8 +23,13 @@ numpy 或任何模型檔，`uv sync --no-dev` 也不會把它們裝進正式映�
 一個工具。
 
 用法（專案根目錄，需先 source .venv）：
-  python scripts/build_guardrail_model.py
+  python scripts/build_guardrail_model.py --max-false-alarm-rate 0.10   # 正式的 guardrail 模型
   python scripts/build_guardrail_model.py --max-miss-rate 0.005 --out /tmp/m.json
+
+guardrail 用 0.10 而不是預設的 0.05：2026-09-15 併入外語資料（見
+scripts/merge_guardrail_foreign.py）後，0.05 會把 high 推到 0.70，中文要問 LLM 的比例
+從 17% 升到 25%；0.10 的 high 是 0.60，中文 19%、外語 17～25%，本地漏判仍是 0～2 則。
+預設值不改，因為急迫度模型（scripts/build_urgency_dataset.py）也用這支腳本。
 """
 
 from __future__ import annotations

@@ -1084,51 +1084,105 @@ def test_patient_reminder_groups_carry_per_drug_postback_data():
     assert footer_text == "全部已服用"
 
 
-def test_patient_reminder_group_row_with_thumbnail_stacks_button_below_full_width():
-    """有縮圖的逐藥列改成垂直排列（縮圖＋藥名在上、按鈕在下，兩者都吃滿整列
-    寬度），不是跟純文字列一樣水平對半分——水平切半會把縮圖擠到只剩約
-    2/3 列寬，`_medication_row_node` 文件的三段字級尺寸就全部視覺上擠成
-    同一個大小。純文字列仍維持水平排列。"""
+def test_patient_reminder_group_rows_keep_button_beside_name_with_or_without_thumbnail():
+    """圖文混排時，每種藥的【已吃】都在自己藥名的右邊；有縮圖的列只是在
+    「藥名＋按鈕」那一行上方多一張整列寬度的照片。照片不進水平分割——切進
+    flex=2 那一欄會把三段字級的縮圖尺寸擠成同一個大小。
+
+    2026-09-15 真機截圖：純文字列按鈕在右、縮圖列按鈕整寬置底，同一張卡上
+    兩顆按鈕位置不同，縮圖又緊貼在上一種藥的藥名下面，看起來是上一種藥的
+    照片。這裡照截圖的順序排：先純文字、再縮圖。"""
     groups = [
         MedicationGroup(
             meal_timing="none",
-            scheduled_time="08:00",
+            scheduled_time="09:30",
             items=[
+                ("m1", MedicationListEntry(name="Spiriva Respimat 2.5mcg/puff")),
                 (
-                    "m1",
+                    "m2",
                     MedicationListEntry(
-                        name="脈優", image_url="https://img.example.com/a.jpg"
+                        name="便通樂", image_url="https://img.example.com/a.jpg"
                     ),
                 ),
-                ("m2", MedicationListEntry(name="利尿劑")),
             ],
         ),
     ]
     msg = build_patient_medication_flex(
-        log_id="L1", slot_type="morning", scheduled_time="08:00", medication_groups=groups
+        log_id="L1", slot_type="morning", scheduled_time="09:30", medication_groups=groups
     )
     group_block = msg.contents.to_dict()["body"]["contents"][1]
     # contents[0] 是既有單一清單版面沿用的區塊標題（single none group）。
-    image_row, text_row = group_block["contents"][1], group_block["contents"][2]
+    text_row, separator, image_row = group_block["contents"][1:4]
 
-    assert image_row["type"] == "box"
-    assert image_row["layout"] == "vertical"
-    image_content_node = image_row["contents"][0]
-    assert any(c["type"] == "image" for c in image_content_node["contents"])
-    button_node = image_row["contents"][-1]
-    assert button_node["action"]["type"] == "postback"
+    assert text_row["layout"] == "horizontal"
+    text_name, text_button = text_row["contents"]
+    assert text_name["text"] == "Spiriva Respimat 2.5mcg/puff"
+    assert text_name["flex"] == 2
     assert (
-        button_node["action"]["data"]
+        text_button["action"]["data"]
         == "action=confirm_medication&log_id=L1&medication_id=m1"
     )
 
-    assert text_row["type"] == "box"
-    assert text_row["layout"] == "horizontal"
-    text_button = next(c for c in text_row["contents"] if c.get("action"))
+    # 照片屬於下一種藥：中間有分隔線，照片那一列從線的下方開始。
+    assert separator["type"] == "separator"
+    assert image_row["margin"] == "md"
+
+    assert image_row["layout"] == "vertical"
+    image_node, name_and_button = image_row["contents"]
+    assert image_node["type"] == "image"
+    assert image_node["url"] == "https://img.example.com/a.jpg"
+    image_name, image_button = name_and_button["contents"]
+    assert image_name["text"] == "便通樂"
     assert (
-        text_button["action"]["data"]
+        image_button["action"]["data"]
         == "action=confirm_medication&log_id=L1&medication_id=m2"
     )
+
+    # 「藥名＋按鈕」那一行與純文字列同一種排法，兩顆按鈕除了 postback 以外
+    # 完全相同——位置、寬度、字級都對得齊。
+    def without_contents(node):
+        return {k: v for k, v in node.items() if k != "contents"}
+
+    assert without_contents(name_and_button) == without_contents(text_row)
+    assert {**image_name, "text": ""} == {**text_name, "text": ""}
+    assert {**image_button, "action": None} == {**text_button, "action": None}
+
+
+def test_patient_reminder_groups_separate_each_drug_but_not_heading_from_its_first_drug():
+    """每種藥之間一條分隔線；分區小標與它底下第一種藥是一組，不隔開。收斂的
+    計數行不是任何一種藥，同樣用線跟最後一種藥隔開。"""
+    groups = [
+        MedicationGroup(
+            meal_timing="before_meal",
+            scheduled_time="07:00",
+            items=[(f"a{i}", MedicationListEntry(name=f"甲藥{i}")) for i in range(2)],
+        ),
+        MedicationGroup(
+            meal_timing="after_meal",
+            scheduled_time="08:00",
+            items=[(f"b{i}", MedicationListEntry(name=f"乙藥{i}")) for i in range(4)],
+        ),
+    ]
+    msg = build_patient_medication_flex(
+        log_id="L1", slot_type="morning", scheduled_time="07:00", medication_groups=groups
+    )
+    contents = msg.contents.to_dict()["body"]["contents"][1]["contents"]
+
+    def kind(node):
+        if node["type"] == "separator":
+            return "|"
+        if node["type"] == "box":
+            return "藥"
+        return node["text"]
+
+    assert [kind(c) for c in contents] == [
+        "飯前　07:00", "藥", "|", "藥", "|",
+        "飯後　08:00", "藥", "|", "藥", "|", "藥", "|",
+        "…另有 1 種藥品",
+    ]
+    for i, node in enumerate(contents):
+        if node["type"] == "separator":
+            assert contents[i + 1]["margin"] == "md"
 
 
 def test_patient_reminder_single_none_group_has_no_group_heading():

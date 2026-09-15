@@ -157,6 +157,25 @@ def _medication_list_rows(
     return rows
 
 
+def _thumbnail_node(image_url: str, ft: theme.FlexTheme) -> dict[str, Any]:
+    """藥丸縮圖節點；純清單列與逐藥確認列共用同一份設定。"""
+    return {
+        "type": "image",
+        "url": image_url,
+        # 縮圖尺寸跟字級一起放大（見 theme._SIZE_SCALE 的 "thumbnail"
+        # 項）：本功能靠外觀認藥，字級調大的長輩不該仍被鎖在固定的
+        # 最小尺寸，那樣藥名變大、照片卻原地不動。
+        "size": ft.thumbnail,
+        # 來源檔已經是等比縮放後置中補白的 160×160 正方形
+        # （build_drug_catalog.py 的 -gravity center -extent），
+        # 1:1 的框裡 cover 與 contain 等價，不會裁掉保留尺規的留白邊。
+        "aspectMode": "cover",
+        "aspectRatio": "1:1",
+        # 照片與下方藥名共用同一條左邊界；預設的 center 會讓兩者對不齊。
+        "align": "start",
+    }
+
+
 def _medication_row_node(row: MedicationListEntry, ft: theme.FlexTheme) -> dict[str, Any]:
     """單一藥品列的 Flex 節點：沒有縮圖時是純文字列（結構與本功能導入前逐位元組
     相同），有縮圖時外包一層垂直排列的 box，照片一行、藥名一行。
@@ -185,24 +204,7 @@ def _medication_row_node(row: MedicationListEntry, ft: theme.FlexTheme) -> dict[
         "layout": "vertical",
         "spacing": "sm",
         "margin": "sm",
-        "contents": [
-            {
-                "type": "image",
-                "url": row.image_url,
-                # 縮圖尺寸跟字級一起放大（見 theme._SIZE_SCALE 的 "thumbnail"
-                # 項）：本功能靠外觀認藥，字級調大的長輩不該仍被鎖在固定的
-                # 最小尺寸，那樣藥名變大、照片卻原地不動。
-                "size": ft.thumbnail,
-                # 來源檔已經是等比縮放後置中補白的 160×160 正方形
-                # （build_drug_catalog.py 的 -gravity center -extent），
-                # 1:1 的框裡 cover 與 contain 等價，不會裁掉保留尺規的留白邊。
-                "aspectMode": "cover",
-                "aspectRatio": "1:1",
-                # 照片與下方藥名共用同一條左邊界；預設的 center 會讓兩者對不齊。
-                "align": "start",
-            },
-            text_node,
-        ],
+        "contents": [_thumbnail_node(row.image_url, ft), text_node],
     }
 
 
@@ -277,22 +279,22 @@ def _medication_row_with_button(
     ft: theme.FlexTheme,
     language: str | None,
 ) -> dict[str, Any]:
-    """逐藥確認的一列：既有的 `_medication_row_node` 內容＋一顆【已吃】按鈕
-    （spec「逐藥確認」）。
+    """逐藥確認的一列：藥名＋一顆【已吃】按鈕（spec「逐藥確認」）。
 
-    有縮圖與純文字兩種列，版面刻意不同：
+    藥名與按鈕不論有沒有縮圖都排在同一行：藥名吃掉較大比例（flex=2）、按鈕
+    維持 `FlexTheme` 定義的 `flex=1`——按鈕靠 `paddingAll: lg` 撐出 ≥44px 的
+    可點擊高度；藥名有 `wrap: True`，寬度變窄時換行而不是把按鈕擠出畫面外。
 
-    - 純文字列：水平排列，藥品內容吃掉較大比例（flex=2）、按鈕維持
-      `FlexTheme` 定義的 `flex=1`——按鈕靠 `paddingAll: lg` 撐出 ≥44px 的
-      可點擊高度，不需要額外調整；文字本身已有 `wrap: True`，寬度變窄時會
-      自動換行而不是把按鈕擠出畫面外。
-    - 有縮圖列：縮圖＋藥名維持垂直排列的整列寬度，按鈕改放到下方、同樣佔
-      整列寬度，而不是跟縮圖並排。`_medication_row_node` 的縮圖尺寸
-      （`theme._SIZE_SCALE` 的 "thumbnail"：large 180px／xlarge 200px）
-      是照「認得出藥丸形狀顏色」的需求訂的；如果沿用純文字列的水平
-      flex=2/flex=1 分割，縮圖所在的欄位會被壓縮到約 2/3 列寬，三段字級的
-      縮圖尺寸全部視覺上擠成同一個大小，等於白訂了那個尺寸表。按鈕改放
-      下方後縮圖拿回整列寬度，字級變大時縮圖才真的跟著變大。
+    有縮圖時照片放在這一行的上方、獨佔整列寬度，不進水平分割：
+    `theme._SIZE_SCALE` 的 "thumbnail"（large 180px／xlarge 200px）是照
+    「認得出藥丸形狀顏色」的需求訂的，切進 flex=2 那一欄會把縮圖壓到約 2/3
+    列寬，三段字級的尺寸全部擠成同一個大小。
+
+    先前有縮圖的列是「照片、藥名、整寬按鈕」直排，純文字列是「藥名＋右側按鈕」
+    橫排。同一時段圖文混排是常態（spec「同時段圖文混排」），兩種列擺在同一張
+    卡上時按鈕一顆在右、一顆整寬，照片又緊貼在上一種藥的藥名下方，看起來像
+    上一種藥的照片（2026-09-15 真機截圖）。現在兩種列共用同一個「藥名＋按鈕」
+    行，列與列之間的分隔線見 `_append_separated`。
     """
     button_label = t("flex.med.button.taken_one", language)
     button = ft.secondary_button(
@@ -309,24 +311,41 @@ def _medication_row_with_button(
             ),
         },
     )
-    row_node = _medication_row_node(entry, ft)
-    if entry.image_url:
-        return {
-            "type": "box",
-            "layout": "vertical",
-            "spacing": "sm",
-            "contents": [row_node, button],
-        }
-    return {
+    # 藥名一律走純文字分支；照片（若有）另外放在這一行上方。
+    name_and_button = {
         "type": "box",
         "layout": "horizontal",
         "spacing": "sm",
         "alignItems": "center",
         "contents": [
-            {**row_node, "flex": 2},
+            {**_medication_row_node(entry._replace(image_url=None), ft), "flex": 2},
             button,
         ],
     }
+    if not entry.image_url:
+        return name_and_button
+    return {
+        "type": "box",
+        "layout": "vertical",
+        "spacing": "sm",
+        "contents": [_thumbnail_node(entry.image_url, ft), name_and_button],
+    }
+
+
+def _append_separated(
+    contents: list[dict[str, Any]], node: dict[str, Any], after_row: bool
+) -> None:
+    """接在一種藥後面的節點（下一種藥、下一個分區小標、收斂的計數行）先插一條
+    分隔線，節點再從線的下方留白開始。
+
+    分區內只靠 xs 間距時，下一種藥的照片會緊貼在上一種藥的【已吃】下方，看不
+    出照片屬於哪一種藥；分隔線讓「照片＋藥名＋按鈕」自成一組。分區小標與它
+    底下第一種藥本來就是一組，呼叫端傳 `after_row=False`，不隔開。
+    """
+    if after_row:
+        contents.append(theme.divider(margin="md"))
+        node = {**node, "margin": "md"}
+    contents.append(node)
 
 
 def _medication_groups_block(
@@ -370,24 +389,30 @@ def _medication_groups_block(
         )
 
     shown = 0
+    after_row = False
     for group in groups:
         if shown >= MEDICATION_LIST_MAX_ITEMS:
             break
         if not single_none:
-            contents.append(_group_heading_node(group, ft, language))
+            _append_separated(contents, _group_heading_node(group, ft, language), after_row)
+            after_row = False
         for medication_id, entry in group.items:
             if shown >= MEDICATION_LIST_MAX_ITEMS:
                 break
-            contents.append(
-                _medication_row_with_button(entry, medication_id, log_id, ft, language)
+            _append_separated(
+                contents,
+                _medication_row_with_button(entry, medication_id, log_id, ft, language),
+                after_row,
             )
+            after_row = True
             shown += 1
 
     remaining = total_items - shown
     if remaining > 0:
         # 收斂後的計數行只是一句提示文字，不代表任何一張藥證，故意重用
         # `_medication_row_node` 走純文字分支，不帶按鈕。
-        contents.append(
+        _append_separated(
+            contents,
             _medication_row_node(
                 MedicationListEntry(
                     name=t("flex.med.medication_list_more", language).format(
@@ -395,7 +420,8 @@ def _medication_groups_block(
                     )
                 ),
                 ft,
-            )
+            ),
+            after_row,
         )
 
     return {

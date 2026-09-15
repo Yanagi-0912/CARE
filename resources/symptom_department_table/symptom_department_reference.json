@@ -5,7 +5,7 @@
   "purpose": "症狀／科別對照的彙整參考。由三家醫院公開的就醫病症對照表整併，科別一律已轉換為 medicalFacilities.departments 實際存在的值，可直接供 find_nearby_facilities_by_department 使用。",
   "usage_rules": [
     "本檔 status 為 verified，可直接用於線上回覆。",
-    "急症判斷由 urgency.py 的語意判斷器負責，擋在 agent 之前並短路整條流程（design 決策 1、2）；判定為緊急時 SHALL NOT 併列任何門診科別。本檔的 red_flags 區塊**不參與**這件事，也不被程式載入——它是爬蟲以關鍵字初篩的草稿，關鍵字方案已於 2026-08-30 廢止（覆蓋不全且僅適用 zh-TW，其他語言等同沒有安全網）。",
+    "急症判斷由 urgency.py 的語意判斷器負責，擋在 agent 之前並短路整條流程（design 決策 1、2）；判定為緊急時 SHALL NOT 併列任何門診科別。本檔不含急症清單，急迫度 SHALL NOT 由本檔的任何欄位推導（爬蟲以關鍵字初篩的急症草稿已於 2026-09-15 刪除）。",
     "canonical 欄位是唯一可用於查詢的值。raw 僅供溯源，SHALL NOT 作為查詢條件。",
     "本檔僅提供就診方向參考，SHALL NOT 作為診斷依據；回覆須含免責與就醫提示。",
     "symptoms[].sources 為把此症狀列在該科的來源醫院代碼，家數越多代表跨院共識越強；卡片以「收錄此症狀的 N 家醫院中，有 M 家列在此科」呈現，不寫死醫院總數。僅 1 家的條目優先送人工複查。",
@@ -92,202 +92,6 @@
         "from": "洗腎科",
         "count": 4,
         "issue": "低於門檻，但洗腎是特定治療而非門診科別，併入內科會答非所問。本檔目前未收錄此科別，若日後收錄需個別決議。"
-      }
-    ]
-  },
-  "red_flags": {
-    "note": "獨立於 departments 之外維護，**且刻意不被程式載入**（見 symptom_table.load_symptom_table 的模組註解）。急迫度改由 urgency.py 的語意判斷器負責，這份清單是爬蟲以關鍵字初篩的草稿，保留僅供人工審定時參考。emergency 標註 SHALL NOT 由關鍵字比對產生。suicide-risk 一項的處置已於 2026-09-02 反轉，見 resolved_questions。",
-    "default_action": "emergency",
-    "default_canonical_department": "急診醫學科",
-    "default_func_code": "22",
-    "db_facility_count": 199,
-    "action_note": "action 為 emergency 者導向急診就醫；為 crisis 者 SHALL 走危機支持流程並提供專線，SHALL NOT 僅回覆科別名稱，亦 SHALL NOT 只叫使用者自行前往急診。",
-    "items": [
-      {
-        "id": "shock",
-        "text": "休克、意識喪失",
-        "sources": [
-          "V"
-        ]
-      },
-      {
-        "id": "cardiopulmonary-failure",
-        "text": "急性心肺功能衰竭",
-        "sources": [
-          "V"
-        ]
-      },
-      {
-        "id": "altered-consciousness",
-        "text": "意識障礙、昏迷、胡言亂語",
-        "sources": [
-          "V",
-          "Y"
-        ]
-      },
-      {
-        "id": "sudden-stroke-signs",
-        "text": "突發的半身不遂、口齒不清、臉部歪斜、單側肢體無力",
-        "sources": [
-          "V",
-          "Y"
-        ]
-      },
-      {
-        "id": "massive-bleeding",
-        "text": "大量出血、無法止血的傷口",
-        "sources": [
-          "V"
-        ]
-      },
-      {
-        "id": "acute-poisoning",
-        "text": "急性中毒、誤食藥物或化學物質",
-        "sources": [
-          "V",
-          "N"
-        ]
-      },
-      {
-        "id": "seizure",
-        "text": "痙攣、抽搐不止",
-        "sources": [
-          "V"
-        ]
-      },
-      {
-        "id": "persistent-high-fever",
-        "text": "持續高燒不退",
-        "sources": [
-          "V"
-        ]
-      },
-      {
-        "id": "acute-abdomen",
-        "text": "劇烈腹痛、腹部急症（闌尾炎、消化道穿孔、腸阻塞等）",
-        "sources": [
-          "V"
-        ]
-      },
-      {
-        "id": "urinary-retention",
-        "text": "超過二十四小時完全無法排尿",
-        "sources": [
-          "V"
-        ]
-      },
-      {
-        "id": "severe-trauma",
-        "text": "嚴重車禍或重大外傷",
-        "sources": [
-          "V"
-        ]
-      },
-      {
-        "id": "burn-electric",
-        "text": "燒燙傷、觸電",
-        "sources": [
-          "V"
-        ]
-      },
-      {
-        "id": "foreign-body",
-        "text": "呼吸道、眼、耳、鼻、咽喉異物",
-        "sources": [
-          "V"
-        ],
-        "note": "原文為「呼吸道、眼、耳、鼻、喉內異物」，爬蟲版本曾誤拆為五個獨立條目，導致「眼」單獨對應到急診。"
-      },
-      {
-        "id": "obstetric-bleeding",
-        "text": "流產、陰道大量出血",
-        "sources": [
-          "V"
-        ]
-      },
-      {
-        "id": "notifiable-infection",
-        "text": "須立即隔離的流行性傳染病",
-        "sources": [
-          "V"
-        ]
-      },
-      {
-        "id": "dyspnea",
-        "text": "呼吸困難、喘不過氣",
-        "sources": [
-          "V"
-        ]
-      },
-      {
-        "id": "thunderclap-headache",
-        "text": "突發的劇烈頭痛",
-        "sources": [
-          "V",
-          "Y"
-        ]
-      },
-      {
-        "id": "raised-icp",
-        "text": "頭痛合併噴射性嘔吐與視力模糊（顱內壓上升徵象）",
-        "sources": [
-          "Y"
-        ]
-      },
-      {
-        "id": "neck-stiffness",
-        "text": "突發的頸部僵硬合併嚴重頭痛",
-        "sources": [
-          "Y"
-        ]
-      },
-      {
-        "id": "spinal-trauma",
-        "text": "頭部外傷、脊椎脊髓外傷",
-        "sources": [
-          "Y",
-          "N"
-        ]
-      },
-      {
-        "id": "hematemesis",
-        "text": "吐血",
-        "sources": [
-          "N",
-          "Y"
-        ]
-      },
-      {
-        "id": "life-threatening-other",
-        "text": "其他經醫師認定有危及生命之虞的狀況",
-        "sources": [
-          "V"
-        ]
-      },
-      {
-        "id": "suicide-risk",
-        "text": "自殺意念、自傷行為，或表達活不下去、不想再撐下去",
-        "sources": [
-          "N"
-        ],
-        "action": "crisis",
-        "decided_at": "2026-08-27",
-        "hotlines": [
-          {
-            "name": "張老師專線",
-            "number": "1980"
-          },
-          {
-            "name": "衛生福利部安心專線",
-            "number": "1925"
-          },
-          {
-            "name": "生命線",
-            "number": "1995"
-          }
-        ],
-        "note": "2026-09-02 決議：自殺與自傷意念不由本系統做受控回覆，交一般 RAG 流程處理。本項不再有對應的程式行為。",
-        "status": "superseded"
       }
     ]
   },
@@ -427,8 +231,7 @@
           "sources": [
             "N",
             "Y"
-          ],
-          "note": "同時列於 red_flags"
+          ]
         },
         {
           "term": "吞嚥困難",
@@ -1048,7 +851,7 @@
           "sources": [
             "N"
           ],
-          "note": "急性中毒屬 red_flags，此處為慢性或後續追蹤"
+          "note": "急性中毒由急迫度判斷處理，此處為慢性或後續追蹤"
         }
       ]
     },
@@ -1303,7 +1106,7 @@
           "sources": [
             "N"
           ],
-          "note": "急性腸阻塞屬 red_flags"
+          "note": "急性腸阻塞由急迫度判斷處理"
         },
         {
           "term": "盲腸炎",
@@ -1313,7 +1116,7 @@
             "N",
             "Y"
           ],
-          "note": "急性闌尾炎屬 red_flags"
+          "note": "急性闌尾炎由急迫度判斷處理"
         },
         {
           "term": "胃食道逆流",
@@ -1464,7 +1267,7 @@
             "N",
             "Y"
           ],
-          "note": "突發劇烈頭痛屬 red_flags；亦見於內科、兒科"
+          "note": "突發劇烈頭痛由急迫度判斷處理；亦見於內科、兒科"
         },
         {
           "term": "頭暈",
@@ -1495,7 +1298,7 @@
             "N",
             "Y"
           ],
-          "note": "急性發作屬 red_flags"
+          "note": "急性發作由急迫度判斷處理"
         },
         {
           "term": "半身不遂",
@@ -1505,7 +1308,7 @@
             "V",
             "N"
           ],
-          "note": "突發者屬 red_flags"
+          "note": "突發者由急迫度判斷處理"
         },
         {
           "term": "肢體無力",
@@ -1594,7 +1397,7 @@
             "N",
             "Y"
           ],
-          "note": "發作中屬 red_flags"
+          "note": "發作中由急迫度判斷處理"
         },
         {
           "term": "失智症",
@@ -1732,7 +1535,7 @@
           "sources": [
             "N"
           ],
-          "note": "急性發作屬 red_flags"
+          "note": "急性發作由急迫度判斷處理"
         },
         {
           "term": "水腦症",
@@ -1749,8 +1552,7 @@
           "sources": [
             "N",
             "Y"
-          ],
-          "note": "同時列於 red_flags"
+          ]
         },
         {
           "term": "脊椎脊髓外傷",
@@ -2254,7 +2056,7 @@
             "N",
             "Y"
           ],
-          "note": "大量出血或疑似流產屬 red_flags。爬蟲版本曾誤將本條標為 emergency"
+          "note": "大量出血或疑似流產由急迫度判斷處理。爬蟲版本曾誤將本條標為 emergency"
         },
         {
           "term": "白帶",
@@ -2684,7 +2486,7 @@
           "sources": [
             "N"
           ],
-          "note": "合併頭痛與噴射性嘔吐時屬 red_flags"
+          "note": "合併頭痛與噴射性嘔吐時由急迫度判斷處理"
         },
         {
           "term": "視野缺損",
@@ -3889,7 +3691,6 @@
       "canonical": "家醫科",
       "func_code": "01",
       "db_facility_count": 1633,
-      "alias_warning": "資料庫另有獨立值「家庭醫學科」275 筆。build_department_query 以 re.escape 產生 regex，查「家醫科」不會命中「家庭醫學科」。兩者醫療上同一科，建議另案處理（見 docs/department-alias-functype-review.md）。",
       "raw": {
         "V": [],
         "N": [
@@ -4309,7 +4110,7 @@
             "N",
             "Y"
           ],
-          "note": "2026-09-02 人工改寫，來源原文為「燒燙傷後續治療」。 原註記：急性燒燙傷屬 red_flags"
+          "note": "2026-09-02 人工改寫，來源原文為「燒燙傷後續治療」。 原註記：急性燒燙傷由急迫度判斷處理"
         },
         {
           "term": "慢性傷口",
@@ -4552,7 +4353,7 @@
     {
       "raw": "毒物科",
       "source": "N",
-      "reason": "急性中毒屬 red_flags 路徑；非急性者已由內科涵蓋。"
+      "reason": "急性中毒由急迫度判斷處理；非急性者已由內科涵蓋。"
     },
     {
       "raw": "異常檢驗結果分析及診治",
@@ -4625,15 +4426,6 @@
       "question": "「嘔吐」「慢性咳嗽」在表上只有兒科一個候選，成人問會拿到兒科，要補嗎？",
       "decision": "補列於內科（嘔吐→胃腸肝膽、慢性咳嗽→胸腔），以 origin: project、sources: [] 標記。",
       "rationale": "成因是三份來源的粒度不一致：榮總玉里有一張「小兒科＝15歲以下＋一串症狀」的總表，成大與台大按成人專科分列。凡是「兒童常見且成人也會有」的症狀都會只落在兒科。實測「我感覺噁心、嘔吐，要看哪一科」回傳僅兒科。"
-    }
-  ],
-  "open_questions": [
-    "牙醫一般科（184 筆）與家庭牙醫科（25 筆）在資料庫是獨立值，「牙科」的 regex 不會命中它們，與家醫科／家庭醫學科屬同類問題，尚未處理。",
-    "各語言的 display 與 aliases 尚未建立，需母語者填寫，不得機器翻譯（見 openspec/changes/symptom-department-guidance）。",
-    "所有 symptoms[].term 目前為來源原文或最小幅度改寫，正式上線前須完成人工改寫（design 決策 11）。",
-    {
-      "question": "台大雲林的神經外科段落含「頭痛、噁心嘔吐及視力模糊是顱內壓上升的徵象」，要不要抽成條目？",
-      "position": "不抽。那是「三者合併出現時的警訊」敘述，不是掛號病症清單。單獨抽出「嘔吐→神經外科」會把所有嘔吐的人導向神經外科，比現況更糟——與擷取腳本把「中風復健」標成急症是同一種錯。"
     }
   ]
 }

@@ -566,11 +566,6 @@ except Exception:
 _urgency_classifier = UrgencyClassifier(
     gemini_service=_gemini_service, local=_urgency_local
 )
-if not _symptom_table.verified:
-    logger.warning(
-        "症狀對照表尚未經人工審定（status != verified），"
-        "科別建議的正確性未經驗證"
-    )
 
 _care_agent = Agent(
     llm=_gemini_service.chat_model,

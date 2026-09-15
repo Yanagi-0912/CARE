@@ -48,7 +48,7 @@
 
 ### Requirement: 症狀正規化 SHALL NOT 產生科別
 
-系統 SHALL 將使用者的口語症狀詞正規化為對照表中已存在的症狀條目。正規化 SHALL 先查同義詞表，未命中時始得使用語言模型兜底。
+系統 SHALL 將使用者的口語症狀詞正規化為對照表中已存在的症狀條目。正規化 SHALL 以語意向量比對召回候選：最高分達 `AUTO_ACCEPT_SCORE` 者直接採用；介於 `MIN_MATCH_SCORE` 與 `AUTO_ACCEPT_SCORE` 之間者，交語言模型在召回的候選中決選；低於 `MIN_MATCH_SCORE` 視為未命中。向量索引不可用或取向量失敗時，SHALL 改由語言模型在全表中選擇。系統 SHALL NOT 維護手寫同義詞表（design 決策 12）。
 
 語言模型的輸出 SHALL 以封閉集合約束為「對照表中的症狀條目」或 `UNKNOWN`，其輸出結構中 SHALL NOT 包含科別欄位。科別 SHALL 僅由對照表決定。
 
@@ -132,7 +132,7 @@
 
 下列情形 SHALL 走保底建議——依序回傳家醫科、內科、不分科作為初診方向，並明確說明系統無法判斷：
 
-- 相似度低於 `SYMPTOM_MATCH_MIN_SCORE`
+- 相似度低於 `MIN_MATCH_SCORE`
 - 正規化結果為 `UNKNOWN`
 - 對照表中該症狀的候選科別超過 `MAX_CANDIDATES`（以兒科過濾前的數量計）
 - 使用者非孩童且訊息未提及孩童，濾除兒科後沒有剩下任何候選
@@ -158,7 +158,7 @@ SHALL NOT 含兒科。
 
 #### Scenario: 低於門檻走保底
 
-- **WHEN** 最高分候選的相似度低於 `SYMPTOM_MATCH_MIN_SCORE`
+- **WHEN** 最高分候選的相似度低於 `MIN_MATCH_SCORE`
 - **THEN** 系統回傳保底建議與無法判斷的說明，SHALL NOT 採用該候選的科別
 
 #### Scenario: 候選過多走保底

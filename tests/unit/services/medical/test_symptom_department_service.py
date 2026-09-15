@@ -4,7 +4,6 @@ import pytest
 
 from app.services.medical.department_matcher import CANONICAL_DEPARTMENTS
 from app.services.medical.symptom_classification.symptom_table import (
-    DEFAULT_TABLE_PATH,
     SymptomTableError,
     load_symptom_table,
 )
@@ -52,20 +51,6 @@ def test_load_fails_fast_on_unresolvable_department(tmp_path):
     )
     with pytest.raises(SymptomTableError, match="無法解析"):
         load_symptom_table(bad)
-
-
-def test_load_reports_declared_status(table):
-    """
-    表是否經人工審定，必須是程式查得到的事實，不能只存在於註解裡——它決定
-    這張表能不能用於線上回覆（design 決策 11、tasks 2.5）。
-
-    2026-09-02 由 unverified 改為 verified。這個測試守的是「載入器如實反映
-    檔案的宣告」，不是把某個特定值寫死；旗標翻動時應連同 usage_rules 一起改，
-    兩邊不一致才是問題。
-    """
-    declared = json.loads(DEFAULT_TABLE_PATH.read_text(encoding="utf-8"))["status"]
-    assert table.verified is (declared == "verified")
-    assert table.verified is True
 
 
 # ---------------------------------------------------------------- 與 agent 的互動

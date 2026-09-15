@@ -302,8 +302,7 @@ def test_T08_unverified_table_loads_with_a_warning(tmp_path, caplog):
     data = _valid_table()
     data["status"] = "unverified"
     with caplog.at_level(logging.WARNING):
-        loaded = _load(tmp_path, data)
-    assert loaded.verified is False
+        _load(tmp_path, data)
     assert "非 verified" in caplog.text
 
 

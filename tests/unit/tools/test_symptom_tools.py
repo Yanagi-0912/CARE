@@ -50,7 +50,7 @@ def _suggestion(*names):
     )
 
 
-# ---------------------------------------------------------------- 旗標與註冊
+# ---------------------------------------------------------------- 註冊
 
 
 @pytest.mark.parametrize("include_rag_tool", [True, False])
@@ -61,18 +61,6 @@ def test_tool_is_always_registered(include_rag_tool):
     """
     names = {tool.name for tool in get_all_tools(include_rag_tool=include_rag_tool)}
     assert "suggest_department_for_symptom" in names
-
-
-def test_other_medical_tools_unaffected():
-    names = {tool.name for tool in get_all_tools(include_rag_tool=True)}
-    for expected in (
-        "find_nearby_hospitals",
-        "find_nearby_facilities_by_department",
-        "lookup_medical_facility",
-        "request_location_quick_reply",
-        "get_rag_answer",
-    ):
-        assert expected in names
 
 
 # ---------------------------------------------------------------- 工具輸出

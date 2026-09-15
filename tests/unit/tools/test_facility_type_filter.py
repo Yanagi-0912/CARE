@@ -17,7 +17,7 @@ from app.services.medical.medical_service import (
 from app.tools import medical_tools
 
 
-def _facility(name: str = "測試院所") -> MedicalFacility:
+def _facility(name: str = "測試院所", departments: list[str] | None = None) -> MedicalFacility:
     return MedicalFacility(
         id="id",
         name=name,
@@ -25,6 +25,7 @@ def _facility(name: str = "測試院所") -> MedicalFacility:
         longitude=121.0,
         address="測試地址",
         type="醫院",
+        departments=departments,
         distance_meters=800,
     )
 
@@ -219,6 +220,31 @@ async def test_department_without_facility_type_keeps_department_only_title(
 
     assert t("location.department.title").format(department="腸胃科") in payload
     assert "（醫院）" not in payload  # 不應多出類型括號
+
+
+@pytest.mark.asyncio
+async def test_department_title_changes_when_results_do_not_list_department(
+    inject_medical_service,
+):
+    """內科主查詢會撈到不分科診所；即使不是 supplement，也不能標成附近的內科。"""
+    result = DepartmentSearchResult(
+        match=DepartmentMatch(canonical="內科", requested="內科"),
+        facilities=[_facility("仁人診所", departments=["不分科"])],
+        reached_meters=5_000,
+        satisfied=True,
+    )
+    inject_medical_service(_StubMedicalService(department_result=result))
+
+    payload = await medical_tools.find_nearby_facilities_by_department.ainvoke(
+        {"lat": 25.0, "lng": 121.0, "department": "內科", "facility_type": "診所"}
+    )
+
+    assert t("location.department.title").format(department="內科（診所）") not in payload
+    assert t("location.department.title_unspecified").format(department="內科") in payload
+    assert t("location.department.all_unspecified").format(
+        count=1, department="內科"
+    ) in payload
+    assert t("flex.facility.unspecified_department") in payload
 
 
 @pytest.mark.asyncio

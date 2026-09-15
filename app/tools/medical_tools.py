@@ -71,6 +71,27 @@ def _pharmacy_data_gap_note(result: NearbySearchResult) -> str | None:
     )
 
 
+def _department_not_listed_ids(result: NearbySearchResult) -> frozenset[str]:
+    """
+    找出卡片列表中沒有實際列出所查科別的院所。
+
+    不能只看 DepartmentSearchResult.unspecified_ids：搜內科／家醫科時，主查詢本來就
+    會包含「不分科／西醫一般科」，所以這些院所不是補充梯次，卻仍然沒有列出內科。
+    呈現層要直接檢查 departments 文字，避免標題寫「附近的內科」但五張都不是內科。
+    """
+    match = getattr(result, "match", None)
+    if match is None:
+        return frozenset()
+
+    canonical = match.canonical
+    detected = {
+        facility.id
+        for facility in result.facilities
+        if not any(canonical in listed for listed in facility.departments or ())
+    }
+    return frozenset(detected) | getattr(result, "unspecified_ids", frozenset())
+
+
 def _all_unspecified(result: NearbySearchResult) -> bool:
     """
     列表裡沒有一家登記了所查科別。
@@ -79,7 +100,7 @@ def _all_unspecified(result: NearbySearchResult) -> bool:
     附近若全是這種診所，標題「附近的內科」底下五家都不是內科。此時標題與副標要換成
     講清楚原因的文案；搜尋結果本身不變。
     """
-    unspecified = getattr(result, "unspecified_ids", frozenset())
+    unspecified = _department_not_listed_ids(result)
     return bool(result.facilities) and all(
         facility.id in unspecified for facility in result.facilities
     )
@@ -378,7 +399,7 @@ async def find_nearby_facilities_by_department(
             result.facilities,
             title_override=t(title_key).format(department=title_department),
             subtitle_override=_build_range_subtitle(result),
-            unspecified_ids=result.unspecified_ids,
+            unspecified_ids=_department_not_listed_ids(result),
         )
     )
 

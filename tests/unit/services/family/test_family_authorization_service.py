@@ -639,6 +639,93 @@ async def test_stranger_sees_nothing_at_all():
     assert service.mask(MEDICATION_PAYLOAD, "medication", None) == {}
 
 
+# ── PERSONAL 資料分類：經期（決策 2）───────────────────────────────
+
+MENSTRUAL_PAYLOAD = {
+    "id": "mc1",
+    "user_id": OWNER,
+    "start_date": "2026-08-01",
+    "end_date": "2026-08-05",
+    "flow": "medium",
+    "note": "無異狀",
+    "created_at": "2026-08-01T00:00:00Z",
+    "updated_at": "2026-08-05T00:00:00Z",
+    "cycle_length_days": 29,
+    "period_length_days": 5,
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["GUARDIAN", "CAREGIVER", "MEMBER"])
+async def test_menstrual_fields_are_stripped_for_non_owner_roles(role):
+    """經期的每一個欄位跨使用者時一律剔除——包括 GUARDIAN，即使他對 SENSITIVE
+    有完整讀寫權（menstrual-cycle-log spec「經期資料不跨使用者呈現」）。"""
+    service = make_service({})
+    masked = service.mask(MENSTRUAL_PAYLOAD, "menstrual_record", role)
+    assert masked == {}
+
+
+@pytest.mark.asyncio
+async def test_menstrual_fields_are_stripped_for_a_stranger():
+    service = make_service({})
+    assert service.mask(MENSTRUAL_PAYLOAD, "menstrual_record", None) == {}
+
+
+@pytest.mark.asyncio
+async def test_menstrual_self_access_returns_payload_untouched():
+    """本人讀自己的經期原樣回傳——is_self 繞過遮蔽，與其他資源一致。"""
+    service = make_service({})
+    masked = service.mask(
+        MENSTRUAL_PAYLOAD, "menstrual_record", "OWNER", is_self=True
+    )
+    assert masked == MENSTRUAL_PAYLOAD
+
+
+@pytest.mark.asyncio
+async def test_guardian_has_no_personal_read_permission_even_when_enforced():
+    """GUARDIAN 對 SENSITIVE 有完整讀寫權，但對 PERSONAL 一律無權——PERSONAL
+    不從任何其他分類推導。"""
+    service = service_with_role("GUARDIAN", state="enforced")
+    assert await service.can(OPERATOR, OWNER, "PERSONAL", "READ") is False
+    assert await service.can(OPERATOR, OWNER, "PERSONAL", "WRITE") is False
+
+
+@pytest.mark.asyncio
+async def test_active_delegate_has_no_personal_permission():
+    """受委任者解析為 GUARDIAN，一樣沒有 PERSONAL 權限（menstrual-cycle-log
+    spec「受委任者沒有 PERSONAL 權限」Scenario）。"""
+    service = make_service(
+        {OWNER: make_tree(OWNER, [FamilyMember(user_id=OPERATOR, family_role="MEMBER")])},
+        [delegation()],
+    )
+    assert await service.resolve_role(OPERATOR, OWNER, now=NOW) == "GUARDIAN"
+    assert await service.can(OPERATOR, OWNER, "PERSONAL", "READ", now=NOW) is False
+
+
+@pytest.mark.asyncio
+async def test_personal_authorize_rejects_family_member_in_shadow_mode():
+    """經期一類「本 change 新增的路徑」一律以 has_legacy_equivalent=False 呼叫
+    authorize，影子模式不放寬——即使該家人對其他分類的權限因影子模式而放寬
+    （menstrual-cycle-log spec「影子模式不放寬」Scenario）。"""
+    service = service_with_role("GUARDIAN", state="shadow")
+    with pytest.raises(HTTPException) as exc:
+        await service.authorize(
+            OPERATOR, OWNER, "PERSONAL", "READ", has_legacy_equivalent=False
+        )
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_owner_can_authorize_personal_read_and_write():
+    service = make_service({})
+    assert await service.authorize(
+        OWNER, OWNER, "PERSONAL", "READ", has_legacy_equivalent=False
+    ) == "OWNER"
+    assert await service.authorize(
+        OWNER, OWNER, "PERSONAL", "WRITE", has_legacy_equivalent=False
+    ) == "OWNER"
+
+
 # ── 通知政策 ──────────────────────────────────────────────────────────
 
 
@@ -737,6 +824,54 @@ async def test_appointment_recipients_are_filtered_even_in_shadow():
     ) == {"U-g", "U-c", "U-m", "U-unset"}
 
 
+@pytest.mark.asyncio
+async def test_strict_new_notification_excludes_unassigned_members_in_shadow():
+    """`has_legacy_equivalent=False`：影子模式下未指派角色的家人（視同 MEMBER）
+    SHALL NOT 在收件人內——這種通知在導入前不存在，沒有「維持既有行為」可言
+    （design.md 決策 4、health-alerts spec「未指派角色的家人在影子模式下也不
+    收」）。"""
+    service = make_service(_mixed_family("shadow"))
+    recipients = await service.notification_recipients(
+        OWNER, "health_out_of_range", has_legacy_equivalent=False
+    )
+    assert set(recipients) == {"U-g", "U-c"}
+
+
+@pytest.mark.asyncio
+async def test_strict_new_notification_still_filters_when_enforced():
+    service = make_service(_mixed_family("enforced"))
+    recipients = await service.notification_recipients(
+        OWNER, "health_out_of_range", has_legacy_equivalent=False
+    )
+    assert set(recipients) == {"U-g", "U-c"}
+
+
+@pytest.mark.asyncio
+async def test_has_legacy_equivalent_false_ignores_strict_kind_allowlist():
+    """`False` 時完全跳過影子模式放行，不論 kind 是否列在
+    STRICT_NOTIFICATION_KINDS——那張表只在 `has_legacy_equivalent=True`（預設）
+    時才有意義。"""
+    service = make_service(_mixed_family("shadow"))
+    # 對照組：預設（True）在影子模式下回傳族譜全員。
+    default_recipients = await service.notification_recipients(
+        OWNER, "high_risk_drug_alert"
+    )
+    assert set(default_recipients) == {"U-g", "U-c", "U-m", "U-unset"}
+
+    strict_recipients = await service.notification_recipients(
+        OWNER, "high_risk_drug_alert", has_legacy_equivalent=False
+    )
+    assert set(strict_recipients) == {"U-g", "U-c"}
+
+
+@pytest.mark.asyncio
+async def test_default_notification_recipients_behaviour_is_unchanged():
+    """不帶 `has_legacy_equivalent` 參數時，行為與新增該參數之前完全相同。"""
+    service = make_service(_mixed_family("shadow"))
+    recipients = await service.notification_recipients(OWNER, "high_risk_drug_alert")
+    assert set(recipients) == {"U-g", "U-c", "U-m", "U-unset"}
+
+
 class _BatchTrees:
     def __init__(self, rows: dict):
         self.rows = rows
@@ -806,6 +941,25 @@ async def test_strict_permissions_are_empty_for_a_stranger():
         "general": [],
         "sensitive": [],
         "private": [],
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["shadow", "enforced"])
+async def test_describe_members_keys_never_include_personal(state):
+    """`describe_members` 的 my_permissions／my_strict_permissions 鍵只有
+    general、sensitive、private（menstrual-cycle-log spec「經期資料不跨使用者
+    呈現」：家人權限的描述 SHALL NOT 包含 PERSONAL）。"""
+    described = (await _described_member("GUARDIAN", state))[OWNER]
+    assert set(described["my_permissions"].keys()) == {
+        "general",
+        "sensitive",
+        "private",
+    }
+    assert set(described["my_strict_permissions"].keys()) == {
+        "general",
+        "sensitive",
+        "private",
     }
 
 
@@ -932,6 +1086,16 @@ async def test_describe_gives_nothing_to_a_stranger():
     service = service_with_role(None, state="shadow")
     described = await service.describe(STRANGER, [OWNER])
     assert described[OWNER] == {"general": [], "sensitive": [], "private": []}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", ["shadow", "enforced"])
+async def test_describe_keys_never_include_personal(state):
+    """`describe` 的輸出鍵只有 general、sensitive、private——PERSONAL 沒有任何
+    家人角色能讀，加了只是一個永遠為空的鍵（design.md 決策 2）。"""
+    service = service_with_role("GUARDIAN", state=state)
+    described = await service.describe(OPERATOR, [OWNER])
+    assert set(described[OWNER].keys()) == {"general", "sensitive", "private"}
 
 
 # ── 遷移指標的計數（判準 1／4 的原始資料）──────────────────────────

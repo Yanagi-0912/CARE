@@ -35,6 +35,28 @@ EXPECTED_MATRIX = {
     ("OWNER", "GENERAL"): {"READ", "WRITE"},
     ("OWNER", "SENSITIVE"): {"READ", "WRITE"},
     ("OWNER", "PRIVATE"): {"READ", "WRITE"},
+    ("OWNER", "PERSONAL"): {"READ", "WRITE"},
+    ("GUARDIAN", "GENERAL"): {"READ", "WRITE"},
+    ("GUARDIAN", "SENSITIVE"): {"READ", "WRITE"},
+    ("GUARDIAN", "PRIVATE"): {"READ"},
+    ("GUARDIAN", "PERSONAL"): set(),
+    ("CAREGIVER", "GENERAL"): {"READ", "WRITE"},
+    ("CAREGIVER", "SENSITIVE"): {"READ"},
+    ("CAREGIVER", "PRIVATE"): set(),
+    ("CAREGIVER", "PERSONAL"): set(),
+    ("MEMBER", "GENERAL"): {"READ"},
+    ("MEMBER", "SENSITIVE"): set(),
+    ("MEMBER", "PRIVATE"): set(),
+    ("MEMBER", "PERSONAL"): set(),
+}
+
+# 新增 PERSONAL 之前的矩陣快照，獨立於 EXPECTED_MATRIX 之外手寫一份——如果
+# 兩份表用同一個字面量，PERSONAL 的新增就驗證不出「其餘三格没被順手改動」，
+# 只是拿表跟自己比。見 test_introducing_personal_does_not_change_existing_matrix。
+MATRIX_BEFORE_PERSONAL = {
+    ("OWNER", "GENERAL"): {"READ", "WRITE"},
+    ("OWNER", "SENSITIVE"): {"READ", "WRITE"},
+    ("OWNER", "PRIVATE"): {"READ", "WRITE"},
     ("GUARDIAN", "GENERAL"): {"READ", "WRITE"},
     ("GUARDIAN", "SENSITIVE"): {"READ", "WRITE"},
     ("GUARDIAN", "PRIVATE"): {"READ"},
@@ -47,7 +69,7 @@ EXPECTED_MATRIX = {
 }
 
 ROLES = ["OWNER", "GUARDIAN", "CAREGIVER", "MEMBER"]
-CLASSIFICATIONS = ["GENERAL", "SENSITIVE", "PRIVATE"]
+CLASSIFICATIONS = ["GENERAL", "SENSITIVE", "PRIVATE", "PERSONAL"]
 ACTIONS = ["READ", "WRITE"]
 
 # 跨使用者輸出的模型與其資源名稱。守門測試靠這份對照表找出「模型有、登記表
@@ -84,6 +106,23 @@ def test_matrix_cell_matches_spec(role, classification):
 def test_is_allowed_matches_matrix(role, classification, action):
     expected = action in EXPECTED_MATRIX[(role, classification)]
     assert is_allowed(role, classification, action) is expected
+
+
+def test_introducing_personal_does_not_change_existing_matrix():
+    """新增 PERSONAL 這一欄後，GENERAL／SENSITIVE／PRIVATE 的每一格 SHALL 與
+    導入前完全相同（design.md 決策 2、menstrual-cycle-log spec「既有矩陣不變」
+    Scenario）。"""
+    for (role, classification), expected in MATRIX_BEFORE_PERSONAL.items():
+        assert PERMISSIONS[role][classification] == expected, (
+            f"{role} 對 {classification} 的權限在新增 PERSONAL 之後改變了"
+        )
+
+
+def test_only_owner_has_any_personal_permission():
+    """PERSONAL：只有 OWNER 具讀寫權，其餘三種角色一律為空（決策 2）。"""
+    for role in ("GUARDIAN", "CAREGIVER", "MEMBER"):
+        assert PERMISSIONS[role]["PERSONAL"] == frozenset()
+    assert PERMISSIONS["OWNER"]["PERSONAL"] == frozenset({"READ", "WRITE"})
 
 
 def test_non_member_has_no_permission_at_all():
@@ -163,6 +202,71 @@ def test_health_fields_are_sensitive():
         assert field_classification("health_profile", field) == "SENSITIVE"
 
 
+def test_health_tracking_resource_classifications():
+    """血壓血糖與提醒範圍、步數為 SENSITIVE；經期為 PERSONAL（design.md
+    「資料格式」）。"""
+    assert CLASSIFICATION_OF["health_measurement"] == "SENSITIVE"
+    assert CLASSIFICATION_OF["health_alert_threshold"] == "SENSITIVE"
+    assert CLASSIFICATION_OF["menstrual_record"] == "PERSONAL"
+    assert CLASSIFICATION_OF["step_count"] == "SENSITIVE"
+
+
+def test_health_measurement_fields_are_sensitive():
+    for field in (
+        "id",
+        "user_id",
+        "kind",
+        "measured_at",
+        "recorded_by",
+        "systolic",
+        "diastolic",
+        "pulse",
+        "glucose_mg_dl",
+        "meal_context",
+        "level",
+        "created_at",
+    ):
+        assert field_classification("health_measurement", field) == "SENSITIVE"
+
+
+def test_health_alert_threshold_fields_are_sensitive():
+    for field in (
+        "user_id",
+        "systolic_high",
+        "systolic_low",
+        "diastolic_high",
+        "diastolic_low",
+        "glucose_fasting_high",
+        "glucose_nonfasting_high",
+        "glucose_low",
+        "updated_by",
+        "updated_at",
+    ):
+        assert field_classification("health_alert_threshold", field) == "SENSITIVE"
+
+
+def test_menstrual_record_fields_are_personal():
+    """經期的每一個欄位 SHALL 登記為 PERSONAL（menstrual-cycle-log spec）。"""
+    for field in (
+        "id",
+        "user_id",
+        "start_date",
+        "end_date",
+        "flow",
+        "note",
+        "created_at",
+        "updated_at",
+        "cycle_length_days",
+        "period_length_days",
+    ):
+        assert field_classification("menstrual_record", field) == "PERSONAL"
+
+
+def test_step_count_fields_are_sensitive():
+    for field in ("user_id", "date", "steps"):
+        assert field_classification("step_count", field) == "SENSITIVE"
+
+
 def test_unregistered_field_returns_none_not_general():
     """fail-closed 的方向：查不到就是查不到，不得代換成資源的預設分類。"""
     assert field_classification("medication", "some_future_field") is None
@@ -203,6 +307,14 @@ def test_notification_policy_is_not_derived_from_permissions():
         role for role in ROLES if is_allowed(role, "SENSITIVE", "READ")
     }
     assert notification_recipient_roles("high_risk_drug_alert") != sensitive_readers
+
+
+def test_health_out_of_range_recipients_are_guardian_and_caregiver():
+    """血壓血糖超出提醒範圍的推播對象與高風險藥物通報相同（health-alerts spec
+    「超出範圍的推播對象」）。"""
+    assert notification_recipient_roles("health_out_of_range") == frozenset(
+        {"GUARDIAN", "CAREGIVER"}
+    )
 
 
 def test_unknown_notification_kind_raises_rather_than_falls_back():

@@ -239,6 +239,8 @@ app.include_router(
     prefix="/api/admin/knowledge-reports",
     tags=["Knowledge Reports Admin"],
 )
+# 正式環境的 /tts 由 ingress 導到 care-tts（app/tts_main.py），音檔存在它的 PVC；這裡的
+# 掛載給沒設 TTS_SERVICE_URL、backend 自己合成的本機開發用。
 app.include_router(tts_router, prefix="/tts")
 # 前綴直接讀 settings，不能像上面 tts_router 那樣寫死字面值：
 # drug_appearance_image_service 組 URL 時就是用這個設定值，寫死會讓兩邊

@@ -108,15 +108,22 @@ TBD - created by archiving change voice-rate-and-multilingual-tts. Update Purpos
 
 本地合成產生的音檔 SHALL 以 `tts_` 前綴命名並為 `.mp3` 格式，SHALL 經由公開端點提供給 LINE 下載，且 SHALL 於逾期後被清除。對外端點 SHALL 僅接受符合前述命名與副檔名的檔案請求。
 
+音檔 SHALL 保留 30 天（與對話原文的保存期限相同），且 SHALL 存放在不會隨 backend 重新部署、重啟或增加份數而消失或分散的地方：正式環境由獨立的語音合成服務（care-tts）合成並存放於持久磁碟，backend SHALL 把合成交給它。
+
 #### Scenario: 非法檔名被拒絕
 
 - **WHEN** 請求的檔名不以 `tts_` 開頭、含路徑分隔字元、或副檔名非 `.mp3`
 - **THEN** 端點回應 404
 
+#### Scenario: backend 重新部署後仍能播放
+
+- **WHEN** 語音回覆送出後 backend 重新部署，使用者在保留期限內按下播放
+- **THEN** LINE 仍能從公開端點下載到該音檔
+
 #### Scenario: 過期音檔被清除
 
 - **WHEN** 音檔的修改時間早於保留期限
-- **THEN** 該檔案於後續合成時被刪除
+- **THEN** 該檔案於後續合成時被刪除（清除每小時至多執行一次）
 
 ### Requirement: 語音設定具備兩個使用者入口
 

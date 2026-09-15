@@ -432,3 +432,86 @@ async def test_other_languages_never_touch_taigi():
         assert converter.calls == []
     finally:
         _cleanup(path)
+
+
+# ── 音檔保存：30 天、清除最多一小時一次、公開網址 ─────────────────────
+
+
+def test_default_retention_keeps_audio_for_30_days(monkeypatch):
+    """與對話原文同樣保留 30 天：使用者回頭翻對話時，語音也要播得出來。"""
+    test_dir = Path("app_data") / "tmp" / "tts_retention_test"
+    test_dir.mkdir(parents=True, exist_ok=True)
+    day = 24 * 60 * 60
+    kept = test_dir / "tts_29_days.mp3"
+    expired = test_dir / "tts_31_days.mp3"
+    for path, age_days in ((kept, 29), (expired, 31)):
+        path.write_bytes(b"mp3")
+        mtime = time.time() - age_days * day
+        os.utime(path, (mtime, mtime))
+    monkeypatch.setattr(tts_module, "TTS_TMP_DIR", test_dir)
+
+    try:
+        TTSService().cleanup_expired_audio_files()
+
+        assert kept.exists()
+        assert not expired.exists()
+    finally:
+        kept.unlink(missing_ok=True)
+        expired.unlink(missing_ok=True)
+        test_dir.rmdir()
+
+
+def test_expired_audio_is_cleaned_at_most_once_per_interval(monkeypatch):
+    """30 天份的檔案每次合成都掃一遍，掃描時間會直接加在使用者的等待上。"""
+    now = [1_000.0]
+    service = TTSService(clock=lambda: now[0])
+    cleaned_at: list[float] = []
+    monkeypatch.setattr(
+        service, "cleanup_expired_audio_files", lambda: cleaned_at.append(now[0])
+    )
+
+    paths = []
+    try:
+        paths.append(service._save_mp3(b"a", 1_000)[1])
+        now[0] += tts_module.TTS_CLEANUP_INTERVAL_SECONDS - 1
+        paths.append(service._save_mp3(b"b", 1_000)[1])
+        now[0] += 1
+        paths.append(service._save_mp3(b"c", 1_000)[1])
+    finally:
+        for path in paths:
+            _cleanup(path)
+
+    assert cleaned_at == [1_000.0, 1_000.0 + tts_module.TTS_CLEANUP_INTERVAL_SECONDS]
+
+
+def test_public_audio_url_builds_link_for_local_file(monkeypatch):
+    audio_file = Path("app_data") / "tmp" / "tts_public_url_test.mp3"
+    audio_file.parent.mkdir(parents=True, exist_ok=True)
+    audio_file.write_bytes(b"mp3")
+    monkeypatch.setattr(settings, "PUBLIC_BASE_URL", "https://care.example/")
+    monkeypatch.setattr(settings, "TTS_AUDIO_URL_PATH", "/tts")
+
+    try:
+        assert tts_module.public_audio_url(str(audio_file)) == (
+            "https://care.example/tts/tts_public_url_test.mp3"
+        )
+    finally:
+        audio_file.unlink(missing_ok=True)
+
+
+def test_public_audio_url_passes_existing_urls_through():
+    url = "https://care.example/tts/tts_abc.mp3"
+
+    assert tts_module.public_audio_url(url) == url
+
+
+def test_public_audio_url_is_none_without_public_base_url(monkeypatch):
+    audio_file = Path("app_data") / "tmp" / "tts_no_base_url_test.mp3"
+    audio_file.parent.mkdir(parents=True, exist_ok=True)
+    audio_file.write_bytes(b"mp3")
+    monkeypatch.setattr(settings, "PUBLIC_BASE_URL", "")
+
+    try:
+        assert tts_module.public_audio_url(str(audio_file)) is None
+    finally:
+        audio_file.unlink(missing_ok=True)

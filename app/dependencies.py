@@ -96,9 +96,8 @@ from app.services.line_messaging.handler.media_handler import LineMediaHandler
 from app.services.line_messaging.handler.message_handler import LineMessageHandler
 from app.services.line_messaging.loading_animation import LineLoadingAnimationService
 from app.services.line_messaging.reply.reply import LineReplier
-from app.services.line_messaging.reply.tts_service import TTSService
-from app.services.speech.taigi_client import TaigiClient
-from app.services.speech.taigi_text import TAIGI_TEXT_THINKING_LEVEL, TaigiTextConverter
+from app.services.line_messaging.reply.remote_tts_service import RemoteTTSService
+from app.services.line_messaging.reply.tts_service import TTSService, build_local_tts_service
 from app.services.line_messaging.rich_menu_service import RichMenuService
 from app.services.line_messaging.token_manager import LineTokenManager
 from app.services.medical.facility_name_index import configure_facility_names
@@ -608,18 +607,18 @@ _consultation_service = ConsultationService(
     user_profile_service=_user_profile_service,
 )
 
-# 語言選台語的使用者：語音回覆先改寫成台語漢字（低 thinking，理由見
-# taigi_text.TAIGI_TEXT_THINKING_LEVEL），再用 Taigi 台語 TTS 念。
-_tts_service = TTSService(
-    taigi_client=TaigiClient(),
-    taigi_text_converter=TaigiTextConverter(
-        GeminiService(
-            api_key=settings.GEMINI_API_KEY,
-            model_name=settings.MODEL_NAME,
-            thinking_level=TAIGI_TEXT_THINKING_LEVEL,
-        )
-    ),
-)
+def _build_tts_service(service_url: str) -> TTSService | RemoteTTSService:
+    """有 care-tts（TTS_SERVICE_URL）就交給它合成、存檔；沒有就在本行程合成（本機開發）。
+
+    音檔不能留在 backend 容器裡：部署換 pod 就全丟，backend 開多份時也會被分到沒有
+    那個檔的 pod。詳見 remote_tts_service。
+    """
+    if service_url.strip():
+        return RemoteTTSService(service_url)
+    return build_local_tts_service()
+
+
+_tts_service = _build_tts_service(settings.TTS_SERVICE_URL)
 
 _line_replier = LineReplier(
     token_manager=_line_token_manager,
@@ -997,7 +996,7 @@ def get_user_profile_service() -> UserProfileService:
     return _user_profile_service
 
 
-def get_tts_service() -> TTSService:
+def get_tts_service() -> TTSService | RemoteTTSService:
     return _tts_service
 
 

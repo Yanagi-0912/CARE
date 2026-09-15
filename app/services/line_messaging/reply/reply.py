@@ -9,10 +9,9 @@ import json
 import logging
 
 from app.core.request_logging import stage_timer
+from app.services.line_messaging.reply.tts_service import public_audio_url
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any, Optional
-from urllib.parse import quote
 import requests
 
 from linebot.v3.messaging import (
@@ -457,19 +456,4 @@ class LineReplier:
 
     @staticmethod
     def _resolve_audio_url(output: str) -> Optional[str]:
-        if output.startswith(("https://", "http" + "://")):
-            return output
-
-        audio_path = Path(output)
-        if not settings.PUBLIC_BASE_URL.strip():
-            logger.warning("PUBLIC_BASE_URL is not set; skipping LINE audio reply.")
-            return None
-        if not audio_path.exists():
-            logger.warning("TTS output file not found: %s", audio_path)
-            return None
-
-        audio_url_path = settings.TTS_AUDIO_URL_PATH.strip("/") or "tts"
-        return (
-            f"{settings.PUBLIC_BASE_URL.rstrip('/')}/"
-            f"{audio_url_path}/{quote(audio_path.name)}"
-        )
+        return public_audio_url(output)

@@ -176,3 +176,14 @@ def test_medication_status_tool_is_wired_to_the_shared_authorization_service():
     assert service is dependencies._medication_status_service
     assert service._authz is dependencies._family_authorization_service
     assert service._logs is MedicationLogRepository
+
+
+def test_tts_is_handed_to_care_tts_when_the_service_url_is_set():
+    """正式環境音檔要存在 care-tts 的 PVC；本機開發沒設網址就照舊自己合成。"""
+    from app.services.line_messaging.reply.remote_tts_service import RemoteTTSService
+    from app.services.line_messaging.reply.tts_service import TTSService
+
+    assert isinstance(
+        dependencies._build_tts_service("http://care-tts:8000"), RemoteTTSService
+    )
+    assert isinstance(dependencies._build_tts_service(""), TTSService)

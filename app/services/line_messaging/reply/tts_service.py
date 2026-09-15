@@ -4,7 +4,8 @@ import logging
 import time
 import uuid
 from pathlib import Path
-from typing import Optional, Protocol, Tuple
+from typing import Callable, Optional, Protocol, Tuple
+from urllib.parse import quote
 
 import requests
 
@@ -15,6 +16,7 @@ from app.core.user_language import (
     SUPPORTED_LANGUAGES,
     TAIWANESE_LANGUAGE,
 )
+from app.services.gemini.services.gemini_service import GeminiService
 from app.services.speech import audio
 from app.services.speech.taigi_client import (
     DEFAULT_SPEED as TAIGI_DEFAULT_SPEED,
@@ -23,6 +25,7 @@ from app.services.speech.taigi_client import (
     VOICE_LABEL_BY_GENDER as TAIGI_VOICE_LABEL_BY_GENDER,
     TaigiClient,
 )
+from app.services.speech.taigi_text import TAIGI_TEXT_THINKING_LEVEL, TaigiTextConverter
 
 try:
     import edge_tts
@@ -41,11 +44,19 @@ except Exception:  # pragma: no cover - depends on optional runtime package
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["TTSService"]
+__all__ = ["TTSService", "build_local_tts_service", "public_audio_url"]
 
 TTS_TMP_DIR = Path("app_data") / "tmp"
 DEFAULT_DURATION_MS = 1_000
-DEFAULT_TTS_FILE_TTL_SECONDS = 60 * 60
+# 音檔保存期限與對話原文相同（conversation_log_repository：原文保留 30 天）：使用者回頭
+# 翻對話時文字還在，語音也要播得出來。以前只放 1 小時，而且檔案在 backend 容器裡，部署
+# 換 pod 就全丟——2026-09-15 10:55 送出的語音，10:56 部署後 11:00 按播放，LINE 來拿檔
+# 得到 404，畫面顯示「語音訊息的保存期限已過」。現在正式環境由 care-tts（app/tts_main.py）
+# 存在 PVC。
+DEFAULT_TTS_FILE_TTL_SECONDS = 30 * 24 * 60 * 60
+# 清過期檔最多一小時一次：清除是在合成路徑上同步做的，30 天份的檔案若每次合成都整個
+# 目錄掃一遍，掃描時間就直接加在使用者的等待上；期限以天計，晚一小時刪沒有差別。
+TTS_CLEANUP_INTERVAL_SECONDS = 60 * 60
 
 # 六語系 → 性別 → edge-tts voice 名稱。未知語言一律 fallback DEFAULT_USER_LANGUAGE，
 # 未知性別一律 fallback DEFAULT_VOICE_GENDER。
@@ -154,11 +165,14 @@ class TTSService:
         fallback_engine: FallbackSpeechEngine = GTTSEngine(),
         taigi_client: Optional[TaigiClient] = None,
         taigi_text_converter: Optional[TaigiTextConverterLike] = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._engine = engine
         self._fallback_engine = fallback_engine
         self._taigi_client = taigi_client
         self._taigi_text_converter = taigi_text_converter
+        self._clock = clock
+        self._last_cleanup_at: Optional[float] = None
 
     async def synthesize(
         self,
@@ -191,7 +205,7 @@ class TTSService:
 
     def _save_mp3(self, data: bytes, duration_ms: int) -> Tuple[bytes, str, int]:
         TTS_TMP_DIR.mkdir(parents=True, exist_ok=True)
-        self.cleanup_expired_audio_files()
+        self._cleanup_expired_audio_files_if_due()
         filename = f"tts_{uuid.uuid4().hex}.mp3"
         tmp_path = TTS_TMP_DIR / filename
         with tmp_path.open("wb") as f:
@@ -322,6 +336,16 @@ class TTSService:
             return "ko"
         return normalized.split("-")[0] if normalized else "zh"
 
+    def _cleanup_expired_audio_files_if_due(self) -> None:
+        now = self._clock()
+        if (
+            self._last_cleanup_at is not None
+            and now - self._last_cleanup_at < TTS_CLEANUP_INTERVAL_SECONDS
+        ):
+            return
+        self._last_cleanup_at = now
+        self.cleanup_expired_audio_files()
+
     def cleanup_expired_audio_files(
         self, max_age_seconds: int = DEFAULT_TTS_FILE_TTL_SECONDS
     ) -> None:
@@ -333,3 +357,47 @@ class TTSService:
                     logger.info(f"Deleted expired TTS audio file: {audio_path}")
             except Exception as e:
                 logger.warning(f"Failed to delete expired TTS audio file {audio_path}: {e}")
+
+
+def public_audio_url(output: str) -> Optional[str]:
+    """合成結果 → LINE 下載得到的公開網址。
+
+    `output` 是 TTSService.synthesize 回傳的第二個值：已經是網址（n8n、care-tts）就原樣
+    回傳；本地檔案則接在 PUBLIC_BASE_URL 與 TTS_AUDIO_URL_PATH 之後。PUBLIC_BASE_URL
+    沒設或檔案不在時回 None，呼叫端就不送語音。
+    """
+    if output.startswith(("https://", "http" + "://")):
+        return output
+
+    audio_path = Path(output)
+    if not settings.PUBLIC_BASE_URL.strip():
+        logger.warning("PUBLIC_BASE_URL is not set; skipping LINE audio reply.")
+        return None
+    if not audio_path.exists():
+        logger.warning("TTS output file not found: %s", audio_path)
+        return None
+
+    audio_url_path = settings.TTS_AUDIO_URL_PATH.strip("/") or "tts"
+    return (
+        f"{settings.PUBLIC_BASE_URL.rstrip('/')}/"
+        f"{audio_url_path}/{quote(audio_path.name)}"
+    )
+
+
+def build_local_tts_service() -> TTSService:
+    """在本行程合成的 TTSService。
+
+    backend（沒設 TTS_SERVICE_URL 時）與 care-tts（app/tts_main.py）共用這一份組裝，兩邊
+    的台語設定才不會分岔。語言選台語的使用者：語音回覆先改寫成台語漢字（低 thinking，
+    理由見 taigi_text.TAIGI_TEXT_THINKING_LEVEL），再用 Taigi 台語 TTS 念。
+    """
+    return TTSService(
+        taigi_client=TaigiClient(),
+        taigi_text_converter=TaigiTextConverter(
+            GeminiService(
+                api_key=settings.GEMINI_API_KEY,
+                model_name=settings.MODEL_NAME,
+                thinking_level=TAIGI_TEXT_THINKING_LEVEL,
+            )
+        ),
+    )

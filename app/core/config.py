@@ -57,6 +57,10 @@ class Settings:
     N8N_TTS_WEBHOOK_SECRET: str = os.getenv("N8N_TTS_WEBHOOK_SECRET", "")
     N8N_TTS_TIMEOUT_SECONDS: int = int(os.getenv("N8N_TTS_TIMEOUT_SECONDS", "20"))
     TTS_DEFAULT_VOICE: str = os.getenv("TTS_DEFAULT_VOICE", "")
+    # 獨立的語音合成服務（CARE-infra 的 care-tts，程式是 app/tts_main.py），例：
+    # http://care-tts:8000。有值時 backend 把合成交給它，LINE 也從它下載音檔；空字串時
+    # backend 自己合成、自己提供 /tts（本機開發）。
+    TTS_SERVICE_URL: str = os.getenv("TTS_SERVICE_URL", "")
 
     # 台語語音（Taigi AI Labs，見 app/services/speech/taigi_client.py）。金鑰由
     # care-backend-secret 注入；沒設時語言選台語的使用者照舊走 faster-whisper 與

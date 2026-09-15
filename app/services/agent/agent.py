@@ -489,6 +489,7 @@ class Agent:
             "request_location_quick_reply",  # 分享位置
             "open_official_site",  # 官網／LIFF 入口 Flex
             "verify_claim",  # 查核判定卡 Flex
+            "share_care",  # 分享 CARE 卡（官方帳號 QR＋邀請家人）
             # 症狀科別建議卡。除了 Flex JSON 不能被改寫之外，這裡還有安全理由：
             # 紅旗卡刻意不含任何門診科別，讓模型重寫有可能把「請立即就醫」稀釋
             # 成「可以考慮掛某某科」，那正是本功能要避免的失效模式。

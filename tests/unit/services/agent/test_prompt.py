@@ -118,6 +118,13 @@ async def test_agent_node_puts_the_date_context_into_the_system_prompt(monkeypat
     assert "［日期標記］" in system_msg.content
 
 
+def test_system_prompt_routes_share_requests_to_share_care():
+    """想把 CARE 分享給朋友或邀請家人 → share_care。關鍵字秒回攔不到的講法
+    （句子較長或換了說法）靠這條規則叫出同一張卡。"""
+    assert "share_care" in SYSTEM_PROMPT
+    assert "怎麼讓我朋友也用這個" in SYSTEM_PROMPT
+
+
 def test_system_prompt_rule_9_lists_verify_claim_among_flex_verbatim_tools():
     """次要 finding 3：規則 9 的 Flex 原樣輸出工具清單過去只列了
     find_nearby_hospitals／find_nearby_facilities_by_department／

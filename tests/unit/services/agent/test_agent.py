@@ -167,6 +167,32 @@ async def test_agent_uses_verify_claim_flex_json_verbatim_as_final_response(
 
 
 @pytest.mark.asyncio
+async def test_agent_uses_share_care_flex_json_verbatim_as_final_response(
+    mock_llm, mock_guardrail_service
+):
+    """share_care 的分享卡同樣要原樣送出（比照 verify_claim）：模型改寫過的
+    大白話裡沒有 QR 也沒有按鈕，使用者就拿不到可以轉給朋友的東西。"""
+    from langchain_core.messages import ToolMessage
+
+    agent = Agent(llm=mock_llm, guardrail_service=mock_guardrail_service)
+    flex_json = '{"type": "flex", "altText": "邀請朋友一起用 CARE", "contents": {}}'
+    agent._graph = MagicMock()
+    agent._graph.ainvoke = AsyncMock(
+        return_value={
+            "messages": [
+                HumanMessage(content="怎麼讓我朋友也用這個"),
+                ToolMessage(content=flex_json, tool_call_id="1", name="share_care"),
+                AIMessage(content="你可以請朋友掃 QR code 加入 CARE。"),
+            ]
+        }
+    )
+
+    response = await agent.invoke(user_input="怎麼讓我朋友也用這個", messages=None)
+
+    assert response["response"] == flex_json
+
+
+@pytest.mark.asyncio
 async def test_agent_keeps_flex_json_intact_when_rag_tool_also_ran(
     mock_llm, mock_guardrail_service
 ):

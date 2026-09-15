@@ -18,6 +18,7 @@ from resources.flex_messages.medical_messages.facility_brief_flex_message import
 from resources.flex_messages.medical_messages.facility_detail_flex_message import (
     generate_facility_detail_flex_message,
 )
+from app.services.medical.business_hours import has_emergency_department
 from app.services.medical.search_summary import pharmacy_data_gap_meters
 from app.core.request_context import get_line_user_id
 from app.repositories.user_location_repository import UserLocationRepository
@@ -70,13 +71,28 @@ def _pharmacy_data_gap_note(result: NearbySearchResult) -> str | None:
     )
 
 
-def _build_range_subtitle(result: NearbySearchResult) -> str:
-    """依「搜到多遠、湊不湊得滿」組出副標，讓使用者知道結果的實際涵蓋範圍。"""
+def _build_range_subtitle(
+    result: NearbySearchResult, *, late_night_auto: bool = False
+) -> str:
+    """
+    依「搜到多遠、湊不湊得滿」組出副標，讓使用者知道結果的實際涵蓋範圍。
+
+    late_night_auto 為真代表使用者沒要求、是深夜自動只列現在能去的：要說出來，
+    並告訴使用者想找明天看診的該怎麼問。
+    """
     count = len(result.facilities)
 
     # 要求營業中卻一家都沒開：這件事比搜尋範圍重要，優先講。
     if result.open_now_fallback:
         subtitle = t("location.open_now.none")
+    elif (
+        result.open_now_requested
+        and result.facilities
+        and all(has_emergency_department(f) for f in result.facilities)
+    ):
+        # 深夜多半只剩急診。講「找到 5 間目前營業中」會和卡片上的「今日已結束」打架，
+        # 資料也只說設有急診、沒說急診幾點開，所以照實講。
+        subtitle = t("location.open_now.emergency_only").format(count=count)
     elif result.open_now_requested:
         subtitle = t("location.open_now.found").format(count=count)
     elif not result.satisfied:
@@ -92,6 +108,9 @@ def _build_range_subtitle(result: NearbySearchResult) -> str:
         subtitle = t("location.nearby.found_within").format(
             radius_km=_km(NEARBY_SEARCH_STEPS[0]), count=count
         )
+
+    if late_night_auto and not result.open_now_fallback:
+        subtitle = f"{subtitle}\n{t('location.open_now.late_night_note')}"
 
     # 科別搜尋時，若使用者的說法與部定專科不同，必須誠實說明這層對應。
     match = getattr(result, "match", None)
@@ -117,8 +136,9 @@ async def find_nearby_hospitals(
     當已取得用戶的 GPS 座標後，呼叫此工具搜尋附近的醫療院所。
     使用者分享位置後，該訊息會以「這是我的目前位置：lat=..., lng=...」的文字進入對話，
     此時必須從該文字取出 lat/lng 並呼叫本工具。
-    只有在使用者明確表達「現在有開的／還在看診的／現在營業中」時才把 open_now 設為 true；
-    單純問「附近有醫院嗎」不要設，否則會在午休與深夜篩掉大量其實稍後就開診的院所。
+    只有在使用者要現在就去時才把 open_now 設為 true：明說「現在有開的／有營業的／
+    還有開嗎／還在看診的」，或講到半夜、深夜、凌晨，或說「現在要去看醫生」。
+    單純問「附近有醫院嗎」不要設，否則會在午休篩掉大量其實稍後就開診的院所。
 
     facility_type 為選填的院所類型過濾，只有在使用者明確指出規模／型態時才傳，
     且一律填使用者的原始說法：講「大醫院」「大型醫院」「要住院」等 → 傳「大醫院」；
@@ -149,12 +169,20 @@ async def _search_nearby_facilities(
     if _medical_service is None:
         return "醫療服務未初始化，請稍後再試。"
 
+    # 深夜沒講「現在有開的」也只列現在能去的（見 business_hours.is_late_night）：
+    # 這時列最近的院所，等於列一排明天才開的。科別搜尋不走這裡 —— 問牙醫卻跑出
+    # 急診醫院就答非所問了。
+    late_night_auto = not open_now and _medical_service.is_late_night()
+    if late_night_auto:
+        open_now = True
+
     logger.info(
         f"{LOGGER_HEADER_TEXT} 開始查詢附近醫療院所，"
-        f"lat=%s, lng=%s, open_now=%s, facility_type=%r",
+        f"lat=%s, lng=%s, open_now=%s（深夜自動=%s）, facility_type=%r",
         lat,
         lng,
         open_now,
+        late_night_auto,
         facility_type,
     )
     result = await _medical_service.find_nearby_hospitals(
@@ -199,7 +227,9 @@ async def _search_nearby_facilities(
         generate_facility_list_flex_message(
             result.facilities,
             title_override=title_override,
-            subtitle_override=_build_range_subtitle(result),
+            subtitle_override=_build_range_subtitle(
+                result, late_night_auto=late_night_auto
+            ),
         )
     )
 
@@ -218,7 +248,7 @@ async def find_nearby_facilities_by_department(
     使用者分享位置後，該訊息會以「這是我的目前位置：lat=..., lng=...」的文字進入對話，
     此時必須從該文字取出 lat/lng，並把使用者稍早提到的科別一併傳入 department。
     department 請填使用者的原始說法（例如「腸胃科」），不需要自行換算成部定專科。
-    只有在使用者明確表達「現在有開的／還在看診的」時才把 open_now 設為 true。
+    open_now 的設定時機比照 find_nearby_hospitals：使用者要現在就去時才設為 true。
     若使用者只是要找一般醫院、沒有指定科別，請改用 find_nearby_hospitals。
 
     facility_type 為選填的院所類型過濾，可與 department 同時使用（例如使用者說

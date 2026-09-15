@@ -3,6 +3,7 @@
 import json
 
 from app.core.user_language import set_request_language
+from app.i18n.messages import t
 from app.schemas import ClinicDaySchedule, ClinicTimeSlot, MedicalFacility
 from app.services.medical.business_hours import (
     BusinessHoursResult,
@@ -96,6 +97,10 @@ def test_emergency_facility_card_shows_clinic_status():
     """
     蘭嶼衛生所情境：departments 申報了急診醫學科，但它有完整門診時間，
     卡片必須照常顯示門診狀態，而不是只剩「設有急診」。
+
+    時段用蘭嶼衛生所在資料庫裡的真實門診時間：凌晨開始的時段（例如 00:00–23:59）
+    會被當成資料錯誤、改標請電洽。卡片依執行當下的時間判斷，所以只驗證
+    「有門診狀態」，不驗證是哪一種。
     """
     set_request_language("zh-TW")
     facility = MedicalFacility(
@@ -109,7 +114,12 @@ def test_emergency_facility_card_shows_clinic_status():
         departments=["不分科", "內科", "外科", "婦產科", "急診醫學科", "牙科"],
         clinic_time={
             key: ClinicDaySchedule(
-                isClosed=False, slots=[ClinicTimeSlot(open="00:00", close="23:59")]
+                isClosed=False,
+                slots=[
+                    ClinicTimeSlot(open="08:30", close="12:00"),
+                    ClinicTimeSlot(open="14:00", close="17:30"),
+                    ClinicTimeSlot(open="18:00", close="21:00"),
+                ],
             )
             for key in (
                 "monday", "tuesday", "wednesday", "thursday",
@@ -120,7 +130,12 @@ def test_emergency_facility_card_shows_clinic_status():
     )
 
     rendered = json.dumps(create_facility_item_box(facility), ensure_ascii=False)
-    assert "營業中" in rendered
+    clinic_labels = [
+        t(f"flex.status.{status.value}", "zh-TW")
+        for status in BusinessStatus
+        if status is not BusinessStatus.EMERGENCY
+    ]
+    assert any(label in rendered for label in clinic_labels)
     assert "設有急診" in rendered
 
 

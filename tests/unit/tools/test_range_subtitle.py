@@ -86,3 +86,35 @@ def test_general_search_has_no_alias_note():
         facilities=[_facility(800)], reached_meters=5_000, satisfied=True
     )
     assert "※" not in _build_range_subtitle(result)
+
+
+def test_open_now_with_only_emergency_facilities_says_so():
+    """
+    深夜要求營業中時多半只剩急診。副標講「找到 N 間目前營業中」會和卡片上的
+    「今日已結束」打架，資料也沒說急診幾點開。
+    """
+    hospital = _facility(1_100).model_copy(update={"departments": ["急診醫學科"]})
+    result = NearbySearchResult(
+        facilities=[hospital],
+        reached_meters=5_000,
+        satisfied=False,
+        open_now_requested=True,
+    )
+
+    subtitle = _build_range_subtitle(result)
+
+    assert "設有急診" in subtitle
+    assert "營業中" not in subtitle
+
+
+def test_open_now_with_an_open_clinic_keeps_open_wording():
+    clinic = _facility(300).model_copy(update={"type": "西醫診所"})
+    hospital = _facility(1_100).model_copy(update={"departments": ["急診醫學科"]})
+    result = NearbySearchResult(
+        facilities=[clinic, hospital],
+        reached_meters=5_000,
+        satisfied=False,
+        open_now_requested=True,
+    )
+
+    assert "營業中" in _build_range_subtitle(result)

@@ -15,6 +15,7 @@ LangChain 工具、MedicalService 查詢組合全部走真的程式碼，並直�
 標記——它必須在每次 `pytest` 都跑到，才擋得住同類的接縫問題。
 """
 
+from datetime import datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -23,6 +24,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from app.schemas import MedicalFacility
 from app.services.agent.utils.nodes import AgentNodes
+from app.services.medical.business_hours import TAIPEI_TZ, build_open_now_query
 from app.services.medical.facility_type_matcher import FACILITY_TYPE_CATEGORIES
 from app.services.medical.medical_service import MedicalService
 from app.tools import medical_tools
@@ -32,6 +34,11 @@ LOCATION_TEXT = "這是我的目前位置：lat=25.0478, lng=121.517"
 
 HOSPITAL_TYPE_QUERY = {"type": {"$in": list(FACILITY_TYPE_CATEGORIES["醫院"])}}
 CLINIC_TYPE_QUERY = {"type": {"$in": list(FACILITY_TYPE_CATEGORIES["診所"])}}
+
+# 時間固定住：深夜的一般搜尋會自動加上營業條件（見 medical_tools），
+# 送進 Mongo 的查詢條件就不是其他測試要斷言的樣子。
+DAYTIME = datetime(2026, 9, 16, 10, 0, tzinfo=TAIPEI_TZ)
+LATE_NIGHT = datetime(2026, 9, 16, 2, 30, tzinfo=TAIPEI_TZ)
 
 
 class FakeMedicalFacilityRepository:
@@ -80,7 +87,9 @@ def pipeline():
     """
     original_service = medical_tools._medical_service
     repository = FakeMedicalFacilityRepository()
-    medical_tools.configure_medical_tools(MedicalService(repository=repository))
+    medical_tools.configure_medical_tools(
+        MedicalService(repository=repository, clock=lambda: DAYTIME)
+    )
     yield repository
     medical_tools.configure_medical_tools(original_service)
 
@@ -114,6 +123,30 @@ async def _run_conversation(user_text: str) -> tuple[dict, str]:
     tools = {tool.name: tool for tool in get_all_tools(include_rag_tool=False)}
     payload = await tools[tool_call["name"]].ainvoke(tool_call["args"])
     return tool_call, payload
+
+
+@pytest.fixture
+def late_night_pipeline():
+    """同 pipeline，但時間固定在凌晨兩點半。"""
+    original_service = medical_tools._medical_service
+    repository = FakeMedicalFacilityRepository()
+    medical_tools.configure_medical_tools(
+        MedicalService(repository=repository, clock=lambda: LATE_NIGHT)
+    )
+    yield repository
+    medical_tools.configure_medical_tools(original_service)
+
+
+@pytest.mark.asyncio
+async def test_late_night_plain_request_reaches_open_now_query(late_night_pipeline):
+    """
+    深夜只問「附近有醫院嗎」：使用者沒講要現在有開的，是工具層依時間補上的，
+    最終送進 Mongo 的第一個查詢必須帶營業條件。
+    """
+    tool_call, _payload = await _run_conversation("附近有醫院嗎")
+
+    assert "open_now" not in tool_call["args"]
+    assert late_night_pipeline.queries[0] == build_open_now_query(LATE_NIGHT)
 
 
 @pytest.mark.asyncio

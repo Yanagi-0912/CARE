@@ -1,12 +1,19 @@
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from app.repositories.medical_facility_repository import MedicalFacilityRepository
 from app.schemas import MedicalFacility
 from app.i18n.messages import t
-from app.services.medical.business_hours import resolve_business_hours
+from app.services.medical.business_hours import (
+    TAIPEI_TZ,
+    build_open_now_query,
+    is_late_night,
+    resolve_business_hours,
+)
 from app.services.medical.department_matcher import (
     DepartmentMatch,
     GENERAL_PRACTICE_DEPARTMENTS,
@@ -50,9 +57,8 @@ DEFAULT_TARGET_COUNT = 5
 # 此半徑內查無結果時會自動放寬為全國搜尋，見 find_facility_by_name。
 NAME_SEARCH_RADIUS_METERS = 50_000
 
-# 篩選「現在營業中」時多取回幾倍候選。營業判斷必須在應用層做（clinicTime 是嵌套結構），
-# 所以得先多拿一些才有東西可篩。平日上午約 82% 營業、午休僅 11.5%，
-# 4 倍在多數時段足夠，深夜則會走 open_now_fallback。
+# 篩選「現在營業中」時多取回幾倍候選。營業條件已經交給 Mongo 篩（build_open_now_query），
+# 但長期性註記、今日時段不可信這些規則仍在應用層判斷，會再濾掉幾家，多拿一些才湊得滿。
 OPEN_NOW_OVERFETCH_FACTOR = 4
 OPEN_NOW_OVERFETCH_LIMIT = 20
 
@@ -75,7 +81,7 @@ def _normalize_optional_arg(value: str | None) -> str | None:
     return stripped or None
 
 
-def _is_open_or_emergency(facility: MedicalFacility) -> bool:
+def _is_open_or_emergency(facility: MedicalFacility, now: datetime) -> bool:
     """
     院所是否視為「現在可前往」。
 
@@ -83,7 +89,7 @@ def _is_open_or_emergency(facility: MedicalFacility) -> bool:
     在深夜依門診時間判斷只有 1 家「營業中」。若照此篩選，急需急診的使用者
     會被告知附近沒有院所。這條規則獨立於狀態文案，改文案不會意外破壞它。
     """
-    hours = resolve_business_hours(facility)
+    hours = resolve_business_hours(facility, now=now)
     return hours.is_emergency or hours.is_open_now
 
 
@@ -143,12 +149,19 @@ class MedicalService:
         *,
         department_resolver: "TermResolver | None" = None,
         facility_type_resolver: "TermResolver | None" = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.repository = repository or MedicalFacilityRepository()
+        # 營業中篩選要知道現在幾點。以參數注入，測試才能把時間固定在深夜。
+        self._clock = clock or (lambda: datetime.now(TAIPEI_TZ))
         # 兩個兜底解析器都是選填：沒接上時行為與加這層之前完全相同（表查不到就
         # 回「看不懂」）。單元測試因此不需要為了測搜尋邏輯而準備一個假 LLM。
         self._department_resolver = department_resolver
         self._facility_type_resolver = facility_type_resolver
+
+    def is_late_night(self) -> bool:
+        """現在是否為深夜（見 business_hours.is_late_night），時間取自注入的 clock。"""
+        return is_late_night(self._clock())
 
     def configure_llm_fallbacks(
         self,
@@ -229,31 +242,38 @@ class MedicalService:
         N 筆，等同於跑完整條階梯，但省下 3 次網路往返。分級只影響「回覆時要告訴
         使用者搜到多遠」，不影響選出來的院所。
 
-        open_now 為真時多取回候選再於應用層過濾營業狀態：clinicTime 是「七天各含
-        slots 陣列」的嵌套結構，用 $expr 下推到 Mongo 會複雜且無法利用索引。
+        open_now 為真時把營業條件併進 $geoNear 的 query（見 build_open_now_query），
+        讓 Mongo 在 50 公里內由近到遠找有開的。原本是先取最近 20 家再於應用層篩，
+        但城市裡最近 20 家都在 600 公尺內、深夜全關 —— 實測 9 個地點在 23:30 與
+        02:30 全部篩成 0 家、退回列一排沒開的，其實 1～3 公里外就有急診醫院。
         """
         max_meters = NEARBY_SEARCH_STEPS[-1]
-        fetch_count = (
-            min(target_count * OPEN_NOW_OVERFETCH_FACTOR, OPEN_NOW_OVERFETCH_LIMIT)
-            if open_now
-            else target_count
-        )
-        facilities = await self.repository.find_near(
-            lat, lng, max_meters, fetch_count, query=query
-        )
-
         fell_back_from_open_now = False
         if open_now:
-            open_facilities = [f for f in facilities if _is_open_or_emergency(f)]
-            if open_facilities:
-                facilities = open_facilities
-            else:
-                # 深夜／午休時範圍內可能一家都沒開。回「查無院所」是最差的答案 ——
-                # 退回未過濾的結果，讓呈現層改講「目前均未開診，以下為下次開診時間」。
+            now = self._clock()
+            candidates = await self.repository.find_near(
+                lat,
+                lng,
+                max_meters,
+                min(target_count * OPEN_NOW_OVERFETCH_FACTOR, OPEN_NOW_OVERFETCH_LIMIT),
+                query=self._combine_filters(query, build_open_now_query(now)),
+            )
+            facilities = [f for f in candidates if _is_open_or_emergency(f, now)]
+            if not facilities:
+                # 50 公里內連急診都沒有（或撈回來的全被應用層規則濾掉）才會走到這裡。
+                # 回「查無院所」是最差的答案 —— 改列最近的院所，
+                # 讓呈現層改講「目前均未開診，以下為下次開診時間」。
                 fell_back_from_open_now = True
                 logger.info(
                     f"{LOGGER_HEADER_TEXT} open_now 過濾後為 0 筆，退回未過濾結果"
                 )
+                facilities = await self.repository.find_near(
+                    lat, lng, max_meters, target_count, query=query
+                )
+        else:
+            facilities = await self.repository.find_near(
+                lat, lng, max_meters, target_count, query=query
+            )
 
         reached_meters, selected, satisfied = self._resolve_search_tier(
             facilities, target_count

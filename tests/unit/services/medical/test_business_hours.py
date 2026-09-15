@@ -12,8 +12,10 @@ from app.schemas import ClinicDaySchedule, ClinicTimeSlot, MedicalFacility
 from app.services.medical.business_hours import (
     TAIPEI_TZ,
     BusinessStatus,
+    build_open_now_query,
     find_next_open,
     has_emergency_department,
+    is_late_night,
     resolve_business_hours,
 )
 
@@ -33,14 +35,17 @@ def _facility(
     clinic_time: dict | None = None,
     departments: list[str] | None = None,
     notes: str | None = None,
+    *,
+    name: str = "測試診所",
+    type_: str = "西醫診所",
 ) -> MedicalFacility:
     return MedicalFacility(
         id="id-1",
-        name="測試診所",
+        name=name,
         latitude=25.0,
         longitude=121.0,
         address="測試地址",
-        type="西醫診所",
+        type=type_,
         clinic_time=clinic_time,
         departments=departments,
         notes=notes,
@@ -183,7 +188,9 @@ def test_emergency_facility_never_shows_closed():
     深夜依門診時間判斷會把 197 家急診醫院全部標成休診。
     """
     at_night = WED.replace(hour=3, minute=0)
-    facility = _facility(WEEKDAY_SPLIT, departments=["內科", "急診醫學科"])
+    facility = _facility(
+        WEEKDAY_SPLIT, departments=["內科", "急診醫學科"], type_="綜合醫院"
+    )
     result = resolve_business_hours(facility, now=at_night)
 
     assert result.status is BusinessStatus.EMERGENCY
@@ -196,6 +203,7 @@ def test_emergency_wins_over_closed_day_and_notes():
         {key: _day(closed=True) for key in WEEKDAY_SPLIT},
         departments=["急診醫學科"],
         notes="如需看診請先電話洽詢",
+        type_="綜合醫院",
     )
     result = resolve_business_hours(facility, now=SUN)
     assert result.status is BusinessStatus.EMERGENCY
@@ -206,6 +214,7 @@ def test_emergency_detected_in_dirty_departments():
     facility = _facility(
         WEEKDAY_SPLIT,
         departments=["家醫科、內科、外科、急診醫學科、牙科"],
+        type_="綜合醫院",
     )
     assert has_emergency_department(facility) is True
 
@@ -259,3 +268,156 @@ def test_note_always_returned_regardless_of_status():
 
     assert result.status is BusinessStatus.CLOSED_TODAY
     assert result.note == "1／1全日休診"
+
+
+# --- 急診只認醫院與衛生所 ---
+
+
+def test_clinic_listing_emergency_specialty_is_not_emergency():
+    """
+    departments 列了急診醫學科的 199 家裡有 9 家是一般診所，門診時間都在白天。
+    凌晨照「設有急診」列出來，使用者會跑到一間關著的診所。
+    """
+    at_night = WED.replace(hour=3, minute=0)
+    facility = _facility(WEEKDAY_SPLIT, departments=["急診醫學科"])
+
+    assert has_emergency_department(facility) is False
+    assert (
+        resolve_business_hours(facility, now=at_night).status
+        is BusinessStatus.BEFORE_OPEN
+    )
+
+
+def test_island_health_station_with_emergency_department_counts():
+    facility = _facility(
+        WEEKDAY_SPLIT,
+        departments=["內科", "急診醫學科"],
+        name="臺東縣蘭嶼鄉衛生所",
+        type_="一般診所(醫務室)",
+    )
+    assert has_emergency_department(facility) is True
+
+
+# --- 凌晨開始的時段不採信 ---
+
+
+def test_early_morning_slot_is_not_open_at_night():
+    """
+    真實資料：週三多一段 00:00–18:00，週一卻是 09:00–12:00。
+    照它判斷，這家牙醫診所凌晨兩點半會顯示營業中。
+    """
+    schedule = {**WEEKDAY_SPLIT, "wednesday": _day(("00:00", "18:00"))}
+    result = resolve_business_hours(
+        _facility(schedule), now=WED.replace(hour=2, minute=30)
+    )
+
+    assert result.status is BusinessStatus.CALL_AHEAD
+    assert result.is_open_now is False
+
+
+def test_early_morning_slot_makes_the_whole_day_call_ahead():
+    """不猜哪一段才是真的：同一天白天的時段一樣不採信。"""
+    schedule = {
+        **WEEKDAY_SPLIT,
+        "wednesday": _day(("00:00", "06:00"), ("08:30", "12:00")),
+    }
+    assert (
+        resolve_business_hours(_facility(schedule), now=WED).status
+        is BusinessStatus.CALL_AHEAD
+    )
+
+
+def test_early_morning_slot_on_another_day_does_not_leak():
+    """只看今天：週三的錯誤資料不影響週一。"""
+    schedule = {**WEEKDAY_SPLIT, "wednesday": _day(("00:00", "18:00"))}
+    monday = WED.replace(day=3)  # 2026-08-03 是星期一
+    assert (
+        resolve_business_hours(_facility(schedule), now=monday).status
+        is BusinessStatus.OPEN
+    )
+
+
+def test_early_clinic_at_six_thirty_is_trusted():
+    """06:30、07:00 開始的是正常早診，不能一起當成資料錯誤。"""
+    schedule = {**WEEKDAY_SPLIT, "wednesday": _day(("06:30", "12:00"))}
+    assert (
+        resolve_business_hours(_facility(schedule), now=WED.replace(hour=7)).status
+        is BusinessStatus.OPEN
+    )
+
+
+def test_next_open_skips_early_morning_slot():
+    """「下次開診 週三 00:00」是把錯誤資料講給使用者聽。"""
+    schedule = {**WEEKDAY_SPLIT, "wednesday": _day(("00:00", "18:00"))}
+    tuesday_night = WED.replace(day=4, hour=22)  # 2026-08-04 是星期二
+    nxt = find_next_open(schedule, tuesday_night)
+    assert (nxt.weekday_key, nxt.time_text) == ("thursday", "08:00")
+
+
+def test_slot_running_into_early_morning_is_call_ahead():
+    """
+    同一筆跨夜錯誤資料的前半段：週二開到 24:00、週三又從 00:00 接下去，
+    其他平日卻是 14:00–17:30。套用凌晨規則後，週二 23:30 仍判定營業中的
+    26 家裡有 23 家是這樣。
+    """
+    schedule = {
+        **WEEKDAY_SPLIT,
+        "tuesday": _day(("14:00", "24:00")),
+        "wednesday": _day(("00:00", "05:30"), ("09:00", "12:00")),
+    }
+    tuesday_night = WED.replace(day=4, hour=23, minute=30)  # 2026-08-04 是星期二
+    assert (
+        resolve_business_hours(_facility(schedule), now=tuesday_night).status
+        is BusinessStatus.CALL_AHEAD
+    )
+
+
+def test_late_clinic_without_overnight_chain_is_trusted():
+    """開到半夜、隔天正常時間才開的（例如每天 09:00–24:00 的醫院）照常採信。"""
+    late = {key: _day(("09:00", "24:00")) for key in WEEKDAY_SPLIT}
+    tuesday_night = WED.replace(day=4, hour=23, minute=30)
+    assert (
+        resolve_business_hours(_facility(late), now=tuesday_night).status
+        is BusinessStatus.OPEN
+    )
+
+
+# --- Mongo 查詢條件 ---
+
+
+def test_open_now_query_targets_todays_slots():
+    query = build_open_now_query(WED.replace(hour=23, minute=30))
+    in_clinic_hours = query["$or"][1]
+
+    assert in_clinic_hours["clinicTime.wednesday.slots"]["$elemMatch"] == {
+        "open": {"$gte": "06:00", "$lte": "23:30"},
+        "close": {"$gte": "23:30"},
+    }
+    assert in_clinic_hours["clinicTime.wednesday.isClosed"] == {"$ne": True}
+
+
+def test_open_now_query_before_dawn_leaves_only_emergency():
+    """凌晨時門診那一支要開始時間 ≥ 06:00 又 ≤ 02:30，必然落空，只剩急診。"""
+    query = build_open_now_query(WED.replace(hour=2, minute=30))
+    open_range = query["$or"][1]["clinicTime.wednesday.slots"]["$elemMatch"]["open"]
+
+    assert open_range["$gte"] > open_range["$lte"]
+    assert "急診" in query["$or"][0]["departments"]["$regex"]
+
+
+# --- 深夜 ---
+
+
+@pytest.mark.parametrize(
+    ("hour", "minute", "expected"),
+    [
+        (22, 59, False),
+        (23, 0, True),
+        (2, 30, True),
+        (5, 59, True),
+        (6, 0, False),
+        (12, 0, False),
+    ],
+)
+def test_late_night_window(hour, minute, expected):
+    assert is_late_night(WED.replace(hour=hour, minute=minute)) is expected

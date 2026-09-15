@@ -43,6 +43,10 @@ class _StubMedicalService:
         self.hospitals_calls: list[dict] = []
         self.department_calls: list[dict] = []
 
+    def is_late_night(self) -> bool:
+        # 固定在白天：深夜的一般搜尋會自動加上 open_now，本檔斷言的是白天的行為。
+        return False
+
     async def find_nearby_hospitals(
         self, lat, lng, target_count=5, open_now=False, facility_type=None
     ) -> NearbySearchResult:

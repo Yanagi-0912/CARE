@@ -58,10 +58,19 @@ def patched_tools(monkeypatch):
         ("現在營業中的醫院", True),
         ("附近有正在營業的藥局嗎", True),
         ("any clinic open now", True),
+        # 明講了卻判不出來、拿到一排沒開的說法
+        ("幫我找有營業的醫院", True),
+        ("現在還有開嗎", True),
+        ("哪裡還有開", True),
+        # 講到半夜／凌晨，或「現在要去看醫生」，就是現在要去
+        ("半夜想看醫生", True),
+        ("凌晨肚子痛想看醫生", True),
+        ("我現在想去看醫生", True),
         # 沒有明說就不能推論 —— 午休時段只有 11.5% 營業，預設篩選會刪掉太多
         ("附近有診所嗎", False),
         ("附近有腸胃科嗎", False),
         ("這家診所的營業時間", False),
+        ("這家有營業時間嗎", False),
         ("", False),
     ],
 )
@@ -112,6 +121,29 @@ async def test_shared_location_carries_open_now(
     state = {
         "messages": [
             HumanMessage(content="附近現在有開的醫院嗎"),
+            AIMessage(content="請分享您的位置"),
+            HumanMessage(content=LOCATION_TEXT),
+        ],
+        "allow_rag": False,
+    }
+
+    with patch("app.services.agent.utils.nodes.log_stage"):
+        res = await nodes.agent_node(state)
+
+    call = res["messages"][0].tool_calls[0]
+    assert call["name"] == "find_nearby_hospitals"
+    assert call["args"] == {"lat": 25.033, "lng": 121.56, "open_now": True}
+
+
+@pytest.mark.asyncio
+async def test_late_night_request_carries_open_now(
+    mock_llm_no_tool_calls, patched_tools
+):
+    """半夜說想看醫生、再分享位置：要找現在能去的，而不是一排明天才開的。"""
+    nodes = AgentNodes(llm=mock_llm_no_tool_calls, guardrail_service=MagicMock())
+    state = {
+        "messages": [
+            HumanMessage(content="半夜想看醫生"),
             AIMessage(content="請分享您的位置"),
             HumanMessage(content=LOCATION_TEXT),
         ],

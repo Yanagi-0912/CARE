@@ -716,6 +716,26 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "พบสถานพยาบาลที่เปิดอยู่ {count} แห่ง แตะเพื่อดูรายละเอียด",
         "ja": "現在営業中の医療機関が {count} 件見つかりました。タップで詳細を表示します。",
     },
+    # 要求營業中、結果全是急診院所時（深夜幾乎都是這樣）。卡片上的門診狀態會是
+    # 「今日已結束」，副標若講「目前營業中」會互相矛盾；資料也沒說急診幾點開。
+    "location.open_now.emergency_only": {
+        "zh-TW": "附近診所現在都沒有看診，以下是最近 {count} 家設有急診的院所",
+        "en": "No clinics nearby are seeing patients right now. Below are the {count} nearest facilities with an emergency department.",
+        "id": "Tidak ada klinik terdekat yang melayani pasien saat ini. Berikut {count} fasilitas terdekat yang memiliki unit gawat darurat.",
+        "vi": "Hiện không có phòng khám nào gần đây đang khám bệnh. Dưới đây là {count} cơ sở gần nhất có khoa cấp cứu.",
+        "th": "ขณะนี้ไม่มีคลินิกใกล้เคียงที่เปิดตรวจ ด้านล่างคือสถานพยาบาลที่มีแผนกฉุกเฉินที่ใกล้ที่สุด {count} แห่ง",
+        "ja": "現在診療中の近くのクリニックはありません。以下は救急外来のある最寄りの医療機関 {count} 件です。",
+    },
+    # 深夜使用者沒講「現在有開的」、是系統自動只列現在能去的時候，接在副標後面。
+    # 要說出來，也要告訴使用者想找明天看診的該怎麼問（講科別就不會自動篩）。
+    "location.open_now.late_night_note": {
+        "zh-TW": "※ 現在是深夜，只列出現在就能去的院所；想找明天看診的，請告訴我要看哪一科。",
+        "en": "※ It's late at night, so only places you can go to right now are listed. To find a clinic for tomorrow, tell me which specialty you need.",
+        "id": "※ Saat ini sudah larut malam, jadi hanya fasilitas yang bisa Anda datangi sekarang yang ditampilkan. Untuk mencari klinik besok, beri tahu saya spesialisasi yang Anda butuhkan.",
+        "vi": "※ Bây giờ đã khuya nên chỉ liệt kê những nơi có thể đến ngay. Nếu muốn tìm phòng khám cho ngày mai, hãy cho tôi biết bạn cần khám chuyên khoa nào.",
+        "th": "※ ตอนนี้ดึกแล้ว จึงแสดงเฉพาะสถานพยาบาลที่ไปได้ทันที หากต้องการหาคลินิกสำหรับพรุ่งนี้ โปรดบอกว่าต้องการตรวจแผนกใด",
+        "ja": "※ 深夜のため、今すぐ行ける医療機関のみ表示しています。明日受診できるクリニックを探す場合は、診療科を教えてください。",
+    },
     "location.department.none": {
         "zh-TW": (
             "抱歉，您附近 {radius_km} 公里內找不到有「{department}」的醫療院所。\n"

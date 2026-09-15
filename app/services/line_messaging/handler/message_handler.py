@@ -26,6 +26,7 @@ from app.core.user_language import (
 )
 from app.i18n.messages import t
 from app.services.line_messaging.reply.reply import LineReplier
+from app.services.line_messaging.share_intent import is_share_intent
 from app.core.request_context import reset_line_user_id, set_line_user_id
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ class BaseLineMessageHandler:
         loading_animation_service=None,
         safety_alert_service=None,
         emergency_family_alert_service=None,
+        share_card_service=None,
     ):
         self._agent = agent
         self._history_service = history_service
@@ -59,6 +61,8 @@ class BaseLineMessageHandler:
         # 整條路徑一步都不會執行（見 app/dependencies.py 的組裝）。
         self._safety_alert_service = safety_alert_service
         self._emergency_family_alert_service = emergency_family_alert_service
+        # 沒注入時（媒體訊息的 handler 就沒有）分享卡的秒回路徑整段不執行。
+        self._share_card_service = share_card_service
         # 併行任務要被持有參考直到完成，否則可能在跑完之前就被 GC 回收。
         self._safety_alert_tasks: set[asyncio.Task] = set()
 
@@ -126,6 +130,27 @@ class BaseLineMessageHandler:
             # 年齡同理：症狀科別建議要靠它決定該不該給兒科，而那段程式在
             # LangChain tool 底下，拿不到 user_profile。
             age_token = set_request_age((user_profile or {}).get("age"))
+
+            # 分享卡：常見說法直接回卡、不進 agent（理由見 share_intent）。排在語言
+            # 與字級設好之後，卡片才會照使用者的設定；排在 rag 來源 holder 與讀取
+            # 動畫之前，那兩樣只有 agent 那條路用得到。只看使用者親手打的字——
+            # 照片辨識出的文字剛好有「加好友」不算。不唸語音、不寫進對話紀錄，
+            # 比照貼圖（見 dispatcher._reply_to_sticker）。
+            if (
+                message_type == "text"
+                and self._share_card_service is not None
+                and is_share_intent(user_text)
+            ):
+                success = await self._replier.reply(
+                    reply_token=reply_token,
+                    message_text=await self._share_card_service.build_reply_text(),
+                    user_id=user_id,
+                    voice_reply_enabled=False,
+                    language=user_language,
+                )
+                log_stage(logger, "share_card", ok=success)
+                return
+
             # 每輪開頭建立 holder：上一輪的來源殘留下來，會變成這一輪卡片上
             # 不屬於這個問題的來源按鈕。必須在 agent 執行之前、於這一層建立，
             # tool 才改得到同一個物件（見 app/core/rag_sources.py）。

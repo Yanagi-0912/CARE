@@ -99,6 +99,8 @@ from app.services.line_messaging.reply.reply import LineReplier
 from app.services.line_messaging.reply.remote_tts_service import RemoteTTSService
 from app.services.line_messaging.reply.tts_service import TTSService, build_local_tts_service
 from app.services.line_messaging.rich_menu_service import RichMenuService
+from app.services.line_messaging.official_account import OfficialAccountService
+from app.services.line_messaging.share_card import ShareCardService
 from app.services.line_messaging.token_manager import LineTokenManager
 from app.services.medical.facility_name_index import configure_facility_names
 from app.services.medical.medical_service import MedicalService, medical_service
@@ -157,6 +159,7 @@ from app.tools.medication_status_tools import configure_medication_status_tool
 from app.tools.medical_tools import configure_medical_tools
 from app.tools.official_site_tools import configure_official_site_tool
 from app.tools.rag_tools import configure_rag_tool
+from app.tools.share_tools import configure_share_tool
 from app.tools.symptom_tools import configure_symptom_tool
 from app.tools.user_document_tools import configure_user_document_tool
 from app.tools.web_tools import configure_web_tool
@@ -590,6 +593,13 @@ _line_token_manager = LineTokenManager(
 
 _line_loading_animation_service = LineLoadingAnimationService(_line_token_manager)
 
+# 分享卡：關鍵字秒回（message handler）與 AI 工具 share_care 共用同一個服務。
+_official_account_service = OfficialAccountService(_line_token_manager)
+_share_card_service = ShareCardService(
+    _official_account_service, liff_url=settings.LIFF_URL
+)
+configure_share_tool(_share_card_service)
+
 _rich_menu_service = RichMenuService(
     get_access_token=_line_token_manager.get_token,
 )
@@ -747,6 +757,7 @@ _message_handler = LineMessageHandler(
     loading_animation_service=_line_loading_animation_service,
     safety_alert_service=_enabled_safety_alert_service,
     emergency_family_alert_service=_emergency_family_alert_service,
+    share_card_service=_share_card_service,
 )
 _media_handler = LineMediaHandler(
     agent=_care_agent,

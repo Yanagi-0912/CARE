@@ -86,6 +86,103 @@ async def _drain(handler):
         await asyncio.gather(*tasks)
 
 
+class FakeShareCardService:
+    CARD = '{"type": "flex", "altText": "邀請朋友一起用 CARE", "contents": {}}'
+
+    def __init__(self):
+        self.calls = 0
+
+    async def build_reply_text(self):
+        self.calls += 1
+        return self.CARD
+
+
+# 名稱加 Share 前綴：這個檔案後面另有同名的 RecordingAgent／RecordingHistory，
+# 模組層級後定義的會蓋掉先定義的。
+class ShareRecordingAgent:
+    def __init__(self):
+        self.calls = []
+
+    async def invoke(self, **kwargs):
+        self.calls.append(kwargs)
+        return {"response": "主回覆內容"}
+
+
+class ShareRecordingHistory:
+    def __init__(self):
+        self.saved = []
+
+    async def load_history(self, **kwargs):
+        return []
+
+    async def save_turn(self, **kwargs):
+        self.saved.append(kwargs)
+
+
+class VoiceOnProfile:
+    """開著語音回覆的使用者：分享卡仍不該唸。"""
+
+    async def get_user_profile(self, user_id):
+        return {"settings": {"language": "zh-TW", "voice_reply_enabled": True}}
+
+
+def _text_event_saying(text: str) -> MessageEvent:
+    return MessageEvent(
+        timestamp=int(datetime.now().timestamp() * 1000),
+        mode="active",
+        webhookEventId="01HZTEST000000000000000001",
+        deliveryContext=DeliveryContext(isRedelivery=False),
+        replyToken="rt",
+        source=UserSource(type="user", userId=USER_ID),
+        message=TextMessageContent(id="M2", text=text, quoteToken="qt"),
+    )
+
+
+def _share_handler(share_card_service):
+    agent, history, replier = ShareRecordingAgent(), ShareRecordingHistory(), FakeReplier()
+    handler = LineMessageHandler(
+        agent=agent,
+        history_service=history,
+        user_profile_service=VoiceOnProfile(),
+        replier=replier,
+        share_card_service=share_card_service,
+    )
+    return handler, agent, history, replier
+
+
+async def test_share_phrase_gets_the_card_without_going_through_the_agent():
+    share = FakeShareCardService()
+    handler, agent, history, replier = _share_handler(share)
+
+    await handler.handle(_text_event_saying("加好友"))
+
+    assert agent.calls == []
+    assert share.calls == 1
+    assert replier.replies[0]["message_text"] == FakeShareCardService.CARD
+    # 比照貼圖：不唸語音、不寫進對話紀錄
+    assert replier.replies[0]["voice_reply_enabled"] is False
+    assert history.saved == []
+
+
+async def test_other_messages_still_go_to_the_agent():
+    share = FakeShareCardService()
+    handler, agent, history, replier = _share_handler(share)
+
+    await handler.handle(_text_event_saying("高血壓可以吃香蕉嗎"))
+
+    assert len(agent.calls) == 1
+    assert share.calls == 0
+    assert replier.replies[0]["message_text"] == "主回覆內容"
+
+
+async def test_share_phrase_goes_to_the_agent_when_no_share_service_is_wired():
+    handler, agent, history, replier = _share_handler(None)
+
+    await handler.handle(_text_event_saying("加好友"))
+
+    assert len(agent.calls) == 1
+
+
 async def test_safety_check_runs_with_the_same_text_as_the_main_reply():
     service = FakeSafetyAlertService()
     handler = _handler(safety_alert_service=service)

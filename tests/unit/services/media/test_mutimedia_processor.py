@@ -235,10 +235,34 @@ class FakeTaigiClient:
         return f"{round(_wav_seconds(wav))}秒"
 
 
-async def _process_as(lang, media_type, taigi, tmp_path, pcm=None, webhook_text="whisper 結果"):
+class FakeTranscriber:
+    """代替 Gemini 聽寫；記下收到的語言提示。"""
+
+    def __init__(self, text="gemini 結果", exc=None, available=True):
+        self.text = text
+        self.exc = exc
+        self._available = available
+        self.languages: list[str] = []
+
+    def available(self):
+        return self._available
+
+    async def transcribe(self, file_path, language):
+        self.languages.append(language)
+        if self.exc is not None:
+            raise self.exc
+        return self.text
+
+
+async def _process_as(
+    lang, media_type, taigi, tmp_path, pcm=None, webhook_text="whisper 結果", transcriber=None
+):
     p = tmp_path / "voice.wav"
     p.write_bytes(speech_audio.pcm16_to_wav(pcm or _tone(2), RATE))
-    svc = MediaProcessorService(taigi_client=taigi)
+    svc = MediaProcessorService(
+        taigi_client=taigi,
+        transcriber=transcriber if transcriber is not None else FakeTranscriber(),
+    )
     token = set_request_language(lang)
     try:
         with patch.object(svc, "_download_media_to_tmp", return_value=p), \
@@ -252,11 +276,13 @@ async def _process_as(lang, media_type, taigi, tmp_path, pcm=None, webhook_text=
 @pytest.mark.asyncio
 async def test_taiwanese_audio_goes_to_taigi_as_16k_wav(tmp_path):
     taigi = FakeTaigiClient(text="阿公，你食飽未？")
+    gemini = FakeTranscriber()
 
-    out, webhook = await _process_as("nan-TW", "audio", taigi, tmp_path)
+    out, webhook = await _process_as("nan-TW", "audio", taigi, tmp_path, transcriber=gemini)
 
     assert out == "阿公，你食飽未？"
     webhook.assert_not_called()
+    assert gemini.languages == []
     assert len(taigi.wavs) == 1
     with wave.open(io.BytesIO(taigi.wavs[0])) as w:
         assert (w.getframerate(), w.getnchannels()) == (RATE, 1)
@@ -282,13 +308,15 @@ async def test_silent_taiwanese_audio_returns_no_content_text(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_taigi_failure_falls_back_to_webhook(tmp_path):
+async def test_taigi_failure_falls_back_to_gemini_with_zh_tw_hint(tmp_path):
     taigi = FakeTaigiClient(exc=RuntimeError("HTTP 500"))
+    gemini = FakeTranscriber()
 
-    out, webhook = await _process_as("nan-TW", "audio", taigi, tmp_path)
+    out, webhook = await _process_as("nan-TW", "audio", taigi, tmp_path, transcriber=gemini)
 
-    assert out == "whisper 結果"
-    webhook.assert_called_once()
+    assert out == "gemini 結果"
+    assert gemini.languages == ["zh-TW"]
+    webhook.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -297,16 +325,75 @@ async def test_missing_taigi_key_falls_back_without_calling_taigi(tmp_path):
 
     out, _ = await _process_as("nan-TW", "audio", taigi, tmp_path)
 
-    assert out == "whisper 結果"
+    assert out == "gemini 結果"
     assert taigi.wavs == []
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("lang,media_type", [("zh-TW", "audio"), ("nan-TW", "image")])
-async def test_taigi_only_for_taiwanese_audio(tmp_path, lang, media_type):
+async def test_non_taiwanese_audio_skips_taigi(tmp_path):
     taigi = FakeTaigiClient()
 
-    out, _ = await _process_as(lang, media_type, taigi, tmp_path)
+    out, _ = await _process_as("zh-TW", "audio", taigi, tmp_path)
+
+    assert out == "gemini 結果"
+    assert taigi.wavs == []
+
+
+@pytest.mark.asyncio
+async def test_images_skip_speech_recognition(tmp_path):
+    taigi = FakeTaigiClient()
+    gemini = FakeTranscriber()
+
+    out, webhook = await _process_as("nan-TW", "image", taigi, tmp_path, transcriber=gemini)
 
     assert out == "whisper 結果"
+    webhook.assert_called_once()
     assert taigi.wavs == []
+    assert gemini.languages == []
+
+
+# ── 一般語言的語音先交給 Gemini，失敗才送 n8n／faster-whisper ─────────────
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("lang", ["zh-TW", "vi", "ja"])
+async def test_audio_goes_to_gemini_with_user_language(tmp_path, lang):
+    gemini = FakeTranscriber()
+
+    out, webhook = await _process_as(lang, "audio", FakeTaigiClient(), tmp_path, transcriber=gemini)
+
+    assert out == "gemini 結果"
+    assert gemini.languages == [lang]
+    webhook.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("exc", [RuntimeError("HTTP 503"), TimeoutError()])
+async def test_gemini_failure_falls_back_to_webhook(tmp_path, exc):
+    gemini = FakeTranscriber(exc=exc)
+
+    out, webhook = await _process_as("en", "audio", FakeTaigiClient(), tmp_path, transcriber=gemini)
+
+    assert out == "whisper 結果"
+    webhook.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_gemini_hearing_nothing_returns_no_content_text(tmp_path):
+    gemini = FakeTranscriber(text="")
+
+    out, webhook = await _process_as("zh-TW", "audio", FakeTaigiClient(), tmp_path, transcriber=gemini)
+
+    assert out == NO_CONTENT_TEXT
+    webhook.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_missing_gemini_key_falls_back_to_webhook(tmp_path):
+    gemini = FakeTranscriber(available=False)
+
+    out, webhook = await _process_as("zh-TW", "audio", FakeTaigiClient(), tmp_path, transcriber=gemini)
+
+    assert out == "whisper 結果"
+    assert gemini.languages == []
+    webhook.assert_called_once()

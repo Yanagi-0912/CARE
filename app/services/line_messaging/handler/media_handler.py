@@ -68,7 +68,7 @@ class LineMediaHandler(BaseLineMessageHandler):
 
         user_id = getattr(event.source, "user_id", "")
         # 辨識語音之前就要知道使用者的語言：選台語的走台語 STT，其他語言交給
-        # faster-whisper 當提示。語言原本要到 _process_and_reply 讀了 profile 才
+        # Gemini（備援 faster-whisper）當提示。語言原本要到 _process_and_reply 讀了 profile 才
         # 設定，那時辨識早就做完了——所有語音都是用預設的 zh-TW 辨識的
         # （2026-09-14 發現，ba9bf1b 的語言提示因此從沒生效）。
         lang_token = set_request_language(await self._language_choice_for(user_id))

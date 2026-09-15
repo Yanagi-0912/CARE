@@ -10,6 +10,7 @@ from app.core.user_language import (
     get_request_speech_language,
 )
 from app.services.speech import audio
+from app.services.speech.gemini_stt import GeminiTranscriber
 from app.services.speech.taigi_client import TaigiClient
 
 import asyncio
@@ -61,8 +62,13 @@ NO_CONTENT_TEXT = "Unable to extract text from media file (no content extracted)
 class MediaProcessorService:
     """Handle incoming LINE text and send replies based on Gemini tool output."""
 
-    def __init__(self, taigi_client: Optional[TaigiClient] = None):
+    def __init__(
+        self,
+        taigi_client: Optional[TaigiClient] = None,
+        transcriber: Optional[GeminiTranscriber] = None,
+    ):
         self._taigi_client = taigi_client if taigi_client is not None else TaigiClient()
+        self._transcriber = transcriber if transcriber is not None else GeminiTranscriber()
         logger.info("MediaProcessorService initialized")
 
     async def process_media(
@@ -91,12 +97,14 @@ class MediaProcessorService:
                 user_media_type,
                 source_file_name=source_file_name,
             )
+            # 語音：台語使用者先走台語 STT，其餘（含台語 STT 失敗）交給 Gemini，
+            # 都不行才送 n8n／faster-whisper。圖片、影片、文件照舊走 n8n。
             user_text = None
-            if (
-                user_media_type.lower().strip() == "audio"
-                and get_request_speech_language() == TAIWANESE_LANGUAGE
-            ):
+            is_audio = user_media_type.lower().strip() == "audio"
+            if is_audio and get_request_speech_language() == TAIWANESE_LANGUAGE:
                 user_text = await self._transcribe_taiwanese_or_none(temp_file_path)
+            if is_audio and user_text is None:
+                user_text = await self._transcribe_with_gemini_or_none(temp_file_path)
             if user_text is None:
                 user_text = await asyncio.to_thread(
                     self._extract_user_text_via_webhook, temp_file_path
@@ -116,11 +124,11 @@ class MediaProcessorService:
     async def _transcribe_taiwanese_or_none(self, file_path: Path) -> Optional[str]:
         """語言選台語的使用者，語音改走 Taigi 台語 STT。
 
-        失敗回 None，由呼叫端改走 n8n／faster-whisper（此時送的語言提示是文字語言
-        zh-TW，whisper 不認得台語）。
+        失敗回 None，由呼叫端改走 Gemini、再不行才 n8n／faster-whisper（此時送的
+        語言提示是文字語言 zh-TW，兩者都不認得台語）。
         """
         if not self._taigi_client.available():
-            logger.warning("TAIGI_API_KEY 未設定，台語語音改走 faster-whisper")
+            logger.warning("TAIGI_API_KEY 未設定，台語語音改走一般辨識")
             return None
         try:
             with stage_timer(logger, "taigi_stt", chunks=0, ok="False") as t_stt:
@@ -137,9 +145,27 @@ class MediaProcessorService:
                 parts = await asyncio.gather(*(_transcribe(c) for c in chunks))
                 t_stt["ok"] = "True"
         except Exception:
-            logger.warning("台語 STT 失敗，改走 faster-whisper", exc_info=True)
+            logger.warning("台語 STT 失敗，改走一般辨識", exc_info=True)
             return None
         text = " ".join(p for p in parts if p)
+        return text or NO_CONTENT_TEXT
+
+    async def _transcribe_with_gemini_or_none(self, file_path: Path) -> Optional[str]:
+        """語音交給 Gemini 聽寫（理由與實測見 app/services/speech/gemini_stt.py）。
+
+        語言提示用文字語言：台語使用者退到這裡時是 zh-TW。失敗或逾時回 None，
+        由呼叫端改走 n8n／faster-whisper。
+        """
+        if not self._transcriber.available():
+            logger.warning("GEMINI_API_KEY 未設定，語音改走 faster-whisper")
+            return None
+        try:
+            with stage_timer(logger, "gemini_stt", ok="False") as t_stt:
+                text = await self._transcriber.transcribe(file_path, get_request_language())
+                t_stt["ok"] = "True"
+        except Exception:
+            logger.warning("Gemini 語音辨識失敗，改走 faster-whisper", exc_info=True)
+            return None
         return text or NO_CONTENT_TEXT
 
     @staticmethod

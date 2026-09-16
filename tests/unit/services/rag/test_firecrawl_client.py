@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -225,3 +226,51 @@ async def test_scrape_page_returns_none_final_url_when_metadata_missing():
     page = await client.scrape_page("https://www.hpa.gov.tw/a")
     assert page.final_url is None
     assert "內容" in page.text
+
+
+@pytest.mark.asyncio
+async def test_gate_caps_requests_in_flight_at_max_concurrency():
+    """併發閘要真的擋住第 N+1 個請求，而不是只是宣稱有上限。
+
+    Hobby 的併發上限是 5，超過拿到的是 429——search 會變成「搜尋服務暫時
+    無法使用」、scrape 則靜靜回空字串。這裡直接量在途數的峰值。
+    """
+    in_flight = 0
+    peak = 0
+
+    async def slow_post(*args, **kwargs):
+        nonlocal in_flight, peak
+        in_flight += 1
+        peak = max(peak, in_flight)
+        try:
+            await asyncio.sleep(0.01)
+        finally:
+            in_flight -= 1
+        return _mock_response({"success": True, "data": {"markdown": "x"}})
+
+    http_client = AsyncMock()
+    http_client.post = slow_post
+    client = FirecrawlClient(
+        api_key="fc-test", http_client=http_client, max_concurrency=2
+    )
+
+    await asyncio.gather(*(client.scrape(f"https://x.gov.tw/{i}") for i in range(6)))
+
+    assert peak == 2
+
+
+def test_gate_is_rebuilt_for_a_new_event_loop():
+    """同一個客戶端實例跨 event loop 重用不能爆掉。
+
+    dependencies.py 在模組層建立這個客戶端，而測試裡每個 asyncio.run() 都是
+    新 loop；Semaphore 綁死在第一個 loop 上會拋「bound to a different event
+    loop」，正式環境看不到、測試一跑就炸。
+    """
+    http_client = AsyncMock()
+    http_client.post = AsyncMock(
+        return_value=_mock_response({"success": True, "data": {"markdown": "x"}})
+    )
+    client = FirecrawlClient(api_key="fc-test", http_client=http_client)
+
+    assert asyncio.run(client.scrape("https://x.gov.tw/a")) == "x"
+    assert asyncio.run(client.scrape("https://x.gov.tw/b")) == "x"

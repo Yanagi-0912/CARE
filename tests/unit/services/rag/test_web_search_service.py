@@ -1,4 +1,6 @@
+import asyncio
 import sys
+import time
 import types
 from unittest.mock import AsyncMock, MagicMock
 
@@ -38,6 +40,7 @@ from app.core.user_language import SUPPORTED_LANGUAGES
 from app.services.rag.web_client import WebSearchHit, WebSearchUnavailable
 from app.services.rag.fail_messages import RagFailCode, rag_fail
 from app.services.rag.web_search_service import (
+    CITE_TOP_K,
     NO_ANSWER_MESSAGE,
     WEB_ANSWER_PREFIX,
     WebSearchService,
@@ -820,3 +823,116 @@ async def test_empty_model_output_is_treated_as_refusal():
     result = await svc.answer("高血壓要注意什麼")
 
     assert result == rag_fail(RagFailCode.MODEL_REFUSE)
+
+
+def _bare_hit(title, url):
+    """snippet 短到會觸發 scrape 的命中（對照 `_hit` 的長 snippet）。"""
+    return WebSearchHit(title=title, url=url, description="短")
+
+
+@pytest.mark.asyncio
+async def test_scrapes_run_in_parallel_not_one_after_another():
+    """缺內文的候選要同時抓。
+
+    單次 scrape 的逾時是 45 秒，逐一 await 時 n 筆抓不到就是 n×45 秒，整段
+    網搜的 45 秒總逾時撐不到第二筆。這裡用「牆鐘時間接近一筆而不是三筆」
+    來釘住並行，而不是只數呼叫次數——次數一樣，慢的才是問題。
+    """
+    delay = 0.05
+    urls = [f"https://www.hpa.gov.tw/p{i}" for i in range(3)]
+    web = FakeWebClient(
+        hits=[_bare_hit(f"衛教{i}", url) for i, url in enumerate(urls)],
+        pages={url: f"{url} 的內文夠長可以當作回答依據。" for url in urls},
+    )
+
+    async def slow_scrape(url: str) -> str:
+        web.scrape_calls.append(url)
+        await asyncio.sleep(delay)
+        return web.pages.get(url, "")
+
+    web.scrape = slow_scrape
+    svc, _ = _make_service(web_client=web)
+
+    started = time.perf_counter()
+    await svc.answer("高血壓要注意什麼")
+    elapsed = time.perf_counter() - started
+
+    assert len(web.scrape_calls) == 3
+    # 序列要 3×delay；抓一個 2 倍 delay 的門檻，慢機器上也不會假性失敗
+    assert elapsed < delay * 2
+
+
+@pytest.mark.asyncio
+async def test_scrape_window_is_bounded_to_the_slots_that_exist():
+    """只對前 CITE_TOP_K 筆發 scrape。
+
+    序列版是「抓不到就再往下一筆」，最壞情況會把八筆命中全部抓過一遍、
+    每筆各等一輪逾時。並行之後次數上限必須釘死，否則省下的是時間、賠掉的
+    是額度。
+    """
+    urls = [f"https://www.hpa.gov.tw/p{i}" for i in range(8)]
+    web = FakeWebClient(
+        hits=[_bare_hit(f"衛教{i}", url) for i, url in enumerate(urls)],
+        pages={},  # 全部抓不到
+    )
+    svc, _ = _make_service(web_client=web)
+
+    await svc.answer("高血壓要注意什麼")
+
+    assert len(web.scrape_calls) == CITE_TOP_K
+
+
+@pytest.mark.asyncio
+async def test_no_scrape_when_the_top_slots_already_have_usable_snippets():
+    """前 CITE_TOP_K 名的 snippet 都夠用時，一次都不抓。
+
+    這是實測打回來的迴歸：預抓視窗設得比 CITE_TOP_K 寬時，golden set 有一題
+    會去抓排在第 4 名的 nhi.gov.tw PDF、卡滿 45 秒逾時，而前三名其實全都
+    夠用。實測 153 筆候選裡 151 筆的 snippet ≥ 20 字，這條路才是常態。
+    """
+    good = [
+        WebSearchHit(
+            title=f"衛教{i}",
+            url=f"https://www.hpa.gov.tw/ok{i}",
+            description="這段描述明顯超過二十個字，足以直接當作回答依據，不必再抓全文。",
+        )
+        for i in range(3)
+    ]
+    slow_pdf = _bare_hit("公告", "https://media.nhi.gov.tw/md/dl-51926.pdf")
+    web = FakeWebClient(hits=[*good, slow_pdf], pages={})
+    svc, _ = _make_service(web_client=web)
+
+    await svc.answer("高血壓要注意什麼")
+
+    assert web.scrape_calls == []
+
+
+@pytest.mark.asyncio
+async def test_duplicate_url_is_scraped_only_once():
+    """同一個網址在命中清單裡出現兩次時只抓一次。
+
+    以前去重是等拿到內文才記進 seen，抓不到的網址不會進去，後面再出現就
+    會再抓一次、再等一輪逾時。
+    """
+    url = "https://www.hpa.gov.tw/same"
+    web = FakeWebClient(
+        hits=[_bare_hit("衛教", url), _bare_hit("衛教（重複）", url)],
+        pages={},
+    )
+    svc, _ = _make_service(web_client=web)
+
+    await svc.answer("高血壓要注意什麼")
+
+    assert web.scrape_calls == [url]
+
+
+@pytest.mark.asyncio
+async def test_short_snippet_survives_a_failed_scrape():
+    """scrape 抓不到時退回原本的短 snippet，而不是整筆丟掉。"""
+    url = "https://www.hpa.gov.tw/only-snippet"
+    web = FakeWebClient(hits=[_bare_hit("衛教", url)], pages={})
+    svc, _ = _make_service(web_client=web)
+
+    result = await svc.answer("高血壓要注意什麼")
+
+    assert url in result

@@ -37,6 +37,10 @@ from resources.flex_messages import theme
 
 ALT_TEXT_SUGGESTION = "建議的看診方向"
 
+# 卡片頂層的科別標記。對話紀錄存的是整張卡的 JSON，摘要靠這個 key 取得卡片種類與
+# 建議科別，不必從卡片節點反解文字；送往 LINE 時 replier 只取 altText／contents，不會帶出去。
+SYMPTOM_DEPARTMENT_KEY = "symptomDepartment"
+
 # --- 模板樣式常數。改這裡等同改模板，兩邊必須同步（有測試比對）---------------
 _TPL_HEADER_BG = "#1E7D58"
 _TPL_ON_HEADER = "#FFFFFF"
@@ -473,4 +477,8 @@ def build_symptom_department_flex(
         "altText": ALT_TEXT_SUGGESTION,
         "contents": _build_suggestion_bubble(result, resolved, ft),
         "quickReply": _nearby_quick_reply(_nearby_departments(result)),
+        SYMPTOM_DEPARTMENT_KEY: {
+            "kind": result.kind,
+            "departments": [c.canonical for c in result.candidates],
+        },
     }

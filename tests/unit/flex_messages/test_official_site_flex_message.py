@@ -3,6 +3,7 @@ import json
 import pytest
 
 from resources.flex_messages.official_site_flex_message import (
+    OFFICIAL_SITE_KEY,
     generate_official_site_flex_message,
 )
 
@@ -91,6 +92,17 @@ def test_flex_respects_font_size_setting():
     # body 的第二個元素是標題文字
     assert normal["contents"]["body"]["contents"][1]["size"] == "xl"
     assert xlarge["contents"]["body"]["contents"][1]["size"] == "4xl"
+
+
+@pytest.mark.parametrize("language", ["zh-TW", "en"])
+def test_flex_carries_official_site_marker_at_top_level(language):
+    # 摘要靠頂層標記認出官網卡，不比對隨語言而變的 altText；標記不得混進 contents
+    payload = generate_official_site_flex_message(
+        "https://liff.line.me/abc", "", language=language
+    )
+    assert OFFICIAL_SITE_KEY == "officialSite"
+    assert payload[OFFICIAL_SITE_KEY] == {}
+    assert OFFICIAL_SITE_KEY not in json.dumps(payload["contents"], ensure_ascii=False)
 
 
 def test_flex_raises_when_both_urls_empty():

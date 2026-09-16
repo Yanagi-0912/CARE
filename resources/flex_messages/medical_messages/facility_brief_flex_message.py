@@ -19,6 +19,12 @@ from app.services.medical.business_hours import (
 )
 from resources.flex_messages import theme
 
+# 卡片頂層的院所名單。對話紀錄存的是整張卡的 JSON，摘要只讀這個 key 取得院所名稱，
+# 不必從卡片節點反解文字；送往 LINE 時 replier 只取 altText／contents，不會帶出去。
+# 列表卡與詳情卡共用同一個 key。
+FACILITIES_KEY = "facilities"
+
+
 def _build_flex_map_uri(facility: MedicalFacility) -> str:
     """生成最符合 LINE 導航按鈕規格的 Google Map 連結"""
     # 優先級:地址->經緯度->名稱
@@ -412,4 +418,5 @@ def generate_facility_list_flex_message(
                 "contents": contents,
             },
         },
+        FACILITIES_KEY: {"names": [f.name for f in facilities if f.name]},
     }

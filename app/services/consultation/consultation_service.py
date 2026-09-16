@@ -14,13 +14,26 @@ from app.models.medication import SLOT_DISPLAY_NAMES, TAIPEI_TZ, ensure_aware_ut
 from app.repositories.appointment_repository import AppointmentReminderRepository
 from app.repositories.consultation_repository import ConsultationRepository
 from app.repositories.conversation_log_repository import ConversationLogRepository
+from app.i18n.messages import department_label, t
 from app.services.gemini.services import GeminiService
 from app.services.gemini.shared.errors import raise_mapped_gemini_error
+from app.services.line_messaging.flex.verdict_flex import CLAIM_VERDICT_KEY
+from app.services.medical.symptom_classification.symptom_department_service import (
+    RESULT_FALLBACK,
+    RESULT_SUGGESTION,
+)
 from app.services.medication.medication_service import MedicationService
 from app.services.users.user_profile_service import UserProfileService
 from resources.flex_messages.medical_messages.emergency_condition_flex_message import (
     RISK_ALERT_KEY,
 )
+from resources.flex_messages.medical_messages.facility_brief_flex_message import (
+    FACILITIES_KEY,
+)
+from resources.flex_messages.medical_messages.symptom_department_flex_message import (
+    SYMPTOM_DEPARTMENT_KEY,
+)
+from resources.flex_messages.official_site_flex_message import OFFICIAL_SITE_KEY
 
 DEFAULT_SUMMARY_LANGUAGE = "zh-TW"
 SUPPORTED_SUMMARY_LANGUAGES = {
@@ -42,8 +55,6 @@ SUMMARY_FIELDS = {
     "ai_summary": "string",
 }
 
-RISK_ALERT_MARKER = "觸發風險警示"
-
 # 掛號提醒只列摘要日當天起最近的幾筆，避免長期回診表把 prompt 撐大
 APPOINTMENT_CONTEXT_LIMIT = 5
 APPOINTMENT_STATUS_LABELS = {
@@ -63,31 +74,137 @@ def _build_summary_schema(language: str) -> dict:
     }
 
 
-def _risk_alert(message: ChatMessage) -> Optional[dict]:
+def _flex_card(message: ChatMessage) -> Optional[dict]:
+    # 只有 AI 回覆可能是工具卡片；使用者自己貼的 JSON 一律照原文
     if message.message_type != "assistant_reply":
         return None
-    if not message.content.lstrip().startswith("{"):
+    content = message.content.strip()
+    if not content.startswith("{"):
         return None
     try:
-        payload = json.loads(message.content)
+        payload = json.loads(content)
     except ValueError:
         return None
-    alert = payload.get(RISK_ALERT_KEY) if isinstance(payload, dict) else None
-    return alert if isinstance(alert, dict) else None
+    if not isinstance(payload, dict) or payload.get("type") != "flex":
+        return None
+    return payload
+
+
+def _card_field(card: dict, key: str) -> Optional[dict]:
+    value = card.get(key)
+    return value if isinstance(value, dict) else None
+
+
+def _text(value: object) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _texts(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [text for text in (_text(item) for item in value) if text]
+
+
+def _translated_verdict(verdict: str, language: str) -> str:
+    # 判定字樣是查核資料本身，沒收錄翻譯時顯示原文
+    key = f"consultation_card.verdict.{verdict}"
+    translated = t(key, language)
+    return verdict if translated == key else translated
+
+
+def _card_parts(
+    card: dict, previous: Optional[ChatMessage], language: str
+) -> list[str]:
+    list_separator = t("consultation_card.list_separator", language)
+
+    alert = _card_field(card, RISK_ALERT_KEY)
+    if alert is not None:
+        # 紅卡換成家屬也看得懂的一行：原話緊接在紅卡前一則
+        parts = [t("consultation_card.risk_alert", language)]
+        if previous is not None and previous.message_type != "assistant_reply":
+            parts.append(
+                t("consultation_card.risk_alert.user_words", language).format(
+                    words=previous.content
+                )
+            )
+        reason = _text(alert.get("reason"))
+        if reason:
+            parts.append(
+                t("consultation_card.risk_alert.reason", language).format(reason=reason)
+            )
+        return parts
+
+    department = _card_field(card, SYMPTOM_DEPARTMENT_KEY)
+    if department is not None:
+        parts = [t("consultation_card.symptom_department", language)]
+        kind = _text(department.get("kind"))
+        names = _texts(department.get("departments"))
+        if kind in (RESULT_SUGGESTION, RESULT_FALLBACK) and names:
+            parts.append(
+                t(f"consultation_card.symptom_department.{kind}", language).format(
+                    departments=list_separator.join(
+                        department_label(name, language) for name in names
+                    )
+                )
+            )
+        return parts
+
+    facilities = _card_field(card, FACILITIES_KEY)
+    if facilities is not None:
+        parts = [t("consultation_card.facilities", language)]
+        names = _texts(facilities.get("names"))
+        if names:
+            parts.append(
+                t("consultation_card.facilities.names", language).format(
+                    names=list_separator.join(names)
+                )
+            )
+        return parts
+
+    claim = _card_field(card, CLAIM_VERDICT_KEY)
+    if claim is not None:
+        parts = [t("consultation_card.claim_verdict", language)]
+        verdict = _text(claim.get("verdict"))
+        if verdict:
+            parts.append(
+                t("consultation_card.claim_verdict.verdict", language).format(
+                    verdict=_translated_verdict(verdict, language)
+                )
+            )
+        return parts
+
+    if _card_field(card, OFFICIAL_SITE_KEY) is not None:
+        return [t("consultation_card.official_site", language)]
+
+    # 合法 Flex 但沒有已知 key（例如上線前存下的舊卡片）：不外洩 JSON，也不整則刪掉
+    return [t("consultation_card.unknown", language)]
+
+
+def _card_line(
+    card: dict, previous: Optional[ChatMessage], language: str
+) -> str:
+    return t("consultation_card.separator", language).join(
+        _card_parts(card, previous, language)
+    )
 
 
 def _transcript_line(message: ChatMessage, previous: Optional[ChatMessage]) -> str:
-    alert = _risk_alert(message)
-    if alert is None:
+    card = _flex_card(message)
+    if card is None:
         return f"[{message.message_type}] {message.content}"
-    # 紅卡存的是整張卡片 JSON，換成家屬也看得懂的一行：原話緊接在紅卡前一則
-    parts = [RISK_ALERT_MARKER]
-    if previous is not None and previous.message_type != "assistant_reply":
-        parts.append(f"使用者輸入：「{previous.content}」")
-    reason = str(alert.get("reason") or "").strip()
-    if reason:
-        parts.append(f"判定原因：{reason}")
-    return f"[{message.message_type}] " + "｜".join(parts)
+    # 卡片存的是整包 Flex JSON，只取頂層結構化 key 轉成一行，版面資料不進 prompt。
+    # 對話稿固定用中文：摘要 prompt 以中文撰寫，並引用紅卡那句標記。
+    return f"[{message.message_type}] " + _card_line(
+        card, previous, DEFAULT_SUMMARY_LANGUAGE
+    )
+
+
+def _display_message(message: ChatMessage, language: str) -> ChatMessage:
+    card = _flex_card(message)
+    if card is None:
+        return message
+    # 原始對話頁上一則就是使用者原話，紅卡不再重複帶出
+    return message.model_copy(update={"content": _card_line(card, None, language)})
 
 
 def _taipei_date(timestamp: datetime) -> date:
@@ -129,8 +246,13 @@ class ConsultationService:
         return await self._repository.get_summary_by_date(user_id, target_date)
 
     # get_raw_view 方法則是直接從 chat_history_repository 取得原始訊息列表，不考慮是否有摘要。
+    # 工具卡片存的是整包 Flex JSON，回傳前依 language（查看者的語言）換成一行字；存檔本身不動。
     async def get_raw_view(
-        self, user_id: str, target_date: Optional[date] = None
+        self,
+        user_id: str,
+        target_date: Optional[date] = None,
+        *,
+        language: str,
     ) -> list[ChatMessage]:
         messages = await self._chat_history_repository.list_messages(user_id)
         if not messages:
@@ -140,7 +262,7 @@ class ConsultationService:
             # 全部回傳會變成分不清哪天的長串，所以只給最近有對話的那一天。
             target_date = max(_taipei_date(message.timestamp) for message in messages)
         return [
-            message
+            _display_message(message, language)
             for message in messages
             if _taipei_date(message.timestamp) == target_date
         ]
@@ -217,7 +339,7 @@ class ConsultationService:
         await self._repository.upsert_summary(summary)
         return summary
 
-    # 摘要與下載檔的檔頭都用使用者目前的語言設定
+    # 摘要、下載檔的檔頭與原始對話頁的卡片文字都用使用者目前的語言設定
     async def resolve_summary_language(self, user_id: str) -> str:
         settings = await self._user_profile_service.get_user_settings(user_id)
         language = (settings or {}).get("language")
@@ -244,6 +366,7 @@ class ConsultationService:
             return "該日期尚無諮詢記錄。"
 
         language_name = self._language_name(language)
+        risk_alert_marker = t("consultation_card.risk_alert", DEFAULT_SUMMARY_LANGUAGE)
         # 對話稿：每則訊息逐行排版，避免 list repr 造成模型誤解
         transcript_lines = "\n".join(
             _transcript_line(message, messages[index - 1] if index else None)
@@ -325,7 +448,7 @@ class ConsultationService:
             若使用者明確表示危急情況正在發生，應優先整理該情況及 AI 提供的相關安全建議。
             若使用者僅提出一般性問題或假設情境，不得將其描述為使用者本人正在發生的危急事件。
             若無法確認是否正在發生，必須明確標示「未確認是否為目前正在發生」，不可自行推論。
-            對話稿中標示「{RISK_ALERT_MARKER}」的那一行，代表系統當下判定需要立即處置，已送出緊急求助卡片。這類事件一律列入本欄，不得省略或淡化：寫出「{RISK_ALERT_MARKER}」（以{language_name}表達）、使用者當時輸入的原話與判定原因，讓使用者與家屬一看就懂發生了什麼。例如：{RISK_ALERT_MARKER}：使用者輸入「我要自殺」（判定原因：表達想結束生命）。
+            對話稿中標示「{risk_alert_marker}」的那一行，代表系統當下判定需要立即處置，已送出緊急求助卡片。這類事件一律列入本欄，不得省略或淡化：寫出「{risk_alert_marker}」（以{language_name}表達）、使用者當時輸入的原話與判定原因，讓使用者與家屬一看就懂發生了什麼。例如：{risk_alert_marker}：使用者輸入「我要自殺」（判定原因：表達想結束生命）。
             若沒有值得特別提醒的安全相關資訊，填寫「無」。
 
             【其他】

@@ -27,8 +27,33 @@ from app.services.medical.symptom_classification.urgency import (
     URGENCY_EMERGENCY,
     UrgencyVerdict,
 )
+from app.schemas import MedicalFacility
+from app.services.medical.symptom_classification.symptom_department_service import (
+    RESULT_FALLBACK,
+    RESULT_SUGGESTION,
+    SymptomTriageResult,
+)
+from app.services.medical.symptom_classification.symptom_table import (
+    DepartmentCandidate,
+)
+from app.services.rag.claim_verification.service import VerificationResult
+from app.tools.claim_tools import _to_flex_message_text
+from app.tools.medical_tools import request_location_quick_reply
 from resources.flex_messages.medical_messages.emergency_condition_flex_message import (
     build_emergency_condition_flex,
+)
+from resources.flex_messages.medical_messages.facility_brief_flex_message import (
+    generate_facility_list_flex_message,
+)
+from resources.flex_messages.medical_messages.facility_detail_flex_message import (
+    generate_facility_detail_flex_message,
+)
+from resources.flex_messages.medical_messages.symptom_department_flex_message import (
+    build_symptom_department_flex,
+)
+from resources.flex_messages.official_site_flex_message import (
+    OFFICIAL_SITE_KEY,
+    generate_official_site_flex_message,
 )
 
 
@@ -193,7 +218,9 @@ async def test_get_raw_view_returns_messages(
     )
     await consultation_service._chat_history_repository.append_message("U123", msg)
 
-    messages = await consultation_service.get_raw_view("U123", date(2026, 5, 17))
+    messages = await consultation_service.get_raw_view(
+        "U123", date(2026, 5, 17), language="zh-TW"
+    )
 
     assert len(messages) == 1
     assert messages[0].content == "肚子痛"
@@ -366,7 +393,9 @@ async def test_get_raw_view_filters_by_taipei_date(
     # 9/14 01:30
     await _add_text(consultation_service, "半夜胸悶", datetime(2026, 9, 13, 17, 30, tzinfo=timezone.utc))
 
-    messages = await consultation_service.get_raw_view("U123", date(2026, 9, 14))
+    messages = await consultation_service.get_raw_view(
+        "U123", date(2026, 9, 14), language="zh-TW"
+    )
 
     assert [message.content for message in messages] == ["半夜胸悶"]
 
@@ -379,7 +408,7 @@ async def test_raw_view_without_date_returns_latest_taipei_day(
     await _add_text(consultation_service, "昨天頭痛", datetime(2026, 9, 13, 14, 0, tzinfo=timezone.utc))
     await _add_text(consultation_service, "今天咳嗽", datetime(2026, 9, 14, 2, 0, tzinfo=timezone.utc))
 
-    messages = await consultation_service.get_raw_view("U123")
+    messages = await consultation_service.get_raw_view("U123", language="zh-TW")
 
     assert [message.content for message in messages] == ["今天咳嗽"]
 
@@ -718,3 +747,428 @@ async def test_non_risk_replies_and_user_json_are_left_as_is(
     assert f"[text] {user_json}" in prompt
     assert "[assistant_reply] {這不是 JSON}" in prompt
     assert "[assistant_reply] 觸發風險警示" not in prompt
+
+
+# ── 其他工具卡片在對話稿裡只留種類與重點，不帶整包 Flex JSON ──────────────────
+
+
+_CARD_TIME = datetime(2026, 9, 14, 2, 0, 5, tzinfo=timezone.utc)
+_FLEX_STRUCTURE_STRINGS = ('"type": "bubble"', '"altText"', '"action"', '"contents"')
+
+
+def _facility(name: str) -> MedicalFacility:
+    return MedicalFacility(
+        id=name,
+        name=name,
+        address="台北市中正區常德街1號",
+        latitude=25.04,
+        longitude=121.51,
+        phone="02-2312-3456",
+        type="醫院",
+    )
+
+
+def _department(name: str) -> DepartmentCandidate:
+    return DepartmentCandidate(canonical=name, subgroup=None, facility_count=100)
+
+
+def _facility_list_card(language: str = "zh-TW") -> str:
+    return json.dumps(
+        generate_facility_list_flex_message(
+            [_facility("台大醫院"), _facility("馬偕紀念醫院")],
+            language=language,
+            font_size="large",
+        ),
+        ensure_ascii=False,
+    )
+
+
+def _facility_detail_card() -> str:
+    return json.dumps(
+        generate_facility_detail_flex_message(
+            _facility("台大醫院"), language="zh-TW", font_size="large"
+        ),
+        ensure_ascii=False,
+    )
+
+
+def _symptom_card(result: SymptomTriageResult) -> str:
+    return json.dumps(
+        build_symptom_department_flex(result, references=(), font_size="large"),
+        ensure_ascii=False,
+    )
+
+
+def _symptom_suggestion_card() -> str:
+    return _symptom_card(
+        SymptomTriageResult(
+            kind=RESULT_SUGGESTION,
+            user_input="肚子痛要掛哪一科",
+            matched_term="腹痛",
+            candidates=(_department("胃腸肝膽科"), _department("家醫科")),
+        )
+    )
+
+
+def _symptom_fallback_card() -> str:
+    return _symptom_card(
+        SymptomTriageResult(
+            kind=RESULT_FALLBACK,
+            user_input="全身不舒服",
+            fallback_reason="無法對應到已知的症狀條目",
+            candidates=(_department("家醫科"), _department("內科")),
+        )
+    )
+
+
+def _claim_card() -> str:
+    card = _to_flex_message_text(
+        VerificationResult(
+            user_question="網傳吃鳳梨心可以溶解血栓，是真的嗎？",
+            verdict="錯誤",
+            reasoning="查核報告指出這是缺乏醫學根據的說法，血栓需以藥物治療。",
+            source_title="鳳梨心溶血栓查核報告",
+            source_url="https://tfc-taiwan.org.tw/fact-check-reports/xxx",
+            matched=True,
+            related_info="",
+        )
+    )
+    assert card is not None
+    return card
+
+
+def _official_site_card(language: str = "zh-TW") -> str:
+    return json.dumps(
+        generate_official_site_flex_message(
+            "https://liff.line.me/1234",
+            "https://care.example.com",
+            language=language,
+            font_size="large",
+        ),
+        ensure_ascii=False,
+    )
+
+
+_CARD_CASES = [
+    pytest.param(
+        _facility_list_card,
+        "[assistant_reply] 院所查詢卡｜院所：台大醫院、馬偕紀念醫院",
+        id="facility_list",
+    ),
+    pytest.param(
+        _facility_detail_card,
+        "[assistant_reply] 院所查詢卡｜院所：台大醫院",
+        id="facility_detail",
+    ),
+    pytest.param(
+        _symptom_suggestion_card,
+        "[assistant_reply] 科別建議卡｜建議科別：胃腸肝膽科、家醫科",
+        id="symptom_suggestion",
+    ),
+    pytest.param(
+        _symptom_fallback_card,
+        "[assistant_reply] 科別建議卡｜系統無法判斷症狀，初診方向：家醫科、內科",
+        id="symptom_fallback",
+    ),
+    pytest.param(
+        _claim_card,
+        "[assistant_reply] 查核判定卡｜判定結果：錯誤",
+        id="claim_verdict",
+    ),
+    pytest.param(
+        _official_site_card,
+        "[assistant_reply] 官網入口卡",
+        id="official_site",
+    ),
+]
+
+
+def _assistant_lines(prompt: str) -> list[str]:
+    return [
+        line.strip()
+        for line in prompt.splitlines()
+        if line.strip().startswith("[assistant_reply]")
+    ]
+
+
+@pytest.mark.parametrize("build_card, expected_line", _CARD_CASES)
+async def test_tool_card_json_does_not_reach_prompt(
+    consultation_service: ConsultationService, build_card, expected_line
+):
+    card = build_card()
+    # 前提：餵進去的確實是帶版面結構的卡片 JSON
+    assert all(fragment in card for fragment in _FLEX_STRUCTURE_STRINGS)
+    await _add_message(consultation_service, "assistant_reply", card, _CARD_TIME)
+
+    prompt = await _prompt_for(consultation_service)
+
+    for fragment in _FLEX_STRUCTURE_STRINGS:
+        assert fragment not in prompt
+
+
+@pytest.mark.parametrize("build_card, expected_line", _CARD_CASES)
+async def test_tool_card_keeps_its_key_facts_in_prompt(
+    consultation_service: ConsultationService, build_card, expected_line
+):
+    await _add_message(consultation_service, "assistant_reply", build_card(), _CARD_TIME)
+
+    prompt = await _prompt_for(consultation_service)
+
+    assert _assistant_lines(prompt) == [expected_line]
+
+
+@pytest.mark.parametrize("build_card", [_official_site_card, _facility_list_card])
+async def test_card_line_does_not_depend_on_card_language(
+    consultation_service: ConsultationService, build_card
+):
+    lines = {}
+    for language in ("zh-TW", "en"):
+        consultation_service._chat_history_repository.messages.clear()
+        await _add_message(
+            consultation_service, "assistant_reply", build_card(language), _CARD_TIME
+        )
+        lines[language] = _assistant_lines(await _prompt_for(consultation_service))
+
+    assert len(lines["zh-TW"]) == 1
+    assert lines["zh-TW"] == lines["en"]
+
+
+async def test_unknown_flex_card_becomes_generic_marker(
+    consultation_service: ConsultationService,
+):
+    # 上線前存下的卡片沒有結構化 key：拿掉官網卡的標記來模擬
+    legacy_card = generate_official_site_flex_message(
+        "https://liff.line.me/1234", "https://care.example.com", language="zh-TW"
+    )
+    legacy_card.pop(OFFICIAL_SITE_KEY)
+    await _add_message(
+        consultation_service,
+        "assistant_reply",
+        json.dumps(legacy_card, ensure_ascii=False),
+        _CARD_TIME,
+    )
+
+    prompt = await _prompt_for(consultation_service)
+
+    assert "[assistant_reply] [系統卡片]" in prompt
+    assert '"altText"' not in prompt
+
+
+async def test_plain_text_and_non_flex_json_are_left_as_is(
+    consultation_service: ConsultationService,
+):
+    user_card = _official_site_card()
+    await _add_message(
+        consultation_service, "text", user_card, datetime(2026, 9, 14, 2, 0, tzinfo=timezone.utc)
+    )
+    await _add_message(
+        consultation_service,
+        "assistant_reply",
+        "建議您多休息、多喝水。",
+        datetime(2026, 9, 14, 2, 0, 1, tzinfo=timezone.utc),
+    )
+    await _add_message(
+        consultation_service,
+        "assistant_reply",
+        "{這不是 JSON}",
+        datetime(2026, 9, 14, 2, 0, 2, tzinfo=timezone.utc),
+    )
+    await _add_message(
+        consultation_service,
+        "assistant_reply",
+        '{"a": 1}',
+        datetime(2026, 9, 14, 2, 0, 3, tzinfo=timezone.utc),
+    )
+
+    prompt = await _prompt_for(consultation_service)
+
+    assert f"[text] {user_card}" in prompt
+    assert "[assistant_reply] 建議您多休息、多喝水。" in prompt
+    assert "[assistant_reply] {這不是 JSON}" in prompt
+    assert '[assistant_reply] {"a": 1}' in prompt
+    assert "官網入口卡" not in prompt
+    assert "[系統卡片]" not in prompt
+
+
+async def test_share_location_reply_is_plain_text_kept_as_is(
+    consultation_service: ConsultationService,
+):
+    # 分享位置工具回的是純文字，不是卡片 JSON
+    reply = await request_location_quick_reply.ainvoke({})
+    assert isinstance(reply, str)
+    assert not reply.lstrip().startswith("{")
+    await _add_message(consultation_service, "assistant_reply", reply, _CARD_TIME)
+
+    prompt = await _prompt_for(consultation_service)
+
+    assert f"[assistant_reply] {reply}" in prompt
+
+
+# ── 原始對話頁：卡片 JSON 依查看者語言換成一行字，存檔不動 ─────────────────────
+
+
+async def _raw_contents(service: ConsultationService, language: str) -> list[str]:
+    messages = await service.get_raw_view("U123", language=language)
+    return [message.content for message in messages]
+
+
+async def _add_every_card(service: ConsultationService) -> None:
+    cards = [
+        _risk_card("你表達想結束生命"),
+        _facility_list_card(),
+        _facility_detail_card(),
+        _symptom_card(
+            SymptomTriageResult(
+                kind=RESULT_SUGGESTION,
+                user_input="肚子痛要掛哪一科",
+                matched_term="腹痛",
+                candidates=(_department("家醫科"), _department("內科")),
+            )
+        ),
+        _symptom_fallback_card(),
+        _claim_card(),
+        _official_site_card(),
+    ]
+    await _add_message(
+        service, "text", "我要自殺", datetime(2026, 9, 14, 2, 0, tzinfo=timezone.utc)
+    )
+    for offset, card in enumerate(cards, start=1):
+        await _add_message(
+            service,
+            "assistant_reply",
+            card,
+            datetime(2026, 9, 14, 2, 0, offset, tzinfo=timezone.utc),
+        )
+
+
+async def test_raw_view_turns_cards_into_lines_in_zh_tw(
+    consultation_service: ConsultationService,
+):
+    await _add_every_card(consultation_service)
+
+    contents = await _raw_contents(consultation_service, "zh-TW")
+
+    assert contents == [
+        "我要自殺",
+        # 上一則就是使用者原話，紅卡不再重複帶出
+        "觸發風險警示｜判定原因：你表達想結束生命",
+        "院所查詢卡｜院所：台大醫院、馬偕紀念醫院",
+        "院所查詢卡｜院所：台大醫院",
+        "科別建議卡｜建議科別：家醫科、內科",
+        "科別建議卡｜系統無法判斷症狀，初診方向：家醫科、內科",
+        "查核判定卡｜判定結果：錯誤",
+        "官網入口卡",
+    ]
+
+
+async def test_raw_view_turns_cards_into_lines_in_viewer_language(
+    consultation_service: ConsultationService,
+):
+    await _add_every_card(consultation_service)
+
+    contents = await _raw_contents(consultation_service, "en")
+
+    assert contents == [
+        "我要自殺",
+        "Risk alert triggered | Reason: 你表達想結束生命",
+        "Medical facility search card | Facilities: 台大醫院, 馬偕紀念醫院",
+        "Medical facility search card | Facilities: 台大醫院",
+        "Department suggestion card | Suggested departments: Family Medicine, Internal Medicine",
+        "Department suggestion card | Symptom could not be determined; "
+        "suggested first visit: Family Medicine, Internal Medicine",
+        "Fact-check card | Verdict: False",
+        "Official site card",
+    ]
+    for content in contents:
+        for fragment in _FLEX_STRUCTURE_STRINGS:
+            assert fragment not in content
+
+
+async def test_raw_view_keeps_untranslated_department_and_verdict_as_is(
+    consultation_service: ConsultationService,
+):
+    await _add_message(
+        consultation_service,
+        "assistant_reply",
+        json.dumps(
+            {
+                "type": "flex",
+                "symptomDepartment": {"kind": RESULT_SUGGESTION, "departments": ["胃腸肝膽科"]},
+            },
+            ensure_ascii=False,
+        ),
+        _CARD_TIME,
+    )
+    await _add_message(
+        consultation_service,
+        "assistant_reply",
+        json.dumps({"type": "flex", "claimVerdict": {"verdict": "新判定"}}, ensure_ascii=False),
+        datetime(2026, 9, 14, 2, 0, 6, tzinfo=timezone.utc),
+    )
+
+    contents = await _raw_contents(consultation_service, "en")
+
+    assert contents == [
+        "Department suggestion card | Suggested departments: 胃腸肝膽科",
+        "Fact-check card | Verdict: 新判定",
+    ]
+
+
+@pytest.mark.parametrize(
+    "language, expected",
+    [("zh-TW", "[系統卡片]"), ("en", "[System card]"), ("ja", "[システムカード]")],
+)
+async def test_raw_view_unknown_card_becomes_generic_marker(
+    consultation_service: ConsultationService, language, expected
+):
+    legacy_card = generate_official_site_flex_message(
+        "https://liff.line.me/1234", "https://care.example.com", language="zh-TW"
+    )
+    legacy_card.pop(OFFICIAL_SITE_KEY)
+    await _add_message(
+        consultation_service,
+        "assistant_reply",
+        json.dumps(legacy_card, ensure_ascii=False),
+        _CARD_TIME,
+    )
+
+    assert await _raw_contents(consultation_service, language) == [expected]
+
+
+async def test_raw_view_leaves_text_and_user_json_as_is(
+    consultation_service: ConsultationService,
+):
+    user_card = _official_site_card()
+    await _add_message(
+        consultation_service, "text", user_card, datetime(2026, 9, 14, 2, 0, tzinfo=timezone.utc)
+    )
+    await _add_message(
+        consultation_service,
+        "assistant_reply",
+        "{這不是 JSON}",
+        datetime(2026, 9, 14, 2, 0, 1, tzinfo=timezone.utc),
+    )
+    await _add_message(
+        consultation_service,
+        "assistant_reply",
+        '{"a": 1}',
+        datetime(2026, 9, 14, 2, 0, 2, tzinfo=timezone.utc),
+    )
+
+    assert await _raw_contents(consultation_service, "en") == [
+        user_card,
+        "{這不是 JSON}",
+        '{"a": 1}',
+    ]
+
+
+async def test_raw_view_does_not_modify_stored_messages(
+    consultation_service: ConsultationService,
+):
+    card = _official_site_card()
+    await _add_message(consultation_service, "assistant_reply", card, _CARD_TIME)
+
+    await _raw_contents(consultation_service, "en")
+
+    stored = await consultation_service._chat_history_repository.list_messages("U123")
+    assert [message.content for message in stored] == [card]

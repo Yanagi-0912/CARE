@@ -295,7 +295,7 @@ def test_get_member_raw_consultations_allows_family_member(
     assert body["view_type"] == "raw"
     assert body["messages"][0]["content"] == "最近頭很痛"
     assert family_service.tree_reads == ["U_MEMBER"]
-    fake_service.get_raw_view.assert_awaited_once_with("U_MEMBER")
+    fake_service.get_raw_view.assert_awaited_once_with("U_MEMBER", language="zh-TW")
 
 
 def test_get_member_raw_consultations_rejects_non_family_member(
@@ -330,7 +330,41 @@ def test_get_member_raw_consultations_allows_self_without_family_lookup(
     # 查自己不解析角色、也不查族譜——一個人對自己資料的權限不需要任何人授予，
     # 也不該因為族譜讀取失敗而消失。
     assert family_service.tree_reads == []
-    fake_service.get_raw_view.assert_awaited_once_with("U123")
+    fake_service.get_raw_view.assert_awaited_once_with("U123", language="zh-TW")
+
+
+def test_member_raw_consultations_use_viewer_language(
+    client, override_current_user, override_consultation_service, override_family_service
+):
+    """家人頁的卡片文字依查看者的語言顯示，不是被查看的家人。"""
+    override_current_user("U123")
+    fake_service = override_consultation_service(
+        FakeConsultationService(messages=_sample_messages())
+    )
+    fake_service.resolve_summary_language.return_value = "en"
+    override_family_service(["U_MEMBER"])
+
+    response = client.get("/api/consultations/U_MEMBER/messages/raw")
+
+    assert response.status_code == 200
+    fake_service.resolve_summary_language.assert_awaited_once_with("U123")
+    fake_service.get_raw_view.assert_awaited_once_with("U_MEMBER", language="en")
+
+
+def test_my_raw_consultations_use_my_language(
+    client, override_current_user, override_consultation_service
+):
+    override_current_user("U123")
+    fake_service = override_consultation_service(
+        FakeConsultationService(messages=_sample_messages())
+    )
+    fake_service.resolve_summary_language.return_value = "ja"
+
+    response = client.get("/api/consultations/me/messages/raw")
+
+    assert response.status_code == 200
+    fake_service.resolve_summary_language.assert_awaited_once_with("U123")
+    fake_service.get_raw_view.assert_awaited_once_with("U123", language="ja")
 
 
 def test_raw_consultations_returns_503_when_conversation_log_is_unavailable(

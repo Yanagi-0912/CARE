@@ -86,7 +86,12 @@ async def get_raw_consultations(
     ],
 ) -> ConsultationViewResponse:
     try:
-        messages = await consultation_service.get_raw_view(current_user.line_user_id)
+        language = await consultation_service.resolve_summary_language(
+            current_user.line_user_id
+        )
+        messages = await consultation_service.get_raw_view(
+            current_user.line_user_id, language=language
+        )
         return ConsultationViewResponse(
             line_id=current_user.line_user_id,
             view_type="raw",
@@ -244,7 +249,11 @@ async def get_member_raw_consultations(
     # 原始逐句對話是最敏感的一份，授權必須先於讀取（同上）。
     await authz.authorize(current_user.line_user_id, userId, "PRIVATE", "READ")
     try:
-        messages = await consultation_service.get_raw_view(userId)
+        # 卡片文字依查看者（不是被查看的家人）的語言顯示，與 LIFF 介面一致
+        language = await consultation_service.resolve_summary_language(
+            current_user.line_user_id
+        )
+        messages = await consultation_service.get_raw_view(userId, language=language)
         return ConsultationViewResponse(
             line_id=userId,
             view_type="raw",

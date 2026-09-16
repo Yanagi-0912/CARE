@@ -5,7 +5,10 @@ import logging
 
 from langchain_core.tools import tool
 
-from app.services.line_messaging.flex.verdict_flex import build_verdict_flex
+from app.services.line_messaging.flex.verdict_flex import (
+    CLAIM_VERDICT_KEY,
+    build_verdict_flex,
+)
 from app.services.rag.claim_verification.service import VerificationResult
 from resources.flex_messages.size_guard import fits
 
@@ -105,8 +108,9 @@ def _to_flex_message_text(result: VerificationResult) -> str | None:
     格式比照 `official_site_tools.open_official_site`：
     `{"type": "flex", "altText": ..., "contents": {...}}`，這是
     `reply.py._try_parse_flex_message` 認得、會還原成真正 FlexMessage 送出的
-    形狀，另外多帶一個 `speechText` 供語音回覆使用（見下方註解）。`app/services/agent/agent.py` 的 `medical_tool_names` 另外會把這個
-    字串直接當成最終回覆、跳過模型再次改寫（見該處註解），因此這裡的輸出
+    形狀，另外多帶 `speechText`（語音回覆）與 `CLAIM_VERDICT_KEY`（每日摘要）
+    兩個頂層鍵（見下方註解）。`app/services/agent/agent.py` 的
+    `medical_tool_names` 另外會把這個字串直接當成最終回覆、跳過模型再次改寫（見該處註解），因此這裡的輸出
     格式必須與其他 Flex 工具一致，不能只是「看起來像 JSON」。
 
     大小檢查在這裡而非 `build_verdict_flex` 裡：退回純文字的決策點在本模組
@@ -123,10 +127,14 @@ def _to_flex_message_text(result: VerificationResult) -> str | None:
     # replier 自己組，所以它手上還留著組卡前的文字可以念）。少了這個鍵，開了
     # 語音回覆的使用者會在判定卡上靜默失去語音，和 RAG 回答卡當初的坑一樣。
     #
-    # 多一個頂層鍵不影響 `_try_parse_flex_message`（它只讀 type/altText/
-    # contents），也不影響上面的大小檢查——LINE 的 bubble 上限算的是 contents，
-    # 這個鍵在 contents 之外，送出前就被 replier 拆掉了。
+    # 判定字樣另外以結構化的 `CLAIM_VERDICT_KEY` 帶著：每日摘要只讀這個鍵，
+    # 不必從卡片節點反解文字。
+    #
+    # 這兩個頂層鍵都不影響上面的大小檢查——LINE 的 bubble 上限算的是 contents，
+    # 它們在 contents 之外。`_try_parse_flex_message` 只讀 type/altText/contents/
+    # speechText/quickReply，`CLAIM_VERDICT_KEY` 不會被送往 LINE。
     payload["speechText"] = _format_verdict_speech(result)
+    payload[CLAIM_VERDICT_KEY] = {"verdict": result.verdict}
     return json.dumps(payload, ensure_ascii=False)
 
 

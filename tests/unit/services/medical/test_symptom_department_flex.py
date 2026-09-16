@@ -40,6 +40,7 @@ from app.services.medical.symptom_classification.symptom_table import (
 )
 from resources.flex_messages.medical_messages.symptom_department_flex_message import (
     _CANDIDATE_PALETTE,
+    SYMPTOM_DEPARTMENT_KEY,
     build_symptom_department_flex,
 )
 
@@ -481,6 +482,32 @@ def test_flex_without_quick_reply_still_parses():
     )
     assert message is not None
     assert message.quick_reply is None
+
+
+@pytest.mark.parametrize(
+    "result, expected",
+    [
+        (
+            _suggestion((_candidate("內科", "胃腸肝膽"), _candidate("外科"))),
+            {"kind": RESULT_SUGGESTION, "departments": ["內科", "外科"]},
+        ),
+        (
+            _fallback(),
+            {"kind": RESULT_FALLBACK, "departments": list(FALLBACK_DEPARTMENTS)},
+        ),
+    ],
+)
+def test_card_carries_structured_department_marker_at_top_level(result, expected):
+    """
+    摘要只讀頂層的科別標記，不從卡片節點反解文字。標記只放在最外層，
+    不得混進 contents（那是送往 LINE 的卡片本體）。
+    """
+    payload = build_symptom_department_flex(result, references=())
+    assert SYMPTOM_DEPARTMENT_KEY == "symptomDepartment"
+    assert payload[SYMPTOM_DEPARTMENT_KEY] == expected
+    assert SYMPTOM_DEPARTMENT_KEY not in json.dumps(
+        payload["contents"], ensure_ascii=False
+    )
 
 
 def test_malformed_quick_reply_does_not_break_the_card():

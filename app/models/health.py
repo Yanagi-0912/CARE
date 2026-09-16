@@ -92,7 +92,17 @@ class CreateBloodPressureRequest(BaseModel):
 
     ``measured_at`` 未提供時由服務層補上送出當下時間；這裡只驗證「有提供
     時」的範圍與上下限關係。
+
+    ``extra="forbid"``：POST /api/health/measurements 的 body 型別是
+    ``Union[CreateBloodPressureRequest, CreateBloodGlucoseRequest]``，兩者
+    沒有共同的 ``kind`` 欄位可資區分，靠的是 Pydantic smart union 依「哪個
+    模型驗證得過」來選。預設允許多餘欄位時，一份同時帶血壓與血糖欄位（或
+    欄位打錯字、混進不相關欄位）的請求會被這個模型直接吃下、悄悄丟棄它看
+    不懂的欄位並驗證成功，得到一筆種類錯誤的紀錄而不是 422。禁止多餘欄位
+    後，這種請求兩個模型都驗證不過，才會如預期回 422。
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     systolic: int = Field(ge=SYSTOLIC_MIN, le=SYSTOLIC_MAX)
     diastolic: int = Field(ge=DIASTOLIC_MIN, le=DIASTOLIC_MAX)
@@ -115,7 +125,13 @@ class CreateBloodGlucoseRequest(BaseModel):
     """新增一筆血糖紀錄（health-measurements spec「記錄血糖」）。單位固定為
     mg/dL；系統 SHALL NOT 接受 mmol/L——這裡的整數範圍本身已排除 mmol/L
     常見的個位數／十位數輸入，介面另外在輸入處標示單位。
+
+    ``extra="forbid"``：見 ``CreateBloodPressureRequest`` 的同一段說明——
+    兩個模型沒有共同的 ``kind`` 欄位，靠 Pydantic smart union 選型別；不禁止
+    多餘欄位的話，混雜血壓欄位的請求會在這裡被悄悄吃下並驗證成功。
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     glucose_mg_dl: int = Field(ge=GLUCOSE_MIN, le=GLUCOSE_MAX)
     meal_context: MealContext

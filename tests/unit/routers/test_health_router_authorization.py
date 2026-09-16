@@ -30,7 +30,11 @@ from app.dependencies import (
 )
 from app.main import app
 from app.models.family_tree import FamilyMember, FamilyTree
-from app.models.health import HealthAlertThreshold, HealthMeasurement
+from app.models.health import (
+    CreateBloodPressureRequest,
+    HealthAlertThreshold,
+    HealthMeasurement,
+)
 from app.services.family.family_authorization_service import (
     FamilyAuthorizationService,
 )
@@ -350,14 +354,28 @@ class _FakeMeasurementService:
 
     async def create(self, user_id: str, recorded_by: str, request):
         self.create_calls.append((user_id, recorded_by))
+        # 依實際收到的請求型別回應，而不是寫死血壓——用來證明 Union body 真的
+        # 解析成正確的模型（見下方「混合種類／未知欄位一律 422」的測試）。
+        if isinstance(request, CreateBloodPressureRequest):
+            return HealthMeasurement(
+                id="M1",
+                user_id=user_id,
+                kind="blood_pressure",
+                measured_at=NOW,
+                recorded_by=recorded_by,
+                systolic=request.systolic,
+                diastolic=request.diastolic,
+                pulse=request.pulse,
+                level="within_range",
+            )
         return HealthMeasurement(
             id="M1",
             user_id=user_id,
-            kind="blood_pressure",
+            kind="blood_glucose",
             measured_at=NOW,
             recorded_by=recorded_by,
-            systolic=128,
-            diastolic=82,
+            glucose_mg_dl=request.glucose_mg_dl,
+            meal_context=request.meal_context,
             level="within_range",
         )
 
@@ -424,6 +442,70 @@ def test_post_measurement_allowed_for_guardian_records_recorded_by_as_the_operat
     assert service.create_calls == [(ELDER, ME)]
 
 
+def test_post_measurement_valid_blood_glucose_payload_resolves_to_glucose_and_returns_201(
+    client,
+):
+    """有效的血糖 body 仍能正確解析成 ``CreateBloodGlucoseRequest``、回 201
+    ——確認禁止多餘欄位（見下方兩支測試）沒有連帶弄壞正常的血糖請求。"""
+    wire(None, caller=ELDER)
+    service = wire_measurements()
+    res = client.post(
+        f"/api/health/measurements?user_id={ELDER}",
+        json={"glucose_mg_dl": 112, "meal_context": "fasting"},
+    )
+    assert res.status_code == 201
+    body = res.json()
+    assert body["kind"] == "blood_glucose"
+    assert body["glucose_mg_dl"] == 112
+    assert body["meal_context"] == "fasting"
+
+
+def test_post_measurement_rejects_mixed_kind_payload_with_422(client):
+    """同時帶血壓與血糖欄位：兩個模型都因為多餘欄位驗證不過，SHALL 回 422，
+    而不是被其中一個模型悄悄吃下、丟棄看不懂的欄位、驗證成功成錯的種類。"""
+    wire(None, caller=ELDER)
+    service = wire_measurements()
+    res = client.post(
+        f"/api/health/measurements?user_id={ELDER}",
+        json={
+            "systolic": 128,
+            "diastolic": 82,
+            "glucose_mg_dl": 100,
+            "meal_context": "fasting",
+        },
+    )
+    assert res.status_code == 422
+    assert service.create_calls == []
+
+
+def test_post_measurement_rejects_unknown_field_with_422(client):
+    """打錯字或不相關的欄位：兩個模型皆驗證不過，SHALL 回 422，而不是被
+    悄悄忽略、以血壓（或血糖）種類靜默成功。"""
+    wire(None, caller=ELDER)
+    service = wire_measurements()
+    res = client.post(
+        f"/api/health/measurements?user_id={ELDER}",
+        json={"systolic": 128, "diastolic": 82, "systolic_typo": 128},
+    )
+    assert res.status_code == 422
+    assert service.create_calls == []
+
+
+def test_post_measurement_rejects_invalid_body_with_422_before_reaching_the_service(client):
+    """收縮壓不大於舒張壓（spec「收縮壓不大於舒張壓」）：透過真實端點送出
+    不合法的 body，SHALL 回 422、SHALL NOT 呼叫服務層——這是本檔案第一支
+    直接對活端點送不合法 body 的測試，其餘輸入邊界已在
+    tests/unit/models/test_health_models.py 窮舉過。"""
+    wire(None, caller=ELDER)
+    service = wire_measurements()
+    res = client.post(
+        f"/api/health/measurements?user_id={ELDER}",
+        json={"systolic": 80, "diastolic": 120},
+    )
+    assert res.status_code == 422
+    assert service.create_calls == []
+
+
 def test_post_measurement_denied_for_caregiver(client):
     """協助照顧者代記被拒（spec「協助照顧者代記被拒」）。"""
     wire("CAREGIVER")
@@ -488,6 +570,30 @@ def test_post_measurement_denied_for_stranger_even_in_shadow_mode(client):
     assert service.create_calls == []
 
 
+def test_post_measurement_self_allowed_even_in_shadow_mode(client):
+    """影子模式不影響本人：本人代記自己一律放行，enforced／shadow 結果相同。"""
+    wire(None, caller=ELDER, state="shadow")
+    service = wire_measurements()
+    res = client.post(
+        f"/api/health/measurements?user_id={ELDER}", json=POST_MEASUREMENT_PAYLOAD
+    )
+    assert res.status_code == 201
+    assert service.create_calls == [(ELDER, ELDER)]
+
+
+def test_post_measurement_allowed_for_guardian_even_in_shadow_mode(client):
+    """新增的能力不受影子模式放寬，但也 SHALL NOT 被誤放窄：矩陣本來就允許
+    GUARDIAN 代記，enforced／shadow 兩種狀態下都該是 201，不是只有 enforced
+    才通。"""
+    wire("GUARDIAN", state="shadow")
+    service = wire_measurements()
+    res = client.post(
+        f"/api/health/measurements?user_id={ELDER}", json=POST_MEASUREMENT_PAYLOAD
+    )
+    assert res.status_code == 201
+    assert service.create_calls == [(ELDER, ME)]
+
+
 # -- GET /api/health/measurements --------------------------------------
 
 
@@ -543,6 +649,25 @@ def test_get_measurements_denied_for_stranger_even_in_shadow_mode(client):
     res = client.get(f"/api/health/measurements?user_id={ELDER}")
     assert res.status_code == 403
     assert service.list_calls == []
+
+
+def test_get_measurements_self_allowed_even_in_shadow_mode(client):
+    wire(None, caller=ELDER, state="shadow")
+    service = wire_measurements(existing=_EXISTING_MEASUREMENT)
+    res = client.get(f"/api/health/measurements?user_id={ELDER}")
+    assert res.status_code == 200
+    assert service.list_calls == [ELDER]
+
+
+@pytest.mark.parametrize("role", ["GUARDIAN", "CAREGIVER"])
+def test_get_measurements_allowed_for_sensitive_readers_even_in_shadow_mode(client, role):
+    """矩陣允許的讀取權（GUARDIAN、CAREGIVER）在 shadow 狀態下也該放行，不是
+    只有 enforced 才通——影子模式只是不放寬，不是額外收緊。"""
+    wire(role, state="shadow")
+    service = wire_measurements(existing=_EXISTING_MEASUREMENT)
+    res = client.get(f"/api/health/measurements?user_id={ELDER}")
+    assert res.status_code == 200
+    assert service.list_calls == [ELDER]
 
 
 # -- DELETE /api/health/measurements/{id} ------------------------------
@@ -614,6 +739,24 @@ def test_delete_measurement_denied_for_stranger_even_in_shadow_mode(client):
     res = client.delete("/api/health/measurements/M1")
     assert res.status_code == 403
     assert service.delete_calls == []
+
+
+def test_delete_measurement_self_allowed_even_in_shadow_mode(client):
+    wire(None, caller=ELDER, state="shadow")
+    service = wire_measurements(existing=_EXISTING_MEASUREMENT)
+    res = client.delete("/api/health/measurements/M1")
+    assert res.status_code == 204
+    assert service.delete_calls == ["M1"]
+
+
+def test_delete_measurement_allowed_for_guardian_even_in_shadow_mode(client):
+    """矩陣允許的寫入權（GUARDIAN）在 shadow 狀態下也該放行——影子模式只是
+    不放寬既有能力所沒有的角色，不是額外收緊矩陣本來就允許的角色。"""
+    wire("GUARDIAN", state="shadow")
+    service = wire_measurements(existing=_EXISTING_MEASUREMENT)
+    res = client.delete("/api/health/measurements/M1")
+    assert res.status_code == 204
+    assert service.delete_calls == ["M1"]
 
 
 def test_delete_measurement_returns_404_before_any_authorization_when_missing(client):

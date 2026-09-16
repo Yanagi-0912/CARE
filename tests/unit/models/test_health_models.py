@@ -119,6 +119,16 @@ def test_blood_pressure_treats_naive_measured_at_as_utc():
     assert request.measured_at is not None
 
 
+def test_blood_pressure_rejects_unknown_field():
+    """POST /api/health/measurements 的 body 是
+    ``Union[CreateBloodPressureRequest, CreateBloodGlucoseRequest]``——兩者
+    沒有共同的 ``kind`` 欄位，靠 Pydantic smart union 依「哪個模型驗證得過」
+    來選。若允許多餘欄位，一份打錯字或混進血糖欄位的請求會被這個模型悄悄
+    吃下、丟棄看不懂的欄位並驗證成功，得到一筆種類錯誤的紀錄。"""
+    with pytest.raises(ValidationError):
+        CreateBloodPressureRequest(systolic=120, diastolic=80, glucose_mg_dl=100)
+
+
 # ── 血糖 ────────────────────────────────────────────────────────────────
 
 
@@ -156,6 +166,12 @@ def test_blood_glucose_rejects_measured_at_more_than_five_minutes_future():
         CreateBloodGlucoseRequest(
             glucose_mg_dl=112, meal_context="fasting", measured_at=future
         )
+
+
+def test_blood_glucose_rejects_unknown_field():
+    """見 ``test_blood_pressure_rejects_unknown_field`` 的同一段理由。"""
+    with pytest.raises(ValidationError):
+        CreateBloodGlucoseRequest(glucose_mg_dl=112, meal_context="fasting", systolic=120)
 
 
 # ── 提醒範圍 ────────────────────────────────────────────────────────────

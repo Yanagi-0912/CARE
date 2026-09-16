@@ -206,6 +206,12 @@ async def list_measurements(
     kind: Optional[MeasurementKind] = Query(
         default=None, description="血壓或血糖，省略則兩者皆回傳"
     ),
+    # start／end 若帶不含時區的時間，FastAPI／Pydantic 解析成 naive datetime，
+    # 直接送進 PyMongo 的 $gte／$lte 比較——這與 measured_at 本身回讀時的形狀
+    # 一致（見 app/models/health.py 的 _reject_far_future 說明：Motor client
+    # 未啟用 tz_aware，naive datetime 經資料庫存取一圈後其實就是 UTC）。因此
+    # 這裡刻意不像 POST 對 body 那樣把 naive 值正規化成帶時區的 UTC：兩邊比較
+    # 的都是同一種「naive＝UTC」的表示，正規化其中一邊反而會讓比較不一致。
     start: Optional[datetime] = Query(
         default=None, description="量測時間下限（含），省略且 end 也省略時預設最近 30 天"
     ),

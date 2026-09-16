@@ -41,7 +41,7 @@ class GeminiService:
         *,
         api_key: str,
         model_name: str,
-        temperature: float = 0.0,
+        temperature: float | None = None,
         thinking_level: str | None = None,
         timeout: float | None = None,
         max_retries: int = DEFAULT_MAX_RETRIES,
@@ -53,8 +53,26 @@ class GeminiService:
         拿到沒有逾時的模型。`timeout` 預設取 `GEMINI_REQUEST_TIMEOUT_SECONDS`
         （理由見 config），`max_retries` 見 `DEFAULT_MAX_RETRIES`。
 
-        `temperature` 預設 0，正式路徑一律沿用。留出參數是給評測用的：
-        要量測模型在同一張影像上的答案穩不穩，必須讓它有機會給出不同答案。
+        `temperature` 預設 None＝**完全不送這個參數**，沿用模型自己的預設。
+        以前這裡釘 0.0，那是 Gemini 2.5 時代「要穩定就壓低溫度」的通則；
+        Gemini 3 把這條通則反過來了，官方開發指南寫得很直接：
+
+            "For all Gemini 3 models, we strongly recommend keeping the
+            temperature parameter at its default value of 1.0."
+            "Changing the temperature (setting it below 1.0) may lead to
+            unexpected behavior, such as looping or degraded performance,
+            particularly in complex mathematical or reasoning tasks."
+
+        遷移章節還特別點名我們這種寫法：「If your existing code explicitly sets
+        temperature (especially to low values for deterministic outputs), we
+        recommend removing this parameter」（ai.google.dev/gemini-api/docs/gemini-3）。
+        CARE 線上跑的 gemini-3.8-flash、gemini-3.5-flash-lite 都屬於這一家族，
+        而健康問答正是它說的複雜推理，所以拿掉。
+
+        要讓回答更穩定改用 `thinking_level`，那才是 Gemini 3 給的旋鈕。
+
+        留出參數是給評測用的（例如 `scripts/handwriting_eval.py` 量穩定度時
+        刻意拉高溫度），只有明確傳值才會送出去。
 
         `thinking_level` 預設 None＝沿用模型預設（gemini-3.8-flash 是 medium）。
         只給延遲敏感、推理需求低的呼叫用，例如查詢改寫（見
@@ -64,6 +82,10 @@ class GeminiService:
         extra: dict[str, Any] = {}
         if thinking_level is not None:
             extra["thinking_level"] = thinking_level
+        # None 與 0.0 在這裡是兩件事：None 代表整個參數不送，讓模型用自己的預設；
+        # 0.0 是一個明確的低溫度，正是官方要我們別再設的值。所以判定用 is not None。
+        if temperature is not None:
+            extra["temperature"] = temperature
         self.timeout = (
             float(timeout)
             if timeout is not None
@@ -73,7 +95,6 @@ class GeminiService:
         self.chat_model = ChatGoogleGenerativeAI(
             model=model_name,
             google_api_key=api_key,
-            temperature=temperature,
             timeout=self.timeout,
             max_retries=self.max_retries,
             **extra,

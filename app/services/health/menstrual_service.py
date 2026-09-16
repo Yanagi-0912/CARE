@@ -25,8 +25,9 @@
   開始日期的間隔）與 ``period_length_days``（含頭尾兩天的經期天數）。
 """
 
-from datetime import date
-from typing import List, Optional
+import logging
+from datetime import date, timedelta
+from typing import Any, List, Optional
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -37,7 +38,10 @@ from app.models.health import (
     UpdateMenstrualRecordRequest,
 )
 from app.repositories.menstrual_record_repository import MenstrualRecordRepository
+from app.services.health.menstrual_anomaly import detect_menstrual_anomaly
 from app.services.users.user_profile_service import UserProfileService
+
+logger = logging.getLogger(__name__)
 
 # health-alerts spec「僅女性使用者可建立」：性別未填或非女性時的說明，
 # 訊息本身要讓使用者知道該去哪裡處理——同 app/routers/users/appointments.py
@@ -58,9 +62,14 @@ class MenstrualRecordService:
         self,
         repository: type[MenstrualRecordRepository] = MenstrualRecordRepository,
         user_profile_service: Optional[UserProfileService] = None,
+        alert_service: Any = None,
     ) -> None:
         self._repository = repository
         self._user_profile_service = user_profile_service
+        # Task 7：經期異常只通知本人（health-alerts spec）。型別刻意是
+        # ``Any``（同 ``health_measurement_service`` 的理由），選填是因為
+        # 既有呼叫端（測試）尚未全部升級到會注入它。
+        self._alert_service = alert_service
 
     async def create(
         self, user_id: str, request: CreateMenstrualRecordRequest
@@ -86,13 +95,14 @@ class MenstrualRecordService:
         )
         saved = await self._repository.add(record)
         # ── 存檔之後 ──────────────────────────────────────────────────
-        # Task 7 會在這裡接上經期異常通知（health-alerts spec「經期異常只
-        # 通知本人」）：detect_menstrual_anomaly 需要「前一筆」的開始日期，
-        # 呼叫端可用 self.list(user_id) 或另外查詢取得；saved 已有
-        # _id／user_id／start_date／end_date，推播需要的欄位都齊了。推播
-        # SHALL 只通知本人，SHALL NOT 通知任何家人；推播失敗 SHALL NOT
-        # 影響這支請求的結果，因此掛在存檔「之後」。
+        # 經期異常通知（health-alerts spec「經期異常只通知本人」）。建立時
+        # 一律檢查一次：cycle_length_days／period_length_days 已經由
+        # `_with_computed_fields_for` 算好，直接餵給 `detect_menstrual_anomaly`
+        # 即可，不需要另外查詢「前一筆」。推播 SHALL 只通知本人、SHALL NOT
+        # 通知任何家人；推播失敗 SHALL NOT 影響這支請求的結果，因此掛在
+        # 存檔「之後」。
         computed = await self._with_computed_fields_for(user_id, saved)
+        await self._maybe_notify_anomaly(user_id, computed)
         return computed
 
     async def list(self, user_id: str) -> List[MenstrualRecord]:
@@ -156,13 +166,46 @@ class MenstrualRecordService:
         if updated is None:
             raise HTTPException(status_code=404, detail=_RECORD_NOT_FOUND_DETAIL)
         # ── 存檔之後 ──────────────────────────────────────────────────
-        # Task 7：PATCH 補上 end_date 時同樣要判定經期異常（經期天數 > 8
-        # 天）。掛在這裡，推播失敗不影響這支請求。
-        return await self._with_computed_fields_for(existing.user_id, updated)
+        # PATCH 補上／改動 end_date 時同樣要判定經期異常（經期天數 > 8 天；
+        # dispatch notes「trigger points」）。只在 `end_date` 真的出現在這次
+        # 請求裡才檢查——單純改 note／flow 不會讓「經期天數」這件事有任何
+        # 變化，不必多一次 claim 嘗試。推播失敗不影響這支請求。
+        computed = await self._with_computed_fields_for(existing.user_id, updated)
+        if "end_date" in changes:
+            await self._maybe_notify_anomaly(existing.user_id, computed)
+        return computed
 
     async def delete(self, record_id: str) -> None:
         """刪除一筆紀錄。存在性與所有權已由呼叫端（router）確認過。"""
         await self._repository.delete(record_id)
+
+    async def _maybe_notify_anomaly(self, user_id: str, record: MenstrualRecord) -> None:
+        """判定這筆（已附計算欄位的）紀錄是否異常，異常才呼叫推播服務。
+
+        ``previous_start`` 由 ``record.cycle_length_days`` 反推
+        （``cycle_length_days = (start - previous_start).days``，見
+        ``_compute_fields_for_list``），不必為了取得前一筆的開始日期另外
+        查一次資料庫——那份資訊已經在 ``_with_computed_fields_for`` 算過了。
+        """
+        if self._alert_service is None or not record.id:
+            return
+        start = date.fromisoformat(record.start_date)
+        end = date.fromisoformat(record.end_date) if record.end_date else None
+        previous_start = (
+            start - timedelta(days=record.cycle_length_days)
+            if record.cycle_length_days is not None
+            else None
+        )
+        if not detect_menstrual_anomaly(previous_start, start, end):
+            return
+        # ``HealthAlertService.notify_menstrual_anomaly`` 自己已經吞掉內部的
+        # 失敗，這裡仍在呼叫處再包一層——同 ``health_measurement_service`` 的
+        # 理由，不假設「呼叫端一定接的是行為良好的實作」，換一顆不同的注入
+        # 物件不該讓這支請求失敗（spec「推播失敗不影響紀錄」）。
+        try:
+            await self._alert_service.notify_menstrual_anomaly(user_id, record.id)
+        except Exception:  # noqa: BLE001
+            logger.warning("經期異常推播失敗，紀錄本身不受影響", exc_info=True)
 
     async def _require_female(self, user_id: str) -> None:
         """建立限本人個人健康檔案性別為「女性」（spec「僅女性使用者可

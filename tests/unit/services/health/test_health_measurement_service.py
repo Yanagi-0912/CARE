@@ -268,3 +268,84 @@ async def test_delete_removes_the_record():
     await service.delete(created.id)
 
     assert await measurements.get_by_id(created.id) is None
+
+
+# ── 接線：存檔之後呼叫超出範圍推播（health-alerts spec「推播失敗不影響
+# 紀錄」；Task 7 dispatch notes「Wiring」）───────────────────────────────
+
+
+class _FakeAlertService:
+    def __init__(self, raise_error: bool = False) -> None:
+        self.calls: List[tuple] = []
+        self._raise = raise_error
+
+    async def notify_out_of_range(self, measurement, thresholds):
+        self.calls.append((measurement, thresholds))
+        if self._raise:
+            raise RuntimeError("推播服務掛了")
+
+
+@pytest.mark.asyncio
+async def test_create_calls_alert_service_with_the_saved_measurement_and_thresholds_used():
+    threshold = HealthAlertThreshold(user_id=ELDER, systolic_high=140, updated_by=ELDER)
+    measurements = _FakeMeasurementRepository()
+    thresholds = _FakeThresholdRepository(threshold)
+    alert_service = _FakeAlertService()
+    service = HealthMeasurementService(
+        measurement_repository=measurements,
+        threshold_repository=thresholds,
+        alert_service=alert_service,
+    )
+
+    created = await service.create(
+        user_id=ELDER,
+        recorded_by=ELDER,
+        request=CreateBloodPressureRequest(systolic=152, diastolic=90),
+    )
+
+    assert len(alert_service.calls) == 1
+    called_measurement, called_thresholds = alert_service.calls[0]
+    assert called_measurement.id == created.id
+    assert called_thresholds is threshold
+
+
+@pytest.mark.asyncio
+async def test_create_succeeds_even_when_the_alert_service_raises():
+    """推播失敗 SHALL NOT 使新增紀錄的請求失敗（spec「推播失敗不影響紀錄」）。
+
+    刻意注入一個會拋例外的替身，而不是完整的 ``HealthAlertService``（它自己
+    也吞掉失敗，見該服務的 ``test_push_failure_is_swallowed``）：這裡驗證的
+    是接線本身有沒有再包一層防禦，不假設「呼叫端一定接的是行為良好的實作」
+    ——換一顆不同的注入物件不該讓 201 變成 500。
+    """
+    measurements = _FakeMeasurementRepository()
+    thresholds = _FakeThresholdRepository()
+    alert_service = _FakeAlertService(raise_error=True)
+    service = HealthMeasurementService(
+        measurement_repository=measurements,
+        threshold_repository=thresholds,
+        alert_service=alert_service,
+    )
+
+    result = await service.create(
+        user_id=ELDER,
+        recorded_by=ELDER,
+        request=CreateBloodPressureRequest(systolic=152, diastolic=90),
+    )
+
+    assert result.id is not None
+    assert len(measurements.added) == 1
+    assert len(alert_service.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_without_alert_service_configured_still_works():
+    service, measurements, thresholds = _service()
+
+    result = await service.create(
+        user_id=ELDER,
+        recorded_by=ELDER,
+        request=CreateBloodPressureRequest(systolic=128, diastolic=82),
+    )
+
+    assert result.id is not None

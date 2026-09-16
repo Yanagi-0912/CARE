@@ -13,8 +13,9 @@
   取得紀錄的所有者是誰。
 """
 
+import logging
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 from fastapi import HTTPException
 
@@ -29,6 +30,8 @@ from app.repositories.health_alert_threshold_repository import (
 )
 from app.repositories.health_measurement_repository import HealthMeasurementRepository
 from app.services.health.health_level import classify_measurement
+
+logger = logging.getLogger(__name__)
 
 # 查詢未指定區間時，回傳最近 30 天（constraints.md「狀態碼」段；
 # health-measurements spec「查看紀錄」）。
@@ -49,9 +52,15 @@ class HealthMeasurementService:
         threshold_repository: type[
             HealthAlertThresholdRepository
         ] = HealthAlertThresholdRepository,
+        alert_service: Any = None,
     ) -> None:
         self._measurement_repository = measurement_repository
         self._threshold_repository = threshold_repository
+        # Task 7：超出範圍推播（health-alerts spec）。型別刻意是 ``Any``——
+        # 這裡不匯入 ``HealthAlertService``，避免為了型別標註而在兩個彼此
+        # 沒有實際依賴關係的模組間造成 import 順序耦合；選填是因為既有呼叫端
+        # （測試）尚未全部升級到會注入它。
+        self._alert_service = alert_service
 
     async def create(
         self,
@@ -99,9 +108,22 @@ class HealthMeasurementService:
 
         saved = await self._measurement_repository.add(measurement)
         # ── 存檔之後 ──────────────────────────────────────────────────
-        # Task 7 會在這裡接上超出範圍推播（health-alerts spec「超出範圍才
-        # 推播」）：saved 已經有 _id／level／recorded_by，推播需要的欄位都
-        # 齊了。推播失敗 SHALL NOT 影響這支請求的結果，因此掛在存檔「之後」。
+        # 超出範圍推播（health-alerts spec「超出範圍才推播」）。saved 已經
+        # 有 _id／level／recorded_by，推播需要的欄位都齊了；thresholds 傳的
+        # 是記錄當下實際用來判定等級的那一份，不讓推播服務重新讀取（記錄
+        # 當下與推播當下之間範圍可能已經變更）。
+        #
+        # ``HealthAlertService.notify_out_of_range`` 自己已經吞掉內部的失敗
+        # （同 emergency/otc alert service 的慣例），這裡仍在呼叫處再包一層
+        # try/except——紀錄 SHALL 先寫入，推播才進行，且推播失敗 SHALL NOT
+        # 使這支請求失敗（spec「推播失敗不影響紀錄」）；saved 已經回傳無望
+        # 走到這裡失敗，這層是不假設「呼叫端一定接的是行為良好的實作」的
+        # 防禦，不因為換一顆不同的注入物件就讓 201 變成 500。
+        if self._alert_service is not None:
+            try:
+                await self._alert_service.notify_out_of_range(saved, thresholds)
+            except Exception:  # noqa: BLE001
+                logger.warning("超出範圍推播失敗，紀錄本身不受影響", exc_info=True)
         return saved
 
     async def list(

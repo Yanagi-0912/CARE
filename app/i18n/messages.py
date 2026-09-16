@@ -3078,6 +3078,185 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "CARE ให้ข้อมูลด้านสุขภาพ ไม่ใช่การวินิจฉัยของแพทย์ กรณีฉุกเฉินโทร 119",
         "ja": "CARE は健康情報を提供するもので、医師の診断に代わるものではありません。緊急時は 119 に電話してください。",
     },
+    # --- 血壓／血糖超出範圍推播（health-alerts spec「超出範圍推播的內容」）---
+    #
+    # 內容故意樸素：數值、量測時間、被超過的範圍值、代記者，沒有診斷、沒有
+    # 治療建議、沒有 119 區塊（design.md 決策 10）——這是一則「請留意、去看
+    # 紀錄」的提醒，不是安全通報。
+    "flex.health_alert.header.bp_high": {
+        "zh-TW": "血壓偏高提醒",
+        "en": "Blood pressure alert: high",
+        "id": "Peringatan tekanan darah tinggi",
+        "vi": "Cảnh báo huyết áp cao",
+        "th": "แจ้งเตือนความดันโลหิตสูง",
+        "ja": "血圧上昇のお知らせ",
+    },
+    "flex.health_alert.header.bp_low": {
+        "zh-TW": "血壓偏低提醒",
+        "en": "Blood pressure alert: low",
+        "id": "Peringatan tekanan darah rendah",
+        "vi": "Cảnh báo huyết áp thấp",
+        "th": "แจ้งเตือนความดันโลหิตต่ำ",
+        "ja": "血圧低下のお知らせ",
+    },
+    "flex.health_alert.header.glucose_high": {
+        "zh-TW": "血糖偏高提醒",
+        "en": "Blood glucose alert: high",
+        "id": "Peringatan gula darah tinggi",
+        "vi": "Cảnh báo đường huyết cao",
+        "th": "แจ้งเตือนน้ำตาลในเลือดสูง",
+        "ja": "血糖上昇のお知らせ",
+    },
+    "flex.health_alert.header.glucose_low": {
+        "zh-TW": "血糖偏低提醒",
+        "en": "Blood glucose alert: low",
+        "id": "Peringatan gula darah rendah",
+        "vi": "Cảnh báo đường huyết thấp",
+        "th": "แจ้งเตือนน้ำตาลในเลือดต่ำ",
+        "ja": "血糖低下のお知らせ",
+    },
+    "flex.health_alert.alt.bp_high": {
+        "zh-TW": "有一筆血壓紀錄偏高，請查看",
+        "en": "A blood pressure reading was high. Please check.",
+        "id": "Satu catatan tekanan darah tinggi. Silakan periksa.",
+        "vi": "Một chỉ số huyết áp cao. Vui lòng kiểm tra.",
+        "th": "มีค่าความดันโลหิตสูง กรุณาตรวจสอบ",
+        "ja": "血圧の記録が高めでした。ご確認ください。",
+    },
+    "flex.health_alert.alt.bp_low": {
+        "zh-TW": "有一筆血壓紀錄偏低，請查看",
+        "en": "A blood pressure reading was low. Please check.",
+        "id": "Satu catatan tekanan darah rendah. Silakan periksa.",
+        "vi": "Một chỉ số huyết áp thấp. Vui lòng kiểm tra.",
+        "th": "มีค่าความดันโลหิตต่ำ กรุณาตรวจสอบ",
+        "ja": "血圧の記録が低めでした。ご確認ください。",
+    },
+    "flex.health_alert.alt.glucose_high": {
+        "zh-TW": "有一筆血糖紀錄偏高，請查看",
+        "en": "A blood glucose reading was high. Please check.",
+        "id": "Satu catatan gula darah tinggi. Silakan periksa.",
+        "vi": "Một chỉ số đường huyết cao. Vui lòng kiểm tra.",
+        "th": "มีค่าน้ำตาลในเลือดสูง กรุณาตรวจสอบ",
+        "ja": "血糖値の記録が高めでした。ご確認ください。",
+    },
+    "flex.health_alert.alt.glucose_low": {
+        "zh-TW": "有一筆血糖紀錄偏低，請查看",
+        "en": "A blood glucose reading was low. Please check.",
+        "id": "Satu catatan gula darah rendah. Silakan periksa.",
+        "vi": "Một chỉ số đường huyết thấp. Vui lòng kiểm tra.",
+        "th": "มีค่าน้ำตาลในเลือดต่ำ กรุณาตรวจสอบ",
+        "ja": "血糖値の記録が低めでした。ご確認ください。",
+    },
+    "flex.health_alert.field.systolic": {
+        "zh-TW": "收縮壓", "en": "Systolic", "id": "Sistolik",
+        "vi": "Tâm thu", "th": "ความดันช่วงบน", "ja": "収縮期血圧",
+    },
+    "flex.health_alert.field.diastolic": {
+        "zh-TW": "舒張壓", "en": "Diastolic", "id": "Diastolik",
+        "vi": "Tâm trương", "th": "ความดันช่วงล่าง", "ja": "拡張期血圧",
+    },
+    "flex.health_alert.field.pulse": {
+        "zh-TW": "脈搏", "en": "Pulse", "id": "Denyut nadi",
+        "vi": "Mạch", "th": "ชีพจร", "ja": "脈拍",
+    },
+    "flex.health_alert.field.glucose": {
+        "zh-TW": "血糖", "en": "Blood glucose", "id": "Gula darah",
+        "vi": "Đường huyết", "th": "น้ำตาลในเลือด", "ja": "血糖値",
+    },
+    "flex.health_alert.meal.fasting": {
+        "zh-TW": "空腹", "en": "Fasting", "id": "Puasa",
+        "vi": "Lúc đói", "th": "ขณะท้องว่าง", "ja": "空腹時",
+    },
+    "flex.health_alert.meal.before_meal": {
+        "zh-TW": "飯前", "en": "Before meal", "id": "Sebelum makan",
+        "vi": "Trước ăn", "th": "ก่อนอาหาร", "ja": "食前",
+    },
+    "flex.health_alert.meal.after_meal": {
+        "zh-TW": "飯後", "en": "After meal", "id": "Sesudah makan",
+        "vi": "Sau ăn", "th": "หลังอาหาร", "ja": "食後",
+    },
+    "flex.health_alert.meal.bedtime": {
+        "zh-TW": "睡前", "en": "Bedtime", "id": "Sebelum tidur",
+        "vi": "Trước khi ngủ", "th": "ก่อนนอน", "ja": "就寝前",
+    },
+    "flex.health_alert.meal.random": {
+        "zh-TW": "隨機", "en": "Random", "id": "Acak",
+        "vi": "Ngẫu nhiên", "th": "สุ่ม", "ja": "ランダム",
+    },
+    "flex.health_alert.label.measured_at": {
+        "zh-TW": "量測時間", "en": "Measured at", "id": "Waktu pengukuran",
+        "vi": "Thời điểm đo", "th": "เวลาที่วัด", "ja": "測定時刻",
+    },
+    "flex.health_alert.exceeded.upper": {
+        "zh-TW": "超過上限 {bound}",
+        "en": "Above the upper limit of {bound}",
+        "id": "Melebihi batas atas {bound}",
+        "vi": "Vượt giới hạn trên {bound}",
+        "th": "เกินขีดจำกัดบน {bound}",
+        "ja": "上限 {bound} を超えています",
+    },
+    "flex.health_alert.exceeded.lower": {
+        "zh-TW": "低於下限 {bound}",
+        "en": "Below the lower limit of {bound}",
+        "id": "Di bawah batas bawah {bound}",
+        "vi": "Dưới giới hạn dưới {bound}",
+        "th": "ต่ำกว่าขีดจำกัดล่าง {bound}",
+        "ja": "下限 {bound} を下回っています",
+    },
+    "flex.health_alert.recorded_by": {
+        "zh-TW": "由 {name} 記錄",
+        "en": "Recorded by {name}",
+        "id": "Dicatat oleh {name}",
+        "vi": "Được {name} ghi lại",
+        "th": "บันทึกโดย {name}",
+        "ja": "{name} が記録しました",
+    },
+    "flex.health_alert.button.open_records": {
+        "zh-TW": "查看健康紀錄",
+        "en": "View health records",
+        "id": "Lihat catatan kesehatan",
+        "vi": "Xem hồ sơ sức khỏe",
+        "th": "ดูบันทึกสุขภาพ",
+        "ja": "健康記録を見る",
+    },
+    # --- 經期異常推播（health-alerts spec「經期異常只通知本人」）---
+    #
+    # 文字 SHALL NOT 含「經期」「月經」（或其他五語系的對應詞）或任何數值——
+    # LINE 推播會出現在鎖定畫面預覽，長輩常與家人共用手機
+    # （tests/unit/services/line_messaging/flex/test_menstrual_alert_flex.py
+    # 逐語系檢查這一點）。
+    "flex.menstrual_alert.header": {
+        "zh-TW": "健康提醒",
+        "en": "Health reminder",
+        "id": "Pengingat kesehatan",
+        "vi": "Nhắc nhở sức khỏe",
+        "th": "การแจ้งเตือนสุขภาพ",
+        "ja": "健康のお知らせ",
+    },
+    "flex.menstrual_alert.body": {
+        "zh-TW": "有一筆健康紀錄需要留意，建議您至 CARE 查看。",
+        "en": "One of your health records needs attention. Please check it in CARE.",
+        "id": "Ada catatan kesehatan yang perlu diperhatikan. Silakan periksa di CARE.",
+        "vi": "Có một mục sức khỏe cần bạn lưu ý. Vui lòng kiểm tra trong CARE.",
+        "th": "มีบันทึกสุขภาพที่ควรให้ความสนใจ กรุณาตรวจสอบใน CARE",
+        "ja": "確認が必要な健康記録があります。CARE でご確認ください。",
+    },
+    "flex.menstrual_alert.alt": {
+        "zh-TW": "有一筆健康紀錄需要留意",
+        "en": "A health record needs attention",
+        "id": "Ada catatan kesehatan yang perlu diperhatikan",
+        "vi": "Có một mục sức khỏe cần lưu ý",
+        "th": "มีบันทึกสุขภาพที่ควรให้ความสนใจ",
+        "ja": "確認が必要な健康記録があります",
+    },
+    "flex.menstrual_alert.button": {
+        "zh-TW": "前往查看",
+        "en": "Open CARE",
+        "id": "Buka CARE",
+        "vi": "Mở CARE",
+        "th": "เปิด CARE",
+        "ja": "CARE を開く",
+    },
 }
 
 

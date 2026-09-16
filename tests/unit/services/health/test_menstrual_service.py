@@ -455,3 +455,174 @@ async def test_delete_removes_the_record():
     await service.delete("R1")
 
     assert await repository.get_by_id("R1") is None
+
+
+# ── 接線：存檔之後呼叫經期異常推播（health-alerts spec「經期異常只通知
+# 本人」「推播失敗不影響紀錄」；Task 7 dispatch notes「Wiring」）─────────
+
+
+class _FakeAlertService:
+    def __init__(self, raise_error: bool = False) -> None:
+        self.calls: List[tuple] = []
+        self._raise = raise_error
+
+    async def notify_menstrual_anomaly(self, user_id: str, record_id: str) -> None:
+        self.calls.append((user_id, record_id))
+        if self._raise:
+            raise RuntimeError("推播服務掛了")
+
+
+def _service_with_alert(
+    existing: Optional[List[MenstrualRecord]] = None, alert_service=None
+):
+    repository = _FakeMenstrualRepository(existing)
+    profile_service = _FakeUserProfileService({OWNER: {"gender": "female"}})
+    alert_service = alert_service if alert_service is not None else _FakeAlertService()
+    service = MenstrualRecordService(
+        repository=repository,
+        user_profile_service=profile_service,
+        alert_service=alert_service,
+    )
+    return service, repository, alert_service
+
+
+@pytest.mark.asyncio
+async def test_create_notifies_anomaly_when_cycle_is_too_long():
+    """週期 > 38 天（spec「週期過長」）。"""
+    older = MenstrualRecord(id="R1", user_id=OWNER, start_date="2026-06-01")
+    service, repository, alert_service = _service_with_alert(existing=[older])
+
+    created = await service.create(
+        OWNER, CreateMenstrualRecordRequest(start_date="2026-07-30")  # 59 天
+    )
+
+    assert alert_service.calls == [(OWNER, created.id)]
+
+
+@pytest.mark.asyncio
+async def test_create_notifies_anomaly_when_cycle_is_too_short():
+    """週期 < 24 天。前一筆帶結束日期，讓「開放中的紀錄視為佔滿 15 天」不會
+    誤把這個間隔擋成重疊（見 repository 對 ``find_overlapping`` 的說明）。
+    """
+    older = MenstrualRecord(
+        id="R1", user_id=OWNER, start_date="2026-08-01", end_date="2026-08-04"
+    )
+    service, repository, alert_service = _service_with_alert(existing=[older])
+
+    created = await service.create(
+        OWNER, CreateMenstrualRecordRequest(start_date="2026-08-15")  # 14 天
+    )
+
+    assert alert_service.calls == [(OWNER, created.id)]
+
+
+@pytest.mark.asyncio
+async def test_create_does_not_notify_when_cycle_is_normal():
+    """週期正常（spec「週期正常」：間隔 29 天 SHALL NOT 推播）。"""
+    older = MenstrualRecord(id="R1", user_id=OWNER, start_date="2026-08-01")
+    service, repository, alert_service = _service_with_alert(existing=[older])
+
+    await service.create(OWNER, CreateMenstrualRecordRequest(start_date="2026-08-30"))
+
+    assert alert_service.calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_notifies_anomaly_when_end_date_makes_the_period_too_long():
+    """建立時就帶結束日期、經期 > 8 天。"""
+    service, repository, alert_service = _service_with_alert()
+
+    created = await service.create(
+        OWNER,
+        CreateMenstrualRecordRequest(start_date="2026-09-01", end_date="2026-09-10"),
+    )
+
+    assert alert_service.calls == [(OWNER, created.id)]
+
+
+@pytest.mark.asyncio
+async def test_create_without_previous_record_or_end_date_does_not_notify():
+    """第一筆紀錄，沒有前一筆可比、也還沒有結束日期：兩半都還沒有值可判斷，
+    SHALL NOT 視為異常。"""
+    service, repository, alert_service = _service_with_alert()
+
+    await service.create(OWNER, CreateMenstrualRecordRequest(start_date="2026-09-01"))
+
+    assert alert_service.calls == []
+
+
+@pytest.mark.asyncio
+async def test_update_notifies_anomaly_when_end_date_makes_the_period_too_long():
+    """PATCH 補上結束日期、經期共 10 天（spec「經期過長」）。"""
+    existing = MenstrualRecord(id="R1", user_id=OWNER, start_date="2026-09-01")
+    service, repository, alert_service = _service_with_alert(existing=[existing])
+
+    await service.update("R1", UpdateMenstrualRecordRequest(end_date="2026-09-10"))
+
+    assert alert_service.calls == [(OWNER, "R1")]
+
+
+@pytest.mark.asyncio
+async def test_update_does_not_notify_when_end_date_is_not_touched():
+    """只改 note，沒有帶 end_date：不該多一次判定／claim 嘗試。"""
+    existing = MenstrualRecord(
+        id="R1", user_id=OWNER, start_date="2026-09-01", end_date="2026-09-05"
+    )
+    service, repository, alert_service = _service_with_alert(existing=[existing])
+
+    await service.update("R1", UpdateMenstrualRecordRequest(note="備註"))
+
+    assert alert_service.calls == []
+
+
+@pytest.mark.asyncio
+async def test_update_does_not_notify_when_the_period_is_normal():
+    existing = MenstrualRecord(id="R1", user_id=OWNER, start_date="2026-09-01")
+    service, repository, alert_service = _service_with_alert(existing=[existing])
+
+    await service.update("R1", UpdateMenstrualRecordRequest(end_date="2026-09-03"))
+
+    assert alert_service.calls == []
+
+
+@pytest.mark.asyncio
+async def test_create_succeeds_even_when_the_alert_service_raises():
+    """推播失敗 SHALL NOT 使新增紀錄的請求失敗（spec「推播失敗不影響紀錄」）。
+    同 ``test_health_measurement_service.py`` 的理由：接線本身要有防禦，
+    不假設注入的一定是行為良好的實作。"""
+    older = MenstrualRecord(id="R1", user_id=OWNER, start_date="2026-06-01")
+    service, repository, alert_service = _service_with_alert(
+        existing=[older], alert_service=_FakeAlertService(raise_error=True)
+    )
+
+    created = await service.create(
+        OWNER, CreateMenstrualRecordRequest(start_date="2026-07-30")
+    )
+
+    assert created.id is not None
+    assert len(repository.add_calls) == 1
+    assert len(alert_service.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_update_succeeds_even_when_the_alert_service_raises():
+    existing = MenstrualRecord(id="R1", user_id=OWNER, start_date="2026-09-01")
+    service, repository, alert_service = _service_with_alert(
+        existing=[existing], alert_service=_FakeAlertService(raise_error=True)
+    )
+
+    updated = await service.update("R1", UpdateMenstrualRecordRequest(end_date="2026-09-10"))
+
+    assert updated.end_date == "2026-09-10"
+    assert len(alert_service.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_without_alert_service_configured_still_works():
+    service, repository = _service()
+
+    result = await service.create(
+        OWNER, CreateMenstrualRecordRequest(start_date="2026-09-01")
+    )
+
+    assert result.id is not None

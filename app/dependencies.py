@@ -1290,3 +1290,29 @@ def reset_rate_limits() -> None:
     很快就會撞到每小時的上限，而那不是任何一個測試要驗的事。"""
     for dependency in ALL_RATE_LIMITS:
         dependency.limiter.reset()  # type: ignore[attr-defined]
+
+
+_clinic_transcript_service: "ClinicTranscriptService | None" = None
+
+
+def get_clinic_transcript_service() -> "ClinicTranscriptService":
+    """看診錄音服務。
+
+    第一次用到才建，而且 import 也延後到這裡：轉錄要 `google.genai` 的型別，
+    而 `app/services/speech/audio.py` 開頭那段註解記著，頂端 import 大套件會讓
+    backend／scheduler pod 啟動約 30 秒就被 OOMKilled。這個功能不是每個 pod
+    都會用到，沒有理由讓它進到啟動路徑。
+    """
+    global _clinic_transcript_service
+    if _clinic_transcript_service is None:
+        from app.repositories.medication_repository import MedicationRepository
+        from app.services.clinic_transcript.service import ClinicTranscriptService
+        from app.services.clinic_transcript.summarizer import ClinicVisitSummarizer
+        from app.services.speech.clinic_transcribe import ClinicTranscriber
+
+        _clinic_transcript_service = ClinicTranscriptService(
+            transcriber=ClinicTranscriber(),
+            summarizer=ClinicVisitSummarizer(_gemini_service),
+            medication_repository=MedicationRepository,
+        )
+    return _clinic_transcript_service

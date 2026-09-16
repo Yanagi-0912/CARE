@@ -37,6 +37,9 @@ from app.repositories.knowledge_report_repository import KnowledgeReportReposito
 from app.repositories.user_profile_repository import UserProfileRepository
 from app.repositories.medication_repository import MedicationLogRepository
 from app.repositories.prescription_draft_repository import PrescriptionDraftRepository
+from app.repositories.clinic_transcript_repository import (
+    ClinicTranscriptRepository,
+)
 from app.repositories.family_delegation_repository import FamilyDelegationRepository
 from app.repositories.family_rbac_metrics_repository import FamilyRbacMetricsRepository
 from app.repositories.family_role_audit_repository import FamilyRoleAuditRepository
@@ -63,6 +66,7 @@ from app.routers.users.medical import router as medical_router
 from app.routers.users.medications import router as medications_router
 from app.routers.users.appointments import router as appointments_router
 from app.routers.users.lost import router as lost_router
+from app.routers.users.clinic_transcripts import router as clinic_transcripts_router
 from app.routers.admin.knowledge_reports import router as admin_knowledge_reports_router
 from app.routers.tts.tts import router as tts_router
 from app.routers.drug_appearance.images import router as drug_appearance_router
@@ -126,6 +130,11 @@ async def lifespan(app: FastAPI):
     # 藥袋辨識草稿的 TTL 索引：草稿以 PRESCRIPTION_DRAFT_TTL_MINUTES 為存活
     # 時間，交由資料庫自動清除，應用端不需要另外排程刪除。
     await PrescriptionDraftRepository.ensure_indexes()
+    # 看診錄音紀錄：expires_at 的 TTL（30 天，與對話原文同一條線）與
+    # (user_id, recorded_at) 的清單索引。
+    await ensure_indexes_or_log(
+        "clinic_visit_records", ClinicTranscriptRepository.ensure_indexes
+    )
     # 用藥風險通報的節流索引：(user_id, drug_key) 的唯一約束是「同一個藥在
     # 節流視窗內只通報一次」的唯一保證，通報權就是靠它原子取得；expires_at
     # 的 TTL 讓視窗自動過期，不需要應用端排程清除。索引與功能開關無關，
@@ -273,6 +282,14 @@ app.add_middleware(
     max_bytes=settings.PRESCRIPTION_SCAN_MAX_IMAGE_BYTES,
 )
 
+# 看診錄音的上傳上限，理由與上面那一段相同（路由層攔不住，必須在 ASGI 層）。
+app.add_middleware(
+    MaxUploadSizeMiddleware,
+    path="/api/clinic-visits",
+    method="POST",
+    max_bytes=settings.CLINIC_RECORDING_MAX_BYTES,
+)
+
 # Centralized CORS config
 add_cors_middleware(app)
 app.include_router(system_router)
@@ -286,6 +303,9 @@ app.include_router(family_tree_router, prefix="/api/family", tags=["Family Tree"
 app.include_router(medications_router, prefix="/api/medications", tags=["Medications"])
 app.include_router(appointments_router, prefix="/api/appointments", tags=["Appointments"])
 app.include_router(lost_router, prefix="/api/lost", tags=["Lost Location"])
+app.include_router(
+    clinic_transcripts_router, prefix="/api/clinic-visits", tags=["Clinic Visits"]
+)
 # 前綴必須是 /api/medical：CARE-LIFF 的 medicalApi.ts 已經在打 /api/medical/nearby，
 # 「附近醫院」整頁（路由、側邊欄、i18n）都已上線，缺的一直只有這一行掛載。
 app.include_router(medical_router, prefix="/api/medical", tags=["Medical"])

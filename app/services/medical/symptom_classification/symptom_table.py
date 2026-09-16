@@ -128,21 +128,13 @@ class SymptomEntry:
 class SymptomTable:
     """症狀 → 候選科別的查表。建構時完成所有驗證，之後純讀取。"""
 
-    def __init__(self, entries: dict[str, SymptomEntry], *, verified: bool) -> None:
+    def __init__(self, entries: dict[str, SymptomEntry]) -> None:
         self._entries = entries
-        self._verified = verified
-
-    @property
-    def verified(self) -> bool:
-        return self._verified
 
     @property
     def terms(self) -> tuple[str, ...]:
         """所有可比對的症狀條目；同時是正規化層 LLM 兜底的封閉候選集合。"""
         return tuple(self._entries)
-
-    def __len__(self) -> int:
-        return len(self._entries)
 
     def lookup(self, term: str) -> SymptomEntry | None:
         return self._entries.get(term)
@@ -214,10 +206,9 @@ def load_symptom_table(path: Path | None = None) -> SymptomTable:
     """
     從 JSON 載入對照表。任何一項不合規格即拋錯，不做部分載入。
 
-    回傳的 SymptomTable 只包含 symptoms。對照表 JSON 裡的 red_flags 區塊刻意
-    不載入：急迫度改由 urgency.py 的語意判斷器負責，而那份 red_flags 是爬蟲以
-    關鍵字初篩出來的，實測明顯過寬（「中風復健」被標成急症），拿來當急迫度來源
-    只會把大量一般問句推去急診。
+    回傳的 SymptomTable 只包含 symptoms。急迫度由 urgency.py 的語意判斷器負責，
+    SHALL NOT 從對照表推導——爬蟲以關鍵字初篩的急症草稿實測明顯過寬（「中風復健」
+    被標成急症），已自對照表刪除。
     """
     table_path = path or DEFAULT_TABLE_PATH
     try:
@@ -295,7 +286,7 @@ def load_symptom_table(path: Path | None = None) -> SymptomTable:
         len(departments),
         verified,
     )
-    return SymptomTable(entries, verified=verified)
+    return SymptomTable(entries)
 
 
 @dataclass(frozen=True)

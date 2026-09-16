@@ -381,9 +381,12 @@ class _Consultations:
         self.summary_calls.append(user_id)
         return []
 
-    async def get_raw_view(self, user_id):
+    async def get_raw_view(self, user_id, *, language):
         self.raw_calls.append(user_id)
         return []
+
+    async def resolve_summary_language(self, user_id):
+        return "zh-TW"
 
 
 def wire_consultations():

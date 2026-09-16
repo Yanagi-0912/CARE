@@ -55,10 +55,18 @@ class _StubMedicalService:
         return self._hospitals_result
 
     async def find_nearby_facilities_by_department(
-        self, lat, lng, department, target_count=5, open_now=False, facility_type=None
+        self,
+        lat,
+        lng,
+        departments=None,
+        target_count=5,
+        open_now=False,
+        facility_type=None,
+        department=None,
     ) -> DepartmentSearchResult:
+        recorded = departments if departments is not None else department
         self.department_calls.append(
-            {"department": department, "facility_type": facility_type}
+            {"departments": recorded, "facility_type": facility_type}
         )
         return self._department_result
 
@@ -180,7 +188,7 @@ async def test_department_title_combines_department_and_facility_type(
     「附近的腸胃科（醫院）」，讓使用者一眼看出系統同時套用了哪兩個條件。
     """
     result = DepartmentSearchResult(
-        match=DepartmentMatch(canonical="腸胃科", requested="腸胃科"),
+        matches=(DepartmentMatch(canonical="腸胃科", requested="腸胃科"),),
         facilities=[_facility()],
         reached_meters=5_000,
         satisfied=True,
@@ -192,7 +200,7 @@ async def test_department_title_combines_department_and_facility_type(
         {
             "lat": 25.0,
             "lng": 121.0,
-            "department": "腸胃科",
+            "departments": ["腸胃科"],
             "facility_type": "大醫院",
         }
     )
@@ -207,7 +215,7 @@ async def test_department_without_facility_type_keeps_department_only_title(
 ):
     """向後相容：省略 facility_type 時科別標題維持原樣，不多出括號。"""
     result = DepartmentSearchResult(
-        match=DepartmentMatch(canonical="腸胃科", requested="腸胃科"),
+        matches=(DepartmentMatch(canonical="腸胃科", requested="腸胃科"),),
         facilities=[_facility()],
         reached_meters=5_000,
         satisfied=True,
@@ -215,7 +223,7 @@ async def test_department_without_facility_type_keeps_department_only_title(
     inject_medical_service(_StubMedicalService(department_result=result))
 
     payload = await medical_tools.find_nearby_facilities_by_department.ainvoke(
-        {"lat": 25.0, "lng": 121.0, "department": "腸胃科"}
+        {"lat": 25.0, "lng": 121.0, "departments": ["腸胃科"]}
     )
 
     assert t("location.department.title").format(department="腸胃科") in payload
@@ -245,6 +253,95 @@ async def test_department_title_changes_when_results_do_not_list_department(
         count=1, department="內科"
     ) in payload
     assert t("flex.facility.unspecified_department") in payload
+async def test_several_departments_are_passed_through_and_titled_together(
+    inject_medical_service,
+):
+    """保底卡按鈕一次查三科：原樣交給 service 查一次，標題列出全部科別。"""
+    result = DepartmentSearchResult(
+        matches=tuple(
+            DepartmentMatch(canonical=name, requested=name)
+            for name in ("家醫科", "內科", "不分科")
+        ),
+        facilities=[_facility()],
+        reached_meters=5_000,
+        satisfied=True,
+    )
+    stub = inject_medical_service(_StubMedicalService(department_result=result))
+
+    payload = await medical_tools.find_nearby_facilities_by_department.ainvoke(
+        {"lat": 25.0, "lng": 121.0, "departments": ["家醫科", "內科", "不分科"]}
+    )
+
+    assert stub.department_calls == [
+        {"departments": ["家醫科", "內科", "不分科"], "facility_type": None}
+    ]
+    expected_title = t("location.department.title").format(department="家醫科、內科、不分科")
+    assert expected_title in payload
+
+
+@pytest.mark.asyncio
+async def test_department_title_does_not_claim_department_when_none_lists_it(
+    inject_medical_service,
+):
+    """附近全是沒登記專科的診所時，標題不能再寫「附近的內科」，改寫搜尋條件。"""
+    result = DepartmentSearchResult(
+        matches=(DepartmentMatch(canonical="內科", requested="內科"),),
+        facilities=[_facility()],
+        reached_meters=5_000,
+        satisfied=True,
+        unspecified_ids=frozenset({"id"}),
+    )
+    inject_medical_service(_StubMedicalService(department_result=result))
+
+    payload = await medical_tools.find_nearby_facilities_by_department.ainvoke(
+        {"lat": 25.0, "lng": 121.0, "departments": ["內科"]}
+    )
+
+    assert t("location.department.title").format(department="內科") not in payload
+    assert t("location.department.title_unspecified").format(department="內科") in payload
+
+
+@pytest.mark.asyncio
+async def test_unknown_department_among_several_is_disclosed(inject_medical_service):
+    """只查了看得懂的那幾科時，副標要講清楚哪一科沒被搜尋。"""
+    result = DepartmentSearchResult(
+        matches=(DepartmentMatch(canonical="家醫科", requested="家醫科"),),
+        unresolved_departments=("宇宙科",),
+        facilities=[_facility()],
+        reached_meters=5_000,
+        satisfied=True,
+    )
+    inject_medical_service(_StubMedicalService(department_result=result))
+
+    payload = await medical_tools.find_nearby_facilities_by_department.ainvoke(
+        {"lat": 25.0, "lng": 121.0, "departments": ["家醫科", "宇宙科"]}
+    )
+
+    note = t("location.department.partial_unknown").format(
+        unresolved="宇宙科", searched="家醫科"
+    )
+    assert note in payload
+
+
+@pytest.mark.asyncio
+async def test_empty_result_still_discloses_unknown_department(inject_medical_service):
+    """查無院所時也一樣：不能讓使用者以為宇宙科也查過了。"""
+    result = DepartmentSearchResult(
+        matches=(DepartmentMatch(canonical="家醫科", requested="家醫科"),),
+        unresolved_departments=("宇宙科",),
+        facilities=[],
+    )
+    inject_medical_service(_StubMedicalService(department_result=result))
+
+    payload = await medical_tools.find_nearby_facilities_by_department.ainvoke(
+        {"lat": 25.0, "lng": 121.0, "departments": ["家醫科", "宇宙科"]}
+    )
+
+    none_message = t("location.department.none").format(department="家醫科", radius_km="50")
+    note = t("location.department.partial_unknown").format(
+        unresolved="宇宙科", searched="家醫科"
+    )
+    assert payload == f"{none_message}\n{note}"
 
 
 @pytest.mark.asyncio
@@ -253,7 +350,7 @@ async def test_department_unresolved_facility_type_reports_raw_user_wording(
 ):
     """科別解析成功、類型解析失敗：錯誤訊息要用原始的 facility_type 參數值。"""
     result = DepartmentSearchResult(
-        match=DepartmentMatch(canonical="腸胃科", requested="腸胃科"),
+        matches=(DepartmentMatch(canonical="腸胃科", requested="腸胃科"),),
         facility_type_unresolved=True,
     )
     inject_medical_service(_StubMedicalService(department_result=result))
@@ -262,7 +359,7 @@ async def test_department_unresolved_facility_type_reports_raw_user_wording(
         {
             "lat": 25.0,
             "lng": 121.0,
-            "department": "腸胃科",
+            "departments": ["腸胃科"],
             "facility_type": "神秘院所",
         }
     )
@@ -276,7 +373,7 @@ async def test_department_pharmacy_empty_result_uses_dedicated_message(
 ):
     """3.4：科別＋藥局類型同時查無結果時，仍要用藥局專屬文案而非科別查無文案。"""
     result = DepartmentSearchResult(
-        match=DepartmentMatch(canonical="家醫科", requested="家醫科"),
+        matches=(DepartmentMatch(canonical="家醫科", requested="家醫科"),),
         facilities=[],
         facility_type_match=FacilityTypeMatch(category="藥局", requested="藥局"),
     )
@@ -286,7 +383,7 @@ async def test_department_pharmacy_empty_result_uses_dedicated_message(
         {
             "lat": 25.0,
             "lng": 121.0,
-            "department": "家醫科",
+            "departments": ["家醫科"],
             "facility_type": "藥局",
         }
     )
@@ -302,14 +399,14 @@ async def test_department_unknown_department_short_circuits_before_facility_type
     已知限制（Task 2 揭露）：科別與類型同時解析失敗時只回報科別失敗。
     這裡驗證工具層沒有偷偷去補類型檢查，維持與 service 層一致的行為。
     """
-    result = DepartmentSearchResult(match=None, facility_type_unresolved=True)
+    result = DepartmentSearchResult(unresolved_departments=("神秘科",), facility_type_unresolved=True)
     inject_medical_service(_StubMedicalService(department_result=result))
 
     payload = await medical_tools.find_nearby_facilities_by_department.ainvoke(
         {
             "lat": 25.0,
             "lng": 121.0,
-            "department": "神秘科",
+            "departments": ["神秘科"],
             "facility_type": "神秘院所",
         }
     )
@@ -346,7 +443,7 @@ async def test_department_blank_department_falls_back_to_general_search(
     inject_medical_service,
 ):
     """
-    department 雖是必填，模型仍可能送 ""。此時不該回「我不確定「」是哪一科」，
+    departments 雖是必填，模型仍可能送 [""]。此時不該回「我不確定「」是哪一科」，
     而應退回不分科別的一般搜尋，讓使用者至少拿得到附近院所。
     """
     hospitals = NearbySearchResult(
@@ -355,7 +452,7 @@ async def test_department_blank_department_falls_back_to_general_search(
     stub = inject_medical_service(_StubMedicalService(hospitals_result=hospitals))
 
     payload = await medical_tools.find_nearby_facilities_by_department.ainvoke(
-        {"lat": 25.0, "lng": 121.0, "department": "  "}
+        {"lat": 25.0, "lng": 121.0, "departments": ["  "]}
     )
 
     assert stub.department_calls == [], "空白科別不應再送進依科別搜尋"
@@ -376,7 +473,7 @@ async def test_department_blank_department_keeps_facility_type(inject_medical_se
     stub = inject_medical_service(_StubMedicalService(hospitals_result=hospitals))
 
     payload = await medical_tools.find_nearby_facilities_by_department.ainvoke(
-        {"lat": 25.0, "lng": 121.0, "department": "", "facility_type": "大醫院"}
+        {"lat": 25.0, "lng": 121.0, "departments": [""], "facility_type": "大醫院"}
     )
 
     assert stub.hospitals_calls == [{"open_now": False, "facility_type": "大醫院"}]

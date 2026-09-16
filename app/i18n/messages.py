@@ -835,6 +835,16 @@ _MESSAGES: dict[str, dict[str, str]] = {
             "内科・外科・小児科・歯科・耳鼻咽喉科・整形外科・皮膚科・眼科・産婦人科・漢方など、一般的な診療科でお試しください。"
         ),
     },
+    # 一次搜多科、其中幾科看不懂時：照查看得懂的，但要說清楚哪幾科沒被搜尋，
+    # 否則使用者會以為每一科都查過了。
+    "location.department.partial_unknown": {
+        "zh-TW": "※ 我不確定「{unresolved}」對應到哪一個科別，以下只列出{searched}的院所。",
+        "en": '※ I am not sure which specialty "{unresolved}" maps to, so only {searched} facilities are listed below.',
+        "id": '※ Saya tidak yakin "{unresolved}" termasuk spesialisasi apa, jadi hanya fasilitas {searched} yang ditampilkan di bawah.',
+        "vi": '※ Tôi không chắc "{unresolved}" thuộc chuyên khoa nào, nên bên dưới chỉ liệt kê các cơ sở {searched}.',
+        "th": "※ ฉันไม่แน่ใจว่า \"{unresolved}\" ตรงกับแผนกใด จึงแสดงเฉพาะสถานพยาบาล{searched}ด้านล่าง",
+        "ja": "※「{unresolved}」がどの診療科に該当するか判断できなかったため、以下は{searched}の医療機関のみです。",
+    },
     "location.type.title": {
         "zh-TW": "附近的{type}",
         "en": "Nearby {type}",

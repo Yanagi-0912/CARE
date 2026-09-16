@@ -7,6 +7,9 @@ import pytest
 from app.schemas import MedicalFacility, ClinicDaySchedule, ClinicTimeSlot
 from app.services.medical.business_hours import TAIPEI_TZ, WEEKDAY_KEYS
 from resources.flex_messages import theme
+from resources.flex_messages.medical_messages.facility_brief_flex_message import (
+    FACILITIES_KEY,
+)
 from resources.flex_messages.medical_messages.facility_detail_flex_message import (
     _HAS_CLINIC_MARK,
     _NO_CLINIC_MARK,
@@ -310,3 +313,33 @@ def test_generate_facility_detail_flex_message_type_label_omitted_when_missing()
     header_contents = result["contents"]["body"]["contents"][0]["contents"]
     # 只剩名稱這一個 text 元素，沒有分類標籤
     assert len(header_contents) == 2
+
+
+def _has_key(node, key: str) -> bool:
+    """巢狀 dict/list 裡任何一層是否有這個 key（比對 key，不比對文字內容）。"""
+    if isinstance(node, dict):
+        return key in node or any(_has_key(v, key) for v in node.values())
+    if isinstance(node, list):
+        return any(_has_key(item, key) for item in node)
+    return False
+
+
+@pytest.mark.parametrize("language", ["zh-TW", "en"])
+def test_generate_facility_detail_flex_message_carries_name_at_top_level(language):
+    # 每日摘要只讀頂層的 FACILITIES_KEY；值與語言無關，也不能混進 contents
+    result = generate_facility_detail_flex_message(_base_facility(), language=language)
+
+    assert result[FACILITIES_KEY] == {"names": ["恩輝診所"]}
+    assert not _has_key(result["contents"], FACILITIES_KEY)
+
+
+@pytest.mark.parametrize("language", ["zh-TW", "en"])
+def test_generate_facility_detail_flex_message_top_level_names_empty_without_name(
+    language,
+):
+    # 名稱缺值時不把「未知名稱」這類替代字塞進摘要
+    result = generate_facility_detail_flex_message(
+        _base_facility(name=""), language=language
+    )
+
+    assert result[FACILITIES_KEY] == {"names": []}

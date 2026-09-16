@@ -58,14 +58,14 @@ def test_history_prefers_alias_table_over_literal_mention():
         HumanMessage(content="附近有腸胃科嗎"),
         HumanMessage(content=SHARED_LOCATION),
     ]
-    assert _extract_department_from_history(messages) == "腸胃科"
+    assert _extract_department_from_history(messages) == ["腸胃科"]
 
 
 def test_history_keeps_department_the_table_does_not_know():
     """
-    這是本次修改的重點：表查不到時不可回 None。
+    這是本次修改的重點：表查不到時不可回空清單。
 
-    回 None 會讓上游把它當成「使用者沒指定科別」，強制改呼叫不分科搜尋，
+    回空清單會讓上游把它當成「使用者沒指定科別」，強制改呼叫不分科搜尋，
     使用者說的科別就此靜默消失——拿到一份混著牙科、婦產科的清單卻以為
     系統聽懂了。原樣往下傳才能讓 service 層去 LLM 兜底，兜不出來也能誠實說。
     """
@@ -73,13 +73,13 @@ def test_history_keeps_department_the_table_does_not_know():
         HumanMessage(content="附近有腹腔鏡科嗎"),
         HumanMessage(content=SHARED_LOCATION),
     ]
-    assert _extract_department_from_history(messages) == "腹腔鏡科"
+    assert _extract_department_from_history(messages) == ["腹腔鏡科"]
 
 
-def test_history_returns_none_when_no_department_mentioned():
-    """沒指名科別時仍要回 None，否則不分科搜尋會被誤導成科別搜尋。"""
+def test_history_returns_empty_when_no_department_mentioned():
+    """沒指名科別時仍要回空清單，否則不分科搜尋會被誤導成科別搜尋。"""
     messages = [
         HumanMessage(content="附近有醫院嗎"),
         HumanMessage(content=SHARED_LOCATION),
     ]
-    assert _extract_department_from_history(messages) is None
+    assert _extract_department_from_history(messages) == []

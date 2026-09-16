@@ -581,11 +581,6 @@ except Exception:
 _urgency_classifier = UrgencyClassifier(
     gemini_service=_gemini_service, local=_urgency_local
 )
-if not _symptom_table.verified:
-    logger.warning(
-        "症狀對照表尚未經人工審定（status != verified），"
-        "科別建議的正確性未經驗證"
-    )
 
 _care_agent = Agent(
     llm=_gemini_service.chat_model,
@@ -824,6 +819,15 @@ _appointment_service = AppointmentService(
     repository=_appointment_repository,
     authorization_service=_family_authorization_service,
     user_profile_service=_user_profile_service,
+)
+
+_consultation_service = ConsultationService(
+    chat_history_repository=_conversation_log_repository,
+    repository=_consultation_repository,
+    gemini_service=_gemini_service,
+    user_profile_service=_user_profile_service,
+    medication_service=_medication_service,
+    appointment_repository=_appointment_repository,
 )
 
 # 藥袋辨識。藥證庫沿用上面已經載入的那一份（見 _drug_catalog_service）。

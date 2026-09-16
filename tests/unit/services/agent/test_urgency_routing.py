@@ -15,6 +15,7 @@ from langchain_core.messages import AIMessage
 from linebot.v3.messaging import FlexContainer
 
 from app.services.agent.agent import Agent
+from app.services.line_messaging.reply.reply import LineReplier
 from app.services.medical.symptom_classification.urgency import (
     NOT_URGENT,
     URGENCY_EMERGENCY,
@@ -119,6 +120,18 @@ async def test_emergency_card_carries_the_classifier_display():
     verdict = _emergency("你提到有人大量出血")
     result = await _agent(verdict).invoke(user_input="我剛剛被車撞，現在流好多血")
     assert "你提到有人大量出血" in result["response"]
+
+
+@pytest.mark.asyncio
+async def test_emergency_card_carries_risk_alert_for_summary_but_line_still_parses_it():
+    """摘要靠 riskAlert 認出紅卡；這個 key 不能讓送往 LINE 的卡片解析失敗。"""
+    verdict = _emergency("你表達想結束生命")
+    result = await _agent(verdict).invoke(user_input="我要自殺")
+
+    assert json.loads(result["response"])["riskAlert"] == {"reason": "你表達想結束生命"}
+    card, _speech = LineReplier._try_parse_flex_message(result["response"])
+    assert card is not None
+    assert "riskAlert" not in json.dumps(card.to_dict(), ensure_ascii=False)
 
 
 @pytest.mark.asyncio

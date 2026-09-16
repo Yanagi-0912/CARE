@@ -123,13 +123,13 @@ async def verify_6_3(service: MedicalService) -> None:
     lat, lng = TAIPEI_STATION
 
     combo = await service.find_nearby_facilities_by_department(
-        lat, lng, department="腸胃科", facility_type="大醫院"
+        lat, lng, departments=["腸胃科"], facility_type="大醫院"
     )
     print("\n[科別=腸胃科 + facility_type=大醫院] 結果：")
     _print_facilities(combo.facilities)
 
-    assert combo.match is not None, "應能解析「腸胃科」科別"
-    assert combo.match.canonical == "內科", f"腸胃科應映射到內科，實際={combo.match.canonical!r}"
+    assert combo.matches, "應能解析「腸胃科」科別"
+    assert combo.matches[0].canonical == "內科", f"腸胃科應映射到內科，實際={combo.matches[0].canonical!r}"
     assert combo.facility_type_match is not None
     assert combo.facility_type_match.category == "醫院"
     assert combo.facilities, "台北車站 50 公里內應能找到至少一家「醫院類 + 內科」院所"
@@ -148,13 +148,13 @@ async def verify_6_3(service: MedicalService) -> None:
     # 證明疊加確實比兩者都窄——而不是被預設 target_count=5 的階梯式湊數蓋掉差異。
     large_n = 1000
     dept_only = await service.find_nearby_facilities_by_department(
-        lat, lng, department="腸胃科", target_count=large_n
+        lat, lng, departments=["腸胃科"], target_count=large_n
     )
     type_only = await service.find_nearby_hospitals(
         lat, lng, target_count=large_n, facility_type="大醫院"
     )
     combo_large = await service.find_nearby_facilities_by_department(
-        lat, lng, department="腸胃科", facility_type="大醫院", target_count=large_n
+        lat, lng, departments=["腸胃科"], facility_type="大醫院", target_count=large_n
     )
 
     n_dept, n_type, n_combo = (

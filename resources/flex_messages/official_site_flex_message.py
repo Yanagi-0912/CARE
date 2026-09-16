@@ -5,6 +5,10 @@ from typing import Any
 from app.i18n import t
 from resources.flex_messages import theme
 
+# 卡片頂層的官網卡標記。對話紀錄存的是整張卡的 JSON，摘要靠這個 key 認出官網入口卡，
+# 不必比對隨語言而變的 altText；送往 LINE 時 replier 只取 altText／contents，不會帶出去。
+OFFICIAL_SITE_KEY = "officialSite"
+
 
 def generate_official_site_flex_message(
     liff_url: str,
@@ -81,4 +85,5 @@ def generate_official_site_flex_message(
                 ],
             },
         },
+        OFFICIAL_SITE_KEY: {},
     }

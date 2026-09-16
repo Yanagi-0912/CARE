@@ -217,9 +217,9 @@ async def test_open_now_combines_with_department_search():
     service = _service(FakeRepository(facilities))
 
     result = await service.find_nearby_facilities_by_department(
-        25.0, 121.0, "腸胃科", open_now=True
+        25.0, 121.0, ["腸胃科"], open_now=True
     )
 
     assert [f.name for f in result.facilities] == ["開的內科"]
-    assert result.match.canonical == "內科"
+    assert result.matches[0].canonical == "內科"
     assert result.open_now_requested is True

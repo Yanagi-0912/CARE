@@ -3,6 +3,7 @@ import pytest
 from urllib.parse import parse_qs, urlparse
 from app.schemas import MedicalFacility
 from resources.flex_messages.medical_messages.facility_brief_flex_message import (
+    FACILITIES_KEY,
     _build_flex_map_uri,
     _build_flex_tel_uri,
     generate_facility_list_flex_message,
@@ -209,11 +210,11 @@ def test_generate_facility_list_flex_message_candidate_list_no_hint_when_full():
     assert "結果超過顯示上限" not in full_str
 
 
-# --- 未載明科別的補列院所 ----------------------------------------------------
+# --- 未載明科別的院所 --------------------------------------------------------
 #
-# 專科搜尋湊不滿時會依距離補上沒有申報科別的院所（見
-# MedicalService._supplement_with_unspecified）。不標示的話使用者會以為那間
-# 診所真的有他要的那一科。
+# 搜內科、家醫科時會一併列出只申報不分科的院所，專科搜尋湊不滿時也會補上這種
+# 院所（見 MedicalService._unspecified_ids）。不標示的話使用者會以為那間
+# 診所的資料寫著他要的那一科。
 
 
 def _clinic(name: str, facility_id: str) -> MedicalFacility:
@@ -258,3 +259,32 @@ def test_supplemented_facility_is_labelled_as_unspecified():
 def test_no_label_when_nothing_was_supplemented():
     flex = generate_facility_list_flex_message([_clinic("皮膚科診所", "id-1")])
     assert not any("未載明科別" in text for text in _texts(flex["contents"]))
+
+
+# --- 摘要用的頂層院所名單 ----------------------------------------------------
+#
+# 每日摘要只讀卡片頂層的 FACILITIES_KEY，不從卡片節點反解文字；這個 key 必須
+# 與語言無關，且不能混進送往 LINE 的 contents。
+
+
+def _has_key(node, key: str) -> bool:
+    """巢狀 dict/list 裡任何一層是否有這個 key（比對 key，不比對文字內容）。"""
+    if isinstance(node, dict):
+        return key in node or any(_has_key(v, key) for v in node.values())
+    if isinstance(node, list):
+        return any(_has_key(item, key) for item in node)
+    return False
+
+
+@pytest.mark.parametrize("language", ["zh-TW", "en"])
+def test_facility_list_carries_names_at_top_level(language):
+    nameless = _clinic("", "id-3")
+    flex = generate_facility_list_flex_message(
+        [_clinic("皮膚科診所", "id-1"), nameless, _clinic("巷口診所", "id-2")],
+        language=language,
+    )
+
+    assert FACILITIES_KEY == "facilities"
+    # 院所名稱是資料庫原文，不隨語言翻譯；沒有名稱的院所不列入。
+    assert flex[FACILITIES_KEY] == {"names": ["皮膚科診所", "巷口診所"]}
+    assert not _has_key(flex["contents"], FACILITIES_KEY)

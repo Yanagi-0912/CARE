@@ -111,7 +111,7 @@ async def test_department_and_type_combine_with_and():
     service = MedicalService(repository=repository)
 
     result = await service.find_nearby_facilities_by_department(
-        25.0, 121.0, "腸胃科", facility_type="醫院"
+        25.0, 121.0, ["腸胃科"], facility_type="醫院"
     )
 
     assert repository.calls[0]["query"] == {
@@ -120,7 +120,7 @@ async def test_department_and_type_combine_with_and():
             {"type": {"$in": ["醫院", "綜合醫院", "精神科醫院", "中醫醫院"]}},
         ]
     }
-    assert result.match.canonical == "內科"
+    assert result.matches[0].canonical == "內科"
     assert result.facility_type_match.category == "醫院"
 
 
@@ -131,7 +131,7 @@ async def test_department_only_query_has_no_and():
     repository = FakeRepository(facilities)
     service = MedicalService(repository=repository)
 
-    await service.find_nearby_facilities_by_department(25.0, 121.0, "腸胃科")
+    await service.find_nearby_facilities_by_department(25.0, 121.0, ["腸胃科"])
 
     assert repository.calls[0]["query"] == {
         "departments": {"$regex": "內科|不分科|西醫一般科", "$options": "i"}
@@ -174,12 +174,12 @@ async def test_department_search_unresolvable_type_does_not_query_database():
     service = MedicalService(repository=repository)
 
     result = await service.find_nearby_facilities_by_department(
-        25.0, 121.0, "腸胃科", facility_type="宇宙無敵類型"
+        25.0, 121.0, ["腸胃科"], facility_type="宇宙無敵類型"
     )
 
     assert repository.calls == []
     assert result.facilities == []
-    assert result.match.canonical == "內科"
+    assert result.matches[0].canonical == "內科"
     assert result.facility_type_unresolved is True
     assert result.facility_type_match is None
 
@@ -191,7 +191,7 @@ async def test_department_search_omits_facility_type_matches_status_quo():
     repository = FakeRepository(facilities)
     service = MedicalService(repository=repository)
 
-    result = await service.find_nearby_facilities_by_department(25.0, 121.0, "腸胃科")
+    result = await service.find_nearby_facilities_by_department(25.0, 121.0, ["腸胃科"])
 
     assert repository.calls[0]["query"] == {
         "departments": {"$regex": "內科|不分科|西醫一般科", "$options": "i"}
@@ -208,10 +208,10 @@ async def test_unresolvable_department_short_circuits_before_type_is_checked():
     service = MedicalService(repository=repository)
 
     result = await service.find_nearby_facilities_by_department(
-        25.0, 121.0, "宇宙無敵科", facility_type="醫院"
+        25.0, 121.0, ["宇宙無敵科"], facility_type="醫院"
     )
 
-    assert result.match is None
+    assert result.matches == ()
     assert result.facilities == []
     assert repository.calls == []
 
@@ -249,7 +249,7 @@ async def test_department_search_treats_blank_facility_type_as_absent(blank):
     service = MedicalService(repository=repository)
 
     result = await service.find_nearby_facilities_by_department(
-        25.0, 121.0, "腸胃科", facility_type=blank
+        25.0, 121.0, ["腸胃科"], facility_type=blank
     )
 
     assert repository.calls[0]["query"] == {
@@ -302,7 +302,7 @@ async def test_specialty_clinic_compound_applies_both_dimensions(
     service = MedicalService(repository=repository)
 
     await service.find_nearby_facilities_by_department(
-        25.0, 121.0, department, facility_type=facility_type
+        25.0, 121.0, [department], facility_type=facility_type
     )
 
     query = repository.calls[0]["query"]

@@ -179,7 +179,7 @@ async def test_schema_never_gains_a_department_field_even_when_narrowed():
     from app.services.medical.department_matcher import CANONICAL_DEPARTMENTS
 
     normalizer = _normalizer([1.0, 0.0, 0.0, 0.0])
-    for candidates in (None, ("青光眼", "高血壓")):
+    for candidates in (_FAKE_TERMS, ("青光眼", "高血壓")):
         schema = normalizer._build_schema(candidates)
         assert set(schema["properties"]) == {"symptom"}
         assert not (set(schema["properties"]["symptom"]["enum"]) & CANONICAL_DEPARTMENTS)

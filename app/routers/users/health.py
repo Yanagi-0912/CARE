@@ -21,7 +21,7 @@ Task 3 實作了提醒範圍（``GET``／``PUT /alert-thresholds``）；Task 4 �
 """
 
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import List, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import UUID4
@@ -76,6 +76,7 @@ MENSTRUAL_CROSS_USER_DETAIL = "經期紀錄僅限本人查看與異動。"
 
 @router.get(
     "/alert-thresholds",
+    response_model=HealthAlertThreshold,
     summary="查看提醒範圍",
     description=(
         "查看本人或指定使用者的血壓／血糖提醒範圍。省略 user_id 時為本人。"
@@ -90,7 +91,7 @@ async def get_alert_thresholds(
     current_user: CurrentUser = Depends(get_current_user),
     service: HealthAlertThresholdService = Depends(get_health_alert_threshold_service),
     authz: FamilyAuthorizationService = Depends(get_family_authorization_service),
-) -> Dict[str, Any]:
+) -> HealthAlertThreshold:
     """查看提醒範圍（health-alerts spec「誰能設定與查看提醒範圍」）。
 
     他人查看需 SENSITIVE 讀取權（依現行矩陣：GUARDIAN、CAREGIVER 可看，
@@ -277,9 +278,12 @@ async def delete_measurement(
 ) -> None:
     """刪除一筆紀錄（health-measurements spec「刪除紀錄」）。
 
-    存在性判定在授權之前：紀錄不存在一律 404，即使操作者對本人沒有任何
-    權限也一樣——不讓 403／404 的差異被拿來探測他人紀錄是否存在。
-    存在之後，本人或對本人 SENSITIVE 資料具寫入權者（依現行矩陣只有
+    存在性判定在授權之前：這裡要判斷「操作者是否對這筆紀錄的本人有權限」，
+    但本人是誰要先把紀錄讀出來才知道——存在性檢查因此先於授權判定，不是
+    刻意設計。這個順序的副作用是不存在的 id 回 404、存在但無權限回
+    403，等於讓操作者能分辨「這個 id 存不存在」；這裡接受這個副作用，因為
+    紀錄 id 不可猜測（隨機產生），單靠這個 404／403 差異探測不出有意義的
+    資訊。存在之後，本人或對本人 SENSITIVE 資料具寫入權者（依現行矩陣只有
     GUARDIAN）才能刪除；`has_legacy_equivalent=False`。
     """
     measurement = await service.get(measurement_id)
@@ -397,9 +401,11 @@ async def update_menstrual_record(
     """修正一筆經期紀錄（menstrual-cycle-log spec「事後補上結束日期」）。
 
     存在性判定在先（不存在一律 404），之後才比對操作者與所有者的識別碼——
-    同量測「刪除紀錄」的理由：不讓 403／404 的差異被拿來探測他人紀錄是否
-    存在。這筆紀錄若屬於他人，一律 403，SHALL NOT 修改、也 SHALL NOT 揭露
-    內容。
+    同量測「刪除紀錄」的理由：所有者是誰要先讀出紀錄才知道，因此存在性
+    檢查必須先於身分比對，而不是為了防堵探測才這樣排序；這個順序讓不存在
+    的 id 回 404、存在但非本人回 403，這裡接受這個可分辨的差異，因為紀錄
+    id 不可猜測。這筆紀錄若屬於他人，一律 403，SHALL NOT 修改、也 SHALL
+    NOT 揭露內容。
     """
     existing = await service.get(record_id)
     operator_id = current_user.line_user_id

@@ -88,11 +88,38 @@ class _FakeAuthorization:
 
 
 class _FakeProfiles:
-    def __init__(self, profiles: Optional[Dict[str, dict]] = None) -> None:
+    def __init__(
+        self,
+        profiles: Optional[Dict[str, dict]] = None,
+        *,
+        error_for: Optional[set] = None,
+    ) -> None:
         self._profiles = profiles or {}
+        # Task 7：模擬個人資料儲存層對特定使用者短暫故障（不是「查無此人」
+        # ——查無此人回 None，故障是拋例外）。
+        self._error_for = error_for or set()
 
     async def get_user_profile(self, user_id: str):
+        if user_id in self._error_for:
+            raise RuntimeError("個人資料服務掛了")
         return self._profiles.get(user_id)
+
+
+def _collect_text_nodes(node) -> list:
+    """遞迴取出 Flex 節點樹裡所有可見的 ``text`` 內容（同
+    ``tests/unit/services/line_messaging/flex/test_health_alert_flex.py`` 的
+    ``_collect_text_nodes``）：只有 ``type: text`` 節點的 ``text`` 才是使用者
+    會讀到的推播文字，版面本身（顏色碼、layout 關鍵字、按鈕 uri）不是。"""
+    texts: list = []
+    if isinstance(node, dict):
+        if node.get("type") == "text" and isinstance(node.get("text"), str):
+            texts.append(node["text"])
+        for value in node.values():
+            texts.extend(_collect_text_nodes(value))
+    elif isinstance(node, list):
+        for item in node:
+            texts.extend(_collect_text_nodes(item))
+    return texts
 
 
 def _clock_box(start: datetime):
@@ -148,6 +175,7 @@ def _service(
     enabled: bool = True,
     recipients=(),
     profiles=None,
+    profile_error_for=None,
     replier=None,
     clock=None,
     auth_error=None,
@@ -159,7 +187,7 @@ def _service(
         replier=replier or _FakeReplier(),
         claim_repository=claims,
         authorization_service=auth,
-        user_profile_service=_FakeProfiles(profiles),
+        user_profile_service=_FakeProfiles(profiles, error_for=profile_error_for),
         enabled=enabled,
         liff_url="https://liff.line.me/1234",
         clock=clock,
@@ -334,6 +362,28 @@ async def test_family_recipient_who_opted_out_is_skipped_but_others_are_not():
 
 
 @pytest.mark.asyncio
+async def test_family_recipient_is_skipped_when_profile_read_fails():
+    """Task 7：個人資料儲存層讀取失敗時，家人收件人 SHALL fail 關（視同
+    ``notify_family=False``），不是 fail 開。一位家人已經明確關閉推播
+    （見 ``GUARDIAN`` 的設定）而另一位從未讀過設定就故障（``CAREGIVER``）
+    ——兩者都不該收到，基礎設施錯誤 SHALL NOT 覆寫成「照樣推播」。本人不
+    受影響，仍然收得到（本人不經這裡的 notify_family 判定）。"""
+    replier = _FakeReplier()
+    service, _, _ = _service(
+        recipients=(GUARDIAN, CAREGIVER),
+        profiles={GUARDIAN: {"settings": {"notify_family": False}}},
+        profile_error_for={CAREGIVER},
+        replier=replier,
+    )
+
+    await service.notify_out_of_range(
+        _measurement(level="above_range"), _threshold(systolic_high=140)
+    )
+
+    assert set(uid for uid, _ in replier.flex) == {OWNER}
+
+
+@pytest.mark.asyncio
 async def test_owner_is_notified_even_when_owner_has_notify_family_off():
     """本人的收件 SHALL NOT 受 notify_family 影響（spec「本人收到」）。"""
     replier = _FakeReplier()
@@ -503,8 +553,6 @@ async def test_proxy_recorded_measurement_names_the_recorder():
 
 @pytest.mark.asyncio
 async def test_self_recorded_measurement_has_no_recorder_note():
-    import json
-
     replier = _FakeReplier()
     service, _, _ = _service(recipients=(), replier=replier)
 
@@ -513,8 +561,14 @@ async def test_self_recorded_measurement_has_no_recorder_note():
         _threshold(systolic_high=140),
     )
 
-    payload = json.dumps(replier.flex[0][1].contents.to_dict(), ensure_ascii=False)
-    assert "記錄" not in payload  # 「由 ○○ 記錄」那一行只在他人代記時才出現
+    # 「由 ○○ 記錄」那一行只在他人代記時才出現。不對整份 dict 字串化後檢查
+    # ——版面本身（顏色十六進位碼、layout 關鍵字、按鈕 uri）含有文字是正常
+    # 的，只有 `type: text` 節點的 `text` 才是使用者會讀到的內容；字串比對
+    # 版本曾經只因為按鈕文案用「紀錄」（紀，不是記）才恰好過關，換一個按鈕
+    # 文案就會悄悄失效（同 test_health_alert_flex.py 的 `_collect_text_nodes`
+    # 理由）。
+    visible_text = "\n".join(_collect_text_nodes(replier.flex[0][1].contents.to_dict()))
+    assert "記錄" not in visible_text
 
 
 # ── 經期異常：只通知本人、最多一次 ───────────────────────────────────────

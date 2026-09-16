@@ -138,6 +138,21 @@ async def test_find_overlapping_queries_only_by_user_and_excludes_self():
     assert query == {"user_id": "U1", "_id": {"$ne": "R_SELF"}}
 
 
+@pytest.mark.asyncio
+async def test_find_overlapping_caps_the_candidate_query_at_200():
+    """Task 9 修復：``find_overlapping`` 原本是本次 change 裡唯一一個沒有
+    加上限的查詢（``to_list(length=None)`` 前面沒有 ``.limit()``）——同
+    ``list_by_user``（constraints.md「狀態碼」：單次回應至多 200 筆）加上
+    同樣的上限。"""
+    collection = _collection()
+
+    await MenstrualRecordRepository.find_overlapping(
+        "U1", start_date="2026-09-01", end_date="2026-09-05", collection=collection
+    )
+
+    collection.find.return_value.limit.assert_called_once_with(200)
+
+
 class _FakeMenstrualCollection:
     """真的會依查詢過濾的假集合，用來證明重疊判定的區間相交邏輯正確，而不
     只是驗證查詢字典的長相（那件事上面已經驗證過）。查詢本身只依 ``user_id``
@@ -157,6 +172,7 @@ class _FakeMenstrualCollection:
             if doc["user_id"] == query["user_id"] and doc.get("_id") != exclude_id
         ]
         cursor = MagicMock()
+        cursor.limit = MagicMock(return_value=cursor)
         cursor.to_list = AsyncMock(return_value=matched)
         return cursor
 

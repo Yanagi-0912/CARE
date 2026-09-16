@@ -32,6 +32,7 @@ from app.core.user_font_size import DEFAULT_USER_FONT_SIZE, normalize_user_font_
 from app.core.user_language import DEFAULT_USER_LANGUAGE, normalize_user_language
 from app.models.health import HealthAlertThreshold, HealthMeasurement, MeasurementKind
 from app.repositories.health_alert_claim_repository import HealthAlertClaimRepository
+from app.services.health.health_level import _GLUCOSE_UPPER_FIELD_BY_MEAL_CONTEXT
 from app.services.line_messaging.flex.health_alert_flex import (
     build_health_alert_flex,
     health_alert_alt_text,
@@ -69,17 +70,6 @@ _ALERT_KEY_BY_CATEGORY: dict[Tuple[MeasurementKind, str], str] = {
     ("blood_pressure", "below_range"): "bp_low",
     ("blood_glucose", "above_range"): "glucose_high",
     ("blood_glucose", "below_range"): "glucose_low",
-}
-
-# 血糖依量測情境選用上限的欄位名稱對照，同
-# ``app/services/health/health_level.py`` 的同名對照表——這裡要找的是
-# 「記錄當下實際用了哪一個上限」，不是重新判定等級。
-_GLUCOSE_UPPER_FIELD_BY_MEAL_CONTEXT: dict[str, str] = {
-    "fasting": "glucose_fasting_high",
-    "before_meal": "glucose_fasting_high",
-    "after_meal": "glucose_nonfasting_high",
-    "bedtime": "glucose_nonfasting_high",
-    "random": "glucose_nonfasting_high",
 }
 
 HEALTH_RECORDS_PATH = "/health-records"
@@ -286,7 +276,15 @@ class HealthAlertService:
         try:
             profile = await self._user_profile_service.get_user_profile(user_id)
         except Exception:  # noqa: BLE001
-            return DEFAULT_USER_LANGUAGE, DEFAULT_USER_FONT_SIZE, True
+            # Task 7 修復：個人資料讀取失敗時 SHALL 對「家人」收件人 fail
+            # 關（``notify_family`` 視為 False），不是 fail 開（原本是
+            # True）。本人不受影響——本人在 `_out_of_range_recipients` 一律
+            # 無條件先加入收件人清單，不會呼叫這裡判斷是否要收；只有透過
+            # `_out_of_range_recipients` 篩選家人收件人時才會用到這裡回傳的
+            # 第三個值。一個已經明確關閉家人健康推播的人，不該因為個人資料
+            # 儲存層短暫故障就被覆寫成「照樣收到」——基礎設施的錯誤 SHALL
+            # NOT 蓋過使用者明確的退出選擇。
+            return DEFAULT_USER_LANGUAGE, DEFAULT_USER_FONT_SIZE, False
         settings: dict = (profile or {}).get("settings") or {}
         return (
             normalize_user_language(settings.get("language")),

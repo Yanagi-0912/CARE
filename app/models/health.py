@@ -222,6 +222,14 @@ class HealthAlertThreshold(BaseModel):
     規則調整，會讓不再符合新規則的舊文件連讀（``get``／``upsert`` 的
     ``find_one`` 回讀）都讀不回來，這正是 ``HealthMeasurement`` 要避免的
     失效模式。
+
+    Task 10 修復：``updated_by``／``updated_at`` 是 ``Optional``——GET
+    ``/alert-thresholds`` 與 PUT 同一支端點現在共用這個 ``response_model``
+    （``app/routers/users/health.py``），而「從未設定過」時（見
+    ``HealthAlertThresholdService.get_view``）這兩個欄位本來就是 ``null``、
+    SHALL NOT 回 404 或頂替預設值（health-alerts spec「使用者自訂提醒
+    範圍」）。PUT 的回應永遠是剛寫入的文件，這兩個欄位實際上一定有值，
+    放寬成 ``Optional`` 不影響那條路徑。
     """
 
     model_config = ConfigDict(populate_by_name=True)
@@ -234,8 +242,8 @@ class HealthAlertThreshold(BaseModel):
     glucose_fasting_high: Optional[int] = None
     glucose_nonfasting_high: Optional[int] = None
     glucose_low: Optional[int] = None
-    updated_by: str
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_by: Optional[str] = None
+    updated_at: Optional[datetime] = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # ── 經期 ────────────────────────────────────────────────────────────────

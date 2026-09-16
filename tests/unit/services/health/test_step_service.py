@@ -40,6 +40,7 @@ class _FakeStepRepository:
     def __init__(self) -> None:
         self.sessions: Dict[Tuple[str, str], StepSession] = {}
         self.sync_calls: List[tuple] = []
+        self.list_calls: List[tuple] = []
 
     async def get_session(self, user_id: str, session_id: str) -> Optional[StepSession]:
         return self.sessions.get((user_id, session_id))
@@ -84,6 +85,7 @@ class _FakeStepRepository:
     async def list_daily_totals(
         self, user_id: str, start_date: str, end_date: str
     ) -> List[StepCount]:
+        self.list_calls.append((user_id, start_date, end_date))
         totals: Dict[str, int] = {}
         for s in self.sessions.values():
             if s.user_id == user_id and start_date <= s.date <= end_date:
@@ -258,6 +260,45 @@ async def test_rate_check_uses_the_stored_started_at_not_a_changed_one():
 
 
 @pytest.mark.asyncio
+async def test_skewed_clock_ahead_of_server_skips_the_rate_check():
+    """Task 6：手機時鐘比伺服器快時（``started_at`` 領先 ``now``，但仍在
+    ``StepSessionSyncRequest`` 容許的 5 分鐘領先範圍內），合理性檢查 SHALL
+    被跳過，不是硬把經過時間夾成 1 秒去算「每秒幾步」——不然一支快 3 分鐘
+    的手機，開始走路的頭幾分鐘內，隨便走幾步（例如 10 步／1 秒視為 10
+    步/秒）都會被誤判超標而 422，寫入卻仍要成功（步數是累計值，這裡放行
+    不會遺失或重複計數）。"""
+    started_at = datetime(2026, 9, 1, 8, 3, 0, tzinfo=timezone.utc)  # 領先 now 3 分鐘
+    now = datetime(2026, 9, 1, 8, 0, 0, tzinfo=timezone.utc)
+    service, repository = _service(now)
+
+    result = await service.sync(OWNER, "S1", _request(10, started_at))
+
+    assert result.steps == 10
+    assert repository.sync_calls == [(OWNER, "S1", "2026-09-01", 10, started_at)]
+
+
+@pytest.mark.asyncio
+async def test_skewed_clock_rate_check_resumes_once_server_time_catches_up():
+    """時鐘領先只在「經過時間量不出來」的當下跳過檢查；一旦伺服器時間追上
+    （``now`` 不再早於既有工作階段的 ``started_at``），後續同步要恢復正常
+    的速率檢查，不能因為工作階段曾經領先過就整段豁免。"""
+    started_at = datetime(2026, 9, 1, 8, 3, 0, tzinfo=timezone.utc)
+    now = started_at - timedelta(minutes=3)  # 領先 3 分鐘，第一次同步跳過檢查
+    service, repository = _service(now)
+    await service.sync(OWNER, "S1", _request(10, started_at))
+
+    # 伺服器時間追上（現在是 started_at 之後 10 秒），恢復正常速率檢查。
+    repository_now = started_at + timedelta(seconds=10)
+    service._clock = lambda: repository_now
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.sync(OWNER, "S1", _request(500, started_at))
+
+    assert exc_info.value.status_code == 422
+    assert repository.sessions[(OWNER, "S1")].steps == 10
+
+
+@pytest.mark.asyncio
 async def test_elapsed_time_floors_at_one_second_to_avoid_division_by_zero():
     """工作階段剛開始（now == started_at）時，elapsed SHALL 至少視為 1 秒
     ——不然除以 0 會拋例外，而不是回應一個明確的 422 或 200。"""
@@ -274,15 +315,23 @@ async def test_elapsed_time_floors_at_one_second_to_avoid_division_by_zero():
 
 @pytest.mark.asyncio
 async def test_list_defaults_to_the_last_7_days_ending_today_taipei():
+    """空 repository 只驗證回傳 `[]` 沒辦法區分「預設區間算對了」與「隨便
+    傳了什麼區間，反正沒有資料所以回應剛好也是空清單」——不管預設區間怎麼
+    算，空 repository 永遠回空清單，這支測試原本怎樣都會過。改成同
+    `test_list_defaults_to_last_30_days_ending_now_when_no_range_given`
+    （量測服務）的作法：直接斷言服務層算出來、真正傳給 repository 的
+    `start_date`／`end_date`。"""
     now = datetime(2026, 9, 10, 3, 0, tzinfo=timezone.utc)  # 台北時間 9/10 11:00
     service, repository = _service(now)
 
-    await service.list_daily_totals(OWNER)
-
-    # 沒有任何工作階段，僅驗證預設區間有沒有拋錯、且真的呼叫了
-    # repository（間接透過 list_daily_totals 沒有拋 422 來確認）。
     result = await service.list_daily_totals(OWNER)
+
     assert result == []
+    assert repository.list_calls == [(OWNER, "2026-09-04", "2026-09-10")]
+
+    # 兩次呼叫（含前一次）都用同一個「今天」，區間應該一致。
+    await service.list_daily_totals(OWNER)
+    assert repository.list_calls[-1] == (OWNER, "2026-09-04", "2026-09-10")
 
 
 @pytest.mark.asyncio

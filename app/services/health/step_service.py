@@ -89,9 +89,22 @@ class StepService:
         else:
             effective_started_at = _as_utc(request.started_at)
 
-        elapsed_seconds = max((now - effective_started_at).total_seconds(), 1.0)
-        if request.steps / elapsed_seconds > MAX_STEPS_PER_SECOND:
-            raise HTTPException(status_code=422, detail=UNREASONABLE_RATE_DETAIL)
+        # Task 6 修復：`started_at`（``StepSessionSyncRequest`` 已容許最多
+        # 領先送出當下 5 分鐘，見該模型的 `_validate_started_at`）領先伺服器
+        # 現在時間時，跳過合理性檢查而不是硬算。這不是罕見情境——手機時鐘
+        # 比伺服器快幾分鐘很常見；`elapsed_seconds` 原本用 `max(..., 1.0)`
+        # 墊底，領先時真實經過時間其實是負的、根本量不出來，卻被硬夾成 1
+        # 秒去算「每秒幾步」，等於拿一個假造的極小分母去除，隨便走幾步都會
+        # 超過 5 步/秒而被 422——一支快 3 分鐘的手機在最初幾分鐘內的每一次
+        # 同步都會被擋下。這個檢查本來就是抓打錯字／異常上傳，不是安全邊界
+        # （spec「合理性檢查」是 typo guard，不是資安控制），時鐘偏移造成
+        # 「經過時間量不出來」時就不該再拿它來擋——步數是累計值，這裡放行
+        # 也不會遺失或重複計數，等 `now` 追上 `started_at` 之後，之後的同步
+        # 自然會回到正常的速率檢查。
+        if effective_started_at <= now:
+            elapsed_seconds = max((now - effective_started_at).total_seconds(), 1.0)
+            if request.steps / elapsed_seconds > MAX_STEPS_PER_SECOND:
+                raise HTTPException(status_code=422, detail=UNREASONABLE_RATE_DETAIL)
 
         date_str = effective_started_at.astimezone(TAIPEI_TZ).strftime("%Y-%m-%d")
 

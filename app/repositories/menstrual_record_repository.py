@@ -135,7 +135,10 @@ class MenstrualRecordRepository:
         query: dict = {"user_id": user_id}
         if exclude_id is not None:
             query["_id"] = {"$ne": exclude_id}
-        cursor = collection.find(query)
+        # Task 9 修復：同 ``list_by_user`` 一樣加上單次回應上限——這是本次
+        # change 裡唯一一個沒有加上限的查詢，`to_list(length=None)` 原本會
+        # 無上限撈出這位使用者的全部候選紀錄。
+        cursor = collection.find(query).limit(MAX_LIST_RESULTS)
         docs = await cursor.to_list(length=None)
         candidates = [
             MenstrualRecord(**{**doc, "_id": str(doc["_id"])}) for doc in docs

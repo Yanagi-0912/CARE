@@ -382,6 +382,38 @@ async def test_update_revalidates_the_merged_record_with_422():
 
 
 @pytest.mark.asyncio
+async def test_update_422_detail_is_the_fastapi_validation_array_shape_not_a_raw_dump():
+    """Task 1 修復：``str(ValidationError)`` 原本被直接塞進 ``detail``，是一段
+    含模型類別名稱（``CreateMenstrualRecordRequest``）、方括號型別中繼資料
+    （``[type=value_error, input_value=..., input_type=dict]``）、使用者原樣
+    回顯的輸入與 pydantic 文件連結（``https://errors.pydantic.dev/...``）的
+    多行文字；前端 ``extractValidationMessages``（CARE-LIFF
+    ``src/api/healthApi.ts``）只認得 FastAPI 慣例的陣列形狀，字串 detail
+    會被整段原樣顯示給一位正在修正經期紀錄的長輩使用者。改成
+    ``exc.errors(include_url=False)`` 之後，detail SHALL 是陣列，第一項要有
+    可讀的 ``msg`` 字串，且那段訊息本身不含模型類別名稱或 pydantic 文件
+    連結。"""
+    existing = MenstrualRecord(id="R1", user_id=OWNER, start_date="2026-09-01")
+    service, repository = _service(existing=[existing])
+
+    with pytest.raises(HTTPException) as exc_info:
+        # 間隔超過 15 天（menstrual-cycle-log spec「記錄經期」）。
+        await service.update("R1", UpdateMenstrualRecordRequest(end_date="2026-09-20"))
+
+    detail = exc_info.value.detail
+    assert isinstance(detail, list)
+    assert len(detail) >= 1
+    first = detail[0]
+    assert isinstance(first, dict)
+    assert isinstance(first.get("msg"), str) and first["msg"]
+    assert "CreateMenstrualRecordRequest" not in first["msg"]
+    assert "errors.pydantic.dev" not in first["msg"]
+    # 陣列本身也不該含文件連結（``include_url=False``）：不只是訊息文字
+    # 乾淨，連 FastAPI 不會拿來顯示的 `url` 欄位都不多送一份沒有用的連結。
+    assert "url" not in first
+
+
+@pytest.mark.asyncio
 async def test_update_rechecks_overlap_excluding_itself():
     """自己的日期沒變時，重新檢查重疊 SHALL NOT 把自己算進去。"""
     existing = MenstrualRecord(
@@ -571,6 +603,40 @@ async def test_update_does_not_notify_when_end_date_is_not_touched():
     service, repository, alert_service = _service_with_alert(existing=[existing])
 
     await service.update("R1", UpdateMenstrualRecordRequest(note="備註"))
+
+    assert alert_service.calls == []
+
+
+@pytest.mark.asyncio
+async def test_update_notifies_anomaly_when_only_start_date_changes_the_cycle():
+    """Task 8：PATCH 只帶 `start_date`（沒有 `end_date`）也要判定經期異常
+    ——搬動開始日期不會改變這筆紀錄自己的「經期天數」，但會改變它與前一筆
+    的「週期長度」，兩者都是判定依據。原本的程式碼只在 `end_date` 出現在
+    這次請求時才檢查，漏看了這個情況。"""
+    older = MenstrualRecord(
+        id="R0", user_id=OWNER, start_date="2026-06-01", end_date="2026-06-04"
+    )
+    existing = MenstrualRecord(id="R1", user_id=OWNER, start_date="2026-07-01")
+    service, repository, alert_service = _service_with_alert(existing=[older, existing])
+
+    # 週期從（改動前）7/1 - 6/1 = 30 天（正常），改到 7/30 - 6/1 = 59 天
+    # （> 38 天，異常）——只帶 start_date，不帶 end_date。
+    await service.update("R1", UpdateMenstrualRecordRequest(start_date="2026-07-30"))
+
+    assert alert_service.calls == [(OWNER, "R1")]
+
+
+@pytest.mark.asyncio
+async def test_update_does_not_notify_when_only_flow_or_note_changes():
+    """單純改 note／flow，`start_date`／`end_date` 都不在這次請求裡：維持
+    原本「不必多一次 claim 嘗試」的優化，SHALL NOT 判定異常。"""
+    older = MenstrualRecord(
+        id="R0", user_id=OWNER, start_date="2026-06-01", end_date="2026-06-04"
+    )
+    existing = MenstrualRecord(id="R1", user_id=OWNER, start_date="2026-07-30")
+    service, repository, alert_service = _service_with_alert(existing=[older, existing])
+
+    await service.update("R1", UpdateMenstrualRecordRequest(flow="heavy"))
 
     assert alert_service.calls == []
 

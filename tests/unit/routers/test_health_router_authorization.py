@@ -764,8 +764,10 @@ def test_delete_measurement_allowed_for_guardian_even_in_shadow_mode(client):
 
 
 def test_delete_measurement_returns_404_before_any_authorization_when_missing(client):
-    """紀錄不存在時 SHALL 回 404（spec「刪除紀錄」）——即使操作者不是本人，
-    存在性判定在授權之前，避免用 403 與 404 的差異探測他人紀錄是否存在。"""
+    """紀錄不存在時 SHALL 回 404（spec「刪除紀錄」）——即使操作者不是本人。
+    存在性判定在授權之前是因為本人是誰要先讀出紀錄才知道，不是為了防堵
+    探測；連帶讓不存在回 404、存在但無權限回 403 這個可分辨的差異，這裡
+    接受它，因為紀錄 id 不可猜測。"""
     wire("MEMBER")
     service = wire_measurements(existing=None)
     res = client.delete("/api/health/measurements/does-not-exist")
@@ -1008,7 +1010,9 @@ def test_patch_menstrual_denied_for_a_record_owned_by_someone_else(client, wire_
 
 def test_patch_menstrual_returns_404_before_identity_check_when_missing(client):
     """紀錄不存在時 SHALL 回 404，即使操作者不是本人——同量測「刪除紀錄」
-    的理由：存在性判定在先，避免用 403／404 的差異探測他人紀錄是否存在。"""
+    的理由：所有者是誰要先讀出紀錄才知道，存在性判定因此在先，不是為了
+    防堵探測；這裡接受連帶而來的 404／403 可分辨差異，因為紀錄 id 不可
+    猜測。"""
     wire("GUARDIAN")
     service = wire_menstrual(existing=None)
     res = client.patch(

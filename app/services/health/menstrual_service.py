@@ -143,7 +143,17 @@ class MenstrualRecordService:
                 note=merged_note,
             )
         except ValidationError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            # Task 1 修復：detail SHALL 是 FastAPI 對「Pydantic 邊界」422 的
+            # 慣例陣列形狀（``[{"type", "loc", "msg", ...}, ...]``），不是
+            # ``str(ValidationError)``——後者是一整段人類調適用的多行文字
+            # （含模型類別名稱、方括號型別中繼資料、使用者原樣回顯的輸入、
+            # pydantic 文件連結），前端 `extractValidationMessages` 只認得
+            # 陣列＋每項的 `msg` 字串（見 CARE-LIFF `src/api/healthApi.ts`），
+            # 字串 detail 會被整段原樣顯示給使用者。這裡雖然不是走 FastAPI
+            # 的請求邊界（是服務層合併欄位後重新驗證），仍要產出同一種形狀，
+            # 讓前端解析邏輯不必分兩套。``include_url=False``：文件連結對
+            # 使用者沒有意義，不必送到前端。
+            raise HTTPException(status_code=422, detail=exc.errors(include_url=False)) from exc
 
         overlapping = await self._repository.find_overlapping(
             user_id=existing.user_id,
@@ -166,12 +176,22 @@ class MenstrualRecordService:
         if updated is None:
             raise HTTPException(status_code=404, detail=_RECORD_NOT_FOUND_DETAIL)
         # ── 存檔之後 ──────────────────────────────────────────────────
-        # PATCH 補上／改動 end_date 時同樣要判定經期異常（經期天數 > 8 天；
-        # dispatch notes「trigger points」）。只在 `end_date` 真的出現在這次
-        # 請求裡才檢查——單純改 note／flow 不會讓「經期天數」這件事有任何
-        # 變化，不必多一次 claim 嘗試。推播失敗不影響這支請求。
+        # PATCH 補上／改動 start_date 或 end_date 時要判定經期異常（週期
+        # 長度 < 24 或 > 38 天、經期天數 > 8 天；dispatch notes「trigger
+        # points」）。單純改 note／flow 不會讓這兩個計算欄位有任何變化，
+        # 不必多一次 claim 嘗試。推播失敗不影響這支請求。
         computed = await self._with_computed_fields_for(existing.user_id, updated)
-        if "end_date" in changes:
+        # Task 8 修復：只在 `end_date` 出現在這次請求裡才檢查異常，漏看了
+        # `start_date` 單獨變動也可能讓「週期長度」（與前一筆 start_date 的
+        # 間隔）新產生一個落在異常區間的值——搬動開始日期不會改變這筆紀錄
+        # 本身的「經期天數」，但會改變它與前一筆的「週期長度」，兩者都是
+        # `detect_menstrual_anomaly` 判定的依據。因此只要 `start_date` 或
+        # `end_date` 任一個真的出現在這次請求裡，就要重新檢查一次；單純改
+        # note／flow 兩者都不出現，維持原本「不必多一次 claim 嘗試」的優化。
+        # 「一筆紀錄最多通知一次」的語意不變——`_maybe_notify_anomaly` 背後
+        # 的 claim 仍是 `menstrual:<record_id>`，同一筆紀錄不論被檢查幾次，
+        # 只有第一次成立的異常會真的推播。
+        if "start_date" in changes or "end_date" in changes:
             await self._maybe_notify_anomaly(existing.user_id, computed)
         return computed
 

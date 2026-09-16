@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.dependencies import (
@@ -25,10 +26,11 @@ from app.dependencies import (
     get_current_user,
     get_family_authorization_service,
     get_health_alert_threshold_service,
+    get_health_measurement_service,
 )
 from app.main import app
 from app.models.family_tree import FamilyMember, FamilyTree
-from app.models.health import HealthAlertThreshold
+from app.models.health import HealthAlertThreshold, HealthMeasurement
 from app.services.family.family_authorization_service import (
     FamilyAuthorizationService,
 )
@@ -326,3 +328,299 @@ def test_put_rejects_invalid_range_with_422_before_reaching_the_service(client):
     )
     assert res.status_code == 422
     assert service.update_calls == []
+
+
+# ── POST／GET／DELETE /api/health/measurements ───────────────────────
+#
+# health-measurements spec「代為記錄」「查看紀錄」「刪除紀錄」：五種身分
+# （本人、GUARDIAN、CAREGIVER、MEMBER、非家人）× 三支端點，enforced 與
+# shadow 兩種遷移狀態皆驗證——這是本 change 新增的能力，`has_legacy_
+# equivalent=False`，shadow 模式 SHALL NOT 放寬任何一種身分。
+
+
+class _FakeMeasurementService:
+    """假的服務層，記錄呼叫；用來確認 403／404 擋在資料存取之前。"""
+
+    def __init__(self, existing: Optional[HealthMeasurement] = None):
+        self.existing = existing
+        self.create_calls: list[tuple[str, str]] = []
+        self.list_calls: list[str] = []
+        self.get_calls: list[str] = []
+        self.delete_calls: list[str] = []
+
+    async def create(self, user_id: str, recorded_by: str, request):
+        self.create_calls.append((user_id, recorded_by))
+        return HealthMeasurement(
+            id="M1",
+            user_id=user_id,
+            kind="blood_pressure",
+            measured_at=NOW,
+            recorded_by=recorded_by,
+            systolic=128,
+            diastolic=82,
+            level="within_range",
+        )
+
+    async def list(self, user_id: str, kind=None, start=None, end=None):
+        self.list_calls.append(user_id)
+        return [self.existing] if self.existing is not None else []
+
+    async def get(self, measurement_id: str):
+        self.get_calls.append(measurement_id)
+        if self.existing is None or self.existing.id != measurement_id:
+            raise HTTPException(status_code=404, detail="找不到該筆紀錄")
+        return self.existing
+
+    async def delete(self, measurement_id: str):
+        self.delete_calls.append(measurement_id)
+
+
+def wire_measurements(existing: Optional[HealthMeasurement] = None):
+    service = _FakeMeasurementService(existing)
+    app.dependency_overrides[get_health_measurement_service] = lambda: service
+    return service
+
+
+POST_MEASUREMENT_PAYLOAD = {"systolic": 128, "diastolic": 82}
+
+_EXISTING_MEASUREMENT = HealthMeasurement(
+    id="M1",
+    user_id=ELDER,
+    kind="blood_pressure",
+    measured_at=NOW,
+    recorded_by=ELDER,
+    systolic=128,
+    diastolic=82,
+    level="within_range",
+)
+
+
+# -- POST /api/health/measurements ------------------------------------
+
+
+def test_post_measurement_self_always_allowed_without_any_family_relation(client):
+    wire(None, caller=ELDER)
+    service = wire_measurements()
+    res = client.post(
+        f"/api/health/measurements?user_id={ELDER}", json=POST_MEASUREMENT_PAYLOAD
+    )
+    assert res.status_code == 201
+    body = res.json()
+    assert body["id"] == "M1"
+    assert body["recorded_by"] == ELDER
+    assert body["level"] == "within_range"
+    assert service.create_calls == [(ELDER, ELDER)]
+
+
+def test_post_measurement_allowed_for_guardian_records_recorded_by_as_the_operator(client):
+    """主要照顧者代記（spec「主要照顧者代記」）：201，記錄者為該 GUARDIAN。"""
+    wire("GUARDIAN")
+    service = wire_measurements()
+    res = client.post(
+        f"/api/health/measurements?user_id={ELDER}", json=POST_MEASUREMENT_PAYLOAD
+    )
+    assert res.status_code == 201
+    assert res.json()["recorded_by"] == ME
+    assert service.create_calls == [(ELDER, ME)]
+
+
+def test_post_measurement_denied_for_caregiver(client):
+    """協助照顧者代記被拒（spec「協助照顧者代記被拒」）。"""
+    wire("CAREGIVER")
+    service = wire_measurements()
+    res = client.post(
+        f"/api/health/measurements?user_id={ELDER}", json=POST_MEASUREMENT_PAYLOAD
+    )
+    assert res.status_code == 403
+    assert service.create_calls == []
+
+
+def test_post_measurement_denied_for_member(client):
+    """一般家人代記被拒（spec「一般家人代記被拒」）。"""
+    wire("MEMBER")
+    service = wire_measurements()
+    res = client.post(
+        f"/api/health/measurements?user_id={ELDER}", json=POST_MEASUREMENT_PAYLOAD
+    )
+    assert res.status_code == 403
+    assert service.create_calls == []
+
+
+def test_post_measurement_denied_for_stranger(client):
+    """非家人代記被拒（spec「非家人代記被拒」）。"""
+    wire(None)
+    service = wire_measurements()
+    res = client.post(
+        f"/api/health/measurements?user_id={ELDER}", json=POST_MEASUREMENT_PAYLOAD
+    )
+    assert res.status_code == 403
+    assert service.create_calls == []
+
+
+def test_post_measurement_denied_for_member_even_in_shadow_mode(client):
+    """影子模式不放寬（spec「影子模式不放寬」）：一般家人代記仍是 403。"""
+    wire("MEMBER", state="shadow")
+    service = wire_measurements()
+    res = client.post(
+        f"/api/health/measurements?user_id={ELDER}", json=POST_MEASUREMENT_PAYLOAD
+    )
+    assert res.status_code == 403
+    assert service.create_calls == []
+
+
+def test_post_measurement_denied_for_caregiver_even_in_shadow_mode(client):
+    wire("CAREGIVER", state="shadow")
+    service = wire_measurements()
+    res = client.post(
+        f"/api/health/measurements?user_id={ELDER}", json=POST_MEASUREMENT_PAYLOAD
+    )
+    assert res.status_code == 403
+    assert service.create_calls == []
+
+
+def test_post_measurement_denied_for_stranger_even_in_shadow_mode(client):
+    wire(None, state="shadow")
+    service = wire_measurements()
+    res = client.post(
+        f"/api/health/measurements?user_id={ELDER}", json=POST_MEASUREMENT_PAYLOAD
+    )
+    assert res.status_code == 403
+    assert service.create_calls == []
+
+
+# -- GET /api/health/measurements --------------------------------------
+
+
+def test_get_measurements_self_always_allowed_without_any_family_relation(client):
+    wire(None, caller=ELDER)
+    service = wire_measurements(existing=_EXISTING_MEASUREMENT)
+    res = client.get(f"/api/health/measurements?user_id={ELDER}")
+    assert res.status_code == 200
+    assert service.list_calls == [ELDER]
+    assert res.json()[0]["id"] == "M1"
+
+
+@pytest.mark.parametrize("role", ["GUARDIAN", "CAREGIVER"])
+def test_get_measurements_allowed_for_sensitive_readers(client, role):
+    """協助照顧者查看（spec「協助照顧者查看」）：GUARDIAN、CAREGIVER 皆可。"""
+    wire(role)
+    service = wire_measurements(existing=_EXISTING_MEASUREMENT)
+    res = client.get(f"/api/health/measurements?user_id={ELDER}")
+    assert res.status_code == 200
+    assert service.list_calls == [ELDER]
+
+
+def test_get_measurements_denied_for_member(client):
+    """一般家人查看被拒（spec「一般家人查看被拒」）。"""
+    wire("MEMBER")
+    service = wire_measurements(existing=_EXISTING_MEASUREMENT)
+    res = client.get(f"/api/health/measurements?user_id={ELDER}")
+    assert res.status_code == 403
+    assert service.list_calls == []
+
+
+def test_get_measurements_denied_for_stranger(client):
+    """非家人查看被拒（spec「非家人查看被拒」）。"""
+    wire(None)
+    service = wire_measurements(existing=_EXISTING_MEASUREMENT)
+    res = client.get(f"/api/health/measurements?user_id={ELDER}")
+    assert res.status_code == 403
+    assert service.list_calls == []
+
+
+def test_get_measurements_denied_for_member_even_in_shadow_mode(client):
+    """影子模式下的一般家人（spec「影子模式下的一般家人」）：查詢仍是 403。"""
+    wire("MEMBER", state="shadow")
+    service = wire_measurements(existing=_EXISTING_MEASUREMENT)
+    res = client.get(f"/api/health/measurements?user_id={ELDER}")
+    assert res.status_code == 403
+    assert service.list_calls == []
+
+
+def test_get_measurements_denied_for_stranger_even_in_shadow_mode(client):
+    wire(None, state="shadow")
+    service = wire_measurements(existing=_EXISTING_MEASUREMENT)
+    res = client.get(f"/api/health/measurements?user_id={ELDER}")
+    assert res.status_code == 403
+    assert service.list_calls == []
+
+
+# -- DELETE /api/health/measurements/{id} ------------------------------
+
+
+def test_delete_measurement_self_allowed(client):
+    """本人刪除（spec「本人刪除」）：204。"""
+    wire(None, caller=ELDER)
+    service = wire_measurements(existing=_EXISTING_MEASUREMENT)
+    res = client.delete("/api/health/measurements/M1")
+    assert res.status_code == 204
+    assert service.delete_calls == ["M1"]
+
+
+def test_delete_measurement_allowed_for_guardian(client):
+    wire("GUARDIAN")
+    service = wire_measurements(existing=_EXISTING_MEASUREMENT)
+    res = client.delete("/api/health/measurements/M1")
+    assert res.status_code == 204
+    assert service.delete_calls == ["M1"]
+
+
+def test_delete_measurement_denied_for_caregiver(client):
+    """協助照顧者刪除被拒（spec「協助照顧者刪除被拒」）：403，紀錄保留。"""
+    wire("CAREGIVER")
+    service = wire_measurements(existing=_EXISTING_MEASUREMENT)
+    res = client.delete("/api/health/measurements/M1")
+    assert res.status_code == 403
+    assert service.delete_calls == []
+
+
+def test_delete_measurement_denied_for_member(client):
+    wire("MEMBER")
+    service = wire_measurements(existing=_EXISTING_MEASUREMENT)
+    res = client.delete("/api/health/measurements/M1")
+    assert res.status_code == 403
+    assert service.delete_calls == []
+
+
+def test_delete_measurement_denied_for_stranger(client):
+    wire(None)
+    service = wire_measurements(existing=_EXISTING_MEASUREMENT)
+    res = client.delete("/api/health/measurements/M1")
+    assert res.status_code == 403
+    assert service.delete_calls == []
+
+
+def test_delete_measurement_denied_for_caregiver_even_in_shadow_mode(client):
+    """影子模式下 CAREGIVER 刪除仍是 403（tasks.md 4.2：這條路徑導入前不
+    存在，沒有「維持既有行為」可言）。"""
+    wire("CAREGIVER", state="shadow")
+    service = wire_measurements(existing=_EXISTING_MEASUREMENT)
+    res = client.delete("/api/health/measurements/M1")
+    assert res.status_code == 403
+    assert service.delete_calls == []
+
+
+def test_delete_measurement_denied_for_member_even_in_shadow_mode(client):
+    wire("MEMBER", state="shadow")
+    service = wire_measurements(existing=_EXISTING_MEASUREMENT)
+    res = client.delete("/api/health/measurements/M1")
+    assert res.status_code == 403
+    assert service.delete_calls == []
+
+
+def test_delete_measurement_denied_for_stranger_even_in_shadow_mode(client):
+    wire(None, state="shadow")
+    service = wire_measurements(existing=_EXISTING_MEASUREMENT)
+    res = client.delete("/api/health/measurements/M1")
+    assert res.status_code == 403
+    assert service.delete_calls == []
+
+
+def test_delete_measurement_returns_404_before_any_authorization_when_missing(client):
+    """紀錄不存在時 SHALL 回 404（spec「刪除紀錄」）——即使操作者不是本人，
+    存在性判定在授權之前，避免用 403 與 404 的差異探測他人紀錄是否存在。"""
+    wire("MEMBER")
+    service = wire_measurements(existing=None)
+    res = client.delete("/api/health/measurements/does-not-exist")
+    assert res.status_code == 404
+    assert service.delete_calls == []

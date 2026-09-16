@@ -28,6 +28,7 @@ from app.repositories.family_tree_repository import FamilyTreeRepository
 from app.repositories.health_alert_threshold_repository import (
     HealthAlertThresholdRepository,
 )
+from app.repositories.health_measurement_repository import HealthMeasurementRepository
 from app.repositories.knowledge_report_preview_repository import (
     KnowledgeReportPreviewRepository,
 )
@@ -58,6 +59,7 @@ from app.services.family.family_tree_service import FamilyTreeService
 from app.services.health.health_alert_threshold_service import (
     HealthAlertThresholdService,
 )
+from app.services.health.health_measurement_service import HealthMeasurementService
 from app.services.medication.drug_appearance_image_service import (
     resolve_drug_appearance_image_url,
 )
@@ -786,10 +788,14 @@ _family_delegation_service = FamilyDelegationService(
 )
 _medication_service = MedicationService(indication_service=_drug_indication_service)
 
-# 個人健康紀錄（personal-health-tracking）。Task 3 只組裝提醒範圍；Task 4/5
-# 會在這裡繼續加血壓血糖量測、經期、計步各自的服務。
+# 個人健康紀錄（personal-health-tracking）。Task 3 組裝提醒範圍；Task 4 接著
+# 加血壓血糖量測；Task 5 會在這裡繼續加經期、計步各自的服務。
 _health_alert_threshold_service = HealthAlertThresholdService(
     repository=HealthAlertThresholdRepository
+)
+_health_measurement_service = HealthMeasurementService(
+    measurement_repository=HealthMeasurementRepository,
+    threshold_repository=HealthAlertThresholdRepository,
 )
 
 # 掛號提醒。出發／到診的授權在服務層（LIFF 與 LINE postback 兩個入口共用），
@@ -1040,6 +1046,10 @@ def get_medication_service() -> MedicationService:
 
 def get_health_alert_threshold_service() -> HealthAlertThresholdService:
     return _health_alert_threshold_service
+
+
+def get_health_measurement_service() -> HealthMeasurementService:
+    return _health_measurement_service
 
 
 def get_appointment_service() -> AppointmentService:

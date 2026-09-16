@@ -1,0 +1,338 @@
+"""app/models/health.py 的輸入驗證邊界測試（task-2-brief 2.1）。
+
+涵蓋：每個輸入範圍的邊界、收縮壓不大於舒張壓、量測時間晚於現在 5 分鐘以上、
+提醒範圍上限不大於下限、經期超過 15 天、工作階段識別碼非 UUID v4。
+"""
+
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from pydantic import ValidationError
+
+from app.models.health import (
+    CreateBloodGlucoseRequest,
+    CreateBloodPressureRequest,
+    CreateMenstrualRecordRequest,
+    HealthAlertClaim,
+    HealthAlertThreshold,
+    HealthMeasurement,
+    MenstrualRecord,
+    StepCount,
+    StepSession,
+    StepSessionSyncRequest,
+    UpdateHealthAlertThresholdRequest,
+)
+
+
+# ── 血壓 ────────────────────────────────────────────────────────────────
+
+
+def test_blood_pressure_accepts_valid_input():
+    request = CreateBloodPressureRequest(systolic=128, diastolic=82, pulse=70)
+    assert request.systolic == 128
+    assert request.diastolic == 82
+
+
+@pytest.mark.parametrize("systolic", [49, 301])
+def test_blood_pressure_rejects_systolic_out_of_range(systolic):
+    with pytest.raises(ValidationError):
+        CreateBloodPressureRequest(systolic=systolic, diastolic=80)
+
+
+@pytest.mark.parametrize("systolic", [50, 300])
+def test_blood_pressure_accepts_systolic_boundary(systolic):
+    # 邊界值本身合法（50–300），但仍要滿足收縮壓 > 舒張壓。
+    request = CreateBloodPressureRequest(systolic=systolic, diastolic=30)
+    assert request.systolic == systolic
+
+
+@pytest.mark.parametrize("diastolic", [29, 201])
+def test_blood_pressure_rejects_diastolic_out_of_range(diastolic):
+    with pytest.raises(ValidationError):
+        CreateBloodPressureRequest(systolic=250, diastolic=diastolic)
+
+
+@pytest.mark.parametrize("diastolic", [30, 200])
+def test_blood_pressure_accepts_diastolic_boundary(diastolic):
+    request = CreateBloodPressureRequest(systolic=250, diastolic=diastolic)
+    assert request.diastolic == diastolic
+
+
+@pytest.mark.parametrize("pulse", [29, 251])
+def test_blood_pressure_rejects_pulse_out_of_range(pulse):
+    with pytest.raises(ValidationError):
+        CreateBloodPressureRequest(systolic=120, diastolic=80, pulse=pulse)
+
+
+@pytest.mark.parametrize("pulse", [30, 250])
+def test_blood_pressure_accepts_pulse_boundary(pulse):
+    request = CreateBloodPressureRequest(systolic=120, diastolic=80, pulse=pulse)
+    assert request.pulse == pulse
+
+
+def test_blood_pressure_pulse_is_optional():
+    request = CreateBloodPressureRequest(systolic=120, diastolic=80)
+    assert request.pulse is None
+
+
+def test_blood_pressure_rejects_systolic_not_greater_than_diastolic():
+    with pytest.raises(ValidationError):
+        CreateBloodPressureRequest(systolic=80, diastolic=120)
+
+
+def test_blood_pressure_rejects_systolic_equal_to_diastolic():
+    with pytest.raises(ValidationError):
+        CreateBloodPressureRequest(systolic=90, diastolic=90)
+
+
+def test_blood_pressure_rejects_measured_at_more_than_five_minutes_future():
+    future = datetime.now(timezone.utc) + timedelta(minutes=10)
+    with pytest.raises(ValidationError):
+        CreateBloodPressureRequest(systolic=120, diastolic=80, measured_at=future)
+
+
+def test_blood_pressure_accepts_measured_at_within_five_minutes_future():
+    # 容許手機時鐘誤差：5 分鐘以內的未來時間 SHALL 被接受。
+    near_future = datetime.now(timezone.utc) + timedelta(minutes=4)
+    request = CreateBloodPressureRequest(
+        systolic=120, diastolic=80, measured_at=near_future
+    )
+    assert request.measured_at == near_future
+
+
+def test_blood_pressure_accepts_past_measured_at_as_backfill():
+    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+    request = CreateBloodPressureRequest(
+        systolic=120, diastolic=80, measured_at=yesterday
+    )
+    assert request.measured_at == yesterday
+
+
+def test_blood_pressure_treats_naive_measured_at_as_utc():
+    near_future_naive = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(
+        minutes=4
+    )
+    request = CreateBloodPressureRequest(
+        systolic=120, diastolic=80, measured_at=near_future_naive
+    )
+    assert request.measured_at is not None
+
+
+# ── 血糖 ────────────────────────────────────────────────────────────────
+
+
+def test_blood_glucose_accepts_valid_input():
+    request = CreateBloodGlucoseRequest(glucose_mg_dl=112, meal_context="fasting")
+    assert request.glucose_mg_dl == 112
+    assert request.meal_context == "fasting"
+
+
+@pytest.mark.parametrize("glucose", [19, 801])
+def test_blood_glucose_rejects_out_of_range(glucose):
+    with pytest.raises(ValidationError):
+        CreateBloodGlucoseRequest(glucose_mg_dl=glucose, meal_context="fasting")
+
+
+@pytest.mark.parametrize("glucose", [20, 800])
+def test_blood_glucose_accepts_boundary(glucose):
+    request = CreateBloodGlucoseRequest(glucose_mg_dl=glucose, meal_context="fasting")
+    assert request.glucose_mg_dl == glucose
+
+
+def test_blood_glucose_requires_meal_context():
+    with pytest.raises(ValidationError):
+        CreateBloodGlucoseRequest(glucose_mg_dl=112)
+
+
+def test_blood_glucose_rejects_invalid_meal_context():
+    with pytest.raises(ValidationError):
+        CreateBloodGlucoseRequest(glucose_mg_dl=112, meal_context="dinner")
+
+
+def test_blood_glucose_rejects_measured_at_more_than_five_minutes_future():
+    future = datetime.now(timezone.utc) + timedelta(hours=1)
+    with pytest.raises(ValidationError):
+        CreateBloodGlucoseRequest(
+            glucose_mg_dl=112, meal_context="fasting", measured_at=future
+        )
+
+
+# ── 提醒範圍 ────────────────────────────────────────────────────────────
+
+
+def test_threshold_accepts_upper_greater_than_lower():
+    request = UpdateHealthAlertThresholdRequest(systolic_high=140, systolic_low=100)
+    assert request.systolic_high == 140
+
+
+def test_threshold_rejects_upper_not_greater_than_lower():
+    with pytest.raises(ValidationError):
+        UpdateHealthAlertThresholdRequest(systolic_high=100, systolic_low=120)
+
+
+def test_threshold_rejects_upper_equal_to_lower():
+    with pytest.raises(ValidationError):
+        UpdateHealthAlertThresholdRequest(diastolic_high=80, diastolic_low=80)
+
+
+def test_threshold_glucose_low_is_checked_against_both_uppers():
+    with pytest.raises(ValidationError):
+        UpdateHealthAlertThresholdRequest(glucose_fasting_high=100, glucose_low=100)
+    with pytest.raises(ValidationError):
+        UpdateHealthAlertThresholdRequest(glucose_nonfasting_high=100, glucose_low=100)
+
+
+def test_threshold_allows_clearing_one_side_of_a_pair():
+    # 只設定一邊（另一邊留空）SHALL 通過——清除一項不該連帶被上下限規則擋下。
+    request = UpdateHealthAlertThresholdRequest(diastolic_high=90)
+    assert request.diastolic_low is None
+
+
+@pytest.mark.parametrize("value", [19, 801])
+def test_threshold_rejects_glucose_out_of_range(value):
+    with pytest.raises(ValidationError):
+        UpdateHealthAlertThresholdRequest(glucose_low=value)
+
+
+def test_threshold_response_model_inherits_pair_validation():
+    with pytest.raises(ValidationError):
+        HealthAlertThreshold(
+            user_id="U1",
+            updated_by="U1",
+            systolic_high=100,
+            systolic_low=120,
+        )
+
+
+# ── 經期 ────────────────────────────────────────────────────────────────
+
+
+def test_menstrual_record_accepts_start_date_only():
+    request = CreateMenstrualRecordRequest(start_date="2026-09-01")
+    assert request.end_date is None
+
+
+def test_menstrual_record_rejects_start_date_in_the_future():
+    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
+    # 用遠遠超過台北時區誤差的天數，避免測試在時區邊界附近偶發失敗。
+    far_future = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%d")
+    with pytest.raises(ValidationError):
+        CreateMenstrualRecordRequest(start_date=far_future)
+    assert tomorrow  # 保留變數以說明語意，不參與斷言
+
+
+def test_menstrual_record_rejects_end_date_before_start_date():
+    with pytest.raises(ValidationError):
+        CreateMenstrualRecordRequest(start_date="2026-09-05", end_date="2026-09-01")
+
+
+def test_menstrual_record_accepts_span_of_exactly_fifteen_days():
+    request = CreateMenstrualRecordRequest(start_date="2026-09-01", end_date="2026-09-16")
+    assert request.end_date == "2026-09-16"
+
+
+def test_menstrual_record_rejects_span_over_fifteen_days():
+    with pytest.raises(ValidationError):
+        CreateMenstrualRecordRequest(start_date="2026-09-01", end_date="2026-09-17")
+
+
+def test_menstrual_record_rejects_note_over_200_chars():
+    with pytest.raises(ValidationError):
+        CreateMenstrualRecordRequest(start_date="2026-09-01", note="x" * 201)
+
+
+def test_menstrual_record_accepts_note_at_200_chars():
+    request = CreateMenstrualRecordRequest(start_date="2026-09-01", note="x" * 200)
+    assert len(request.note) == 200
+
+
+def test_menstrual_record_rejects_invalid_flow():
+    with pytest.raises(ValidationError):
+        CreateMenstrualRecordRequest(start_date="2026-09-01", flow="super_heavy")
+
+
+def test_menstrual_record_response_model_defaults_computed_fields_to_none():
+    record = MenstrualRecord(user_id="U1", start_date="2026-09-01")
+    assert record.cycle_length_days is None
+    assert record.period_length_days is None
+
+
+# ── 計步 ────────────────────────────────────────────────────────────────
+
+
+def test_step_session_sync_accepts_uuid_v4():
+    request = StepSessionSyncRequest(
+        session_id="8f14e45f-ceea-4c9c-8f77-4f3c3e2b2b1a", steps=300
+    )
+    assert request.steps == 300
+
+
+def test_step_session_sync_rejects_non_uuid_session_id():
+    with pytest.raises(ValidationError):
+        StepSessionSyncRequest(session_id="not-a-uuid", steps=100)
+
+
+def test_step_session_sync_rejects_uuid_v1():
+    # UUID v1（時間戳版本），版本欄位不是 4，SHALL 被拒絕。
+    with pytest.raises(ValidationError):
+        StepSessionSyncRequest(
+            session_id="2ed6657d-e927-11e6-94ba-8b2ba76b2efe", steps=100
+        )
+
+
+def test_step_session_sync_rejects_negative_steps():
+    with pytest.raises(ValidationError):
+        StepSessionSyncRequest(
+            session_id="8f14e45f-ceea-4c9c-8f77-4f3c3e2b2b1a", steps=-1
+        )
+
+
+def test_step_session_sync_accepts_zero_steps():
+    request = StepSessionSyncRequest(
+        session_id="8f14e45f-ceea-4c9c-8f77-4f3c3e2b2b1a", steps=0
+    )
+    assert request.steps == 0
+
+
+# ── 儲存與節流模型的基本建構 ────────────────────────────────────────────
+
+
+def test_health_measurement_round_trips_mongo_id_alias():
+    doc = {
+        "_id": "M1",
+        "user_id": "U1",
+        "kind": "blood_pressure",
+        "measured_at": datetime.now(timezone.utc),
+        "recorded_by": "U1",
+        "systolic": 120,
+        "diastolic": 80,
+        "level": "within_range",
+    }
+    measurement = HealthMeasurement(**doc)
+    assert measurement.id == "M1"
+
+
+def test_step_session_requires_started_at_and_last_synced_at():
+    session = StepSession(
+        user_id="U1",
+        session_id="8f14e45f-ceea-4c9c-8f77-4f3c3e2b2b1a",
+        date="2026-09-01",
+        steps=300,
+        started_at=datetime.now(timezone.utc),
+        last_synced_at=datetime.now(timezone.utc),
+    )
+    assert session.steps == 300
+
+
+def test_step_count_is_the_only_response_shaped_model_for_steps():
+    count = StepCount(user_id="U1", date="2026-09-01", steps=800)
+    assert set(type(count).model_fields) == {"user_id", "date", "steps"}
+
+
+def test_health_alert_claim_has_no_response_model_but_is_constructible():
+    claim = HealthAlertClaim(
+        user_id="U1",
+        alert_key="bp_high",
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+    )
+    assert claim.alert_key == "bp_high"

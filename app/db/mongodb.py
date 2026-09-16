@@ -213,3 +213,41 @@ class MongoDBManager:
         """
         return cls.get_database()["conversation_messages"]
 
+    @classmethod
+    def get_health_measurements_collection(cls):
+        """
+        取得 health_measurements collection（血壓／血糖量測；SENSITIVE）
+        """
+        return cls.get_database()["health_measurements"]
+
+    @classmethod
+    def get_health_alert_thresholds_collection(cls):
+        """
+        取得 health_alert_thresholds collection（血壓／血糖的提醒範圍；SENSITIVE，
+        一位使用者一份文件，沒有文件等同全部未設定）
+        """
+        return cls.get_database()["health_alert_thresholds"]
+
+    @classmethod
+    def get_menstrual_records_collection(cls):
+        """
+        取得 menstrual_records collection（經期紀錄；PERSONAL，只有本人可讀寫）
+        """
+        return cls.get_database()["menstrual_records"]
+
+    @classmethod
+    def get_step_sessions_collection(cls):
+        """
+        取得 step_sessions collection（計步工作階段的內部儲存；不直接對外回應，
+        每日步數由 StepSessionRepository 彙總，見 app/models/health.py 的 StepCount）
+        """
+        return cls.get_database()["step_sessions"]
+
+    @classmethod
+    def get_health_alert_claims_collection(cls):
+        """
+        取得 health_alert_claims collection（健康提醒推播的節流紀錄，同
+        safety_alerts 的唯一索引加 TTL 模式）
+        """
+        return cls.get_database()["health_alert_claims"]
+

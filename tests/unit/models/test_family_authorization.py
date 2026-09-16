@@ -26,6 +26,12 @@ from app.models.family_authorization import (
     notification_recipient_roles,
 )
 from app.models.appointment import AppointmentReminderResponse
+from app.models.health import (
+    HealthAlertThreshold,
+    HealthMeasurement,
+    MenstrualRecord,
+    StepCount,
+)
 from app.models.medication import Medication, MedicationReminderWithMedications
 from app.models.user import UserProfile
 
@@ -79,6 +85,10 @@ CROSS_USER_MODELS = {
     "medication": Medication,
     "appointment_reminder": AppointmentReminderResponse,
     "health_profile": UserProfile,
+    "health_measurement": HealthMeasurement,
+    "health_alert_threshold": HealthAlertThreshold,
+    "menstrual_record": MenstrualRecord,
+    "step_count": StepCount,
 }
 
 

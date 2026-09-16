@@ -199,15 +199,29 @@ class UpdateHealthAlertThresholdRequest(BaseModel):
         return self
 
 
-class HealthAlertThreshold(UpdateHealthAlertThresholdRequest):
-    """``health_alert_thresholds`` 的儲存與回應形狀，繼承六項欄位與上下限
-    驗證。沒有文件等同全部未設定（design.md）；唯一鍵是 ``user_id``，不是
-    ``_id``。
+class HealthAlertThreshold(BaseModel):
+    """``health_alert_thresholds`` 的儲存與回應形狀。沒有文件等同全部未設定
+    （design.md）；唯一鍵是 ``user_id``，不是 ``_id``。
+
+    刻意不繼承 ``UpdateHealthAlertThresholdRequest``、不重複它的 ``ge``/
+    ``le`` 範圍與「上限必須大於下限」的 pair 驗證——同 ``HealthMeasurement``
+    的設計（見該類別 docstring）：範圍是攔截打錯字的門檻，寫入當下已經在
+    請求模型檢查過；若這裡也繼承驗證，日後範圍常數調整、或上下限關係的
+    規則調整，會讓不再符合新規則的舊文件連讀（``get``／``upsert`` 的
+    ``find_one`` 回讀）都讀不回來，這正是 ``HealthMeasurement`` 要避免的
+    失效模式。
     """
 
     model_config = ConfigDict(populate_by_name=True)
 
     user_id: str
+    systolic_high: Optional[int] = None
+    systolic_low: Optional[int] = None
+    diastolic_high: Optional[int] = None
+    diastolic_low: Optional[int] = None
+    glucose_fasting_high: Optional[int] = None
+    glucose_nonfasting_high: Optional[int] = None
+    glucose_low: Optional[int] = None
     updated_by: str
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -264,6 +278,11 @@ class MenstrualRecord(BaseModel):
     欄位註解），計算結果依存於其他文件，不該在自己的文件裡存一份必然過期
     的快照。
 
+    ``note`` 刻意不重複 ``CreateMenstrualRecordRequest`` 的 ``max_length=200``
+    ——同 ``HealthAlertThreshold`` 不重複請求模型的範圍驗證的理由
+    （見該類別 docstring）：長度上限是攔截輸入的門檻，寫入當下已經在請求
+    模型檢查過；這裡若也套用，日後上限調整會讓超過新上限的舊紀錄讀不回來。
+
     全部欄位皆登記為 PERSONAL（``app/models/family_authorization.py``），
     任何跨使用者回應一律被剔除。
     """
@@ -275,7 +294,7 @@ class MenstrualRecord(BaseModel):
     start_date: str
     end_date: Optional[str] = None
     flow: Optional[MenstrualFlow] = None
-    note: Optional[str] = Field(default=None, max_length=200)
+    note: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     cycle_length_days: Optional[int] = None

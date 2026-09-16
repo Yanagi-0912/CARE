@@ -10,6 +10,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.models.health import (
+    TAIPEI_TZ,
     CreateBloodGlucoseRequest,
     CreateBloodPressureRequest,
     CreateMenstrualRecordRequest,
@@ -194,14 +195,21 @@ def test_threshold_rejects_glucose_out_of_range(value):
         UpdateHealthAlertThresholdRequest(glucose_low=value)
 
 
-def test_threshold_response_model_inherits_pair_validation():
-    with pytest.raises(ValidationError):
-        HealthAlertThreshold(
-            user_id="U1",
-            updated_by="U1",
-            systolic_high=100,
-            systolic_low=120,
-        )
+def test_threshold_response_model_does_not_revalidate_ranges_or_pairs():
+    """儲存／回應形狀刻意不重跑範圍與上下限驗證（同 HealthMeasurement 的
+    設計）：日後範圍常數或上下限規則調整，不該讓舊文件連讀都讀不回來。
+    這裡用「上限不大於下限」與「超出目前合理範圍」兩種本來會被請求模型
+    擋下的形狀，證明儲存模型仍能建構成功。
+    """
+    threshold = HealthAlertThreshold(
+        user_id="U1",
+        updated_by="U1",
+        systolic_high=100,
+        systolic_low=120,
+        glucose_low=9000,
+    )
+    assert threshold.systolic_high == 100
+    assert threshold.glucose_low == 9000
 
 
 # ── 經期 ────────────────────────────────────────────────────────────────
@@ -213,12 +221,24 @@ def test_menstrual_record_accepts_start_date_only():
 
 
 def test_menstrual_record_rejects_start_date_in_the_future():
-    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%d")
     # 用遠遠超過台北時區誤差的天數，避免測試在時區邊界附近偶發失敗。
     far_future = (datetime.now(timezone.utc) + timedelta(days=3)).strftime("%Y-%m-%d")
     with pytest.raises(ValidationError):
         CreateMenstrualRecordRequest(start_date=far_future)
-    assert tomorrow  # 保留變數以說明語意，不參與斷言
+
+
+def test_menstrual_record_accepts_start_date_of_today_in_taipei():
+    today_taipei = datetime.now(TAIPEI_TZ).strftime("%Y-%m-%d")
+    request = CreateMenstrualRecordRequest(start_date=today_taipei)
+    assert request.start_date == today_taipei
+
+
+def test_menstrual_record_rejects_start_date_of_tomorrow_in_taipei():
+    tomorrow_taipei = (datetime.now(TAIPEI_TZ) + timedelta(days=1)).strftime(
+        "%Y-%m-%d"
+    )
+    with pytest.raises(ValidationError):
+        CreateMenstrualRecordRequest(start_date=tomorrow_taipei)
 
 
 def test_menstrual_record_rejects_end_date_before_start_date():
@@ -255,6 +275,15 @@ def test_menstrual_record_response_model_defaults_computed_fields_to_none():
     record = MenstrualRecord(user_id="U1", start_date="2026-09-01")
     assert record.cycle_length_days is None
     assert record.period_length_days is None
+
+
+def test_menstrual_record_response_model_does_not_revalidate_note_length():
+    """儲存／回應形狀刻意不重跑 note 的 max_length（同 HealthAlertThreshold
+    不重跑範圍驗證的理由）：長度上限是攔截輸入的門檻，寫入當下已經在
+    CreateMenstrualRecordRequest 檢查過；這裡若也套用，日後上限調整會讓
+    超過新上限的舊紀錄讀不回來。"""
+    record = MenstrualRecord(user_id="U1", start_date="2026-09-01", note="x" * 500)
+    assert len(record.note) == 500
 
 
 # ── 計步 ────────────────────────────────────────────────────────────────

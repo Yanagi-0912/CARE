@@ -113,3 +113,19 @@ async def test_upsert_can_clear_a_previously_set_field():
     (_, update), _ = collection.update_one.call_args
     assert "diastolic_high" in update["$set"]
     assert update["$set"]["diastolic_high"] is None
+
+
+@pytest.mark.asyncio
+async def test_upsert_falls_back_to_the_input_when_read_back_finds_nothing():
+    """理論上不會發生（剛 upsert 完就查不到），但 upsert() 的回傳型別不是
+    Optional，比照 get() 做同樣的 None 防呆：退回呼叫端已經驗證過的輸入，
+    而不是讓 HealthAlertThreshold(**None) 直接炸開。"""
+    collection = _collection()
+    collection.find_one = AsyncMock(return_value=None)
+    threshold = HealthAlertThreshold(
+        user_id="U1", systolic_high=140, systolic_low=100, updated_by="U1"
+    )
+
+    result = await HealthAlertThresholdRepository.upsert(threshold, collection=collection)
+
+    assert result is threshold

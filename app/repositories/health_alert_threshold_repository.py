@@ -49,4 +49,9 @@ class HealthAlertThresholdRepository:
             upsert=True,
         )
         doc = await collection.find_one({"user_id": threshold.user_id})
+        if not doc:
+            # 理論上不會發生（剛 upsert 完就查不到），但比照 get() 做同樣的
+            # None 防呆：與其讓 HealthAlertThreshold(**None) 直接炸開，
+            # 不如退回呼叫端已經驗證過的輸入。
+            return threshold
         return HealthAlertThreshold(**doc)

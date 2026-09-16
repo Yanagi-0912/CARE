@@ -28,6 +28,8 @@ from app.core.user_language import (
 from app.i18n.messages import t
 from app.services.line_messaging.reply.reply import LineReplier
 from app.services.line_messaging.share_intent import is_share_intent
+from app.services.lost.lost_intent import detect_lost_intent
+from resources.flex_messages.lost_location_flex_message import build_no_family_flex
 from app.core.request_context import reset_line_user_id, set_line_user_id
 
 logger = logging.getLogger(__name__)
@@ -52,6 +54,7 @@ class BaseLineMessageHandler:
         safety_alert_service=None,
         emergency_family_alert_service=None,
         share_card_service=None,
+        lost_location_service=None,
     ):
         self._agent = agent
         self._history_service = history_service
@@ -64,6 +67,8 @@ class BaseLineMessageHandler:
         self._emergency_family_alert_service = emergency_family_alert_service
         # 沒注入時（媒體訊息的 handler 就沒有）分享卡的秒回路徑整段不執行。
         self._share_card_service = share_card_service
+        # 沒注入時「我走丟了」照一般訊息進 agent。
+        self._lost_location_service = lost_location_service
         # 併行任務要被持有參考直到完成，否則可能在跑完之前就被 GC 回收。
         self._safety_alert_tasks: set[asyncio.Task] = set()
 
@@ -131,6 +136,25 @@ class BaseLineMessageHandler:
             # 年齡同理：症狀科別建議要靠它決定該不該給兒科，而那段程式在
             # LangChain tool 底下，拿不到 user_profile。
             age_token = set_request_age((user_profile or {}).get("age"))
+
+            # 走失求救：「我走丟了」「傳位置給家人」直接回定位卡並通知家人、不進
+            # agent（理由見 lost_intent）。語音也要攔：慌張的長輩最可能用講的。
+            # 位置與字級一樣排在語言設好之後，卡片才會照使用者的設定。
+            if (
+                message_type in ("text", "audio")
+                and self._lost_location_service is not None
+            ):
+                lost_intent = detect_lost_intent(user_text)
+                if lost_intent is not None:
+                    await self._start_lost_flow(
+                        user_id=user_id,
+                        reply_token=reply_token,
+                        user_text=user_text,
+                        intent=lost_intent,
+                        language=user_language,
+                        font_size=self._font_size_from_profile(user_profile),
+                    )
+                    return
 
             # 分享卡：常見說法直接回卡、不進 agent（理由見 share_intent）。排在語言
             # 與字級設好之後，卡片才會照使用者的設定；排在 rag 來源 holder 與讀取
@@ -285,6 +309,55 @@ class BaseLineMessageHandler:
                 reset_request_age(age_token)
             if rag_sources_token is not None:
                 reset_request_rag_sources(rag_sources_token)
+
+    async def _start_lost_flow(
+        self,
+        *,
+        user_id: str,
+        reply_token: str,
+        user_text: str,
+        intent: str,
+        language: str,
+        font_size: str,
+    ) -> None:
+        """回長輩定位卡，並在背景通知家人。
+
+        卡片先回、通知在背景：推給每位家人各要一次 LINE API，長輩不該等它們跑完
+        才看到按鈕。「家人已經收到通知」是推播真的送出之後才補的一則，理由同
+        緊急通報（notify_patient_family_was_told）：卡片上不寫可能不成立的話。
+        """
+        service = self._lost_location_service
+        report = await service.report(user_id, user_text, intent)
+
+        if report.outcome == "no_family":
+            card = build_no_family_flex(language=language, font_size=font_size)
+        else:
+            header_key = (
+                "lost.elder.header.active"
+                if report.outcome == "already_active"
+                else f"lost.elder.header.{intent}"
+            )
+            card = service.elder_card(header_key, language, font_size)
+        ok = await self._replier.reply_flex(
+            reply_token=reply_token, flex_message=card, user_id=user_id
+        )
+        log_stage(logger, "lost", intent=intent, outcome=report.outcome, ok=ok)
+
+        if report.outcome != "started" or report.session is None:
+            return
+        session = report.session
+
+        async def _notify() -> None:
+            try:
+                sent = await service.notify_family_of_report(session)
+                key = "lost.elder.family_notified" if sent else "lost.elder.notify_failed"
+                await self._replier.push_text(user_id, t(key, language))
+            except Exception:
+                logger.exception("走失通報任務失敗")
+
+        task = asyncio.create_task(_notify())
+        self._safety_alert_tasks.add(task)
+        task.add_done_callback(self._safety_alert_tasks.discard)
 
     def _schedule_safety_alert_check(self, user_id: str, user_text: str) -> None:
         """把一次風險評估丟到背景執行。

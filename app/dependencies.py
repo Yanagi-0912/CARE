@@ -69,6 +69,7 @@ from app.services.safety.ingredient_overlap import (
     load_local_action_forms,
 )
 from app.services.safety.emergency_alert_service import EmergencyFamilyAlertService
+from app.services.lost.lost_location_service import LostLocationService
 from app.services.medication.tcm_catalog_service import TcmCatalogService
 from app.services.safety.otc_alert_service import OtcAlertService
 from app.services.safety.atc_interaction import ClassPairTable
@@ -757,6 +758,14 @@ _emergency_family_alert_service = EmergencyFamilyAlertService(
     authorization_service=_family_authorization_service,
     user_profile_service=_user_profile_service,
 )
+# 走失求救與即時位置分享。收件人同樣走 NOTIFICATION_POLICY（elder_lost）；沒有
+# 開關，理由同緊急通報。LIFF_ID 沒設時卡片不放定位頁按鈕，只剩「傳送一次位置」。
+_lost_location_service = LostLocationService(
+    replier=_line_replier,
+    authorization_service=_family_authorization_service,
+    user_profile_service=_user_profile_service,
+    liff_id=settings.LIFF_ID,
+)
 
 _message_handler = LineMessageHandler(
     agent=_care_agent,
@@ -767,6 +776,7 @@ _message_handler = LineMessageHandler(
     safety_alert_service=_enabled_safety_alert_service,
     emergency_family_alert_service=_emergency_family_alert_service,
     share_card_service=_share_card_service,
+    lost_location_service=_lost_location_service,
 )
 _media_handler = LineMediaHandler(
     agent=_care_agent,
@@ -777,6 +787,7 @@ _media_handler = LineMediaHandler(
     user_document_ingest_service=_user_document_ingest_service,
     safety_alert_service=_enabled_safety_alert_service,
     emergency_family_alert_service=_emergency_family_alert_service,
+    lost_location_service=_lost_location_service,
 )
 _location_handler = LineLocationHandler(
     agent=_care_agent,
@@ -784,6 +795,7 @@ _location_handler = LineLocationHandler(
     user_profile_service=_user_profile_service,
     replier=_line_replier,
     loading_animation_service=_line_loading_animation_service,
+    lost_location_service=_lost_location_service,
 )
 # 稽核與角色指派共用同一份：移除成員收回的是全部權限，要跟角色變更排在同一條時序上。
 _family_tree_service = FamilyTreeService(audit_repository=FamilyRoleAuditRepository)
@@ -1088,6 +1100,10 @@ def get_line_replier() -> LineReplier:
     return _line_replier
 
 
+def get_lost_location_service() -> LostLocationService:
+    return _lost_location_service
+
+
 def get_user_profile_service() -> UserProfileService:
     return _user_profile_service
 
@@ -1253,12 +1269,16 @@ summary_generate_rate_limit = limit_by_user(
 prescription_scan_rate_limit = limit_by_user(
     RateLimiter(limit=settings.RATE_LIMIT_PRESCRIPTION_SCAN_PER_HOUR, window_seconds=3600)
 )
+lost_location_rate_limit = limit_by_user(
+    RateLimiter(limit=settings.RATE_LIMIT_LOST_LOCATION_PER_MINUTE, window_seconds=60)
+)
 
 ALL_RATE_LIMITS = (
     liff_login_rate_limit,
     invite_verify_rate_limit,
     summary_generate_rate_limit,
     prescription_scan_rate_limit,
+    lost_location_rate_limit,
 )
 
 

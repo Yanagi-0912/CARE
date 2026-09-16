@@ -575,6 +575,12 @@ class Settings:
     RATE_LIMIT_PRESCRIPTION_SCAN_PER_HOUR: int = int(
         os.getenv("RATE_LIMIT_PRESCRIPTION_SCAN_PER_HOUR", "10")
     )
+    # 走失求救的位置上傳（每位使用者每分鐘）。長輩的定位頁每 20 秒傳一次，
+    # 正常是每分鐘 3 次；重新整理頁面、網路不穩重送都會多打幾次，給 4 倍餘裕。
+    # 撞到上限的代價是地圖少一個點，不會漏通知，所以不必再放寬。
+    RATE_LIMIT_LOST_LOCATION_PER_MINUTE: int = int(
+        os.getenv("RATE_LIMIT_LOST_LOCATION_PER_MINUTE", "12")
+    )
     # --- 認證與家人權限（結束）---
 
     # --- RAG／agent 管線 ---

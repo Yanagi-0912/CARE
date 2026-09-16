@@ -247,13 +247,15 @@ PROXY_WRITE_FORBIDDEN_FIELDS: frozenset[str] = frozenset(
     {"name", "display_name", "picture_url", "role", "settings", "line_id"}
 )
 
-# 推播種類，包含:高風險藥物、加入非處方藥、緊急事件偵測、掛號提醒、用藥逾時未確認
+# 推播種類，包含:高風險藥物、加入非處方藥、緊急事件偵測、掛號提醒、用藥逾時未確認、
+# 走失求救
 NotificationKind = Literal[
     "high_risk_drug_alert",
     "otc_medication_added",
     "emergency_detected",
     "appointment_reminder",
     "medication_missed",
+    "elder_lost",
 ]
 
 # 通知政策。**與 PERMISSIONS 分開宣告，兩者的變更互不牽動。**
@@ -303,6 +305,14 @@ NOTIFICATION_POLICY: dict[NotificationKind, frozenset[FamilyRole]] = {
     #   還沒指派角色的家庭（目前的預設狀態）會連建立者都收不到。
     # 強制之後照這一列篩選，只送給能管理用藥設定的 GUARDIAN 與 CAREGIVER。
     "medication_missed": frozenset({"GUARDIAN", "CAREGIVER"}),
+    # 長輩說自己走丟了：通報、即時位置地圖、「已找到」都只給這份名單上的人
+    # （見 app/services/lost/lost_location_service.py）。位置是當下行蹤，比健康
+    # 資料更直接關係到人身安全，所以不給 MEMBER。
+    #
+    # 不列入 STRICT_NOTIFICATION_KINDS，理由同 medication_missed：還沒指派角色的
+    # 家庭（目前的預設狀態）嚴格篩選會一個人都收不到，而走失是最不能沒人收到的
+    # 通知。影子模式送族譜全員。
+    "elder_lost": frozenset({"GUARDIAN", "CAREGIVER"}),
 }
 
 # 影子模式下**仍然**依 NOTIFICATION_POLICY 篩選收件人的推播種類。

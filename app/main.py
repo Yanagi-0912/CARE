@@ -21,6 +21,7 @@ from app.dependencies import (
     get_family_authorization_service,
     get_kb_digest_service,
     get_line_replier,
+    get_lost_location_service,
     get_user_profile_service,
     preload_facility_name_index,
     start_appointment_scheduler,
@@ -40,6 +41,8 @@ from app.repositories.family_delegation_repository import FamilyDelegationReposi
 from app.repositories.family_rbac_metrics_repository import FamilyRbacMetricsRepository
 from app.repositories.family_role_audit_repository import FamilyRoleAuditRepository
 from app.repositories.safety_alert_repository import SafetyAlertRepository
+from app.repositories.lost_session_repository import LostSessionRepository
+from app.services.lost.lost_location_scheduler import start_lost_location_scheduler
 from app.services.medical_news.index_scheduler import (
     start_drug_news_index_scheduler,
 )
@@ -59,6 +62,7 @@ from app.routers.users.knowledge_reports import router as knowledge_reports_rout
 from app.routers.users.medical import router as medical_router
 from app.routers.users.medications import router as medications_router
 from app.routers.users.appointments import router as appointments_router
+from app.routers.users.lost import router as lost_router
 from app.routers.admin.knowledge_reports import router as admin_knowledge_reports_router
 from app.routers.tts.tts import router as tts_router
 from app.routers.drug_appearance.images import router as drug_appearance_router
@@ -127,6 +131,9 @@ async def lifespan(app: FastAPI):
     # 的 TTL 讓視窗自動過期，不需要應用端排程清除。索引與功能開關無關，
     # 先備好才能在開關打開的當下就是正確行為。
     await SafetyAlertRepository.ensure_indexes()
+    # 走失求救：「同一位長輩只有一次進行中」的部分唯一索引、scheduler 的兩個掃描、
+    # 以及 24 小時後刪除位置紀錄的 TTL。建不起來時服務照跑，只是少了這層保護。
+    await ensure_indexes_or_log("lost_sessions", LostSessionRepository.ensure_indexes)
     # 四個 collection 的索引一起建。(user_id, delivered_on)、(user_id, news_ref) 與
     # (recipient_id, news_ref) 三個唯一索引同時承擔去重與推播權搶佔——
     # 少了它們，多實例並存時同一則消息會重複推播、家人分享會重複送達。
@@ -171,6 +178,7 @@ async def lifespan(app: FastAPI):
     appointment_scheduler = None
     news_index_scheduler = None
     news_push_scheduler = None
+    lost_location_scheduler = None
 
     if run_schedulers:
         # 啟動每日諮詢摘要排程
@@ -211,6 +219,10 @@ async def lifespan(app: FastAPI):
             run_time=settings.MEDICAL_NEWS_PUSH_TIME,
             max_age_days=settings.MEDICAL_NEWS_MAX_AGE_DAYS,
         )
+        # 走失求救：位置停止更新的通知與 2 小時自動結束。
+        lost_location_scheduler = start_lost_location_scheduler(
+            service=get_lost_location_service()
+        )
     else:
         logger.info(
             "APP_ROLE=%s：本行程不啟動背景排程器（僅服務請求）", settings.APP_ROLE
@@ -234,6 +246,8 @@ async def lifespan(app: FastAPI):
             await news_index_scheduler.stop()
         if news_push_scheduler is not None:
             await news_push_scheduler.stop()
+        if lost_location_scheduler is not None:
+            await lost_location_scheduler.stop()
 
 
 
@@ -271,6 +285,7 @@ app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(family_tree_router, prefix="/api/family", tags=["Family Tree"])
 app.include_router(medications_router, prefix="/api/medications", tags=["Medications"])
 app.include_router(appointments_router, prefix="/api/appointments", tags=["Appointments"])
+app.include_router(lost_router, prefix="/api/lost", tags=["Lost Location"])
 # 前綴必須是 /api/medical：CARE-LIFF 的 medicalApi.ts 已經在打 /api/medical/nearby，
 # 「附近醫院」整頁（路由、側邊欄、i18n）都已上線，缺的一直只有這一行掛載。
 app.include_router(medical_router, prefix="/api/medical", tags=["Medical"])

@@ -49,6 +49,7 @@ class LineMediaHandler(BaseLineMessageHandler):
         user_document_ingest_service=None,
         safety_alert_service=None,
         emergency_family_alert_service=None,
+        lost_location_service=None,
     ):
         # 語音、圖片、檔案抽出的文字同樣會過急迫度判斷；沒有把通報服務傳下去的話，
         # 當事人收得到紅卡，家人卻收不到通報——而長輩最常用的正是語音。
@@ -60,6 +61,7 @@ class LineMediaHandler(BaseLineMessageHandler):
             loading_animation_service,
             safety_alert_service,
             emergency_family_alert_service,
+            lost_location_service=lost_location_service,
         )
         self._user_document_ingest_service = user_document_ingest_service
 

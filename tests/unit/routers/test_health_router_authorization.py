@@ -14,7 +14,7 @@ Task 4、5、6 會在這支端點與這支測試檔繼續往下擴充其他章�
 新增區塊請沿用下面「── 區塊名稱 ──」的分隔慣例，接在檔尾。
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional
 
 import pytest
@@ -28,6 +28,7 @@ from app.dependencies import (
     get_health_alert_threshold_service,
     get_health_measurement_service,
     get_menstrual_record_service,
+    get_step_service,
 )
 from app.main import app
 from app.models.family_tree import FamilyMember, FamilyTree
@@ -36,6 +37,7 @@ from app.models.health import (
     HealthAlertThreshold,
     HealthMeasurement,
     MenstrualRecord,
+    StepCount,
 )
 from app.services.family.family_authorization_service import (
     FamilyAuthorizationService,
@@ -1042,3 +1044,257 @@ def test_delete_menstrual_returns_404_before_identity_check_when_missing(client)
     res = client.delete("/api/health/menstrual/does-not-exist")
     assert res.status_code == 404
     assert service.delete_calls == []
+
+
+# ── PUT／GET /api/health/steps ───────────────────────────────────────────
+#
+# step-counter spec「只有本人可以寫入」「家人查看步數」。寫入的授權原則與
+# 經期相同：以他人識別碼寫入一律 403，不經 FamilyAuthorizationService——
+# 步數只能來自本人手機的感測器，不存在「代為走路」，沒有任何角色能通過
+# （見 app/routers/users/health.py 該區塊的說明）。讀取則與量測、提醒範圍
+# 相同：他人查看需 SENSITIVE READ（GUARDIAN、CAREGIVER 可看，MEMBER 與
+# 非家人 403），`has_legacy_equivalent=False`，never mask()。
+
+
+class _FakeStepService:
+    """假的服務層，記錄呼叫；用來確認 403 擋在資料存取之前。"""
+
+    def __init__(
+        self,
+        daily_total: Optional[StepCount] = None,
+        totals: Optional[list] = None,
+    ):
+        self.daily_total = daily_total
+        self.totals = totals if totals is not None else []
+        self.sync_calls: list[tuple] = []
+        self.list_calls: list[tuple] = []
+
+    async def sync(self, user_id: str, session_id: str, request):
+        self.sync_calls.append((user_id, session_id))
+        return self.daily_total or StepCount(
+            user_id=user_id, date="2026-08-24", steps=request.steps
+        )
+
+    async def list_daily_totals(self, user_id: str, start=None, end=None):
+        self.list_calls.append((user_id, start, end))
+        return self.totals
+
+
+def wire_steps(daily_total: Optional[StepCount] = None, totals: Optional[list] = None):
+    service = _FakeStepService(daily_total=daily_total, totals=totals)
+    app.dependency_overrides[get_step_service] = lambda: service
+    return service
+
+
+VALID_SESSION_ID = "8f14e45f-ceea-4c9c-8f77-4f3c3e2b2b1a"
+PUT_STEP_PAYLOAD = {"steps": 300, "started_at": "2026-08-24T11:55:00+00:00"}
+
+
+# -- PUT /api/health/steps/sessions/{session_id} ------------------------
+
+
+def test_put_step_session_self_allowed_without_any_family_relation(client):
+    wire(None, caller=ELDER)
+    service = wire_steps()
+    res = client.put(
+        f"/api/health/steps/sessions/{VALID_SESSION_ID}?user_id={ELDER}",
+        json=PUT_STEP_PAYLOAD,
+    )
+    assert res.status_code == 200
+    assert service.sync_calls == [(ELDER, VALID_SESSION_ID)]
+
+
+def test_put_step_session_self_via_omitted_user_id(client):
+    wire(None, caller=ELDER)
+    service = wire_steps()
+    res = client.put(
+        f"/api/health/steps/sessions/{VALID_SESSION_ID}", json=PUT_STEP_PAYLOAD
+    )
+    assert res.status_code == 200
+    assert service.sync_calls == [(ELDER, VALID_SESSION_ID)]
+
+
+@pytest.mark.parametrize("role", ["GUARDIAN", "CAREGIVER", "MEMBER"])
+def test_put_step_session_denied_for_any_family_role(client, role):
+    """spec「主要照顧者代為回報」：任何角色（包含對其他資源有完整讀寫權的
+    GUARDIAN）代為回報步數一律 403，SHALL NOT 寫入。"""
+    wire(role)
+    service = wire_steps()
+    res = client.put(
+        f"/api/health/steps/sessions/{VALID_SESSION_ID}?user_id={ELDER}",
+        json=PUT_STEP_PAYLOAD,
+    )
+    assert res.status_code == 403
+    assert service.sync_calls == []
+
+
+def test_put_step_session_denied_for_stranger(client):
+    wire(None)
+    service = wire_steps()
+    res = client.put(
+        f"/api/health/steps/sessions/{VALID_SESSION_ID}?user_id={ELDER}",
+        json=PUT_STEP_PAYLOAD,
+    )
+    assert res.status_code == 403
+    assert service.sync_calls == []
+
+
+@pytest.mark.parametrize("role", ["GUARDIAN", "CAREGIVER", "MEMBER"])
+def test_put_step_session_denied_for_any_family_role_even_in_shadow_mode(client, role):
+    """代為回報不受影子模式放寬——這條規則不是家庭矩陣的一格，沒有「影子
+    模式維持既有行為」可言（同經期端點的理由）。"""
+    wire(role, state="shadow")
+    service = wire_steps()
+    res = client.put(
+        f"/api/health/steps/sessions/{VALID_SESSION_ID}?user_id={ELDER}",
+        json=PUT_STEP_PAYLOAD,
+    )
+    assert res.status_code == 403
+    assert service.sync_calls == []
+
+
+def test_put_step_session_self_allowed_even_in_shadow_mode(client):
+    wire(None, caller=ELDER, state="shadow")
+    service = wire_steps()
+    res = client.put(
+        f"/api/health/steps/sessions/{VALID_SESSION_ID}?user_id={ELDER}",
+        json=PUT_STEP_PAYLOAD,
+    )
+    assert res.status_code == 200
+    assert service.sync_calls == [(ELDER, VALID_SESSION_ID)]
+
+
+def test_put_step_session_rejects_non_uuid_v4_session_id_with_422(client):
+    """session_id 路徑參數須為 UUID v4（step-counter spec「合理性檢查」；
+    constraints.md「Steps」）：非 UUID 一律 422，SHALL NOT 呼叫服務層。"""
+    wire(None, caller=ELDER)
+    service = wire_steps()
+    res = client.put(
+        "/api/health/steps/sessions/not-a-uuid", json=PUT_STEP_PAYLOAD
+    )
+    assert res.status_code == 422
+    assert service.sync_calls == []
+
+
+def test_put_step_session_rejects_uuid_v1_session_id_with_422(client):
+    # UUID v1（時間戳版本），版本欄位不是 4，SHALL 被拒絕。
+    wire(None, caller=ELDER)
+    service = wire_steps()
+    res = client.put(
+        "/api/health/steps/sessions/2ed6657d-e927-11e6-94ba-8b2ba76b2efe",
+        json=PUT_STEP_PAYLOAD,
+    )
+    assert res.status_code == 422
+    assert service.sync_calls == []
+
+
+def test_put_step_session_rejects_negative_steps_with_422_before_reaching_the_service(
+    client,
+):
+    wire(None, caller=ELDER)
+    service = wire_steps()
+    res = client.put(
+        f"/api/health/steps/sessions/{VALID_SESSION_ID}",
+        json={"steps": -1, "started_at": "2026-08-24T11:55:00+00:00"},
+    )
+    assert res.status_code == 422
+    assert service.sync_calls == []
+
+
+def test_put_step_session_returns_the_daily_total_from_the_service(client):
+    wire(None, caller=ELDER)
+    service = wire_steps(daily_total=StepCount(user_id=ELDER, date="2026-08-24", steps=800))
+    res = client.put(
+        f"/api/health/steps/sessions/{VALID_SESSION_ID}", json=PUT_STEP_PAYLOAD
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body == {"user_id": ELDER, "date": "2026-08-24", "steps": 800}
+
+
+# -- GET /api/health/steps ------------------------------------------------
+
+
+def test_get_steps_self_allowed_without_any_family_relation(client):
+    wire(None, caller=ELDER)
+    service = wire_steps(totals=[StepCount(user_id=ELDER, date="2026-08-24", steps=800)])
+    res = client.get(f"/api/health/steps?user_id={ELDER}")
+    assert res.status_code == 200
+    assert service.list_calls == [(ELDER, None, None)]
+    assert res.json()[0]["steps"] == 800
+
+
+def test_get_steps_self_via_omitted_user_id(client):
+    wire(None, caller=ELDER)
+    service = wire_steps()
+    res = client.get("/api/health/steps")
+    assert res.status_code == 200
+    assert service.list_calls == [(ELDER, None, None)]
+
+
+@pytest.mark.parametrize("role", ["GUARDIAN", "CAREGIVER"])
+def test_get_steps_allowed_for_sensitive_readers(client, role):
+    """spec「協助照顧者查看今日步數」：GUARDIAN、CAREGIVER 皆可。"""
+    wire(role)
+    service = wire_steps(totals=[StepCount(user_id=ELDER, date="2026-08-24", steps=800)])
+    res = client.get(f"/api/health/steps?user_id={ELDER}")
+    assert res.status_code == 200
+    assert service.list_calls == [(ELDER, None, None)]
+
+
+def test_get_steps_denied_for_member(client):
+    """spec「一般家人查看被拒」。"""
+    wire("MEMBER")
+    service = wire_steps()
+    res = client.get(f"/api/health/steps?user_id={ELDER}")
+    assert res.status_code == 403
+    assert service.list_calls == []
+
+
+def test_get_steps_denied_for_stranger(client):
+    wire(None)
+    service = wire_steps()
+    res = client.get(f"/api/health/steps?user_id={ELDER}")
+    assert res.status_code == 403
+    assert service.list_calls == []
+
+
+def test_get_steps_denied_for_member_even_in_shadow_mode(client):
+    wire("MEMBER", state="shadow")
+    service = wire_steps()
+    res = client.get(f"/api/health/steps?user_id={ELDER}")
+    assert res.status_code == 403
+    assert service.list_calls == []
+
+
+def test_get_steps_denied_for_stranger_even_in_shadow_mode(client):
+    wire(None, state="shadow")
+    service = wire_steps()
+    res = client.get(f"/api/health/steps?user_id={ELDER}")
+    assert res.status_code == 403
+    assert service.list_calls == []
+
+
+def test_get_steps_self_allowed_even_in_shadow_mode(client):
+    wire(None, caller=ELDER, state="shadow")
+    service = wire_steps()
+    res = client.get(f"/api/health/steps?user_id={ELDER}")
+    assert res.status_code == 200
+    assert service.list_calls == [(ELDER, None, None)]
+
+
+@pytest.mark.parametrize("role", ["GUARDIAN", "CAREGIVER"])
+def test_get_steps_allowed_for_sensitive_readers_even_in_shadow_mode(client, role):
+    wire(role, state="shadow")
+    service = wire_steps()
+    res = client.get(f"/api/health/steps?user_id={ELDER}")
+    assert res.status_code == 200
+    assert service.list_calls == [(ELDER, None, None)]
+
+
+def test_get_steps_passes_through_explicit_start_and_end(client):
+    wire(None, caller=ELDER)
+    service = wire_steps()
+    res = client.get("/api/health/steps?start=2026-08-01&end=2026-08-24")
+    assert res.status_code == 200
+    assert service.list_calls == [(ELDER, date(2026, 8, 1), date(2026, 8, 24))]

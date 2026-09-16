@@ -30,6 +30,7 @@ from app.repositories.health_alert_threshold_repository import (
 )
 from app.repositories.health_measurement_repository import HealthMeasurementRepository
 from app.repositories.menstrual_record_repository import MenstrualRecordRepository
+from app.repositories.step_session_repository import StepSessionRepository
 from app.repositories.knowledge_report_preview_repository import (
     KnowledgeReportPreviewRepository,
 )
@@ -62,6 +63,7 @@ from app.services.health.health_alert_threshold_service import (
 )
 from app.services.health.health_measurement_service import HealthMeasurementService
 from app.services.health.menstrual_service import MenstrualRecordService
+from app.services.health.step_service import StepService
 from app.services.medication.drug_appearance_image_service import (
     resolve_drug_appearance_image_url,
 )
@@ -791,7 +793,7 @@ _family_delegation_service = FamilyDelegationService(
 _medication_service = MedicationService(indication_service=_drug_indication_service)
 
 # 個人健康紀錄（personal-health-tracking）。Task 3 組裝提醒範圍；Task 4 接著
-# 加血壓血糖量測；Task 5 在這裡接著加經期，Task 6 會繼續加計步。
+# 加血壓血糖量測；Task 5 在這裡接著加經期；Task 6 加計步。
 _health_alert_threshold_service = HealthAlertThresholdService(
     repository=HealthAlertThresholdRepository
 )
@@ -806,6 +808,9 @@ _menstrual_record_service = MenstrualRecordService(
     repository=MenstrualRecordRepository,
     user_profile_service=_user_profile_service,
 )
+# 計步：repository 直接傳類別本身（同其餘 health 服務的慣例），clock 使用
+# StepService 自己的預設值（真正的 UTC now），不需要在這裡另外指定。
+_step_service = StepService(repository=StepSessionRepository)
 
 # 掛號提醒。出發／到診的授權在服務層（LIFF 與 LINE postback 兩個入口共用），
 # 所以授權服務注入給服務本身；CRUD 的授權仍在 router，與用藥相同。
@@ -1063,6 +1068,10 @@ def get_health_measurement_service() -> HealthMeasurementService:
 
 def get_menstrual_record_service() -> MenstrualRecordService:
     return _menstrual_record_service
+
+
+def get_step_service() -> StepService:
+    return _step_service
 
 
 def get_appointment_service() -> AppointmentService:

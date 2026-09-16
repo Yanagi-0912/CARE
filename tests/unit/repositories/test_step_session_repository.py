@@ -97,18 +97,46 @@ class _FakeStepSessionCollection:
         return self.docs.get(key)
 
     def aggregate(self, pipeline):
-        match = pipeline[0]["$match"]
-        matched = [
-            doc
-            for doc in self.docs.values()
-            if all(doc.get(k) == v for k, v in match.items())
-        ]
-        total = sum(doc.get("steps", 0) for doc in matched)
-        cursor = MagicMock()
-        if matched:
-            cursor.to_list = AsyncMock(return_value=[{"_id": None, "total": total}])
+        """極簡管線解讀，支援兩種形狀：``get_daily_total`` 的單日加總
+        （``$match`` 精確比對、``$group`` 依 ``None`` 分組）與
+        ``list_daily_totals`` 的區間查詢（``$match`` 支援 ``$gte``／``$lte``
+        範圍、``$group`` 依 ``$date`` 分組、``$sort`` 排序）。"""
+
+        def _matches(doc: dict) -> bool:
+            for key, condition in pipeline[0]["$match"].items():
+                value = doc.get(key)
+                if isinstance(condition, dict):
+                    if "$gte" in condition and value < condition["$gte"]:
+                        return False
+                    if "$lte" in condition and value > condition["$lte"]:
+                        return False
+                elif value != condition:
+                    return False
+            return True
+
+        matched = [doc for doc in self.docs.values() if _matches(doc)]
+
+        group_key = pipeline[1]["$group"]["_id"]
+        if group_key is None:
+            results = (
+                [{"_id": None, "total": sum(doc.get("steps", 0) for doc in matched)}]
+                if matched
+                else []
+            )
         else:
-            cursor.to_list = AsyncMock(return_value=[])
+            field = str(group_key).lstrip("$")
+            totals: dict = {}
+            for doc in matched:
+                key = doc.get(field)
+                totals[key] = totals.get(key, 0) + doc.get("steps", 0)
+            results = [{"_id": key, "total": total} for key, total in totals.items()]
+
+        if len(pipeline) > 2 and "$sort" in pipeline[2]:
+            for field, direction in reversed(list(pipeline[2]["$sort"].items())):
+                results.sort(key=lambda r: r[field], reverse=direction < 0)
+
+        cursor = MagicMock()
+        cursor.to_list = AsyncMock(return_value=results)
         return cursor
 
 
@@ -200,3 +228,110 @@ async def test_daily_total_is_zero_when_no_sessions():
     )
 
     assert total.steps == 0
+
+
+# ── get_session：讀取既有工作階段（供服務層合理性檢查用，不寫入）───────
+
+
+@pytest.mark.asyncio
+async def test_get_session_returns_none_when_session_does_not_exist():
+    collection = _FakeStepSessionCollection()
+
+    session = await StepSessionRepository.get_session(
+        "U1", "S1", collection=collection
+    )
+
+    assert session is None
+
+
+@pytest.mark.asyncio
+async def test_get_session_returns_the_stored_session():
+    collection = _FakeStepSessionCollection()
+    started_at = datetime(2026, 9, 1, 8, 0, tzinfo=timezone.utc)
+    await StepSessionRepository.sync_progress(
+        "U1", "S1", "2026-09-01", 300, started_at, collection=collection
+    )
+
+    session = await StepSessionRepository.get_session(
+        "U1", "S1", collection=collection
+    )
+
+    assert session is not None
+    assert session.steps == 300
+    assert session.started_at == started_at
+    assert session.date == "2026-09-01"
+
+
+# ── list_daily_totals：GET /api/health/steps 的區間查詢 ─────────────────
+
+
+@pytest.mark.asyncio
+async def test_list_daily_totals_omits_dates_without_sessions_and_sorts_newest_first():
+    collection = _FakeStepSessionCollection()
+    started_at = datetime(2026, 9, 1, 8, 0, tzinfo=timezone.utc)
+    await StepSessionRepository.sync_progress(
+        "U1", "S1", "2026-09-01", 300, started_at, collection=collection
+    )
+    await StepSessionRepository.sync_progress(
+        "U1", "S2", "2026-09-03", 500, started_at, collection=collection
+    )
+
+    totals = await StepSessionRepository.list_daily_totals(
+        "U1", "2026-09-01", "2026-09-07", collection=collection
+    )
+
+    assert [(t.date, t.steps) for t in totals] == [
+        ("2026-09-03", 500),
+        ("2026-09-01", 300),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_list_daily_totals_sums_multiple_sessions_on_the_same_date():
+    collection = _FakeStepSessionCollection()
+    started_at = datetime(2026, 9, 1, 8, 0, tzinfo=timezone.utc)
+    await StepSessionRepository.sync_progress(
+        "U1", "S1", "2026-09-01", 300, started_at, collection=collection
+    )
+    await StepSessionRepository.sync_progress(
+        "U1", "S2", "2026-09-01", 500, started_at, collection=collection
+    )
+
+    totals = await StepSessionRepository.list_daily_totals(
+        "U1", "2026-09-01", "2026-09-01", collection=collection
+    )
+
+    assert [(t.date, t.steps) for t in totals] == [("2026-09-01", 800)]
+
+
+@pytest.mark.asyncio
+async def test_list_daily_totals_excludes_dates_outside_the_range():
+    collection = _FakeStepSessionCollection()
+    started_at = datetime(2026, 9, 1, 8, 0, tzinfo=timezone.utc)
+    await StepSessionRepository.sync_progress(
+        "U1", "S1", "2026-08-31", 999, started_at, collection=collection
+    )
+    await StepSessionRepository.sync_progress(
+        "U1", "S2", "2026-09-08", 999, started_at, collection=collection
+    )
+
+    totals = await StepSessionRepository.list_daily_totals(
+        "U1", "2026-09-01", "2026-09-07", collection=collection
+    )
+
+    assert totals == []
+
+
+@pytest.mark.asyncio
+async def test_list_daily_totals_excludes_other_users():
+    collection = _FakeStepSessionCollection()
+    started_at = datetime(2026, 9, 1, 8, 0, tzinfo=timezone.utc)
+    await StepSessionRepository.sync_progress(
+        "U2", "S1", "2026-09-01", 999, started_at, collection=collection
+    )
+
+    totals = await StepSessionRepository.list_daily_totals(
+        "U1", "2026-09-01", "2026-09-07", collection=collection
+    )
+
+    assert totals == []

@@ -67,6 +67,54 @@ class StepSessionRepository:
         return StepSession(**doc)
 
     @staticmethod
+    async def get_session(
+        user_id: str, session_id: str, collection: Optional[Any] = None
+    ) -> Optional[StepSession]:
+        """讀取既有的工作階段，不做任何寫入——服務層的合理性檢查
+        （step-counter spec「合理性檢查」）需要在決定是否寫入**之前**知道
+        這個工作階段既有的 ``started_at``，因此獨立於 ``sync_progress`` 的
+        upsert 之外，只查詢。查無工作階段（第一次同步）時回傳 ``None``。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_step_sessions_collection()
+        doc = await collection.find_one({"user_id": user_id, "session_id": session_id})
+        if doc is None:
+            return None
+        return StepSession(**doc)
+
+    @staticmethod
+    async def list_daily_totals(
+        user_id: str,
+        start_date: str,
+        end_date: str,
+        collection: Optional[Any] = None,
+    ) -> list[StepCount]:
+        """``GET /api/health/steps`` 的區間查詢：台北日曆日 ``[start_date,
+        end_date]``（皆含）區間內，依日期彙總的步數，只回傳有工作階段的
+        日期（沒有工作階段的日期前端視為無資料，不是 0——見服務層），新到
+        舊排序。日期字串固定 ``YYYY-MM-DD``，字典序排序與時間序排序一致。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_step_sessions_collection()
+        cursor = collection.aggregate(
+            [
+                {
+                    "$match": {
+                        "user_id": user_id,
+                        "date": {"$gte": start_date, "$lte": end_date},
+                    }
+                },
+                {"$group": {"_id": "$date", "total": {"$sum": "$steps"}}},
+                {"$sort": {"_id": -1}},
+            ]
+        )
+        docs = await cursor.to_list(length=None)
+        return [
+            StepCount(user_id=user_id, date=doc["_id"], steps=doc["total"])
+            for doc in docs
+        ]
+
+    @staticmethod
     async def get_daily_total(
         user_id: str, date_str: str, collection: Optional[Any] = None
     ) -> StepCount:

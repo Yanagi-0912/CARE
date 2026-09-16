@@ -19,7 +19,6 @@
 """
 
 import re
-import uuid as uuid_module
 from datetime import date, datetime, timedelta, timezone
 from typing import Literal, Optional
 from zoneinfo import ZoneInfo
@@ -55,8 +54,11 @@ def _today_taipei_str() -> str:
     return datetime.now(TAIPEI_TZ).strftime("%Y-%m-%d")
 
 
-def _reject_far_future(value: Optional[datetime]) -> Optional[datetime]:
-    """量測時間可以是過去（補記），但 SHALL NOT 晚於送出當下 5 分鐘以上。
+def _reject_more_than_5_minutes_future(
+    value: Optional[datetime], field_label: str
+) -> Optional[datetime]:
+    """量測時間／工作階段開始時間可以是過去（補記／稍早開始），但 SHALL NOT
+    晚於送出當下 5 分鐘以上（容許手機時鐘誤差）。
 
     未帶時區的 datetime 視為 UTC——同 ``app/models/medication.py`` 的
     ``ensure_aware_utc`` 慣例：Motor client 未啟用 tz_aware，時間經資料庫
@@ -69,19 +71,13 @@ def _reject_far_future(value: Optional[datetime]) -> Optional[datetime]:
     now = datetime.now(timezone.utc)
     if value > now + timedelta(minutes=MEASURED_AT_MAX_FUTURE_MINUTES):
         raise ValueError(
-            f"量測時間不得晚於送出時間 {MEASURED_AT_MAX_FUTURE_MINUTES} 分鐘以上"
+            f"{field_label}不得晚於送出時間 {MEASURED_AT_MAX_FUTURE_MINUTES} 分鐘以上"
         )
     return value
 
 
-def _validate_uuid_v4(value: str) -> str:
-    try:
-        parsed = uuid_module.UUID(str(value))
-    except (ValueError, AttributeError, TypeError) as exc:
-        raise ValueError("session_id 必須是 UUID v4 格式") from exc
-    if parsed.version != 4:
-        raise ValueError("session_id 必須是 UUID v4 格式")
-    return str(value)
+def _reject_far_future(value: Optional[datetime]) -> Optional[datetime]:
+    return _reject_more_than_5_minutes_future(value, "量測時間")
 
 
 # ── 血壓／血糖量測 ──────────────────────────────────────────────────────
@@ -357,24 +353,37 @@ class MenstrualRecord(BaseModel):
 
 
 class StepSessionSyncRequest(BaseModel):
-    """單次同步帶的累計步數（step-counter spec「同步的冪等性」）。前端回報
-    的是工作階段**目前的累計值**，SHALL NOT 是增量；後端保留每個工作階段
-    收過的最大值（見 ``StepSessionRepository.sync_progress``）。
+    """``PUT /api/health/steps/sessions/{session_id}`` 的 body（step-counter
+    spec「同步的冪等性」「日期歸屬」「合理性檢查」）。前端回報的是工作階段
+    **目前的累計值**，SHALL NOT 是增量；後端保留每個工作階段收過的最大值
+    （見 ``StepSessionRepository.sync_progress``）。
 
-    ``session_id`` SHALL 是前端產生的 UUID v4（design.md「資料格式」）。
+    ``session_id`` 是路徑參數（``pydantic.UUID4``，見 router），不在這個
+    body 裡；``model_config = ConfigDict(extra="forbid")`` 讓誤帶它的請求
+    直接 422，不被悄悄忽略。
+
+    ``started_at`` 是客戶端記錄的工作階段開始時間，只在後端**第一次**收到
+    這個工作階段時採用，用來換算日期歸屬（台北日曆日）與合理性檢查的起點；
+    之後的同步即使帶了不同的 ``started_at`` 也 SHALL 被忽略，一律沿用第一次
+    的值——同 ``measured_at`` 的道理，SHALL NOT 晚於送出當下 5 分鐘以上。
 
     「自工作階段開始起算、平均每秒超過 5 步」的合理性檢查需要工作階段既有
-    的 ``started_at``（存在資料庫裡，不是這次請求帶的值）：讀到既有工作階段
-    之後才能算，留給服務層（Task 4/5），這裡不做。
+    的 ``started_at``（存在資料庫裡，不一定是這次請求帶的值）：讀到既有工作
+    階段之後才能算，留給服務層（``app/services/health/step_service.py``），
+    這裡只驗證這次請求帶的 ``started_at`` 本身的形狀。
     """
 
-    session_id: str
-    steps: int = Field(ge=0)
+    model_config = ConfigDict(extra="forbid")
 
-    @field_validator("session_id")
+    steps: int = Field(ge=0)
+    started_at: datetime
+
+    @field_validator("started_at")
     @classmethod
-    def _validate_session_id(cls, value: str) -> str:
-        return _validate_uuid_v4(value)
+    def _validate_started_at(cls, value: datetime) -> datetime:
+        validated = _reject_more_than_5_minutes_future(value, "started_at")
+        assert validated is not None  # started_at 是必填欄位，不會是 None
+        return validated
 
 
 class StepSession(BaseModel):

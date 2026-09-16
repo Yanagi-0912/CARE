@@ -1,9 +1,10 @@
 """個人健康紀錄的對外端點（``/api/health``）。
 
 Task 3 實作了提醒範圍（``GET``／``PUT /alert-thresholds``）；Task 4 在這裡
-接著加血壓／血糖量測（``POST``／``GET``／``DELETE /measurements``）。
-Task 5（經期、計步）、Task 6（其餘章節）會繼續往下加各自的區塊，請沿用下面
-「── 區塊名稱 ──」的分隔慣例，新增的路徑一律接在檔尾。
+接著加血壓／血糖量測（``POST``／``GET``／``DELETE /measurements``）；Task 5
+加經期（``POST``／``GET``／``PATCH``／``DELETE /menstrual``）；Task 6 加計步
+（``PUT /steps/sessions/{session_id}``／``GET /steps``）。日後新增的路徑
+請沿用下面「── 區塊名稱 ──」的分隔慣例，接在檔尾。
 
 授權原則（constraints.md「Authorization」；health-alerts spec「誰能設定與
 查看提醒範圍」）：
@@ -19,10 +20,11 @@ Task 5（經期、計步）、Task 6（其餘章節）會繼續往下加各自�
   ``mask()``／``mask_response()``——那是給混合分類資源用的。
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import UUID4
 
 from app.dependencies import (
     CurrentUser,
@@ -31,6 +33,7 @@ from app.dependencies import (
     get_health_alert_threshold_service,
     get_health_measurement_service,
     get_menstrual_record_service,
+    get_step_service,
 )
 from app.models.health import (
     CreateBloodGlucoseRequest,
@@ -40,6 +43,8 @@ from app.models.health import (
     HealthMeasurement,
     MeasurementKind,
     MenstrualRecord,
+    StepCount,
+    StepSessionSyncRequest,
     UpdateHealthAlertThresholdRequest,
     UpdateMenstrualRecordRequest,
 )
@@ -51,6 +56,7 @@ from app.services.health.health_alert_threshold_service import (
 )
 from app.services.health.health_measurement_service import HealthMeasurementService
 from app.services.health.menstrual_service import MenstrualRecordService
+from app.services.health.step_service import StepService
 
 router = APIRouter()
 
@@ -425,3 +431,99 @@ async def delete_menstrual_record(
         raise HTTPException(status_code=403, detail=MENSTRUAL_CROSS_USER_DETAIL)
 
     await service.delete(record_id)
+
+
+# ── PUT／GET /api/health/steps ───────────────────────────────────────────
+#
+# step-counter spec「只有本人可以寫入」「家人查看步數」。寫入的授權原則與
+# 上面經期相同：以他人識別碼寫入一律 403，不經 FamilyAuthorizationService
+# ——步數只能來自本人手機的感測器，不存在「代為走路」，沒有任何角色（包含
+# 對其他資源有完整讀寫權的 GUARDIAN）能通過，也不受遷移狀態放寬（同經期
+# 端點的理由，見該區塊的說明）。讀取則與量測、提醒範圍相同：他人查看需
+# SENSITIVE READ（GUARDIAN、CAREGIVER 可看，MEMBER 與非家人 403），
+# `has_legacy_equivalent=False`。
+#
+# 全部欄位皆登記為 SENSITIVE（見 `app/models/family_authorization.py`），
+# `authorize` 一旦放行即可看到整筆紀錄，因此不呼叫 `mask()`／`mask_response()`
+# ——同量測、提醒範圍端點的理由。
+
+STEP_PROXY_WRITE_DETAIL = "步數只能由本人回報，不支援代為記錄。"
+
+
+@router.put(
+    "/steps/sessions/{session_id}",
+    response_model=StepCount,
+    summary="同步一個計步工作階段的累計步數",
+    description=(
+        "回報 session_id 這個工作階段目前的累計步數（不是增量），"
+        "session_id 須為前端產生的 UUID v4。只能回報自己的步數，帶入他人 "
+        "user_id 一律 403，不論操作者的角色。回應為該工作階段所屬日期"
+        "（依 started_at 換算的台北日曆日）的當日總步數。"
+    ),
+)
+async def sync_step_session(
+    session_id: UUID4,
+    body: StepSessionSyncRequest,
+    user_id: Optional[str] = Query(
+        default=None, description="僅接受省略或本人的 LINE userId，帶入他人 id 一律 403"
+    ),
+    current_user: CurrentUser = Depends(get_current_user),
+    service: StepService = Depends(get_step_service),
+) -> StepCount:
+    """同步一次工作階段的累計步數（step-counter spec「只有本人可以寫入」）。
+
+    步數來自本人手機的感測器，不存在「代為走路」，因此 `user_id` 唯一的
+    作用是讓帶了別人 id 的請求被判定為 403，不論操作者的角色——同經期端點
+    的理由，不呼叫 `FamilyAuthorizationService`。
+    """
+    operator_id = current_user.line_user_id
+    if user_id is not None and user_id != operator_id:
+        raise HTTPException(status_code=403, detail=STEP_PROXY_WRITE_DETAIL)
+
+    return await service.sync(
+        user_id=operator_id, session_id=str(session_id), request=body
+    )
+
+
+@router.get(
+    "/steps",
+    response_model=List[StepCount],
+    summary="查詢每日步數",
+    description=(
+        "查詢本人或指定使用者的每日步數，依 start／end（YYYY-MM-DD，台北"
+        "日曆日）篩選區間，兩者皆省略時預設最近 7 天（含今天）；區間長度"
+        "不得超過 90 天。只回傳有工作階段的日期，新到舊排序。"
+    ),
+)
+async def list_step_counts(
+    user_id: Optional[str] = Query(
+        default=None, description="要查詢的使用者 LINE userId，省略則為本人"
+    ),
+    start: Optional[date] = Query(
+        default=None, description="起始日期（含，YYYY-MM-DD，台北日曆日）"
+    ),
+    end: Optional[date] = Query(
+        default=None, description="結束日期（含，YYYY-MM-DD，台北日曆日）"
+    ),
+    current_user: CurrentUser = Depends(get_current_user),
+    service: StepService = Depends(get_step_service),
+    authz: FamilyAuthorizationService = Depends(get_family_authorization_service),
+) -> List[StepCount]:
+    """查詢每日步數（step-counter spec「家人查看步數」）。
+
+    他人查看需 SENSITIVE 讀取權（依現行矩陣：GUARDIAN、CAREGIVER 可看，
+    MEMBER 與非家人不行），`has_legacy_equivalent=False`。
+    """
+    operator_id = current_user.line_user_id
+    target_user_id = user_id or operator_id
+
+    if operator_id != target_user_id:
+        await authz.authorize(
+            operator_id,
+            target_user_id,
+            "SENSITIVE",
+            "READ",
+            has_legacy_equivalent=False,
+        )
+
+    return await service.list_daily_totals(target_user_id, start=start, end=end)

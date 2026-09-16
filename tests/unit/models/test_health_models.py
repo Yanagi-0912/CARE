@@ -361,40 +361,55 @@ def test_menstrual_record_response_model_does_not_revalidate_note_length():
 
 
 # ── 計步 ────────────────────────────────────────────────────────────────
+#
+# session_id 的 UUID v4 格式驗證是路徑參數（``pydantic.UUID4``），不在這個
+# body 模型裡，因此不在這裡測——見
+# tests/unit/routers/test_health_router_authorization.py 的計步區塊。
 
 
-def test_step_session_sync_accepts_uuid_v4():
+def test_step_session_sync_accepts_valid_input():
     request = StepSessionSyncRequest(
-        session_id="8f14e45f-ceea-4c9c-8f77-4f3c3e2b2b1a", steps=300
+        steps=300, started_at=datetime(2026, 9, 1, 8, 0, tzinfo=timezone.utc)
     )
     assert request.steps == 300
-
-
-def test_step_session_sync_rejects_non_uuid_session_id():
-    with pytest.raises(ValidationError):
-        StepSessionSyncRequest(session_id="not-a-uuid", steps=100)
-
-
-def test_step_session_sync_rejects_uuid_v1():
-    # UUID v1（時間戳版本），版本欄位不是 4，SHALL 被拒絕。
-    with pytest.raises(ValidationError):
-        StepSessionSyncRequest(
-            session_id="2ed6657d-e927-11e6-94ba-8b2ba76b2efe", steps=100
-        )
 
 
 def test_step_session_sync_rejects_negative_steps():
     with pytest.raises(ValidationError):
         StepSessionSyncRequest(
-            session_id="8f14e45f-ceea-4c9c-8f77-4f3c3e2b2b1a", steps=-1
+            steps=-1, started_at=datetime(2026, 9, 1, 8, 0, tzinfo=timezone.utc)
         )
 
 
 def test_step_session_sync_accepts_zero_steps():
     request = StepSessionSyncRequest(
-        session_id="8f14e45f-ceea-4c9c-8f77-4f3c3e2b2b1a", steps=0
+        steps=0, started_at=datetime(2026, 9, 1, 8, 0, tzinfo=timezone.utc)
     )
     assert request.steps == 0
+
+
+def test_step_session_sync_rejects_started_at_more_than_five_minutes_future():
+    future = datetime.now(timezone.utc) + timedelta(minutes=6)
+    with pytest.raises(ValidationError):
+        StepSessionSyncRequest(steps=100, started_at=future)
+
+
+def test_step_session_sync_accepts_started_at_within_five_minutes_future():
+    near_future = datetime.now(timezone.utc) + timedelta(minutes=4)
+    request = StepSessionSyncRequest(steps=100, started_at=near_future)
+    assert request.started_at == near_future
+
+
+def test_step_session_sync_rejects_unknown_field():
+    """``session_id`` 是路徑參數，不在 body 裡；body 誤帶會被 extra="forbid"
+    擋下，避免誤以為這裡也接受 session_id（同血壓／血糖 body 禁止多餘欄位
+    的理由，見 CreateBloodPressureRequest docstring）。"""
+    with pytest.raises(ValidationError):
+        StepSessionSyncRequest(
+            session_id="8f14e45f-ceea-4c9c-8f77-4f3c3e2b2b1a",
+            steps=100,
+            started_at=datetime(2026, 9, 1, 8, 0, tzinfo=timezone.utc),
+        )
 
 
 # ── 儲存與節流模型的基本建構 ────────────────────────────────────────────

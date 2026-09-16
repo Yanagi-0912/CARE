@@ -22,6 +22,7 @@ from app.models.health import (
     StepSession,
     StepSessionSyncRequest,
     UpdateHealthAlertThresholdRequest,
+    UpdateMenstrualRecordRequest,
 )
 
 
@@ -285,6 +286,63 @@ def test_menstrual_record_accepts_note_at_200_chars():
 def test_menstrual_record_rejects_invalid_flow():
     with pytest.raises(ValidationError):
         CreateMenstrualRecordRequest(start_date="2026-09-01", flow="super_heavy")
+
+
+# ── 經期：部分更新（PATCH） ───────────────────────────────────────────────
+
+
+def test_menstrual_update_accepts_an_empty_body():
+    """PATCH 全部欄位皆選填：一個都不帶也 SHALL 通過（exclude_unset 由服務
+    層決定要不要真的送出更新）。"""
+    request = UpdateMenstrualRecordRequest()
+    assert request.model_dump(exclude_unset=True) == {}
+
+
+def test_menstrual_update_distinguishes_omitted_from_explicit_null_end_date():
+    """明確帶 end_date: null 代表重新打開這筆紀錄——與「完全沒帶這個欄位」
+    在 exclude_unset 下必須是兩種不同的結果。"""
+    omitted = UpdateMenstrualRecordRequest(note="x")
+    assert "end_date" not in omitted.model_dump(exclude_unset=True)
+
+    reopened = UpdateMenstrualRecordRequest(end_date=None)
+    dumped = reopened.model_dump(exclude_unset=True)
+    assert "end_date" in dumped
+    assert dumped["end_date"] is None
+
+
+def test_menstrual_update_rejects_malformed_start_date_format():
+    with pytest.raises(ValidationError):
+        UpdateMenstrualRecordRequest(start_date="2026/09/01")
+
+
+def test_menstrual_update_rejects_malformed_end_date_format():
+    with pytest.raises(ValidationError):
+        UpdateMenstrualRecordRequest(end_date="09-01-2026")
+
+
+def test_menstrual_update_rejects_note_over_200_chars():
+    with pytest.raises(ValidationError):
+        UpdateMenstrualRecordRequest(note="x" * 201)
+
+
+def test_menstrual_update_rejects_invalid_flow():
+    with pytest.raises(ValidationError):
+        UpdateMenstrualRecordRequest(flow="super_heavy")
+
+
+def test_menstrual_update_rejects_unknown_field():
+    with pytest.raises(ValidationError):
+        UpdateMenstrualRecordRequest(unknown_field="x")
+
+
+def test_menstrual_update_does_not_check_cross_field_coherence():
+    """PATCH 可能只帶其中一個欄位，此時另一個欄位的值來自既有紀錄，這個
+    模型看不到——因此不在這裡驗證「結束不早於開始」「間隔不超過 15 天」
+    「開始不晚於今天」，那些留給服務層在合併既有紀錄之後整筆重驗
+    （dispatch notes「PATCH 語意」）。"""
+    request = UpdateMenstrualRecordRequest(start_date="2026-09-05", end_date="2026-09-01")
+    assert request.start_date == "2026-09-05"
+    assert request.end_date == "2026-09-01"
 
 
 def test_menstrual_record_response_model_defaults_computed_fields_to_none():

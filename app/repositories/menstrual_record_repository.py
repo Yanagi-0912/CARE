@@ -7,14 +7,17 @@ PERSONAL 分類，只有本人可讀寫（app/models/family_authorization.py）�
 from typing import Any, List, Optional
 
 from bson import ObjectId
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from app.db.mongodb import MongoDBManager
-from app.models.health import MenstrualRecord
+from app.models.health import MENSTRUAL_MAX_SPAN_DAYS, MenstrualRecord
 
 # cycle_length_days／period_length_days 由服務層依前一筆紀錄現算後以
 # model_copy 回填，不落地存進資料庫（見 MenstrualRecord 的欄位註解）。
 _COMPUTED_FIELDS = {"cycle_length_days", "period_length_days"}
+
+# 查詢單次回應至多 200 筆（constraints.md「狀態碼」，同血壓血糖量測查詢）。
+MAX_LIST_RESULTS = 200
 
 
 class MenstrualRecordRepository:
@@ -45,9 +48,15 @@ class MenstrualRecordRepository:
     async def list_by_user(
         user_id: str, collection: Optional[Any] = None
     ) -> List[MenstrualRecord]:
+        """查詢本人全部經期紀錄，依開始日期新到舊排序，單次回應至多 200 筆
+        （constraints.md「狀態碼」，同血壓血糖量測查詢）。"""
         if collection is None:
             collection = MongoDBManager.get_menstrual_records_collection()
-        cursor = collection.find({"user_id": user_id}).sort("start_date", -1)
+        cursor = (
+            collection.find({"user_id": user_id})
+            .sort("start_date", -1)
+            .limit(MAX_LIST_RESULTS)
+        )
         docs = await cursor.to_list(length=None)
         return [MenstrualRecord(**{**doc, "_id": str(doc["_id"])}) for doc in docs]
 
@@ -106,26 +115,49 @@ class MenstrualRecordRepository:
         標準區間重疊公式：[existing.start, existing.end] 與
         [start_date, upper_bound] 相交，當且僅當
         ``existing.start <= upper_bound`` 且 ``start_date <= existing.end``。
-        既有紀錄沒有 ``end_date``（仍在進行中）視為沒有上界，任何新開始日期
-        都算重疊。``upper_bound`` 在新紀錄本身沒有 ``end_date`` 時退回
-        ``start_date``——這已經涵蓋 spec 指名的情境（新開始日期落在既有經期
-        的起訖之間），新紀錄自己也帶 end_date 時則是完整的雙區間相交判定。
+
+        兩邊「沒有 end_date（仍在進行中）」都不是沒有上界，而是視為佔滿
+        ``[start, start + MENSTRUAL_MAX_SPAN_DAYS]``——這是輸入驗證允許的
+        最長合法經期天數（見 ``app/models/health.py`` 的
+        ``MENSTRUAL_MAX_SPAN_DAYS``）：一筆仍在進行中的經期至少擋得住「新
+        開始日期落在其中」，但一筆上個月忘記填結束日期的舊紀錄，不該因為
+        「沒有上界」就永遠擋住這個月的新紀錄。
+
+        日期以 ``YYYY-MM-DD`` 字串儲存，Mongo 無法直接對字串做日期算術，
+        因此這裡只用 ``user_id``（與 ``exclude_id``）向資料庫取回這位使用者
+        的候選紀錄，精確的區間相交判定在應用層以 ``datetime.date`` 進行——
+        一位使用者的經期紀錄量不大，全部取回逐筆比對的成本可忽略。
 
         ``exclude_id`` 給更新既有紀錄時用（更新後的日期不該跟自己比對）。
         """
         if collection is None:
             collection = MongoDBManager.get_menstrual_records_collection()
-        upper_bound = end_date or start_date
-        query: dict = {
-            "user_id": user_id,
-            "start_date": {"$lte": upper_bound},
-            "$or": [
-                {"end_date": None},
-                {"end_date": {"$gte": start_date}},
-            ],
-        }
+        query: dict = {"user_id": user_id}
         if exclude_id is not None:
             query["_id"] = {"$ne": exclude_id}
         cursor = collection.find(query)
         docs = await cursor.to_list(length=None)
-        return [MenstrualRecord(**{**doc, "_id": str(doc["_id"])}) for doc in docs]
+        candidates = [
+            MenstrualRecord(**{**doc, "_id": str(doc["_id"])}) for doc in docs
+        ]
+
+        new_start = date.fromisoformat(start_date)
+        new_end = (
+            date.fromisoformat(end_date)
+            if end_date
+            else new_start + timedelta(days=MENSTRUAL_MAX_SPAN_DAYS)
+        )
+
+        def _effective_end(record: MenstrualRecord) -> date:
+            if record.end_date:
+                return date.fromisoformat(record.end_date)
+            return date.fromisoformat(record.start_date) + timedelta(
+                days=MENSTRUAL_MAX_SPAN_DAYS
+            )
+
+        return [
+            record
+            for record in candidates
+            if date.fromisoformat(record.start_date) <= new_end
+            and new_start <= _effective_end(record)
+        ]

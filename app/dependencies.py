@@ -29,6 +29,7 @@ from app.repositories.health_alert_threshold_repository import (
     HealthAlertThresholdRepository,
 )
 from app.repositories.health_measurement_repository import HealthMeasurementRepository
+from app.repositories.menstrual_record_repository import MenstrualRecordRepository
 from app.repositories.knowledge_report_preview_repository import (
     KnowledgeReportPreviewRepository,
 )
@@ -60,6 +61,7 @@ from app.services.health.health_alert_threshold_service import (
     HealthAlertThresholdService,
 )
 from app.services.health.health_measurement_service import HealthMeasurementService
+from app.services.health.menstrual_service import MenstrualRecordService
 from app.services.medication.drug_appearance_image_service import (
     resolve_drug_appearance_image_url,
 )
@@ -789,13 +791,20 @@ _family_delegation_service = FamilyDelegationService(
 _medication_service = MedicationService(indication_service=_drug_indication_service)
 
 # 個人健康紀錄（personal-health-tracking）。Task 3 組裝提醒範圍；Task 4 接著
-# 加血壓血糖量測；Task 5 會在這裡繼續加經期、計步各自的服務。
+# 加血壓血糖量測；Task 5 在這裡接著加經期，Task 6 會繼續加計步。
 _health_alert_threshold_service = HealthAlertThresholdService(
     repository=HealthAlertThresholdRepository
 )
 _health_measurement_service = HealthMeasurementService(
     measurement_repository=HealthMeasurementRepository,
     threshold_repository=HealthAlertThresholdRepository,
+)
+# 經期是 PERSONAL 分類（見 app/models/family_authorization.py），建立時要看
+# 本人個人健康檔案的性別，因此注入既有的 _user_profile_service（在上面已
+# 組裝好），不另外重建一份。
+_menstrual_record_service = MenstrualRecordService(
+    repository=MenstrualRecordRepository,
+    user_profile_service=_user_profile_service,
 )
 
 # 掛號提醒。出發／到診的授權在服務層（LIFF 與 LINE postback 兩個入口共用），
@@ -1050,6 +1059,10 @@ def get_health_alert_threshold_service() -> HealthAlertThresholdService:
 
 def get_health_measurement_service() -> HealthMeasurementService:
     return _health_measurement_service
+
+
+def get_menstrual_record_service() -> MenstrualRecordService:
+    return _menstrual_record_service
 
 
 def get_appointment_service() -> AppointmentService:

@@ -27,6 +27,7 @@ from app.dependencies import (
     get_family_authorization_service,
     get_health_alert_threshold_service,
     get_health_measurement_service,
+    get_menstrual_record_service,
 )
 from app.main import app
 from app.models.family_tree import FamilyMember, FamilyTree
@@ -34,6 +35,7 @@ from app.models.health import (
     CreateBloodPressureRequest,
     HealthAlertThreshold,
     HealthMeasurement,
+    MenstrualRecord,
 )
 from app.services.family.family_authorization_service import (
     FamilyAuthorizationService,
@@ -765,5 +767,278 @@ def test_delete_measurement_returns_404_before_any_authorization_when_missing(cl
     wire("MEMBER")
     service = wire_measurements(existing=None)
     res = client.delete("/api/health/measurements/does-not-exist")
+    assert res.status_code == 404
+    assert service.delete_calls == []
+
+
+# ── POST／GET／PATCH／DELETE /api/health/menstrual ────────────────────
+#
+# menstrual-cycle-log spec「經期資料不跨使用者呈現」：任何以他人識別碼的
+# 請求一律 403，不論操作者的角色、委任狀態或家庭的遷移狀態——這是 PERSONAL
+# 分類的規則，SHALL NOT 經過 FamilyAuthorizationService 的矩陣判定（見
+# app/routers/users/health.py 該區塊的說明；constraints.md「Menstrual」）。
+# 底下用 GUARDIAN、有效委任者、shadow 遷移狀態三種「換成別的資源就會放行」
+# 的身分，證明這支端點完全不吃那一套。
+
+
+class _ActiveDelegation:
+    """一個對 ELDER 持有**真正有效**委任的假 repository——用來證明就算操作者
+    對其他資源（例如 SENSITIVE）有完整權限，經期仍然 403：委任只是另一種
+    「換算成角色」的管道，PERSONAL 對任何換算出來的角色都是空集合。"""
+
+    async def has_active_delegation(self, owner_id, delegate_user_id, now=None):
+        return owner_id == ELDER and delegate_user_id == ME
+
+
+def wire_guardian(state="enforced", caller=ME):
+    wire("GUARDIAN", state=state, caller=caller)
+
+
+def wire_active_delegate(caller=ME, target=ELDER, state="enforced"):
+    """操作者對 target 持有有效委任（委任預設解析為 GUARDIAN 等級）。"""
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        line_user_id=caller
+    )
+    trees = {
+        target: FamilyTree(
+            user_id=target,
+            family_members=[],
+            rbac_migration_state=state,
+            created_at=NOW,
+            updated_at=NOW,
+        )
+    }
+    app.dependency_overrides[get_family_authorization_service] = (
+        lambda: FamilyAuthorizationService(
+            family_tree_repository=_Trees(trees),
+            delegation_repository=_ActiveDelegation(),
+            enforcement_enabled=True,
+        )
+    )
+
+
+def wire_shadow_guardian(caller=ME):
+    wire("GUARDIAN", state="shadow", caller=caller)
+
+
+# 三種在其他資源都會放行、但經期 SHALL 一律 403 的身分設定。
+_CROSS_USER_IDENTITIES = [
+    pytest.param(wire_guardian, id="guardian"),
+    pytest.param(wire_active_delegate, id="active_delegate"),
+    pytest.param(wire_shadow_guardian, id="shadow_mode_guardian"),
+]
+
+
+class _FakeMenstrualService:
+    """假的服務層，記錄呼叫；用來確認 403／404 擋在資料存取之前，而且完全
+    不依賴 FamilyAuthorizationService 的判定結果。"""
+
+    def __init__(
+        self,
+        existing: Optional[MenstrualRecord] = None,
+        gender_ok: bool = True,
+    ):
+        self.existing = existing
+        self.gender_ok = gender_ok
+        self.create_calls: list[str] = []
+        self.list_calls: list[str] = []
+        self.get_calls: list[str] = []
+        self.update_calls: list[str] = []
+        self.delete_calls: list[str] = []
+
+    async def create(self, user_id: str, request):
+        self.create_calls.append(user_id)
+        if not self.gender_ok:
+            raise HTTPException(
+                status_code=403,
+                detail="請先至個人健康頁設定性別為女性，才能新增經期紀錄。",
+            )
+        return MenstrualRecord(
+            id="R1",
+            user_id=user_id,
+            start_date=request.start_date,
+            end_date=request.end_date,
+            flow=request.flow,
+            note=request.note,
+        )
+
+    async def list(self, user_id: str):
+        self.list_calls.append(user_id)
+        return [self.existing] if self.existing is not None else []
+
+    async def get(self, record_id: str):
+        self.get_calls.append(record_id)
+        if self.existing is None or self.existing.id != record_id:
+            raise HTTPException(status_code=404, detail="找不到該筆紀錄")
+        return self.existing
+
+    async def update(self, record_id: str, request):
+        self.update_calls.append(record_id)
+        return self.existing.model_copy(
+            update=request.model_dump(exclude_unset=True)
+        )
+
+    async def delete(self, record_id: str):
+        self.delete_calls.append(record_id)
+
+
+def wire_menstrual(existing: Optional[MenstrualRecord] = None, gender_ok: bool = True):
+    service = _FakeMenstrualService(existing, gender_ok=gender_ok)
+    app.dependency_overrides[get_menstrual_record_service] = lambda: service
+    return service
+
+
+_EXISTING_MENSTRUAL_RECORD = MenstrualRecord(
+    id="R1", user_id=ELDER, start_date="2026-09-01"
+)
+
+
+# -- POST /api/health/menstrual -----------------------------------------
+
+
+def test_post_menstrual_self_allowed_without_any_family_relation(client):
+    wire(None, caller=ELDER)
+    service = wire_menstrual()
+    res = client.post(
+        f"/api/health/menstrual?user_id={ELDER}", json={"start_date": "2026-09-01"}
+    )
+    assert res.status_code == 201
+    assert service.create_calls == [ELDER]
+
+
+def test_post_menstrual_rejects_non_female_gender_with_403(client):
+    """性別未填或非女性（spec「性別未填」）：403，訊息說明需先設定性別——
+    這裡驗證服務層拋出的 403 有正確傳到 HTTP 回應，不是被吞掉或改寫。"""
+    wire(None, caller=ELDER)
+    service = wire_menstrual(gender_ok=False)
+    res = client.post(
+        f"/api/health/menstrual?user_id={ELDER}", json={"start_date": "2026-09-01"}
+    )
+    assert res.status_code == 403
+    assert "性別" in res.json()["detail"]
+
+
+@pytest.mark.parametrize("wire_fn", _CROSS_USER_IDENTITIES)
+def test_post_menstrual_denied_for_another_users_id_regardless_of_role(client, wire_fn):
+    """以他人識別碼查詢／新增（spec「以他人識別碼查詢」）：不論角色、委任
+    或遷移狀態一律 403，SHALL NOT 寫入。"""
+    wire_fn()
+    service = wire_menstrual()
+    res = client.post(
+        f"/api/health/menstrual?user_id={ELDER}", json={"start_date": "2026-09-01"}
+    )
+    assert res.status_code == 403
+    assert service.create_calls == []
+
+
+def test_post_menstrual_denied_for_stranger(client):
+    wire(None)
+    service = wire_menstrual()
+    res = client.post(
+        f"/api/health/menstrual?user_id={ELDER}", json={"start_date": "2026-09-01"}
+    )
+    assert res.status_code == 403
+    assert service.create_calls == []
+
+
+# -- GET /api/health/menstrual --------------------------------------------
+
+
+def test_get_menstrual_self_allowed_without_any_family_relation(client):
+    wire(None, caller=ELDER)
+    service = wire_menstrual(existing=_EXISTING_MENSTRUAL_RECORD)
+    res = client.get(f"/api/health/menstrual?user_id={ELDER}")
+    assert res.status_code == 200
+    assert service.list_calls == [ELDER]
+    assert res.json()[0]["id"] == "R1"
+
+
+def test_get_menstrual_self_via_omitted_user_id(client):
+    wire(None, caller=ELDER)
+    service = wire_menstrual(existing=_EXISTING_MENSTRUAL_RECORD)
+    res = client.get("/api/health/menstrual")
+    assert res.status_code == 200
+    assert service.list_calls == [ELDER]
+
+
+@pytest.mark.parametrize("wire_fn", _CROSS_USER_IDENTITIES)
+def test_get_menstrual_denied_for_another_users_id_regardless_of_role(client, wire_fn):
+    wire_fn()
+    service = wire_menstrual(existing=_EXISTING_MENSTRUAL_RECORD)
+    res = client.get(f"/api/health/menstrual?user_id={ELDER}")
+    assert res.status_code == 403
+    assert service.list_calls == []
+
+
+def test_get_menstrual_denied_for_stranger(client):
+    wire(None)
+    service = wire_menstrual(existing=_EXISTING_MENSTRUAL_RECORD)
+    res = client.get(f"/api/health/menstrual?user_id={ELDER}")
+    assert res.status_code == 403
+    assert service.list_calls == []
+
+
+# -- PATCH /api/health/menstrual/{id} --------------------------------------
+
+
+def test_patch_menstrual_self_allowed(client):
+    wire(None, caller=ELDER)
+    service = wire_menstrual(existing=_EXISTING_MENSTRUAL_RECORD)
+    res = client.patch(
+        "/api/health/menstrual/R1", json={"end_date": "2026-09-05"}
+    )
+    assert res.status_code == 200
+    assert service.update_calls == ["R1"]
+
+
+@pytest.mark.parametrize("wire_fn", _CROSS_USER_IDENTITIES)
+def test_patch_menstrual_denied_for_a_record_owned_by_someone_else(client, wire_fn):
+    """PATCH 一筆屬於他人的紀錄：403，SHALL NOT 修改、也 SHALL NOT 揭露
+    內容（dispatch notes「PATCH／DELETE」）。"""
+    wire_fn()
+    service = wire_menstrual(existing=_EXISTING_MENSTRUAL_RECORD)
+    res = client.patch(
+        "/api/health/menstrual/R1", json={"end_date": "2026-09-05"}
+    )
+    assert res.status_code == 403
+    assert service.update_calls == []
+
+
+def test_patch_menstrual_returns_404_before_identity_check_when_missing(client):
+    """紀錄不存在時 SHALL 回 404，即使操作者不是本人——同量測「刪除紀錄」
+    的理由：存在性判定在先，避免用 403／404 的差異探測他人紀錄是否存在。"""
+    wire("GUARDIAN")
+    service = wire_menstrual(existing=None)
+    res = client.patch(
+        "/api/health/menstrual/does-not-exist", json={"end_date": "2026-09-05"}
+    )
+    assert res.status_code == 404
+    assert service.update_calls == []
+
+
+# -- DELETE /api/health/menstrual/{id} -------------------------------------
+
+
+def test_delete_menstrual_self_allowed(client):
+    wire(None, caller=ELDER)
+    service = wire_menstrual(existing=_EXISTING_MENSTRUAL_RECORD)
+    res = client.delete("/api/health/menstrual/R1")
+    assert res.status_code == 204
+    assert service.delete_calls == ["R1"]
+
+
+@pytest.mark.parametrize("wire_fn", _CROSS_USER_IDENTITIES)
+def test_delete_menstrual_denied_for_a_record_owned_by_someone_else(client, wire_fn):
+    wire_fn()
+    service = wire_menstrual(existing=_EXISTING_MENSTRUAL_RECORD)
+    res = client.delete("/api/health/menstrual/R1")
+    assert res.status_code == 403
+    assert service.delete_calls == []
+
+
+def test_delete_menstrual_returns_404_before_identity_check_when_missing(client):
+    wire("GUARDIAN")
+    service = wire_menstrual(existing=None)
+    res = client.delete("/api/health/menstrual/does-not-exist")
     assert res.status_code == 404
     assert service.delete_calls == []

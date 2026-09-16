@@ -284,6 +284,42 @@ class CreateMenstrualRecordRequest(BaseModel):
         return self
 
 
+class UpdateMenstrualRecordRequest(BaseModel):
+    """部分更新一筆經期紀錄（menstrual-cycle-log spec「事後補上結束日期」：
+    「本人 SHALL 能事後補上結束日期或修正紀錄」）。四個欄位皆選填，服務層以
+    ``model_dump(exclude_unset=True)`` 決定要覆寫哪些欄位——沒帶到的維持
+    既有值；明確帶 ``end_date: null`` 則代表清除既有結束日期，把這筆紀錄
+    重新打開為進行中（dispatch notes「PATCH 語意」）。
+
+    這裡刻意只驗證「有帶值時」單一欄位自己的形狀（日期格式、``note`` 長度、
+    ``flow`` 列舉），不驗證跨欄位的一致性（結束不早於開始、間隔不超過 15
+    天、開始不晚於今天）——PATCH 可能只帶其中一個欄位，此時另一個欄位的值
+    來自既有紀錄，這個模型看不到。整筆的一致性由服務層在把這次的更新併入
+    既有紀錄之後重新驗證（同 ``CreateMenstrualRecordRequest`` 的規則）。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    flow: Optional[MenstrualFlow] = None
+    note: Optional[str] = Field(default=None, max_length=200)
+
+    @field_validator("start_date")
+    @classmethod
+    def _validate_start_date_format(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not DATE_PATTERN.match(value):
+            raise ValueError("start_date 格式須為 YYYY-MM-DD")
+        return value
+
+    @field_validator("end_date")
+    @classmethod
+    def _validate_end_date_format(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not DATE_PATTERN.match(value):
+            raise ValueError("end_date 格式須為 YYYY-MM-DD")
+        return value
+
+
 class MenstrualRecord(BaseModel):
     """``menstrual_records`` 的儲存與回應形狀（design.md「資料格式」）。
 

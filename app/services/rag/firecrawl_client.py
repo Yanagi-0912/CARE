@@ -50,11 +50,12 @@ class FirecrawlClient:
         )
         self._http_client = http_client
         self._max_concurrency = max(1, max_concurrency)
-        self._gate_loop: asyncio.AbstractEventLoop | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._gate_semaphore: asyncio.Semaphore | None = None
+        self._shared_client: httpx.AsyncClient | None = None
 
-    def _gate(self) -> asyncio.Semaphore:
-        """併發閘，綁在目前的 event loop 上。
+    def _bind_loop(self) -> None:
+        """把併發閘與共用連線綁到目前的 event loop，換 loop 就重建。
 
         不在 `__init__` 就建好：這個客戶端是在 dependencies.py 的模組層建立的
         （當下沒有 running loop），而測試裡每個 `asyncio.run()` 都是新 loop，
@@ -63,10 +64,34 @@ class FirecrawlClient:
         loop 用完即棄，留著只會把它們釘在記憶體裡。
         """
         loop = asyncio.get_running_loop()
-        if self._gate_semaphore is None or self._gate_loop is not loop:
-            self._gate_semaphore = asyncio.Semaphore(self._max_concurrency)
-            self._gate_loop = loop
+        if self._loop is loop:
+            return
+        self._loop = loop
+        self._gate_semaphore = asyncio.Semaphore(self._max_concurrency)
+        # 換 loop 時不 aclose 舊的：這是同步方法，await 不了；舊 loop 已經結束，
+        # 它的連線隨之失效、由 GC 回收（httpx 不會為此發警告）。
+        self._shared_client = httpx.AsyncClient(
+            timeout=self._scrape_timeout_seconds
+        )
+
+    def _gate(self) -> asyncio.Semaphore:
+        self._bind_loop()
+        assert self._gate_semaphore is not None
         return self._gate_semaphore
+
+    def _client(self) -> httpx.AsyncClient:
+        """整支客戶端共用一條連線池。
+
+        以前每次呼叫都新建一個 AsyncClient、用完就關，等於每次 search／scrape
+        都重做一次 DNS 解析與 TLS 握手。2026-09-16 實測第一次 search 要 9.4 秒、
+        之後同一輪的四次都在 1.4–2.5 秒——省下來的就是那段冷啟動。每次呼叫
+        仍然各自帶 `timeout=`，所以 search 15 秒／scrape 45 秒的差別不受影響。
+        """
+        if self._http_client is not None:
+            return self._http_client
+        self._bind_loop()
+        assert self._shared_client is not None
+        return self._shared_client
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -89,8 +114,7 @@ class FirecrawlClient:
             # 用它而不自己拼 `site:A OR site:B`：OR 不在官方文件的運算子清單上，
             # 能用只是實測剛好可以。
             body["includeDomains"] = list(include_domains)
-        client = self._http_client or httpx.AsyncClient(timeout=self._timeout_seconds)
-        owns_client = self._http_client is None
+        client = self._client()
         # 失敗一律拋 WebSearchUnavailable，不回空 list：空 list 在呼叫端的意思是
         # 「搜了、沒有」，會走「找不到」的文案；429／逾時／5xx 是「沒搜成」，
         # 兩者的處置不同（理由見 web_client.WebSearchUnavailable）。
@@ -120,9 +144,6 @@ class FirecrawlClient:
         except Exception as exc:
             logger.exception("Firecrawl search failed")
             raise WebSearchUnavailable(type(exc).__name__) from exc
-        finally:
-            if owns_client:
-                await client.aclose()
 
         data = payload.get("data") if isinstance(payload, dict) else None
         # v2 的 data 是 {"web": [...], "news": ..., "images": ...}，v1 是 list。
@@ -151,8 +172,7 @@ class FirecrawlClient:
         if not self._api_key:
             return ScrapedPage(text="", final_url=None)
         timeout = self._scrape_timeout_seconds
-        client = self._http_client or httpx.AsyncClient(timeout=timeout)
-        owns_client = self._http_client is None
+        client = self._client()
         try:
             async with self._gate():
                 response = await client.post(
@@ -173,9 +193,6 @@ class FirecrawlClient:
         except Exception:
             logger.exception("Firecrawl scrape failed url=%s", url)
             return ScrapedPage(text="", final_url=None)
-        finally:
-            if owns_client:
-                await client.aclose()
 
         data = payload.get("data") if isinstance(payload, dict) else None
         if not isinstance(data, dict):

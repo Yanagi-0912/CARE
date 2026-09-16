@@ -1358,6 +1358,52 @@ async def test_speculative_discarded_when_crag_rejects():
 
 
 @pytest.mark.asyncio
+async def test_speculative_generate_is_cancelled_before_web_search_runs():
+    """CRAG 判走網搜的當下就收掉投機生成，不要等整段網搜跑完。
+
+    以前要到 `_answer` 的 finally 才取消，網搜那 5~15 秒裡它照樣跑完一次完整
+    的 KB 生成。2026-09-16 實測 5 題有 3 題走網搜，每題白燒一次 2.9-7.4 秒的
+    生成。
+    """
+    generate_cancelled = asyncio.Event()
+
+    async def _slow_generate(messages):
+        try:
+            await asyncio.sleep(5)
+        except asyncio.CancelledError:
+            generate_cancelled.set()
+            raise
+        return AIMessage(content="不該出現")
+
+    async def _slow_grade(query, docs):
+        await asyncio.sleep(0.02)  # 讓投機生成先起跑
+        return Grade.INCORRECT
+
+    cancelled_when_web_started: list[bool] = []
+
+    async def _web_answer(query, **_kwargs):
+        for _ in range(5):  # 讓取消有機會送達
+            await asyncio.sleep(0)
+        cancelled_when_web_started.append(generate_cancelled.is_set())
+        return "網搜答案"
+
+    grader = MagicMock()
+    grader.grade = AsyncMock(side_effect=_slow_grade)
+    web_search = MagicMock()
+    web_search.answer = AsyncMock(side_effect=_web_answer)
+    service, gemini_service, _ = _make_service(
+        docs=[_kb_doc()], grader=grader, crag_enabled=True,
+        web_search=web_search, speculative_generate=True,
+    )
+    gemini_service.chat_model.ainvoke = AsyncMock(side_effect=_slow_generate)
+
+    result = await asyncio.wait_for(service.answer("高血壓？"), timeout=1)
+
+    assert result == "網搜答案"
+    assert cancelled_when_web_started == [True]
+
+
+@pytest.mark.asyncio
 async def test_speculative_disabled_generates_sequentially():
     """關掉之後行為與導入前相同：分級跑完才生成。"""
     order = []

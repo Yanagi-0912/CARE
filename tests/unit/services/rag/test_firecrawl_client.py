@@ -274,3 +274,25 @@ def test_gate_is_rebuilt_for_a_new_event_loop():
 
     assert asyncio.run(client.scrape("https://x.gov.tw/a")) == "x"
     assert asyncio.run(client.scrape("https://x.gov.tw/b")) == "x"
+
+
+@pytest.mark.asyncio
+async def test_connection_pool_is_reused_across_calls():
+    """同一個客戶端的多次呼叫共用一條連線池。
+
+    以前每次呼叫都新建 AsyncClient、用完就關，等於每次 search／scrape 都重做
+    DNS 解析與 TLS 握手。實測第一次 search 9.4 秒、之後四次 1.4–2.5 秒。
+    """
+    client = FirecrawlClient(api_key="fc-test")
+    first = client._client()
+    second = client._client()
+    assert first is second
+    await first.aclose()
+
+
+@pytest.mark.asyncio
+async def test_injected_http_client_still_wins():
+    """注入的 client 優先，不會被共用連線池取代（測試靠這個攔請求）。"""
+    injected = AsyncMock()
+    client = FirecrawlClient(api_key="fc-test", http_client=injected)
+    assert client._client() is injected

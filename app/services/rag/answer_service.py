@@ -259,10 +259,20 @@ class RagAnswerService:
                     logger.info("rag_fail code=%s crag_grade=degraded_below_floor",
                                 RagFailCode.KB_EMPTY)
                     timing["path"] = "web_degraded_below_floor"
+                    _abandon_task(speculative)
                     return await self._web_or_no_hits(user_text, rewrite)
             else:
                 if approved is None:
                     timing["path"] = "web_crag_reject"
+                    # 這裡就收掉投機生成，不要留到 `_answer` 的 finally——網搜
+                    # 那段要跑 5~15 秒，留著等於讓一份確定不會用的 KB 生成整個
+                    # 跑完。2026-09-16 實測 5 題有 3 題走這條路，每題白燒一次
+                    # 2.9-7.4 秒的完整生成。牆鐘時間省不到（它本來就是並行的
+                    # task），省的是 Gemini 的 token。
+                    #
+                    # 只是盡力而為：請求已經在路上，取消關掉的是連線，供應商那
+                    # 端已經生成的 token 仍可能照算。
+                    _abandon_task(speculative)
                     return await self._web_or_no_hits(user_text, rewrite)
 
         kb_answer = await self._resolve_generate(

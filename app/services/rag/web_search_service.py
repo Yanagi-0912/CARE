@@ -41,6 +41,15 @@ WEB_SEARCH_LIMIT = 8
 WEB_PAGE_CHAR_LIMIT = 8000
 # search snippet 達此長度就不打 scrape（避免 gov.tw 頁面常逾時）
 WEB_SNIPPET_MIN_CHARS = 20
+# 網搜答案生成用的 thinking 等級。gemini-3.8-flash 預設是 medium，low 是有文件
+# 保證的最低檔（minimal 會回 400，見 query_rewriter.REWRITE_THINKING_LEVEL）。
+#
+# 為什麼先動這一段：2026-09-16 完整管線實測（5 題），網搜答案生成 4.0-5.2 秒，
+# 是走網搜那條路上最大的單一段；它排在搜尋之後、沒有任何東西與它並行，省下
+# 的每一秒都直接是使用者少等的一秒。分級與改寫 9/14 已經是 low。
+#
+# 品質驗證見 commit message（golden set 前後對照）。
+WEB_GENERATE_THINKING_LEVEL = "low"
 
 OnWebFallbackSuccess = Callable[..., Awaitable[Any]]
 

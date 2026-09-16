@@ -147,7 +147,10 @@ from app.services.rag.retrieval_grader import (
     GRADE_THINKING_LEVEL,
     GeminiRetrievalGrader,
 )
-from app.services.rag.web_search_service import WebSearchService
+from app.services.rag.web_search_service import (
+    WEB_GENERATE_THINKING_LEVEL,
+    WebSearchService,
+)
 from app.services.medical_news.grader import GeminiNewsGrader
 from app.services.medical_news.index_service import DrugNewsIndexService
 from app.services.medical_news.kb_digest_service import KbDigestService
@@ -357,7 +360,14 @@ else:
     logger.info("RAG_LINK_CHECK_ENABLED=false; citation URLs will not be verified")
 
 _web_search_service = WebSearchService(
-    gemini_service=_gemini_service,
+    # 網搜答案生成用獨立的低 thinking 實例（數字見
+    # web_search_service.WEB_GENERATE_THINKING_LEVEL）。不改共用的
+    # _gemini_service：知識庫生成、guardrail、問診都在用它，沒一起量過。
+    gemini_service=GeminiService(
+        api_key=settings.GEMINI_API_KEY,
+        model_name=settings.MODEL_NAME,
+        thinking_level=WEB_GENERATE_THINKING_LEVEL,
+    ),
     web_client=_firecrawl_client,
     on_web_fallback_success=_knowledge_report_service.create_from_web_fallback,
     link_checker=_link_checker,

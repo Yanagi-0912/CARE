@@ -285,16 +285,15 @@ def _medication_row_with_button(
     維持 `FlexTheme` 定義的 `flex=1`——按鈕靠 `paddingAll: lg` 撐出 ≥44px 的
     可點擊高度；藥名有 `wrap: True`，寬度變窄時換行而不是把按鈕擠出畫面外。
 
-    有縮圖時照片放在這一行的上方、獨佔整列寬度，不進水平分割：
+    有縮圖時照片放在這一行的下方、獨佔整列寬度，不進水平分割：
     `theme._SIZE_SCALE` 的 "thumbnail"（large 180px／xlarge 200px）是照
     「認得出藥丸形狀顏色」的需求訂的，切進 flex=2 那一欄會把縮圖壓到約 2/3
     列寬，三段字級的尺寸全部擠成同一個大小。
 
-    先前有縮圖的列是「照片、藥名、整寬按鈕」直排，純文字列是「藥名＋右側按鈕」
-    橫排。同一時段圖文混排是常態（spec「同時段圖文混排」），兩種列擺在同一張
-    卡上時按鈕一顆在右、一顆整寬，照片又緊貼在上一種藥的藥名下方，看起來像
-    上一種藥的照片（2026-09-15 真機截圖）。現在兩種列共用同一個「藥名＋按鈕」
-    行，列與列之間的分隔線見 `_append_separated`。
+    每種藥包成一塊白底圓角的卡片，照片與它的藥名、按鈕同在一個框裡。先前
+    （3ab62e2）照片放在藥名上方、藥與藥之間只靠一條分隔線，真機上線條太淡，
+    照片仍被讀成緊接在上方那種藥的內容（2026-09-16 真機截圖）；一條細線
+    抵不過「名稱在上、內容在下」的閱讀習慣，框線才分得開。
     """
     button_label = t("flex.med.button.taken_one", language)
     button = ft.secondary_button(
@@ -311,7 +310,7 @@ def _medication_row_with_button(
             ),
         },
     )
-    # 藥名一律走純文字分支；照片（若有）另外放在這一行上方。
+    # 藥名一律走純文字分支；照片（若有）另外放在這一行下方。
     name_and_button = {
         "type": "box",
         "layout": "horizontal",
@@ -322,29 +321,38 @@ def _medication_row_with_button(
             button,
         ],
     }
-    if not entry.image_url:
-        return name_and_button
+    contents = [name_and_button]
+    if entry.image_url:
+        contents.append(_thumbnail_node(entry.image_url, ft))
     return {
         "type": "box",
         "layout": "vertical",
+        "backgroundColor": theme.SURFACE,
+        # 白底對 SURFACE_ALT 的灰底反差很低，只靠底色又會重蹈分隔線太淡的覆轍。
+        "borderWidth": "light",
+        "borderColor": theme.BORDER,
+        "cornerRadius": "md",
+        "paddingAll": "md",
         "spacing": "sm",
-        "contents": [_thumbnail_node(entry.image_url, ft), name_and_button],
+        "contents": contents,
     }
 
 
-def _append_separated(
-    contents: list[dict[str, Any]], node: dict[str, Any], after_row: bool
+def _append_spaced(
+    contents: list[dict[str, Any]],
+    node: dict[str, Any],
+    after_row: bool,
+    margin: str = "md",
 ) -> None:
-    """接在一種藥後面的節點（下一種藥、下一個分區小標、收斂的計數行）先插一條
-    分隔線，節點再從線的下方留白開始。
+    """接在一種藥後面的節點（下一種藥、下一個分區小標、收斂的計數行）與上一種藥
+    的卡片之間留白。
 
-    分區內只靠 xs 間距時，下一種藥的照片會緊貼在上一種藥的【已吃】下方，看不
-    出照片屬於哪一種藥；分隔線讓「照片＋藥名＋按鈕」自成一組。分區小標與它
-    底下第一種藥本來就是一組，呼叫端傳 `after_row=False`，不隔開。
+    每種藥已經自成一塊白底卡片，不再另插分隔線；分區小標由呼叫端傳較大的
+    `margin`，讓它看起來屬於下方的藥而不是上一區。分區小標與它底下第一種藥本來就是一組，呼叫端傳
+    `after_row=False`，維持區塊的預設間距。
     """
     if after_row:
-        contents.append(theme.divider(margin="md"))
-        node = {**node, "margin": "md"}
+        node = {**node, "margin": margin}
     contents.append(node)
 
 
@@ -394,12 +402,17 @@ def _medication_groups_block(
         if shown >= MEDICATION_LIST_MAX_ITEMS:
             break
         if not single_none:
-            _append_separated(contents, _group_heading_node(group, ft, language), after_row)
+            _append_spaced(
+                contents,
+                _group_heading_node(group, ft, language),
+                after_row,
+                margin="xl",
+            )
             after_row = False
         for medication_id, entry in group.items:
             if shown >= MEDICATION_LIST_MAX_ITEMS:
                 break
-            _append_separated(
+            _append_spaced(
                 contents,
                 _medication_row_with_button(entry, medication_id, log_id, ft, language),
                 after_row,
@@ -411,7 +424,7 @@ def _medication_groups_block(
     if remaining > 0:
         # 收斂後的計數行只是一句提示文字，不代表任何一張藥證，故意重用
         # `_medication_row_node` 走純文字分支，不帶按鈕。
-        _append_separated(
+        _append_spaced(
             contents,
             _medication_row_node(
                 MedicationListEntry(
@@ -430,7 +443,8 @@ def _medication_groups_block(
         "backgroundColor": theme.SURFACE_ALT,
         "cornerRadius": "md",
         "paddingAll": "lg",
-        "spacing": "xs",
+        # 小標與底下第一張藥品卡片之間；xs 會讓卡片緊貼在字的正下方。
+        "spacing": "sm",
         "margin": "md",
         "contents": contents,
     }

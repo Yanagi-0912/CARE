@@ -1071,7 +1071,8 @@ def test_patient_reminder_groups_carry_per_drug_postback_data():
     )
     body = msg.contents.to_dict()["body"]["contents"]
     group_block = body[1]
-    row = group_block["contents"][1]
+    card = group_block["contents"][1]
+    (row,) = card["contents"]
     button = next(c for c in row["contents"] if c.get("action"))
     assert button["action"]["data"] == "action=confirm_medication&log_id=L999&medication_id=m1"
     assert button["action"]["displayText"] == "我吃了 降血糖藥"
@@ -1085,13 +1086,13 @@ def test_patient_reminder_groups_carry_per_drug_postback_data():
 
 
 def test_patient_reminder_group_rows_keep_button_beside_name_with_or_without_thumbnail():
-    """圖文混排時，每種藥的【已吃】都在自己藥名的右邊；有縮圖的列只是在
-    「藥名＋按鈕」那一行上方多一張整列寬度的照片。照片不進水平分割——切進
-    flex=2 那一欄會把三段字級的縮圖尺寸擠成同一個大小。
+    """圖文混排時，每種藥自成一張有框線的卡片：「藥名＋按鈕」一行在上，有縮圖
+    的卡片只是在那一行下方多一張照片。照片不進水平分割——切進 flex=2 那一欄
+    會把三段字級的縮圖尺寸擠成同一個大小。
 
-    2026-09-15 真機截圖：純文字列按鈕在右、縮圖列按鈕整寬置底，同一張卡上
-    兩顆按鈕位置不同，縮圖又緊貼在上一種藥的藥名下面，看起來是上一種藥的
-    照片。這裡照截圖的順序排：先純文字、再縮圖。"""
+    2026-09-15 真機截圖：純文字列按鈕在右、縮圖列按鈕整寬置底，照片緊貼在上
+    一種藥的藥名下面。9/15 改成照片在上＋分隔線，2026-09-16 真機截圖裡線條
+    太淡，照片仍像是上一種藥的。這裡照截圖的順序排：先純文字、再縮圖。"""
     groups = [
         MedicationGroup(
             meal_timing="none",
@@ -1112,8 +1113,17 @@ def test_patient_reminder_group_rows_keep_button_beside_name_with_or_without_thu
     )
     group_block = msg.contents.to_dict()["body"]["contents"][1]
     # contents[0] 是既有單一清單版面沿用的區塊標題（single none group）。
-    text_row, separator, image_row = group_block["contents"][1:4]
+    assert len(group_block["contents"]) == 3
+    text_card, image_card = group_block["contents"][1:3]
 
+    # 照片與它的藥名、按鈕在同一張有框線的卡片裡，不跟上一種藥共用區塊。
+    for card in (text_card, image_card):
+        assert card["layout"] == "vertical"
+        assert card["borderWidth"] == "light"
+        assert card["backgroundColor"] == "#FFFFFF"
+    assert image_card["margin"] == "md"
+
+    (text_row,) = text_card["contents"]
     assert text_row["layout"] == "horizontal"
     text_name, text_button = text_row["contents"]
     assert text_name["text"] == "Spiriva Respimat 2.5mcg/puff"
@@ -1123,12 +1133,7 @@ def test_patient_reminder_group_rows_keep_button_beside_name_with_or_without_thu
         == "action=confirm_medication&log_id=L1&medication_id=m1"
     )
 
-    # 照片屬於下一種藥：中間有分隔線，照片那一列從線的下方開始。
-    assert separator["type"] == "separator"
-    assert image_row["margin"] == "md"
-
-    assert image_row["layout"] == "vertical"
-    image_node, name_and_button = image_row["contents"]
+    name_and_button, image_node = image_card["contents"]
     assert image_node["type"] == "image"
     assert image_node["url"] == "https://img.example.com/a.jpg"
     image_name, image_button = name_and_button["contents"]
@@ -1144,13 +1149,15 @@ def test_patient_reminder_group_rows_keep_button_beside_name_with_or_without_thu
         return {k: v for k, v in node.items() if k != "contents"}
 
     assert without_contents(name_and_button) == without_contents(text_row)
+    assert without_contents(image_card) == without_contents(text_card) | {"margin": "md"}
     assert {**image_name, "text": ""} == {**text_name, "text": ""}
     assert {**image_button, "action": None} == {**text_button, "action": None}
 
 
-def test_patient_reminder_groups_separate_each_drug_but_not_heading_from_its_first_drug():
-    """每種藥之間一條分隔線；分區小標與它底下第一種藥是一組，不隔開。收斂的
-    計數行不是任何一種藥，同樣用線跟最後一種藥隔開。"""
+def test_patient_reminder_groups_space_each_drug_card_and_heading():
+    """每種藥是一張卡片，卡片之間只留白、不插分隔線；接在上一區後面的分區小標
+    留得比卡片間距大，看得出屬於下一區。分區小標與它底下第一種藥是一組，
+    沿用區塊預設間距。收斂的計數行與卡片同一級間距。"""
     groups = [
         MedicationGroup(
             meal_timing="before_meal",
@@ -1169,20 +1176,14 @@ def test_patient_reminder_groups_separate_each_drug_but_not_heading_from_its_fir
     contents = msg.contents.to_dict()["body"]["contents"][1]["contents"]
 
     def kind(node):
-        if node["type"] == "separator":
-            return "|"
-        if node["type"] == "box":
-            return "藥"
-        return node["text"]
+        label = "藥" if node["type"] == "box" else node["text"]
+        return (label, node.get("margin"))
 
     assert [kind(c) for c in contents] == [
-        "飯前　07:00", "藥", "|", "藥", "|",
-        "飯後　08:00", "藥", "|", "藥", "|", "藥", "|",
-        "…另有 1 種藥品",
+        ("飯前　07:00", None), ("藥", None), ("藥", "md"),
+        ("飯後　08:00", "xl"), ("藥", None), ("藥", "md"), ("藥", "md"),
+        ("…另有 1 種藥品", "md"),
     ]
-    for i, node in enumerate(contents):
-        if node["type"] == "separator":
-            assert contents[i + 1]["margin"] == "md"
 
 
 def test_patient_reminder_single_none_group_has_no_group_heading():

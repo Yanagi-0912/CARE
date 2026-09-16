@@ -1,7 +1,10 @@
+import logging
+
 import pytest
 
 from app.core import scheduler_heartbeat
 from app.models.medical_news import DrugNews, make_news_ref
+from app.services.line_messaging.send_result import SendOutcome, SendResult
 from app.services.medical_news.kb_digest_service import KbArticle
 from app.services.medical_news.push_scheduler import MedicalNewsPushScheduler
 
@@ -23,13 +26,21 @@ def _news(drug_key="普拿疼", concern="recall", url=URL, published="2026-08-30
 
 
 class FakeReplier:
-    def __init__(self, fail=False):
+    def __init__(self, fail=False, result=None):
         self.pushed = []
         self._fail = fail
+        self._result = result
+
+    async def push_flex_result(self, user_id, flex_message):
+        self.pushed.append((user_id, flex_message))
+        if self._result is not None:
+            return self._result
+        if self._fail:
+            return SendResult(SendOutcome.TRANSIENT, 500, "boom")
+        return SendResult.success()
 
     async def push_flex(self, user_id, flex_message):
-        self.pushed.append((user_id, flex_message))
-        return not self._fail
+        return (await self.push_flex_result(user_id, flex_message)).ok
 
     async def push_text(self, user_id, text):
         self.pushed.append((user_id, text))
@@ -39,9 +50,28 @@ class FakeReplier:
 class FakeUserRepo:
     def __init__(self, ids):
         self._ids = ids
+        self.following = []
 
     async def list_all_line_ids(self, collection=None):
         return list(self._ids)
+
+    async def set_following(self, line_id, following, at=None):
+        self.following.append((line_id, following))
+        return True
+
+
+class FakeDayClaimRepo:
+    def __init__(self, claim_result=True):
+        self._claim_result = claim_result
+        self.claims = []
+        self.released = []
+
+    async def claim(self, user_id, delivered_on, collection=None):
+        self.claims.append((user_id, delivered_on))
+        return self._claim_result
+
+    async def release(self, user_id, delivered_on, collection=None):
+        self.released.append((user_id, delivered_on))
 
 
 class FakeMedRepo:
@@ -74,6 +104,7 @@ class FakeDeliveryRepo:
         self._claim_result = claim_result
         self.claims = []
         self.payloads = []
+        self.released = []
 
     async def list_pushed_refs(self, user_id, since, collection=None):
         return set(self._pushed)
@@ -82,6 +113,9 @@ class FakeDeliveryRepo:
         self.claims.append((user_id, news_ref, tier))
         self.payloads.append(payload)
         return self._claim_result
+
+    async def release(self, user_id, news_ref, collection=None):
+        self.released.append((user_id, news_ref))
 
 
 class FakeKbDigest:
@@ -110,6 +144,7 @@ def _scheduler(**kwargs):
         run_time="09:00",
         drug_news_repository=FakeNewsRepo(),
         delivery_repository=FakeDeliveryRepo(),
+        day_claim_repository=FakeDayClaimRepo(),
         medication_repository=FakeMedRepo(),
         user_repository=FakeUserRepo(["U1"]),
         max_age_days=30,
@@ -305,9 +340,9 @@ async def test_claim_happens_before_push():
             return True
 
     class OrderedReplier(FakeReplier):
-        async def push_flex(self, user_id, flex_message):
+        async def push_flex_result(self, user_id, flex_message):
             order.append("push")
-            return True
+            return SendResult.success()
 
     scheduler = _scheduler(
         replier=OrderedReplier(), delivery_repository=OrderedDelivery()
@@ -318,7 +353,271 @@ async def test_claim_happens_before_push():
     assert order == ["claim", "push"]
 
 
+# ── 每日處理權（多實例）────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_day_is_claimed_before_any_picking():
+    """先搶「今天這位使用者歸我」，再查用藥、選材。
+
+    兩個實例各自選材可能挑到不同的消息，(user_id, news_ref) 擋不住那種情況；
+    只有在選材之前就搶到日處理權，才能保證每日至多一則。
+    """
+    order = []
+
+    class OrderedDayClaim(FakeDayClaimRepo):
+        async def claim(self, user_id, delivered_on, collection=None):
+            order.append(("day_claim", delivered_on))
+            return True
+
+    class OrderedMedRepo(FakeMedRepo):
+        async def list_active_by_user(self, user_id, date_str, collection=None):
+            order.append(("pick", date_str))
+            return []
+
+    scheduler = _scheduler(
+        day_claim_repository=OrderedDayClaim(), medication_repository=OrderedMedRepo()
+    )
+
+    await scheduler.run_once("2026-09-02")
+
+    assert order[:2] == [("day_claim", "2026-09-02"), ("pick", "2026-09-02")]
+
+
+@pytest.mark.asyncio
+async def test_day_already_claimed_by_other_instance_skips_user():
+    replier = FakeReplier()
+    delivery = FakeDeliveryRepo()
+    scheduler = _scheduler(
+        replier=replier,
+        delivery_repository=delivery,
+        day_claim_repository=FakeDayClaimRepo(claim_result=False),
+    )
+
+    await scheduler.run_once("2026-09-02")
+
+    assert replier.pushed == []
+    assert delivery.claims == []
+
+
+@pytest.mark.asyncio
+async def test_opted_out_user_does_not_claim_the_day():
+    """關掉通知的人連日處理權都不該佔：判斷在任何寫入之前。"""
+
+    class OptedOutProfiles:
+        async def get_user_profile(self, line_id):
+            return {"settings": {"notify_medical_news": False}}
+
+    day_claims = FakeDayClaimRepo()
+    scheduler = _scheduler(
+        user_profile_service=OptedOutProfiles(), day_claim_repository=day_claims
+    )
+
+    await scheduler.run_once("2026-09-02")
+
+    assert day_claims.claims == []
+
+
+@pytest.mark.asyncio
+async def test_unfollowed_user_is_skipped():
+    """封鎖官方帳號的人不推：LINE 對封鎖者的 push 不會送達卻照算額度。"""
+
+    class UnfollowedProfiles:
+        async def get_user_profile(self, line_id):
+            return {"is_following": False, "settings": {}}
+
+    replier = FakeReplier()
+    day_claims = FakeDayClaimRepo()
+    scheduler = _scheduler(
+        replier=replier,
+        user_profile_service=UnfollowedProfiles(),
+        day_claim_repository=day_claims,
+    )
+
+    await scheduler.run_once("2026-09-02")
+
+    assert replier.pushed == []
+    assert day_claims.claims == []
+
+
+@pytest.mark.asyncio
+async def test_missing_following_field_means_following():
+    """既有使用者的文件沒有 is_following，視為仍在追蹤。"""
+
+    class LegacyProfiles:
+        async def get_user_profile(self, line_id):
+            return {"settings": {}}
+
+    replier = FakeReplier()
+    scheduler = _scheduler(replier=replier, user_profile_service=LegacyProfiles())
+
+    await scheduler.run_once("2026-09-02")
+
+    assert len(replier.pushed) == 1
+
+
+@pytest.mark.asyncio
+async def test_no_content_releases_day_claim():
+    """兩層都沒內容時放掉日處理權，稍後索引補上、當天重跑時仍輪得到他。"""
+    day_claims = FakeDayClaimRepo()
+    scheduler = _scheduler(kb_digest=FakeKbDigest([]), day_claim_repository=day_claims)
+
+    await scheduler.run_once("2026-09-02")
+
+    assert day_claims.claims == [("U1", "2026-09-02")]
+    assert day_claims.released == [("U1", "2026-09-02")]
+
+
+@pytest.mark.asyncio
+async def test_successful_push_keeps_day_claim():
+    day_claims = FakeDayClaimRepo()
+    scheduler = _scheduler(day_claim_repository=day_claims)
+
+    await scheduler.run_once("2026-09-02")
+
+    assert day_claims.released == []
+
+
 # ── 失敗處理 ────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_quota_exceeded_releases_both_claims(caplog):
+    """429 代表確定沒送出：news_ref 與日處理權都要放掉。
+
+    留著 news_ref 的話這則會被記成「已推給他」，額度恢復後永遠不會再收到；
+    留著日處理權的話同一天重跑會跳過他。
+    """
+    replier = FakeReplier(result=SendResult(SendOutcome.QUOTA_EXCEEDED, 429, "quota"))
+    delivery = FakeDeliveryRepo()
+    day_claims = FakeDayClaimRepo()
+    scheduler = _scheduler(
+        replier=replier, delivery_repository=delivery, day_claim_repository=day_claims
+    )
+
+    with caplog.at_level(logging.WARNING):
+        await scheduler.run_once("2026-09-02")
+
+    assert delivery.released == [("U1", delivery.claims[0][1])]
+    assert day_claims.released == [("U1", "2026-09-02")]
+    assert "因額度用完，1 位未送" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_quota_exceeded_stops_the_run_and_logs_one_summary_line(caplog):
+    """額度用完後不再對其他人逐一嘗試；沒輪到的人沒被搶佔，明天照常。整輪只記一行。"""
+    replier = FakeReplier(result=SendResult(SendOutcome.QUOTA_EXCEEDED, 429, "quota"))
+    day_claims = FakeDayClaimRepo()
+    scheduler = _scheduler(
+        replier=replier,
+        user_repository=FakeUserRepo(["U1", "U2", "U3"]),
+        day_claim_repository=day_claims,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        await scheduler.run_once("2026-09-02")
+
+    assert [user for user, _ in replier.pushed] == ["U1"]
+    assert [user for user, _ in day_claims.claims] == ["U1"]
+    summary_lines = [r for r in caplog.records if "因額度用完" in r.getMessage()]
+    assert len(summary_lines) == 1
+    assert "3 位未送" in summary_lines[0].getMessage()
+
+
+@pytest.mark.asyncio
+async def test_rejected_invalid_target_marks_user_not_following():
+    """LINE 明確說對象無效（'to' 欄位）才標成未追蹤。"""
+    replier = FakeReplier(
+        result=SendResult(
+            SendOutcome.REJECTED,
+            400,
+            "The property, 'to', in the request body is invalid (line: -, column: -)",
+        )
+    )
+    users = FakeUserRepo(["U1"])
+    delivery = FakeDeliveryRepo()
+    scheduler = _scheduler(replier=replier, user_repository=users, delivery_repository=delivery)
+
+    await scheduler.run_once("2026-09-02")
+
+    assert users.following == [("U1", False)]
+    # 不回滾：對象無效的話這則本來就送不出去，回滾只是讓明天再撞一次。
+    assert delivery.released == []
+
+
+@pytest.mark.asyncio
+async def test_rejected_for_other_reasons_only_logs(caplog):
+    """Flex 內容不合法之類的 400 是我們的問題，不得把人標成已封鎖。"""
+    replier = FakeReplier(
+        result=SendResult(SendOutcome.REJECTED, 400, "messages[0] is invalid")
+    )
+    users = FakeUserRepo(["U1"])
+    scheduler = _scheduler(replier=replier, user_repository=users)
+
+    with caplog.at_level(logging.WARNING):
+        await scheduler.run_once("2026-09-02")
+
+    assert users.following == []
+    assert "outcome=rejected" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_transient_failure_keeps_claims():
+    """5xx／逾時送沒送到不確定，回滾反而可能推成兩張。"""
+    replier = FakeReplier(fail=True)
+    delivery = FakeDeliveryRepo()
+    day_claims = FakeDayClaimRepo()
+    scheduler = _scheduler(
+        replier=replier, delivery_repository=delivery, day_claim_repository=day_claims
+    )
+
+    await scheduler.run_once("2026-09-02")
+
+    assert delivery.released == []
+    assert day_claims.released == []
+
+
+@pytest.mark.asyncio
+async def test_set_following_failure_does_not_abort_run():
+    class ExplodingUserRepo(FakeUserRepo):
+        async def set_following(self, line_id, following, at=None):
+            raise RuntimeError("db down")
+
+    replier = FakeReplier(
+        result=SendResult(SendOutcome.REJECTED, 400, "The property, 'to', in the request body is invalid")
+    )
+    scheduler = _scheduler(replier=replier, user_repository=ExplodingUserRepo(["U1", "U2"]))
+
+    await scheduler.run_once("2026-09-02")
+
+    assert [user for user, _ in replier.pushed] == ["U1", "U2"]
+
+
+# ── 設定驗證與 log ──────────────────────────────────────────────────
+
+
+def test_invalid_run_time_fails_at_construction():
+    """設錯時要在建構時就炸，而不是 task 在第一次醒來前靜默死掉。"""
+    with pytest.raises(ValueError, match="MEDICAL_NEWS_PUSH_TIME"):
+        _scheduler(run_time="9:00 AM")
+
+
+@pytest.mark.asyncio
+async def test_logs_do_not_contain_raw_user_id(caplog):
+    class ExplodingMedRepo(FakeMedRepo):
+        async def list_active_by_user(self, user_id, date_str, collection=None):
+            raise RuntimeError("boom")
+
+    scheduler = _scheduler(
+        user_repository=FakeUserRepo(["Uabcdef0123456789abcdef0123456789"]),
+        medication_repository=ExplodingMedRepo(),
+    )
+
+    with caplog.at_level(logging.INFO):
+        await scheduler.run_once("2026-09-02")
+
+    assert "使用者處理失敗" in caplog.text
+    assert "Uabcdef0123456789abcdef0123456789" not in caplog.text
 
 
 @pytest.mark.asyncio

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import TYPE_CHECKING
 
@@ -99,8 +100,13 @@ class UserProfileService:
                 and self._rich_menu_service is not None
             ):
                 try:
-                    self._rich_menu_service.link_user_menu(
-                        line_id, changed_fields["language"]
+                    # link_user_menu 底層是同步的 requests.post，直接在這裡呼叫會把
+                    # 整個事件迴圈凍住到 LINE 回應為止（最長 10 秒逾時）——期間所有
+                    # 使用者的 webhook、LIFF API、/health 探針一起停擺。丟到執行緒。
+                    await asyncio.to_thread(
+                        self._rich_menu_service.link_user_menu,
+                        line_id,
+                        changed_fields["language"],
                     )
                 except Exception as exc:
                     logger.warning(

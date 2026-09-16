@@ -6,6 +6,7 @@ from typing import Optional
 
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
+from app.core.config import settings
 from app.core.request_logging import log_stage
 from app.core.rag_sources import begin_request_rag_sources, reset_request_rag_sources
 from app.core.user_font_size import (
@@ -162,11 +163,35 @@ class BaseLineMessageHandler:
             t1 = time.perf_counter()
             line_user_token = set_line_user_id(user_id)
             try:
-                agent_response = await self._agent.invoke(
-                    user_input=user_text,
-                    messages=chat_history,
-                    user_profile=user_profile,
+                # 總上限（來由見 config.AGENT_TOTAL_TIMEOUT_SECONDS）。agent 裡
+                # 只有 RAG 那條腿有自己的逾時，Gemini 呼叫本身沒有；少了這層，
+                # 一次掛住的呼叫會讓這位使用者的 per-user lock 永遠不放，之後
+                # 的每一句都排在後面等。
+                agent_response = await asyncio.wait_for(
+                    self._agent.invoke(
+                        user_input=user_text,
+                        messages=chat_history,
+                        user_profile=user_profile,
+                    ),
+                    timeout=settings.AGENT_TOTAL_TIMEOUT_SECONDS,
                 )
+            except asyncio.TimeoutError:
+                log_stage(
+                    logger,
+                    "agent_timeout",
+                    timeout_s=settings.AGENT_TOTAL_TIMEOUT_SECONDS,
+                    ms=int((time.perf_counter() - t1) * 1000),
+                )
+                # 不存對話紀錄：這一輪沒有回答，存進去只會讓下一輪的 agent 看到
+                # 一句沒被回應的問題。
+                await self._replier.reply(
+                    reply_token=reply_token,
+                    message_text=t("line.fallback_busy", language=user_language),
+                    user_id=user_id,
+                    voice_reply_enabled=False,
+                    language=user_language,
+                )
+                return
             finally:
                 reset_line_user_id(line_user_token)
             log_stage(

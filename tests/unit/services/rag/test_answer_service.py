@@ -44,6 +44,7 @@ from app.services.rag.answer_service import (
     dedup_ranked_docs,
 )
 from app.services.rag.cohere_reranker import VectorScoreReranker
+from app.services.rag.fail_messages import RagFailCode, rag_fail
 from app.services.rag.query_rewriter import RewrittenQuery
 from app.services.rag.retrieval_grader import Grade
 
@@ -1814,3 +1815,59 @@ async def test_timeout_error_from_inside_pipeline_is_not_reported_as_deadline():
 
     with pytest.raises(TimeoutError):
         await service.answer("高血壓要注意什麼")
+
+
+# --- 知識庫拒答轉網搜（2026-09-16） ------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_model_refuse_falls_back_to_web_when_enabled(caplog):
+    """
+    知識庫有文件但模型判定答不出來，與「知識庫沒命中」「CRAG 判不相關」一樣
+    要去查官方網站；以前這裡直接叫使用者換個說法，而 CRAG 判 incorrect 的題目
+    反而會去網搜。path 仍記 kb_model_refuse，校準樣本才不會跑到別格。
+    """
+    web_search = MagicMock()
+    web_search.answer = AsyncMock(return_value="以下參考網路公開資料\n\n網路補充答案")
+    svc, _gemini, _retriever = _make_service(
+        docs=_distinct_docs(2),
+        reranker=_ScoredReranker([0.35, 0.2]),
+        answer_content="[NO_ANSWER] 根據現有資料無法提供建議。",
+        web_search=web_search,
+    )
+    with caplog.at_level("INFO"):
+        result = await svc.answer("某個冷門問題")
+
+    assert result == "以下參考網路公開資料\n\n網路補充答案"
+    web_search.answer.assert_awaited_once_with("某個冷門問題")
+    line = _rag_answer_log(caplog)
+    assert "path=kb_model_refuse" in line
+    assert "top_rerank=0.35" in line
+
+
+@pytest.mark.asyncio
+async def test_model_refuse_then_web_empty_reports_web_empty():
+    web_search = MagicMock()
+    web_search.answer = AsyncMock(return_value=rag_fail(RagFailCode.WEB_EMPTY))
+    svc, _gemini, _retriever = _make_service(
+        docs=_distinct_docs(2),
+        answer_content="[NO_ANSWER] 根據現有資料無法提供建議。",
+        web_search=web_search,
+    )
+    result = await svc.answer("某個冷門問題")
+    assert result == rag_fail(RagFailCode.WEB_EMPTY)
+
+
+@pytest.mark.asyncio
+async def test_model_refuse_without_web_fallback_keeps_model_refuse():
+    web_search = MagicMock()
+    web_search.answer = AsyncMock(return_value="不該出現")
+    svc, _gemini, _retriever = _make_service(
+        docs=_distinct_docs(2),
+        answer_content="[NO_ANSWER] 根據現有資料無法提供建議。",
+        web_search=web_search,
+        web_fallback_enabled=False,
+    )
+    result = await svc.answer("某個冷門問題")
+    assert result == NO_ANSWER_MESSAGE
+    web_search.answer.assert_not_awaited()

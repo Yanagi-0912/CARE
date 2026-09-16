@@ -116,3 +116,31 @@ def test_thinking_level_is_passed_to_chat_model():
 def test_thinking_level_defaults_to_model_default():
     svc = GeminiService(api_key="dummy_key", model_name="dummy_model")
     assert svc.chat_model.thinking_level is None
+
+
+# --- 逾時與重試次數集中在這裡設（2026-09-16） -----------------------------------
+
+from app.core.config import settings
+from app.services.gemini.services.gemini_service import DEFAULT_MAX_RETRIES
+
+
+def test_chat_model_gets_explicit_timeout_and_retries_by_default():
+    """langchain-google-genai 預設 timeout=None、重試 6 次；每個實例都要蓋掉。"""
+    svc = GeminiService(api_key="dummy_key", model_name="dummy_model")
+    assert svc.chat_model.timeout == settings.GEMINI_REQUEST_TIMEOUT_SECONDS
+    assert svc.chat_model.max_retries == DEFAULT_MAX_RETRIES == 2
+    assert svc.timeout == settings.GEMINI_REQUEST_TIMEOUT_SECONDS
+    assert svc.max_retries == 2
+
+
+def test_timeout_and_retries_can_be_overridden():
+    svc = GeminiService(
+        api_key="dummy_key", model_name="dummy_model", timeout=5, max_retries=0
+    )
+    assert svc.chat_model.timeout == 5.0
+    assert svc.chat_model.max_retries == 0
+
+
+def test_request_timeout_stays_below_rag_total_budget():
+    """單次逾時要小於 RAG 總預算，一次卡住的連線才不可能獨自吃掉整條管線。"""
+    assert 0 < settings.GEMINI_REQUEST_TIMEOUT_SECONDS < settings.RAG_ANSWER_TIMEOUT_SECONDS

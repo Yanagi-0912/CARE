@@ -397,3 +397,116 @@ async def test_missing_gemini_key_falls_back_to_webhook(tmp_path):
     assert out == "whisper 結果"
     assert gemini.languages == []
     webhook.assert_called_once()
+
+
+# --- 失敗要分類（LINE 進站流程） -----------------------------------------
+#
+# 以前所有失敗都回同一個「發生錯誤」字串，media_handler 再把它跟「沒辨識出
+# 文字」混成一句。現在下載／n8n／STT 的問題、太大、不支援各自拋不同的例外。
+
+from app.services.media.mutimedia_processor import (  # noqa: E402
+    MAX_MEDIA_SIZE_BYTES,
+    MediaProcessingError,
+    MediaServiceUnavailableError,
+    MediaTooLargeError,
+    MediaUnsupportedError,
+)
+import requests as _requests  # noqa: E402
+
+
+def _download_patches(svc, tmp_path, response):
+    token_mgr = MagicMock()
+    token_mgr.get_token.return_value = "t"
+    return (
+        patch("app.services.media.mutimedia_processor.TMP_DIR", tmp_path),
+        patch("app.dependencies.get_line_token_manager", return_value=token_mgr),
+        patch("app.services.media.mutimedia_processor.requests.get", **response),
+    )
+
+
+def test_content_length_over_limit_is_too_large(svc, tmp_path):
+    big = MAX_MEDIA_SIZE_BYTES + 1
+    p1, p2, p3 = _download_patches(
+        svc, tmp_path,
+        {"return_value": FakeGetResponse(headers={"Content-Type": "image/jpeg", "Content-Length": str(big)})},
+    )
+    with p1, p2, p3, pytest.raises(MediaTooLargeError) as exc_info:
+        svc._download_media_to_tmp("mid", "image")
+    assert exc_info.value.size_bytes == big
+    assert exc_info.value.limit_bytes == MAX_MEDIA_SIZE_BYTES
+
+
+def test_oversized_stream_without_content_length_is_too_large(svc, tmp_path):
+    chunk = b"x" * (1024 * 1024)
+    p1, p2, p3 = _download_patches(
+        svc, tmp_path,
+        {"return_value": FakeGetResponse(headers={"Content-Type": "image/jpeg"}, chunks=[chunk] * 11)},
+    )
+    with p1, p2, p3, pytest.raises(MediaTooLargeError):
+        svc._download_media_to_tmp("mid", "image")
+
+
+def test_mime_mismatch_is_unsupported(svc, tmp_path):
+    p1, p2, p3 = _download_patches(
+        svc, tmp_path,
+        {"return_value": FakeGetResponse(headers={"Content-Type": "text/html", "Content-Length": "3"})},
+    )
+    with p1, p2, p3, pytest.raises(MediaUnsupportedError):
+        svc._download_media_to_tmp("mid", "image")
+
+
+def test_line_download_failure_is_service_unavailable(svc, tmp_path):
+    p1, p2, p3 = _download_patches(
+        svc, tmp_path, {"side_effect": _requests.ConnectionError("LINE down")}
+    )
+    with p1, p2, p3, pytest.raises(MediaServiceUnavailableError):
+        svc._download_media_to_tmp("mid", "image")
+
+
+def test_webhook_unreachable_is_service_unavailable(svc, tmp_path):
+    p = tmp_path / "a.jpg"
+    p.write_bytes(b"abc")
+    with patch("app.services.media.mutimedia_processor.MEDIA_PARSE_WEBHOOK_URL", "http://n8n/x"), \
+         patch("app.services.media.mutimedia_processor.requests.post", side_effect=_requests.Timeout("slow")):
+        with pytest.raises(MediaServiceUnavailableError):
+            svc._extract_user_text_via_webhook(p)
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        FakePostResponse(headers={"Content-Type": "application/json"}, text=""),
+        FakePostResponse(
+            headers={"Content-Type": "application/json"},
+            text="<html>",
+            payload=_requests.exceptions.JSONDecodeError("bad", "<html>", 0),
+        ),
+    ],
+)
+def test_webhook_garbage_is_service_unavailable_not_empty_transcript(svc, tmp_path, response):
+    p = tmp_path / "a.jpg"
+    p.write_bytes(b"abc")
+    with patch("app.services.media.mutimedia_processor.MEDIA_PARSE_WEBHOOK_URL", "http://n8n/x"), \
+         patch("app.services.media.mutimedia_processor.requests.post", return_value=response):
+        with pytest.raises(MediaServiceUnavailableError):
+            svc._extract_user_text_via_webhook(p)
+
+
+@pytest.mark.asyncio
+async def test_process_media_propagates_typed_errors_and_cleans_up(svc, tmp_path):
+    p = tmp_path / "a.jpg"
+    p.write_bytes(b"abc")
+    with patch.object(svc, "_download_media_to_tmp", return_value=p), \
+         patch.object(svc, "_extract_user_text_via_webhook", side_effect=MediaServiceUnavailableError("n8n")):
+        with pytest.raises(MediaServiceUnavailableError):
+            await svc.process_media("mid", "image", user_id="U1")
+    assert not p.exists()
+
+
+@pytest.mark.asyncio
+async def test_process_media_wraps_unexpected_errors_as_service_unavailable(svc, tmp_path):
+    with patch.object(svc, "_download_media_to_tmp", side_effect=OSError("disk full")):
+        with pytest.raises(MediaServiceUnavailableError) as exc_info:
+            await svc.process_media("mid", "image", user_id="U1")
+    assert isinstance(exc_info.value, MediaProcessingError)
+    assert isinstance(exc_info.value.__cause__, OSError)

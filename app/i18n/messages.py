@@ -3189,6 +3189,78 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "CARE ให้ข้อมูลด้านสุขภาพ ไม่ใช่การวินิจฉัยของแพทย์ กรณีฉุกเฉินโทร 119",
         "ja": "CARE は健康情報を提供するもので、医師の診断に代わるものではありません。緊急時は 119 に電話してください。",
     },
+    # --- LINE 進站流程 ---
+    #
+    # agent 超過 AGENT_TOTAL_TIMEOUT_SECONDS 還沒回：不是「發生錯誤」（那句會讓
+    # 人以為問題本身有問題），而是這一輪太久、請再問一次。
+    "line.fallback_busy": {
+        "zh-TW": "抱歉，這個問題處理得比較久，還沒有結果。請稍後再問一次。",
+        "en": "Sorry, this is taking longer than expected and hasn't finished. Please ask again in a moment.",
+        "id": "Maaf, pertanyaan ini butuh waktu lebih lama dan belum selesai. Silakan tanyakan lagi sebentar lagi.",
+        "vi": "Xin lỗi, câu hỏi này mất nhiều thời gian hơn dự kiến và chưa có kết quả. Vui lòng hỏi lại sau ít phút.",
+        "th": "ขออภัย คำถามนี้ใช้เวลานานกว่าปกติและยังไม่เสร็จ กรุณาถามใหม่อีกครั้งในอีกสักครู่",
+        "ja": "申し訳ありません。処理に時間がかかっており、まだ結果が出ていません。しばらくしてからもう一度お尋ねください。",
+    },
+    # 媒體訊息（圖片／語音／影片／檔案）辨識失敗的四種情況，分開講：
+    # 太大與不支援是使用者能自己改的；服務失敗要請他等一下再傳，不是重拍；
+    # 真的沒有內容才請他確認清晰度。{kind} 帶入 media.kind.* 的譯名。
+    "media.kind.image": {
+        "zh-TW": "圖片", "en": "image", "id": "gambar", "vi": "hình ảnh", "th": "รูปภาพ", "ja": "画像",
+    },
+    "media.kind.audio": {
+        "zh-TW": "語音", "en": "voice message", "id": "pesan suara", "vi": "tin nhắn thoại", "th": "ข้อความเสียง", "ja": "音声",
+    },
+    "media.kind.video": {
+        "zh-TW": "影片", "en": "video", "id": "video", "vi": "video", "th": "วิดีโอ", "ja": "動画",
+    },
+    "media.kind.file": {
+        "zh-TW": "檔案", "en": "file", "id": "berkas", "vi": "tệp", "th": "ไฟล์", "ja": "ファイル",
+    },
+    "media.too_large": {
+        "zh-TW": "您傳送的{kind}超過 {limit_mb} MB 的上限，請壓縮或裁切後再傳一次。",
+        "en": "The {kind} you sent is over the {limit_mb} MB limit. Please compress or trim it and send it again.",
+        "id": "{kind} yang Anda kirim melebihi batas {limit_mb} MB. Silakan kompres atau potong lalu kirim lagi.",
+        "vi": "{kind} bạn gửi vượt quá giới hạn {limit_mb} MB. Vui lòng nén hoặc cắt bớt rồi gửi lại.",
+        "th": "{kind} ที่คุณส่งเกินขีดจำกัด {limit_mb} MB กรุณาบีบอัดหรือตัดให้สั้นลงแล้วส่งใหม่",
+        "ja": "送信された{kind}は上限 {limit_mb} MB を超えています。圧縮または短くしてから、もう一度送ってください。",
+    },
+    "media.unsupported": {
+        "zh-TW": "抱歉，目前不支援這種{kind}格式。可以改傳圖片、語音，或 PDF／文字檔。",
+        "en": "Sorry, this {kind} format isn't supported yet. Please send an image, a voice message, or a PDF/text file instead.",
+        "id": "Maaf, format {kind} ini belum didukung. Silakan kirim gambar, pesan suara, atau berkas PDF/teks.",
+        "vi": "Xin lỗi, định dạng {kind} này chưa được hỗ trợ. Vui lòng gửi hình ảnh, tin nhắn thoại hoặc tệp PDF/văn bản.",
+        "th": "ขออภัย ยังไม่รองรับ{kind}รูปแบบนี้ กรุณาส่งรูปภาพ ข้อความเสียง หรือไฟล์ PDF/ข้อความแทน",
+        "ja": "申し訳ありません。この{kind}の形式には対応していません。画像・音声、または PDF／テキストファイルでお送りください。",
+    },
+    "media.service_unavailable": {
+        "zh-TW": "抱歉，{kind}辨識服務暫時無法使用，剛才那則沒有處理到。請過幾分鐘再傳一次。",
+        "en": "Sorry, the {kind} recognition service is temporarily unavailable and your last message wasn't processed. Please send it again in a few minutes.",
+        "id": "Maaf, layanan pengenalan {kind} sedang tidak tersedia dan pesan terakhir Anda belum diproses. Silakan kirim lagi beberapa menit lagi.",
+        "vi": "Xin lỗi, dịch vụ nhận dạng {kind} tạm thời không khả dụng nên tin nhắn vừa rồi chưa được xử lý. Vui lòng gửi lại sau vài phút.",
+        "th": "ขออภัย บริการรู้จำ{kind}ไม่พร้อมใช้งานชั่วคราว ข้อความล่าสุดของคุณจึงยังไม่ได้รับการประมวลผล กรุณาส่งใหม่ในอีกสักครู่",
+        "ja": "申し訳ありません。{kind}の認識サービスが一時的に利用できず、先ほどのメッセージは処理できませんでした。数分後にもう一度お送りください。",
+    },
+    "media.no_content": {
+        "zh-TW": "無法從您傳送的{kind}中辨識出任何文字，請確認內容清晰並重新傳送。",
+        "en": "I couldn't find any text in the {kind} you sent. Please make sure it's clear and send it again.",
+        "id": "Saya tidak dapat menemukan teks apa pun di {kind} yang Anda kirim. Pastikan isinya jelas lalu kirim lagi.",
+        "vi": "Tôi không nhận ra được nội dung nào trong {kind} bạn gửi. Vui lòng kiểm tra cho rõ rồi gửi lại.",
+        "th": "ไม่พบข้อความใด ๆ ใน{kind}ที่คุณส่ง กรุณาตรวจสอบให้ชัดเจนแล้วส่งใหม่",
+        "ja": "送信された{kind}から文字を読み取れませんでした。内容がはっきり写っているか確認して、もう一度お送りください。",
+    },
+    # --- RAG／agent 管線 ---
+    #
+    # 網搜服務被限流（Firecrawl 回 429）。以前這條路被吞成 0 筆、對使用者說
+    # 「找不到，請換個方式描述」——換十種說法都一樣找不到，因為根本沒搜。
+    # 限流與一般失敗分開一個 key：使用者該做的是等一下再問，而不是換說法。
+    "rag.fail.WEB_RATE_LIMITED": {
+        "zh-TW": "網路搜尋服務目前查詢太頻繁，暫時無法使用。請過一會兒再問一次。",
+        "en": "The web search service is temporarily unavailable due to too many requests. Please try again in a little while.",
+        "id": "Layanan pencarian web sementara tidak tersedia karena terlalu banyak permintaan. Silakan coba lagi sebentar lagi.",
+        "vi": "Dịch vụ tìm kiếm web tạm thời không khả dụng do có quá nhiều yêu cầu. Vui lòng thử lại sau ít phút.",
+        "th": "บริการค้นหาเว็บไม่สามารถใช้งานได้ชั่วคราวเนื่องจากมีคำขอมากเกินไป กรุณาลองใหม่อีกครั้งในอีกสักครู่",
+        "ja": "リクエストが集中しているため、ウェブ検索サービスを一時的に利用できません。しばらくしてからもう一度お試しください。",
+    },
 }
 
 

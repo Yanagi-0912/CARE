@@ -1,7 +1,7 @@
 # 諮詢功能的核心服務，負責處理諮詢訊息的摘要生成和搜尋等邏輯。
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from textwrap import dedent
 from typing import Optional
 from app.models.chat_message import ChatMessage
@@ -32,6 +32,15 @@ def _taipei_date(timestamp: datetime) -> date:
     # 訊息時間戳存的是 UTC；「哪一天的對話」要以使用者所在的台北日期為準，
     # 否則台北 00:00–08:00 的對話會被算到前一天。
     return ensure_aware_utc(timestamp).astimezone(TAIPEI_TZ).date()
+
+
+def taipei_day_utc_range(day: date) -> tuple[datetime, datetime]:
+    """某個台北日期對應的 UTC 半開區間 `[start, end)`。
+
+    給資料庫查詢用：訊息以 UTC 存，「台北 9/14」是 UTC 9/13 16:00 到 9/14 16:00。
+    """
+    start = datetime.combine(day, time.min, tzinfo=TAIPEI_TZ).astimezone(timezone.utc)
+    return start, start + timedelta(days=1)
 
 
 class ConsultationService:
@@ -97,16 +106,22 @@ class ConsultationService:
             user_id, target_date, messages, force=request.force
         )
 
-    # 每日排程用：Redis 裡還有訊息的每個台北日期都補摘要（已是最新的會直接沿用）。
-    # 不能只摘最新那天——TTL 每寫一則就重設，列表可能跨好幾天，前一天稍晚的
-    # 對話若只在最新那天被看到，就永遠不會進到它自己那天的摘要。
-    async def summarize_pending_dates(self, user_id: str) -> list[ConsultationSummary]:
-        messages = await self._chat_history_repository.list_messages(user_id)
-        days = sorted({_taipei_date(message.timestamp) for message in messages})
-        return [
-            await self._summarize_date(user_id, day, messages, force=False)
-            for day in days
-        ]
+    # 每日排程用：只摘指定的那一個台北日期（排程傳昨天）。
+    #
+    # 以前是把每個人 30 天的原文全撈回來、每個有訊息的日期都補一次——資料量是
+    # O(使用者數 × 30 天)，而其中 29 天的摘要早就存在，撈回來只是為了確認一遍。
+    # 現在查詢就限定在那一天的 UTC 區間，只帶回需要的訊息；那天沒講話的人回
+    # None，不寫「尚無諮詢記錄」那種空摘要。手動摘要（`summarize`）不走這裡。
+    async def summarize_day(
+        self, user_id: str, target_date: date
+    ) -> Optional[ConsultationSummary]:
+        since, until = taipei_day_utc_range(target_date)
+        messages = await self._chat_history_repository.list_messages(
+            user_id, since=since, until=until
+        )
+        if not messages:
+            return None
+        return await self._summarize_date(user_id, target_date, messages, force=False)
 
     async def _summarize_date(
         self,

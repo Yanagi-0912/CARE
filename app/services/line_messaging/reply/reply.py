@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
@@ -38,6 +39,11 @@ from app.services.line_messaging.flex.rag_answer_flex import (
     build_rag_answer_flex,
 )
 from app.services.line_messaging.flex.table_flex import build_table_flex_from_text
+from app.services.line_messaging.send_result import (
+    SendOutcome,
+    SendResult,
+    classify_send_exception,
+)
 from app.services.line_messaging.token_manager import LineTokenManager
 from resources.flex_messages.size_guard import fits
 from resources.flex_messages.theme import resolve_theme
@@ -85,7 +91,6 @@ class LineReplier:
             if not user_id or not user_id.strip():
                 raise ValueError("LINE 事件缺少 user_id")
 
-            access_token = await self._token_manager.get_token_async()
             message_text = self._normalize_message_text(message_text)
             logger.info(
                 f"{LOGGER_HEADER_TEXT} 準備回覆，user_id=%s, request_location=%s",
@@ -170,68 +175,92 @@ class LineReplier:
                     ]
                 )
 
-            line_config = Configuration(access_token=access_token)
-            with ApiClient(line_config) as api_client:
-                line_bot_api = MessagingApi(api_client)
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        replyToken=reply_token,
-                        messages=messages,
-                    )
-                )
+        except Exception:
+            # 組訊息就失敗（TTS、卡片、token）：使用者不能什麼都收不到。
+            logger.exception("Failed to build LINE reply for user %s", user_id)
+            messages = [TextMessage(text=t("line.fallback_process_error", language=language))]
 
+        return await self._reply_or_push(
+            reply_token, user_id, messages, language=language
+        )
+
+    async def _reply_or_push(
+        self,
+        reply_token: str,
+        user_id: str,
+        messages: list,
+        *,
+        language: str | None,
+    ) -> bool:
+        """先用 reply token 回；回不了就改 push，最後至少推一句錯誤說明。
+
+        reply token 一分鐘內有效且只能用一次；agent 跑久、LINE 重送、或前面
+        某一步已經消耗掉 token，reply 都會被 LINE 以 400 拒絕。以前這裡只記
+        log 回 False，使用者看到讀取動畫消失後就是一片沉默。改成：
+
+        1. reply 失敗（不論原因）→ 同一組訊息改用 push 送。
+        2. push 也失敗（內容本身不合法、或額度用完）→ 推一句純文字錯誤說明。
+           額度用完時這一句也送不出去，那是真的沒辦法，記 log 即可。
+        """
+        result = await self._send_reply(reply_token, messages)
+        if result.ok:
             logger.debug("Message sent to LINE for user %s", user_id)
             return True
 
-        except Exception:
-            logger.exception("Failed to send LINE message")
+        logger.warning(
+            f"{LOGGER_HEADER_TEXT} reply 失敗（%s, status=%s），改用 push 補送 user_id=%s",
+            result.outcome.value,
+            result.status,
+            user_id,
+        )
+        if result.outcome is SendOutcome.QUOTA_EXCEEDED:
+            # reply 不計額度，429 只會是短時間打太快；push 會吃額度，不值得補。
             return False
+
+        pushed = await self._send_push(user_id, messages)
+        if pushed.ok:
+            return True
+        if pushed.outcome in (SendOutcome.QUOTA_EXCEEDED, SendOutcome.UNAUTHORIZED):
+            return False
+
+        # 同一組訊息 push 也被拒，多半是內容不合法（Flex 太大、欄位錯）。
+        # 至少讓使用者知道這一輪沒有回覆，而不是無聲無息。
+        fallback = await self._send_push(
+            user_id,
+            [TextMessage(text=t("line.fallback_process_error", language=language))],
+        )
+        return fallback.ok
 
     async def reply_flex(
         self, reply_token: str, flex_message: FlexMessage, user_id: str
     ) -> bool:
         """回覆 LINE Flex Message"""
-        try:
-            if not reply_token or not reply_token.strip():
-                raise ValueError("LINE 事件缺少 reply_token")
-
-            access_token = await self._token_manager.get_token_async()
-            line_config = Configuration(access_token=access_token)
-            with ApiClient(line_config) as api_client:
-                line_bot_api = MessagingApi(api_client)
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        replyToken=reply_token,
-                        messages=[flex_message],
-                    )
-                )
+        if not reply_token or not reply_token.strip():
+            logger.error("LINE 事件缺少 reply_token，Flex 改用 push 送給 %s", user_id)
+            return (await self._send_push(user_id, [flex_message])).ok
+        ok = await self._reply_or_push(
+            reply_token, user_id, [flex_message], language=None
+        )
+        if ok:
             logger.info("Flex Message replied to LINE user %s", user_id)
-            return True
-        except Exception:
-            logger.exception("Failed to reply LINE Flex message")
-            return False
+        return ok
 
     async def push_flex(self, user_id: str, flex_message: FlexMessage) -> bool:
         """主動推播 LINE Flex Message"""
-        try:
-            if not user_id or not user_id.strip():
-                raise ValueError("LINE 推播缺少 user_id")
+        return (await self.push_flex_result(user_id, flex_message)).ok
 
-            access_token = await self._token_manager.get_token_async()
-            line_config = Configuration(access_token=access_token)
-            with ApiClient(line_config) as api_client:
-                line_bot_api = MessagingApi(api_client)
-                line_bot_api.push_message(
-                    PushMessageRequest(
-                        to=user_id,
-                        messages=[flex_message],
-                    )
-                )
+    async def push_flex_result(
+        self, user_id: str, flex_message: FlexMessage
+    ) -> SendResult:
+        """同 push_flex，但回傳分類過的結果。
+
+        排程器用這支分辨 429（額度用完，不該記成已送、也不該算失敗次數）
+        與 400（對象無效，重試沒有意義）。
+        """
+        result = await self._send_push(user_id, [flex_message])
+        if result.ok:
             logger.info("Flex Message pushed to LINE user %s", user_id)
-            return True
-        except Exception:
-            logger.exception("Failed to push LINE Flex message")
-            return False
+        return result
 
     async def push_text(self, user_id: str, text: str) -> bool:
         """主動推播純文字訊息。
@@ -239,25 +268,73 @@ class LineReplier:
         背景通知（例如用藥風險提醒）沒有 reply token 可用，也不該佔用主回覆的
         reply token。純文字而非 Flex：這些訊息是說給當事人聽的一段話，不是卡片。
         """
-        try:
-            if not user_id or not user_id.strip():
-                raise ValueError("LINE 推播缺少 user_id")
+        return (await self.push_text_result(user_id, text)).ok
 
-            access_token = self._token_manager.get_token()
+    async def push_text_result(self, user_id: str, text: str) -> SendResult:
+        """同 push_text，但回傳分類過的結果（用途見 push_flex_result）。"""
+        result = await self._send_push(user_id, [TextMessage(text=text)])
+        if result.ok:
+            logger.info("Text message pushed to LINE user %s", user_id)
+        return result
+
+    async def push_messages(self, user_id: str, messages: list) -> SendResult:
+        """推播任意一組訊息（最多五則，LINE 的單次上限）。"""
+        return await self._send_push(user_id, messages)
+
+    # ------------------------------------------------------------------
+    # 真正打 LINE API 的兩支：所有 reply／push 都經過這裡。
+    #
+    # `MessagingApi` 是同步 SDK（底層 urllib3），直接在 async def 裡呼叫會把
+    # 整個事件迴圈凍住——LINE 端一次網路停滯就讓其他使用者的 webhook、LIFF
+    # API、/health 探針一起停擺。所以一律 to_thread，並帶 _request_timeout。
+    # ------------------------------------------------------------------
+
+    async def _send_reply(self, reply_token: str, messages: list) -> SendResult:
+        if not reply_token or not reply_token.strip():
+            return SendResult(SendOutcome.REJECTED, None, "missing reply_token")
+        request = ReplyMessageRequest(replyToken=reply_token, messages=messages)
+        return await self._call_line_api("reply_message", request, log_name="reply")
+
+    async def _send_push(self, user_id: str, messages: list) -> SendResult:
+        if not user_id or not user_id.strip():
+            return SendResult(SendOutcome.REJECTED, None, "missing user_id")
+        request = PushMessageRequest(to=user_id, messages=messages)
+        return await self._call_line_api("push_message", request, log_name="push")
+
+    async def _call_line_api(
+        self, method_name: str, request: Any, *, log_name: str
+    ) -> SendResult:
+        try:
+            access_token = await self._token_manager.get_token_async()
+        except Exception:
+            logger.exception("取得 channel access token 失敗，%s 未送出", log_name)
+            return SendResult(SendOutcome.UNAUTHORIZED, None, "token unavailable")
+
+        def _do_call() -> None:
             line_config = Configuration(access_token=access_token)
             with ApiClient(line_config) as api_client:
                 line_bot_api = MessagingApi(api_client)
-                line_bot_api.push_message(
-                    PushMessageRequest(
-                        to=user_id,
-                        messages=[TextMessage(text=text)],
-                    )
+                getattr(line_bot_api, method_name)(
+                    request, _request_timeout=settings.LINE_API_TIMEOUT_SECONDS
                 )
-            logger.info("Text message pushed to LINE user %s", user_id)
-            return True
-        except Exception:
-            logger.exception("Failed to push LINE text message")
-            return False
+
+        try:
+            await asyncio.to_thread(_do_call)
+            return SendResult.success()
+        except Exception as exc:
+            result = classify_send_exception(exc)
+            if result.outcome is SendOutcome.UNAUTHORIZED:
+                # token 已被 LINE 撤銷：清掉快取，下一次呼叫會重新換取。
+                self._token_manager.invalidate()
+            logger.error(
+                f"{LOGGER_HEADER_TEXT} LINE %s 失敗 outcome=%s status=%s detail=%s",
+                log_name,
+                result.outcome.value,
+                result.status,
+                result.detail,
+                exc_info=result.outcome is SendOutcome.TRANSIENT,
+            )
+            return result
 
 
     def _build_answer_card(

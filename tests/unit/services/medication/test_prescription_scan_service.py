@@ -96,6 +96,20 @@ class FakeMedicationRepository:
         self.created.extend(medications)
         return medications
 
+    # 提交回滾：模擬「刪掉這次插入的藥」，並可設成刪除本身失敗。
+    delete_calls: list[list[str]] | None = None
+    fail_delete: bool = False
+
+    async def delete_by_ids(self, medication_ids):
+        if self.delete_calls is None:
+            self.delete_calls = []
+        self.delete_calls.append(list(medication_ids))
+        if self.fail_delete:
+            raise RuntimeError("刪除也失敗")
+        before = len(self.created)
+        self.created = [m for m in self.created if m.id not in set(medication_ids)]
+        return before - len(self.created)
+
 
 class FakeReminderRepository:
     def __init__(self, existing=None, reactivate_slots=None):
@@ -1931,3 +1945,96 @@ async def test_commit_without_an_otc_service_behaves_exactly_as_before():
 
     assert len(result.medication_ids) == 1
     assert service._otc_alert_tasks == set()
+
+
+# ── 提交回滾：create_many 之後失敗，重試不能插第二份藥 ─────────────────
+
+
+class _LinkFailsOnceReminderRepository(FakeReminderRepository):
+    """第一次連結提醒時拋出暫時性錯誤，之後恢復正常。"""
+
+    def __init__(self):
+        super().__init__()
+        self.link_attempts = 0
+
+    async def link_medications_to_reminder(self, reminder_id, medication_ids):
+        self.link_attempts += 1
+        if self.link_attempts == 1:
+            raise RuntimeError("暫時性資料庫錯誤")
+        return await super().link_medications_to_reminder(reminder_id, medication_ids)
+
+
+@pytest.mark.asyncio
+async def test_commit_rolls_back_created_medications_when_linking_fails_so_retry_does_not_duplicate():
+    """create_many 成功、連結提醒失敗：提交權還給草稿之前先把剛插入的藥刪掉，
+    否則重試會用一組新 id 再插一份，同一張藥袋的藥在清單裡出現兩次。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    medications = FakeMedicationRepository()
+    reminders = _LinkFailsOnceReminderRepository()
+    service = _service(
+        drafts=drafts,
+        medications=medications,
+        reminders=reminders,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+    request = _request(CommitDrugItem(name="某藥", frequency_code="QD"))
+
+    with pytest.raises(RuntimeError):
+        await service.commit("D1", "U_FAMILY", request)
+
+    first_ids = drafts.commit_calls[0][2]
+    # 回滾刪的正是這次插入的那組 id；資料庫裡沒有殘留。
+    assert medications.delete_calls == [first_ids]
+    assert medications.created == []
+    assert drafts._committed_medication_ids is None
+
+    result = await service.commit("D1", "U_FAMILY", request)
+
+    assert len(medications.created) == 1
+    assert result.medication_ids == [medications.created[0].id]
+    assert result.medication_ids != first_ids
+
+
+@pytest.mark.asyncio
+async def test_commit_still_releases_the_token_and_raises_when_rollback_itself_fails():
+    """回滾失敗只記錄：提交權照樣要還、例外照樣往外拋——寧可重試後多一份藥，
+    也不要處方憑空消失。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    medications = FakeMedicationRepository()
+    medications.fail_delete = True
+    service = _service(
+        drafts=drafts,
+        medications=medications,
+        reminders=_LinkFailsOnceReminderRepository(),
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    with pytest.raises(RuntimeError, match="暫時性資料庫錯誤"):
+        await service.commit(
+            "D1", "U_FAMILY", _request(CommitDrugItem(name="某藥", frequency_code="QD"))
+        )
+
+    assert len(drafts.release_calls) == 1
+    assert drafts._committed_medication_ids is None
+
+
+@pytest.mark.asyncio
+async def test_commit_rollback_also_runs_when_create_many_itself_fails():
+    """insert_many 中途失敗可能只插了一部分：同一組 id 一併清掉。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    medications = FakeMedicationRepository(fail_times=1)
+    service = _service(
+        drafts=drafts,
+        medications=medications,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+    )
+
+    with pytest.raises(RuntimeError):
+        await service.commit(
+            "D1", "U_FAMILY", _request(CommitDrugItem(name="某藥", frequency_code="QD"))
+        )
+
+    assert medications.delete_calls == [drafts.commit_calls[0][2]]

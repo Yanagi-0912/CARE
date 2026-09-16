@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from collections.abc import Callable
@@ -15,6 +16,12 @@ from app.services.line_messaging.rich_menu_layout import normalize_rich_menu_lan
 logger = logging.getLogger(__name__)
 
 RICH_MENU_IDS_PATH = PROJECT_ROOT / "resources" / "rich_menu_ids.json"
+
+
+def _user_tag(user_id: str) -> str:
+    """log 用的使用者代號：LINE user id 是個資，不進 log；雜湊前 8 碼足以在同一
+    份 log 裡對上同一個人，卻反解不回 id。"""
+    return hashlib.blake2b((user_id or "").encode("utf-8"), digest_size=4).hexdigest()
 
 
 def load_rich_menu_ids() -> dict[str, str]:
@@ -71,7 +78,7 @@ class RichMenuService:
             logger.warning(
                 "No rich menu ID for language=%s; skipping link for user=%s",
                 language,
-                user_id,
+                _user_tag(user_id),
             )
             return False
 

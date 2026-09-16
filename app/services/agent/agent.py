@@ -446,11 +446,11 @@ class Agent:
             if not messages or messages[-1].content != user_input:
                 messages = list(messages) + [HumanMessage(content=user_input)]
 
-        logger.info(
-            "[Agent] 開始執行，messages=%s, user_input_preview=%s",
-            len(messages),
-            (user_input or "")[:80],
-        )
+        logger.info("[Agent] 開始執行，messages=%s", len(messages))
+        # 使用者原文只在 DEBUG 印：INFO 進 Cloud Logging 會長期保存，而這裡的原文
+        # 是病史、用藥、家人狀況。對話原文本來就另存 Mongo（30 天），不需要再留一份
+        # 在 log 裡。
+        logger.debug("[Agent] user_input_preview=%s", (user_input or "")[:80])
 
         with stage_timer(logger, "agent_graph") as timing:
             result = await self._graph.ainvoke(

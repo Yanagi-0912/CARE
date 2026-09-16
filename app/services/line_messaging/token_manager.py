@@ -49,6 +49,17 @@ class LineTokenManager:
             return self._access_token
         return None
 
+    def invalidate(self) -> None:
+        """清掉快取的 token。
+
+        LINE 回 401 表示 console 那邊撤銷或重發了 token；快取只看本地時間，
+        不清的話所有 pod 會抱著失效 token 直到重啟，期間每一則回覆都失敗。
+        """
+        with self._refresh_lock:
+            self._access_token = None
+            self._token_expires_at = None
+        logger.warning("channel access token 快取已清除，下一次呼叫會重新向 LINE 換取")
+
     def get_token(self) -> str:
         """取得有效的 Channel Access Token；快取未過期則直接回傳。
 

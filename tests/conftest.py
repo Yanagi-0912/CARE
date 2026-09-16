@@ -6,6 +6,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# 啟動設定檢查（app/core/startup_checks.py）在 lifespan 一開始就跑，會拒絕預設的
+# JWT 密鑰。開發機的 .env 通常沒有 AUTH_JWT_SECRET，跑到 lifespan 的測試
+# （`with TestClient(app)`）會因此起不來。這裡只在缺席時補一把測試用密鑰，
+# 刻意**不**把 APP_ENV 設成 development：測試要走的是正式環境那條路。
+os.environ.setdefault("AUTH_JWT_SECRET", "unit-test-only-jwt-secret-not-for-production")
+
 
 def fake_line_token_manager(token: str = "test-token", side_effect=None) -> MagicMock:
     """`LineTokenManager` 的測試替身，同步與非同步兩支都配好。

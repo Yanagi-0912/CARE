@@ -15,6 +15,7 @@ from typing import Any, Optional
 
 from app.core import scheduler_heartbeat
 from app.models.medication import TAIPEI_TZ
+from app.services.medical_news.run_time import parse_run_time
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,10 @@ class DrugNewsIndexScheduler:
     def __init__(self, *, index_service: Any, run_time: str) -> None:
         self._index_service = index_service
         self._run_time = run_time
+        # 在建構時就驗：設錯的話 task 會在第一次醒來前靜默死掉，外觀健康、永不索引。
+        self._run_hour, self._run_minute = parse_run_time(
+            run_time, setting_name="MEDICAL_NEWS_INDEX_TIME"
+        )
         self._task: Optional[asyncio.Task] = None
 
     def start(self) -> None:
@@ -63,8 +68,9 @@ class DrugNewsIndexScheduler:
                 logger.exception("[DrugNewsIndexScheduler] 索引失敗")
 
     def _next_run_at(self, now: datetime) -> datetime:
-        hour, minute = (int(part) for part in self._run_time.split(":"))
-        candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        candidate = now.replace(
+            hour=self._run_hour, minute=self._run_minute, second=0, microsecond=0
+        )
         if candidate <= now:
             candidate += timedelta(days=1)
         return candidate

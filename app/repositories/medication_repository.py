@@ -15,7 +15,13 @@ from app.models.medication import (
     MedicationReminder,
 )
 # 重試上限與還原邏輯與掛號提醒共用，定義在 push_claim；這裡的名稱保留給既有的 import。
-from app.repositories.push_claim import MAX_PUSH_ATTEMPTS, release_push_claim
+from app.repositories.push_claim import (
+    MAX_PUSH_ATTEMPTS,
+    claimable_filter,
+    give_up_push_claim,
+    mark_push_stage,
+    release_push_claim,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +109,9 @@ class MedicationReminderRepository:
         doc = reminder.model_dump(by_alias=True, exclude_none=True)
         if "_id" not in doc or not doc["_id"]:
             doc["_id"] = str(ObjectId())
+        # 新建的規則「啟用時刻」就是建立時刻；排程器以兩者的較大值當展開下界
+        # （見 MedicationReminder.enabled_at）。
+        doc.setdefault("enabled_at", doc["created_at"])
         await col.insert_one(doc)
         doc["_id"] = str(doc["_id"])
         return MedicationReminder(**doc)
@@ -193,6 +202,7 @@ class MedicationReminderRepository:
                     "enabled": True,
                     "medication_ids": [],
                     "created_at": now,
+                    "enabled_at": now,
                     "updated_at": now,
                 }
             },
@@ -218,6 +228,10 @@ class MedicationReminderRepository:
                 fix["start_date"] = today
             if fix:
                 fix["updated_at"] = now
+                # 不論是哪一種「不可排程 → 可排程」（停用、療程過期、start_date
+                # 未到），都是排程器眼中的重新啟用：今天 20:00 復活一筆規則，
+                # 早上 08:00 的時段不能被補建成漏服再通知家屬。
+                fix["enabled_at"] = now
                 document = await collection.find_one_and_update(
                     {"_id": document["_id"]},
                     {"$set": fix},
@@ -332,6 +346,18 @@ class MedicationReminderRepository:
         # `update_data`，這裡只管照單全收地寫入。
         update_doc = dict(update_data)
         update_doc["updated_at"] = now
+
+        if update_doc.get("enabled") is True:
+            # 只有「原本不是開著的」才刷新 enabled_at：把 enabled=True 原值重送
+            # 一次（LIFF 整份儲存）不是重新啟用，不能把展開下界推到現在——那會
+            # 讓當天已經過去、但還在補推期限內的時段被跳過。條件放在 filter 裡
+            # 而不是先讀再判斷：兩個並行的更新之間不會有第二次讀取的空檔。
+            # 缺 enabled 欄位的舊文件用 $ne 也會命中，與 _is_schedulable 把缺席
+            # 視為不可排程的判定一致。
+            await collection.update_one(
+                {"_id": reminder_id, "enabled": {"$ne": True}},
+                {"$set": {"enabled_at": now}},
+            )
 
         result = await collection.update_one({"_id": reminder_id}, {"$set": update_doc})
         if result.matched_count == 0:
@@ -616,6 +642,25 @@ class MedicationRepository:
         return result.matched_count > 0
 
     @staticmethod
+    async def delete_by_ids(
+        medication_ids: List[str], collection: Optional[Any] = None
+    ) -> int:
+        """刪除指定 id 的藥品，回傳刪除筆數。
+
+        給藥袋提交的回滾用（見 PrescriptionScanService.commit）：`create_many`
+        成功之後連結提醒失敗，提交權會還給草稿讓使用者重試，但剛插入的藥品
+        若留著，重試會再插一份——同一張藥袋的藥在清單裡出現兩次。id 是提交
+        時自己產生的，只會刪到這次插入的那幾筆；insert_many 中途失敗只插了
+        一部分時也一併清掉。
+        """
+        if not medication_ids:
+            return 0
+        if collection is None:
+            collection = MongoDBManager.get_medications_collection()
+        result = await collection.delete_many({"_id": {"$in": medication_ids}})
+        return result.deleted_count
+
+    @staticmethod
     async def list_visits(user_id: str, collection=None) -> List[dict]:
         """把使用者的用藥紀錄彙整成「看診紀錄」。
 
@@ -783,8 +828,16 @@ class MedicationLogRepository:
         """
         if collection is None:
             collection = MongoDBManager.get_medication_logs_collection()
-        now = taken_at or datetime.now(tz=timezone.utc)
-        update: dict = {"$set": {"status": "taken", "taken_at": now}}
+        confirmed_at = datetime.now(tz=timezone.utc)
+        now = taken_at or confirmed_at
+        # `confirmed_at` 永遠是按下確認的牆鐘時刻；`taken_at` 沿用呼叫端給的值
+        # （目前也是現在）。刻意不把隔天才確認的 taken_at 改成排定時刻：拉霸的
+        # 成效判定（reminder_variants.outcome_of）拿 taken_at <= timeout_at 當
+        # 「準時」，改了會把隔天才按的那頓算成準時；服藥狀況查詢也會顯示一個
+        # 使用者從未在那一刻按過的時間。
+        update: dict = {
+            "$set": {"status": "taken", "taken_at": now, "confirmed_at": confirmed_at}
+        }
         if taken_medication_ids:
             update["$addToSet"] = {
                 "taken_medication_ids": {"$each": taken_medication_ids}
@@ -1040,6 +1093,8 @@ class MedicationLogRepository:
         attempts_field: str,
         extra_filter: Optional[dict] = None,
         extra_set: Optional[dict] = None,
+        count_attempt: bool = True,
+        error: Optional[str] = None,
     ) -> bool:
         """還原某個階段的推播權，並累加嘗試次數；達到上限時不還原。
 
@@ -1054,47 +1109,163 @@ class MedicationLogRepository:
             extra_filter=extra_filter,
             extra_set=extra_set,
             log_prefix="[MedicationLogRepository]",
+            count_attempt=count_attempt,
+            error=error,
         )
 
+    # ── 推播權租約 ────────────────────────────────────────────────────
+    #
+    # 搶佔只是把旗標設成 True，推播是之後才發生的外部呼叫；搶佔與推播之間 pod
+    # 被 OOM kill、SIGKILL、或 task 被取消，旗標就永遠停在 True，這一則從此沒
+    # 有人會再送。所以搶佔時同時記 `*_claimed_at`；真的送達才寫 `*_sent_at`，
+    # 刻意不送（收件人關掉通知、沒有家屬該收）寫 `*_skipped_at`。旗標為 True
+    # 但兩個標記都沒有、且 claimed_at 早於租約（`PUSH_CLAIM_LEASE`）的紀錄，
+    # 視為搶佔者已死，允許重新搶下。條件的每一項為什麼缺一不可，見
+    # `push_claim.claimable_filter`。
+    #
+    # `*_sent_at` 同時是 T+20／T+30 的前提：只有 T+0 真的送達的那一頓才會被
+    # 催促、才會通知家屬逾時。LINE 429 額度用完時 T+0 從未送出，旗標卻在搶佔
+    # 時就設起了——沒有這個前提，30 分鐘後家屬會收到「他漏吃了」，而他根本
+    # 沒收到提醒。
+
+    # 三個階段的欄位名稱，供搶佔／標記／放棄共用；階段名即欄位前綴。
+    _STAGE_LABELS = {
+        "patient_reminder": "T+0min patient reminder",
+        "urgent_reminder": "T+20min urgent reminder",
+        "caregiver_alert": "T+30min caregiver alert",
+    }
+
     @staticmethod
-    async def claim_patient_reminder(log_id: str) -> bool:
-        """搶下 T+0min 首刷提醒的推播權，回傳 True 代表本實例取得推播權。"""
+    def _stage_fields(stage: str) -> dict:
+        if stage not in MedicationLogRepository._STAGE_LABELS:
+            raise ValueError(f"unknown push stage: {stage!r}")
+        return {
+            "sent_field": f"{stage}_sent",
+            "sent_at_field": f"{stage}_sent_at",
+            "skipped_at_field": f"{stage}_skipped_at",
+            "claimed_at_field": f"{stage}_claimed_at",
+            "attempts_field": f"{stage}_attempts",
+        }
+
+    @staticmethod
+    async def _claim_stage(
+        log_id: str,
+        stage: str,
+        *,
+        now: Optional[datetime],
+        fresh: Optional[dict] = None,
+        stale: Optional[dict] = None,
+        extra_set: Optional[dict] = None,
+    ) -> bool:
         col = MongoDBManager.get_medication_logs_collection()
+        fields = MedicationLogRepository._stage_fields(stage)
+        now = now or datetime.now(tz=timezone.utc)
+        query = {
+            "_id": log_id,
+            **claimable_filter(**fields, now=now, fresh=fresh, stale=stale),
+        }
         result = await col.update_one(
-            {"_id": log_id, "status": "pending", "patient_reminder_sent": False},
-            {"$set": {"patient_reminder_sent": True}},
+            query,
+            {
+                "$set": {
+                    fields["sent_field"]: True,
+                    fields["claimed_at_field"]: now,
+                    **(extra_set or {}),
+                }
+            },
         )
         return result.modified_count > 0
 
     @staticmethod
-    async def release_patient_reminder(log_id: str) -> bool:
+    async def mark_stage_sent(
+        log_id: str, stage: str, now: Optional[datetime] = None
+    ) -> bool:
+        """LINE 回 200 之後才寫 `*_sent_at`——這是「真的送達」的唯一依據。"""
+        return await mark_push_stage(
+            MongoDBManager.get_medication_logs_collection(),
+            log_id,
+            field=MedicationLogRepository._stage_fields(stage)["sent_at_field"],
+            now=now,
+        )
+
+    @staticmethod
+    async def mark_stage_skipped(
+        log_id: str, stage: str, now: Optional[datetime] = None
+    ) -> bool:
+        """刻意不送（收件人關掉通知、沒有家屬該收）時寫 `*_skipped_at`，讓租約
+        不會把它當成死掉的搶佔一再接手。"""
+        return await mark_push_stage(
+            MongoDBManager.get_medication_logs_collection(),
+            log_id,
+            field=MedicationLogRepository._stage_fields(stage)["skipped_at_field"],
+            now=now,
+        )
+
+    @staticmethod
+    async def give_up_stage(log_id: str, stage: str, error: str) -> bool:
+        """LINE 明確拒絕（400／404）時立刻放棄這個階段，見 `give_up_push_claim`。"""
+        return await give_up_push_claim(
+            MongoDBManager.get_medication_logs_collection(),
+            log_id,
+            stage=MedicationLogRepository._STAGE_LABELS[stage],
+            attempts_field=MedicationLogRepository._stage_fields(stage)["attempts_field"],
+            error=error,
+            log_prefix="[MedicationLogRepository]",
+        )
+
+    @staticmethod
+    async def claim_patient_reminder(log_id: str, now: Optional[datetime] = None) -> bool:
+        """搶下 T+0min 首刷提醒的推播權，回傳 True 代表本實例取得推播權。"""
+        return await MedicationLogRepository._claim_stage(
+            log_id,
+            "patient_reminder",
+            now=now,
+            fresh={"status": "pending"},
+            stale={"status": "pending"},
+        )
+
+    @staticmethod
+    async def release_patient_reminder(
+        log_id: str, *, count_attempt: bool = True, error: Optional[str] = None
+    ) -> bool:
         """推播失敗時還原 T+0min 首刷提醒的旗標，讓下一個 tick 重試。
 
-        重試次數有上限，見上方「推播重試上限」段落。
+        重試次數有上限，見上方「推播重試上限」段落；`count_attempt=False`
+        （LINE 額度用完）不計次，理由見 `push_claim.release_push_claim`。
         """
         return await MedicationLogRepository._release_push_claim(
             log_id,
             stage="T+0min patient reminder",
             sent_field="patient_reminder_sent",
             attempts_field="patient_reminder_attempts",
+            count_attempt=count_attempt,
+            error=error,
         )
 
     @staticmethod
-    async def claim_patient_urgent_reminder(log_id: str) -> bool:
+    async def claim_patient_urgent_reminder(
+        log_id: str, now: Optional[datetime] = None
+    ) -> bool:
         """搶下 T+20min 催促提醒的推播權。
 
         `status: "pending"` 是必要條件，不是多餘的保險：見上方「推播權搶佔」
         段落——少了它，剛按完「我已用藥」的人會收到「您尚未點擊我已用藥」。
+        `patient_reminder_sent_at` 非空同樣是必要條件：T+0 從未送達（額度用完、
+        搶佔者死掉還沒被接手）的那一頓不該被催「您尚未點擊我已用藥」——
+        他根本沒看過第一則。
         """
-        col = MongoDBManager.get_medication_logs_collection()
-        result = await col.update_one(
-            {"_id": log_id, "status": "pending", "urgent_reminder_sent": False},
-            {"$set": {"urgent_reminder_sent": True}},
+        return await MedicationLogRepository._claim_stage(
+            log_id,
+            "urgent_reminder",
+            now=now,
+            fresh={"status": "pending", "patient_reminder_sent_at": {"$ne": None}},
+            stale={"status": "pending", "patient_reminder_sent_at": {"$ne": None}},
         )
-        return result.modified_count > 0
 
     @staticmethod
-    async def release_patient_urgent_reminder(log_id: str) -> bool:
+    async def release_patient_urgent_reminder(
+        log_id: str, *, count_attempt: bool = True, error: Optional[str] = None
+    ) -> bool:
         """推播失敗時還原 T+20min 催促提醒的旗標。
 
         重試次數有上限，見上方「推播重試上限」段落。
@@ -1104,10 +1275,12 @@ class MedicationLogRepository:
             stage="T+20min urgent reminder",
             sent_field="urgent_reminder_sent",
             attempts_field="urgent_reminder_attempts",
+            count_attempt=count_attempt,
+            error=error,
         )
 
     @staticmethod
-    async def claim_caregiver_alert(log_id: str) -> bool:
+    async def claim_caregiver_alert(log_id: str, now: Optional[datetime] = None) -> bool:
         """搶下 T+30min 家屬警報的推播權，同時把狀態設為 missed。
 
         `status: "pending"` 是必要條件，不是多餘的保險：見上方「推播權搶佔」
@@ -1116,16 +1289,29 @@ class MedicationLogRepository:
         missed——正確的用藥紀錄被推播流程毀掉，比多推一則更嚴重。
         `release_caregiver_alert` 早就有同一個防呆（它的 filter 帶
         `status: "missed"`），搶佔這一端不能是唯一的缺口。
+
+        `patient_reminder_sent_at` 非空是第三個必要條件：T+0 從未送達的那一頓
+        不能被判成漏服、也不能通知家屬——LINE 額度用完的那個月，少了這一條，
+        每一頓都會在 30 分鐘後變成「他漏吃了」的家屬警報，而他一則提醒都沒
+        收到。
+
+        租約接手的分支看的是 `status: "missed"`：第一次搶佔已經把 status 改成
+        missed，死掉的搶佔留下的就是這個形狀；仍限定 missed 而不是不看 status，
+        使用者在這段期間按了「已用藥」（taken）就不會被接手。
         """
-        col = MongoDBManager.get_medication_logs_collection()
-        result = await col.update_one(
-            {"_id": log_id, "status": "pending", "caregiver_alert_sent": False},
-            {"$set": {"caregiver_alert_sent": True, "status": "missed"}},
+        return await MedicationLogRepository._claim_stage(
+            log_id,
+            "caregiver_alert",
+            now=now,
+            fresh={"status": "pending", "patient_reminder_sent_at": {"$ne": None}},
+            stale={"status": "missed", "patient_reminder_sent_at": {"$ne": None}},
+            extra_set={"status": "missed"},
         )
-        return result.modified_count > 0
 
     @staticmethod
-    async def release_caregiver_alert(log_id: str) -> bool:
+    async def release_caregiver_alert(
+        log_id: str, *, count_attempt: bool = True, error: Optional[str] = None
+    ) -> bool:
         """
         推播失敗時還原 T+30min 家屬警報的旗標。
 
@@ -1143,6 +1329,8 @@ class MedicationLogRepository:
             attempts_field="caregiver_alert_attempts",
             extra_filter={"status": "missed"},
             extra_set={"status": "pending"},
+            count_attempt=count_attempt,
+            error=error,
         )
 
     @staticmethod
@@ -1200,6 +1388,10 @@ class MedicationLogRepository:
         query = {
             "status": "pending",
             "patient_reminder_sent": True,
+            # 只催 T+0 真的送達的那一頓（理由見「推播權租約」段落）。本欄位落地
+            # 前已經搶佔、還沒走完 T+20 的紀錄會被這個條件略過——過渡期只有部署
+            # 當下那半小時內的紀錄受影響，之後的紀錄都帶這個欄位。
+            "patient_reminder_sent_at": {"$ne": None},
             "urgent_reminder_sent": False,
             "$or": [
                 {"urgent_at": {"$lte": threshold_time}},
@@ -1220,6 +1412,8 @@ class MedicationLogRepository:
         col = MongoDBManager.get_medication_logs_collection()
         query = {
             "status": "pending",
+            # T+0 從未送達的不判漏服、不通知家屬（理由見「推播權租約」段落）。
+            "patient_reminder_sent_at": {"$ne": None},
             "caregiver_alert_sent": False,
             "timeout_at": {"$lte": threshold_time},
         }

@@ -30,6 +30,7 @@ from app.services.line_messaging.flex.medication_flex import (
     build_patient_urgent_reminder_flex,
 )
 from app.services.line_messaging.reply.reply import LineReplier
+from app.services.line_messaging.send_result import SendOutcome, SendResult
 from app.services.medication.drug_appearance_image_service import (
     resolve_drug_appearance_image_url,
 )
@@ -39,7 +40,12 @@ from app.services.medication.reminder_variants import (
     build_variant_stats,
     choose_variant,
 )
-from app.services.scheduling.push_tick_scheduler import PushTickScheduler, RecipientPrefs
+from app.services.scheduling.push_tick_scheduler import (
+    DispatchOutcome,
+    PushTickScheduler,
+    RecipientPrefs,
+    SendReturn,
+)
 from app.services.users.user_profile_service import UserProfileService
 
 logger = logging.getLogger(__name__)
@@ -338,6 +344,20 @@ class _TickMedicationNameCache:
         return entries_by_log_id
 
 
+def _worst_case_for_retry(failures: list[SendResult]) -> SendResult:
+    """多位收件人全部失敗時，挑一個代表整則的結果。
+
+    暫時性失敗優先（重試才有機會送到任何一位），其次是額度用完（不計次還回
+    去，額度恢復就送），全部都是明確拒絕才放棄——一位家屬封鎖了官方帳號、
+    另一位只是網路瞬斷，這一則不該因為前者而放棄後者。
+    """
+    for outcome in (SendOutcome.TRANSIENT, SendOutcome.UNAUTHORIZED, SendOutcome.QUOTA_EXCEEDED):
+        for failure in failures:
+            if failure.outcome is outcome:
+                return failure
+    return failures[0]
+
+
 class MedicationScheduler(PushTickScheduler):
     """
     雙階遞進定時排程引擎 (MedicationScheduler)
@@ -386,6 +406,59 @@ class MedicationScheduler(PushTickScheduler):
         # 可預期；正式路徑用 SystemRandom——不需要可重現，而 SonarCloud 會把
         # random 模組的偽亂數標成安全熱點，此專案又不理會 NOSONAR。
         self._variant_sample = variant_sample or random.SystemRandom().betavariate
+        # 一個 tick 內收件人偏好的查表，`process_ticks` 開頭清空。展開階段現在
+        # 要看每位用藥者的 notify_reminder（見 process_ticks 的「不追蹤」判定），
+        # 那是對「今天所有到期規則」逐筆的判斷；沒有這份快取，同一位使用者
+        # 四個時段就查四次 profile，再加上三個推播階段各查一次。
+        self._prefs_cache: dict[str, RecipientPrefs] = {}
+
+    async def _resolve_prefs(self, user_id: str) -> RecipientPrefs:
+        """同 `PushTickScheduler._resolve_prefs`，但一個 tick 內同一個人只查一次。"""
+        cached = self._prefs_cache.get(user_id)
+        if cached is not None:
+            return cached
+        prefs = await super()._resolve_prefs(user_id)
+        self._prefs_cache[user_id] = prefs
+        return prefs
+
+    async def _is_untracked(self, user_id: str) -> bool:
+        """這位用藥者關掉了「用藥提醒通知」（notify_reminder=False）。
+
+        語意定為「這個人的服藥不追蹤」，不只是「不推給他」：以前只擋 T+0／T+20
+        的推播，紀錄照樣展開、30 分鐘後照樣被判成漏服、家屬照樣收到「他漏吃了」
+        ——他關掉的明明是提醒，結果變成家人每天被通知他沒吃藥，而他從頭到尾
+        沒收到任何提醒可以回應。所以展開階段直接不為他建立紀錄；三個推播階段
+        再各擋一次，是給本判定落地前、或他在當天中途關掉之後已經展開的紀錄用
+        的（那些紀錄會被註銷，不會變成漏服）。
+        """
+        return not (await self._resolve_prefs(user_id)).notify_reminder
+
+    async def _cancel_untracked_log(self, log: MedicationLog, stage: str) -> None:
+        """把不追蹤的用藥者當天已展開的紀錄註銷，讓三個階段都挑不到它。
+
+        註銷而不是留在 pending：留著的話 T+30 每個 tick 都會再查到它，而且它會
+        在服藥狀況查詢裡以「尚未確認」出現——對一位選擇不被追蹤的人，那是他
+        沒有做過的事。`cancelled` 不進用藥歷史，正好是這個語意。
+        """
+        try:
+            cancelled = await self._log_repository.cancel_pending_by_reminder(
+                log.reminder_id
+            )
+        except Exception:
+            logger.exception(
+                "[MedicationScheduler] Failed to cancel untracked log %s at %s",
+                log.id,
+                stage,
+            )
+            return
+        logger.info(
+            "[MedicationScheduler] user %s opted out of reminders; cancelled %d pending "
+            "log(s) of reminder %s instead of running %s",
+            log.user_id,
+            cancelled,
+            log.reminder_id,
+            stage,
+        )
 
     def _medication_cache(self, logs: list[MedicationLog]) -> _TickMedicationNameCache:
         """建立一個階段共用的藥名查表，並把注入的 repository 帶下去。
@@ -405,18 +478,19 @@ class MedicationScheduler(PushTickScheduler):
         medication_cache: _TickMedicationNameCache,
         variant_stats: Optional[VariantStats] = None,
         now: Optional[datetime] = None,
-    ) -> bool:
+    ) -> SendReturn:
         prefs = await self._resolve_prefs(log.user_id)
         if not prefs.notify_reminder:
-            # 回 True 而非 False：`_dispatch` 的合約是「送失敗就把推播權還回去，
-            # 下一個 tick 重新搶佔並重試」。關掉通知不是失敗，是這個階段已經
-            # 處理完了——回 False 會讓它每 60 秒重試一次，永遠不會停。
+            # SKIPPED 而非 RETRY：關掉通知不是失敗，是這個階段已經處理完了
+            # ——當成失敗會讓它每 60 秒重試一次，永遠不會停。寫略過標記而不是
+            # 送達標記：T+20／T+30 只對真的送達的那一頓進行。（正常情況下不追蹤
+            # 的用藥者根本不會有紀錄，見 process_ticks；這裡是後盾。）
             logger.info(
                 "[MedicationScheduler] user %s opted out of reminders; skipping %s",
                 log.user_id,
                 log.id,
             )
-            return True
+            return DispatchOutcome.SKIPPED
         language, font_size = prefs.language, prefs.font_size
         # 關掉提醒的那一頓在上面就回傳了，不會進拉霸：訊息沒送出去，沒有東西可學。
         tone = await self._reminder_tone(log, variant_stats, now)
@@ -436,7 +510,7 @@ class MedicationScheduler(PushTickScheduler):
             font_size=font_size,
             tone=tone,
         )
-        return await self._replier.push_flex(log.user_id, flex_msg)
+        return await self._push_result(log.user_id, flex_msg)
 
     async def _reminder_tone(
         self,
@@ -519,11 +593,11 @@ class MedicationScheduler(PushTickScheduler):
 
     async def _send_urgent_reminder(
         self, log: MedicationLog, medication_cache: _TickMedicationNameCache
-    ) -> bool:
+    ) -> SendReturn:
         prefs = await self._resolve_prefs(log.user_id)
         if not prefs.notify_reminder:
             # T+20 催促與 T+0 提醒是同一件事的兩次，受同一個開關管。
-            return True
+            return DispatchOutcome.SKIPPED
         language, font_size = prefs.language, prefs.font_size
         medication_entries = await medication_cache.get_entries(log)
         urgent_flex = build_patient_urgent_reminder_flex(
@@ -537,33 +611,47 @@ class MedicationScheduler(PushTickScheduler):
             # 與同一頓的 T+0 同一種語氣；拉霸上線前的紀錄沒有這個欄位，照現行版本。
             tone=log.reminder_tone or TONE_CONTROL,
         )
-        return await self._replier.push_flex(log.user_id, urgent_flex)
+        return await self._push_result(log.user_id, urgent_flex)
 
     async def _send_caregiver_alert(
         self, log: MedicationLog, medication_cache: _TickMedicationNameCache
-    ) -> bool:
+    ) -> SendReturn:
         """T+30 家屬逾時通報，逐一推給家庭授權選出的每位家屬。
 
         以前只送給規則的建立者（`alert_notify_user_id`）：家屬替長輩設的提醒家屬
         收得到，長輩自己在 LIFF 設的則推回長輩本人，家屬一則都收不到。
 
-        回傳值與掛號提醒的 `_fan_out` 同一個判定：至少送達一人、或沒有任何人該收，
-        都算處理完；只有「該收的人全部送失敗」或「名單判定失敗」才把推播權還回去
-        重試（有上限，見 `release_caregiver_alert`）。部分失敗不重試——重試會讓
-        已經收到的人再收一次，一位封鎖官方帳號的家屬就能讓其他人被連環轟炸。
+        回傳值與掛號提醒的 `_fan_out` 同一個判定：至少送達一人算送達、沒有任何
+        人該收算略過；只有「該收的人全部送失敗」或「名單判定失敗」才把推播權
+        還回去重試（有上限，見 `release_caregiver_alert`）。部分失敗不重試——
+        重試會讓已經收到的人再收一次，一位封鎖官方帳號的家屬就能讓其他人被
+        連環轟炸。全部失敗時取「最值得重試」的那種失敗當結果：有一位是暫時性
+        失敗就重試（額度用完也一樣要等額度恢復），全部都是明確拒絕才放棄。
         """
+        if await self._is_untracked(log.user_id):
+            # 用藥者關掉提醒＝不追蹤他的服藥（見 `_is_untracked`）。搶佔已經把
+            # 這筆改成 missed，這裡只能擋住推播；正常路徑會在搶佔之前就把紀錄
+            # 註銷（見 process_ticks 階段 3），這裡是直接呼叫時的後盾。
+            logger.info(
+                "[MedicationScheduler] patient %s opted out of reminders; "
+                "not alerting family for %s",
+                log.user_id,
+                log.id,
+            )
+            return DispatchOutcome.SKIPPED
+
         recipients = await self._family_recipients(log.user_id)
         if recipients is None:
-            return False
+            return DispatchOutcome.RETRY
         if not recipients:
-            return True
+            return DispatchOutcome.SKIPPED
 
         patient_name = await self._resolve_patient_name(log.user_id)
         # 藥名查表與 T+0／T+20 共用同一套機制（見 _TickMedicationNameCache）：
         # 家屬警報同樣是一個 tick 內可能有多筆，逐筆查「規則→藥品」沒有道理。
         medication_names = await medication_cache.get(log)
 
-        attempted = False
+        failures: list[SendResult] = []
         delivered = False
         for member_id in recipients:
             # 語言、字級與通知意願都取收件人自己的設定。用藥者關掉自己的提醒
@@ -580,7 +668,6 @@ class MedicationScheduler(PushTickScheduler):
                     log.id,
                 )
                 continue
-            attempted = True
             alert_flex = build_caregiver_alert_flex(
                 patient_name=patient_name,
                 slot_type=log.slot_type,
@@ -589,9 +676,17 @@ class MedicationScheduler(PushTickScheduler):
                 language=prefs.language,
                 font_size=prefs.font_size,
             )
-            delivered = await self._push(member_id, alert_flex) or delivered
+            result = await self._push_result(member_id, alert_flex)
+            if result.ok:
+                delivered = True
+            else:
+                failures.append(result)
 
-        return delivered or not attempted
+        if delivered:
+            return DispatchOutcome.DELIVERED
+        if not failures:
+            return DispatchOutcome.SKIPPED
+        return _worst_case_for_retry(failures)
 
     async def _family_recipients(self, patient_id: str) -> Optional[list[str]]:
         """用藥逾時通報的家屬名單；用藥者本人恆不在其中。判定失敗回 None。
@@ -746,6 +841,11 @@ class MedicationScheduler(PushTickScheduler):
         if current_time.tzinfo is None:
             current_time = current_time.replace(tzinfo=TAIPEI_TZ)
 
+        # 每個 tick 重新讀偏好、重新計算額度用完的則數（見 `_resolve_prefs`、
+        # `_dispatch` 的 QUOTA 分支）。
+        self._prefs_cache = {}
+        self._quota_blocked = 0
+
         today_date_str = current_time.strftime("%Y-%m-%d")
         current_hm_str = current_time.strftime("%H:%M")
 
@@ -815,10 +915,24 @@ class MedicationScheduler(PushTickScheduler):
                 urgent_at = anchor_dt + timedelta(minutes=URGENT_AFTER_ANCHOR_MINUTES)
                 timeout_dt = anchor_dt + timedelta(minutes=CAREGIVER_ALERT_AFTER_ANCHOR_MINUTES)
 
-                # 不為「提醒建立之前」的時段補建 log。
+                # 不為「提醒建立／重新啟用之前」的時段補建 log。
                 # 否則 20:00 新增一筆早上 08:00 的提醒，會在同一個 tick 內連續
                 # 觸發首刷提醒、T+20 催促、以及 T+30 家屬逾時警報（全是假的）。
-                if scheduled_dt < ensure_aware_utc(reminder.created_at):
+                # 重新啟用是同一件事：上週建的提醒今天 20:00 重新打開（LIFF 開關、
+                # 或藥袋提交復活一筆停用的規則），早上 08:00 一樣不該被補成漏服。
+                # 沒有 enabled_at 的舊規則退回只看 created_at。
+                activation_floor = ensure_aware_utc(reminder.created_at)
+                if reminder.enabled_at is not None:
+                    activation_floor = max(
+                        activation_floor, ensure_aware_utc(reminder.enabled_at)
+                    )
+                if scheduled_dt < activation_floor:
+                    continue
+
+                # 關掉「用藥提醒通知」的人不追蹤（見 `_is_untracked`）：不建紀錄，
+                # 三個階段就沒有東西可推、可判漏服、可通知家屬。放在 created_at
+                # 判斷之後，被那一條擋掉的規則不必查 profile。
+                if await self._is_untracked(reminder.user_id):
                     continue
 
                 # 停機期間錯過的時段：仍建立 log 留下紀錄，但直接記為 missed 且三個
@@ -883,6 +997,9 @@ class MedicationScheduler(PushTickScheduler):
         # 沒有要送的就不讀。
         variant_stats = await self._load_variant_stats() if pending_initial_logs else None
         for log in pending_initial_logs:
+            if await self._is_untracked(log.user_id):
+                await self._cancel_untracked_log(log, "T+0min initial reminder")
+                continue
             await self._dispatch(
                 stage="T+0min initial reminder",
                 log_id=log.id,
@@ -895,6 +1012,7 @@ class MedicationScheduler(PushTickScheduler):
                     variant_stats,
                     current_time,
                 ),
+                **self._stage_hooks("patient_reminder"),
             )
 
         # ── 階段 2：T+20min 第二次溫馨催促 ─────────────────────────────
@@ -910,12 +1028,16 @@ class MedicationScheduler(PushTickScheduler):
         )
         urgent_medication_cache = self._medication_cache(pending_urgent_logs)
         for log in pending_urgent_logs:
+            if await self._is_untracked(log.user_id):
+                await self._cancel_untracked_log(log, "T+20min urgent reminder")
+                continue
             await self._dispatch(
                 stage="T+20min urgent reminder",
                 log_id=log.id,
                 claim=self._log_repository.claim_patient_urgent_reminder,
                 release=self._log_repository.release_patient_urgent_reminder,
                 send=partial(self._send_urgent_reminder, log, urgent_medication_cache),
+                **self._stage_hooks("urgent_reminder"),
             )
 
         # ── 階段 3：T+30min 第三次家屬逾時警報 ─────────────────────────
@@ -925,13 +1047,36 @@ class MedicationScheduler(PushTickScheduler):
         )
         alert_medication_cache = self._medication_cache(pending_alert_logs)
         for log in pending_alert_logs:
+            # 在搶佔之前擋：搶佔會把 status 改成 missed，不追蹤的人不該留下漏服。
+            if await self._is_untracked(log.user_id):
+                await self._cancel_untracked_log(log, "T+30min caregiver alert")
+                continue
             await self._dispatch(
                 stage="T+30min caregiver alert",
                 log_id=log.id,
                 claim=self._log_repository.claim_caregiver_alert,
                 release=self._log_repository.release_caregiver_alert,
                 send=partial(self._send_caregiver_alert, log, alert_medication_cache),
+                **self._stage_hooks("caregiver_alert"),
             )
+
+        if self._quota_blocked:
+            # 一個 tick 一行，不逐筆：額度用完的那個月每分鐘都會走到這裡。
+            logger.warning(
+                "[MedicationScheduler] 本 tick 因 LINE 額度用完，%d 則提醒未送出；"
+                "推播權已還回、不計入重試次數，額度恢復後下一個 tick 會補送",
+                self._quota_blocked,
+            )
+
+    def _stage_hooks(self, stage: str) -> dict[str, Callable[..., Any]]:
+        """`_dispatch` 三個結果回呼的綁定：送達／略過寫時刻標記，明確拒絕立刻
+        放棄（見 MedicationLogRepository 的「推播權租約」段落）。"""
+        repo = self._log_repository
+        return {
+            "mark_sent": partial(repo.mark_stage_sent, stage=stage),
+            "mark_skipped": partial(repo.mark_stage_skipped, stage=stage),
+            "give_up": partial(repo.give_up_stage, stage=stage),
+        }
 
 
 

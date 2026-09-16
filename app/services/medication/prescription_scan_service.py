@@ -100,6 +100,8 @@ class _DraftRepository(Protocol):
 class _MedicationRepository(Protocol):
     async def create_many(self, medications: list[Medication]) -> list[Medication]: ...
 
+    async def delete_by_ids(self, medication_ids: list[str]) -> int: ...
+
 
 class _ReminderRepository(Protocol):
     async def find_or_create_reminder(
@@ -403,6 +405,12 @@ class PrescriptionScanService:
         # id 當成功回應——處方就這樣憑空消失，沒有任何補救路徑。因此失敗
         # 時把提交權還給草稿，讓例外照樣往外拋（呼叫端知道這次沒有成功），
         # 下一次重試才能真的重新取得提交權、重新寫入。
+        #
+        # 還提交權之前先把這次插入的藥品刪掉：`create_many` 成功、連結提醒才
+        # 失敗時，藥已經在資料庫裡，重試會用一組新 id 再插一份，同一張藥袋的
+        # 藥在清單裡出現兩次。id 是這次提交自己產生的，只會刪到自己插的；
+        # insert_many 中途失敗只插了一部分也一併清掉。刪除本身失敗只記錄，
+        # 提交權照樣要還——寧可重試後多一份藥，也不要處方憑空消失。
         try:
             medications = [
                 self._build_medication(
@@ -427,6 +435,15 @@ class PrescriptionScanService:
                 resolved, medication_ids, target_user_id, user_id
             )
         except Exception:
+            try:
+                await self._medication_repository.delete_by_ids(medication_ids)
+            except Exception:
+                logger.exception(
+                    "[PrescriptionScanService] 提交 %s 失敗後無法回滾已插入的藥品 %s；"
+                    "重試可能產生重複的藥品",
+                    draft_id,
+                    medication_ids,
+                )
             await self._draft_repository.release_commit(draft_id, user_id, medication_ids)
             raise
 

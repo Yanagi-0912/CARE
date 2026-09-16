@@ -904,6 +904,16 @@ class FakeReminderRepository:
         self.created_reminders.append(saved)
         return saved
 
+    # delete_reminder 的替身：可設成刪除失敗，驗證失敗時不會順手註銷紀錄。
+    delete_result: bool = True
+    deleted_ids: list[str] | None = None
+
+    async def delete_reminder(self, reminder_id: str) -> bool:
+        if self.deleted_ids is None:
+            self.deleted_ids = []
+        self.deleted_ids.append(reminder_id)
+        return self.delete_result
+
 
 class FakeLogRepository:
     def __init__(
@@ -1856,3 +1866,44 @@ async def test_taken_names_for_log_preserves_order_and_ignores_disabled():
     names = await service.taken_names_for_log(log)
 
     assert names == ["利尿劑", "脈優"]
+
+
+# ── 刪除提醒：與關閉一樣要註銷當日還沒確認的紀錄 ───────────────────────
+
+
+@pytest.mark.asyncio
+async def test_deleting_reminder_cancels_pending_logs():
+    """刪掉規則之後，當天已展開、還沒確認的那筆仍會走完 T+20 催促與 T+30 家屬
+    逾時警報（三個階段只查紀錄、不回頭確認規則還在不在）。刪除必須與關閉做同一
+    件事：把紀錄註銷，後續推播才會停。"""
+    service, reminders, logs = _service_with_fakes(_reminder(enabled=True), cancelled=1)
+
+    ok = await service.delete_reminder(creator_user_id="U_SELF", reminder_id="R123")
+
+    assert ok is True
+    assert reminders.deleted_ids == ["R123"]
+    assert logs.cancelled_reminder_ids == ["R123"]
+
+
+@pytest.mark.asyncio
+async def test_failed_delete_does_not_cancel_logs():
+    """刪除失敗代表規則還在，當天的紀錄該留著。"""
+    service, reminders, logs = _service_with_fakes(_reminder(enabled=True), cancelled=1)
+    reminders.delete_result = False
+
+    ok = await service.delete_reminder(creator_user_id="U_SELF", reminder_id="R123")
+
+    assert ok is False
+    assert logs.cancelled_reminder_ids == []
+
+
+@pytest.mark.asyncio
+async def test_delete_unknown_reminder_is_404_and_touches_nothing():
+    service, reminders, logs = _service_with_fakes(None)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.delete_reminder(creator_user_id="U_SELF", reminder_id="R_MISSING")
+
+    assert exc_info.value.status_code == 404
+    assert reminders.deleted_ids is None
+    assert logs.cancelled_reminder_ids == []

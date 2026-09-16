@@ -104,3 +104,20 @@ def test_real_answer_is_available():
 def test_blank_is_unavailable():
     assert user_document_tools.is_document_answer_unavailable("") is True
     assert user_document_tools.is_document_answer_unavailable(None) is True
+
+
+# --- 生成回空的保底句不是文件答案（2026-09-16） ------------------------------
+
+from app.core.user_language import SUPPORTED_LANGUAGES
+from app.i18n.messages import t
+
+
+@pytest.mark.parametrize("language", SUPPORTED_LANGUAGES)
+def test_generation_fallback_is_unavailable_in_every_language(language):
+    """模型回空時服務回 t("rag.generate_fallback")；以前它會被做成一張文件卡。"""
+    assert (
+        user_document_tools.is_document_answer_unavailable(
+            t("rag.generate_fallback", language)
+        )
+        is True
+    )

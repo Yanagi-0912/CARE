@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+import asyncio
+import logging
+from contextlib import suppress
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -11,7 +14,11 @@ from app.models.consultation import (
     ConsultationSummarizeRequest,
 )
 from app.models.chat_message import ChatMessage
-from app.services.consultation.consultation_service import ConsultationService
+from app.models.medication import TAIPEI_TZ
+from app.services.consultation.consultation_service import (
+    ConsultationService,
+    taipei_day_utc_range,
+)
 from app.services.consultation.scheduler import ConsultationDailySummaryScheduler
 
 
@@ -22,11 +29,25 @@ class FakeChatHistoryRepository:
     async def append_message(self, line_id: str, message: ChatMessage) -> None:
         self.messages.setdefault(line_id, []).append(message)
 
-    async def list_messages(self, line_id: str) -> list[ChatMessage]:
-        return list(self.messages.get(line_id, []))
+    async def list_messages(
+        self, line_id: str, *, since: datetime | None = None, until: datetime | None = None
+    ) -> list[ChatMessage]:
+        self.last_range = (since, until)
+        return [
+            message
+            for message in self.messages.get(line_id, [])
+            if (since is None or message.timestamp >= since)
+            and (until is None or message.timestamp < until)
+        ]
 
-    async def list_line_ids(self) -> list[str]:
-        return sorted(self.messages)
+    async def list_line_ids(
+        self, *, since: datetime | None = None, until: datetime | None = None
+    ) -> list[str]:
+        line_ids = []
+        for line_id in self.messages:
+            if await self.list_messages(line_id, since=since, until=until):
+                line_ids.append(line_id)
+        return sorted(line_ids)
 
 
 class FakeRepository:
@@ -340,13 +361,19 @@ async def test_raw_view_without_date_returns_latest_taipei_day(
     assert [message.content for message in messages] == ["今天咳嗽"]
 
 
-# 每日排程要把 Redis 裡每個台北日期都摘要到，而不只是最新的那天。
-async def test_daily_run_summarizes_every_pending_taipei_day(
+# 每日排程只摘**昨天**（台北日期），而且只撈昨天那段的訊息——不再為每個人
+# 撈 30 天的原文。今天的對話還沒結束，留給明天。
+async def test_daily_run_summarizes_only_yesterday_taipei_day(
     consultation_service: ConsultationService,
 ):
     _echo_gemini(consultation_service)
-    await _add_text(consultation_service, "昨天頭痛", datetime(2026, 9, 13, 14, 0, tzinfo=timezone.utc))
-    await _add_text(consultation_service, "今天咳嗽", datetime(2026, 9, 14, 2, 0, tzinfo=timezone.utc))
+    today = datetime.now(TAIPEI_TZ).date()
+    yesterday = today - timedelta(days=1)
+    day_before = today - timedelta(days=2)
+    yesterday_start, today_start = taipei_day_utc_range(yesterday)
+    await _add_text(consultation_service, "前天發燒", yesterday_start - timedelta(hours=3))
+    await _add_text(consultation_service, "昨天頭痛", yesterday_start + timedelta(hours=14))
+    await _add_text(consultation_service, "今天咳嗽", today_start + timedelta(hours=1))
     scheduler = ConsultationDailySummaryScheduler(
         consultation_service=consultation_service,
         consultation_store=consultation_service._chat_history_repository,
@@ -356,10 +383,120 @@ async def test_daily_run_summarizes_every_pending_taipei_day(
     await scheduler._run_once()
 
     stored = consultation_service._repository.by_date
-    assert sorted(day for _, day in stored) == [date(2026, 9, 13), date(2026, 9, 14)]
-    assert "昨天頭痛" in stored[("U123", date(2026, 9, 13))].summary
-    assert "今天咳嗽" not in stored[("U123", date(2026, 9, 13))].summary
-    assert "今天咳嗽" in stored[("U123", date(2026, 9, 14))].summary
+    assert [day for _, day in stored] == [yesterday]
+    assert "昨天頭痛" in stored[("U123", yesterday)].summary
+    assert "前天發燒" not in stored[("U123", yesterday)].summary
+    assert "今天咳嗽" not in stored[("U123", yesterday)].summary
+    assert ("U123", day_before) not in stored
+    # 查詢本身就限定在昨天的 UTC 區間，不是撈全部再在 Python 裡過濾
+    assert consultation_service._chat_history_repository.last_range == (
+        yesterday_start,
+        today_start,
+    )
+
+
+async def test_summarize_day_returns_none_without_messages(
+    consultation_service: ConsultationService,
+):
+    """那天沒講話的人不寫「尚無諮詢記錄」的空摘要。"""
+    result = await consultation_service.summarize_day("U123", date(2026, 9, 13))
+
+    assert result is None
+    assert consultation_service._repository.by_date == {}
+
+
+async def test_daily_run_skips_users_without_messages_yesterday(
+    consultation_service: ConsultationService,
+):
+    _echo_gemini(consultation_service)
+    today = datetime.now(TAIPEI_TZ).date()
+    _, today_start = taipei_day_utc_range(today - timedelta(days=1))
+    await _add_text(consultation_service, "今天咳嗽", today_start + timedelta(hours=1))
+    scheduler = ConsultationDailySummaryScheduler(
+        consultation_service=consultation_service,
+        consultation_store=consultation_service._chat_history_repository,
+        run_time="02:00",
+    )
+
+    await scheduler._run_once()
+
+    assert consultation_service._repository.by_date == {}
+    consultation_service._gemini_service.chat_model.ainvoke.assert_not_awaited()
+
+
+def test_taipei_day_utc_range():
+    start, end = taipei_day_utc_range(date(2026, 9, 14))
+
+    assert start == datetime(2026, 9, 13, 16, 0, tzinfo=timezone.utc)
+    assert end == datetime(2026, 9, 14, 16, 0, tzinfo=timezone.utc)
+
+
+# 單日失敗不能殺掉整個排程 task：以前 _run_once 沒有 try/except，一次資料庫
+# 抖動就讓摘要從此停擺，而且沒有任何 log。
+async def test_run_loop_survives_a_failing_tick():
+    store = MagicMock()
+    calls = {"n": 0}
+
+    async def _list_line_ids(**_kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("db down")
+        return []
+
+    store.list_line_ids = _list_line_ids
+    scheduler = ConsultationDailySummaryScheduler(
+        consultation_service=MagicMock(),
+        consultation_store=store,
+        run_time="02:00",
+    )
+    # 讓「下一次執行」永遠是現在，迴圈不必等到凌晨
+    scheduler._next_run_at = lambda now: now
+
+    # patch 的是 asyncio 模組本身的 sleep（排程器以 `asyncio.sleep` 取用），
+    # 測試自己要讓出事件迴圈得用 patch 前抓住的真 sleep。
+    real_sleep = asyncio.sleep
+
+    async def _yield_once(_seconds):
+        await real_sleep(0)
+
+    with patch("asyncio.sleep", new=_yield_once):
+        task = asyncio.create_task(scheduler._run_loop())
+        for _ in range(50):
+            await real_sleep(0)
+            if calls["n"] >= 2:
+                break
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+    assert calls["n"] >= 2
+
+
+@pytest.mark.parametrize("value", ["9:00 AM", "25:00", "02", "02:60", ""])
+def test_invalid_run_time_fails_at_construction(value):
+    """設錯時要在建構時就炸，訊息點名環境變數，而不是 task 靜默死掉。"""
+    with pytest.raises(ValueError, match="CONSULTATION_DAILY_SUMMARY_TIME"):
+        ConsultationDailySummaryScheduler(
+            consultation_service=MagicMock(),
+            consultation_store=MagicMock(),
+            run_time=value,
+        )
+
+
+async def test_summarize_failure_log_does_not_contain_raw_line_id(caplog):
+    store = MagicMock()
+    store.list_line_ids = AsyncMock(return_value=["Uabcdef0123456789abcdef0123456789"])
+    service = MagicMock()
+    service.summarize_day = AsyncMock(side_effect=RuntimeError("boom"))
+    scheduler = ConsultationDailySummaryScheduler(
+        consultation_service=service, consultation_store=store, run_time="02:00"
+    )
+
+    with caplog.at_level(logging.INFO):
+        await scheduler._run_once()
+
+    assert "summarize failed" in caplog.text
+    assert "Uabcdef0123456789abcdef0123456789" not in caplog.text
 
 
 # 排程時間是台北時間：容器預設 UTC，若照容器時鐘解讀，02:00 會變成台北 10:00。

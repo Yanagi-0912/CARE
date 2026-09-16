@@ -7,6 +7,7 @@ from pymongo.errors import DuplicateKeyError
 from app.models.medical_news import DrugNews, make_news_ref
 from app.repositories.medical_news_repository import (
     DrugNewsRepository,
+    MedicalNewsDayClaimRepository,
     MedicalNewsDeliveryRepository,
     MedicalNewsShareRepository,
     ensure_indexes,
@@ -98,6 +99,104 @@ async def test_share_claim_returns_false_on_duplicate_key():
     )
 
     assert claimed is False
+
+
+# ── 每日處理權（多實例）────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_day_claim_inserts_user_and_taipei_date():
+    collection = _collection()
+
+    claimed = await MedicalNewsDayClaimRepository.claim(
+        "U1", "2026-09-16", collection=collection
+    )
+
+    assert claimed is True
+    [document] = collection.insert_one.await_args.args
+    assert document["user_id"] == "U1"
+    assert document["delivered_on"] == "2026-09-16"
+
+
+@pytest.mark.asyncio
+async def test_day_claim_returns_false_when_other_instance_won():
+    collection = _collection()
+    collection.insert_one = AsyncMock(side_effect=DuplicateKeyError("dup"))
+
+    claimed = await MedicalNewsDayClaimRepository.claim(
+        "U1", "2026-09-16", collection=collection
+    )
+
+    assert claimed is False
+
+
+@pytest.mark.asyncio
+async def test_day_claim_does_not_swallow_other_errors():
+    collection = _collection()
+    collection.insert_one = AsyncMock(side_effect=RuntimeError("connection lost"))
+
+    with pytest.raises(RuntimeError):
+        await MedicalNewsDayClaimRepository.claim("U1", "2026-09-16", collection=collection)
+
+
+@pytest.mark.asyncio
+async def test_day_claim_release_deletes_the_claim():
+    collection = _collection()
+    collection.delete_one = AsyncMock()
+
+    await MedicalNewsDayClaimRepository.release("U1", "2026-09-16", collection=collection)
+
+    collection.delete_one.assert_awaited_once_with(
+        {"user_id": "U1", "delivered_on": "2026-09-16"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_delivery_release_deletes_the_news_ref_claim():
+    collection = _collection()
+    collection.delete_one = AsyncMock()
+    ref = make_news_ref("drug_news", "abc")
+
+    await MedicalNewsDeliveryRepository.release("U1", ref, collection=collection)
+
+    collection.delete_one.assert_awaited_once_with({"user_id": "U1", "news_ref": ref})
+
+
+@pytest.mark.asyncio
+async def test_ensure_indexes_creates_unique_user_day_index():
+    day_claims = _collection()
+    deliveries = _collection()
+
+    await ensure_indexes(
+        drug_news_collection=_collection(),
+        deliveries_collection=deliveries,
+        shares_collection=_collection(),
+        day_claims_collection=day_claims,
+    )
+
+    day_claims.create_index.assert_awaited_once_with(
+        [("user_id", 1), ("delivered_on", 1)], unique=True, name="uniq_user_day"
+    )
+    # 既有的 (user_id, news_ref) 唯一索引保留，兩者各擋一種重複。
+    deliveries.create_index.assert_awaited_once_with(
+        [("user_id", 1), ("news_ref", 1)], unique=True, name="uniq_user_news"
+    )
+
+
+@pytest.mark.asyncio
+async def test_ensure_indexes_day_claim_failure_does_not_block_others():
+    day_claims = _collection()
+    day_claims.create_index = AsyncMock(side_effect=RuntimeError("boom"))
+    deliveries = _collection()
+
+    await ensure_indexes(
+        drug_news_collection=_collection(),
+        deliveries_collection=deliveries,
+        shares_collection=_collection(),
+        day_claims_collection=day_claims,
+    )
+
+    deliveries.create_index.assert_awaited_once()
 
 
 # ── 查詢 ────────────────────────────────────────────────────────────

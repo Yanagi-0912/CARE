@@ -59,6 +59,32 @@ TAIGI_STT_CONCURRENCY = 3
 NO_CONTENT_TEXT = "Unable to extract text from media file (no content extracted)"
 
 
+class MediaProcessingError(Exception):
+    """媒體辨識失敗的基底。子類別區分「使用者能自己改的」與「服務的問題」——
+
+    以前所有失敗都回同一個字串「發生錯誤」，handler 再把它跟「沒辨識出文字」
+    混成一句「請確認內容清晰並重新傳送」：檔案太大的人重拍一張一樣太大，
+    n8n 掛掉的人重傳十次也一樣，而且完全看不出來是服務出了問題。
+    """
+
+
+class MediaTooLargeError(MediaProcessingError, ValueError):
+    """超過 MAX_MEDIA_SIZE_BYTES。使用者壓縮或裁切就能解決。"""
+
+    def __init__(self, size_bytes: int, limit_bytes: int = MAX_MEDIA_SIZE_BYTES):
+        super().__init__(f"Media too large: {size_bytes} bytes > {limit_bytes} bytes")
+        self.size_bytes = size_bytes
+        self.limit_bytes = limit_bytes
+
+
+class MediaUnsupportedError(MediaProcessingError, ValueError):
+    """類型不在白名單，或 LINE 回的 MIME 跟宣稱的類型對不上。"""
+
+
+class MediaServiceUnavailableError(MediaProcessingError):
+    """下載、n8n、STT 等外部服務失敗或逾時。使用者只能等一下再傳。"""
+
+
 class MediaProcessorService:
     """Handle incoming LINE text and send replies based on Gemini tool output."""
 
@@ -113,9 +139,14 @@ class MediaProcessorService:
             logger.info(f"Successfully processed and replied to user {user_id}")
             return user_text
 
+        except MediaProcessingError:
+            # 已分類的失敗原樣往上丟，由 media_handler 換成對應的說明。
+            raise
         except Exception as e:
+            # 沒預期到的錯誤（ffmpeg 解碼、暫存目錄寫不進去…）對使用者來說
+            # 都是「服務暫時有問題」，不是他傳的東西有問題。
             logger.error(f"Error in process_media: {e}", exc_info=True)
-            return "發生錯誤，請忽略此內容或重新嘗試。"
+            raise MediaServiceUnavailableError(f"unexpected failure: {e}") from e
         finally:
             # 不論成功或失敗都嘗試清理，避免暫存檔堆積。
             if temp_file_path:
@@ -184,7 +215,7 @@ class MediaProcessorService:
         # 媒體類型白名單過濾，阻擋未知類型。
         normalized_type = media_type.lower().strip()
         if normalized_type not in ALLOWED_MEDIA_TYPES:
-            raise ValueError(f"Unsupported media type: {media_type}")
+            raise MediaUnsupportedError(f"Unsupported media type: {media_type}")
 
         if not media_message_id:
             raise ValueError("Missing media message id")
@@ -207,10 +238,23 @@ class MediaProcessorService:
         headers = {"Authorization": f"Bearer {access_token}"}
         content_url = LINE_MESSAGE_CONTENT_API.format(message_id=media_message_id)
 
-        with requests.get(
-            content_url, headers=headers, timeout=20, stream=True
-        ) as response:
-            response.raise_for_status()
+        try:
+            response_cm = requests.get(
+                content_url, headers=headers, timeout=20, stream=True
+            )
+        except requests.RequestException as exc:
+            # LINE 內容伺服器連不上或逾時：不是使用者的問題。
+            raise MediaServiceUnavailableError(
+                f"Failed to download media from LINE: {exc}"
+            ) from exc
+
+        with response_cm as response:
+            try:
+                response.raise_for_status()
+            except requests.RequestException as exc:
+                raise MediaServiceUnavailableError(
+                    f"LINE content API returned {response.status_code}"
+                ) from exc
 
             content_length_header = response.headers.get("Content-Length")
             if content_length_header:
@@ -219,9 +263,7 @@ class MediaProcessorService:
                 except ValueError as exc:
                     raise ValueError("Invalid Content-Length header") from exc
                 if content_length > MAX_MEDIA_SIZE_BYTES:
-                    raise ValueError(
-                        f"Media too large: {content_length} bytes > {MAX_MEDIA_SIZE_BYTES} bytes"
-                    )
+                    raise MediaTooLargeError(content_length)
 
             # 驗證回應 MIME 與宣稱 media_type 大致一致，降低內容偽裝風險。
             content_type = (
@@ -231,7 +273,7 @@ class MediaProcessorService:
             if content_type and not any(
                 content_type.startswith(prefix) for prefix in expected_prefixes
             ):
-                raise ValueError(
+                raise MediaUnsupportedError(
                     f"Unexpected content type '{content_type}' for media type '{normalized_type}'"
                 )
 
@@ -249,9 +291,7 @@ class MediaProcessorService:
                     downloaded_size += len(chunk)
                     # 下載中仍要檢查，防止 Content-Length 缺失或不可信。
                     if downloaded_size > MAX_MEDIA_SIZE_BYTES:
-                        raise ValueError(
-                            f"Media too large while downloading: {downloaded_size} bytes > {MAX_MEDIA_SIZE_BYTES} bytes"
-                        )
+                        raise MediaTooLargeError(downloaded_size)
                     temp_file.write(chunk)
 
         logger.info(f"Downloaded media content from LINE API to {target}")
@@ -295,7 +335,7 @@ class MediaProcessorService:
             response.raise_for_status()
         except requests.RequestException as e:
             logger.error(f"Webhook request failed: {e}")
-            raise ValueError(f"Failed to reach webhook: {e}") from e
+            raise MediaServiceUnavailableError(f"Failed to reach webhook: {e}") from e
 
         content_type = response.headers.get("Content-Type", "").lower()
         response_text = response.text.strip()
@@ -307,8 +347,9 @@ class MediaProcessorService:
 
         parsed_text = ""
         if not response_text:
+            # n8n 的 workflow 跑了但什麼都沒回：是 workflow 壞了，不是圖片沒字。
             logger.warning("Webhook returned empty response body")
-            return "Unable to extract text from media file (empty webhook response)"
+            raise MediaServiceUnavailableError("empty webhook response")
 
         if "application/json" in content_type:
             try:
@@ -328,7 +369,7 @@ class MediaProcessorService:
                 logger.error(
                     f"Failed to parse webhook JSON response: {e}, text={response_text[:200]}"
                 )
-                return f"Unable to extract text from media (invalid JSON from webhook)"
+                raise MediaServiceUnavailableError("invalid JSON from webhook") from e
         else:
             parsed_text = response_text
 

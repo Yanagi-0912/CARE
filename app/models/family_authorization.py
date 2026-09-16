@@ -128,6 +128,7 @@ FIELD_CLASSIFICATION: dict[tuple[ResourceName, str], DataClassification] = {
     ("medication_reminder", "medications"): "GENERAL",
     ("medication_reminder", "created_at"): "GENERAL",
     ("medication_reminder", "updated_at"): "GENERAL",
+    ("medication_reminder", "enabled_at"): "GENERAL",
     # ── 掛號提醒 ──────────────────────────────────────────────────
     # 整份資源與用藥同級，全部 GENERAL——包括科別。有 GENERAL 讀取權的家屬在
     # LIFF 內本來就該看得到完整的門診資訊。科別的敏感性是**推播通道**的問題

@@ -15,6 +15,7 @@ from app.dependencies import (
     get_consultation_service,
     get_current_user,
     get_family_authorization_service,
+    summary_generate_rate_limit,
 )
 from app.models.consultation import (
     ConsultationSummarizeRequest,
@@ -140,6 +141,10 @@ async def get_my_summary_download_token(
     description="以 JSON 檔案下載目前登入使用者的所有諮詢摘要紀錄。",
 )
 async def download_my_summary_history(
+    # token 走查詢字串是瀏覽器下載的限制：<a download> 帶不了 Authorization 標頭，
+    # 而查詢字串會進存取記錄與瀏覽器歷史。緩解是它與登入 token 分開簽（issuer
+    # care-consultation-download）、只有 5 分鐘效期（dependencies.py
+    # _consultation_download_token_service），外洩後的可用窗口就是那 5 分鐘。
     download_token: Annotated[str, Query(alias="downloadToken", min_length=1)] = ...,
     consultation_service: Annotated[
         ConsultationService, Depends(get_consultation_service)
@@ -170,6 +175,9 @@ async def download_my_summary_history(
     response_model=ConsultationSummary,
     summary="手動摘要諮詢紀錄",
     description="把指定日期或今天的對話摘要後寫入 MongoDB。",
+    # 每次都是一趟 Gemini 呼叫，以使用者限頻。上限與理由見 config
+    # RATE_LIMIT_SUMMARY_GENERATE_PER_HOUR。
+    dependencies=[Depends(summary_generate_rate_limit)],
 )
 async def summarize_consultations(
     request: ConsultationSummarizeRequest,

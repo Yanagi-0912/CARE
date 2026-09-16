@@ -1126,6 +1126,12 @@ def get_user_document_answer_service() -> UserDocumentAnswerService | None:
     return _user_document_answer_service
 
 
+# ── 認證與家人權限 ─────────────────────────────────────────────────
+from fastapi import Request  # noqa: E402 - 只有下面的頻率限制 dependency 用到
+
+from app.core.rate_limit import RateLimiter, client_ip  # noqa: E402
+
+
 @dataclass
 class CurrentUser:
     line_user_id: str
@@ -1188,3 +1194,67 @@ async def require_admin_user(
     if role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return current_user
+
+
+# ── 請求頻率限制 ───────────────────────────────────────────────────
+#
+# 兩個工廠各回傳一支 dependency。**做成具名的模組層物件**（下面四個），路由
+# 用 `Depends(liff_login_rate_limit)` 掛上；測試就能以 app.dependency_overrides
+# 換掉或換成更小的上限，不必動 settings 這個整個行程共用的單例。
+#
+# 兩支都是 async def：同步 dependency 會被 FastAPI 丟到 threadpool，計數器
+# 就得跨執行緒，沒必要。
+
+
+def limit_by_client_ip(limiter: RateLimiter):
+    """未登入端點：以來源 IP 計數（Cloudflare 標頭優先，見 rate_limit.client_ip）。"""
+
+    async def dependency(request: Request) -> None:
+        limiter.enforce(client_ip(request))
+
+    dependency.limiter = limiter  # type: ignore[attr-defined] - 測試要 reset
+    return dependency
+
+
+def limit_by_user(limiter: RateLimiter):
+    """已登入端點：以 line_user_id 計數。
+
+    依賴 `get_current_user`，所以沒帶 token 的請求會先拿到 401、不進計數——
+    未登入的濫用另有 IP 層的限制，這裡只管「同一個帳號」。
+    """
+
+    async def dependency(
+        current_user: CurrentUser = Depends(get_current_user),
+    ) -> None:
+        limiter.enforce(current_user.line_user_id)
+
+    dependency.limiter = limiter  # type: ignore[attr-defined]
+    return dependency
+
+
+liff_login_rate_limit = limit_by_client_ip(
+    RateLimiter(limit=settings.RATE_LIMIT_LIFF_LOGIN_PER_MINUTE, window_seconds=60)
+)
+invite_verify_rate_limit = limit_by_client_ip(
+    RateLimiter(limit=settings.RATE_LIMIT_INVITE_VERIFY_PER_MINUTE, window_seconds=60)
+)
+summary_generate_rate_limit = limit_by_user(
+    RateLimiter(limit=settings.RATE_LIMIT_SUMMARY_GENERATE_PER_HOUR, window_seconds=3600)
+)
+prescription_scan_rate_limit = limit_by_user(
+    RateLimiter(limit=settings.RATE_LIMIT_PRESCRIPTION_SCAN_PER_HOUR, window_seconds=3600)
+)
+
+ALL_RATE_LIMITS = (
+    liff_login_rate_limit,
+    invite_verify_rate_limit,
+    summary_generate_rate_limit,
+    prescription_scan_rate_limit,
+)
+
+
+def reset_rate_limits() -> None:
+    """清空全部計數。給測試用：同一個行程跑上百個 HTTP 測試，同一個假使用者
+    很快就會撞到每小時的上限，而那不是任何一個測試要驗的事。"""
+    for dependency in ALL_RATE_LIMITS:
+        dependency.limiter.reset()  # type: ignore[attr-defined]

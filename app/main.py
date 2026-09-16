@@ -10,6 +10,7 @@ from app.routers.users.upsert_users import router as profile_router
 from app.routers.users.consultations import router as consultations_router
 from app.core.cors import add_cors_middleware
 from app.core.config import settings, should_run_schedulers
+from app.core.startup_checks import openapi_visibility, validate_runtime_config
 from app.core.logging_setup import configure_logging
 from app.core.upload_limits import MaxUploadSizeMiddleware
 from app.dependencies import (
@@ -28,7 +29,11 @@ from app.dependencies import (
 )
 from app.repositories.consultation_repository import ConsultationRepository
 from app.repositories.conversation_log_repository import ConversationLogRepository
+from app.repositories.knowledge_report_preview_repository import (
+    KnowledgeReportPreviewRepository,
+)
 from app.repositories.knowledge_report_repository import KnowledgeReportRepository
+from app.repositories.user_profile_repository import UserProfileRepository
 from app.repositories.medication_repository import MedicationLogRepository
 from app.repositories.prescription_draft_repository import PrescriptionDraftRepository
 from app.repositories.family_delegation_repository import FamilyDelegationRepository
@@ -63,15 +68,52 @@ configure_logging()
 logger = logging.getLogger(__name__)
 
 
+async def ensure_indexes_or_log(label: str, ensure) -> None:
+    """建索引；失敗只記 log，不讓啟動失敗。
+
+    索引建不起來的常見原因是既有資料違反唯一約束（例如 users 已有重複的
+    line_id）或 TTL 索引與既有同名索引選項衝突。這些都不是「服務不能跑」——
+    沒有索引只是慢、或少了一層併發保護——但 lifespan 拋例外會讓 backend 與
+    scheduler 兩個 pod 一起 CrashLoop，整站 502。維運要從這筆 exception log
+    看到該修什麼，而不是從 pod 一直重啟猜。
+    """
+    try:
+        await ensure()
+    except Exception:
+        logger.exception(
+            "[startup] %s 的索引建立失敗，服務照常啟動；請依上方例外修正資料後重啟",
+            label,
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 認證設定不合格就不起來（預設 JWT 密鑰、缺 LINE 憑證、演算法不在白名單）。
+    # 放在最前面、建索引之前：起不來的 pod 讓滾動更新停在舊版，比帶著開發密鑰
+    # 服務正式流量安全得多。理由與各項檢查見 app/core/startup_checks.py。
+    validate_runtime_config(settings)
+
     # FastAPI lifespan 會在 yield 前執行 startup 邏輯。
+    # users 的 line_id 唯一索引：沒有它，首次登入的併發 upsert 會生出同一個人的
+    # 多份文件。既有重複資料會讓它建不起來——先跑 scripts/dedupe_users_line_id.py
+    # 清掉，下一次啟動就建得起來；建不起來的期間服務照跑，只是少了這層保護。
+    await ensure_indexes_or_log("users", UserProfileRepository.ensure_indexes)
     # 摘要 collection 的 (line_id, summary_date) 查詢索引。
-    await ConsultationRepository.ensure_indexes()
+    await ensure_indexes_or_log(
+        "consultation_summaries", ConsultationRepository.ensure_indexes
+    )
     # 對話原文的正式紀錄：expires_at 的 TTL 索引負責 30 天的保存期限，
     # 應用端不需要另外排程刪除。
-    await ConversationLogRepository.ensure_indexes()
-    await KnowledgeReportRepository.ensure_indexes()
+    await ensure_indexes_or_log(
+        "conversation_messages", ConversationLogRepository.ensure_indexes
+    )
+    await ensure_indexes_or_log(
+        "knowledge_reports", KnowledgeReportRepository.ensure_indexes
+    )
+    # 預覽快照的 TTL 索引。這一支以前沒有任何地方呼叫，快照永遠不會被回收。
+    await ensure_indexes_or_log(
+        "knowledge_report_previews", KnowledgeReportPreviewRepository.ensure_indexes
+    )
     # 用藥 log 的 (reminder_id, scheduled_at) 唯一索引：多實例並存時，
     # 它是「同一個時段只有一份 log」的唯一保證，推播權搶佔才有意義。
     await MedicationLogRepository.ensure_indexes()
@@ -85,8 +127,8 @@ async def lifespan(app: FastAPI):
     # 的 TTL 讓視窗自動過期，不需要應用端排程清除。索引與功能開關無關，
     # 先備好才能在開關打開的當下就是正確行為。
     await SafetyAlertRepository.ensure_indexes()
-    # 三個 collection 的索引一起建。(user_id, news_ref) 與
-    # (recipient_id, news_ref) 兩個唯一索引同時承擔去重與推播權搶佔——
+    # 四個 collection 的索引一起建。(user_id, delivered_on)、(user_id, news_ref) 與
+    # (recipient_id, news_ref) 三個唯一索引同時承擔去重與推播權搶佔——
     # 少了它們，多實例並存時同一則消息會重複推播、家人分享會重複送達。
     await ensure_medical_news_indexes()
     # 家庭 RBAC 的三份新 collection。`family_rbac_metrics` 的 owner_id 唯一索引
@@ -200,6 +242,9 @@ app = FastAPI(
     description="CARE 系統後端 API (包含 LINE Bot Webhook 與 LIFF REST API)",
     version="1.0.0",
     lifespan=lifespan,
+    # /docs、/redoc、/openapi.json 只在 APP_ENV=development 開：整份端點與模型
+    # 清單對未登入者攤開，是最省力的攻擊面盤點（見 startup_checks.openapi_visibility）。
+    **openapi_visibility(settings.APP_ENV),
 )
 
 

@@ -612,6 +612,20 @@ def format_user_profile_prompt(user_profile: dict | None) -> str:
     )
 
 
+def _abandon_task(task: "asyncio.Task | None") -> None:
+    """收掉不再需要的任務。冪等，可安全重複呼叫。
+
+    與 answer_service._abandon_task 相同：已完成且帶例外時要主動取出例外，
+    否則 asyncio 會噴 "Task exception was never retrieved"。
+    """
+    if task is None or task.cancelled():
+        return
+    if not task.done():
+        task.cancel()
+        return
+    task.exception()
+
+
 class AgentNodes:
     def __init__(self, llm, guardrail_service, urgency_classifier=None):
         self._llm = llm
@@ -633,6 +647,12 @@ class AgentNodes:
         兩者併發執行：急迫度判斷擋在所有回覆前面，序列化等於把它的延遲直接
         加到每一則訊息上。兩個判斷彼此獨立，沒有順序需求。
 
+        但等待的方式不是 gather：先等急迫度，判定緊急就直接短路，不等 guardrail。
+        緊急卡不進 agent、不跑 RAG，guardrail 的結果對它完全用不到；以前用
+        gather 等兩邊都回來，Gemini 一慢，「我阿公昏迷」的紅卡就被一個沒人要的
+        判斷拖住（guardrail 直到 2026-09-16 才有逾時，急迫度早就有 4 秒）。
+        不緊急時仍要等 guardrail，總時間與 gather 相同——兩個任務一開始就同時起跑。
+
         急迫度為什麼在這裡而不是做成 tool：
             做成 tool 就代表「agent 可以選擇不呼叫」，而前一版失敗的原因正是
             agent 把「我阿公昏迷」判給了 RAG、從未呼叫到帶有安全檢查的工具。
@@ -642,16 +662,31 @@ class AgentNodes:
         language = self._resolve_user_language(state.get("user_profile"))
         t0 = time.perf_counter()
 
-        allow_rag, verdict = await asyncio.gather(
-            self._guardrail_service.allow_rag_tool(user_input),
-            self._classify_urgency(user_input, language),
+        guardrail_task = asyncio.create_task(
+            self._guardrail_service.allow_rag_tool(user_input)
         )
+        try:
+            verdict = await self._classify_urgency(user_input, language)
+        except BaseException:
+            _abandon_task(guardrail_task)
+            raise
+
+        if verdict.is_emergency:
+            # 緊急短路：guardrail 還在跑就取消，跑完了也不看。allow_rag 給 False
+            # 只是讓 state 有值——emergency_node 根本不掛工具。
+            _abandon_task(guardrail_task)
+            allow_rag = False
+        else:
+            allow_rag = await guardrail_task
 
         log_stage(
             logger,
             "guardrail",
             allow_rag=allow_rag,
             urgency=verdict.level if verdict.is_emergency else None,
+            # 緊急時 guardrail 被放掉，ms 量的只有急迫度那一段；沒有這個欄位會
+            # 把「guardrail 很快」與「根本沒等它」混在一起。
+            guardrail_skipped=True if verdict.is_emergency else None,
             ms=int((time.perf_counter() - t0) * 1000),
         )
         return {
@@ -822,6 +857,10 @@ class AgentNodes:
                 tool_calls=[
                     {
                         "name": "get_rag_answer",
+                        # TODO(對話記憶)：這裡把使用者這句話原樣當查詢，RAG 那頭
+                        # 也只看這一句。追問（「那第二種呢」）沒有前文就查不到、
+                        # 個人病史也進不了生成。要把對話歷史與個人檔案帶進 RAG
+                        # 生成是獨立功能，規劃見 CARE_對話記憶功能規劃.md。
                         "args": {"query": user_text},
                         "id": "forced_rag_1",
                         "type": "tool_call",

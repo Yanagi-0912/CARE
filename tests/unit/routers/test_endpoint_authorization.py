@@ -53,9 +53,19 @@ class _NoDelegations:
         return False
 
 
+# 在族譜裡、但長輩還沒指派角色。影子模式只對這種人放寬。
+UNASSIGNED = "UNASSIGNED"
+
+
 def build_authz(role: Optional[str], state: str = "enforced", enforcement=True):
-    """建一個「ME 對 ELDER 是 role」的授權服務。role=None 代表不是家人。"""
-    members = [] if role is None else [FamilyMember(user_id=ME, family_role=role)]
+    """建一個「ME 對 ELDER 是 role」的授權服務。role=None 代表不是家人，
+    UNASSIGNED 代表在族譜裡但沒指派角色。"""
+    if role is None:
+        members = []
+    elif role == UNASSIGNED:
+        members = [FamilyMember(user_id=ME)]
+    else:
+        members = [FamilyMember(user_id=ME, family_role=role)]
     trees = {
         ELDER: FamilyTree(
             user_id=ELDER,
@@ -189,12 +199,36 @@ def test_profile_owner_reads_own_unmasked(client):
     assert body["role"] == "user"
 
 
-def test_profile_shadow_mode_is_not_masked(client):
-    """影子模式行為與導入前完全相同——包括不遮蔽。"""
-    wire("MEMBER", state="shadow")
+def test_profile_shadow_mode_is_not_masked_for_unassigned_member(client):
+    """影子模式對**還沒被指派角色**的成員行為與導入前相同——包括不遮蔽。"""
+    wire(UNASSIGNED, state="shadow")
     wire_profile_service()
     body = client.get(f"/api/profiles/{ELDER}").json()
     assert body["age"] == 82
+
+
+def test_profile_explicit_member_is_masked_even_in_shadow(client):
+    """長輩親自把他設成 MEMBER，那個決定立刻生效，不等其他人指派完。"""
+    wire("MEMBER", state="shadow")
+    wire_profile_service()
+    body = client.get(f"/api/profiles/{ELDER}").json()
+    assert body["name"] == "王大明"
+    assert "age" not in body
+    assert "chronic_diseases" not in body
+
+
+def test_profile_never_leaks_unregistered_fields_to_family(client):
+    """跨使用者輸出只給登記表認得的欄位——連影子模式下的未指派成員也一樣。
+
+    以前這條路把整份 Mongo 文件原樣送出去：`role`、`settings`、時間戳，以及
+    任何日後新增而還沒登記分類的欄位。
+    """
+    wire(UNASSIGNED, state="shadow")
+    wire_profile_service()
+    body = client.get(f"/api/profiles/{ELDER}").json()
+    assert body["age"] == 82  # 影子模式的寬鬆仍在：SENSITIVE 看得到
+    for field in ("role", "settings", "created_at", "updated_at", "_id"):
+        assert field not in body
 
 
 # ── PUT /api/profiles/{userId}（新增的代理寫入）────────────────────
@@ -387,12 +421,19 @@ def test_consultations_denied_for_stranger(client):
     assert consultations.summary_calls == []
 
 
-def test_consultations_allowed_for_member_in_shadow_mode(client):
-    """影子模式保留既有能力：變更前族譜成員本來就讀得到。"""
-    wire("MEMBER", state="shadow")
+def test_consultations_allowed_for_unassigned_member_in_shadow_mode(client):
+    """影子模式保留既有能力：變更前族譜成員本來就讀得到（限還沒指派角色者）。"""
+    wire(UNASSIGNED, state="shadow")
     consultations = wire_consultations()
     assert client.get(f"/api/consultations/{ELDER}/allsummaries").status_code == 200
     assert consultations.summary_calls == [ELDER]
+
+
+def test_consultations_forbidden_for_explicit_member_in_shadow_mode(client):
+    wire("MEMBER", state="shadow")
+    consultations = wire_consultations()
+    assert client.get(f"/api/consultations/{ELDER}/allsummaries").status_code == 403
+    assert consultations.summary_calls == []
 
 
 # ── GET /api/medications/reminders ──────────────────────────────────
@@ -485,12 +526,22 @@ def test_reminders_stranger_gets_403(client):
     assert medications.calls == []
 
 
-def test_reminders_shadow_mode_keeps_indication_visible(client):
-    """遮蔽也是一種收緊，影子模式下不得生效。"""
-    wire("MEMBER", state="shadow")
+def test_reminders_shadow_mode_keeps_indication_visible_for_unassigned(client):
+    """遮蔽也是一種收緊，影子模式下對還沒指派角色的成員不得生效。"""
+    wire(UNASSIGNED, state="shadow")
     wire_medications()
     body = client.get(f"/api/medications/reminders?target_user_id={ELDER}").json()
     assert body[0]["medications"][0]["indication"] == "糖尿病"
+
+
+def test_reminders_mask_indication_for_explicit_member_in_shadow(client):
+    """放行與遮蔽用同一個判定：明確的 MEMBER 在影子狀態下也看不到適應症。"""
+    wire("MEMBER", state="shadow")
+    wire_medications()
+    body = client.get(f"/api/medications/reminders?target_user_id={ELDER}").json()
+    # response_model 會把被遮掉的欄位補回 None（與 enforced 那個測試相同的形狀）
+    assert body[0]["medications"][0]["indication"] is None
+    assert body[0]["medications"][0]["name"] == "Metformin"
 
 
 def test_reminders_self_is_not_masked(client):

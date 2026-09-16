@@ -9,6 +9,30 @@ TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 # 24 小時制 HH:MM
 HHMM_PATTERN = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
+# 日期一律 YYYY-MM-DD。start_date／end_date 在資料庫裡是字串，排程器的日期區間
+# 查詢（`_active_date_window`）與藥品有效性判定都是拿字串直接比大小——這只有在
+# 格式固定為零填補的 ISO 日期時才成立。"2026/9/1" 或 "9-1-2026" 寫進去不會報錯，
+# 只會讓那筆規則從此永遠比不進今天的區間、永遠不推播，而且沒有任何回饋。
+ISO_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def validate_iso_date(value: Optional[str], field_name: str) -> Optional[str]:
+    """把不是 YYYY-MM-DD 的日期擋在請求層（pydantic 驗證器共用）。
+
+    先比正規式再真的 strptime 一次：正規式擋得住 "2026/09/01"，擋不住
+    "2026-13-45"——後者同樣是合法字串、同樣會悄悄讓區間比較失效。
+    `None` 原樣放行，可不可以是 null 由各請求模型自己界定。
+    """
+    if value is None:
+        return value
+    if not ISO_DATE_PATTERN.match(value):
+        raise ValueError(f"{field_name} 格式須為 YYYY-MM-DD，收到 {value!r}")
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError(f"{field_name} 不是有效的日期，收到 {value!r}") from None
+    return value
+
 MedicationSlotType = Literal["morning", "noon", "evening", "bedtime"]
 # `cancelled` 是規則被使用者主動改動時，當日已展開但還沒確認的紀錄會落到的
 # 狀態：關閉該時段，或把它改到別的時刻（改時段／改提醒時間，見
@@ -213,6 +237,13 @@ class MedicationReminder(BaseModel):
     entries: List[ReminderEntry] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    # 最近一次從「不可排程」（停用、療程過期、還沒到 start_date）變回可排程的
+    # 時刻；新建時等於 created_at。排程器展開當日時段時，早於這個時刻的時段
+    # 不補建紀錄——只看 created_at 擋得住「20:00 新增一筆 08:00 的提醒」，擋
+    # 不住「上週建的提醒今天 20:00 重新打開」：後者同樣會在同一個 tick 內把
+    # 早上 08:00 判成漏服、通知家屬。本欄位落地前寫入的規則沒有這個 key，
+    # 讀回為 None，排程器退回只看 created_at，與過去行為一致。
+    enabled_at: Optional[datetime] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -363,6 +394,11 @@ class MedicationLog(BaseModel):
     timeout_at: datetime
     status: MedicationLogStatus = "pending"
     taken_at: Optional[datetime] = None
+    # 使用者按下確認的牆鐘時刻。`taken_at` 是服務層決定的「算在哪一刻服藥」，
+    # 目前兩者相同；分開存是為了讓「隔天才回頭按昨天的卡片」這種情況事後能
+    # 從資料看出來——那時 taken_at 與 scheduled_at 差了一天，但沒有這個欄位就
+    # 分不清是真的隔天才吃、還是隔天才按。本欄位落地前的紀錄沒有這個 key。
+    confirmed_at: Optional[datetime] = None
     # T+20 二次催促的送出時刻，也是排程器挑出「該催促了」的依據（見
     # MedicationLogRepository.list_pending_urgent_reminders）。展開時預設為最晚
     # 服藥時刻＋20 分鐘，送 T+0 提醒時由拉霸改寫成＋nudge_minutes 分鐘。本欄位
@@ -391,6 +427,30 @@ class MedicationLog(BaseModel):
     patient_reminder_attempts: int = 0
     urgent_reminder_attempts: int = 0
     caregiver_alert_attempts: int = 0
+    # 三個階段各自的「搶到推播權的時刻」與「真的送達／刻意略過的時刻」。
+    # 旗標 `*_sent` 在搶佔的當下就設成 True，但推播是搶佔之後才發生的外部呼叫
+    # ——推播前 pod 被 OOM kill、或 asyncio 取消，旗標會永遠停在 True 而沒有
+    # 任何人真的收到。`*_claimed_at` 讓下一個實例在租約到期後能判斷「這個搶佔
+    # 已經死了」重新搶下；`*_sent_at` 只在 LINE 回 200 之後才寫，是「真的送達」
+    # 的唯一依據，T+20／T+30 只對 T+0 真的送達的紀錄才會進行——額度用完
+    # （429）而從未送出的那一頓，不該被催促、更不該通知家屬他漏吃。
+    # `*_skipped_at` 是「刻意不送」（收件人關掉通知、沒有任何家屬該收）的
+    # 標記，讓租約機制不會把它當成死掉的搶佔一再重試。
+    # 本欄位落地前的紀錄都沒有這些 key，讀回為 None；查詢端把 None 與缺欄位
+    # 一視同仁（見 MedicationLogRepository 的「推播權租約」段落）。
+    patient_reminder_claimed_at: Optional[datetime] = None
+    patient_reminder_sent_at: Optional[datetime] = None
+    patient_reminder_skipped_at: Optional[datetime] = None
+    urgent_reminder_claimed_at: Optional[datetime] = None
+    urgent_reminder_sent_at: Optional[datetime] = None
+    urgent_reminder_skipped_at: Optional[datetime] = None
+    caregiver_alert_claimed_at: Optional[datetime] = None
+    caregiver_alert_sent_at: Optional[datetime] = None
+    caregiver_alert_skipped_at: Optional[datetime] = None
+    # 最近一次推播失敗的分類（"quota_exceeded"／"rejected"／"unauthorized"／
+    # "transient"），任一階段寫入、下一次成功不清除——事後查「為什麼這頓沒送到」
+    # 時看得到最後一次是哪種失敗。
+    last_push_error: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -407,6 +467,18 @@ class CreateMedicationReminderRequest(BaseModel):
     slot_entries: Optional[dict[MedicationSlotType, List[ReminderEntryInput]]] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
+
+    @field_validator("start_date")
+    @classmethod
+    def _validate_start_date(cls, value: Optional[str]) -> Optional[str]:
+        """理由同 `_validate_slot_times`：格式錯的日期不會報錯，只會讓規則永遠
+        比不進排程器的日期區間，悄悄地不再提醒吃藥。"""
+        return validate_iso_date(value, "start_date")
+
+    @field_validator("end_date")
+    @classmethod
+    def _validate_end_date(cls, value: Optional[str]) -> Optional[str]:
+        return validate_iso_date(value, "end_date")
 
     @field_validator("slot_entries")
     @classmethod
@@ -476,6 +548,19 @@ class UpdateMedicationReminderRequest(BaseModel):
                 f"提醒時間格式須為 HH:MM（24 小時制），收到 {value!r}"
             )
         return value
+
+    @field_validator("start_date")
+    @classmethod
+    def _validate_start_date(cls, value: Optional[str]) -> Optional[str]:
+        """與 scheduled_time 同一個理由：格式錯的值寫進去不報錯，只會讓規則
+        永遠比不進日期區間。`None` 放行——null 的合法性由服務層依
+        NULLABLE_FIELDS 判定（start_date 的 null 會被擋成 400）。"""
+        return validate_iso_date(value, "start_date")
+
+    @field_validator("end_date")
+    @classmethod
+    def _validate_end_date(cls, value: Optional[str]) -> Optional[str]:
+        return validate_iso_date(value, "end_date")
 
     @field_validator("entries")
     @classmethod

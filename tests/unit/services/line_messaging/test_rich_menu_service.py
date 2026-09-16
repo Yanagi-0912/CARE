@@ -149,3 +149,19 @@ def test_load_rich_menu_ids_returns_empty_when_missing(monkeypatch: pytest.Monke
     )
 
     assert load_rich_menu_ids() == {}
+
+
+def test_missing_menu_warning_does_not_log_raw_user_id(caplog):
+    import logging
+
+    service = RichMenuService(
+        get_access_token=lambda: "test-token",
+        menu_ids={"zh-TW": "richmenu-zh"},
+        http_post=MagicMock(),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        service.link_user_menu("Uabcdef0123456789abcdef0123456789", "en")
+
+    assert "skipping link" in caplog.text
+    assert "Uabcdef0123456789abcdef0123456789" not in caplog.text

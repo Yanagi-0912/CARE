@@ -440,3 +440,42 @@ def test_create_medication_request_rejects_blank_name_after_strip():
 
     with pytest.raises(ValidationError):
         CreateMedicationRequest(user_id="U_SELF", name="   ")
+
+
+# ── start_date／end_date 的格式驗證 ─────────────────────────────────────
+#
+# 兩個日期在資料庫裡是字串，排程器的日期區間查詢是拿字串直接比大小，只有零填補
+# 的 YYYY-MM-DD 才成立。"2026/9/1" 寫進去不會報錯，只會讓那筆規則永遠比不進
+# 今天的區間、永遠不推播，而且沒有任何回饋——與 scheduled_time 同一種靜默失效。
+
+
+@pytest.mark.parametrize("bad", ["2026/09/01", "9-1-2026", "20260901", "2026-9-1", "2026-13-45", "今天"])
+@pytest.mark.parametrize("field", ["start_date", "end_date"])
+def test_create_request_rejects_dates_that_are_not_iso(field, bad):
+    with pytest.raises(ValidationError) as exc_info:
+        CreateMedicationReminderRequest(user_id="U", slots=["morning"], **{field: bad})
+    assert "YYYY-MM-DD" in str(exc_info.value) or "有效的日期" in str(exc_info.value)
+    assert field in str(exc_info.value)
+
+
+def test_create_request_accepts_iso_dates_and_none():
+    request = CreateMedicationReminderRequest(
+        user_id="U", slots=["morning"], start_date="2026-09-01", end_date=None
+    )
+    assert request.start_date == "2026-09-01"
+    assert request.end_date is None
+
+
+@pytest.mark.parametrize("field", ["start_date", "end_date"])
+def test_update_request_rejects_dates_that_are_not_iso(field):
+    with pytest.raises(ValidationError) as exc_info:
+        UpdateMedicationReminderRequest(**{field: "2026/09/01"})
+    assert field in str(exc_info.value)
+
+
+def test_update_request_still_allows_explicit_null_end_date():
+    """null 是把療程改回長期的唯一途徑，格式驗證不能把它擋掉；null 的合法性由
+    服務層依 NULLABLE_FIELDS 判定。"""
+    request = UpdateMedicationReminderRequest(end_date=None)
+    assert request.end_date is None
+    assert "end_date" in request.model_fields_set

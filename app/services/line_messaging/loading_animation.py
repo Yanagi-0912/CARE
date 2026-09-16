@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from linebot.v3.messaging import (
@@ -11,6 +12,7 @@ from linebot.v3.messaging import (
     ShowLoadingAnimationRequest,
 )
 
+from app.core.config import settings
 from app.services.line_messaging.token_manager import LineTokenManager
 
 logger = logging.getLogger(__name__)
@@ -35,15 +37,23 @@ class LineLoadingAnimationService:
 
         try:
             access_token = await self._token_manager.get_token_async()
-            line_config = Configuration(access_token=access_token)
-            with ApiClient(line_config) as api_client:
-                line_bot_api = MessagingApi(api_client)
-                line_bot_api.show_loading_animation(
-                    ShowLoadingAnimationRequest(
-                        chat_id=chat_id,
-                        loading_seconds=loading_seconds,
+
+            # 同步 SDK 直接在事件迴圈裡呼叫會把整個迴圈凍住（理由同
+            # reply.py 的 _call_line_api）：動畫只是附加效果，卻能在 LINE 端
+            # 停滯時拖住所有使用者的 webhook。丟到執行緒並帶逾時。
+            def _do_call() -> None:
+                line_config = Configuration(access_token=access_token)
+                with ApiClient(line_config) as api_client:
+                    line_bot_api = MessagingApi(api_client)
+                    line_bot_api.show_loading_animation(
+                        ShowLoadingAnimationRequest(
+                            chat_id=chat_id,
+                            loading_seconds=loading_seconds,
+                        ),
+                        _request_timeout=settings.LINE_API_TIMEOUT_SECONDS,
                     )
-                )
+
+            await asyncio.to_thread(_do_call)
             logger.debug(
                 "LINE loading animation started for chat %s (%ss)",
                 chat_id,

@@ -499,7 +499,8 @@ async def test_handle_text_message_with_user_profile(
 
     await handler.handle(_message_event(message, user_id="U_PROF"))
 
-    mock_profile_service.get_user_profile.assert_called_once_with("U_PROF")
+    # dispatcher 進 handler 前先讀一次語言（錯誤回覆用），handler 再讀一次完整 profile
+    mock_profile_service.get_user_profile.assert_called_with("U_PROF")
     mock_agent.invoke.assert_called_once_with(
         user_input="你好",
         messages=[HumanMessage(content="你好")],
@@ -570,7 +571,8 @@ async def test_handle_postback_event_toggle_voice_reply_omitted_enabled_flips_on
 
     await handler.handle(event)
 
-    mock_user_profile_service.get_user_profile.assert_awaited_once_with("U12345")
+    # dispatcher 先讀一次語言，postback 再讀一次完整 profile（字級、語音設定）
+    mock_user_profile_service.get_user_profile.assert_awaited_with("U12345")
     mock_user_profile_service.update_voice_reply_enabled.assert_called_once_with(
         "U12345", True
     )

@@ -34,7 +34,8 @@ from app.core.request_context import reset_line_user_id, set_line_user_id
 from app.core.user_language import reset_request_language, set_request_language
 from app.i18n.messages import t
 from app.services.rag.query_rewriter import RewrittenQuery
-from app.services.rag.web_client import WebSearchHit
+from app.core.user_language import SUPPORTED_LANGUAGES
+from app.services.rag.web_client import WebSearchHit, WebSearchUnavailable
 from app.services.rag.fail_messages import RagFailCode, rag_fail
 from app.services.rag.web_search_service import (
     NO_ANSWER_MESSAGE,
@@ -209,11 +210,76 @@ async def test_answer_returns_no_answer_when_web_empty():
 
 
 @pytest.mark.asyncio
-async def test_answer_degrades_when_web_client_raises():
+async def test_answer_reports_web_error_when_search_is_unavailable():
+    """搜尋服務失敗（逾時、5xx）要回 WEB_ERROR，不是「找不到、請換個說法」；
+    也不重搜——逾時再等一次 15 秒沒有意義。"""
+    web = FakeWebClient(search_error=WebSearchUnavailable("timeout"))
+    svc, gemini = _make_service(web_client=web)
+    result = await svc.answer("問題")
+    assert result == rag_fail(RagFailCode.WEB_ERROR)
+    assert len(web.search_calls) == 1
+    gemini.chat_model.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_reports_its_own_code_without_zh_retry():
+    """429 當下立刻用原句重搜只會再吃一次 429；文案要說「太頻繁、等一下」。"""
+    web = FakeWebClient(search_error=WebSearchUnavailable("http_429", status=429))
+    svc, _ = _make_service(web_client=web)
+    result = await svc.answer("問題")
+    assert result == rag_fail(RagFailCode.WEB_RATE_LIMITED)
+    assert len(web.search_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_unexpected_client_exception_is_also_a_web_error():
+    """客戶端沒照契約丟 WebSearchUnavailable 的例外，一樣是「沒搜成」。"""
     web = FakeWebClient(search_error=RuntimeError("boom"))
     svc, _ = _make_service(web_client=web)
     result = await svc.answer("問題")
+    assert result == rag_fail(RagFailCode.WEB_ERROR)
+
+
+class _EnLegFailsWebClient(FakeWebClient):
+    """英文那一路（帶 include_domains）限流，中文那一路正常。"""
+
+    async def search(self, query: str, *, limit: int = 5, include_domains=None):
+        if include_domains:
+            self.search_calls.append(query)
+            raise WebSearchUnavailable("http_429", status=429)
+        return await super().search(query, limit=limit, include_domains=include_domains)
+
+
+@pytest.mark.asyncio
+async def test_one_leg_failing_still_answers_from_the_other_leg():
+    web = _EnLegFailsWebClient(hits=[_hit("國健署", "https://www.hpa.gov.tw/a")])
+    svc, _ = _make_service(
+        answer_content="根據公開網路資料 [1]。",
+        web_client=web,
+        en_search_domains=_EN_DOMAINS,
+    )
+    result = await svc.answer("PGAD 是什麼病", search_queries=_PGAD_QUERIES)
+    assert "https://www.hpa.gov.tw/a" in result
+    assert len(web.search_calls) == 2  # zh + en，沒有 zh_retry
+
+
+@pytest.mark.asyncio
+async def test_genuine_empty_result_still_retries_and_reports_web_empty():
+    """真的 0 筆才重搜、才說「找不到」——這條路的行為不變。"""
+    web = FakeWebClient(hits=[])
+    svc, _ = _make_service(web_client=web)
+    result = await svc.answer("完全查不到的問題")
     assert result == rag_fail(RagFailCode.WEB_EMPTY)
+    assert len(web.search_calls) == 2
+
+
+@pytest.mark.parametrize("language", SUPPORTED_LANGUAGES)
+def test_rate_limit_message_differs_from_not_found_in_every_language(language):
+    limited = rag_fail(RagFailCode.WEB_RATE_LIMITED, language)
+    assert limited.startswith("[RAG_ERR:WEB_RATE_LIMITED] ")
+    assert limited != rag_fail(RagFailCode.WEB_EMPTY, language)
+    assert limited != rag_fail(RagFailCode.WEB_ERROR, language)
+    assert "rag.fail." not in limited  # 每種語言都要有自己的文案，不能漏成 key
 
 
 @pytest.mark.asyncio

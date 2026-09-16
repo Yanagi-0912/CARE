@@ -6,7 +6,11 @@ from typing import Any
 
 import httpx
 
-from app.services.rag.web_client import ScrapedPage, WebSearchHit
+from app.services.rag.web_client import (
+    ScrapedPage,
+    WebSearchHit,
+    WebSearchUnavailable,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +59,9 @@ class FirecrawlClient:
             body["includeDomains"] = list(include_domains)
         client = self._http_client or httpx.AsyncClient(timeout=self._timeout_seconds)
         owns_client = self._http_client is None
+        # 失敗一律拋 WebSearchUnavailable，不回空 list：空 list 在呼叫端的意思是
+        # 「搜了、沒有」，會走「找不到」的文案；429／逾時／5xx 是「沒搜成」，
+        # 兩者的處置不同（理由見 web_client.WebSearchUnavailable）。
         try:
             response = await client.post(
                 f"{self._base_url}/search",
@@ -64,9 +71,20 @@ class FirecrawlClient:
             )
             response.raise_for_status()
             payload = response.json()
-        except Exception:
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            # 429 只記 warning：免費方案的額度是已知的營運限制，不是程式錯誤，
+            # 每次都印 traceback 只會淹掉真正的例外。
+            logger.warning("Firecrawl search failed status=%s", status)
+            raise WebSearchUnavailable(f"http_{status}", status=status) from exc
+        except httpx.TimeoutException as exc:
+            logger.warning(
+                "Firecrawl search timeout timeout_s=%s", self._timeout_seconds
+            )
+            raise WebSearchUnavailable("timeout") from exc
+        except Exception as exc:
             logger.exception("Firecrawl search failed")
-            return []
+            raise WebSearchUnavailable(type(exc).__name__) from exc
         finally:
             if owns_client:
                 await client.aclose()

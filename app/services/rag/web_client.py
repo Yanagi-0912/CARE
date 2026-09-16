@@ -28,6 +28,27 @@ class ScrapedPage:
     title: str = ""
 
 
+class WebSearchUnavailable(Exception):
+    """搜尋服務沒有給出結果——是「沒搜成」，不是「找不到」。
+
+    兩者以前被混成同一個空 list：Firecrawl 回 429（免費方案每分鐘的搜尋額度
+    用完）、逾時、5xx，全部變成 0 筆，使用者看到的是「找不到，請換個方式描述」。
+    換十種說法都一樣，因為根本沒搜。分開之後呼叫端才能決定要不要重搜（限流時
+    馬上重搜只會再吃一次 429）、要對使用者說什麼。
+
+    `status` 是 HTTP 狀態碼，非 HTTP 類的失敗（逾時、連不上）為 None。
+    """
+
+    def __init__(self, reason: str, *, status: int | None = None) -> None:
+        super().__init__(reason)
+        self.reason = reason
+        self.status = status
+
+    @property
+    def rate_limited(self) -> bool:
+        return self.status == 429
+
+
 class WebSearchClient(Protocol):
     async def search(
         self,
@@ -35,7 +56,9 @@ class WebSearchClient(Protocol):
         *,
         limit: int = 5,
         include_domains: Sequence[str] | None = None,
-    ) -> list[WebSearchHit]: ...
+    ) -> list[WebSearchHit]:
+        """回傳命中；空 list 只代表真的沒找到，搜尋本身失敗要拋 `WebSearchUnavailable`。"""
+        ...
 
     async def scrape(self, url: str) -> str: ...  # 保留，web_search_service.py 仍在用
 

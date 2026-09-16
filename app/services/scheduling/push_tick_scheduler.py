@@ -11,13 +11,67 @@ import asyncio
 import logging
 from contextlib import suppress
 from datetime import datetime
-from typing import Any, Awaitable, Callable, NamedTuple, Optional
+from enum import Enum
+from typing import Any, Awaitable, Callable, NamedTuple, Optional, Union
 
 from app.core import scheduler_heartbeat
 from app.core.user_font_size import DEFAULT_USER_FONT_SIZE, normalize_user_font_size
 from app.core.user_language import DEFAULT_USER_LANGUAGE, normalize_user_language
+from app.services.line_messaging.send_result import (
+    SendOutcome,
+    SendResult,
+    classify_send_exception,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class DispatchOutcome(str, Enum):
+    """一個推播階段處理完的結果，決定 `_dispatch` 對搶到的推播權做什麼。
+
+    以前 `send` 只回 bool：True 是「處理完了」（含刻意不送），False 是「還回去
+    重試」。LINE 429（額度用完）、400（對象無效）、5xx 在那個合約裡長得一樣
+    ——429 重試五次後旗標永遠停在「已送出」，30 分鐘後家屬收到他漏吃的警報，
+    而他一則都沒收到。這裡把幾種結果分開；`send` 仍可回 bool（掛號提醒），
+    由 `_dispatch` 翻譯。
+    """
+
+    DELIVERED = "delivered"  # LINE 回 200：寫送達標記
+    SKIPPED = "skipped"      # 刻意不送（收件人關掉通知、沒有人該收）：寫略過標記
+    RETRY = "retry"          # 暫時性失敗：還回推播權並計次，下一個 tick 重試
+    QUOTA = "quota"          # 429：還回推播權但不計次，本 tick 彙整成一行警告
+    REJECTED = "rejected"    # 400／404：立刻放棄，重送同樣的東西沒有意義
+
+
+SendReturn = Union[bool, SendResult, DispatchOutcome]
+
+
+def dispatch_outcome_of(value: SendReturn) -> DispatchOutcome:
+    """把 `send` 的三種回傳形態統一成 DispatchOutcome。
+
+    bool 沿用舊合約：True 視為處理完（不寫送達標記——掛號提醒沒有那個欄位，
+    True 也可能是刻意不送），False 視為重試。`SendResult` 依 LINE 的回應分類；
+    401（token 失效）當暫時性失敗處理：token 在 console 重發之後重試就會成功，
+    而且有上限，不會無限重試。
+    """
+    if isinstance(value, DispatchOutcome):
+        return value
+    if isinstance(value, SendResult):
+        if value.outcome is SendOutcome.OK:
+            return DispatchOutcome.DELIVERED
+        if value.outcome is SendOutcome.QUOTA_EXCEEDED:
+            return DispatchOutcome.QUOTA
+        if value.outcome is SendOutcome.REJECTED:
+            return DispatchOutcome.REJECTED
+        return DispatchOutcome.RETRY
+    return DispatchOutcome.DELIVERED if value else DispatchOutcome.RETRY
+
+
+def _error_label(value: SendReturn) -> Optional[str]:
+    """寫進 `last_push_error` 的分類字串；只有 SendResult 的失敗才有。"""
+    if isinstance(value, SendResult) and not value.ok:
+        return value.outcome.value
+    return None
 
 
 class RecipientPrefs(NamedTuple):
@@ -52,6 +106,9 @@ class PushTickScheduler:
         self._user_profile_service = user_profile_service
         self._check_interval_seconds = check_interval_seconds
         self._task: Optional[asyncio.Task] = None
+        # 本 tick 因 LINE 額度用完而沒送出的則數；子類別在 process_ticks 開頭
+        # 歸零、結尾印一行彙整警告（見 `_dispatch` 的 QUOTA 分支）。
+        self._quota_blocked = 0
 
     # ── 收件人 ────────────────────────────────────────────────────────
 
@@ -115,11 +172,26 @@ class PushTickScheduler:
     async def _push(self, user_id: str, card: Any) -> bool:
         """推一則 Flex 給一位收件人。例外吞在這裡並回 False：同一則要推給多位
         家屬時，一位封鎖了官方帳號（推播永遠失敗）不該讓後面的人都收不到。"""
+        return (await self._push_result(user_id, card)).ok
+
+    async def _push_result(self, user_id: str, card: Any) -> SendResult:
+        """同 `_push`，但回傳分類過的結果，讓呼叫端分得出 429 與 5xx。
+
+        `push_flex_result` 自己已經把 LINE SDK 的例外翻成 SendResult；這裡再接
+        一層是為了替身或網路層拋出的其他例外——同樣不能讓一位收件人的失敗
+        打斷整批，翻成暫時性失敗交給重試。
+        """
         try:
-            return bool(await self._replier.push_flex(user_id, card))
-        except Exception:  # noqa: BLE001
+            push_result = getattr(self._replier, "push_flex_result", None)
+            if push_result is None:
+                # 只實作了舊介面 `push_flex` 的替身（例如掛號提醒測試的
+                # RecordingReplier）：bool 翻成 SendResult，False 當暫時性失敗。
+                ok = await self._replier.push_flex(user_id, card)
+                return SendResult.success() if ok else SendResult(SendOutcome.TRANSIENT)
+            return await push_result(user_id, card)
+        except Exception as exc:  # noqa: BLE001
             logger.exception("%s push to %s failed", self.LOG_PREFIX, user_id)
-            return False
+            return classify_send_exception(exc)
 
     # ── 推播權搶佔 ────────────────────────────────────────────────────
 
@@ -129,18 +201,24 @@ class PushTickScheduler:
         stage: str,
         log_id: str,
         claim: Callable[[str], Awaitable[bool]],
-        release: Callable[[str], Awaitable[bool]],
-        send: Callable[[], Awaitable[bool]],
+        release: Callable[..., Awaitable[bool]],
+        send: Callable[[], Awaitable[SendReturn]],
+        mark_sent: Optional[Callable[[str], Awaitable[Any]]] = None,
+        mark_skipped: Optional[Callable[[str], Awaitable[Any]]] = None,
+        give_up: Optional[Callable[[str, str], Awaitable[Any]]] = None,
     ) -> None:
         """
-        推播權搶佔 → 推播 → 失敗還原。
+        推播權搶佔 → 推播 → 依結果標記或還原。
 
         所有階段共用同一套流程，差別只在旗標與訊息內容。搶佔的理由見
         `MedicationLogRepository` 的「推播權搶佔」段落：查詢與標記之間沒有原子性，
         多實例並存時會重複推播。
 
-        `send` 的合約：回 True 代表這個階段已處理完（包含「收件人關掉了通知」這種
-        刻意不送），回 False 代表推播失敗、要把推播權還回去讓下一個 tick 重試。
+        `send` 的合約見 `dispatch_outcome_of`：bool（舊合約）、SendResult 或
+        DispatchOutcome 都可以。三個可選的回呼分別對應送達、刻意略過、立刻放棄
+        ——沒有提供（掛號提醒）就只做「失敗還回去」這一件事，行為與過去相同。
+        `release` 在額度用完時會以 `count_attempt=False, error=...` 呼叫，其餘
+        情況只帶 log_id。
         """
         try:
             claimed = await claim(log_id)
@@ -155,17 +233,57 @@ class PushTickScheduler:
             return
 
         try:
-            sent = await send()
+            result = await send()
         except Exception:
             logger.exception(
                 "%s Failed to process %s for log %s", self.LOG_PREFIX, stage, log_id
             )
-            sent = False
-
-        if not sent:
-            # 推播沒成功就把推播權還回去，下一個 tick 會重新搶佔並重試。
+            result = False
+        except BaseException:
+            # `CancelledError`／`KeyboardInterrupt`／`SystemExit` 不是 Exception：
+            # pod 收到 SIGTERM 時 uvicorn 取消所有 task，這一則正好卡在推播中的
+            # 話，上面的 except 接不到，旗標停在「已送出」而沒有人收到。還回去
+            # 再把取消往外傳——取消本身必須照常生效，不能吞掉。租約
+            # （`PUSH_CLAIM_LEASE`）是這裡接不到的情況（OOM kill、SIGKILL）的
+            # 後盾。
             with suppress(Exception):
                 await release(log_id)
+            raise
+
+        outcome = dispatch_outcome_of(result)
+        error = _error_label(result)
+        try:
+            if outcome is DispatchOutcome.DELIVERED:
+                if mark_sent is not None:
+                    await mark_sent(log_id)
+            elif outcome is DispatchOutcome.SKIPPED:
+                if mark_skipped is not None:
+                    await mark_skipped(log_id)
+            elif outcome is DispatchOutcome.QUOTA:
+                # 額度用完不是這一則的錯：不計次還回去，額度一恢復就送。逐筆印
+                # 警告會在額度用完的那個月每分鐘刷幾十行，改由 process_ticks
+                # 每個 tick 彙整成一行（見 `_quota_blocked`）。
+                self._quota_blocked += 1
+                await release(log_id, count_attempt=False, error=error)
+            elif outcome is DispatchOutcome.REJECTED:
+                if give_up is not None:
+                    await give_up(log_id, error or "rejected")
+                else:
+                    await release(log_id)
+            else:
+                # 推播沒成功就把推播權還回去，下一個 tick 會重新搶佔並重試。
+                if error is not None:
+                    await release(log_id, error=error)
+                else:
+                    await release(log_id)
+        except Exception:
+            logger.exception(
+                "%s Failed to record %s outcome %s for log %s",
+                self.LOG_PREFIX,
+                stage,
+                outcome.value,
+                log_id,
+            )
 
     # ── 迴圈與心跳 ────────────────────────────────────────────────────
 

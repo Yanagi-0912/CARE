@@ -55,3 +55,54 @@ async def test_conversation_log_failure_keeps_cache_and_does_not_raise():
     )
 
     assert [m.content for m in cache.messages] == ["今天頭痛", "建議多休息"]
+
+
+# --- Flex JSON 與保底句不進歷史（2026-09-16） ----------------------------------
+
+import json
+
+from app.i18n.messages import t
+from app.services.history.history_service import flex_history_placeholder
+
+_WHEN = datetime(2026, 9, 16, 2, 0, tzinfo=timezone.utc)
+
+
+def _flex(alt_text="請立即就醫"):
+    payload = {"type": "flex", "contents": {"type": "bubble"}}
+    if alt_text is not None:
+        payload["altText"] = alt_text
+    return json.dumps(payload, ensure_ascii=False)
+
+
+async def test_flex_json_reply_is_stored_as_a_short_placeholder():
+    """整包卡片 JSON 會被 load_history 餵回 agent；存替身，兩邊紀錄都是。"""
+    cache, log = FakeCache(), FakeConversationLog()
+    service = LineMessageHistoryService(cache, conversation_log=log)
+
+    await service.save_turn("U123", "我阿公昏迷", _flex(), "text", _WHEN)
+
+    assert [m.content for m in cache.messages] == ["我阿公昏迷", "[已回覆卡片：請立即就醫]"]
+    assert [m.content for m in log.messages] == ["我阿公昏迷", "[已回覆卡片：請立即就醫]"]
+    assert cache.messages[1].message_type == "assistant_reply"
+
+
+async def test_ununderstood_fallback_is_not_stored_as_an_ai_turn():
+    """「我無法理解」是保底句不是回答；存了下一輪 agent 會學著再說一次。"""
+    cache, log = FakeCache(), FakeConversationLog()
+    service = LineMessageHistoryService(cache, conversation_log=log)
+
+    await service.save_turn(
+        "U123", "hello", t("line.fallback_ununderstood", "en"), "text", _WHEN
+    )
+
+    assert [m.content for m in cache.messages] == ["hello"]
+    assert [m.content for m in log.messages] == ["hello"]
+
+
+def test_placeholder_only_matches_tool_flex_json():
+    assert flex_history_placeholder("建議多休息") is None
+    assert flex_history_placeholder('{"a": 1}') is None
+    assert flex_history_placeholder("{不是 JSON}") is None
+    assert flex_history_placeholder('{"type": "text", "contents": {}}') is None
+    assert flex_history_placeholder(_flex(alt_text=None)) == "[已回覆卡片]"
+    assert flex_history_placeholder("  " + _flex() + "\n") == "[已回覆卡片：請立即就醫]"

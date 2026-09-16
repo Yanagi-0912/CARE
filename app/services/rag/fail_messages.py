@@ -13,7 +13,8 @@ class RagFailCode:
 
     KB_EMPTY = "KB_EMPTY"  # 知識庫無命中，且未走／未開 web
     WEB_EMPTY = "WEB_EMPTY"  # 知識庫不足後，官方網搜仍無可用內容
-    WEB_ERROR = "WEB_ERROR"  # web fallback 例外
+    WEB_ERROR = "WEB_ERROR"  # 網搜服務失敗（逾時、5xx、連不上），不是查無資料
+    WEB_RATE_LIMITED = "WEB_RATE_LIMITED"  # 網搜服務回 429：額度用完，稍後再問才有用
     MODEL_REFUSE = "MODEL_REFUSE"  # 有文件但模型判定無法回答
     TIMEOUT = "TIMEOUT"  # 整條管線超過總逾時（answer_service.DEFAULT_RAG_ANSWER_TIMEOUT_SECONDS）
 
@@ -22,6 +23,7 @@ _FAIL_CODE_TO_KEY: dict[str, str] = {
     RagFailCode.KB_EMPTY: "rag.fail.KB_EMPTY",
     RagFailCode.WEB_EMPTY: "rag.fail.WEB_EMPTY",
     RagFailCode.WEB_ERROR: "rag.fail.WEB_ERROR",
+    RagFailCode.WEB_RATE_LIMITED: "rag.fail.WEB_RATE_LIMITED",
     RagFailCode.MODEL_REFUSE: "rag.fail.MODEL_REFUSE",
     RagFailCode.TIMEOUT: "rag.fail.TIMEOUT",
 }

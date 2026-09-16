@@ -134,3 +134,16 @@ def test_system_prompt_rule_9_lists_verify_claim_among_flex_verbatim_tools():
     避免日後有人以「規則 9 已涵蓋」為由精簡掉那段機制。"""
     assert "verify_claim" in SYSTEM_PROMPT
     assert "Flex Message" in SYSTEM_PROMPT
+
+
+def test_system_prompt_rule_10_treats_web_search_failures_like_timeout():
+    """
+    WEB_ERROR／WEB_RATE_LIMITED 是「沒搜成」不是「找不到」：要跟 TIMEOUT 一樣請
+    使用者稍後再問，不能叫他換個說法——換十種說法都一樣，因為根本沒搜。
+    """
+    start = SYSTEM_PROMPT.index("若代碼是 TIMEOUT")
+    retry_clause = SYSTEM_PROMPT[start : start + 200]
+    assert "WEB_ERROR" in retry_clause
+    assert "WEB_RATE_LIMITED" in retry_clause
+    assert "稍後再問一次" in retry_clause
+    assert "不要叫使用者換個說法" in retry_clause

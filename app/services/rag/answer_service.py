@@ -89,10 +89,12 @@ DEFAULT_SPECULATIVE_GENERATE = True
 # 整條管線的總逾時（秒）。0＝不設限。
 #
 # 為什麼需要：各段各自有逾時（Cohere、Firecrawl、連結檢查），但加起來沒有上限；
-# Gemini 的呼叫則根本沒有逾時（langchain-google-genai 4.2.2 預設 timeout=None、
-# 重試 6 次）。實測過 rag_retrieve 卡 94 秒才回 0 筆，使用者等 107 秒換一句
-# 「查無資料」。檢索那段另有每條腿的逾時（retriever.DEFAULT_LEG_TIMEOUT_SECONDS），
-# 這裡是最後一道：不管卡在哪一段，到點就停。
+# Gemini 的呼叫以前根本沒有逾時（langchain-google-genai 4.2.2 預設 timeout=None、
+# 重試 6 次；2026-09-16 起由 gemini_service 統一設 GEMINI_REQUEST_TIMEOUT_SECONDS
+# 與重試 2 次，但單次上限×重試次數仍大於這裡的總預算）。實測過 rag_retrieve
+# 卡 94 秒才回 0 筆，使用者等 107 秒換一句「查無資料」。檢索那段另有每條腿的
+# 逾時（retriever.DEFAULT_LEG_TIMEOUT_SECONDS），這裡是最後一道：不管卡在哪一段，
+# 到點就停。
 #
 # 45 秒的來由：
 #   - 上界：LINE loading 動畫最長 60 秒（官方文件：「5 to 60 seconds」），超過
@@ -278,7 +280,15 @@ class RagAnswerService:
             )
             # 不能留在 path=kb：這一題知識庫其實沒答出來，記成 kb 會讓分流門檻
             # 的校準把它當成「這個分數帶知識庫答得出來」的樣本，門檻被往下拉。
+            # path 要在轉網搜之前就定下來：網搜那段不改 path，校準樣本才會留在
+            # kb_model_refuse 這一格，與 web_crag_reject 分得開。
             timing["path"] = "kb_model_refuse"
+            if self.web_fallback_enabled:
+                # 與「知識庫沒命中」「CRAG 判不相關」走同一條路：知識庫有文件但
+                # 模型判定答不出來，對使用者來說一樣是「官方網站還沒查過」。以前
+                # 這裡直接回 MODEL_REFUSE 叫使用者換個說法，而 CRAG 判 incorrect
+                # 的題目反而會去網搜——同一種「知識庫答不了」，兩條路待遇不同。
+                return await self._web_or_no_hits(user_text, rewrite)
             return rag_fail(RagFailCode.MODEL_REFUSE)
 
         dead = await self._dead_source_urls(kb_answer, ranked, timing)

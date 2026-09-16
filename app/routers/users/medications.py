@@ -9,6 +9,7 @@ from app.dependencies import (
     get_medication_service,
     get_prescription_scan_service,
     require_prescription_scan_enabled,
+    prescription_scan_rate_limit,
 )
 from app.models.medication import (
     CreateMedicationRequest,
@@ -373,7 +374,13 @@ async def confirm_medication(
         "辨識失敗時以 reason 區分「建議重拍」「不是藥袋」「服務暫時無法使用」，"
         "三者對使用者的下一步指示完全不同。"
     ),
-    dependencies=[Depends(require_prescription_scan_enabled)],
+    # 功能開關之後再限頻：關閉時一律 404，不該先回 429 洩漏「功能存在」。
+    # 每次掃描都是一趟 Gemini 視覺呼叫，上限與理由見 config
+    # RATE_LIMIT_PRESCRIPTION_SCAN_PER_HOUR。
+    dependencies=[
+        Depends(require_prescription_scan_enabled),
+        Depends(prescription_scan_rate_limit),
+    ],
 )
 async def scan_prescription(
     file: UploadFile = File(...),

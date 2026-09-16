@@ -10,7 +10,23 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.models.medication import MedicationLog
+from app.services.line_messaging.send_result import SendOutcome, SendResult
 from app.services.medication.medication_scheduler import MedicationScheduler
+from app.services.scheduling.push_tick_scheduler import DispatchOutcome, dispatch_outcome_of
+
+
+def _push_flex_result_via(replier):
+    """讓替身同時支援新舊兩種推播介面：排程器現在呼叫 `push_flex_result`，
+    既有測試仍以 `push_flex` 設定回傳值與斷言呼叫——`True` 翻成送達、
+    `False` 翻成暫時性失敗、例外原樣拋出（由排程器分類）。"""
+
+    async def _push(user_id, card):
+        outcome = await replier.push_flex(user_id, card)
+        if isinstance(outcome, SendResult):
+            return outcome
+        return SendResult.success() if outcome else SendResult(SendOutcome.TRANSIENT)
+
+    return AsyncMock(side_effect=_push)
 
 PATIENT = "U_PATIENT"
 
@@ -39,6 +55,7 @@ def _scheduler(recipients=None, *, push=None, profiles=None, authz=None):
         authz.notification_recipients = AsyncMock(return_value=recipients or [])
     replier = MagicMock()
     replier.push_flex = push or AsyncMock(return_value=True)
+    replier.push_flex_result = _push_flex_result_via(replier)
     if profiles is None:
         profiles = MagicMock()
         profiles.get_user_profile = AsyncMock(return_value={"name": "李老先生"})
@@ -62,7 +79,10 @@ def _pushed_to(replier) -> list[str]:
 
 
 async def _alert(scheduler, log):
-    return await scheduler._send_caregiver_alert(log, scheduler._medication_cache([log]))
+    """回傳 `_dispatch` 會看到的結果：DELIVERED／SKIPPED 算處理完，RETRY 是
+    把推播權還回去。"""
+    result = await scheduler._send_caregiver_alert(log, scheduler._medication_cache([log]))
+    return dispatch_outcome_of(result)
 
 
 # ── 名單從哪裡來 ──────────────────────────────────────────────────────
@@ -75,7 +95,7 @@ async def test_reminder_the_elder_set_up_alerts_the_family_not_the_elder():
 
     sent = await _alert(scheduler, _log(creator=PATIENT))
 
-    assert sent is True
+    assert sent is DispatchOutcome.DELIVERED
     assert _pushed_to(replier) == ["U_DAUGHTER", "U_SON"]
 
 
@@ -114,7 +134,7 @@ async def test_patient_and_duplicates_are_dropped_from_the_list():
 async def test_no_family_means_done_without_pushing():
     scheduler, replier, _ = _scheduler([])
 
-    assert await _alert(scheduler, _log()) is True
+    assert await _alert(scheduler, _log()) is DispatchOutcome.SKIPPED
     replier.push_flex.assert_not_awaited()
 
 
@@ -125,7 +145,7 @@ async def test_lookup_failure_hands_the_claim_back_for_retry():
     authz.notification_recipients = AsyncMock(side_effect=RuntimeError("mongo down"))
     scheduler, replier, _ = _scheduler(authz=authz)
 
-    assert await _alert(scheduler, _log()) is False
+    assert await _alert(scheduler, _log()) is DispatchOutcome.RETRY
     replier.push_flex.assert_not_awaited()
 
 
@@ -135,7 +155,7 @@ async def test_one_blocked_family_member_does_not_stop_the_others():
     push = AsyncMock(side_effect=[RuntimeError("blocked the account"), True])
     scheduler, replier, _ = _scheduler(["U_BLOCKED", "U_SON"], push=push)
 
-    assert await _alert(scheduler, _log()) is True
+    assert await _alert(scheduler, _log()) is DispatchOutcome.DELIVERED
     assert _pushed_to(replier) == ["U_BLOCKED", "U_SON"]
 
 
@@ -145,7 +165,7 @@ async def test_every_push_failing_hands_the_claim_back():
         ["U_DAUGHTER", "U_SON"], push=AsyncMock(return_value=False)
     )
 
-    assert await _alert(scheduler, _log()) is False
+    assert await _alert(scheduler, _log()) is DispatchOutcome.RETRY
 
 
 @pytest.mark.asyncio
@@ -161,7 +181,7 @@ async def test_each_family_member_decides_for_themselves():
     )
     scheduler, replier, _ = _scheduler(["U_OPTED_OUT", "U_SON"], profiles=profiles)
 
-    assert await _alert(scheduler, _log()) is True
+    assert await _alert(scheduler, _log()) is DispatchOutcome.DELIVERED
     assert _pushed_to(replier) == ["U_SON"]
 
 
@@ -173,7 +193,7 @@ async def test_everyone_opted_out_is_done_not_a_failure():
     )
     scheduler, replier, _ = _scheduler(["U_SON"], profiles=profiles)
 
-    assert await _alert(scheduler, _log()) is True
+    assert await _alert(scheduler, _log()) is DispatchOutcome.SKIPPED
     replier.push_flex.assert_not_awaited()
 
 

@@ -117,7 +117,9 @@ class FamilyAuthorizationService:
            `OWNER`——擁有權不轉移。
         4. 其餘 → 族譜中登記的 `family_role`，缺席視為 `MEMBER`。
         """
-        role, _ = await self._resolve_context(operator_id, target_owner_id, now=now)
+        role, _, _ = await self._resolve_context(
+            operator_id, target_owner_id, now=now
+        )
         return role
 
     async def _resolve_context(
@@ -125,24 +127,27 @@ class FamilyAuthorizationService:
         operator_id: str,
         target_owner_id: str,
         now: Optional[datetime] = None,
-    ) -> tuple[Optional[FamilyRole], bool]:
-        """一次讀取算出角色與 legacy 判定（在不在族譜裡）。
+    ) -> tuple[Optional[FamilyRole], bool, bool]:
+        """一次讀取算出角色、legacy 判定（在不在族譜裡）與「角色是不是明確的」。
 
-        兩者都要用到同一份族譜文件。分成兩支各查一次，每個 authorize 就是
-        兩趟往返——那是授權的熱路徑，每支端點都會走。
+        三者都要用到同一份族譜文件。分成三支各查一次，每個 authorize 就是
+        三趟往返——那是授權的熱路徑，每支端點都會走。
+
+        第三個值 `explicit`：擁有者**親自指派過**這位操作者的角色，或操作者
+        持有有效委任。它決定影子模式對這位操作者要不要放寬（見 `_is_strict`）。
         """
         if operator_id == target_owner_id:
-            return "OWNER", True
+            return "OWNER", True, True
 
         tree = await self._get_tree(target_owner_id)
         if tree is None:
-            return None, False
+            return None, False, False
 
         member = next(
             (m for m in tree.family_members if m.user_id == operator_id), None
         )
         if member is None:
-            return None, False
+            return None, False, False
 
         moment = now or datetime.now(tz=timezone.utc)
         if await self._delegations.has_active_delegation(
@@ -152,9 +157,35 @@ class FamilyAuthorizationService:
             # 指派角色、代為建立邀請）由呼叫端另外向 is_active_delegate 詢問，
             # 不從這個回傳值推導——否則「受委任的 GUARDIAN」與「擁有者親自
             # 指派的 GUARDIAN」在這裡就分不出來了，而前者不得授予 GUARDIAN。
-            return "GUARDIAN", True
+            return "GUARDIAN", True, True
 
-        return member.family_role or DEFAULT_FAMILY_ROLE, True
+        if member.family_role is None:
+            return DEFAULT_FAMILY_ROLE, True, False
+        return member.family_role, True, True
+
+    def _is_strict(self, state: MigrationState, explicit: bool) -> bool:
+        """這位操作者的判定要不要照矩陣走（放行與遮蔽都問這一支）。
+
+        兩個條件任一成立就照矩陣：
+
+        1. 擁有者已切到 enforced——整個家庭都照矩陣。
+        2. 擁有者**親自指派過**這位操作者的角色（或他持有有效委任）——只對
+           他照矩陣，其他還沒設定的成員維持導入前的寬鬆行為。
+
+        第 2 條是 2026-09 補上的。之前只看第 1 條，而 enforced 要等**每一位**
+        成員都指派完才切：擁有者把某位親戚設成 MEMBER、期待他從此看不到病史，
+        結果只要族譜裡還有任何一個人沒設定，那個 MEMBER 就照樣什麼都看得到。
+        指派角色是擁有者做出的明確決定，不該被別人的未決定抵銷。
+
+        影子模式承諾的「行為與導入前相同」因此只對**沒有人做過決定**的成員
+        成立——那正是「沒有人會意外失去功能」這個承諾要保護的對象。
+
+        全域總閘（`enforcement_enabled=False`）仍然壓過這兩條：那是出事時讓
+        全體立刻退回舊行為的緊急開關，兩條都不例外。
+        """
+        if state == "enforced":
+            return True
+        return self._enforcement_enabled and explicit
 
     async def is_active_delegate(
         self,
@@ -162,14 +193,24 @@ class FamilyAuthorizationService:
         target_owner_id: str,
         now: Optional[datetime] = None,
     ) -> bool:
-        """操作者是否對該擁有者持有有效委任。
+        """操作者是否對該擁有者持有有效委任，**且仍是該擁有者的族譜成員**。
 
         與 `resolve_role` 分開，因為兩者回答不同問題：那支回答「能讀寫什麼」，
         這支回答「能不能代擁有者行事」。受委任者與擁有者親自指派的 GUARDIAN
         在資料權限上完全相同，但只有前者能代為指派角色、也只有後者能授予
         GUARDIAN——混用會直接產生一條提權路徑。
+
+        成員資格是委任的前提（grant 時就檢查了），這裡再查一次是因為成員
+        可以事後被移除：`remove_member` 會撤銷委任，但兩個寫入不是同一個
+        交易，中間的窗口、或撤銷那一步失敗，都不該讓一個已經不在族譜裡的人
+        還能代擁有者建立邀請與指派角色。族譜是最外層的閘門，這支也要過它。
         """
         if operator_id == target_owner_id:
+            return False
+        tree = await self._get_tree(target_owner_id)
+        if tree is None or not any(
+            m.user_id == operator_id for m in tree.family_members
+        ):
             return False
         moment = now or datetime.now(tz=timezone.utc)
         return await self._delegations.has_active_delegation(
@@ -229,7 +270,7 @@ class FamilyAuthorizationService:
           既有行為，那是憑空發明一個更寬的行為。
         """
         moment = now or datetime.now(tz=timezone.utc)
-        role, legacy_allowed = await self._resolve_context(
+        role, legacy_allowed, explicit = await self._resolve_context(
             operator_id, target_owner_id, now=moment
         )
         rbac_allowed = is_allowed(role, classification, action)
@@ -248,7 +289,10 @@ class FamilyAuthorizationService:
             return role
 
         state = await self.migration_state(target_owner_id)
+        strict = self._is_strict(state, explicit)
 
+        # 差異照記，不管這次是不是照矩陣判的：遷移指標要量的是「切換之後
+        # 會有多少人被收緊」，明確指派的成員已經被收緊了也算在內。
         await self._count_decision(target_owner_id)
         if legacy_allowed != rbac_allowed:
             await self._count_diff(
@@ -263,9 +307,10 @@ class FamilyAuthorizationService:
                 legacy_allowed=legacy_allowed,
                 rbac_allowed=rbac_allowed,
                 state=state,
+                strict=strict,
             )
 
-        effective = rbac_allowed if state == "enforced" else legacy_allowed
+        effective = rbac_allowed if strict else legacy_allowed
         if not effective:
             raise self._forbidden(classification, action)
         return role
@@ -293,8 +338,12 @@ class FamilyAuthorizationService:
         legacy_allowed: bool,
         rbac_allowed: bool,
         state: MigrationState,
+        strict: bool = False,
     ) -> None:
         """記錄 legacy 與 RBAC 兩種判定的差異。只記判定要素，不記任何資料內容。
+
+        `strict` 標明這一次實際上是不是照矩陣判的：明確指派的成員在影子狀態下
+        也照矩陣，看記錄的人要分得出「會被收緊」與「已經被收緊」。
 
         兩個方向分開，是因為它們的意義完全不同：
 
@@ -315,6 +364,7 @@ class FamilyAuthorizationService:
             "legacy_allowed": legacy_allowed,
             "rbac_allowed": rbac_allowed,
             "migration_state": state,
+            "strict": strict,
         }
         if direction == "loosen":
             logger.error("RBAC 判定比 legacy 寬鬆，這是 bug 訊號：%s", payload)
@@ -410,23 +460,27 @@ class FamilyAuthorizationService:
         target_owner_id: str,
         now: Optional[datetime] = None,
     ) -> Any:
-        """依角色遮蔽跨使用者回應，且**尊重該擁有者的遷移狀態**。
+        """依角色遮蔽跨使用者回應，且與 `authorize` 用**同一個**嚴格判定。
 
         這一點容易漏掉：遮蔽也是一種收緊。影子模式承諾「行為與導入前完全
-        相同」，而導入前沒有任何遮蔽——若在影子狀態下就把適應症拿掉，使用者
-        會在沒有任何切換的情況下發現東西不見了，而那正是影子模式要避免的。
+        相同」，而導入前沒有任何遮蔽——若對沒有人做過決定的成員就把適應症
+        拿掉，使用者會在沒有任何切換的情況下發現東西不見了。
 
-        因此遮蔽只在 `enforced` 生效；影子狀態下原樣回傳。與 `authorize` 的
-        放行判定同一個依據，兩者不會各說各話。
+        因此遮蔽在 `_is_strict` 成立時生效：擁有者已切到 enforced，或擁有者
+        親自指派過這位操作者的角色。與 `authorize` 的放行判定同一個依據，
+        兩者不會各說各話——否則一位被明確設成 MEMBER 的人會被 authorize 擋在
+        SENSITIVE 端點外，卻能從 GENERAL 端點的回應裡讀到適應症。
         """
         if operator_id == target_owner_id:
             return payload
 
+        role, _, explicit = await self._resolve_context(
+            operator_id, target_owner_id, now=now
+        )
         state = await self.migration_state(target_owner_id)
-        if state != "enforced":
+        if not self._is_strict(state, explicit):
             return payload
 
-        role = await self.resolve_role(operator_id, target_owner_id, now=now)
         return self.mask(payload, resource, role, is_self=False)
 
     # ── 呈現面與通知 ──────────────────────────────────────────────────
@@ -450,14 +504,16 @@ class FamilyAuthorizationService:
         moment = now or datetime.now(tz=timezone.utc)
         result: Dict[str, Dict[str, List[str]]] = {}
         for owner_id in target_owner_ids:
-            role = await self.resolve_role(operator_id, owner_id, now=moment)
+            role, legacy_allowed, explicit = await self._resolve_context(
+                operator_id, owner_id, now=moment
+            )
             state = await self.migration_state(owner_id)
-            legacy_allowed = await self._is_family_member(operator_id, owner_id)
+            strict = self._is_strict(state, explicit)
             entry: Dict[str, List[str]] = {}
             for classification in ("GENERAL", "SENSITIVE", "PRIVATE"):
                 actions: List[str] = []
                 for action in ("READ", "WRITE"):
-                    if state == "enforced":
+                    if strict:
                         permitted = is_allowed(role, classification, action)
                     else:
                         permitted = legacy_allowed and self._legacy_permits(
@@ -520,7 +576,8 @@ class FamilyAuthorizationService:
                 }
                 continue
 
-            if owner_id in delegated_owner_ids:
+            delegated = owner_id in delegated_owner_ids
+            if delegated:
                 role: Optional[FamilyRole] = "GUARDIAN"
             else:
                 role = row.get("family_role") or DEFAULT_FAMILY_ROLE
@@ -530,6 +587,10 @@ class FamilyAuthorizationService:
                 if self._enforcement_enabled
                 else "shadow"
             )
+            # 與 `_resolve_context` 同一個「明確」定義：擁有者指派過，或有委任。
+            strict = self._is_strict(
+                state, delegated or row.get("family_role") is not None
+            )
 
             permissions: Dict[str, List[str]] = {}
             strict_permissions: Dict[str, List[str]] = {}
@@ -538,7 +599,7 @@ class FamilyAuthorizationService:
                 strict_actions = []
                 for action in ("READ", "WRITE"):
                     rbac_permitted = is_allowed(role, classification, action)
-                    if state == "enforced":
+                    if strict:
                         permitted = rbac_permitted
                     else:
                         permitted = self._legacy_permits(classification, action)

@@ -24,7 +24,7 @@ from app.services.rag.fail_messages import (
 )
 from app.services.rag.link_check import LinkChecker, dead_urls
 from app.services.rag.query_rewriter import RewrittenQuery
-from app.services.rag.web_client import WebSearchClient
+from app.services.rag.web_client import WebSearchClient, WebSearchUnavailable
 from app.services.gemini.shared.parser import content_to_text
 from app.services.rag.whitelist import (
     is_allowed_url,
@@ -98,7 +98,20 @@ class WebSearchService:
         self, query: str, *, search_queries: RewrittenQuery | None = None
     ) -> str:
         """*search_queries* 只決定「拿什麼去搜」；生成與知識回報一律用原句。"""
-        web_docs = await self._fetch_web_docs(query, search_queries)
+        try:
+            web_docs = await self._fetch_web_docs(query, search_queries)
+        except WebSearchUnavailable as exc:
+            # 「沒搜成」與「搜了沒有」分開回：WEB_EMPTY 的文案叫使用者換個說法，
+            # 對限流與逾時完全沒用（理由見 web_client.WebSearchUnavailable）。
+            code = (
+                RagFailCode.WEB_RATE_LIMITED
+                if exc.rate_limited
+                else RagFailCode.WEB_ERROR
+            )
+            logger.warning(
+                "rag_fail code=%s status=%s reason=%s", code, exc.status, exc.reason
+            )
+            return rag_fail(code)
         if not web_docs:
             logger.info("rag_fail code=%s", RagFailCode.WEB_EMPTY)
             return rag_fail(RagFailCode.WEB_EMPTY)
@@ -229,6 +242,11 @@ class WebSearchService:
         10 組裡有 2 組一次 0 筆、一次 5 筆。重搜用原句，因為改寫過的關鍵字
         不一定比原句好搜；沒有改寫時就是同一句再搜一次。只在完全沒有可用
         文件時才重搜，所以多花的時間只落在原本就會失敗的題目上。
+
+        重搜只針對「搜了、真的 0 筆」。任一路是「沒搜成」（WebSearchUnavailable：
+        429、逾時、5xx）且沒有任何一路拿到文件時，直接把失敗往上拋、不重搜——
+        限流當下立刻再打一次只會再吃一次 429，逾時再等一次 15 秒也一樣。
+        有一路拿到文件就照常用它，另一路的失敗只留在 stage log。
         """
         if self.web_client is None:
             return []
@@ -253,9 +271,24 @@ class WebSearchService:
                     limit=CITE_TOP_K,
                 )
             )
-        docs = _interleave(await asyncio.gather(*legs), limit=CITE_TOP_K)
+        outcomes = await asyncio.gather(*legs, return_exceptions=True)
+        failures = [o for o in outcomes if isinstance(o, WebSearchUnavailable)]
+        unexpected = [
+            o
+            for o in outcomes
+            if isinstance(o, BaseException) and not isinstance(o, WebSearchUnavailable)
+        ]
+        if unexpected:
+            # 只有搜尋服務的失敗會被轉成 WebSearchUnavailable；其他例外是程式錯誤，
+            # 照 gather 原本的行為往上拋，不要包成「搜尋服務暫時無法使用」。
+            raise unexpected[0]
+        docs = _interleave(
+            [o for o in outcomes if isinstance(o, list)], limit=CITE_TOP_K
+        )
         if docs:
             return docs
+        if failures:
+            raise failures[0]
         return await self._search_leg("zh_retry", with_whitelist_site_filter(query))
 
     async def _search_leg(
@@ -274,9 +307,17 @@ class WebSearchService:
                     limit=limit,
                     include_domains=include_domains,
                 )
-            except Exception:
+            except WebSearchUnavailable as exc:
+                # hits 記成 unavailable 而不是 0：以前記 error 後回空 list，
+                # 從外面看與「搜到 0 筆」分不開，429 就這樣被當成找不到。
+                t_search["hits"] = "unavailable"
+                t_search["status"] = exc.status
+                raise
+            except Exception as exc:
+                # 客戶端沒照契約丟 WebSearchUnavailable 的例外也是「沒搜成」，
+                # 轉成同一種型別讓上層用同一條路處置。
                 t_search["hits"] = "error"
-                return []
+                raise WebSearchUnavailable(type(exc).__name__) from exc
             t_search["hits"] = len(hits)
 
         # scrape 是逐一 await 的，整段的 ms 與次數要分開記：單次 scrape 不慢

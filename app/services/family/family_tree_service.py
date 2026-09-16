@@ -13,6 +13,7 @@ from app.models.family_tree import (
     PendingInvitation,
 )
 from app.models.family_authorization import ASSIGNABLE_FAMILY_ROLES
+from app.repositories.family_delegation_repository import FamilyDelegationRepository
 from app.repositories.family_tree_repository import FamilyTreeRepository
 from app.services.family.rbac_migration import enforce_if_assignment_complete
 logger = logging.getLogger(__name__)
@@ -27,14 +28,19 @@ class FamilyTreeService:
         self,
         repository: Any = FamilyTreeRepository,
         audit_repository: Any = None,
+        delegation_repository: Any = FamilyDelegationRepository,
     ) -> None:
         """repository 可注入，讓測試以假物件替代而不必 monkey patch
         （openspec/config.yaml 的測試規則）。預設值即原本直接呼叫的那個類別，
         既有呼叫端與既有測試都不受影響。
 
-        `audit_repository` 給移除成員寫稽核用；未注入時不寫（只有測試會這樣建）。"""
+        `audit_repository` 給移除成員寫稽核用；未注入時不寫（只有測試會這樣建）。
+
+        `delegation_repository` 給移除成員時撤銷委任用。預設就是真的 repository，
+        與 `repository` 同一個形狀——不給「不撤銷」這個選項。"""
         self._repo = repository
         self._audit = audit_repository
+        self._delegations = delegation_repository
 
     async def get_family_tree(self, user_id: str) -> FamilyTree:
         """
@@ -127,7 +133,9 @@ class FamilyTreeService:
         與 QR 圖片端點都問這支——三邊各自判斷的話，只要有一邊算法不同，就會
         出現「QR 看起來還有效、按下去卻 410」這種使用者無從理解的狀態。
         """
-        if invitation.status == "accepted":
+        # 只有 pending 能用：accepted、revoked，以及任何日後新增的狀態一律不能。
+        # 寫成「不是 pending 就不行」而不是列舉不能的狀態，新增狀態時才不會漏。
+        if invitation.status != "pending":
             return False
 
         expires_at = invitation.expires_at
@@ -180,6 +188,12 @@ class FamilyTreeService:
         owner_id = invitation.target_owner_id
         if owner_id == invitee_id:
             raise HTTPException(status_code=400, detail="無法邀請自己加入族譜")
+        if invitation.inviter_id == invitee_id:
+            # 受委任者替長輩建的邀請，自己按下接受：他本來就在長輩的族譜裡
+            # （委任的前提），上面 already_member 會擋；但長輩那邊若已把他移除
+            # 而委任還沒撤銷完，這條路會讓他用自己發的邀請、以自己選的角色
+            # 重新加入。發邀請的人與接受的人 SHALL NOT 是同一個人。
+            raise HTTPException(status_code=400, detail="無法接受自己建立的邀請")
 
         owner_tree = await self._repo.get_by_user_id(owner_id)
         if owner_tree and any(
@@ -190,47 +204,98 @@ class FamilyTreeService:
             # 前面三道限制全部被繞過。
             return "already_member", "你已是此家庭成員"
 
-        await self.add_to_family(invitee_id, code)
+        # 先**原子地**把邀請搶下來，再改族譜。兩個人同時接受同一張轉發的邀請，
+        # 只有一個會搶到；另一個看到的就是「已失效」。以前是先加人再無條件
+        # 標記，兩個人都會進到族譜裡。
+        claimed = await self._repo.accept_invitation(code, accepted_by=invitee_id)
+        if claimed is None:
+            raise HTTPException(status_code=410, detail="邀請連結已失效")
+
+        await self._link_members(owner_id, invitee_id, invitation.family_role)
 
         return "joined", None
 
-    async def add_to_family(self, invitee_id: str, invite_id: str) -> None:
-        """
-        將家人加入家庭。
-        """
-        invitation = await self._repo.get_invitation(invite_id)
-        if not invitation:
-            return
-
-        owner_id = invitation.target_owner_id
-
+    async def _link_members(
+        self, owner_id: str, invitee_id: str, family_role: Optional[str]
+    ) -> None:
+        """把受邀者與擁有者寫進彼此的族譜。邀請已經在呼叫端搶下來了。"""
         # 確保雙方族譜存在（upsert）
         await self._repo.upsert_tree(owner_id)
         await self._repo.upsert_tree(invitee_id)
 
         # 1. 擁有者的族譜加入受邀者，帶上邀請記錄裡保存的角色。
-        #    角色只寫進**這一邊**：它表達的是「受邀者對擁有者的資料是什麼
-        #    角色」，是擁有者的授權決定。
+        #    角色表達的是「受邀者對擁有者的資料是什麼角色」，是擁有者的授權決定。
         await self._repo.add_member(
             owner_id,
-            FamilyMember(user_id=invitee_id, family_role=invitation.family_role),
+            FamilyMember(user_id=invitee_id, family_role=family_role),
         )
 
-        # 2. 受邀者的族譜加入擁有者，**不帶角色**。受邀者從未表示要授予擁有者
-        #    任何權限，那一邊維持未設定（授權上即 MEMBER）。角色在這個模型裡
-        #    是單向的。
+        # 2. 受邀者的族譜加入擁有者，明確給 MEMBER——矩陣裡權限最低的角色，
+        #    只能讀 GENERAL（顯示名稱、頭像、用藥設定），SENSITIVE 與 PRIVATE
+        #    都不能。
+        #
+        #    以前這一邊**不帶角色**。「未設定」在授權上雖然等同 MEMBER，但影子
+        #    模式只對「有明確角色」的成員套用矩陣（見 FamilyAuthorizationService
+        #    ._is_strict）——未設定的成員走的是導入前的寬鬆行為：在族譜裡就
+        #    什麼都能讀。結果是受邀者只要接受邀請，邀請者就能看到受邀者的健康
+        #    資料與對話紀錄，而受邀者從未表示要授予任何權限。
+        #
+        #    明確寫 MEMBER 之後，這一邊立刻受矩陣約束。受邀者日後要給更多，
+        #    自己去指派。
         await self._repo.add_member(
-            invitee_id, FamilyMember(user_id=owner_id)
+            invitee_id, FamilyMember(user_id=owner_id, family_role="MEMBER")
         )
 
-        # 3. 標記邀請為已使用
-        await self._repo.accept_invitation(invite_id)
         logger.info(
             "成員加入成功：owner=%s, invitee=%s, role=%s",
             owner_id,
             invitee_id,
-            invitation.family_role,
+            family_role,
         )
+
+    async def revoke_invitation(
+        self,
+        operator_id: str,
+        code: str,
+        authorization_service: Optional[Any] = None,
+    ) -> bool:
+        """撤銷一張還沒被接受的邀請。僅該邀請的擁有者本人或其有效受委任者可以。
+
+        回傳這次有沒有真的改到狀態：已撤銷者再撤銷一次回 False 但不報錯
+        （按兩次按鈕不該看到錯誤）；已接受者回 409——人已經在族譜裡，要拿掉
+        他走的是移除成員，不是撤銷邀請。
+
+        不存在的邀請碼與沒有權限的都回 404：邀請碼是憑證，帶得出來不代表有權
+        管理它，而回 403 等於告訴對方「這組碼存在」。
+        """
+        invitation = await self._repo.get_invitation(code)
+        if invitation is None:
+            raise HTTPException(status_code=404, detail="邀請連結無效")
+
+        owner_id = invitation.target_owner_id
+        permitted = operator_id == owner_id
+        if not permitted and authorization_service is not None:
+            permitted = await authorization_service.is_active_delegate(
+                operator_id, owner_id
+            )
+        if not permitted:
+            raise HTTPException(status_code=404, detail="邀請連結無效")
+
+        if invitation.status == "accepted":
+            raise HTTPException(
+                status_code=409,
+                detail="邀請已被接受，無法撤銷；請改用移除家人",
+            )
+
+        revoked = await self._repo.revoke_invitation(code, revoked_by=operator_id)
+        logger.info(
+            "邀請撤銷：operator=%s, owner=%s, token=%s, changed=%s",
+            operator_id,
+            owner_id,
+            code,
+            revoked,
+        )
+        return revoked
 
     async def set_relationship(
         self, user_id: str, member_id: str, relationship_type: str
@@ -306,6 +371,14 @@ class FamilyTreeService:
         await self._audit_removal(operator_id, removed_from_mine, operator_id)
         await self._audit_removal(member_id, removed_from_theirs, operator_id)
 
+        # 兩個方向的委任一起撤銷。委任提升的是「既有成員」的權限，人都不在
+        # 族譜裡了，委任沒有存在的理由；留著的話，重新受邀加入的那一刻它會
+        # 直接復活成 GUARDIAN。`is_active_delegate` 另外也要求受委任者仍是
+        # 成員，所以這裡失敗只會讓紀錄不乾淨，不會讓權限復活——因此失敗記 log
+        # 不擋已經完成的移除。
+        for owner_id, delegate_id in ((operator_id, member_id), (member_id, operator_id)):
+            await self._revoke_delegation_on_removal(owner_id, delegate_id, operator_id)
+
         # 移除的可能正是最後一位未設定角色的人：那一刻起剩下的角色設定才生效。
         # 失敗不影響這次移除——成員已經拿掉了；下一次指派或 backfill 腳本會補切。
         for owner_id in (operator_id, member_id):
@@ -315,6 +388,34 @@ class FamilyTreeService:
                 logger.exception("切換家庭權限為強制失敗：owner=%s", owner_id)
 
         logger.info("成員已移除：operator=%s, member=%s", operator_id, member_id)
+
+    async def _revoke_delegation_on_removal(
+        self, owner_id: str, delegate_id: str, changed_by: str
+    ) -> None:
+        try:
+            revoked = await self._delegations.revoke(
+                owner_id=owner_id, delegate_user_id=delegate_id, revoked_by=changed_by
+            )
+        except Exception:
+            logger.exception(
+                "移除成員時撤銷委任失敗：owner=%s, delegate=%s", owner_id, delegate_id
+            )
+            return
+        if not revoked or self._audit is None:
+            return
+        try:
+            await self._audit.append(
+                owner_id=owner_id,
+                member_id=delegate_id,
+                changed_by=changed_by,
+                from_role="GUARDIAN",
+                via_delegation=False,
+                event="delegation_revoked",
+            )
+        except Exception:
+            logger.exception(
+                "撤銷委任的稽核寫入失敗：owner=%s, delegate=%s", owner_id, delegate_id
+            )
 
     async def _audit_removal(
         self, owner_id: str, removed: Optional[FamilyMember], changed_by: str

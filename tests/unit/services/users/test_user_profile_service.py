@@ -295,3 +295,28 @@ async def test_update_voice_reply_enabled_calls_repo_once():
     repo.update_voice_reply_enabled.assert_awaited_once_with("U123", True)
     repo.update_user_settings.assert_not_awaited()
 
+
+
+@pytest.mark.asyncio
+async def test_rich_menu_link_runs_off_the_event_loop_thread():
+    """link_user_menu 底層是同步 requests.post；留在事件迴圈上會把整站凍住到
+    LINE 回應為止。要在工作執行緒裡呼叫。"""
+    import threading
+
+    loop_thread = threading.get_ident()
+    seen_threads = []
+
+    def _link(line_id, language):
+        seen_threads.append(threading.get_ident())
+        return True
+
+    rich_menu_service = MagicMock()
+    rich_menu_service.link_user_menu.side_effect = _link
+    service, repo = _build_service(
+        get_user_profile_return={"line_id": "U123", "settings": {"language": "zh-TW"}},
+        rich_menu_service=rich_menu_service,
+    )
+
+    await service.update_user_settings("U123", UserSettingsUpdate(language="en"))
+
+    assert seen_threads and seen_threads[0] != loop_thread

@@ -11,6 +11,7 @@ from typing import Any
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import Runnable
 from langchain_google_genai import ChatGoogleGenerativeAI
+from app.core.config import settings
 from app.services.gemini.shared.errors import (
     GeminiHttpError,
     GeminiNetworkError,
@@ -20,6 +21,13 @@ from app.services.gemini.shared.errors import (
 )
 
 logger = logging.getLogger(__name__)
+
+# 單次請求失敗後的重試次數。langchain-google-genai 4.2.2 預設 6 次、且預設沒有
+# 逾時：一則訊息在 RAG 路徑上最多打 8 次 Gemini（guardrail、急迫度、改寫、分級、
+# 生成、agent 決策×2、網搜生成），每次都可能重試 6 次，Gemini 一慢就是重試風暴，
+# 而使用者早就等不到 45 秒總預算結束。2 次：能吃掉單次瞬斷（429／503），又不會
+# 讓一次呼叫的最壞情況超過 3 × 逾時。模組常數而非 env：這不該隨環境改。
+DEFAULT_MAX_RETRIES = 2
 
 
 class GeminiService:
@@ -35,8 +43,15 @@ class GeminiService:
         model_name: str,
         temperature: float = 0.0,
         thinking_level: str | None = None,
+        timeout: float | None = None,
+        max_retries: int = DEFAULT_MAX_RETRIES,
     ) -> None:
         """初始化 chat model；公開 `chat_model` 屬性。
+
+        這裡是專案裡唯一建 `ChatGoogleGenerativeAI` 的地方（dependencies 建的
+        三個實例都經過這裡），逾時與重試次數就集中在這裡設，不讓任何呼叫端
+        拿到沒有逾時的模型。`timeout` 預設取 `GEMINI_REQUEST_TIMEOUT_SECONDS`
+        （理由見 config），`max_retries` 見 `DEFAULT_MAX_RETRIES`。
 
         `temperature` 預設 0，正式路徑一律沿用。留出參數是給評測用的：
         要量測模型在同一張影像上的答案穩不穩，必須讓它有機會給出不同答案。
@@ -49,16 +64,27 @@ class GeminiService:
         extra: dict[str, Any] = {}
         if thinking_level is not None:
             extra["thinking_level"] = thinking_level
+        self.timeout = (
+            float(timeout)
+            if timeout is not None
+            else float(settings.GEMINI_REQUEST_TIMEOUT_SECONDS)
+        )
+        self.max_retries = int(max_retries)
         self.chat_model = ChatGoogleGenerativeAI(
             model=model_name,
             google_api_key=api_key,
             temperature=temperature,
+            timeout=self.timeout,
+            max_retries=self.max_retries,
             **extra,
         )
         logger.info(
-            "GeminiService 已初始化（LangChain）：模型=%s thinking_level=%s",
+            "GeminiService 已初始化（LangChain）：模型=%s thinking_level=%s "
+            "timeout_s=%s max_retries=%s",
             model_name,
             thinking_level or "default",
+            self.timeout,
+            self.max_retries,
         )
 
     async def invoke_boolean_structured_output(self, user_content: str) -> bool:

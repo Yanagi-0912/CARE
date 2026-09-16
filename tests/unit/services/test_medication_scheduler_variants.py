@@ -13,6 +13,8 @@ import pytest
 
 from app.models.medication import MedicationLog, MedicationReminder
 from app.services.line_messaging.flex.medication_flex import MedicationListEntry
+from app.services.line_messaging.send_result import SendOutcome, SendResult
+from app.services.scheduling.push_tick_scheduler import DispatchOutcome
 from app.services.medication.medication_scheduler import (
     MedicationScheduler,
     _TickMedicationNameCache,
@@ -97,10 +99,25 @@ def _assigned(log_id, *, tone, nudge_minutes, urgent_at, expected_timeout_at):
     return _pending_log(log_id, **fields)
 
 
+def _push_flex_result_via(replier):
+    """讓替身同時支援新舊兩種推播介面：排程器現在呼叫 `push_flex_result`，
+    既有測試仍以 `push_flex` 設定回傳值與斷言呼叫——`True` 翻成送達、
+    `False` 翻成暫時性失敗、例外原樣拋出（由排程器分類）。"""
+
+    async def _push(user_id, card):
+        outcome = await replier.push_flex(user_id, card)
+        if isinstance(outcome, SendResult):
+            return outcome
+        return SendResult.success() if outcome else SendResult(SendOutcome.TRANSIENT)
+
+    return AsyncMock(side_effect=_push)
+
+
 @pytest.fixture()
 def replier():
     replier = MagicMock()
     replier.push_flex = AsyncMock(return_value=True)
+    replier.push_flex_result = _push_flex_result_via(replier)
     return replier
 
 
@@ -119,6 +136,12 @@ def log_repository():
     repo.list_pending_caregiver_alerts = AsyncMock(return_value=[])
     repo.claim_patient_reminder = AsyncMock(return_value=True)
     repo.release_patient_reminder = AsyncMock(return_value=True)
+    repo.claim_patient_urgent_reminder = AsyncMock(return_value=True)
+    repo.release_patient_urgent_reminder = AsyncMock(return_value=True)
+    repo.mark_stage_sent = AsyncMock(return_value=True)
+    repo.mark_stage_skipped = AsyncMock(return_value=True)
+    repo.give_up_stage = AsyncMock(return_value=True)
+    repo.cancel_pending_by_reminder = AsyncMock(return_value=1)
     repo.list_variant_outcomes = AsyncMock(return_value=[])
     repo.assign_reminder_variant = AsyncMock(side_effect=_assigned)
     repo.get_log_by_id = AsyncMock(return_value=None)
@@ -160,7 +183,7 @@ async def test_on_time_t0_records_the_choice_and_moves_the_nudge_from_the_latest
         log, _cache(log), _stats_favoring("brief", 10), ON_TIME
     )
 
-    assert sent is True
+    assert sent.ok
     log_repository.assign_reminder_variant.assert_awaited_once_with(
         "L1",
         tone="brief",
@@ -220,7 +243,7 @@ async def test_t0_sends_current_wording_when_history_is_unavailable(
 
     sent = await scheduler._send_patient_reminder(log, _cache(log), None, ON_TIME)
 
-    assert sent is True
+    assert sent.ok
     log_repository.assign_reminder_variant.assert_not_awaited()
     assert CONTROL_T0 in _rendered(replier)
 
@@ -241,7 +264,7 @@ async def test_t0_follows_the_database_when_the_write_errored_but_landed(
         log, _cache(log), _stats_favoring("brief", 10), ON_TIME
     )
 
-    assert sent is True
+    assert sent.ok
     assert BRIEF_T0 in _rendered(replier)
 
 
@@ -257,7 +280,7 @@ async def test_t0_still_sends_when_recording_the_choice_fails(
         log, _cache(log), _stats_favoring("brief", 10), ON_TIME
     )
 
-    assert sent is True
+    assert sent.ok
     assert CONTROL_T0 in _rendered(replier)
 
 
@@ -286,7 +309,7 @@ async def test_opted_out_user_is_not_entered_into_the_bandit(
         log, _cache(log), _stats_favoring("brief", 10), ON_TIME
     )
 
-    assert sent is True
+    assert sent is DispatchOutcome.SKIPPED
     log_repository.assign_reminder_variant.assert_not_awaited()
     replier.push_flex.assert_not_awaited()
 
@@ -389,9 +412,11 @@ class _MemoryLogs:
         ]
 
     async def list_pending_urgent_reminders(self, threshold_time):
+        # 與真正的查詢一致：只催 T+0 真的送達（patient_reminder_sent_at 有值）的。
         return [
             d for d in self.docs.values()
             if d.status == "pending" and d.patient_reminder_sent
+            and d.patient_reminder_sent_at is not None
             and not d.urgent_reminder_sent and d.urgent_at <= threshold_time
         ]
 
@@ -399,8 +424,23 @@ class _MemoryLogs:
         return [
             d for d in self.docs.values()
             if d.status == "pending" and not d.caregiver_alert_sent
+            and d.patient_reminder_sent_at is not None
             and d.timeout_at <= threshold_time
         ]
+
+    async def mark_stage_sent(self, log_id, stage):
+        setattr(self.docs[log_id], f"{stage}_sent_at", datetime.now(timezone.utc))
+        return True
+
+    async def mark_stage_skipped(self, log_id, stage):
+        setattr(self.docs[log_id], f"{stage}_skipped_at", datetime.now(timezone.utc))
+        return True
+
+    async def give_up_stage(self, log_id, stage, error):
+        return True
+
+    async def cancel_pending_by_reminder(self, reminder_id):
+        return 0
 
     async def _claim(self, log_id, flag):
         doc = self.docs[log_id]

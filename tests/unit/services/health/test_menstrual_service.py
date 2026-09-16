@@ -626,3 +626,51 @@ async def test_create_without_alert_service_configured_still_works():
     )
 
     assert result.id is not None
+
+
+@pytest.mark.asyncio
+async def test_maybe_notify_anomaly_swallows_unparseable_stored_dates():
+    """程式碼審查發現：``_maybe_notify_anomaly`` 原本只把推播那一次呼叫包進
+    try/except，上面的 ``date.fromisoformat``／``detect_menstrual_anomaly``
+    仍在保護傘外——存進資料庫的日期字串一旦壞掉（不論任何原因：舊資料、
+    直接寫入資料庫等），``date.fromisoformat`` 會拋出 ``ValueError``，讓一支
+    原本該成功的請求變成 500，正是 spec「推播失敗不影響紀錄」要擋的事。
+
+    ``create()``／``update()`` 兩條公開路徑目前都會在更早之前（
+    ``CreateMenstrualRecordRequest`` 的欄位驗證、或 ``_compute_fields_for_list``
+    對整份清單的日期解析）先擋下格式不合法的日期字串，因此無法在不繞過既有
+    驗證的前提下，端對端地把一筆「日期解析失敗」的紀錄送進
+    ``_maybe_notify_anomaly``。這裡直接呼叫該方法本身——它是這次要修的那個
+    邊界，這樣測的正是「就算收到解析不了的日期，這個方法也不對外拋出例外、
+    也不會推播」，不多也不少。
+    """
+    service, _ = _service()
+    broken = MenstrualRecord(id="R1", user_id=OWNER, start_date="not-a-date")
+
+    # 不該拋出例外——即使上面這行本身已經違反其他地方的驗證慣例。
+    await service._maybe_notify_anomaly(OWNER, broken)
+
+
+@pytest.mark.asyncio
+async def test_maybe_notify_anomaly_swallows_unparseable_end_date():
+    class _FakeAlertService:
+        def __init__(self) -> None:
+            self.calls: List[tuple] = []
+
+        async def notify_menstrual_anomaly(self, user_id: str, record_id: str) -> None:
+            self.calls.append((user_id, record_id))
+
+    repository = _FakeMenstrualRepository()
+    alert_service = _FakeAlertService()
+    service = MenstrualRecordService(
+        repository=repository,
+        user_profile_service=_FakeUserProfileService({OWNER: {"gender": "female"}}),
+        alert_service=alert_service,
+    )
+    broken = MenstrualRecord(
+        id="R1", user_id=OWNER, start_date="2026-09-01", end_date="not-a-date"
+    )
+
+    await service._maybe_notify_anomaly(OWNER, broken)
+
+    assert alert_service.calls == []

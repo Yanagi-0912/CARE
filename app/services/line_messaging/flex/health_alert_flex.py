@@ -22,8 +22,11 @@ from app.i18n import t
 from app.models.health import TAIPEI_TZ, HealthMeasurement
 from resources.flex_messages import theme
 
-# 等級對應的強調色。above／below 共用同一套警示色階，只是換一個方向——
-# 沒有臨床嚴重度的意涵，純粹是「請留意」的視覺提示。
+# 等級對應的強調色，只用在內文「被超過的範圍值」那幾列——同
+# ``safety_flex``／``otc_flex`` 的版面慣例：header 一律是品牌色，status token
+# 保留給內文的局部強調，不是整張卡的底色（見本模組 ``build_health_alert_flex``
+# 的 header 區塊）。above／below 共用同一套警示色階，只是換一個方向，沒有
+# 臨床嚴重度的意涵，純粹是「請留意」的視覺提示。
 _LEVEL_COLOR: dict[str, str] = {
     "above_range": theme.STATUS_CLOSED,
     "below_range": theme.STATUS_PENDING,
@@ -151,7 +154,9 @@ def build_health_alert_flex(
     比照其餘推播服務的慣例）。
     """
     ft = theme.resolve_theme(font_size)
-    header_color = _LEVEL_COLOR.get(measurement.level, theme.BRAND)
+    # 只用在內文「被超過的範圍值」那幾列的局部強調色，不是整張卡的底色
+    # （見本檔案頂端的說明；同 safety_flex／otc_flex 的 header／內文分工）。
+    emphasis_color = _LEVEL_COLOR.get(measurement.level, theme.BRAND)
 
     body_contents: list[dict[str, Any]] = []
     if patient_name:
@@ -169,7 +174,7 @@ def build_health_alert_flex(
         _row(t("flex.health_alert.label.measured_at", language), _measured_at_text(measurement), ft)
     )
     body_contents.extend(_value_rows(measurement, language, ft))
-    body_contents.extend(_exceeded_rows(exceeded, language, ft, header_color))
+    body_contents.extend(_exceeded_rows(exceeded, language, ft, emphasis_color))
     if recorder_name:
         body_contents.append(
             {
@@ -187,7 +192,7 @@ def build_health_alert_flex(
         "header": {
             "type": "box",
             "layout": "vertical",
-            "backgroundColor": header_color,
+            "backgroundColor": theme.BRAND,
             "paddingAll": "lg",
             "contents": [
                 {

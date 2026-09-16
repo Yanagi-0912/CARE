@@ -15,7 +15,11 @@ from typing import Any, Dict, List, Optional
 import pytest
 from linebot.v3.messaging import FlexMessage
 
+from app.models.family_tree import FamilyMember, FamilyTree
 from app.models.health import HealthAlertThreshold, HealthMeasurement
+from app.services.family.family_authorization_service import (
+    FamilyAuthorizationService,
+)
 from app.services.health.health_alert_service import (
     NOTIFICATION_KIND,
     HealthAlertService,
@@ -238,6 +242,79 @@ async def test_asks_authorization_service_for_the_right_kind_without_legacy_equi
     )
 
     assert auth.calls == [(OWNER, NOTIFICATION_KIND, False)]
+
+
+class _FakeTrees:
+    """同 ``tests/unit/routers/test_health_router_authorization.py`` 的假
+    ``FamilyTreeRepository``：只回傳整份 ``FamilyTree``，角色解析交給真正的
+    ``FamilyAuthorizationService`` 完成。"""
+
+    def __init__(self, trees: Dict[str, FamilyTree]) -> None:
+        self._trees = trees
+
+    async def get_by_user_id(self, user_id: str) -> Optional[FamilyTree]:
+        return self._trees.get(user_id)
+
+
+class _NoDelegations:
+    async def has_active_delegation(self, owner_id, delegate_user_id, now=None) -> bool:
+        return False
+
+
+@pytest.mark.asyncio
+async def test_real_authorization_service_filters_to_guardian_and_caregiver_even_in_shadow_state():
+    """規則本身有沒有被正確套用的回歸守門：上面的測試都用一個直接回傳固定
+    清單的假 authorization service，只驗證了「接線」（呼叫了哪個 kind、傳了
+    ``has_legacy_equivalent=False``），沒有任何一個測試真正跑過角色解析或
+    遷移狀態判斷。這裡改用真正的 ``FamilyAuthorizationService``（repository
+    換成假的，同 router 授權測試的方法論），族譜裡有 GUARDIAN、CAREGIVER、
+    MEMBER 與一位尚未指派角色的成員，且家庭**仍在 shadow 遷移狀態**——
+    ``health_out_of_range`` 是 ``has_legacy_equivalent=False`` 呼叫的種類，
+    SHALL NOT 受影子模式放寬，收件人 SHALL 只有本人＋GUARDIAN＋CAREGIVER
+    （health-alerts spec「超出範圍的推播對象」：「MEMBER 與尚未被指派角色的
+    家人 SHALL NOT 收到」「收件人判定 SHALL NOT 受遷移狀態影響」）。
+    """
+    guardian, caregiver, member, unassigned = (
+        "U_GUARDIAN2",
+        "U_CAREGIVER2",
+        "U_MEMBER2",
+        "U_UNASSIGNED2",
+    )
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    tree = FamilyTree(
+        user_id=OWNER,
+        family_members=[
+            FamilyMember(user_id=guardian, family_role="GUARDIAN"),
+            FamilyMember(user_id=caregiver, family_role="CAREGIVER"),
+            FamilyMember(user_id=member, family_role="MEMBER"),
+            FamilyMember(user_id=unassigned, family_role=None),
+        ],
+        rbac_migration_state="shadow",
+        created_at=now,
+        updated_at=now,
+    )
+    real_authorization = FamilyAuthorizationService(
+        family_tree_repository=_FakeTrees({OWNER: tree}),
+        delegation_repository=_NoDelegations(),
+        enforcement_enabled=True,
+    )
+    replier = _FakeReplier()
+    claims = _FakeClaimRepository(lambda: now)
+    service = HealthAlertService(
+        replier=replier,
+        claim_repository=claims,
+        authorization_service=real_authorization,
+        user_profile_service=_FakeProfiles(),
+        enabled=True,
+        liff_url="https://liff.line.me/1234",
+        clock=lambda: now,
+    )
+
+    await service.notify_out_of_range(
+        _measurement(level="above_range", measured_at=now), _threshold(systolic_high=140)
+    )
+
+    assert set(uid for uid, _ in replier.flex) == {OWNER, guardian, caregiver}
 
 
 @pytest.mark.asyncio

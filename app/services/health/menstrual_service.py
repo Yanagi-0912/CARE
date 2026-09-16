@@ -186,26 +186,28 @@ class MenstrualRecordService:
         （``cycle_length_days = (start - previous_start).days``，見
         ``_compute_fields_for_list``），不必為了取得前一筆的開始日期另外
         查一次資料庫——那份資訊已經在 ``_with_computed_fields_for`` 算過了。
+
+        整段（含日期解析與異常判定，不只是推播那一次呼叫）都包在 try/except
+        裡：紀錄已經先寫入、這裡只是「寫入之後」的附加動作，任何一步失敗
+        （包括存進資料庫的日期字串因故壞掉、``date.fromisoformat`` 拋錯）都
+        SHALL NOT 讓已經成功的請求變成 500（spec「推播失敗不影響紀錄」——
+        這裡從嚴解讀為「這整段附加動作失敗」，不只是「LINE 推播本身失敗」）。
         """
         if self._alert_service is None or not record.id:
             return
-        start = date.fromisoformat(record.start_date)
-        end = date.fromisoformat(record.end_date) if record.end_date else None
-        previous_start = (
-            start - timedelta(days=record.cycle_length_days)
-            if record.cycle_length_days is not None
-            else None
-        )
-        if not detect_menstrual_anomaly(previous_start, start, end):
-            return
-        # ``HealthAlertService.notify_menstrual_anomaly`` 自己已經吞掉內部的
-        # 失敗，這裡仍在呼叫處再包一層——同 ``health_measurement_service`` 的
-        # 理由，不假設「呼叫端一定接的是行為良好的實作」，換一顆不同的注入
-        # 物件不該讓這支請求失敗（spec「推播失敗不影響紀錄」）。
         try:
+            start = date.fromisoformat(record.start_date)
+            end = date.fromisoformat(record.end_date) if record.end_date else None
+            previous_start = (
+                start - timedelta(days=record.cycle_length_days)
+                if record.cycle_length_days is not None
+                else None
+            )
+            if not detect_menstrual_anomaly(previous_start, start, end):
+                return
             await self._alert_service.notify_menstrual_anomaly(user_id, record.id)
         except Exception:  # noqa: BLE001
-            logger.warning("經期異常推播失敗，紀錄本身不受影響", exc_info=True)
+            logger.warning("經期異常判定或推播失敗，紀錄本身不受影響", exc_info=True)
 
     async def _require_female(self, user_id: str) -> None:
         """建立限本人個人健康檔案性別為「女性」（spec「僅女性使用者可

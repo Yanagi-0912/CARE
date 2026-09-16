@@ -50,6 +50,30 @@ def _glucose_measurement(**overrides) -> HealthMeasurement:
     return HealthMeasurement(**base)
 
 
+def _collect_text_nodes(node) -> list:
+    """遞迴取出 Flex 節點樹裡所有可見的 ``text`` 內容（同
+    ``test_menstrual_alert_flex.py`` 的 ``_collect_text_nodes``）。
+
+    刻意不對整份 dict 字串化後檢查——版面本身（顏色十六進位碼、layout
+    關鍵字、按鈕的 ``uri``）含有數字與英文字是正常的，那些不是使用者會讀到
+    的「推播文字」；只有 ``type: text`` 節點的 ``text`` 才是。字串比對版本
+    曾經有兩個假陽性：``"記錄" not in str(bubble)`` 只因為按鈕文案用的是
+    「紀錄」（紀，不是記）才恰好過關，換一個按鈕文案就會悄悄失效；
+    ``"119" not in rendered`` 則會被 ``uri`` 裡恰好含有 119 的任何字串
+    （例如某個 id）誤觸發失敗。
+    """
+    texts: list = []
+    if isinstance(node, dict):
+        if node.get("type") == "text" and isinstance(node.get("text"), str):
+            texts.append(node["text"])
+        for value in node.values():
+            texts.extend(_collect_text_nodes(value))
+    elif isinstance(node, list):
+        for item in node:
+            texts.extend(_collect_text_nodes(item))
+    return texts
+
+
 def test_content_carries_both_the_value_and_the_exceeded_bound():
     flex = build_health_alert_flex(
         alert_key="bp_high",
@@ -75,7 +99,8 @@ def test_recorder_note_appears_only_when_proxy_recorded():
     without_recorder = build_health_alert_flex(
         alert_key="bp_high", measurement=_bp_measurement(), language="zh-TW"
     )
-    assert "記錄" not in str(without_recorder.contents.to_dict())
+    visible_text = "\n".join(_collect_text_nodes(without_recorder.contents.to_dict()))
+    assert "記錄" not in visible_text
 
 
 def test_patient_name_shown_for_family_recipients_only():
@@ -112,10 +137,10 @@ def test_card_contains_no_diagnosis_advice_or_emergency_block():
     flex = build_health_alert_flex(
         alert_key="bp_high", measurement=_bp_measurement(), language="zh-TW"
     )
-    rendered = str(flex.contents.to_dict())
+    visible_text = "\n".join(_collect_text_nodes(flex.contents.to_dict()))
 
     for forbidden in ("119", "diagnos", "診斷", "建議您", "治療"):
-        assert forbidden not in rendered
+        assert forbidden not in visible_text
 
 
 def test_button_omitted_when_no_uri_given():

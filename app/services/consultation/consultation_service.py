@@ -18,6 +18,9 @@ from app.services.gemini.services import GeminiService
 from app.services.gemini.shared.errors import raise_mapped_gemini_error
 from app.services.medication.medication_service import MedicationService
 from app.services.users.user_profile_service import UserProfileService
+from resources.flex_messages.medical_messages.emergency_condition_flex_message import (
+    RISK_ALERT_KEY,
+)
 
 DEFAULT_SUMMARY_LANGUAGE = "zh-TW"
 SUPPORTED_SUMMARY_LANGUAGES = {
@@ -39,6 +42,8 @@ SUMMARY_FIELDS = {
     "ai_summary": "string",
 }
 
+RISK_ALERT_MARKER = "觸發風險警示"
+
 # 掛號提醒只列摘要日當天起最近的幾筆，避免長期回診表把 prompt 撐大
 APPOINTMENT_CONTEXT_LIMIT = 5
 APPOINTMENT_STATUS_LABELS = {
@@ -56,6 +61,33 @@ def _build_summary_schema(language: str) -> dict:
         "properties": {key: {"type": field_type} for key, field_type in SUMMARY_FIELDS.items()},
         "required": list(SUMMARY_FIELDS.keys()),
     }
+
+
+def _risk_alert(message: ChatMessage) -> Optional[dict]:
+    if message.message_type != "assistant_reply":
+        return None
+    if not message.content.lstrip().startswith("{"):
+        return None
+    try:
+        payload = json.loads(message.content)
+    except ValueError:
+        return None
+    alert = payload.get(RISK_ALERT_KEY) if isinstance(payload, dict) else None
+    return alert if isinstance(alert, dict) else None
+
+
+def _transcript_line(message: ChatMessage, previous: Optional[ChatMessage]) -> str:
+    alert = _risk_alert(message)
+    if alert is None:
+        return f"[{message.message_type}] {message.content}"
+    # 紅卡存的是整張卡片 JSON，換成家屬也看得懂的一行：原話緊接在紅卡前一則
+    parts = [RISK_ALERT_MARKER]
+    if previous is not None and previous.message_type != "assistant_reply":
+        parts.append(f"使用者輸入：「{previous.content}」")
+    reason = str(alert.get("reason") or "").strip()
+    if reason:
+        parts.append(f"判定原因：{reason}")
+    return f"[{message.message_type}] " + "｜".join(parts)
 
 
 def _taipei_date(timestamp: datetime) -> date:
@@ -214,8 +246,8 @@ class ConsultationService:
         language_name = self._language_name(language)
         # 對話稿：每則訊息逐行排版，避免 list repr 造成模型誤解
         transcript_lines = "\n".join(
-            f"[{message.message_type}] {message.content}"
-            for message in messages
+            _transcript_line(message, messages[index - 1] if index else None)
+            for index, message in enumerate(messages)
         )
 
         reminder_context = await self._build_reminder_context(user_id, target_date)
@@ -293,6 +325,7 @@ class ConsultationService:
             若使用者明確表示危急情況正在發生，應優先整理該情況及 AI 提供的相關安全建議。
             若使用者僅提出一般性問題或假設情境，不得將其描述為使用者本人正在發生的危急事件。
             若無法確認是否正在發生，必須明確標示「未確認是否為目前正在發生」，不可自行推論。
+            對話稿中標示「{RISK_ALERT_MARKER}」的那一行，代表系統當下判定需要立即處置，已送出緊急求助卡片。這類事件一律列入本欄，不得省略或淡化：寫出「{RISK_ALERT_MARKER}」（以{language_name}表達）、使用者當時輸入的原話與判定原因，讓使用者與家屬一看就懂發生了什麼。例如：{RISK_ALERT_MARKER}：使用者輸入「我要自殺」（判定原因：表達想結束生命）。
             若沒有值得特別提醒的安全相關資訊，填寫「無」。
 
             【其他】

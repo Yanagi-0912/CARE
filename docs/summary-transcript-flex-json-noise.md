@@ -24,7 +24,7 @@ Flex JSON（見 `app/services/agent/agent.py` 的 `medical_tool_names`）。
 | `open_official_site` | 官網／LIFF 入口 |
 | `verify_claim` | 查核判定卡 |
 | `suggest_department_for_symptom` | 症狀科別建議卡（含紅旗卡） |
-| 急迫度短路（`emergency_node`） | 緊急紅卡——**另案處理**，見下方「範圍」 |
+| 急迫度短路（`emergency_node`） | 緊急紅卡——**已處理**，見下方「範圍」 |
 
 不受影響：RAG／文件問答的回答卡由 replier 自行組卡，存檔的是組卡前的純文字。
 
@@ -38,7 +38,10 @@ Flex JSON（見 `app/services/agent/agent.py` 的 `medical_tool_names`）。
 ## 範圍
 
 - 只改摘要組對話稿的方式，**不改存檔格式**。LIFF 原始紀錄頁與 agent 讀的歷史照舊。
-- 緊急紅卡由「紅卡觸發要進摘要」那項工作處理，本項不重做，但兩者的轉換方式須一致。
+- 緊急紅卡已處理：卡片頂層帶 `riskAlert`（`RISK_ALERT_KEY`），摘要的 `_transcript_line`
+  把它換成「觸發風險警示｜使用者輸入：「…」｜判定原因：…」。其他卡片建議沿用同一做法——
+  組卡時在頂層放一個結構化 key，摘要只讀這個 key，不從卡片節點反解文字。
+- 限制同樣適用：上線前已存下的卡片沒有這個 key，無法被辨識。
 
 ## 通過條件
 

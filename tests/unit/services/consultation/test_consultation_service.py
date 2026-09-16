@@ -23,6 +23,13 @@ from app.models.medication import (
 )
 from app.services.consultation.consultation_service import ConsultationService
 from app.services.consultation.scheduler import ConsultationDailySummaryScheduler
+from app.services.medical.symptom_classification.urgency import (
+    URGENCY_EMERGENCY,
+    UrgencyVerdict,
+)
+from resources.flex_messages.medical_messages.emergency_condition_flex_message import (
+    build_emergency_condition_flex,
+)
 
 
 class FakeChatHistoryRepository:
@@ -620,3 +627,94 @@ async def test_reminder_lookup_failure_is_not_swallowed(
 
     with pytest.raises(PyMongoError):
         await _summarize_and_get_prompt(consultation_service)
+
+
+# ── 紅卡（風險警示）在對話稿裡換成一行看得懂的字 ─────────────────────────────
+
+
+def _risk_card(reason: str) -> str:
+    verdict = UrgencyVerdict(level=URGENCY_EMERGENCY, display=reason)
+    return json.dumps(
+        build_emergency_condition_flex(verdict, language="zh-TW", font_size="large"),
+        ensure_ascii=False,
+    )
+
+
+async def _add_message(
+    service: ConsultationService, message_type: str, content: str, timestamp: datetime
+):
+    await service._chat_history_repository.append_message(
+        "U123",
+        ChatMessage(
+            line_id="U123", message_type=message_type, content=content, timestamp=timestamp
+        ),
+    )
+
+
+async def _prompt_for(service: ConsultationService) -> str:
+    _echo_gemini(service)
+    await service.summarize("U123", ConsultationSummarizeRequest(force=True))
+    return service._gemini_service.invoke_structured_output.call_args.kwargs["prompt"]
+
+
+async def test_risk_alert_card_becomes_marker_with_user_words_and_reason(
+    consultation_service: ConsultationService,
+):
+    await _add_message(
+        consultation_service, "text", "我要自殺", datetime(2026, 9, 14, 2, 0, tzinfo=timezone.utc)
+    )
+    await _add_message(
+        consultation_service,
+        "assistant_reply",
+        _risk_card("你表達想結束生命"),
+        datetime(2026, 9, 14, 2, 0, 5, tzinfo=timezone.utc),
+    )
+
+    prompt = await _prompt_for(consultation_service)
+
+    assert (
+        "[assistant_reply] 觸發風險警示｜使用者輸入：「我要自殺」｜判定原因：你表達想結束生命"
+        in prompt
+    )
+    assert '"bubble"' not in prompt
+    assert "tel:119" not in prompt
+
+
+async def test_risk_alert_without_reason_still_keeps_user_words(
+    consultation_service: ConsultationService,
+):
+    # 判斷器 LLM 失敗、改以本地機率判定時，卡片沒有判定原因
+    await _add_message(
+        consultation_service, "text", "我剛出車禍", datetime(2026, 9, 14, 2, 0, tzinfo=timezone.utc)
+    )
+    await _add_message(
+        consultation_service,
+        "assistant_reply",
+        _risk_card(""),
+        datetime(2026, 9, 14, 2, 0, 5, tzinfo=timezone.utc),
+    )
+
+    prompt = await _prompt_for(consultation_service)
+
+    assert "[assistant_reply] 觸發風險警示｜使用者輸入：「我剛出車禍」\n" in prompt
+
+
+async def test_non_risk_replies_and_user_json_are_left_as_is(
+    consultation_service: ConsultationService,
+):
+    user_json = '{"riskAlert": {"reason": "使用者自己貼的"}}'
+    await _add_message(
+        consultation_service, "text", user_json, datetime(2026, 9, 14, 2, 0, tzinfo=timezone.utc)
+    )
+    await _add_message(
+        consultation_service,
+        "assistant_reply",
+        "{這不是 JSON}",
+        datetime(2026, 9, 14, 2, 0, 5, tzinfo=timezone.utc),
+    )
+
+    prompt = await _prompt_for(consultation_service)
+
+    assert f"[text] {user_json}" in prompt
+    assert "[assistant_reply] {這不是 JSON}" in prompt
+    assert "[assistant_reply] 觸發風險警示" not in prompt

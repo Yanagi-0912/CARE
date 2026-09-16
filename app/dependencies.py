@@ -594,13 +594,6 @@ _user_profile_service = UserProfileService(
     rich_menu_service=_rich_menu_service
 )
 
-_consultation_service = ConsultationService(
-    chat_history_repository=_conversation_log_repository,
-    repository=_consultation_repository,
-    gemini_service=_gemini_service,
-    user_profile_service=_user_profile_service,
-)
-
 _tts_service = TTSService()
 
 _line_replier = LineReplier(
@@ -769,6 +762,15 @@ _appointment_service = AppointmentService(
     repository=_appointment_repository,
     authorization_service=_family_authorization_service,
     user_profile_service=_user_profile_service,
+)
+
+_consultation_service = ConsultationService(
+    chat_history_repository=_conversation_log_repository,
+    repository=_consultation_repository,
+    gemini_service=_gemini_service,
+    user_profile_service=_user_profile_service,
+    medication_service=_medication_service,
+    appointment_repository=_appointment_repository,
 )
 
 # 藥袋辨識。藥證庫沿用上面已經載入的那一份（見 _drug_catalog_service）。

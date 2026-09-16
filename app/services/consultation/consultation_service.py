@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from textwrap import dedent
 from typing import Optional
 from app.models.chat_message import ChatMessage
@@ -10,11 +10,13 @@ from app.models.consultation import (
     ConsultationSummarizeRequest,
     ConsultationSummary,
 )
-from app.models.medication import TAIPEI_TZ, ensure_aware_utc
+from app.models.medication import SLOT_DISPLAY_NAMES, TAIPEI_TZ, ensure_aware_utc
+from app.repositories.appointment_repository import AppointmentReminderRepository
 from app.repositories.consultation_repository import ConsultationRepository
 from app.repositories.conversation_log_repository import ConversationLogRepository
 from app.services.gemini.services import GeminiService
 from app.services.gemini.shared.errors import raise_mapped_gemini_error
+from app.services.medication.medication_service import MedicationService
 from app.services.users.user_profile_service import UserProfileService
 
 DEFAULT_SUMMARY_LANGUAGE = "zh-TW"
@@ -35,6 +37,15 @@ SUMMARY_FIELDS = {
     "key_safety_alerts": "string",
     "other": "string",
     "ai_summary": "string",
+}
+
+# 掛號提醒只列摘要日當天起最近的幾筆，避免長期回診表把 prompt 撐大
+APPOINTMENT_CONTEXT_LIMIT = 5
+APPOINTMENT_STATUS_LABELS = {
+    "scheduled": "已排定",
+    "departed": "已出發",
+    "attended": "已到診",
+    "missed": "未到診",
 }
 
 
@@ -66,11 +77,16 @@ class ConsultationService:
         gemini_service: GeminiService,
         # 讀取使用者偏好的語言
         user_profile_service: UserProfileService,
+        # 摘要時附上系統裡設定的用藥與掛號提醒
+        medication_service: MedicationService,
+        appointment_repository: AppointmentReminderRepository,
     ) -> None:
         self._chat_history_repository = chat_history_repository
         self._repository = repository
         self._gemini_service = gemini_service
         self._user_profile_service = user_profile_service
+        self._medication_service = medication_service
+        self._appointment_repository = appointment_repository
 
     # 這裡的 get_view 方法會優先嘗試從 repository 取得特定的摘要，如果沒有傳入日期則取得最新摘要。
     async def get_view(
@@ -201,6 +217,8 @@ class ConsultationService:
             f"[{message.message_type}] {message.content}"
             for message in messages
         )
+
+        reminder_context = await self._build_reminder_context(user_id, target_date)
         prompt = dedent(f"""
             你是醫療諮詢摘要助手。
             請根據對話輸出 JSON。
@@ -236,7 +254,7 @@ class ConsultationService:
             - 使用者針對自身用藥、保健食品或治療提出的疑問
             - 使用者針對自身檢查結果或健康風險提出的疑問
             - 只有使用者明確表示事件發生在自己身上時，才能將該事件視為使用者本人的健康問題；單純詢問某事件的醫療知識，不得視為該事件發生在使用者身上。
-            
+
             只有在對話內容足以確認與使用者本人有關時，才能列入「健康問題」。
             例如：
             - 「我咳嗽三天」→ 健康問題：咳嗽
@@ -254,6 +272,7 @@ class ConsultationService:
             【用藥與掛號紀錄】
             僅記錄使用者本人在本次諮詢中明確提到的用藥情形、服藥疑問、藥物名稱、看診安排、診所/醫院門診與掛號相關資訊。
             不得根據疾病、症狀或 AI 建議自行推測使用者曾進行某項看診或用藥。
+            例外：文末「系統記錄的用藥與掛號提醒」是使用者或家屬在系統中設定的提醒，不是本次對話內容。請一併整理進本欄並標明為系統提醒；不得當成使用者今天說過的話，也不得據此推論使用者已經服藥或已經就診。
             若沒有相關資訊，填寫「無」。
 
             【建議】
@@ -304,7 +323,7 @@ class ConsultationService:
             - ✓ 對話：「我最近一直頭痛，考慮去看醫生」; AI小摘要說：「使用者頭痛並計劃就醫」
 
             AI小摘要不需要逐一重複各欄位內容，應將對話中已提過的核心資訊整合成自然、簡潔且容易理解的整體摘要。
-            
+
             【一般資訊與假設情境】
             使用者提出一般性醫療知識問題、假設情境、他人狀況或轉述內容時：
             - 不得將其當成使用者本人的健康問題。
@@ -324,6 +343,9 @@ class ConsultationService:
 
             對話：
             {transcript_lines}
+
+            系統記錄的用藥與掛號提醒：
+            {reminder_context}
             """).strip()
 
         try:
@@ -338,3 +360,39 @@ class ConsultationService:
         except Exception as exc:
             raise_mapped_gemini_error(exc)
         return summary_text or "該日期尚無可摘要內容。"
+
+    async def _build_reminder_context(self, user_id: str, target_date: date) -> str:
+        # 查詢失敗要往上拋：吞掉的話摘要會悄悄少了提醒，卻看起來一切正常
+        day = target_date.isoformat()
+        reminders = await self._medication_service.get_user_reminders_with_medications(
+            user_id
+        )
+        medication_lines = []
+        for reminder in sorted(reminders, key=lambda r: r.scheduled_time):
+            if not reminder.enabled or reminder.start_date > day:
+                continue
+            if reminder.end_date is not None and reminder.end_date < day:
+                continue
+            names = "、".join(
+                medication.name for medication in reminder.medications if medication.enabled
+            )
+            medication_lines.append(
+                f"- {SLOT_DISPLAY_NAMES[reminder.slot_type]} {reminder.scheduled_time}："
+                f"{names or '未指定藥品'}"
+            )
+
+        day_start = datetime.combine(target_date, time.min, tzinfo=TAIPEI_TZ)
+        appointments = await self._appointment_repository.list_by_user(
+            user_id, day_end_after=day_start
+        )
+        appointment_lines = [
+            f"- {appointment.local_appointment_at:%Y-%m-%d %H:%M} "
+            f"{appointment.hospital_name} {appointment.department}"
+            f"（{APPOINTMENT_STATUS_LABELS[appointment.status]}）"
+            for appointment in appointments
+            if appointment.status != "cancelled"
+        ][:APPOINTMENT_CONTEXT_LIMIT]
+
+        return "\n".join(
+            ["用藥提醒：", *(medication_lines or ["無"]), "掛號提醒：", *(appointment_lines or ["無"])]
+        )

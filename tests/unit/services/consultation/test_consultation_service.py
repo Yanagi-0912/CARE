@@ -7,11 +7,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from pymongo.errors import PyMongoError
+
+from app.models.appointment import AppointmentReminder
 from app.models.consultation import (
     ConsultationSummary,
     ConsultationSummarizeRequest,
 )
 from app.models.chat_message import ChatMessage
+from app.models.medication import (
+    Medication,
+    MedicationReminderWithMedications,
+    ReminderEntry,
+    TAIPEI_TZ,
+)
 from app.services.consultation.consultation_service import ConsultationService
 from app.services.consultation.scheduler import ConsultationDailySummaryScheduler
 
@@ -69,6 +78,27 @@ class FakeUserProfileService:
         return {"language": self.language}
 
 
+class FakeMedicationService:
+    def __init__(self) -> None:
+        self.reminders: list[MedicationReminderWithMedications] = []
+
+    async def get_user_reminders_with_medications(self, user_id: str):
+        return [reminder for reminder in self.reminders if reminder.user_id == user_id]
+
+
+class FakeAppointmentRepository:
+    def __init__(self) -> None:
+        self.appointments: list[AppointmentReminder] = []
+        self.day_end_after: datetime | None = None
+        self.error: Exception | None = None
+
+    async def list_by_user(self, user_id: str, *, day_end_after=None):
+        if self.error is not None:
+            raise self.error
+        self.day_end_after = day_end_after
+        return [a for a in self.appointments if a.user_id == user_id]
+
+
 @pytest.fixture
 def consultation_service() -> ConsultationService:
     fake_store = FakeChatHistoryRepository()
@@ -80,6 +110,8 @@ def consultation_service() -> ConsultationService:
         repository=fake_repo,
         gemini_service=fake_gemini,
         user_profile_service=fake_user_profile_service,
+        medication_service=FakeMedicationService(),
+        appointment_repository=FakeAppointmentRepository(),
     )
 
 
@@ -472,3 +504,119 @@ async def test_generate_summary_with_special_characters(
 
     parsed = json.loads(summary_text)
     assert isinstance(parsed, dict)
+
+
+# ── 摘要附上系統裡設定的用藥與掛號提醒 ─────────────────────────────────────
+
+
+def _reminder(
+    medications: list[Medication],
+    *,
+    enabled: bool = True,
+    start_date: str = "2026-09-01",
+    end_date: str | None = None,
+) -> MedicationReminderWithMedications:
+    return MedicationReminderWithMedications(
+        creator_user_id="U123",
+        user_id="U123",
+        slot_type="morning",
+        entries=[
+            ReminderEntry(
+                scheduled_time="08:00",
+                medication_ids=[medication.id for medication in medications],
+            )
+        ],
+        enabled=enabled,
+        start_date=start_date,
+        end_date=end_date,
+        medications=medications,
+    )
+
+
+def _medication(medication_id: str, name: str, *, enabled: bool = True) -> Medication:
+    return Medication(
+        _id=medication_id,
+        user_id="U123",
+        created_by_user_id="U123",
+        name=name,
+        enabled=enabled,
+    )
+
+
+def _appointment(status: str = "scheduled") -> AppointmentReminder:
+    now = datetime(2026, 9, 10, tzinfo=timezone.utc)
+    return AppointmentReminder(
+        user_id="U123",
+        creator_user_id="U123",
+        # 台北 9/20 09:30
+        appointment_at=datetime(2026, 9, 20, 1, 30, tzinfo=timezone.utc),
+        appointment_utc_offset_minutes=480,
+        day_end_at=datetime(2026, 9, 20, 16, 0, tzinfo=timezone.utc),
+        hospital_name="台大醫院",
+        department="家醫科",
+        status=status,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+async def _summarize_and_get_prompt(service: ConsultationService) -> str:
+    _echo_gemini(service)
+    # 台北 9/14 10:00
+    await _add_text(service, "今天咳嗽", datetime(2026, 9, 14, 2, 0, tzinfo=timezone.utc))
+    await service.summarize("U123", ConsultationSummarizeRequest(force=True))
+    return service._gemini_service.invoke_structured_output.call_args.kwargs["prompt"]
+
+
+async def test_summary_prompt_includes_medication_names_and_appointments(
+    consultation_service: ConsultationService,
+):
+    consultation_service._medication_service.reminders = [
+        _reminder([_medication("m1", "普拿疼"), _medication("m2", "胃藥", enabled=False)])
+    ]
+    consultation_service._appointment_repository.appointments = [_appointment()]
+
+    prompt = await _summarize_and_get_prompt(consultation_service)
+
+    assert "- 早 08:00：普拿疼" in prompt
+    assert "胃藥" not in prompt
+    assert "- 2026-09-20 09:30 台大醫院 家醫科（已排定）" in prompt
+
+
+async def test_summary_prompt_skips_inactive_reminders_and_cancelled_appointments(
+    consultation_service: ConsultationService,
+):
+    medications = [_medication("m1", "普拿疼")]
+    consultation_service._medication_service.reminders = [
+        _reminder(medications, enabled=False),
+        _reminder(medications, end_date="2026-09-13"),
+        _reminder(medications, start_date="2026-09-15"),
+    ]
+    consultation_service._appointment_repository.appointments = [
+        _appointment(status="cancelled")
+    ]
+
+    prompt = await _summarize_and_get_prompt(consultation_service)
+
+    assert "用藥提醒：\n無\n掛號提醒：\n無" in prompt
+    assert "普拿疼" not in prompt
+    assert "台大醫院" not in prompt
+
+
+async def test_appointments_are_queried_from_taipei_start_of_summary_day(
+    consultation_service: ConsultationService,
+):
+    await _summarize_and_get_prompt(consultation_service)
+
+    assert consultation_service._appointment_repository.day_end_after == datetime(
+        2026, 9, 14, tzinfo=TAIPEI_TZ
+    )
+
+
+async def test_reminder_lookup_failure_is_not_swallowed(
+    consultation_service: ConsultationService,
+):
+    consultation_service._appointment_repository.error = PyMongoError("mongo down")
+
+    with pytest.raises(PyMongoError):
+        await _summarize_and_get_prompt(consultation_service)

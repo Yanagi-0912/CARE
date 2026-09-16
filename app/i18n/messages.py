@@ -1643,6 +1643,16 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "ออกเดินทางแล้ว",
         "ja": "出発しました",
     },
+    # 進診間前按這裡，直接開到錄音頁。按鈕字數受 _POSTBACK_LABEL_MAX 限制，
+    # 各語言都要短——長輩在診間門口沒有時間讀完一句話。
+    "flex.appt.button.record": {
+        "zh-TW": "看診時錄音",
+        "en": "Record the visit",
+        "id": "Rekam kunjungan",
+        "vi": "Ghi âm buổi khám",
+        "th": "บันทึกเสียงการตรวจ",
+        "ja": "診察を録音",
+    },
     "flex.appt.button.attend": {
         "zh-TW": "我已到診",
         "en": "I've arrived",

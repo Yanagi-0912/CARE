@@ -36,8 +36,10 @@ dependencies = [
     "langchain-core==1.6.3",
     # 4.2.2 把 google-genai 釘在 <2.0.0，拿不到語者分離（`AudioTranscriptionConfig`
     # 到 google-genai 2.x 才有 `diarization`／`custom_vocabulary`／`word_timestamp`
-    # 三個欄位）。4.3.7 放寬到 google-genai<3.0.0，看診逐字稿因此才做得成。
-    "langchain-google-genai==4.3.7",
+    # 三個欄位）。4.3.0 起放寬到 google-genai<3.0.0，看診逐字稿因此才做得成；
+    # 取當前最新的 4.4.0（相對 4.3.7 只多了影片理解，沒有破壞性變更）。
+    # 連帶要求 langchain-core>=1.6.1，所以下面那行才從 1.3.2 升上來。
+    "langchain-google-genai==4.4.0",
     # 由 langchain-google-genai 帶進來，但看診逐字稿直接用它的型別，明著釘住版本。
     "google-genai==2.23.0",
     "langgraph==1.1.10",

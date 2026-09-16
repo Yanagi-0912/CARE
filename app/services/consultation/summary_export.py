@@ -36,8 +36,7 @@ def _parse_sections(raw: str) -> list[tuple[str, str]] | None:
 def render_summaries_txt(
     summaries: list[ConsultationSummary], language: str, exported_at: datetime
 ) -> str:
-    # 欄位名稱直接用摘要 JSON 的 key：Gemini 已依摘要語言翻好，不另外翻譯。
-    # 欄位列不加冒號，因為每筆摘要的語言可能不同，全形半形冒號無法統一。
+    # JSON key 現在統一是英文 snake_case；欄位標題根據使用者語言翻譯
     lines = [
         t("consultation_export.title", language),
         f"{t('consultation_export.exported_at', language)}{exported_at:%Y-%m-%d %H:%M}",
@@ -54,6 +53,8 @@ def render_summaries_txt(
             lines += [summary.summary.strip(), ""]
             continue
         for key, value in sections:
-            lines += [f"■ {key}", value, ""]
+            # 根據使用者語言翻譯英文 key（health_issue → 健康問題）
+            field_label = t(f"summary_field.{key}", language)
+            lines += [f"■ {field_label}", value, ""]
 
     return "\n".join(lines).rstrip() + "\n"

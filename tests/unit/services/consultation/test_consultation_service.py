@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -199,8 +200,12 @@ async def test_summarize_passes_user_language_into_prompt(
     )
     await consultation_service._chat_history_repository.append_message("U123", msg)
 
-    consultation_service._gemini_service.chat_model.ainvoke = AsyncMock(
-        return_value=SimpleNamespace(content='{"主訴":"頭痛"}')
+    # Mock invoke_structured_output 回傳一個含有必要欄位的 dict
+    async def mock_structured(prompt: str, json_schema: dict) -> dict:
+        return {key: "測試摘要" for key in json_schema.get("properties", {}).keys()}
+
+    consultation_service._gemini_service.invoke_structured_output = AsyncMock(
+        side_effect=mock_structured
     )
     consultation_service._user_profile_service.language = "en"
 
@@ -209,10 +214,8 @@ async def test_summarize_passes_user_language_into_prompt(
     )
 
     assert summary.language == "en"
-    consultation_service._gemini_service.chat_model.ainvoke.assert_awaited_once()
-    prompt = consultation_service._gemini_service.chat_model.ainvoke.call_args.args[0][
-        0
-    ].content
+    consultation_service._gemini_service.invoke_structured_output.assert_awaited_once()
+    prompt = consultation_service._gemini_service.invoke_structured_output.call_args.kwargs["prompt"]
     assert "使用者資料庫語言：en（英文）" in prompt
     assert "請以該語言撰寫各欄位內容。" in prompt
 
@@ -223,10 +226,12 @@ async def test_summarize_passes_user_language_into_prompt(
 
 
 def _echo_gemini(service: ConsultationService) -> None:
-    """讓假 Gemini 把收到的 prompt 原樣當摘要回傳，摘要內容即可反映餵進去的對話。"""
-    service._gemini_service.chat_model.ainvoke = AsyncMock(
-        side_effect=lambda messages: SimpleNamespace(content=messages[0].content)
-    )
+    """讓假 Gemini 把收到的 prompt 原樣當摘要回傳（as JSON dict），摘要內容即可反映餵進去的對話。"""
+    async def echo_structured(prompt: str, json_schema: dict) -> dict:
+        # 回傳一個與 schema 相符的假 JSON，內容就是收到的 prompt
+        return {key: prompt for key in json_schema.get("properties", {}).keys()}
+
+    service._gemini_service.invoke_structured_output = AsyncMock(side_effect=echo_structured)
 
 
 async def _add_text(service: ConsultationService, content: str, timestamp: datetime):
@@ -374,3 +379,96 @@ def test_next_run_is_computed_in_taipei_time():
     next_run = scheduler._next_run_at(datetime(2026, 9, 14, 1, 30, tzinfo=timezone.utc))
 
     assert next_run == datetime(2026, 9, 14, 18, 0, tzinfo=timezone.utc)
+
+
+# ── 邊界條件測試 ────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_generate_summary_with_unsupported_language_fallback_to_zh_tw(
+    consultation_service: ConsultationService,
+):
+    """不支援的語言應該退回中文"""
+    msg = ChatMessage(
+        line_id="U123",
+        message_type="text",
+        content="頭痛",
+        timestamp=datetime(2026, 9, 14, 0, 0, tzinfo=timezone.utc),
+    )
+
+    async def mock_structured(prompt: str, json_schema: dict) -> dict:
+        return {key: "test" for key in json_schema.get("properties", {}).keys()}
+
+    consultation_service._gemini_service.invoke_structured_output = AsyncMock(
+        side_effect=mock_structured
+    )
+
+    summary_text = await consultation_service._generate_summary(
+        "U123", date.today(), [msg], language="fr"  # 不支援的語言
+    )
+
+    # 應該用統一的英文 key，而不是法文
+    parsed = json.loads(summary_text)
+    assert "health_issue" in parsed  # 英文 snake_case key
+
+
+@pytest.mark.asyncio
+async def test_generate_summary_with_very_long_conversation(
+    consultation_service: ConsultationService,
+):
+    """非常長的對話不應該崩潰"""
+    messages = [
+        ChatMessage(
+            line_id="U123",
+            message_type="text" if i % 2 == 0 else "assistant_reply",
+            content=f"訊息內容 {i}" * 100,  # 很長的訊息
+            timestamp=datetime(2026, 9, 14, i // 60, i % 60, tzinfo=timezone.utc),
+        )
+        for i in range(50)  # 50 則訊息
+    ]
+
+    async def mock_structured(prompt: str, json_schema: dict) -> dict:
+        # 檢查 prompt 長度
+        assert len(prompt) > 1000
+        return {key: "ok" for key in json_schema.get("properties", {}).keys()}
+
+    consultation_service._gemini_service.invoke_structured_output = AsyncMock(
+        side_effect=mock_structured
+    )
+
+    summary_text = await consultation_service._generate_summary(
+        "U123", date.today(), messages, language="zh-TW"
+    )
+
+    parsed = json.loads(summary_text)
+    assert len(parsed) > 0
+
+
+@pytest.mark.asyncio
+async def test_generate_summary_with_special_characters(
+    consultation_service: ConsultationService,
+):
+    """包含特殊字符的對話應該正確處理"""
+    msg = ChatMessage(
+        line_id="U123",
+        message_type="text",
+        content="頭痛😷\n發燒🌡️\n'引號'、「書名號」",
+        timestamp=datetime(2026, 9, 14, 0, 0, tzinfo=timezone.utc),
+    )
+
+    async def mock_structured(prompt: str, json_schema: dict) -> dict:
+        # 檢查 prompt 包含原始內容
+        assert "😷" in prompt
+        assert "引號" in prompt
+        return {key: "ok" for key in json_schema.get("properties", {}).keys()}
+
+    consultation_service._gemini_service.invoke_structured_output = AsyncMock(
+        side_effect=mock_structured
+    )
+
+    summary_text = await consultation_service._generate_summary(
+        "U123", date.today(), [msg], language="en"
+    )
+
+    parsed = json.loads(summary_text)
+    assert isinstance(parsed, dict)

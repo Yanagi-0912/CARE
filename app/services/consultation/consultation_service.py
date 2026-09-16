@@ -1,6 +1,7 @@
 # 諮詢功能的核心服務，負責處理諮詢訊息的摘要生成和搜尋等邏輯。
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timezone
 from textwrap import dedent
 from typing import Optional
@@ -15,7 +16,6 @@ from app.repositories.conversation_log_repository import ConversationLogReposito
 from app.services.gemini.services import GeminiService
 from app.services.gemini.shared.errors import raise_mapped_gemini_error
 from app.services.users.user_profile_service import UserProfileService
-from langchain_core.messages import HumanMessage
 
 DEFAULT_SUMMARY_LANGUAGE = "zh-TW"
 SUPPORTED_SUMMARY_LANGUAGES = {
@@ -26,6 +26,25 @@ SUPPORTED_SUMMARY_LANGUAGES = {
     "th": "泰文",
     "ja": "日文",
 }
+
+# 摘要欄位定義（統一英文 snake_case key，與 i18n 欄位名對照）
+SUMMARY_FIELDS = {
+    "health_issue": "string",
+    "medications_and_appointments": "string",
+    "recommendations": "string",
+    "key_safety_alerts": "string",
+    "other": "string",
+    "ai_summary": "string",
+}
+
+
+def _build_summary_schema(language: str) -> dict:
+    # JSON schema 用統一的英文 key；Gemini 回傳時會用這些 key，不再依語言變化
+    return {
+        "type": "object",
+        "properties": {key: {"type": field_type} for key, field_type in SUMMARY_FIELDS.items()},
+        "required": list(SUMMARY_FIELDS.keys()),
+    }
 
 
 def _taipei_date(timestamp: datetime) -> date:
@@ -177,15 +196,24 @@ class ConsultationService:
             return "該日期尚無諮詢記錄。"
 
         language_name = self._language_name(language)
-        transcript_lines = []
-        for message in messages:
-            transcript_lines.append(f"[{message.message_type}] {message.content}")
+        # 對話稿：每則訊息逐行排版，避免 list repr 造成模型誤解
+        transcript_lines = "\n".join(
+            f"[{message.message_type}] {message.content}"
+            for message in messages
+        )
         prompt = dedent(f"""
             你是醫療諮詢摘要助手。
             請根據對話輸出 JSON。
             使用者資料庫語言：{language}（{language_name}）
             請以該語言撰寫各欄位內容。
-            JSON 欄位 key 請依照{language_name}翻譯成對應語言。
+
+            JSON 欄位 key 固定為英文 snake_case（不隨語言改變）：
+            - health_issue: 使用者本人的健康問題
+            - medications_and_appointments: 用藥與掛號紀錄
+            - recommendations: AI 提供的建議
+            - key_safety_alerts: 關鍵安全提醒與危急情況
+            - other: 其他有幫助的背景資訊
+            - ai_summary: 1-3 句話的諮詢重點摘要
 
             【最重要原則】
             你不是在建立「對話中出現過的醫療名詞清單」，而是在建立「本次諮詢的使用者可讀摘要」。
@@ -263,15 +291,19 @@ class ConsultationService:
             如果某項資訊對理解本次諮詢沒有實際幫助，即使它出現在對話中，也應捨棄。
 
             【AI小摘要】
-            用 1 到 3 句話總結本次諮詢的整體重點。
-            優先呈現：
-            1. 目前已確認的重要健康問題或安全事項
-            2. 使用者主要詢問的健康問題
-            3. AI 提供的核心建議或下一步提醒
-            不要逐項列出所有對話內容或醫療名詞。
-            若部分內容只是一般性問題、假設情境或無法確認的資訊，應避免讓摘要讀者誤以為這些事情正在使用者身上發生。
-            AI小摘要必須忠實反映對話內容，不得自行增加診斷、症狀、檢查結果或醫療建議。
-            4.AI小摘要不需要逐一重複各欄位內容，應將資訊整合成自然、簡潔且容易理解的整體摘要。
+            用 1 到 3 句話總結本次諮詢的整體重點。只整理對話中已提過的核心內容，禁止自行編造。
+            必須遵守以下規則：
+            1. 「只能整理對話中已明確提過的資訊」——不得根據疾病名稱、症狀或 AI 回覆中的一般醫療知識推測使用者需要什麼建議。
+            2. 「禁止自行新增對話中未提過的醫療建議」——例如對話中沒有提「應該掛家醫科」，就不能在小摘要加上這句話。
+            3. 「禁止基於症狀推測診斷」——例如即使使用者提到咳嗽、發燒，也不能自行推測為感冒並建議「應就醫檢查」（除非 AI 在對話中明確提過）。
+            4. 「優先呈現對話中已確認的重點」：使用者主動提出的問題、AI 實際提供的建議、對話中明確提到的危急情況。
+            5. 「完整性 vs. 準確性」：寧可遺漏對話中的內容，也不要編造對話中沒有的建議。
+
+            範例（禁止編造）：
+            - ❌ 對話：「我最近一直頭痛」; AI小摘要說：「建議掛神經科」(對話中沒提科別)
+            - ✓ 對話：「我最近一直頭痛，考慮去看醫生」; AI小摘要說：「使用者頭痛並計劃就醫」
+
+            AI小摘要不需要逐一重複各欄位內容，應將對話中已提過的核心資訊整合成自然、簡潔且容易理解的整體摘要。
             
             【一般資訊與假設情境】
             使用者提出一般性醫療知識問題、假設情境、他人狀況或轉述內容時：
@@ -280,21 +312,7 @@ class ConsultationService:
             - 若該問題本身是本次諮詢的重要主題，可以在「AI小摘要」中以「一般性詢問」、「假設情境詢問」等方式描述；除非能確認與使用者本人有關，否則不要放入「健康問題」。
             - 若對理解本次諮詢沒有實質幫助，直接省略。
 
-            schema:
-            {{
-            "健康問題": string,
-            "用藥與掛號紀錄": string,
-            "建議": string,
-            "關鍵情況與安全提醒": string,
-            "其他": string,
-            "AI小摘要": string
-            }}
-
             【輸出規則】
-            - 僅輸出 JSON
-            - 不要 Markdown
-            - 不要額外說明
-            - 不要輸出任何空陣列 []
             - 每個欄位都必須是可直接閱讀的{language_name}字串
             - 沒有資料的欄位填寫「無」
             - 若某欄位有多個項目，使用「、」分隔成單一字串
@@ -309,11 +327,14 @@ class ConsultationService:
             """).strip()
 
         try:
-            result = await self._gemini_service.chat_model.ainvoke(
-                [HumanMessage(content=prompt)]
+            # 強制結構化輸出：Gemini 一定回傳 JSON 物件，不會包 markdown 圍欄
+            schema = _build_summary_schema(language)
+            result_dict = await self._gemini_service.invoke_structured_output(
+                prompt=prompt,
+                json_schema=schema,
             )
+            # result_dict 已經是解析好的 Python dict，轉回 JSON 字串
+            summary_text = json.dumps(result_dict, ensure_ascii=False)
         except Exception as exc:
             raise_mapped_gemini_error(exc)
-        content = getattr(result, "content", "")
-        summary_text = str(content).strip()
         return summary_text or "該日期尚無可摘要內容。"

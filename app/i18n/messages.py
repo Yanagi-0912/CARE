@@ -3019,6 +3019,55 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "ยังไม่มีข้อมูลสรุป",
         "ja": "要約データがありません。",
     },
+    # --- 摘要欄位名稱（各語言對照） ----
+    "summary_field.health_issue": {
+        "zh-TW": "健康問題",
+        "en": "Health Issue",
+        "id": "Masalah Kesehatan",
+        "vi": "Vấn Đề Sức Khỏe",
+        "th": "ปัญหาสุขภาพ",
+        "ja": "健康上の問題",
+    },
+    "summary_field.medications_and_appointments": {
+        "zh-TW": "用藥與掛號紀錄",
+        "en": "Medications and Appointments",
+        "id": "Obat dan Catatan Janji Temu",
+        "vi": "Thuốc và Ghi Chép Khám Bệnh",
+        "th": "ยาและบันทึกการนัดหมาย",
+        "ja": "薬と診察記録",
+    },
+    "summary_field.recommendations": {
+        "zh-TW": "建議",
+        "en": "Recommendations",
+        "id": "Rekomendasi",
+        "vi": "Khuyến Cáo",
+        "th": "ข้อเสนอแนะ",
+        "ja": "推奨",
+    },
+    "summary_field.key_safety_alerts": {
+        "zh-TW": "關鍵情況與安全提醒",
+        "en": "Key Safety Alerts",
+        "id": "Peringatan Keselamatan Utama",
+        "vi": "Cảnh Báo An Toàn Chính",
+        "th": "การแจ้งเตือนความปลอดภัยหลัก",
+        "ja": "主要な安全警告",
+    },
+    "summary_field.other": {
+        "zh-TW": "其他",
+        "en": "Other",
+        "id": "Lainnya",
+        "vi": "Khác",
+        "th": "อื่นๆ",
+        "ja": "その他",
+    },
+    "summary_field.ai_summary": {
+        "zh-TW": "AI小摘要",
+        "en": "AI Summary",
+        "id": "Ringkasan AI",
+        "vi": "Tóm Tắt AI",
+        "th": "สรุป AI",
+        "ja": "AIの要約",
+    },
 }
 
 

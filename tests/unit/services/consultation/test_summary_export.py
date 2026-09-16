@@ -20,7 +20,7 @@ def _summary(text: str, day: date = date(2026, 5, 27)) -> ConsultationSummary:
 
 def test_json_summary_renders_sections_in_key_order():
     text = render_summaries_txt(
-        [_summary('{"主訴": " 頭痛 ", "症狀": "頭痛、噁心", "檢查": "無"}')],
+        [_summary('{"health_issue": " 頭痛 ", "medications_and_appointments": "頭痛、噁心", "key_safety_alerts": "無"}')],
         "zh-TW",
         EXPORTED_AT,
     )
@@ -31,10 +31,10 @@ def test_json_summary_renders_sections_in_key_order():
         "\n"
         "==== 2026-05-27 ====\n"
         "\n"
-        "■ 主訴\n頭痛\n\n"
-        "■ 症狀\n頭痛、噁心\n\n"
+        "■ 健康問題\n頭痛\n\n"
+        "■ 用藥與掛號紀錄\n頭痛、噁心\n\n"
         # 「無」照樣保留，不過濾
-        "■ 檢查\n無\n"
+        "■ 關鍵情況與安全提醒\n無\n"
     )
 
 
@@ -52,38 +52,38 @@ def test_non_object_json_is_printed_verbatim():
 
 def test_list_values_become_bullets_and_empty_values_are_skipped():
     text = render_summaries_txt(
-        [_summary('{"建議": ["多喝水", " ", "量血壓"], "檢查": null, "其他": "  "}')],
+        [_summary('{"recommendations": ["多喝水", " ", "量血壓"], "key_safety_alerts": null, "other": "  "}')],
         "zh-TW",
         EXPORTED_AT,
     )
 
     assert "■ 建議\n- 多喝水\n- 量血壓\n" in text
-    assert "■ 檢查" not in text
+    assert "■ 關鍵情況與安全提醒" not in text
     assert "■ 其他" not in text
 
 
 def test_object_values_are_pretty_printed():
     text = render_summaries_txt(
-        [_summary('{"檢查": {"血壓": "140/90"}}')], "zh-TW", EXPORTED_AT
+        [_summary('{"key_safety_alerts": {"血壓": "140/90"}}')], "zh-TW", EXPORTED_AT
     )
 
-    assert '■ 檢查\n{\n  "血壓": "140/90"\n}\n' in text
+    assert '■ 關鍵情況與安全提醒\n{\n  "血壓": "140/90"\n}\n' in text
 
 
 def test_code_fenced_summary_is_parsed():
     text = render_summaries_txt(
-        [_summary('```json\n{"主訴": "頭痛"}\n```')], "zh-TW", EXPORTED_AT
+        [_summary('```json\n{"health_issue": "頭痛"}\n```')], "zh-TW", EXPORTED_AT
     )
 
-    assert "■ 主訴\n頭痛\n" in text
+    assert "■ 健康問題\n頭痛\n" in text
     assert "```" not in text
 
 
 def test_summaries_keep_given_order():
     text = render_summaries_txt(
         [
-            _summary('{"主訴": "新"}', date(2026, 5, 27)),
-            _summary('{"主訴": "舊"}', date(2026, 5, 26)),
+            _summary('{"health_issue": "新"}', date(2026, 5, 27)),
+            _summary('{"health_issue": "舊"}', date(2026, 5, 26)),
         ],
         "zh-TW",
         EXPORTED_AT,

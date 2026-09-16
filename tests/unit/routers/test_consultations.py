@@ -178,7 +178,7 @@ def test_download_my_summary_history_returns_txt_attachment(
         ConsultationSummary(
             line_id="U123",
             summary_date=date(2026, 5, 27),
-            summary='{"主訴": "頭痛"}',
+            summary='{"health_issue": "頭痛"}',
             language="zh-TW",
             created_at=datetime(2026, 5, 27, 13, 14, 15),
         ),
@@ -210,13 +210,11 @@ def test_download_my_summary_history_returns_txt_attachment(
     assert response.content.startswith(b"\xef\xbb\xbf")
     text = response.content.decode("utf-8-sig")
     assert text.startswith("醫療諮詢紀錄摘要\n匯出時間：2026-05-29 13:45\n")
-    assert "■ 主訴\n頭痛" in text
+    assert "■ 健康問題\n頭痛" in text
     assert "5/26 摘要" in text
     assert text.index("2026-05-27") < text.index("2026-05-26")
     fake_service.get_all_summaries.assert_awaited_once_with("U123")
     fake_service.resolve_summary_language.assert_awaited_once_with("U123")
-
-
 # ── /{userId} 家庭授權 ────────────────────────────────────────────────────────
 # 這兩支端點吐的是別人的諮詢內容，是全專案最敏感的資料。若只驗登入態不驗族譜，
 # 任何持有自己 token 的人只要知道對方的 LINE userId 就能整份撈走，因此正反兩面都要蓋到。

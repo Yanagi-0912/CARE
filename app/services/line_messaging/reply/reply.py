@@ -24,6 +24,7 @@ from linebot.v3.messaging import (
     LocationAction,
     MessageAction,
     MessagingApi,
+    PostbackAction,
     PushMessageRequest,
     QuickReply,
     QuickReplyItem,
@@ -75,6 +76,7 @@ class LineReplier:
         user_question: str = "",
         image_text: str = "",
         speech_language: str | None = None,
+        lost_help_postback: str | None = None,
     ) -> bool:
         """發送 LINE 訊息（包含文字訊息、Flex Message 與選填的 TTS 語音訊息）
 
@@ -83,6 +85,9 @@ class LineReplier:
 
         `speech_language` 是語音用的語言：選台語的使用者文字是 zh-TW、語音是
         nan-TW。沒給就跟 `language` 相同。
+
+        `lost_help_postback` 有值時，快速回覆多一顆「我迷路了，通知家人」，按下送出
+        這段 postback data（走失分類器沒把握時用，見 app/services/lost/lost_classifier.py）。
         """
         tts_language = speech_language or language
         try:
@@ -167,13 +172,23 @@ class LineReplier:
 
             # quickReply 只會顯示在陣列最後一則訊息上，因此統一在此處掛到最後一則，
             # 避免 TTS 語音訊息排在文字訊息之後時，導致 Quick Reply 被 LINE 忽略。
-            if request_location and messages:
+            quick_items = []
+            if request_location:
                 qr_label = t("location.share_qr_label", language=language)
-                messages[-1].quick_reply = QuickReply(
-                    items=[
-                        QuickReplyItem(action=LocationAction(label=qr_label)),
-                    ]
+                quick_items.append(QuickReplyItem(action=LocationAction(label=qr_label)))
+            if lost_help_postback:
+                lost_label = t("lost.help.quick_reply", language=language)
+                quick_items.append(
+                    QuickReplyItem(
+                        action=PostbackAction(
+                            label=lost_label,
+                            data=lost_help_postback,
+                            displayText=t("lost.help.display", language=language),
+                        )
+                    )
                 )
+            if quick_items and messages:
+                messages[-1].quick_reply = QuickReply(items=quick_items)
 
         except Exception:
             # 組訊息就失敗（TTS、卡片、token）：使用者不能什麼都收不到。

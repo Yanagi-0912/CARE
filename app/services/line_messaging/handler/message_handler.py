@@ -28,8 +28,15 @@ from app.core.user_language import (
 from app.i18n.messages import t
 from app.services.line_messaging.reply.reply import LineReplier
 from app.services.line_messaging.share_intent import is_share_intent
-from app.services.lost.lost_intent import detect_lost_intent
-from resources.flex_messages.lost_location_flex_message import build_no_family_flex
+from linebot.v3.messaging import FlexContainer, FlexMessage
+
+from resources.flex_messages.lost_location_flex_message import (
+    build_no_family_flex,
+    lost_confirm_postback_data,
+)
+from resources.flex_messages.medical_messages.emergency_condition_flex_message import (
+    build_emergency_condition_flex,
+)
 from app.core.request_context import reset_line_user_id, set_line_user_id
 
 logger = logging.getLogger(__name__)
@@ -55,6 +62,7 @@ class BaseLineMessageHandler:
         emergency_family_alert_service=None,
         share_card_service=None,
         lost_location_service=None,
+        urgency_classifier=None,
     ):
         self._agent = agent
         self._history_service = history_service
@@ -69,6 +77,9 @@ class BaseLineMessageHandler:
         self._share_card_service = share_card_service
         # 沒注入時「我走丟了」照一般訊息進 agent。
         self._lost_location_service = lost_location_service
+        # 走失流程不進 agent，也就跳過了 agent 裡的急迫度判斷；這裡補跑同一個判斷器
+        # （見 start_lost_flow）。沒注入時不補跑。
+        self._urgency_classifier = urgency_classifier
         # 併行任務要被持有參考直到完成，否則可能在跑完之前就被 GC 回收。
         self._safety_alert_tasks: set[asyncio.Task] = set()
 
@@ -140,19 +151,34 @@ class BaseLineMessageHandler:
             # 走失求救：「我走丟了」「傳位置給家人」直接回定位卡並通知家人、不進
             # agent（理由見 lost_intent）。語音也要攔：慌張的長輩最可能用講的。
             # 位置與字級一樣排在語言設好之後，卡片才會照使用者的設定。
+            lost_help_postback = None
             if (
                 message_type in ("text", "audio")
                 and self._lost_location_service is not None
             ):
-                lost_intent = detect_lost_intent(user_text)
-                if lost_intent is not None:
-                    await self._start_lost_flow(
+                detection = self._lost_location_service.detect_intent(user_text)
+                font_size = self._font_size_from_profile(user_profile)
+                if detection.intent is not None and detection.needs_confirmation:
+                    # 分類器沒把握：不攔，照常進 agent，回覆下方多一顆「我迷路了，
+                    # 通知家人」。不先問「你是不是迷路了？」：沒把握的訊息裡有急症
+                    # 與自傷（「叫不醒」「我站在頂樓」），攔下來問就拿不到紅卡。
+                    lost_help_postback = lost_confirm_postback_data(user_text)
+                    log_stage(
+                        logger, "lost_detect", outcome="button", source=detection.source,
+                        p=round(detection.probability or 0.0, 4),
+                    )
+                elif detection.intent is not None:
+                    log_stage(
+                        logger, "lost_detect", source=detection.source,
+                        p=None if detection.probability is None else round(detection.probability, 4),
+                    )
+                    await self.start_lost_flow(
                         user_id=user_id,
                         reply_token=reply_token,
                         user_text=user_text,
-                        intent=lost_intent,
+                        intent=detection.intent,
                         language=user_language,
-                        font_size=self._font_size_from_profile(user_profile),
+                        font_size=font_size,
                     )
                     return
 
@@ -272,6 +298,7 @@ class BaseLineMessageHandler:
                 # 緊急時紅卡要是第一則（理由同上方家人通報），表格卡會把它擠到第二則，不送。
                 image_text="" if agent_response.get("emergency") else image_text,
                 speech_language=language_choice,
+                lost_help_postback=None if agent_response.get("emergency") else lost_help_postback,
             )
             log_stage(
                 logger,
@@ -310,7 +337,7 @@ class BaseLineMessageHandler:
             if rag_sources_token is not None:
                 reset_request_rag_sources(rag_sources_token)
 
-    async def _start_lost_flow(
+    async def start_lost_flow(
         self,
         *,
         user_id: str,
@@ -342,6 +369,7 @@ class BaseLineMessageHandler:
             reply_token=reply_token, flex_message=card, user_id=user_id
         )
         log_stage(logger, "lost", intent=intent, outcome=report.outcome, ok=ok)
+        self._schedule_urgency_check_for_lost(user_id, user_text, language, font_size)
 
         if report.outcome != "started" or report.session is None:
             return
@@ -356,6 +384,44 @@ class BaseLineMessageHandler:
                 logger.exception("走失通報任務失敗")
 
         task = asyncio.create_task(_notify())
+        self._safety_alert_tasks.add(task)
+        task.add_done_callback(self._safety_alert_tasks.discard)
+
+    def _schedule_urgency_check_for_lost(
+        self, user_id: str, user_text: str, language: str, font_size: str
+    ) -> None:
+        """走失流程沒進 agent，補跑急迫度判斷；緊急就補推紅卡並通報家人。
+
+        為什麼需要：走失判斷會把少數急症當成走失（holdout 989 則急症中 1 則，
+        「阮後生不知按怎叫袂醒身軀冷冰冰」），而走失流程不經過 agent 的紅卡。
+        為什麼不先判急迫度再決定要不要走失流程：急迫度的本地模型沒看過走失的
+        句子，「快來接我」這類求救多半落在沒把握區間、要等 Gemini，長輩的定位卡
+        就得多等一次 API。放背景跑，定位卡照常秒回，紅卡晚幾秒到。
+        """
+        if self._urgency_classifier is None or not user_text:
+            return
+
+        async def _run() -> None:
+            try:
+                verdict = await self._urgency_classifier.classify(user_text, language=language)
+                if not verdict.is_emergency:
+                    return
+                payload = build_emergency_condition_flex(
+                    verdict, language=language, font_size=font_size
+                )
+                card = FlexMessage(
+                    altText=payload["altText"],
+                    contents=FlexContainer.from_dict(payload["contents"]),
+                )
+                ok = await self._replier.push_flex(user_id, card)
+                log_stage(logger, "lost_emergency", ok=ok)
+                self._schedule_emergency_family_alert(
+                    user_id, verdict.display, language, patient_words=user_text
+                )
+            except Exception:
+                logger.exception("走失流程的急迫度補判失敗")
+
+        task = asyncio.create_task(_run())
         self._safety_alert_tasks.add(task)
         task.add_done_callback(self._safety_alert_tasks.discard)
 

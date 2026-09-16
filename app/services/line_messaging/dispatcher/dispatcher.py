@@ -39,6 +39,7 @@ from app.core.user_language import (
 )
 from app.core.request_logging import log_done, log_stage, log_start
 from app.i18n.messages import t
+from resources.flex_messages.lost_location_flex_message import LOST_CONFIRM_ACTION
 from app.models.medication import to_taipei_hm
 from app.services.appointment.appointment_service import AppointmentError
 from app.services.line_messaging.flex.appointment_flex import (
@@ -422,6 +423,17 @@ class LineEventDispatcher:
                 sharer_id=user_id,
                 news_ref=news_ref,
                 reply_token=reply_token,
+                language=user_language,
+                font_size=self._font_size_from_profile(user_profile),
+            )
+        elif action == LOST_CONFIRM_ACTION:
+            # 走失分類器沒把握時，回覆下方多一顆「我迷路了，通知家人」，他按了。
+            # 原話從 postback 帶回來，家人收到的通報才有他當時說的話。
+            await self._message_handler.start_lost_flow(
+                user_id=user_id,
+                reply_token=reply_token,
+                user_text=params.get("w", [""])[0],
+                intent="lost",
                 language=user_language,
                 font_size=self._font_size_from_profile(user_profile),
             )

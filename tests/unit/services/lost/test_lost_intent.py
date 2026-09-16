@@ -23,6 +23,22 @@ from app.services.lost.lost_intent import detect_lost_intent
         "這裡是哪裡？",
         "我迷路了，這裡是一個公園旁邊",
         "我迷路了 不知道怎麼辦",
+        # 語音轉文字常見的語助詞開頭
+        "誒誒我不知道我人在哪裡",
+        "欸 迷路了啦",
+        "嗯那個 這裡是哪裡",
+        "喂 我不知道我在哪",
+        # 台語用字
+        "阿嬤我揣無路",
+        "我毋知影我佇佗位",
+        # 其他語言的短句
+        "I'm lost",
+        "Help! I don't know where I am",
+        "Saya tersesat",
+        "Tôi bị lạc rồi",
+        "ฉันหลงทางค่ะ",
+        "迷子になった",
+        "ここはどこ？",
     ],
 )
 def test_elder_saying_they_are_lost(text):
@@ -67,6 +83,9 @@ def test_elder_wants_family_to_have_their_location(text):
         # 問功能怎麼用
         "怎麼傳位置給家人",
         "分享位置給家人的功能怎麼用",
+        # 外語長句交給分類器，關鍵字不攔
+        "I'm lost with this app, where is the settings button?",
+        "My mom is lost",
         # 一般問題
         "高血壓可以吃香蕉嗎",
         "",

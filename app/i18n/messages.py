@@ -3418,6 +3418,25 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "การแชร์ตำแหน่งหยุดโดยอัตโนมัติแล้ว ถ้ายังต้องการความช่วยเหลือ ให้บอกว่า \"ฉันหลงทาง\" อีกครั้ง หรือโทร 110",
         "ja": "位置の共有は自動的に終了しました。まだ助けが必要なら、もう一度「迷子になった」と送るか、110番に電話してください。",
     },
+    # 走失分類器沒把握時，回覆下方的快速回覆（見 app/services/lost/lost_classifier.py）。
+    # 按鈕文字上限 20 字元（LINE quick reply label）。
+    "lost.help.quick_reply": {
+        "zh-TW": "我迷路了，通知家人",
+        "en": "Lost? Tell my family",
+        "id": "Saya tersesat",
+        "vi": "Tôi bị lạc, báo nhà",
+        "th": "หลงทาง แจ้งครอบครัว",
+        "ja": "迷子です、家族に連絡",
+    },
+    # 按下之後，聊天室裡以使用者身分顯示的那句話。
+    "lost.help.display": {
+        "zh-TW": "我迷路了，請通知家人",
+        "en": "I'm lost, please tell my family",
+        "id": "Saya tersesat, tolong beri tahu keluarga saya",
+        "vi": "Tôi bị lạc, hãy báo cho gia đình tôi",
+        "th": "ฉันหลงทาง ช่วยแจ้งครอบครัวด้วย",
+        "ja": "道に迷いました。家族に知らせてください",
+    },
     "lost.family.title.lost": {
         "zh-TW": "走失求救",
         "en": "Lost: needs help",

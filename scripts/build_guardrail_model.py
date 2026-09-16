@@ -156,6 +156,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         ),
     )
     parser.add_argument("--folds", type=int, default=5)
+    parser.add_argument(
+        "--max-features",
+        type=int,
+        default=MAX_FEATURES,
+        help=(
+            "詞彙表上限。執行期整份載進記憶體（6 萬片段約 30 MB），任務窄的模型"
+            "（走失求救）可以調小"
+        ),
+    )
     args = parser.parse_args(argv)
 
     if not args.dataset.exists():
@@ -179,7 +188,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                     analyzer="char",
                     ngram_range=NGRAM_RANGE,
                     min_df=MIN_DF,
-                    max_features=MAX_FEATURES,
+                    max_features=args.max_features,
                     lowercase=True,
                     sublinear_tf=False,
                     norm="l2",

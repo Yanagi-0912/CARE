@@ -40,6 +40,7 @@ from app.repositories.lost_session_repository import (
     LostSessionRepository,
     as_utc,
 )
+from app.services.lost.lost_classifier import LostDetection, LostIntentDetector
 from resources.flex_messages.lost_location_flex_message import (
     LOST_ACCENT,
     build_elder_share_flex,
@@ -109,6 +110,7 @@ class LostLocationService:
         repository: Any = LostSessionRepository,
         liff_id: str = "",
         clock: Callable[[], datetime] = _now,
+        intent_detector: Optional[LostIntentDetector] = None,
     ) -> None:
         self._replier = replier
         self._authorization_service = authorization_service
@@ -116,6 +118,11 @@ class LostLocationService:
         self._repository = repository
         self._liff_id = (liff_id or "").strip()
         self._clock = clock
+        # 沒注入時只用關鍵字（測試與模型檔缺席時）；正式環境由 dependencies 載入分類器。
+        self._intent_detector = intent_detector or LostIntentDetector()
+
+    def detect_intent(self, text: str) -> LostDetection:
+        return self._intent_detector.detect(text)
 
     # ── LIFF 網址 ─────────────────────────────────────────────────────
 

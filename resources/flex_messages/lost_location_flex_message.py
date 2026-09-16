@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Optional
 
 from linebot.v3.messaging import (
@@ -204,6 +205,21 @@ def build_no_family_flex(
         altText=t("lost.elder.no_family.title", language),
         contents=FlexContainer.from_dict(bubble),
     )
+
+
+LOST_CONFIRM_ACTION = "lost_confirm"
+
+# postback data 上限 300 字元。原話放進 data 是為了按下「我迷路了」之後家人仍收得到
+# 長輩當時說的話；截到 200 字，前面的 action 參數才放得下。
+_POSTBACK_WORDS_MAX = 200
+# 會打斷 query string 解析的字元換成空白（data 不做百分比編碼：編碼後中文一字
+# 佔 9 個字元，30 個中文字就超過上限）。
+_QUERY_UNSAFE_RE = re.compile(r"[&=%+#\r\n]+")
+
+
+def lost_confirm_postback_data(words: str) -> str:
+    cleaned = " ".join(_QUERY_UNSAFE_RE.sub(" ", words or "").split())[:_POSTBACK_WORDS_MAX]
+    return f"action={LOST_CONFIRM_ACTION}&w={cleaned}"
 
 
 # ── 家人端 ───────────────────────────────────────────────────────────

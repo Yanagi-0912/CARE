@@ -69,6 +69,7 @@ from app.services.safety.ingredient_overlap import (
     load_local_action_forms,
 )
 from app.services.safety.emergency_alert_service import EmergencyFamilyAlertService
+from app.services.lost.lost_classifier import LostIntentDetector
 from app.services.lost.lost_location_service import LostLocationService
 from app.services.medication.tcm_catalog_service import TcmCatalogService
 from app.services.safety.otc_alert_service import OtcAlertService
@@ -765,6 +766,8 @@ _lost_location_service = LostLocationService(
     authorization_service=_family_authorization_service,
     user_profile_service=_user_profile_service,
     liff_id=settings.LIFF_ID,
+    # 關鍵字先判，認不得的講法與外語交給本地分類器；模型檔缺席時只用關鍵字。
+    intent_detector=LostIntentDetector.load(),
 )
 
 _message_handler = LineMessageHandler(
@@ -777,6 +780,7 @@ _message_handler = LineMessageHandler(
     emergency_family_alert_service=_emergency_family_alert_service,
     share_card_service=_share_card_service,
     lost_location_service=_lost_location_service,
+    urgency_classifier=_urgency_classifier,
 )
 _media_handler = LineMediaHandler(
     agent=_care_agent,
@@ -788,6 +792,7 @@ _media_handler = LineMediaHandler(
     safety_alert_service=_enabled_safety_alert_service,
     emergency_family_alert_service=_emergency_family_alert_service,
     lost_location_service=_lost_location_service,
+    urgency_classifier=_urgency_classifier,
 )
 _location_handler = LineLocationHandler(
     agent=_care_agent,

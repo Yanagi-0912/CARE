@@ -382,7 +382,6 @@ _rag_answer_service = RagAnswerService(
     max_chunks_per_article=settings.RAG_RERANK_MAX_CHUNKS_PER_ARTICLE,
     grader=_rag_grader,
     rewriter=_rag_rewriter,
-    crag_rewrite_budget_seconds=settings.RAG_CRAG_REWRITE_BUDGET_SECONDS,
     speculative_generate=settings.RAG_SPECULATIVE_GENERATE,
     crag_enabled=settings.RAG_CRAG_ENABLED,
     web_search=_web_search_service,

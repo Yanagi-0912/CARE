@@ -256,19 +256,6 @@ class Settings:
         "RAG_WEB_FALLBACK_ENABLED", "true"
     ).lower() in ("1", "true", "yes", "on")
 
-    # CRAG 判 ambiguous 後，啟動改寫第二輪的時間預算（秒）。0＝不設限。
-    #
-    # 第二輪要價約 19 秒（rewrite 5.3s ＋ 檢索精排 1.6s ＋ grade 11.8s，實測），
-    # 之後還得再付一次 generate。LINE Loading Animation 上限就是 60 秒
-    # （loading_animation.DEFAULT_LOADING_SECONDS），超過使用者連「還在處理」
-    # 都看不到，所以最壞路徑必須有上界。
-    #
-    # 超時是拿第一輪結果生成，不是轉網搜——網搜比第二輪更慢，為省時間走上
-    # 更慢的路沒有意義。細節見 rag/answer_service.DEFAULT_CRAG_REWRITE_BUDGET_SECONDS。
-    RAG_CRAG_REWRITE_BUDGET_SECONDS: float = float(
-        os.getenv("RAG_CRAG_REWRITE_BUDGET_SECONDS", "12")
-    )
-
     # 整條 RAG 管線的總逾時（秒）。0＝不設限。到點回 [RAG_ERR:TIMEOUT]，agent
     # 請使用者稍後再問。45 秒＝LINE loading 動畫上限 60 秒，扣掉 RAG 以外的段落；
     # 實測最慢一題 18.7 秒，正常題目不會被切。來由見

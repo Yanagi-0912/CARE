@@ -203,3 +203,164 @@ def test_relationships_point_the_right_way():
     """
     assert seed.RELATIONSHIPS[seed.GUARDIAN] == "child"
     assert seed.REVERSE_RELATIONSHIPS[seed.GUARDIAN] == "parent"
+
+
+# ── 12.1 個人健康紀錄（personal-health-tracking）─────────────────────────
+
+
+def test_owner_stays_male_with_the_asserted_display_name():
+    """驗證腳本斷言 OWNER 之名為「E2E 阿公」——這裡先確認 seed 端沒有變動：
+    族譜／性別資料不因為新增健康資料而改變（dispatch notes）。
+    """
+    assert seed.DISPLAY_NAMES[seed.OWNER] == "E2E 阿公"
+    assert seed.build_user(seed.OWNER)["gender"] == "male"
+
+
+def test_guardian_stays_female():
+    """經期紀錄要能記到 GUARDIAN 身上，她的個人健康檔案性別必須是女性
+    （menstrual-cycle-log spec「僅女性使用者可建立」）。"""
+    assert seed.build_user(seed.GUARDIAN)["gender"] == "female"
+
+
+def test_alert_thresholds_belong_to_owner():
+    thresholds = seed.build_alert_thresholds()
+    assert thresholds["user_id"] == seed.OWNER
+    assert thresholds["updated_by"] == seed.OWNER
+    # 上下限要有實際落差，否則「above_range」的量測情境沒有意義。
+    assert thresholds["systolic_high"] > thresholds["systolic_low"]
+    assert thresholds["diastolic_high"] > thresholds["diastolic_low"]
+    assert thresholds["glucose_fasting_high"] > thresholds["glucose_low"]
+    assert thresholds["glucose_nonfasting_high"] > thresholds["glucose_low"]
+
+
+def test_measurements_use_classify_measurement_not_hand_written_levels():
+    """等級 SHALL 用真正的 classify_measurement 對照 OWNER 的提醒範圍算出來
+    （dispatch notes：「不再手寫，避免日後跑偏」）。這裡反過來拿同一份門檻
+    重新分類一次每一筆量測，確認 seed 存的 level 與重新計算的結果一致。
+    """
+    from app.models.health import CreateBloodGlucoseRequest, CreateBloodPressureRequest
+    from app.services.health.health_level import classify_measurement
+
+    thresholds = seed.build_owner_thresholds()
+    measurements = seed.build_measurements()
+
+    for doc in measurements:
+        assert doc["user_id"] == seed.OWNER
+        if doc["kind"] == "blood_pressure":
+            request = CreateBloodPressureRequest(
+                systolic=doc["systolic"], diastolic=doc["diastolic"], pulse=doc.get("pulse")
+            )
+        else:
+            request = CreateBloodGlucoseRequest(
+                glucose_mg_dl=doc["glucose_mg_dl"], meal_context=doc["meal_context"]
+            )
+        assert doc["level"] == classify_measurement(request, thresholds)
+
+
+def test_measurements_include_both_above_and_within_range():
+    """至少一筆 above_range、一筆 within_range（dispatch notes 的硬性要求）。"""
+    levels = {doc["level"] for doc in seed.build_measurements()}
+    assert "above_range" in levels
+    assert "within_range" in levels
+
+
+def test_measurements_are_not_in_the_future():
+    """measured_at 一律在過去——CreateBloodPressureRequest／
+    CreateBloodGlucoseRequest 只接受不晚於送出當下 5 分鐘以上的時間，seed
+    資料不該是連 API 自己都不接受的形狀（dispatch notes）。"""
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    for doc in seed.build_measurements():
+        measured_at = doc["measured_at"]
+        if measured_at.tzinfo is None:
+            measured_at = measured_at.replace(tzinfo=timezone.utc)
+        assert measured_at <= now
+
+
+def test_measurement_ids_are_strings():
+    """同 Medication.id／MedicationReminder.id 的理由：塞 ObjectId 會在讀取
+    時炸在 Pydantic 驗證。"""
+    for doc in seed.build_measurements():
+        assert isinstance(doc["_id"], str)
+
+
+def test_menstrual_records_belong_to_guardian_not_owner():
+    """經期是 PERSONAL 分類，只有 GUARDIAN 本人的資料——OWNER 維持男性，
+    不該出現在這份資料裡（dispatch notes）。"""
+    records = seed.build_menstrual_records()
+    assert len(records) >= 2
+    for record in records:
+        assert record["user_id"] == seed.GUARDIAN
+        assert record["_id"] not in ("", None)
+
+
+def test_menstrual_records_satisfy_the_create_request_model():
+    """seed 資料要能通過 CreateMenstrualRecordRequest 的驗證（日期格式、
+    結束不早於開始、間隔不超過 15 天、開始不晚於今天）——同 measurements
+    的理由，不該是連 API 自己都不接受的形狀。"""
+    from app.models.health import CreateMenstrualRecordRequest
+
+    for record in seed.build_menstrual_records():
+        CreateMenstrualRecordRequest(
+            start_date=record["start_date"],
+            end_date=record.get("end_date"),
+            flow=record.get("flow"),
+            note=record.get("note"),
+        )
+
+
+def test_menstrual_records_have_distinct_start_dates_so_cycle_length_is_non_null():
+    """cycle_length_days 由服務層依「前一筆的開始日期」現算，不落地存資料庫
+    ——seed 這裡只要保證至少兩筆、且開始日期不同，讀取時該欄位才有得算
+    （dispatch notes：「至少兩筆記錄，這樣 cycle_length_days 才非 null」）。
+    """
+    records = seed.build_menstrual_records()
+    start_dates = [r["start_date"] for r in records]
+    assert len(set(start_dates)) == len(start_dates)
+    # 序列化的紀錄不落地存計算欄位——同 repository.add 的 dump 方式。
+    for record in records:
+        assert "cycle_length_days" not in record
+        assert "period_length_days" not in record
+
+
+def test_steps_belong_to_owner_on_taipei_today():
+    """OWNER 今天（台北日曆日）的計步工作階段（dispatch notes）。"""
+    from datetime import datetime
+
+    from app.models.health import TAIPEI_TZ
+
+    steps = seed.build_steps()
+    assert len(steps) >= 1
+    taipei_today = datetime.now(TAIPEI_TZ).strftime("%Y-%m-%d")
+    for session in steps:
+        assert session["user_id"] == seed.OWNER
+        assert session["date"] == taipei_today
+        assert session["steps"] > 0
+
+
+def test_step_session_ids_are_uuid4():
+    """session_id 須為前端會送的形狀——真的 UUID v4（router 的路徑參數是
+    pydantic.UUID4）。"""
+    from uuid import UUID
+
+    for session in seed.build_steps():
+        parsed = UUID(session["session_id"], version=4)
+        assert str(parsed) == session["session_id"]
+
+
+def test_reset_filters_cover_the_five_new_collections():
+    """12.1 的五個新 collection 都要進 --reset 的清除範圍
+    （dispatch notes：「extend it to the five new collections」）。"""
+    expected = {
+        "health_measurements",
+        "health_alert_thresholds",
+        "menstrual_records",
+        "step_sessions",
+        "health_alert_claims",
+    }
+    assert expected <= set(seed.RESET_FILTERS)
+    for collection in expected:
+        assert seed.RESET_FILTERS[collection] == {
+            "user_id": {"$regex": f"^{seed.PREFIX}"}
+        }

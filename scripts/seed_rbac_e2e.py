@@ -40,6 +40,7 @@ import argparse
 import os
 import re
 import sys
+import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List
@@ -47,6 +48,25 @@ from typing import Any, Dict, List
 from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+# 讓下面能直接 import app.models.health／app.services.health.health_level。
+# 這兩個模組只依賴 pydantic 與標準庫，沒有 app.core.config 那種讀 .env、連線
+# 設定的重量級依賴，因此可以在模組載入當下就匯入，不必像 issue_tokens() 裡的
+# app.core.config／app.services.liff.jwt_service 那樣延後到真正要用的時候
+# （那兩個一旦提早載入，--dry-run 不連線也會被迫先讀一次 .env 設定）。
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from app.models.health import (  # noqa: E402
+    TAIPEI_TZ,
+    CreateBloodGlucoseRequest,
+    CreateBloodPressureRequest,
+    CreateMenstrualRecordRequest,
+    HealthAlertThreshold,
+    HealthMeasurement,
+    MenstrualRecord,
+    StepSession,
+)
+from app.services.health.health_level import classify_measurement  # noqa: E402
 
 # ── 測試帳號 ────────────────────────────────────────────────────────────
 #
@@ -313,6 +333,174 @@ def build_summaries() -> List[Dict[str, Any]]:
     ]
 
 
+# ── 個人健康紀錄（personal-health-tracking）──────────────────────────────
+#
+# 四份新資料，對應這個 change 新增的四種資源：OWNER 的提醒範圍與血壓血糖
+# 量測、GUARDIAN（E2E 女兒，性別本來就是女性）的經期、OWNER 的計步。
+# OWNER 維持男性——族譜資料沒有變，見上面 build_user()。
+
+# 固定 id，同 MEDICATION_ID／REMINDER_ID 的理由：讓 --reset 之外的重跑
+# （沒帶 --reset）也能用 replace/delete_many 精準覆寫，不會越跑越多筆。
+MEASUREMENT_IDS = {
+    "bp_within": "e2e-measurement-bp-within",
+    "bp_above": "e2e-measurement-bp-above",
+    "glucose_within": "e2e-measurement-glucose-within",
+    "glucose_above": "e2e-measurement-glucose-above",
+}
+MENSTRUAL_RECORD_IDS = ["e2e-menstrual-1", "e2e-menstrual-2"]
+
+
+def build_owner_thresholds() -> HealthAlertThreshold:
+    """OWNER 的提醒範圍（health-alerts spec「使用者自訂提醒範圍」）。
+
+    量測的等級（見 build_measurements()）要用同一份門檻算，因此獨立成一個
+    回傳 model 的函式，而不是直接回傳 dict——build_measurements() 需要把它
+    原封不動餵給 classify_measurement()。
+    """
+    return HealthAlertThreshold(
+        user_id=OWNER,
+        systolic_high=140,
+        systolic_low=90,
+        diastolic_high=90,
+        diastolic_low=60,
+        glucose_fasting_high=126,
+        glucose_nonfasting_high=180,
+        glucose_low=70,
+        updated_by=OWNER,
+    )
+
+
+def build_alert_thresholds() -> Dict[str, Any]:
+    return build_owner_thresholds().model_dump()
+
+
+def build_measurements() -> List[Dict[str, Any]]:
+    """OWNER 的血壓血糖量測（health-measurements spec）。
+
+    至少一筆 above_range、一筆 within_range（實際各兩筆，血壓血糖各一
+    組）。``level`` 一律用真正的 ``classify_measurement`` 對照 OWNER 的
+    提醒範圍算出來，不手寫——手寫的等級可能與門檻邏輯日後跑偏卻沒人發現
+    （dispatch notes）。``measured_at`` 全部在過去，符合「不得晚於送出時間
+    5 分鐘以上」的驗證規則。
+    """
+    thresholds = build_owner_thresholds()
+    now = _now()
+
+    scenarios = [
+        (
+            MEASUREMENT_IDS["bp_within"],
+            CreateBloodPressureRequest(
+                systolic=120, diastolic=80, pulse=72, measured_at=now - timedelta(days=2)
+            ),
+        ),
+        (
+            MEASUREMENT_IDS["bp_above"],
+            CreateBloodPressureRequest(
+                systolic=162, diastolic=98, pulse=88, measured_at=now - timedelta(days=1)
+            ),
+        ),
+        (
+            MEASUREMENT_IDS["glucose_within"],
+            CreateBloodGlucoseRequest(
+                glucose_mg_dl=100, meal_context="fasting", measured_at=now - timedelta(hours=20)
+            ),
+        ),
+        (
+            MEASUREMENT_IDS["glucose_above"],
+            CreateBloodGlucoseRequest(
+                glucose_mg_dl=210, meal_context="after_meal", measured_at=now - timedelta(hours=5)
+            ),
+        ),
+    ]
+
+    docs: List[Dict[str, Any]] = []
+    for measurement_id, request in scenarios:
+        is_bp = isinstance(request, CreateBloodPressureRequest)
+        measurement = HealthMeasurement(
+            id=measurement_id,
+            user_id=OWNER,
+            kind="blood_pressure" if is_bp else "blood_glucose",
+            measured_at=request.measured_at,
+            recorded_by=OWNER,
+            systolic=request.systolic if is_bp else None,
+            diastolic=request.diastolic if is_bp else None,
+            pulse=request.pulse if is_bp else None,
+            glucose_mg_dl=None if is_bp else request.glucose_mg_dl,
+            meal_context=None if is_bp else request.meal_context,
+            level=classify_measurement(request, thresholds),
+        )
+        # 同 HealthMeasurementRepository.add 的 dump 方式：exclude_none 讓
+        # 血壓紀錄不帶 glucose_mg_dl／meal_context，血糖紀錄不帶
+        # systolic／diastolic／pulse。
+        docs.append(measurement.model_dump(by_alias=True, exclude_none=True))
+    return docs
+
+
+def build_menstrual_records() -> List[Dict[str, Any]]:
+    """GUARDIAN（女兒，性別本來就是女性）的經期紀錄（menstrual-cycle-log
+    spec）。
+
+    至少兩筆、彼此不重疊，且開始日期間隔非 0，這樣讀取（``list``）時
+    後端現算的 ``cycle_length_days`` 才會是非 null（design.md：
+    ``cycle_length_days`` 由服務層依「前一筆的開始日期」現算，不落地存
+    資料庫，seed 這裡存的是未計算欄位的原始形狀，同
+    MenstrualRecordRepository.add 的 dump 方式）。
+    """
+    today = date.today()
+    scenarios = [
+        (MENSTRUAL_RECORD_IDS[0], today - timedelta(days=60), 4, "medium"),
+        (MENSTRUAL_RECORD_IDS[1], today - timedelta(days=32), 5, "heavy"),
+    ]
+
+    docs: List[Dict[str, Any]] = []
+    for record_id, start, span_days, flow in scenarios:
+        start_str = start.isoformat()
+        end_str = (start + timedelta(days=span_days)).isoformat()
+        # 借 CreateMenstrualRecordRequest 驗證形狀（日期格式、結束不早於
+        # 開始、間隔不超過 15 天）——同服務層 create() 的規則，seed 資料
+        # 不該是連 API 自己都不接受的形狀。
+        request = CreateMenstrualRecordRequest(
+            start_date=start_str, end_date=end_str, flow=flow, note="E2E 測試資料"
+        )
+        record = MenstrualRecord(
+            id=record_id,
+            user_id=GUARDIAN,
+            start_date=request.start_date,
+            end_date=request.end_date,
+            flow=request.flow,
+            note=request.note,
+        )
+        docs.append(
+            record.model_dump(
+                by_alias=True,
+                exclude={"cycle_length_days", "period_length_days"},
+                exclude_none=True,
+            )
+        )
+    return docs
+
+
+def build_steps() -> List[Dict[str, Any]]:
+    """OWNER 今天（台北日曆日）的計步工作階段（step-counter spec）。
+
+    ``session_id`` 用真的 UUID v4——同前端會送的形狀（router 的路徑參數是
+    ``pydantic.UUID4``），雖然這裡是直接寫 DB、不經過那個驗證，資料形狀仍
+    該跟真實請求一致。
+    """
+    now = _now()
+    taipei_today = now.astimezone(TAIPEI_TZ).strftime("%Y-%m-%d")
+    started_at = now - timedelta(hours=2)
+    session = StepSession(
+        user_id=OWNER,
+        session_id=str(uuid.uuid4()),
+        date=taipei_today,
+        steps=3200,
+        started_at=started_at,
+        last_synced_at=now,
+    )
+    return [session.model_dump()]
+
+
 # ── 清除 ────────────────────────────────────────────────────────────────
 
 # --reset 的刪除條件。每一條都鎖在 U_E2E_ 前綴或固定的 e2e- id 上，
@@ -335,6 +523,16 @@ RESET_FILTERS = {
         ]
     },
     "family_role_audit": {"owner_id": {"$regex": f"^{PREFIX}"}},
+    # personal-health-tracking 的五個新 collection：全部以 user_id 鎖前綴，
+    # 同其餘條件一樣不可能誤刪其他資料（dispatch notes）。
+    # health_alert_claims 目前 seed 不會寫入任何資料（節流紀錄只在服務層
+    # 呼叫 try_claim 時產生），這裡仍列進清除範圍，純粹是安全網：日後若
+    # 真的手動或經由 API 呼叫產生了 U_E2E_ 的節流紀錄，--reset 也要清得掉。
+    "health_measurements": {"user_id": {"$regex": f"^{PREFIX}"}},
+    "health_alert_thresholds": {"user_id": {"$regex": f"^{PREFIX}"}},
+    "menstrual_records": {"user_id": {"$regex": f"^{PREFIX}"}},
+    "step_sessions": {"user_id": {"$regex": f"^{PREFIX}"}},
+    "health_alert_claims": {"user_id": {"$regex": f"^{PREFIX}"}},
 }
 
 
@@ -374,6 +572,26 @@ def seed(db, state: str) -> None:
     db["consultation_summaries"].delete_many({"line_id": OWNER})
     db["consultation_summaries"].insert_many(build_summaries())
     print("  consultation_summaries: 2 inserted")
+
+    db["health_alert_thresholds"].replace_one(
+        {"user_id": OWNER}, build_alert_thresholds(), upsert=True
+    )
+    print("  health_alert_thresholds: 1 upserted (OWNER)")
+
+    measurements = build_measurements()
+    db["health_measurements"].delete_many({"user_id": OWNER})
+    db["health_measurements"].insert_many(measurements)
+    print(f"  health_measurements: {len(measurements)} inserted (OWNER)")
+
+    menstrual_records = build_menstrual_records()
+    db["menstrual_records"].delete_many({"user_id": GUARDIAN})
+    db["menstrual_records"].insert_many(menstrual_records)
+    print(f"  menstrual_records: {len(menstrual_records)} inserted (GUARDIAN)")
+
+    steps = build_steps()
+    db["step_sessions"].delete_many({"user_id": OWNER})
+    db["step_sessions"].insert_many(steps)
+    print(f"  step_sessions: {len(steps)} inserted (OWNER)")
 
 
 # ── Token ───────────────────────────────────────────────────────────────
@@ -729,6 +947,30 @@ def main(argv=None) -> int:
             f"creator_user_id={reminder['creator_user_id']}"
         )
         print(f"  summaries        : {len(build_summaries())} for {OWNER}")
+        thresholds = build_owner_thresholds()
+        print(
+            f"  alert thresholds : user_id={thresholds.user_id} "
+            f"systolic={thresholds.systolic_low}-{thresholds.systolic_high} "
+            f"diastolic={thresholds.diastolic_low}-{thresholds.diastolic_high} "
+            f"glucose(fasting)<={thresholds.glucose_fasting_high} "
+            f"glucose(other)<={thresholds.glucose_nonfasting_high} "
+            f"glucose>={thresholds.glucose_low}"
+        )
+        measurements = build_measurements()
+        print(
+            f"  measurements     : {len(measurements)} for {OWNER}, levels="
+            + str([m["level"] for m in measurements])
+        )
+        menstrual_records = build_menstrual_records()
+        print(
+            f"  menstrual records: {len(menstrual_records)} for {GUARDIAN}, "
+            f"start_dates=" + str([m["start_date"] for m in menstrual_records])
+        )
+        steps = build_steps()
+        print(
+            f"  step sessions    : {len(steps)} for {OWNER}, date={steps[0]['date']} "
+            f"steps={steps[0]['steps']}"
+        )
         print("\n  reset filters:")
         for name, condition in RESET_FILTERS.items():
             print(f"    {name}: {condition}")

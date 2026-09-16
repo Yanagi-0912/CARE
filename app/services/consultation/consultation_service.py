@@ -1,9 +1,8 @@
 # 諮詢功能的核心服務，負責處理諮詢訊息的摘要生成和搜尋等邏輯。
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta, timezone
 import json
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from textwrap import dedent
 from typing import Optional
 from app.models.chat_message import ChatMessage

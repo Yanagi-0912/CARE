@@ -189,7 +189,7 @@ async def test_department_title_combines_department_and_facility_type(
     """
     result = DepartmentSearchResult(
         matches=(DepartmentMatch(canonical="腸胃科", requested="腸胃科"),),
-        facilities=[_facility()],
+        facilities=[_facility(departments=["腸胃科"])],
         reached_meters=5_000,
         satisfied=True,
         facility_type_match=FacilityTypeMatch(category="醫院", requested="大醫院"),
@@ -216,7 +216,7 @@ async def test_department_without_facility_type_keeps_department_only_title(
     """向後相容：省略 facility_type 時科別標題維持原樣，不多出括號。"""
     result = DepartmentSearchResult(
         matches=(DepartmentMatch(canonical="腸胃科", requested="腸胃科"),),
-        facilities=[_facility()],
+        facilities=[_facility(departments=["腸胃科"])],
         reached_meters=5_000,
         satisfied=True,
     )
@@ -253,6 +253,9 @@ async def test_department_title_changes_when_results_do_not_list_department(
         count=1, department="內科"
     ) in payload
     assert t("flex.facility.unspecified_department") in payload
+
+
+@pytest.mark.asyncio
 async def test_several_departments_are_passed_through_and_titled_together(
     inject_medical_service,
 ):
@@ -262,7 +265,8 @@ async def test_several_departments_are_passed_through_and_titled_together(
             DepartmentMatch(canonical=name, requested=name)
             for name in ("家醫科", "內科", "不分科")
         ),
-        facilities=[_facility()],
+        # 只列了其中一科也算有列出，不能被當成「都沒有登記」
+        facilities=[_facility(departments=["內科"])],
         reached_meters=5_000,
         satisfied=True,
     )

@@ -78,18 +78,24 @@ def _department_not_listed_ids(result: NearbySearchResult) -> frozenset[str]:
     不能只看 DepartmentSearchResult.unspecified_ids：搜內科／家醫科時，主查詢本來就
     會包含「不分科／西醫一般科」，所以這些院所不是補充梯次，卻仍然沒有列出內科。
     呈現層要直接檢查 departments 文字，避免標題寫「附近的內科」但五張都不是內科。
+    一次查多科時，列出其中任一科就算有列出。
     """
-    match = getattr(result, "match", None)
-    if match is None:
+    canonicals = [match.canonical for match in getattr(result, "matches", ())]
+    if not canonicals:
         return frozenset()
 
-    canonical = match.canonical
     detected = {
         facility.id
         for facility in result.facilities
-        if not any(canonical in listed for listed in facility.departments or ())
+        if not any(
+            canonical in listed
+            for canonical in canonicals
+            for listed in facility.departments or ()
+        )
     }
     return frozenset(detected) | getattr(result, "unspecified_ids", frozenset())
+
+
 # 多個科別在標題與文案裡的連接方式，與保底卡列出科別的方式一致。
 _DEPARTMENT_SEPARATOR = "、"
 
@@ -114,7 +120,7 @@ def _all_unspecified(result: NearbySearchResult) -> bool:
     附近若全是這種診所，標題「附近的內科」底下五家都不是內科。此時標題與副標要換成
     講清楚原因的文案；搜尋結果本身不變。
     """
-    unspecified = getattr(result, "unspecified_ids", frozenset())
+    unspecified = _department_not_listed_ids(result)
     return bool(result.facilities) and all(
         facility.id in unspecified for facility in result.facilities
     )
@@ -126,7 +132,8 @@ def _build_range_subtitle(
     """
     依「搜到多遠、湊不湊得滿」組出副標，讓使用者知道結果的實際涵蓋範圍。
 
-    late_night_auto 目前只供有深夜自動搜尋的分支使用；此分支未啟用時維持 False。
+    late_night_auto 為真代表使用者沒要求、是深夜自動只列現在能去的：要說出來，
+    並告訴使用者想找明天看診的該怎麼問。
     """
     count = len(result.facilities)
 
@@ -178,13 +185,6 @@ def _build_range_subtitle(
             department=_DEPARTMENT_SEPARATOR.join(
                 match.canonical for match in result.matches
             ),
-        )
-        subtitle = f"{subtitle}\n{note}"
-
-    if _all_unspecified(result) and match is not None:
-        note = t("location.department.all_unspecified").format(
-            count=count,
-            department=match.canonical,
         )
         subtitle = f"{subtitle}\n{note}"
 
@@ -320,7 +320,7 @@ async def find_nearby_facilities_by_department(
     自行換算成部定專科。使用者一次提到多科時每科各放一個元素（例如「家醫科、內科、
     不分科」→ ["家醫科", "內科", "不分科"]），結果是有其中任一科的院所；只呼叫一次，
     不要拆成多次呼叫。department 是舊呼叫端相容參數，新呼叫請用 departments。
-    只有在使用者明確表達「現在有開的／還在看診的」時才把 open_now 設為 true。
+    open_now 的設定時機比照 find_nearby_hospitals：使用者要現在就去時才設為 true。
     若使用者只是要找一般醫院、沒有指定科別，請改用 find_nearby_hospitals。
 
     facility_type 為選填的院所類型過濾，可與 departments 同時使用（例如使用者說
@@ -432,7 +432,7 @@ async def find_nearby_facilities_by_department(
         else "location.department.title"
     )
     title_department = (
-        result.match.canonical
+        _DEPARTMENT_SEPARATOR.join(canonicals)
         if title_key == "location.department.title_unspecified"
         else department_label
     )

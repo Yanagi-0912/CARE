@@ -53,11 +53,11 @@ class _StubMedicalService:
         )
 
     async def find_nearby_facilities_by_department(
-        self, lat, lng, department, target_count=5, open_now=False, facility_type=None
+        self, lat, lng, departments, target_count=5, open_now=False, facility_type=None
     ) -> DepartmentSearchResult:
         self.department_calls.append(open_now)
         return DepartmentSearchResult(
-            match=resolve_department(department),
+            matches=tuple(resolve_department(text) for text in departments),
             facilities=[_hospital()],
             reached_meters=5_000,
             satisfied=False,

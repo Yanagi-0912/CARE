@@ -63,9 +63,10 @@ def test_partial_reports_search_limit():
 
 
 def test_alias_note_appended_only_for_department_alias():
+    internal_medicine = _facility(800).model_copy(update={"departments": ["內科"]})
     expanded_result = DepartmentSearchResult(
         matches=(resolve_department("腸胃科"),),
-        facilities=[_facility(800)],
+        facilities=[internal_medicine],
         reached_meters=5_000,
         satisfied=True,
     )
@@ -74,7 +75,7 @@ def test_alias_note_appended_only_for_department_alias():
 
     exact_result = DepartmentSearchResult(
         matches=(resolve_department("內科"),),
-        facilities=[_facility(800)],
+        facilities=[internal_medicine],
         reached_meters=5_000,
         satisfied=True,
     )
@@ -119,7 +120,9 @@ def test_open_now_with_an_open_clinic_keeps_open_wording():
     )
 
     assert "營業中" in _build_range_subtitle(result)
-def _clinic(facility_id: str) -> MedicalFacility:
+
+
+def _clinic(facility_id: str, departments: list[str] | None = None) -> MedicalFacility:
     return MedicalFacility(
         id=facility_id,
         name="巷口診所",
@@ -127,7 +130,7 @@ def _clinic(facility_id: str) -> MedicalFacility:
         longitude=121.0,
         address="測試地址",
         type="診所",
-        departments=["不分科"],
+        departments=departments or ["不分科"],
         distance_meters=300,
     )
 
@@ -151,7 +154,7 @@ def test_mixed_list_has_no_all_unspecified_note():
     """列表裡有一家登記內科就不能說「都沒有內科」。"""
     result = DepartmentSearchResult(
         matches=(resolve_department("內科"),),
-        facilities=[_clinic("a"), _clinic("b")],
+        facilities=[_clinic("a"), _clinic("b", departments=["內科"])],
         reached_meters=5_000,
         satisfied=True,
         unspecified_ids=frozenset({"a"}),

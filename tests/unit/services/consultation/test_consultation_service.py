@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from contextlib import suppress
 from datetime import date, datetime, timedelta, timezone
-import json
-from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -19,18 +18,16 @@ from app.models.consultation import (
     ConsultationSummarizeRequest,
 )
 from app.models.chat_message import ChatMessage
-from app.models.medication import TAIPEI_TZ
-from app.services.consultation.consultation_service import (
-    ConsultationService,
-    taipei_day_utc_range,
-)
 from app.models.medication import (
     Medication,
     MedicationReminderWithMedications,
     ReminderEntry,
     TAIPEI_TZ,
 )
-from app.services.consultation.consultation_service import ConsultationService
+from app.services.consultation.consultation_service import (
+    ConsultationService,
+    taipei_day_utc_range,
+)
 from app.services.consultation.scheduler import ConsultationDailySummaryScheduler
 from app.services.medical.symptom_classification.urgency import (
     URGENCY_EMERGENCY,

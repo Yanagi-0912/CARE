@@ -616,12 +616,6 @@ _user_profile_service = UserProfileService(
     rich_menu_service=_rich_menu_service
 )
 
-_consultation_service = ConsultationService(
-    chat_history_repository=_conversation_log_repository,
-    repository=_consultation_repository,
-    gemini_service=_gemini_service,
-    user_profile_service=_user_profile_service,
-)
 
 def _build_tts_service(service_url: str) -> TTSService | RemoteTTSService:
     """有 care-tts（TTS_SERVICE_URL）就交給它合成、存檔；沒有就在本行程合成（本機開發）。

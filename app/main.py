@@ -59,6 +59,7 @@ from app.services.consultation.scheduler import (
 from app.services.rag.user_document_store import ensure_user_docs_indexes_on_startup
 
 from app.routers.users.family_tree import router as family_tree_router
+from app.routers.users.health import router as health_router
 from app.routers.users.knowledge_reports import router as knowledge_reports_router
 from app.routers.users.medical import router as medical_router
 from app.routers.users.medications import router as medications_router
@@ -247,6 +248,7 @@ app.include_router(
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(family_tree_router, prefix="/api/family", tags=["Family Tree"])
 app.include_router(medications_router, prefix="/api/medications", tags=["Medications"])
+app.include_router(health_router, prefix="/api/health", tags=["Health"])
 app.include_router(appointments_router, prefix="/api/appointments", tags=["Appointments"])
 # 前綴必須是 /api/medical：CARE-LIFF 的 medicalApi.ts 已經在打 /api/medical/nearby，
 # 「附近醫院」整頁（路由、側邊欄、i18n）都已上線，缺的一直只有這一行掛載。

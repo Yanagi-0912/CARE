@@ -263,9 +263,10 @@ async def test_out_of_scope_verdict_produces_no_emergency_card():
 class _FakeLocal:
     """與 LocalGuardrailClassifier 同介面：probability() 與 low／high 門檻。"""
 
-    def __init__(self, probability=0.5, *, low=0.1, high=0.9, exc=None):
+    def __init__(self, probability=0.5, *, low=0.1, high=0.9, exc=None, recognized=True):
         self._probability = probability
         self._exc = exc
+        self._recognized = recognized
         self.low = low
         self.high = high
 
@@ -273,6 +274,9 @@ class _FakeLocal:
         if self._exc is not None:
             raise self._exc
         return self._probability
+
+    def recognizes(self, _text):
+        return self._recognized
 
 
 def _cascade(local, payload=None, *, exc=None, delay=0.0, timeout=4.0):
@@ -296,6 +300,14 @@ async def test_confident_not_urgent_never_calls_the_llm():
     classifier, calls = _cascade(_FakeLocal(0.01), _emergency_payload())
     assert (await classifier.classify("今天天氣真好")) is NOT_URGENT
     assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_unrecognized_text_is_not_released_even_with_low_probability():
+    """認得的片段太少時，低機率只代表沒看懂，不代表不緊急。"""
+    classifier, calls = _cascade(_FakeLocal(0.01, recognized=False), _emergency_payload())
+    assert (await classifier.classify("恥笑漸漸光，咱就大聲仔想著煞")).is_emergency is True
+    assert len(calls) == 1
 
 
 @pytest.mark.asyncio

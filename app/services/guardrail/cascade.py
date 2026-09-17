@@ -58,11 +58,19 @@ class CascadeGuardrailService:
 
         try:
             probability = self._local.probability(user_text)
+            recognized = self._local.recognizes(user_text)
         except Exception:
             # 本地推論不該有例外，但真的有的話，升級給 LLM 而不是自己決定。
             logger.exception("本地 guardrail 推論失敗，升級給 LLM")
             return await self._fallback.allow_rag_tool(user_text)
 
+        if not recognized:
+            # 認得的片段太少，機率只是少數幾個片段湊出來的（見 local.MIN_KNOWN_SHARE）。
+            log_stage(
+                logger, "guardrail_local", outcome="escalate", reason="unrecognized",
+                p=round(probability, 4),
+            )
+            return await self._fallback.allow_rag_tool(user_text)
         if probability >= self._local.high:
             log_stage(logger, "guardrail_local", outcome="allow", p=round(probability, 4))
             return True

@@ -27,15 +27,19 @@ def _mock_tools(include_rag_tool: bool = False):
 
 
 class _Router:
-    def __init__(self, probability: float, high: float = 0.8):
+    def __init__(self, probability: float, high: float = 0.8, recognized: bool = True):
         self.high = high
         self.low = 0.0
         self._probability = probability
+        self._recognized = recognized
         self.calls: list[str] = []
 
     def probability(self, text: str) -> float:
         self.calls.append(text)
         return self._probability
+
+    def recognizes(self, text: str) -> bool:
+        return self._recognized
 
 
 @pytest.fixture(autouse=True)
@@ -101,6 +105,17 @@ async def test_below_high_still_asks_model(llm):
     result = await nodes.agent_node(_state("胸口痛要看哪一科"))
 
     assert _only_call(result)["name"] == "suggest_department_for_symptom"
+    llm.bind_tools.return_value.ainvoke.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_unrecognized_text_is_not_shortcut_even_with_high_probability(llm):
+    # 語音辨識出不通順的句子，模型只認得一兩個片段，機率就是那幾個片段湊出來的。
+    router = _Router(probability=0.99, recognized=False)
+    nodes = AgentNodes(llm=llm, guardrail_service=MagicMock(), rag_router=router)
+
+    await nodes.agent_node(_state("恥笑漸漸光，咱就大聲仔想著煞"))
+
     llm.bind_tools.return_value.ainvoke.assert_awaited_once()
 
 

@@ -719,16 +719,19 @@ class AgentNodes:
             return False
         try:
             probability = router.probability(user_text)
+            recognized = router.recognizes(user_text)
         except Exception:
             # 捷徑壞掉只是變慢，不該讓這則訊息失敗。
             logger.exception("本地 RAG 分流推論失敗，照舊交給 agent")
             return False
-        shortcut = probability >= router.high
+        # 認得的片段太少時機率沒有意義（見 guardrail.local.MIN_KNOWN_SHARE）。
+        shortcut = recognized and probability >= router.high
         log_stage(
             logger,
             "rag_route_local",
             p=round(probability, 3),
             outcome="shortcut" if shortcut else "agent",
+            reason=None if recognized else "unrecognized",
         )
         return shortcut
 

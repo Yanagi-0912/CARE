@@ -8,6 +8,7 @@ import pytest
 from app.services.guardrail.local import (
     DEFAULT_MODEL_PATH,
     SUPPORTED_FORMAT,
+    MIN_KNOWN_SHARE,
     LocalGuardrailClassifier,
 )
 
@@ -143,3 +144,20 @@ def test_shipped_model_does_not_deny_foreign_health_questions():
     for text in FOREIGN_HEALTH:
         assert local.probability(text) >= local.low, text
     assert local.probability("Book me a train ticket to Taichung.") < local.low
+
+
+def test_shipped_model_does_not_recognize_garbled_speech_transcript():
+    # 2026-09-17 正式環境：台語語音辨識出不通順的句子，詞彙表只認得「就大」。
+    classifier = LocalGuardrailClassifier.load()
+    assert classifier.known_share("恥笑漸漸光，咱就大聲仔想著煞") < MIN_KNOWN_SHARE
+    assert classifier.recognizes("恥笑漸漸光，咱就大聲仔想著煞") is False
+
+
+def test_shipped_model_recognizes_ordinary_health_questions():
+    classifier = LocalGuardrailClassifier.load()
+    for text in ("高血壓平常要注意什麼？", "血壓藥早上忘記吃，下午補吃可以嗎", "我肚子痛"):
+        assert classifier.recognizes(text), text
+
+
+def test_known_share_of_empty_text_is_zero():
+    assert LocalGuardrailClassifier.load().known_share("") == 0.0

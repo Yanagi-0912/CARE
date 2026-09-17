@@ -353,16 +353,6 @@ def test_T12_order_follows_sources_not_manual_rank(table, term, expected):
     assert [c.canonical for c in table.lookup(term).candidates] == expected
 
 
-@pytest.mark.asyncio
-# 高血脂、咳嗽曾在此列，CMUH_HC 與 MMH_TP 併入後家醫科（咳嗽另有耳鼻喉科）有了來源醫院
-# 佐證，不再屬於「撤回的補列」。
-@pytest.mark.parametrize("term", ["氣喘"])
-async def test_T13_withdrawn_additions_leave_only_internal_medicine(table, term):
-    result = await _suggest(table, term, 40)
-    assert result.kind == RESULT_SUGGESTION
-    assert [c.canonical for c in result.candidates] == ["內科"]
-
-
 # ---------------------------------------------------------------- 保底與年齡
 
 
@@ -599,9 +589,9 @@ _SUGGESTION_CASES = [
         "D6",
         "坐骨神經痛",
         40,
-        7,
-        [("神經外科", (), 5), ("復健科", (), 4), ("骨科", (), 2), ("神經科", ("神經內科",), 1), ("麻醉科", ("疼痛科",), 1)],
-        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY", "MMH_TP"],
+        8,
+        [("神經外科", (), 6), ("復健科", (), 4), ("骨科", (), 2), ("神經科", ("神經內科",), 1), ("麻醉科", ("疼痛科",), 1)],
+        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP"],
     ),
     (
         "D7",
@@ -612,11 +602,11 @@ _SUGGESTION_CASES = [
         ["NCKUH_TN", "NTUH_YL", "AFGH_KH", "MMH_TP"],
     ),
     ("D8", "感冒", 40, 8, [("內科", (), 5), ("耳鼻喉科", (), 3), ("家醫科", (), 2)], ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP"]),
-    ("D9", "氣喘", 40, 7, [("內科", ("胸腔內科",), 6)], ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY"]),
+    ("D9", "氣喘", 40, 8, [("內科", ("胸腔內科",), 6), ("中醫一般科", (), 1)], ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC"]),
     ("D10", "高血脂", 40, 3, [("內科", ("新陳代謝及內分泌科", "心臟內科", "腎臟內科"), 3), ("家醫科", (), 1)], ["NCKUH_TN", "NTUH_YL", "CMUH_HC"]),
     ("D11", "酒癮", 40, 7, [("精神科", (), 7)], ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY", "CMUH_HC"]),
     ("D12", "身心障礙者牙科照護", 40, 1, [("牙科", ("特殊需求者牙科",), 1)], ["NTUH_YL"]),
-    ("D16", "腹瀉", 40, 5, [("內科", ("胃腸肝膽科",), 5), ("家醫科", (), 1)], ["TPVGH_YL", "NCKUH_TN", "CTH_XD", "AFGH_TY", "MMH_TP"]),
+    ("D16", "腹瀉", 40, 6, [("內科", ("胃腸肝膽科",), 5), ("家醫科", (), 1), ("外科", ("大腸直腸外科",), 1)], ["TPVGH_YL", "NCKUH_TN", "CTH_XD", "AFGH_TY", "CMUH_HC", "MMH_TP"]),
 ]
 
 

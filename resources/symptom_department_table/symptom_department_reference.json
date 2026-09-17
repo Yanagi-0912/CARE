@@ -505,8 +505,10 @@
           "subgroup": "胃腸肝膽科",
           "sources": [
             "NTUH_YL",
-            "CTH_XD"
-          ]
+            "CTH_XD",
+            "MMH_TP"
+          ],
+          "note": "MMH_TP 原文：便血，併入本列"
         },
         {
           "term": "吐血",
@@ -2789,14 +2791,6 @@
           "subgroup": "胃腸肝膽科"
         },
         {
-          "term": "便血",
-          "kind": "symptom",
-          "sources": [
-            "MMH_TP"
-          ],
-          "subgroup": "胃腸肝膽科"
-        },
-        {
           "term": "小便困難",
           "kind": "symptom",
           "sources": [
@@ -2888,19 +2882,22 @@
             "NCKUH_TN",
             "NTUH_YL",
             "AFGH_KH",
-            "MMH_TP"
+            "MMH_TP",
+            "CMUH_HC"
           ]
         },
         {
-          "term": "便血",
+          "term": "血便",
           "kind": "symptom",
           "subgroup": "大腸直腸外科",
           "sources": [
             "NCKUH_TN",
             "NTUH_YL",
             "AFGH_KH",
-            "MMH_TP"
-          ]
+            "MMH_TP",
+            "CMUH_HC"
+          ],
+          "note": "NCKUH_TN、NTUH_YL、AFGH_KH、MMH_TP 原文：便血"
         },
         {
           "term": "脫肛",
@@ -2963,7 +2960,8 @@
           "subgroup": "大腸直腸外科",
           "sources": [
             "NCKUH_TN",
-            "NTUH_YL"
+            "NTUH_YL",
+            "CMUH_HC"
           ]
         },
         {
@@ -2993,7 +2991,8 @@
           "sources": [
             "NCKUH_TN",
             "NTUH_YL",
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ]
         },
         {
@@ -3256,7 +3255,8 @@
           "kind": "disease",
           "sources": [
             "TPVGH_HC",
-            "AFGH_KH"
+            "AFGH_KH",
+            "CMUH_HC"
           ],
           "subgroup": "乳房外科"
         },
@@ -3297,7 +3297,8 @@
           "term": "食道癌",
           "kind": "disease",
           "sources": [
-            "TPVGH_HC"
+            "TPVGH_HC",
+            "CMUH_HC"
           ],
           "subgroup": "胸腔外科"
         },
@@ -3305,7 +3306,8 @@
           "term": "肺癌",
           "kind": "disease",
           "sources": [
-            "TPVGH_HC"
+            "TPVGH_HC",
+            "CMUH_HC"
           ],
           "subgroup": "胸腔外科"
         },
@@ -3322,7 +3324,8 @@
           "kind": "disease",
           "sources": [
             "TPVGH_HC",
-            "AFGH_KH"
+            "AFGH_KH",
+            "CMUH_HC"
           ],
           "subgroup": "胸腔外科"
         },
@@ -3460,7 +3463,8 @@
           "term": "肛門瘻管",
           "kind": "disease",
           "sources": [
-            "AFGH_KH"
+            "AFGH_KH",
+            "CMUH_HC"
           ],
           "subgroup": "大腸直腸外科"
         },
@@ -3476,7 +3480,8 @@
           "term": "大腸腫瘤",
           "kind": "disease",
           "sources": [
-            "AFGH_KH"
+            "AFGH_KH",
+            "CMUH_HC"
           ],
           "subgroup": "大腸直腸外科"
         },
@@ -3484,7 +3489,8 @@
           "term": "直腸腫瘤",
           "kind": "disease",
           "sources": [
-            "AFGH_KH"
+            "AFGH_KH",
+            "CMUH_HC"
           ],
           "subgroup": "大腸直腸外科"
         },
@@ -3690,7 +3696,8 @@
           "term": "便秘",
           "kind": "symptom",
           "sources": [
-            "MMH_TP"
+            "MMH_TP",
+            "CMUH_HC"
           ],
           "subgroup": "大腸直腸外科"
         },
@@ -3719,6 +3726,64 @@
           ],
           "subgroup": "一般外科",
           "note": "MMH_TP 原文：身體表面長硬塊"
+        },
+        {
+          "term": "肛裂",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
+          ],
+          "subgroup": "大腸直腸外科"
+        },
+        {
+          "term": "肛門膿瘍",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
+          ],
+          "subgroup": "大腸直腸外科",
+          "note": "CMUH_HC 原文：肛門膿瘍及瘻管"
+        },
+        {
+          "term": "肛門搔癢",
+          "kind": "symptom",
+          "sources": [
+            "CMUH_HC"
+          ],
+          "subgroup": "大腸直腸外科",
+          "note": "CMUH_HC 原文：肛門搔癢症"
+        },
+        {
+          "term": "腹瀉",
+          "kind": "symptom",
+          "sources": [
+            "CMUH_HC"
+          ],
+          "subgroup": "大腸直腸外科"
+        },
+        {
+          "term": "發炎性腸道疾病",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
+          ],
+          "subgroup": "大腸直腸外科"
+        },
+        {
+          "term": "潰瘍性結腸炎",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
+          ],
+          "subgroup": "大腸直腸外科"
+        },
+        {
+          "term": "克隆氏症",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
+          ],
+          "subgroup": "大腸直腸外科"
         }
       ]
     },
@@ -4263,7 +4328,8 @@
             "NCKUH_TN",
             "NTUH_YL",
             "AFGH_KH",
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ]
         },
         {
@@ -4289,7 +4355,8 @@
           "subgroup": null,
           "sources": [
             "NCKUH_TN",
-            "NTUH_YL"
+            "NTUH_YL",
+            "CMUH_HC"
           ],
           "note": "同時列於 red_flags"
         },
@@ -4300,7 +4367,8 @@
           "sources": [
             "NCKUH_TN",
             "NTUH_YL",
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ]
         },
         {
@@ -4308,7 +4376,8 @@
           "kind": "disease",
           "subgroup": null,
           "sources": [
-            "NTUH_YL"
+            "NTUH_YL",
+            "CMUH_HC"
           ],
           "note": "亦見於骨科"
         },
@@ -4331,7 +4400,8 @@
             "NTUH_YL",
             "AFGH_KH",
             "AFGH_TY",
-            "MMH_TP"
+            "MMH_TP",
+            "CMUH_HC"
           ],
           "note": "跨骨科、神經科、復健科、神經外科四科"
         },
@@ -4418,7 +4488,8 @@
           "kind": "disease",
           "sources": [
             "TPVGH_HC",
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ]
         },
         {
@@ -4477,7 +4548,8 @@
           "term": "手腳麻痺無力",
           "kind": "symptom",
           "sources": [
-            "AFGH_KH"
+            "AFGH_KH",
+            "CMUH_HC"
           ]
         },
         {
@@ -4528,7 +4600,8 @@
           "term": "周邊神經病變",
           "kind": "disease",
           "sources": [
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ]
         },
         {
@@ -4583,6 +4656,20 @@
           "sources": [
             "MMH_TP"
           ]
+        },
+        {
+          "term": "脊椎退化",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
+          ]
+        },
+        {
+          "term": "脊椎滑脫",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
+          ]
         }
       ]
     },
@@ -4612,7 +4699,8 @@
             "NTUH_YL",
             "TPVGH_HC",
             "AFGH_KH",
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ]
         },
         {
@@ -4749,7 +4837,8 @@
           "subgroup": null,
           "sources": [
             "NTUH_YL",
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ]
         },
         {
@@ -4826,7 +4915,8 @@
           "sources": [
             "TPVGH_HC",
             "AFGH_KH",
-            "MMH_TP"
+            "MMH_TP",
+            "CMUH_HC"
           ]
         },
         {
@@ -5020,7 +5110,8 @@
           "subgroup": null,
           "sources": [
             "NCKUH_TN",
-            "NTUH_YL"
+            "NTUH_YL",
+            "CMUH_HC"
           ]
         },
         {
@@ -5047,7 +5138,8 @@
             "TPVGH_HC",
             "AFGH_KH",
             "AFGH_TY",
-            "MMH_TP"
+            "MMH_TP",
+            "CMUH_HC"
           ],
           "note": "亦見於內科腎臟方向"
         },
@@ -5058,7 +5150,8 @@
           "sources": [
             "TPVGH_YL",
             "NCKUH_TN",
-            "NTUH_YL"
+            "NTUH_YL",
+            "CMUH_HC"
           ]
         },
         {
@@ -5091,7 +5184,8 @@
             "NTUH_YL",
             "TPVGH_HC",
             "AFGH_KH",
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ]
         },
         {
@@ -5135,7 +5229,8 @@
             "TPVGH_YL",
             "NCKUH_TN",
             "NTUH_YL",
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ]
         },
         {
@@ -5215,7 +5310,8 @@
           "term": "泌尿道感染",
           "kind": "disease",
           "sources": [
-            "TPVGH_HC"
+            "TPVGH_HC",
+            "CMUH_HC"
           ],
           "subgroup": "泌尿科"
         },
@@ -5328,6 +5424,13 @@
           "kind": "symptom",
           "sources": [
             "MMH_TP"
+          ]
+        },
+        {
+          "term": "不孕症",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
           ]
         }
       ]
@@ -5497,7 +5600,8 @@
           "kind": "service",
           "subgroup": "產科",
           "sources": [
-            "NTUH_YL"
+            "NTUH_YL",
+            "CMUH_HC"
           ]
         },
         {
@@ -5645,6 +5749,80 @@
           "sources": [
             "MMH_TP"
           ]
+        },
+        {
+          "term": "婦科癌症",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
+          ],
+          "subgroup": "婦科",
+          "note": "CMUH_HC 原文：婦癌"
+        },
+        {
+          "term": "子宮內膜異位症",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
+          ],
+          "subgroup": "生殖醫學科"
+        },
+        {
+          "term": "卵巢囊腫",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
+          ],
+          "note": "CMUH_HC 原文：子宮內膜異位症（卵巢囊腫、經痛、慢性骨盆腔疼痛、骨盆腔沾黏）"
+        },
+        {
+          "term": "經痛",
+          "kind": "symptom",
+          "sources": [
+            "CMUH_HC"
+          ],
+          "note": "CMUH_HC 原文：子宮內膜異位症（卵巢囊腫、經痛、慢性骨盆腔疼痛、骨盆腔沾黏）"
+        },
+        {
+          "term": "慢性骨盆腔疼痛",
+          "kind": "symptom",
+          "sources": [
+            "CMUH_HC"
+          ],
+          "note": "CMUH_HC 原文：子宮內膜異位症（卵巢囊腫、經痛、慢性骨盆腔疼痛、骨盆腔沾黏）"
+        },
+        {
+          "term": "骨盆腔沾黏",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
+          ],
+          "note": "CMUH_HC 原文：子宮內膜異位症（卵巢囊腫、經痛、慢性骨盆腔疼痛、骨盆腔沾黏）"
+        },
+        {
+          "term": "多囊性卵巢症候群",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
+          ],
+          "subgroup": "生殖醫學科"
+        },
+        {
+          "term": "早發性停經",
+          "kind": "symptom",
+          "sources": [
+            "CMUH_HC"
+          ],
+          "subgroup": "生殖醫學科"
+        },
+        {
+          "term": "重複性流產",
+          "kind": "symptom",
+          "sources": [
+            "CMUH_HC"
+          ],
+          "subgroup": "生殖醫學科",
+          "note": "CMUH_HC 原文：重覆性流產"
         }
       ]
     },
@@ -5948,7 +6126,8 @@
             "NCKUH_TN",
             "NTUH_YL",
             "TPVGH_HC",
-            "AFGH_KH"
+            "AFGH_KH",
+            "CMUH_HC"
           ]
         },
         {
@@ -5958,7 +6137,8 @@
           "sources": [
             "TPVGH_YL",
             "NCKUH_TN",
-            "TPVGH_HC"
+            "TPVGH_HC",
+            "CMUH_HC"
           ]
         },
         {
@@ -6103,7 +6283,8 @@
             "NCKUH_TN",
             "NTUH_YL",
             "TPVGH_HC",
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ]
         },
         {
@@ -6156,7 +6337,8 @@
           "term": "高度近視視網膜病變",
           "kind": "disease",
           "sources": [
-            "TPVGH_HC"
+            "TPVGH_HC",
+            "CMUH_HC"
           ]
         },
         {
@@ -6218,6 +6400,13 @@
           "sources": [
             "MMH_TP"
           ]
+        },
+        {
+          "term": "老年性黃斑部病變",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
+          ]
         }
       ]
     },
@@ -6244,7 +6433,8 @@
             "TPVGH_HC",
             "AFGH_KH",
             "AFGH_TY",
-            "MMH_TP"
+            "MMH_TP",
+            "CMUH_HC"
           ]
         },
         {
@@ -6255,7 +6445,8 @@
             "NTUH_YL",
             "TPVGH_HC",
             "AFGH_KH",
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ]
         },
         {
@@ -6312,7 +6503,8 @@
             "NTUH_YL",
             "TPVGH_HC",
             "AFGH_KH",
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ]
         },
         {
@@ -6351,7 +6543,8 @@
           "sources": [
             "NTUH_YL",
             "AFGH_KH",
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ]
         },
         {
@@ -6362,7 +6555,8 @@
             "NTUH_YL",
             "TPVGH_HC",
             "AFGH_KH",
-            "MMH_TP"
+            "MMH_TP",
+            "CMUH_HC"
           ],
           "note": "亦見於內科與復健科"
         },
@@ -6419,7 +6613,8 @@
             "TPVGH_HC",
             "AFGH_KH",
             "AFGH_TY",
-            "MMH_TP"
+            "MMH_TP",
+            "CMUH_HC"
           ]
         },
         {
@@ -6499,7 +6694,8 @@
           "sources": [
             "AFGH_KH",
             "AFGH_TY",
-            "MMH_TP"
+            "MMH_TP",
+            "CMUH_HC"
           ]
         },
         {
@@ -6528,7 +6724,8 @@
           "term": "鼻中隔彎曲",
           "kind": "disease",
           "sources": [
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ]
         },
         {
@@ -6666,7 +6863,8 @@
             "NCKUH_TN",
             "NTUH_YL",
             "AFGH_KH",
-            "MMH_TP"
+            "MMH_TP",
+            "CMUH_HC"
           ]
         },
         {
@@ -6687,7 +6885,8 @@
           "subgroup": null,
           "sources": [
             "NCKUH_TN",
-            "NTUH_YL"
+            "NTUH_YL",
+            "CMUH_HC"
           ]
         },
         {
@@ -6698,7 +6897,8 @@
             "NCKUH_TN",
             "NTUH_YL",
             "TPVGH_HC",
-            "AFGH_KH"
+            "AFGH_KH",
+            "CMUH_HC"
           ]
         },
         {
@@ -6707,7 +6907,8 @@
           "subgroup": null,
           "sources": [
             "NTUH_YL",
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ]
         },
         {
@@ -6715,7 +6916,8 @@
           "kind": "disease",
           "subgroup": null,
           "sources": [
-            "NCKUH_TN"
+            "NCKUH_TN",
+            "CMUH_HC"
           ]
         },
         {
@@ -6723,7 +6925,8 @@
           "kind": "disease",
           "subgroup": null,
           "sources": [
-            "NCKUH_TN"
+            "NCKUH_TN",
+            "CMUH_HC"
           ]
         },
         {
@@ -6742,7 +6945,8 @@
           "sources": [
             "NCKUH_TN",
             "AFGH_KH",
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ],
           "note": "來源列為「癬」"
         },
@@ -6767,7 +6971,8 @@
             "NTUH_YL",
             "TPVGH_HC",
             "AFGH_TY",
-            "MMH_TP"
+            "MMH_TP",
+            "CMUH_HC"
           ]
         },
         {
@@ -6776,7 +6981,8 @@
           "subgroup": null,
           "sources": [
             "NTUH_YL",
-            "TPVGH_HC"
+            "TPVGH_HC",
+            "CMUH_HC"
           ]
         },
         {
@@ -6786,7 +6992,8 @@
           "sources": [
             "NCKUH_TN",
             "NTUH_YL",
-            "AFGH_KH"
+            "AFGH_KH",
+            "CMUH_HC"
           ]
         },
         {
@@ -6815,7 +7022,8 @@
           "sources": [
             "NCKUH_TN",
             "NTUH_YL",
-            "AFGH_KH"
+            "AFGH_KH",
+            "CMUH_HC"
           ]
         },
         {
@@ -6913,7 +7121,8 @@
           "term": "老人斑",
           "kind": "symptom",
           "sources": [
-            "TPVGH_HC"
+            "TPVGH_HC",
+            "CMUH_HC"
           ]
         },
         {
@@ -6935,7 +7144,8 @@
           "kind": "disease",
           "sources": [
             "TPVGH_HC",
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ]
         },
         {
@@ -6949,7 +7159,8 @@
           "term": "色素斑",
           "kind": "symptom",
           "sources": [
-            "AFGH_KH"
+            "AFGH_KH",
+            "CMUH_HC"
           ]
         },
         {
@@ -7006,7 +7217,8 @@
           "kind": "disease",
           "sources": [
             "AFGH_TY",
-            "MMH_TP"
+            "MMH_TP",
+            "CMUH_HC"
           ]
         },
         {
@@ -7023,6 +7235,69 @@
             "MMH_TP"
           ],
           "note": "MMH_TP 原文：身體表面長硬塊"
+        },
+        {
+          "term": "甲溝炎",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
+          ]
+        },
+        {
+          "term": "傷口發炎",
+          "kind": "symptom",
+          "sources": [
+            "CMUH_HC"
+          ]
+        },
+        {
+          "term": "雀斑",
+          "kind": "symptom",
+          "sources": [
+            "CMUH_HC"
+          ]
+        },
+        {
+          "term": "肝斑",
+          "kind": "symptom",
+          "sources": [
+            "CMUH_HC"
+          ]
+        },
+        {
+          "term": "曬斑",
+          "kind": "symptom",
+          "sources": [
+            "CMUH_HC"
+          ]
+        },
+        {
+          "term": "色素不均",
+          "kind": "symptom",
+          "sources": [
+            "CMUH_HC"
+          ]
+        },
+        {
+          "term": "發炎後色素沉澱",
+          "kind": "symptom",
+          "sources": [
+            "CMUH_HC"
+          ]
+        },
+        {
+          "term": "血管瘤",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
+          ]
+        },
+        {
+          "term": "血管擴張",
+          "kind": "symptom",
+          "sources": [
+            "CMUH_HC"
+          ]
         }
       ]
     },
@@ -7604,7 +7879,8 @@
             "TPVGH_YL",
             "NTUH_YL",
             "TPVGH_HC",
-            "AFGH_KH"
+            "AFGH_KH",
+            "CMUH_HC"
           ],
           "note": "亦見於中醫"
         },
@@ -7623,7 +7899,8 @@
           "kind": "disease",
           "subgroup": null,
           "sources": [
-            "TPVGH_YL"
+            "TPVGH_YL",
+            "CMUH_HC"
           ]
         },
         {
@@ -7665,7 +7942,8 @@
             "TPVGH_YL",
             "TPVGH_HC",
             "AFGH_KH",
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ]
         },
         {
@@ -7863,7 +8141,8 @@
           "kind": "disease",
           "sources": [
             "AFGH_KH",
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ]
         },
         {
@@ -7871,7 +8150,8 @@
           "kind": "disease",
           "sources": [
             "AFGH_KH",
-            "AFGH_TY"
+            "AFGH_TY",
+            "CMUH_HC"
           ]
         },
         {
@@ -7941,7 +8221,8 @@
           "term": "吞嚥困難",
           "kind": "symptom",
           "sources": [
-            "MMH_TP"
+            "MMH_TP",
+            "CMUH_HC"
           ]
         },
         {
@@ -7988,6 +8269,42 @@
             "MMH_TP"
           ],
           "note": "MMH_TP 原文：肌肉減退或喪失"
+        },
+        {
+          "term": "腦外傷",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
+          ]
+        },
+        {
+          "term": "關節炎",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
+          ]
+        },
+        {
+          "term": "頸肩背痛",
+          "kind": "symptom",
+          "sources": [
+            "CMUH_HC"
+          ]
+        },
+        {
+          "term": "發展遲緩",
+          "kind": "symptom",
+          "sources": [
+            "CMUH_HC"
+          ],
+          "note": "CMUH_HC 原文：兒童發展遲緩"
+        },
+        {
+          "term": "發音障礙",
+          "kind": "symptom",
+          "sources": [
+            "CMUH_HC"
+          ]
         }
       ]
     },
@@ -8888,11 +9205,12 @@
           ]
         },
         {
-          "term": "便血",
+          "term": "血便",
           "kind": "symptom",
           "sources": [
             "MMH_TP"
-          ]
+          ],
+          "note": "MMH_TP 原文：便血"
         },
         {
           "term": "血尿",
@@ -9664,7 +9982,8 @@
           "term": "運動傷害",
           "kind": "symptom",
           "sources": [
-            "AFGH_KH"
+            "AFGH_KH",
+            "CMUH_HC"
           ]
         },
         {
@@ -9720,7 +10039,8 @@
           "term": "失眠",
           "kind": "symptom",
           "sources": [
-            "AFGH_KH"
+            "AFGH_KH",
+            "CMUH_HC"
           ]
         },
         {
@@ -9826,6 +10146,41 @@
           "kind": "symptom",
           "sources": [
             "AFGH_KH"
+          ]
+        },
+        {
+          "term": "更年期障礙",
+          "kind": "symptom",
+          "sources": [
+            "CMUH_HC"
+          ]
+        },
+        {
+          "term": "眩暈",
+          "kind": "symptom",
+          "sources": [
+            "CMUH_HC"
+          ]
+        },
+        {
+          "term": "過敏性鼻炎",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
+          ]
+        },
+        {
+          "term": "氣喘",
+          "kind": "disease",
+          "sources": [
+            "CMUH_HC"
+          ]
+        },
+        {
+          "term": "耳鳴",
+          "kind": "symptom",
+          "sources": [
+            "CMUH_HC"
           ]
         }
       ]
@@ -9996,6 +10351,101 @@
       "raw": "心臟血管外科：手腳麻痺；神經外科：骨質疏鬆、癲癇；一般外科：灰指甲、肝硬化、肝功能異常；骨科：發育不良",
       "source": "MMH_TP",
       "reason": "列在不符民眾就醫直覺的科別。"
+    },
+    {
+      "raw": "兒科：嬰幼兒預防保健及疫苗注射、嬰幼兒健康檢查與成長評估、兒科常見疾病診治、新生兒暨兒童重症、兒童腸胃科、兒童過敏免疫科、兒童胸腔科、兒童心臟科、兒童神經科、兒童血液腫瘤科、兒童內分泌暨遺傳科",
+      "source": "CMUH_HC",
+      "reason": "服務、篩檢或次專科名稱，無具體症狀。"
+    },
+    {
+      "raw": "婦產科：婦科、產科、婦女泌尿、微創內視鏡手術；生殖醫學中心：子宮肌瘤手術、腹腔鏡及子宮鏡手術、生育功能評估及生育能力的保存（凍卵及凍精）、重覆性流產的成因（子宮異常、內分泌因素、免疫因素、染色體因素）",
+      "source": "CMUH_HC",
+      "reason": "科名、籠統描述、手術與服務項目；「子宮肌瘤手術」依決議整項不收，不抽取疾病名。"
+    },
+    {
+      "raw": "中醫科：各種慢性病、婦女病、胃腸病、皮膚病",
+      "source": "CMUH_HC",
+      "reason": "類別描述而非具體症狀。"
+    },
+    {
+      "raw": "放射腫瘤科：肝癌、頭頸癌、食道癌、肺癌、婦癌、乳癌、直腸癌、攝護腺癌等全身癌症之放射治療、真光刀治療、身體立體定位放射治療SBRT",
+      "source": "CMUH_HC",
+      "reason": "整句為放射治療；依決議「XX治療」整項不收，不抽取癌症名稱。"
+    },
+    {
+      "raw": "核子醫學科：正子斷層造影診斷學、核醫診斷學、核醫放射核種治療；醫學影像科：電腦斷層、磁振造影、血管攝影與介入性放射線學檢查",
+      "source": "CMUH_HC",
+      "reason": "檢查與治療項目。"
+    },
+    {
+      "raw": "麻醉科：一般外科、神經、心臟、胸腔、骨科、婦產科、胃腸鏡舒眠麻醉、減痛分娩",
+      "source": "CMUH_HC",
+      "reason": "手術麻醉服務，非症狀。"
+    },
+    {
+      "raw": "復健科：神經復健、骨骼肌肉軟組織傷害、肢體機能障礙",
+      "source": "CMUH_HC",
+      "reason": "服務項目或籠統描述；「各種運動傷害等肢體機能障礙」僅收運動傷害。"
+    },
+    {
+      "raw": "皮膚科：皺紋、美白、光電雷射及肉毒桿菌等美容醫學治療",
+      "source": "CMUH_HC",
+      "reason": "美容項目，比照 AFGH_TY 醫學美容特別門診不收。"
+    },
+    {
+      "raw": "一般外科：腹腔鏡微創手術、消化道手術、肝膽胰脾手術、甲狀腺手術（含其下所列良性甲狀腺腫瘤、惡性甲狀腺腫瘤）、乳房手術與乳房超音波檢查、腹股溝疝氣手術",
+      "source": "CMUH_HC",
+      "reason": "整科皆為手術與檢查項目；甲狀腺腫瘤列於手術項下，指手術範圍，不收。"
+    },
+    {
+      "raw": "心臟血管外科：心臟瓣膜修補或置換手術、心房顫動外科矯治手術、冠狀動脈繞道手術、心臟微創手術、微創靜脈曲張手術、曲張靜脈雷射治療、曲張靜脈硬化劑注射治療",
+      "source": "CMUH_HC",
+      "reason": "整科皆為手術與治療項目。"
+    },
+    {
+      "raw": "整形外科：整形美容手術、微整形美容（注射、雷射、醫學美容）、整形重建手術與燒燙傷治療",
+      "source": "CMUH_HC",
+      "reason": "美容、重建與治療項目。"
+    },
+    {
+      "raw": "急診醫學科：急性冠心症、急性腦中風、急性外傷、急性胸腹部急症、小兒急症、急產",
+      "source": "CMUH_HC",
+      "reason": "急症由 urgency.py 判斷器短路處理。"
+    },
+    {
+      "raw": "胸腔外科：胸腔疾病、胸腔鏡手術；大腸直腸外科：大腸直腸癌症手術、肛門手術、無痛大腸鏡檢查及瘜肉切除",
+      "source": "CMUH_HC",
+      "reason": "籠統描述、手術與檢查項目。"
+    },
+    {
+      "raw": "眼科：視網膜雷射治療、玻璃體出血手術、視網膜剝離手術、黃斑部裂孔及黃斑皺褶手術、學童視力保健及角膜塑型片驗配、一般眼疾",
+      "source": "CMUH_HC",
+      "reason": "治療、手術、服務與籠統描述。"
+    },
+    {
+      "raw": "耳鼻喉科：甲狀腺唾液腺頸部腫塊手術、頭頸癌複合式切除及頸部淋巴廓清手術、打鼾及睡眠呼吸終止症之手術治療",
+      "source": "CMUH_HC",
+      "reason": "手術與治療項目。"
+    },
+    {
+      "raw": "泌尿科：腰痛、男性學、輸精管結紮、泌尿道內視鏡手術、精索靜脈曲張手術、腹腔鏡手術、包皮環切手術、疝氣修補手術",
+      "source": "CMUH_HC",
+      "reason": "腰痛已達 5 科，再加泌尿科會超過候選上限而永遠走保底；其餘為籠統描述與手術。"
+    },
+    {
+      "raw": "神經外科：腦中風出血、神經重症照護、急慢性腰背痛治療、腦積水治療、各式脊椎微創及顯微手術、頸椎人工椎間盤手術、腰椎小切口中線融合手術",
+      "source": "CMUH_HC",
+      "reason": "急症、重症照護、治療與手術項目。"
+    },
+    {
+      "raw": "骨科：人工關節置換手術、骨折手術併發症之後續治療、多重外傷之骨科合併症治療、生醫材料、組織工程及幹細胞臨床應用、小兒骨科",
+      "source": "CMUH_HC",
+      "reason": "手術、治療、研究項目與次專科名稱。"
+    },
+    {
+      "raw": "乳房外科：乳房超音波及導引切片手術",
+      "source": "CMUH_HC",
+      "reason": "檢查與手術項目。"
     }
   ],
   "resolved_questions": [
@@ -10104,6 +10554,30 @@
       "question": "馬偕「症狀→可看科別」格式的資料如何併入？口腔顎面外科如何處理？",
       "decision": "每個「症狀＋科別」拆為一筆；合寫的症狀逐一拆開（腰痛背痛→腰痛、背痛，不併入已達 5 科的腰酸背痛；頸部腫大整條收錄不拆括號）。口腔顎面外科併入牙科，不另開科別區塊。",
       "rationale": "腰酸背痛再多一科即超過候選上限而永遠走保底；馬偕的口腔顎面外科一律與牙科並列，另開區塊只會重複計入候選。",
+      "decided_at": "2026-09-17"
+    },
+    {
+      "question": "CMUH_HC 的資料範圍與子宮內膜異位症括號內症狀的次專科？",
+      "decision": "CMUH_HC 收錄內科系、婦兒科系、中醫科系三個頁籤。生殖醫學中心的子宮內膜異位症、多囊性卵巢症候群、早發性停經、重複性流產標生殖醫學科；括號內的卵巢囊腫、經痛、慢性骨盆腔疼痛、骨盆腔沾黏各自成列且不標次專科；高危險妊娠雖為 service 類仍補代碼。",
+      "rationale": "經痛等常見婦科問題若標生殖醫學科，卡片會讓人以為要去不孕門診；高危險妊娠是孕婦能自行辨認的狀況。",
+      "decided_at": "2026-09-17"
+    },
+    {
+      "question": "皮膚科的色素類項目（雀斑、肝斑、曬斑、色素不均、發炎後色素沉澱）算美容還是皮膚疾病？",
+      "decision": "收錄；皺紋、美白與光電雷射、肉毒等美容醫學治療不收。",
+      "rationale": "色素問題是民眾實際會到皮膚科詢問的狀況，表內已有黑斑、老人斑、色素斑同類條目。",
+      "decided_at": "2026-09-17"
+    },
+    {
+      "question": "「診斷及治療」「處理」「評估」算不算不收的「治療」？",
+      "decision": "不算。比照「診治」拆出疾病或症狀收錄（乳癌、骨質疏鬆、頭部外傷、骨折、手腳麻痺無力）；「XX治療」「XX手術」仍整項不收。",
+      "rationale": "這三種寫法描述的是本科負責處理該疾病或症狀，不是特定治療手段。",
+      "decided_at": "2026-09-17"
+    },
+    {
+      "question": "CMUH_HC 外科系的同義詞與範圍界線？",
+      "decision": "大腸直腸癌併入大腸癌；泌尿科列的「不孕症」不併入男性不孕症（原文未指明性別），另列不孕症；便血與血便為同一件事，全表統一用「血便」（外科、家醫科的便血改名，內科的便血併入既有血便列，note 保留原文）；泌尿科的腰痛不收。",
+      "rationale": "原文未指明範圍時不替醫院縮小；腰痛已達候選上限。",
       "decided_at": "2026-09-17"
     }
   ],

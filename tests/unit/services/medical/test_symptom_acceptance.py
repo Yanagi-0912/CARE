@@ -49,7 +49,8 @@ EXPECTED_FALLBACK = ["家醫科", "內科", "不分科"]
 
 ONLY_PEDIATRIC_REASON = "這個症狀在對照表中只列了兒科"
 
-WITHDRAWN_TERMS = ("流鼻水", "流鼻血", "痰多", "帶狀皰疹（皮蛇）")
+# 流鼻水、流鼻血曾在此列，MMH_TP 併入後耳鼻喉科有了來源醫院佐證，不再屬於撤回的補列。
+WITHDRAWN_TERMS = ("痰多", "帶狀皰疹（皮蛇）")
 
 # acceptance C1：維護用語與寫死的家數都不得出現在卡片上。
 FORBIDDEN_ON_CARD = (
@@ -109,7 +110,7 @@ async def _suggest(table, term, age, text="要看哪一科"):
 
 _REFERENCES = tuple(
     SourceReference(code=code, name=f"{code} 醫院", url=f"https://example.com/{code}")
-    for code in ("TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "A", "B", "D", "E")
+    for code in ("TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "A", "B", "D", "E")
 )
 
 
@@ -344,8 +345,8 @@ def test_T11_candidates_sorted_by_source_count_then_facility_count(table):
 @pytest.mark.parametrize(
     ("term", "expected"),
     [
-        ("坐骨神經痛", ["神經外科", "復健科", "骨科", "神經科"]),
-        ("性病", ["內科", "皮膚科", "泌尿科"]),
+        ("坐骨神經痛", ["神經外科", "復健科", "骨科", "神經科", "麻醉科"]),
+        ("性病", ["皮膚科", "內科", "泌尿科", "家醫科", "婦產科"]),
     ],
 )
 def test_T12_order_follows_sources_not_manual_rank(table, term, expected):
@@ -353,7 +354,9 @@ def test_T12_order_follows_sources_not_manual_rank(table, term, expected):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("term", ["咳嗽", "氣喘", "高血脂"])
+# 高血脂、咳嗽曾在此列，CMUH_HC 與 MMH_TP 併入後家醫科（咳嗽另有耳鼻喉科）有了來源醫院
+# 佐證，不再屬於「撤回的補列」。
+@pytest.mark.parametrize("term", ["氣喘"])
 async def test_T13_withdrawn_additions_leave_only_internal_medicine(table, term):
     result = await _suggest(table, term, 40)
     assert result.kind == RESULT_SUGGESTION
@@ -582,31 +585,38 @@ def test_T27_largest_card_passes_line_validation(font_size):
 # 預期值由原始 JSON 直接推導（撤回補列與 rank 後依來源家數、院所數排序），
 # 不經過服務程式。
 _SUGGESTION_CASES = [
-    ("D1", "咳嗽", 40, 4, [("內科", ("胸腔內科",), 3)], ["NCKUH_TN", "NTUH_YL", "CTH_XD"]),
-    ("D2", "咳嗽", 8, 4, [("內科", ("胸腔內科",), 3), ("兒科", (), 1)], ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "CTH_XD"]),
-    ("D4", "嘔吐", 8, 3, [("內科", ("胃腸肝膽科",), 2), ("兒科", (), 1)], ["TPVGH_YL", "CTH_XD", "AFGH_TY"]),
+    ("D1", "咳嗽", 40, 5, [("內科", ("胸腔內科",), 4), ("家醫科", (), 1), ("耳鼻喉科", (), 1)], ["NCKUH_TN", "NTUH_YL", "CTH_XD", "MMH_TP"]),
+    (
+        "D2",
+        "咳嗽",
+        8,
+        5,
+        [("內科", ("胸腔內科",), 4), ("家醫科", (), 1), ("兒科", (), 1), ("耳鼻喉科", (), 1)],
+        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "CTH_XD", "MMH_TP"],
+    ),
+    ("D4", "嘔吐", 8, 4, [("內科", ("胃腸肝膽科",), 3), ("家醫科", (), 1), ("兒科", (), 1)], ["TPVGH_YL", "CTH_XD", "AFGH_TY", "MMH_TP"]),
     (
         "D6",
         "坐骨神經痛",
         40,
-        6,
-        [("神經外科", (), 4), ("復健科", (), 3), ("骨科", (), 1), ("神經科", ("神經內科",), 1)],
-        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY"],
+        7,
+        [("神經外科", (), 5), ("復健科", (), 4), ("骨科", (), 2), ("神經科", ("神經內科",), 1), ("麻醉科", ("疼痛科",), 1)],
+        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY", "MMH_TP"],
     ),
     (
         "D7",
         "性病",
         40,
-        3,
-        [("內科", ("感染科",), 2), ("皮膚科", (), 2), ("泌尿科", (), 1)],
-        ["NCKUH_TN", "NTUH_YL", "AFGH_KH"],
+        4,
+        [("皮膚科", (), 3), ("內科", ("感染科",), 2), ("泌尿科", (), 2), ("家醫科", (), 1), ("婦產科", (), 1)],
+        ["NCKUH_TN", "NTUH_YL", "AFGH_KH", "MMH_TP"],
     ),
-    ("D8", "感冒", 40, 6, [("內科", (), 5), ("耳鼻喉科", (), 2)], ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY"]),
+    ("D8", "感冒", 40, 8, [("內科", (), 5), ("耳鼻喉科", (), 3), ("家醫科", (), 2)], ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP"]),
     ("D9", "氣喘", 40, 7, [("內科", ("胸腔內科",), 6)], ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY"]),
-    ("D10", "高血脂", 40, 2, [("內科", ("新陳代謝及內分泌科", "心臟內科"), 2)], ["NCKUH_TN", "NTUH_YL"]),
-    ("D11", "酒癮", 40, 6, [("精神科", (), 6)], ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY"]),
+    ("D10", "高血脂", 40, 3, [("內科", ("新陳代謝及內分泌科", "心臟內科", "腎臟內科"), 3), ("家醫科", (), 1)], ["NCKUH_TN", "NTUH_YL", "CMUH_HC"]),
+    ("D11", "酒癮", 40, 7, [("精神科", (), 7)], ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY", "CMUH_HC"]),
     ("D12", "身心障礙者牙科照護", 40, 1, [("牙科", ("特殊需求者牙科",), 1)], ["NTUH_YL"]),
-    ("D16", "腹瀉", 40, 4, [("內科", ("胃腸肝膽科",), 4)], ["TPVGH_YL", "NCKUH_TN", "CTH_XD", "AFGH_TY"]),
+    ("D16", "腹瀉", 40, 5, [("內科", ("胃腸肝膽科",), 5), ("家醫科", (), 1)], ["TPVGH_YL", "NCKUH_TN", "CTH_XD", "AFGH_TY", "MMH_TP"]),
 ]
 
 

@@ -110,7 +110,7 @@ async def _suggest(table, term, age, text="要看哪一科"):
 
 _REFERENCES = tuple(
     SourceReference(code=code, name=f"{code} 醫院", url=f"https://example.com/{code}")
-    for code in ("TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "A", "B", "D", "E")
+    for code in ("TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL", "A", "B", "D", "E")
 )
 
 
@@ -346,7 +346,7 @@ def test_T11_candidates_sorted_by_source_count_then_facility_count(table):
     ("term", "expected"),
     [
         ("坐骨神經痛", ["神經外科", "復健科", "骨科", "神經科", "麻醉科"]),
-        ("性病", ["皮膚科", "內科", "泌尿科", "家醫科", "婦產科"]),
+        ("性病", ["皮膚科", "泌尿科", "內科", "家醫科", "婦產科"]),
     ],
 )
 def test_T12_order_follows_sources_not_manual_rank(table, term, expected):
@@ -365,7 +365,7 @@ async def test_T14_fallback_departments(table):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("term", ["尿床", "生長發育遲緩"])
+@pytest.mark.parametrize("term", ["生長發育遲緩"])
 async def test_T15_adult_gets_fallback_when_only_pediatrics_lists_it(table, term):
     result = await _suggest(table, term, 40)
     assert result.kind == RESULT_FALLBACK
@@ -383,7 +383,7 @@ async def test_T16_child_asking_about_vomiting_gets_pediatrics_only(table):
 
 @pytest.mark.asyncio
 async def test_T17_fourteen_is_a_child(table):
-    result = await _suggest(table, "尿床", 14)
+    result = await _suggest(table, "生長發育遲緩", 14)
     assert result.kind == RESULT_SUGGESTION
     assert [c.canonical for c in result.candidates] == ["兒科"]
 
@@ -391,20 +391,20 @@ async def test_T17_fourteen_is_a_child(table):
 @pytest.mark.asyncio
 async def test_T17_fifteen_is_an_adult(table):
     """兒科區塊的 age_note：滿 15 歲者改對應成人科別。"""
-    result = await _suggest(table, "尿床", 15)
+    result = await _suggest(table, "生長發育遲緩", 15)
     assert result.kind == RESULT_FALLBACK
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("age", [None, -1, 131, "12", True, 12.5])
 async def test_T18_unknown_or_invalid_age_is_treated_as_adult(table, age):
-    result = await _suggest(table, "尿床", age)
+    result = await _suggest(table, "生長發育遲緩", age)
     assert result.kind == RESULT_FALLBACK
 
 
 @pytest.mark.asyncio
 async def test_T18_parent_mentioning_a_child_keeps_pediatrics(table):
-    result = await _suggest(table, "尿床", None, text="我兒子尿床要看哪一科")
+    result = await _suggest(table, "生長發育遲緩", None, text="我兒子發育比較慢要看哪一科")
     assert result.kind == RESULT_SUGGESTION
     assert [c.canonical for c in result.candidates] == ["兒科"]
 
@@ -575,38 +575,66 @@ def test_T27_largest_card_passes_line_validation(font_size):
 # 預期值由原始 JSON 直接推導（撤回補列與 rank 後依來源家數、院所數排序），
 # 不經過服務程式。
 _SUGGESTION_CASES = [
-    ("D1", "咳嗽", 40, 5, [("內科", ("胸腔內科",), 4), ("家醫科", (), 1), ("耳鼻喉科", (), 1)], ["NCKUH_TN", "NTUH_YL", "CTH_XD", "MMH_TP"]),
+    ("D1", "咳嗽", 40, 6, [("內科", ("胸腔內科",), 4), ("中醫一般科", (), 1), ("家醫科", (), 1), ("耳鼻喉科", (), 1)], ["NCKUH_TN", "NTUH_YL", "CTH_XD", "MMH_TP", "TZUCHI_HL"]),
     (
         "D2",
         "咳嗽",
         8,
-        5,
-        [("內科", ("胸腔內科",), 4), ("家醫科", (), 1), ("兒科", (), 1), ("耳鼻喉科", (), 1)],
-        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "CTH_XD", "MMH_TP"],
+        6,
+        [("內科", ("胸腔內科",), 4), ("中醫一般科", (), 1), ("家醫科", (), 1), ("兒科", (), 1), ("耳鼻喉科", (), 1)],
+        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "CTH_XD", "MMH_TP", "TZUCHI_HL"],
     ),
     ("D4", "嘔吐", 8, 4, [("內科", ("胃腸肝膽科",), 3), ("家醫科", (), 1), ("兒科", (), 1)], ["TPVGH_YL", "CTH_XD", "AFGH_TY", "MMH_TP"]),
     (
         "D6",
         "坐骨神經痛",
         40,
-        8,
-        [("神經外科", (), 6), ("復健科", (), 4), ("骨科", (), 2), ("神經科", ("神經內科",), 1), ("麻醉科", ("疼痛科",), 1)],
-        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP"],
+        9,
+        [("神經外科", (), 7), ("復健科", (), 4), ("骨科", (), 3), ("神經科", ("神經內科",), 2), ("麻醉科", ("疼痛科",), 2)],
+        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL"],
     ),
     (
         "D7",
         "性病",
         40,
-        4,
-        [("皮膚科", (), 3), ("內科", ("感染科",), 2), ("泌尿科", (), 2), ("家醫科", (), 1), ("婦產科", (), 1)],
-        ["NCKUH_TN", "NTUH_YL", "AFGH_KH", "MMH_TP"],
+        5,
+        [("皮膚科", (), 3), ("泌尿科", (), 3), ("內科", ("感染科",), 2), ("家醫科", (), 1), ("婦產科", (), 1)],
+        ["NCKUH_TN", "NTUH_YL", "AFGH_KH", "MMH_TP", "TZUCHI_HL"],
     ),
-    ("D8", "感冒", 40, 8, [("內科", (), 5), ("耳鼻喉科", (), 3), ("家醫科", (), 2)], ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP"]),
-    ("D9", "氣喘", 40, 8, [("內科", ("胸腔內科",), 6), ("中醫一般科", (), 1)], ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC"]),
+    (
+        "D8",
+        "感冒",
+        40,
+        9,
+        [("內科", (), 5), ("耳鼻喉科", (), 3), ("家醫科", (), 2), ("中醫一般科", (), 1)],
+        ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL"],
+    ),
+    (
+        "D9",
+        "氣喘",
+        40,
+        9,
+        [("內科", ("胸腔內科",), 6), ("中醫一般科", (), 2)],
+        ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "TZUCHI_HL"],
+    ),
     ("D10", "高血脂", 40, 3, [("內科", ("新陳代謝及內分泌科", "心臟內科", "腎臟內科"), 3), ("家醫科", (), 1)], ["NCKUH_TN", "NTUH_YL", "CMUH_HC"]),
-    ("D11", "酒癮", 40, 7, [("精神科", (), 7)], ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY", "CMUH_HC"]),
+    (
+        "D11",
+        "酒癮",
+        40,
+        8,
+        [("精神科", (), 8)],
+        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY", "CMUH_HC", "TZUCHI_HL"],
+    ),
     ("D12", "身心障礙者牙科照護", 40, 1, [("牙科", ("特殊需求者牙科",), 1)], ["NTUH_YL"]),
-    ("D16", "腹瀉", 40, 6, [("內科", ("胃腸肝膽科",), 5), ("家醫科", (), 1), ("外科", ("大腸直腸外科",), 1)], ["TPVGH_YL", "NCKUH_TN", "CTH_XD", "AFGH_TY", "CMUH_HC", "MMH_TP"]),
+    (
+        "D16",
+        "腹瀉",
+        40,
+        7,
+        [("內科", ("胃腸肝膽科",), 6), ("外科", ("大腸直腸外科",), 2), ("中醫一般科", (), 1), ("家醫科", (), 1)],
+        ["TPVGH_YL", "NCKUH_TN", "CTH_XD", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL"],
+    ),
 ]
 
 
@@ -635,9 +663,9 @@ async def test_T28_acceptance_suggestion_cases(
 
 
 @pytest.mark.asyncio
-async def test_T28_acceptance_D14_bedwetting_adult_falls_back(table):
+async def test_T28_acceptance_D14_bedwetting_adult_gets_urology(table):
+    """尿床原本只有兒科收錄、成人走保底；TZUCHI_HL 的泌尿科也列了尿床，成人改拿泌尿科。"""
     result = await _suggest(table, "尿床", 40)
-    assert result.kind == RESULT_FALLBACK
-    assert result.fallback_reason == ONLY_PEDIATRIC_REASON
-    assert [c.canonical for c in result.candidates] == EXPECTED_FALLBACK
-    assert _cited_codes(_card(result)) == []
+    assert result.kind == RESULT_SUGGESTION
+    assert [c.canonical for c in result.candidates] == ["泌尿科"]
+    assert _cited_codes(_card(result)) == ["TZUCHI_HL"]

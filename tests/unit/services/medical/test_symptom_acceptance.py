@@ -109,7 +109,7 @@ async def _suggest(table, term, age, text="要看哪一科"):
 
 _REFERENCES = tuple(
     SourceReference(code=code, name=f"{code} 醫院", url=f"https://example.com/{code}")
-    for code in ("V", "N", "Y", "H", "A", "B", "C", "D", "E")
+    for code in ("V", "N", "Y", "H", "C", "K", "A", "B", "D", "E")
 )
 
 
@@ -372,7 +372,7 @@ async def test_T14_fallback_departments(table):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("term", ["嘔吐", "慢性咳嗽"])
+@pytest.mark.parametrize("term", ["尿床", "生長發育遲緩"])
 async def test_T15_adult_gets_fallback_when_only_pediatrics_lists_it(table, term):
     result = await _suggest(table, term, 40)
     assert result.kind == RESULT_FALLBACK
@@ -383,7 +383,7 @@ async def test_T15_adult_gets_fallback_when_only_pediatrics_lists_it(table, term
 
 @pytest.mark.asyncio
 async def test_T16_child_asking_about_vomiting_gets_pediatrics_only(table):
-    result = await _suggest(table, "嘔吐", 8)
+    result = await _suggest(table, "生長發育遲緩", 8)
     assert result.kind == RESULT_SUGGESTION
     assert [c.canonical for c in result.candidates] == ["兒科"]
 
@@ -582,32 +582,31 @@ def test_T27_largest_card_passes_line_validation(font_size):
 # 預期值由原始 JSON 直接推導（撤回補列與 rank 後依來源家數、院所數排序），
 # 不經過服務程式。
 _SUGGESTION_CASES = [
-    ("D1", "咳嗽", 40, 3, [("內科", ("胸腔內科",), 2)], ["N", "Y"]),
-    ("D2", "咳嗽", 8, 3, [("內科", ("胸腔內科",), 2), ("兒科", (), 1)], ["V", "N", "Y"]),
-    ("D4", "嘔吐", 8, 1, [("兒科", (), 1)], ["V"]),
+    ("D1", "咳嗽", 40, 4, [("內科", ("胸腔內科",), 3)], ["N", "Y", "C"]),
+    ("D2", "咳嗽", 8, 4, [("內科", ("胸腔內科",), 3), ("兒科", (), 1)], ["V", "N", "Y", "C"]),
+    ("D4", "嘔吐", 8, 2, [("內科", ("胃腸肝膽科",), 1), ("兒科", (), 1)], ["V", "C"]),
     (
         "D6",
         "坐骨神經痛",
         40,
-        4,
-        [("復健科", (), 2), ("神經外科", (), 2), ("骨科", (), 1)],
-        ["V", "N", "Y", "H"],
+        5,
+        [("復健科", (), 3), ("神經外科", (), 3), ("骨科", (), 1)],
+        ["V", "N", "Y", "H", "K"],
     ),
     (
         "D7",
         "性病",
         40,
-        2,
-        [("內科", ("感染科",), 2), ("皮膚科", (), 1), ("泌尿科", (), 1)],
-        ["N", "Y"],
+        3,
+        [("內科", ("感染科",), 2), ("皮膚科", (), 2), ("泌尿科", (), 1)],
+        ["N", "Y", "K"],
     ),
-    ("D8", "感冒", 40, 3, [("內科", (), 3), ("耳鼻喉科", (), 1)], ["N", "Y", "H"]),
-    ("D9", "氣喘", 40, 4, [("內科", ("胸腔內科",), 3)], ["N", "Y", "H"]),
+    ("D8", "感冒", 40, 5, [("內科", (), 5), ("耳鼻喉科", (), 1)], ["N", "Y", "H", "C", "K"]),
+    ("D9", "氣喘", 40, 6, [("內科", ("胸腔內科",), 5)], ["N", "Y", "H", "C", "K"]),
     ("D10", "高血脂", 40, 2, [("內科", ("新陳代謝內分泌科", "心臟內科"), 2)], ["N", "Y"]),
-    ("D11", "酒癮", 40, 4, [("精神科", (), 4)], ["V", "N", "Y", "H"]),
+    ("D11", "酒癮", 40, 5, [("精神科", (), 5)], ["V", "N", "Y", "H", "K"]),
     ("D12", "身心障礙者牙科照護", 40, 1, [("牙科", ("特殊需求者牙科",), 1)], ["Y"]),
-    ("D13", "頭痛", 40, 4, [("神經科", (), 4), ("內科", ("一般內科",), 1), ("家醫科", (), 1)], ["V", "N", "Y", "H"]),
-    ("D16", "腹瀉", 40, 2, [("內科", ("胃腸肝膽科",), 2)], ["V", "N"]),
+    ("D16", "腹瀉", 40, 3, [("內科", ("胃腸肝膽科",), 3)], ["V", "N", "C"]),
 ]
 
 

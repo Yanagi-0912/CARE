@@ -46,6 +46,12 @@ class MedicationLister(Protocol):
     async def list_active_by_user(self, user_id: str, date_str: str) -> list: ...
 
 
+class Notifier(Protocol):
+    async def notify_ready(self, record: ClinicVisitRecord) -> None: ...
+
+    async def notify_failed(self, record: ClinicVisitRecord) -> None: ...
+
+
 class ClinicTranscriptService:
     def __init__(
         self,
@@ -53,11 +59,14 @@ class ClinicTranscriptService:
         summarizer: ClinicVisitSummarizer,
         medication_repository: Optional[object] = None,
         repository: type[ClinicTranscriptRepository] = ClinicTranscriptRepository,
+        notifier: Optional[Notifier] = None,
     ) -> None:
         self._transcriber = transcriber
         self._summarizer = summarizer
         self._medications = medication_repository
         self._repository = repository
+        # 沒注入時不推播（測試與沒有 LINE 的環境）。見 notifier.py 的收件人規則。
+        self._notifier = notifier
 
     async def start(
         self,
@@ -104,16 +113,16 @@ class ClinicTranscriptService:
                 transcript = await self._transcriber.transcribe(audio_path)
             except ClinicTranscribeError as exc:
                 logger.warning("stage=clinic_process 轉錄失敗 record=%s：%s", record_id, exc)
-                await self._repository.mark_failed(record_id, FAILURE_TRANSCRIBE)
+                await self._fail(record, FAILURE_TRANSCRIBE)
                 return
             except Exception as exc:  # noqa: BLE001 - 背景工作，例外不得逸散
                 logger.exception("stage=clinic_process 轉錄爆炸 record=%s", record_id)
                 del exc
-                await self._repository.mark_failed(record_id, FAILURE_TRANSCRIBE)
+                await self._fail(record, FAILURE_TRANSCRIBE)
                 return
 
             if not transcript.segments:
-                await self._repository.mark_failed(record_id, FAILURE_EMPTY)
+                await self._fail(record, FAILURE_EMPTY)
                 return
 
             text = transcript.text
@@ -159,6 +168,8 @@ class ClinicTranscriptService:
                 len(transcript.segments),
                 len(found),
             )
+            if self._notifier is not None:
+                await self._notifier.notify_ready(record)
         finally:
             # 「轉錄失敗」和「音檔留在磁碟上」是兩個問題，後者比較嚴重：
             # 沒有任何東西會在 pod 重啟前清掉它。
@@ -166,6 +177,12 @@ class ClinicTranscriptService:
                 audio_path.unlink(missing_ok=True)
             except OSError as exc:
                 logger.error("刪不掉暫存音檔 %s：%s", audio_path, exc)
+
+    async def _fail(self, record: ClinicVisitRecord, reason: str) -> None:
+        assert record.id is not None
+        await self._repository.mark_failed(record.id, reason)
+        if self._notifier is not None:
+            await self._notifier.notify_failed(record)
 
     async def list_records(self, user_id: str, limit: int = 20) -> list[ClinicVisitRecord]:
         return await self._repository.list_for_user(user_id, limit)

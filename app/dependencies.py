@@ -1306,6 +1306,7 @@ def get_clinic_transcript_service() -> "ClinicTranscriptService":
     global _clinic_transcript_service
     if _clinic_transcript_service is None:
         from app.repositories.medication_repository import MedicationRepository
+        from app.services.clinic_transcript.notifier import ClinicVisitNotifier
         from app.services.clinic_transcript.service import ClinicTranscriptService
         from app.services.clinic_transcript.summarizer import ClinicVisitSummarizer
         from app.services.speech.clinic_transcribe import ClinicTranscriber
@@ -1314,5 +1315,11 @@ def get_clinic_transcript_service() -> "ClinicTranscriptService":
             transcriber=ClinicTranscriber(),
             summarizer=ClinicVisitSummarizer(_gemini_service),
             medication_repository=MedicationRepository,
+            notifier=ClinicVisitNotifier(
+                replier=_line_replier,
+                authorization_service=_family_authorization_service,
+                user_profile_service=_user_profile_service,
+                liff_url=settings.LIFF_URL,
+            ),
         )
     return _clinic_transcript_service

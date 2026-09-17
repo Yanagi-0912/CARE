@@ -196,3 +196,42 @@ async def test_建立時是處理中狀態(tmp_path):
     )
     assert record.status == "processing"
     assert record.consent == "self_recap"
+
+
+class _FakeNotifier:
+    def __init__(self):
+        self.ready, self.failed = [], []
+
+    async def notify_ready(self, record):
+        self.ready.append(record.id)
+
+    async def notify_failed(self, record):
+        self.failed.append(record.id)
+
+
+@pytest.mark.asyncio
+async def test_整理好了會通知(tmp_path):
+    notifier = _FakeNotifier()
+    service = ClinicTranscriptService(
+        _FakeTranscriber(_transcript()), _FakeSummarizer(), repository=_FakeRepo(), notifier=notifier
+    )
+    await service.process(_record(), _audio(tmp_path))
+    assert notifier.ready == ["rec1"] and notifier.failed == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "transcriber",
+    [
+        _FakeTranscriber(exc=ClinicTranscribeError("逾時")),
+        _FakeTranscriber(exc=RuntimeError("爆炸")),
+        _FakeTranscriber(ClinicTranscript(segments=(), speaker_count=0)),
+    ],
+)
+async def test_每一種失敗都會通知(tmp_path, transcriber):
+    notifier = _FakeNotifier()
+    service = ClinicTranscriptService(
+        transcriber, _FakeSummarizer(), repository=_FakeRepo(), notifier=notifier
+    )
+    await service.process(_record(), _audio(tmp_path))
+    assert notifier.failed == ["rec1"] and notifier.ready == []

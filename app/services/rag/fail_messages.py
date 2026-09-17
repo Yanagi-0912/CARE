@@ -51,6 +51,15 @@ def parse_rag_fail_code(text: str) -> str | None:
     return rest[:end]
 
 
+def rag_fail_user_text(text: str) -> str:
+    """去掉 `[RAG_ERR:CODE]` 標記，只留給使用者看的那句。不是失敗訊息時原樣回傳。"""
+    raw = (text or "").strip()
+    if not raw.startswith(RAG_ERR_PREFIX):
+        return raw
+    end = raw.find("]")
+    return raw[end + 1 :].strip() if end > 0 else raw
+
+
 # 相容舊匯入名稱（語意對應最接近的代碼）
 NO_HITS_MESSAGE = rag_fail(RagFailCode.KB_EMPTY)
 NO_ANSWER_MESSAGE = rag_fail(RagFailCode.MODEL_REFUSE)

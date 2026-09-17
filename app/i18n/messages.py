@@ -387,6 +387,29 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "การค้นหาครั้งนี้ใช้เวลานานเกินไปและยังไม่เสร็จสิ้น กรุณาลองใหม่ภายหลัง",
         "ja": "今回の検索に時間がかかりすぎたため、完了できませんでした。しばらくしてから再度お試しください。",
     },
+    "rag.fail.scam_notice": {
+        "zh-TW": "如果這是要你匯款、轉帳或點連結的醫療訊息，請先不要照做，可以撥打 165 反詐騙諮詢專線查證。",
+        "en": (
+            "If this health-related message is asking you to send money or click a link, "
+            "please don't. You can call the 165 anti-fraud hotline to check."
+        ),
+        "id": (
+            "Jika pesan kesehatan ini meminta Anda mentransfer uang atau membuka tautan, "
+            "jangan lakukan dulu. Anda bisa menelepon hotline anti-penipuan 165 untuk memastikan."
+        ),
+        "vi": (
+            "Nếu tin nhắn y tế này yêu cầu bạn chuyển tiền hoặc bấm vào đường link, "
+            "xin đừng làm theo. Bạn có thể gọi đường dây chống lừa đảo 165 để kiểm tra."
+        ),
+        "th": (
+            "หากข้อความด้านสุขภาพนี้ขอให้คุณโอนเงินหรือกดลิงก์ อย่าเพิ่งทำตาม "
+            "สามารถโทรสายด่วนต่อต้านการฉ้อโกง 165 เพื่อตรวจสอบได้"
+        ),
+        "ja": (
+            "この医療に関するメッセージが送金やリンクのクリックを求めている場合は、従わないでください。"
+            "165 詐欺相談専用ダイヤルで確認できます。"
+        ),
+    },
     "rag.fail.MODEL_REFUSE": {
         "zh-TW": "找到的資料不足以安全回答此問題。請換個方式描述，或必要時就醫。",
         "en": (

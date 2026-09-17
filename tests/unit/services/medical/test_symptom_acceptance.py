@@ -109,7 +109,7 @@ async def _suggest(table, term, age, text="要看哪一科"):
 
 _REFERENCES = tuple(
     SourceReference(code=code, name=f"{code} 醫院", url=f"https://example.com/{code}")
-    for code in ("V", "N", "Y", "H", "C", "K", "A", "B", "D", "E")
+    for code in ("TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "A", "B", "D", "E")
 )
 
 
@@ -164,8 +164,8 @@ def _valid_table() -> dict:
     return {
         "status": "verified",
         "sources": {
-            "V": {"name": "甲醫院", "url": "https://example.com/V"},
-            "N": {"name": "乙醫院", "url": "https://example.com/N"},
+            "TPVGH_YL": {"name": "甲醫院", "url": "https://example.com/TPVGH_YL"},
+            "NCKUH_TN": {"name": "乙醫院", "url": "https://example.com/NCKUH_TN"},
         },
         "departments": [
             {
@@ -176,7 +176,7 @@ def _valid_table() -> dict:
                         "term": "咳嗽",
                         "kind": "symptom",
                         "subgroup": "胸腔內科",
-                        "sources": ["V", "N"],
+                        "sources": ["TPVGH_YL", "NCKUH_TN"],
                         "note": "維護紀錄",
                         "downgraded_from": "胸腔科",
                     }
@@ -186,7 +186,7 @@ def _valid_table() -> dict:
                 "canonical": "兒科",
                 "db_facility_count": 50,
                 "symptoms": [
-                    {"term": "咳嗽", "kind": "symptom", "subgroup": None, "sources": ["V"]}
+                    {"term": "咳嗽", "kind": "symptom", "subgroup": None, "sources": ["TPVGH_YL"]}
                 ],
             },
         ],
@@ -217,7 +217,7 @@ def test_T01_empty_sources_rejected(tmp_path):
 
 def test_T02_unregistered_source_code_rejected(tmp_path):
     data = _valid_table()
-    _first_symptom(data)["sources"] = ["V", "X"]
+    _first_symptom(data)["sources"] = ["TPVGH_YL", "X"]
     with pytest.raises(SymptomTableError, match="未登記的來源代碼"):
         _load(tmp_path, data)
 
@@ -235,7 +235,7 @@ def test_T03_field_outside_whitelist_rejected(tmp_path, field, value):
 def test_T04_duplicate_term_within_a_department_rejected(tmp_path):
     data = _valid_table()
     data["departments"][0]["symptoms"].append(
-        {"term": "咳嗽", "kind": "symptom", "subgroup": None, "sources": ["N"]}
+        {"term": "咳嗽", "kind": "symptom", "subgroup": None, "sources": ["NCKUH_TN"]}
     )
     with pytest.raises(SymptomTableError, match="重複的症狀與科別"):
         _load(tmp_path, data)
@@ -249,7 +249,7 @@ def test_T04_duplicate_term_across_blocks_of_the_same_department_rejected(tmp_pa
             "canonical": "內科",
             "db_facility_count": 100,
             "symptoms": [
-                {"term": "咳嗽", "kind": "symptom", "subgroup": None, "sources": ["N"]}
+                {"term": "咳嗽", "kind": "symptom", "subgroup": None, "sources": ["NCKUH_TN"]}
             ],
         }
     )
@@ -259,7 +259,7 @@ def test_T04_duplicate_term_across_blocks_of_the_same_department_rejected(tmp_pa
 
 def test_T05_duplicate_source_code_rejected(tmp_path):
     data = _valid_table()
-    _first_symptom(data)["sources"] = ["V", "V"]
+    _first_symptom(data)["sources"] = ["TPVGH_YL", "TPVGH_YL"]
     with pytest.raises(SymptomTableError, match="來源代碼重複"):
         _load(tmp_path, data)
 
@@ -425,7 +425,7 @@ def _table_with_candidates(tmp_path, departments):
     """每一科各列同一個症狀、同一家來源；院所數遞減，順序因此固定。"""
     data = {
         "status": "verified",
-        "sources": {"V": {"name": "甲醫院", "url": "https://example.com/V"}},
+        "sources": {"TPVGH_YL": {"name": "甲醫院", "url": "https://example.com/TPVGH_YL"}},
         "departments": [
             {
                 "canonical": name,
@@ -435,7 +435,7 @@ def _table_with_candidates(tmp_path, departments):
                         "term": "多科症狀",
                         "kind": "symptom",
                         "subgroup": None,
-                        "sources": ["V"],
+                        "sources": ["TPVGH_YL"],
                     }
                 ],
             }
@@ -488,25 +488,25 @@ def _only_reason(card) -> str:
 
 
 def test_T20_annotation_when_a_single_hospital_lists_the_symptom():
-    reason = _only_reason(_card(_single(("Y",), ("Y",))))
+    reason = _only_reason(_card(_single(("NTUH_YL",), ("NTUH_YL",))))
     assert reason.endswith("（僅 1 家醫院的對照表收錄此症狀，建議先去電確認）")
 
 
 def test_T21_annotation_when_one_of_several_hospitals_lists_this_department():
-    reason = _only_reason(_card(_single(("V",), ("V", "N", "Y"))))
+    reason = _only_reason(_card(_single(("TPVGH_YL",), ("TPVGH_YL", "NCKUH_TN", "NTUH_YL"))))
     assert reason.endswith(
         "（收錄此症狀的 3 家醫院中，有 1 家列在此科，建議先去電確認）"
     )
 
 
 def test_T22_annotation_when_every_hospital_agrees_claims_no_unanimity():
-    reason = _only_reason(_card(_single(("V", "N", "Y"), ("V", "N", "Y"))))
+    reason = _only_reason(_card(_single(("TPVGH_YL", "NCKUH_TN", "NTUH_YL"), ("TPVGH_YL", "NCKUH_TN", "NTUH_YL"))))
     assert reason.endswith("（收錄此症狀的 3 家醫院中，有 3 家列在此科）")
     assert "都" not in reason
 
 
 def test_T23_annotation_when_some_hospitals_list_this_department():
-    reason = _only_reason(_card(_single(("N", "Y"), ("V", "N", "Y"))))
+    reason = _only_reason(_card(_single(("NCKUH_TN", "NTUH_YL"), ("TPVGH_YL", "NCKUH_TN", "NTUH_YL"))))
     assert reason.endswith("（收錄此症狀的 3 家醫院中，有 2 家列在此科）")
 
 
@@ -582,16 +582,16 @@ def test_T27_largest_card_passes_line_validation(font_size):
 # 預期值由原始 JSON 直接推導（撤回補列與 rank 後依來源家數、院所數排序），
 # 不經過服務程式。
 _SUGGESTION_CASES = [
-    ("D1", "咳嗽", 40, 4, [("內科", ("胸腔內科",), 3)], ["N", "Y", "C"]),
-    ("D2", "咳嗽", 8, 4, [("內科", ("胸腔內科",), 3), ("兒科", (), 1)], ["V", "N", "Y", "C"]),
-    ("D4", "嘔吐", 8, 2, [("內科", ("胃腸肝膽科",), 1), ("兒科", (), 1)], ["V", "C"]),
+    ("D1", "咳嗽", 40, 4, [("內科", ("胸腔內科",), 3)], ["NCKUH_TN", "NTUH_YL", "CTH_XD"]),
+    ("D2", "咳嗽", 8, 4, [("內科", ("胸腔內科",), 3), ("兒科", (), 1)], ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "CTH_XD"]),
+    ("D4", "嘔吐", 8, 2, [("內科", ("胃腸肝膽科",), 1), ("兒科", (), 1)], ["TPVGH_YL", "CTH_XD"]),
     (
         "D6",
         "坐骨神經痛",
         40,
         5,
         [("復健科", (), 3), ("神經外科", (), 3), ("骨科", (), 1)],
-        ["V", "N", "Y", "H", "K"],
+        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH"],
     ),
     (
         "D7",
@@ -599,14 +599,14 @@ _SUGGESTION_CASES = [
         40,
         3,
         [("內科", ("感染科",), 2), ("皮膚科", (), 2), ("泌尿科", (), 1)],
-        ["N", "Y", "K"],
+        ["NCKUH_TN", "NTUH_YL", "AFGH_KH"],
     ),
-    ("D8", "感冒", 40, 5, [("內科", (), 5), ("耳鼻喉科", (), 1)], ["N", "Y", "H", "C", "K"]),
-    ("D9", "氣喘", 40, 6, [("內科", ("胸腔內科",), 5)], ["N", "Y", "H", "C", "K"]),
-    ("D10", "高血脂", 40, 2, [("內科", ("新陳代謝內分泌科", "心臟內科"), 2)], ["N", "Y"]),
-    ("D11", "酒癮", 40, 5, [("精神科", (), 5)], ["V", "N", "Y", "H", "K"]),
-    ("D12", "身心障礙者牙科照護", 40, 1, [("牙科", ("特殊需求者牙科",), 1)], ["Y"]),
-    ("D16", "腹瀉", 40, 3, [("內科", ("胃腸肝膽科",), 3)], ["V", "N", "C"]),
+    ("D8", "感冒", 40, 5, [("內科", (), 5), ("耳鼻喉科", (), 1)], ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH"]),
+    ("D9", "氣喘", 40, 6, [("內科", ("胸腔內科",), 5)], ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH"]),
+    ("D10", "高血脂", 40, 2, [("內科", ("新陳代謝內分泌科", "心臟內科"), 2)], ["NCKUH_TN", "NTUH_YL"]),
+    ("D11", "酒癮", 40, 5, [("精神科", (), 5)], ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH"]),
+    ("D12", "身心障礙者牙科照護", 40, 1, [("牙科", ("特殊需求者牙科",), 1)], ["NTUH_YL"]),
+    ("D16", "腹瀉", 40, 3, [("內科", ("胃腸肝膽科",), 3)], ["TPVGH_YL", "NCKUH_TN", "CTH_XD"]),
 ]
 
 

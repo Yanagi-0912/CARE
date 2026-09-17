@@ -393,7 +393,6 @@ def build_services(labels: Sequence[str]) -> dict[str, Any]:
             max_chunks_per_article=settings.RAG_RERANK_MAX_CHUNKS_PER_ARTICLE,
             grader=deps._rag_grader if spec.crag else None,
             rewriter=deps._rag_rewriter if spec.crag else None,
-            crag_rewrite_budget_seconds=settings.RAG_CRAG_REWRITE_BUDGET_SECONDS,
             speculative_generate=settings.RAG_SPECULATIVE_GENERATE,
             crag_enabled=spec.crag,
             web_search=web,

@@ -303,8 +303,7 @@ def test_T08_unverified_table_loads_with_a_warning(tmp_path, caplog):
     data = _valid_table()
     data["status"] = "unverified"
     with caplog.at_level(logging.WARNING):
-        loaded = _load(tmp_path, data)
-    assert loaded.verified is False
+        _load(tmp_path, data)
     assert "非 verified" in caplog.text
 
 
@@ -669,3 +668,71 @@ async def test_T28_acceptance_D14_bedwetting_adult_gets_urology(table):
     assert result.kind == RESULT_SUGGESTION
     assert [c.canonical for c in result.candidates] == ["泌尿科"]
     assert _cited_codes(_card(result)) == ["TZUCHI_HL"]
+
+
+# ---------------------------------------------------------------- 孩童的保底
+
+# 孩童的保底：兒科在前，其後為 T14 的三科。刻意寫字面值，理由同 EXPECTED_FALLBACK。
+EXPECTED_PEDIATRIC_FALLBACK = ["兒科", "家醫科", "內科", "不分科"]
+
+CHILD_NOTE = "因為是幫孩子詢問，另外列出兒科。"
+UNDER_AGE_NOTE = "因為你還未滿 15 歲，另外列出兒科。"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("age", "text", "reason"),
+    [
+        (8, "要看哪一科", "age"),
+        (14, "要看哪一科", "age"),
+        (None, "我兒子全身不舒服要看哪一科", "mentioned_child"),
+        (40, "我女兒全身不舒服要看哪一科", "mentioned_child"),
+    ],
+)
+async def test_T29_child_fallback_lists_pediatrics_first(table, age, text, reason):
+    result = await _suggest(table, None, age, text=text)
+    assert result.kind == RESULT_FALLBACK
+    assert [c.canonical for c in result.candidates] == EXPECTED_PEDIATRIC_FALLBACK
+    assert result.pediatric_reason == reason
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("age", [15, 40, None, -1, "12", True])
+async def test_T30_non_child_fallback_is_unchanged(table, age):
+    result = await _suggest(table, None, age)
+    assert result.kind == RESULT_FALLBACK
+    assert [c.canonical for c in result.candidates] == EXPECTED_FALLBACK
+    assert result.pediatric_reason is None
+
+
+@pytest.mark.asyncio
+async def test_T31_child_with_too_many_candidates_gets_pediatrics(tmp_path):
+    loaded = _table_with_candidates(tmp_path, [*_FIVE, "骨科"])
+    result = await _suggest(loaded, "多科症狀", 8)
+    assert result.kind == RESULT_FALLBACK
+    assert [c.canonical for c in result.candidates] == EXPECTED_PEDIATRIC_FALLBACK
+
+
+@pytest.mark.asyncio
+async def test_T32_child_asking_about_another_child_is_worded_for_that_child(table):
+    """12 歲使用者問妹妹：要看病的是被提到的孩子，不是使用者本人。"""
+    result = await _suggest(table, None, 12, text="我家妹妹全身不舒服要看哪一科")
+    assert result.pediatric_reason == "mentioned_child"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("age", "text", "expected_note"),
+    [
+        (None, "我兒子全身不舒服要看哪一科", CHILD_NOTE),
+        (8, "要看哪一科", UNDER_AGE_NOTE),
+        (40, "要看哪一科", None),
+    ],
+)
+async def test_T33_fallback_card_explains_why_pediatrics_is_listed(
+    table, age, text, expected_note
+):
+    texts = _texts(_card(await _suggest(table, None, age, text=text)))
+    for note in (CHILD_NOTE, UNDER_AGE_NOTE):
+        shown = any(note in text for text in texts)
+        assert shown is (note == expected_note), note

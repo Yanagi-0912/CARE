@@ -420,6 +420,14 @@ class Settings:
     PRESCRIPTION_SCAN_TIMEOUT_SECONDS: int = int(
         os.getenv("PRESCRIPTION_SCAN_TIMEOUT_SECONDS", "60")
     )
+    # 看診錄音的上傳上限 40 MB。上游真正的限制是時間不是位元組：開了語者分離之後
+    # 單檔上限 30 分鐘（ai.google.dev/gemini-api/docs/transcribe，也是
+    # clinic_transcribe.MAX_AUDIO_SECONDS）。瀏覽器 MediaRecorder 的預設位元率
+    # 各家不同，這個值是抓 30 分鐘在常見位元率下的寬鬆上界，用來擋住明顯的誤用
+    # （傳一部影片上來），不是精準的時間換算。真的錄過幾次之後應該改成擋時間長度。
+    CLINIC_RECORDING_MAX_BYTES: int = int(
+        os.getenv("CLINIC_RECORDING_MAX_BYTES", str(40 * 1024 * 1024))
+    )
     PRESCRIPTION_DRAFT_TTL_MINUTES: int = int(
         os.getenv("PRESCRIPTION_DRAFT_TTL_MINUTES", "60")
     )

@@ -78,18 +78,38 @@ def _department_not_listed_ids(result: NearbySearchResult) -> frozenset[str]:
     不能只看 DepartmentSearchResult.unspecified_ids：搜內科／家醫科時，主查詢本來就
     會包含「不分科／西醫一般科」，所以這些院所不是補充梯次，卻仍然沒有列出內科。
     呈現層要直接檢查 departments 文字，避免標題寫「附近的內科」但五張都不是內科。
+    一次查多科時，列出其中任一科就算有列出。
     """
-    match = getattr(result, "match", None)
-    if match is None:
+    canonicals = [match.canonical for match in getattr(result, "matches", ())]
+    if not canonicals:
         return frozenset()
 
-    canonical = match.canonical
     detected = {
         facility.id
         for facility in result.facilities
-        if not any(canonical in listed for listed in facility.departments or ())
+        if not any(
+            canonical in listed
+            for canonical in canonicals
+            for listed in facility.departments or ()
+        )
     }
     return frozenset(detected) | getattr(result, "unspecified_ids", frozenset())
+
+
+# 多個科別在標題與文案裡的連接方式，與保底卡列出科別的方式一致。
+_DEPARTMENT_SEPARATOR = "、"
+
+
+def _partial_unknown_note(result: NearbySearchResult) -> str | None:
+    """列舉的科別裡有幾科看不懂時的說明：照查看得懂的，但要講清楚哪幾科沒被搜尋。"""
+    unresolved = getattr(result, "unresolved_departments", ())
+    matches = getattr(result, "matches", ())
+    if not unresolved or not matches:
+        return None
+    return t("location.department.partial_unknown").format(
+        unresolved=_DEPARTMENT_SEPARATOR.join(unresolved),
+        searched=_DEPARTMENT_SEPARATOR.join(match.canonical for match in matches),
+    )
 
 
 def _all_unspecified(result: NearbySearchResult) -> bool:
@@ -148,17 +168,23 @@ def _build_range_subtitle(
         subtitle = f"{subtitle}\n{t('location.open_now.late_night_note')}"
 
     # 科別搜尋時，若使用者的說法與部定專科不同，必須誠實說明這層對應。
-    match = getattr(result, "match", None)
-    if match is not None and match.is_alias:
-        note = t("location.department.alias_note").format(
-            requested=match.requested, canonical=match.canonical
-        )
-        subtitle = f"{subtitle}\n{note}"
+    for match in getattr(result, "matches", ()):
+        if match.is_alias:
+            note = t("location.department.alias_note").format(
+                requested=match.requested, canonical=match.canonical
+            )
+            subtitle = f"{subtitle}\n{note}"
 
-    if _all_unspecified(result) and match is not None:
+    partial_note = _partial_unknown_note(result)
+    if partial_note is not None:
+        subtitle = f"{subtitle}\n{partial_note}"
+
+    if _all_unspecified(result):
         note = t("location.department.all_unspecified").format(
             count=count,
-            department=match.canonical,
+            department=_DEPARTMENT_SEPARATOR.join(
+                match.canonical for match in result.matches
+            ),
         )
         subtitle = f"{subtitle}\n{note}"
 
@@ -191,7 +217,7 @@ async def find_nearby_hospitals(
     口語中的「醫院」常常只是「醫療院所」的泛稱，若照字面套用類型過濾，會把 18,935 家
     診所全部排除在外，反而讓查詢結果更差。
     「牙醫」「中醫」屬於科別而非類型，遇到這兩個詞請改用
-    find_nearby_facilities_by_department 並傳入 department，不要塞進 facility_type。
+    find_nearby_facilities_by_department 並傳入 departments，不要塞進 facility_type。
     """
     return await _search_nearby_facilities(
         lat, lng, open_now=open_now, facility_type=facility_type
@@ -204,7 +230,7 @@ async def _search_nearby_facilities(
     """
     「不分科別的鄰近院所搜尋」的實作本體，與 @tool 裝飾分離。
 
-    抽出來是為了讓 find_nearby_facilities_by_department 在收到空白 department 時
+    抽出來是為了讓 find_nearby_facilities_by_department 在收到空白 departments 時
     可以直接退回這條路徑（見該工具內的說明），而不必重寫一次查無結果、藥局專屬
     文案與標題覆寫這些分支——複製一份必然會逐漸走樣。
     """
@@ -280,7 +306,8 @@ async def _search_nearby_facilities(
 async def find_nearby_facilities_by_department(
     lat: float,
     lng: float,
-    department: str,
+    departments: list[str] | None = None,
+    department: str | None = None,
     open_now: bool = False,
     facility_type: str | None = None,
 ) -> str:
@@ -288,13 +315,16 @@ async def find_nearby_facilities_by_department(
     當使用者想找「特定科別」的醫療院所（例如腸胃科、牙科、耳鼻喉科、中醫、兒科）
     且已取得其 GPS 座標時，呼叫此工具。
     使用者分享位置後，該訊息會以「這是我的目前位置：lat=..., lng=...」的文字進入對話，
-    此時必須從該文字取出 lat/lng，並把使用者稍早提到的科別一併傳入 department。
-    department 請填使用者的原始說法（例如「腸胃科」），不需要自行換算成部定專科。
+    此時必須從該文字取出 lat/lng，並把使用者稍早提到的科別一併傳入 departments。
+    departments 一個元素放一個科別，填使用者的原始說法（例如 ["腸胃科"]），不需要
+    自行換算成部定專科。使用者一次提到多科時每科各放一個元素（例如「家醫科、內科、
+    不分科」→ ["家醫科", "內科", "不分科"]），結果是有其中任一科的院所；只呼叫一次，
+    不要拆成多次呼叫。department 是舊呼叫端相容參數，新呼叫請用 departments。
     open_now 的設定時機比照 find_nearby_hospitals：使用者要現在就去時才設為 true。
     若使用者只是要找一般醫院、沒有指定科別，請改用 find_nearby_hospitals。
 
-    facility_type 為選填的院所類型過濾，可與 department 同時使用（例如使用者說
-    「大醫院的腸胃科」→ department="腸胃科", facility_type="大醫院"）。傳入時機
+    facility_type 為選填的院所類型過濾，可與 departments 同時使用（例如使用者說
+    「大醫院的腸胃科」→ departments=["腸胃科"], facility_type="大醫院"）。傳入時機
     比照 find_nearby_hospitals：只有使用者明確講「大醫院」「大型醫院」「要住院」
     → 傳「大醫院」；講「診所」「小診所」→ 傳「診所」；講「藥局」「藥房」→ 傳「藥局」。
     使用者泛稱「醫院」時不要傳，理由同 find_nearby_hospitals——會誤刪絕大多數診所。
@@ -302,14 +332,18 @@ async def find_nearby_facilities_by_department(
     if _medical_service is None:
         return "醫療服務未初始化，請稍後再試。"
 
-    # department 雖是必填，但 LLM function calling 對字串參數送空值是實測會發生的
-    # 行為。此時回「我不確定「」對應到哪一個診療科別」等於讓整個找院所的流程斷在
+    requested = [text for text in (departments or []) if (text or "").strip()]
+    if not requested and department is not None:
+        requested = [department] if (department or "").strip() else []
+
+    # departments 雖是必填，但 LLM function calling 對必填參數送空值（[]、[""]）是
+    # 實測會發生的行為。舊參數 department 送空字串時也視為同一類降級。
+    # 此時回「我不確定「」對應到哪一個診療科別」等於讓整個找院所的流程斷在
     # 一個模型端的失誤上；改為退回不分科別的一般搜尋，使用者至少拿得到附近院所，
-    # 而且 facility_type 若有帶仍然沿用。取捨：這會讓「模型漏填科別」變得比較不
-    # 顯眼，但比起把錯誤丟回給使用者，給出可用結果才是正確的降級方向。
-    if not (department or "").strip():
+    # 而且 facility_type 若有帶仍然沿用。
+    if not requested:
         logger.info(
-            "[Tool:find_nearby_facilities_by_department] department 為空，"
+            "[Tool:find_nearby_facilities_by_department] departments 為空，"
             "退回不分科別的一般搜尋，facility_type=%r",
             facility_type,
         )
@@ -319,22 +353,26 @@ async def find_nearby_facilities_by_department(
 
     logger.info(
         "[Tool:find_nearby_facilities_by_department] 開始查詢，"
-        "lat=%s, lng=%s, department=%r, facility_type=%r",
+        "lat=%s, lng=%s, departments=%r, facility_type=%r",
         lat,
         lng,
-        department,
+        requested,
         facility_type,
     )
     result = await _medical_service.find_nearby_facilities_by_department(
-        lat, lng, department, open_now=open_now, facility_type=facility_type
+        lat, lng, requested, open_now=open_now, facility_type=facility_type
     )
 
-    if result.match is None:
+    if not result.matches:
         logger.info(
-            "[Tool:find_nearby_facilities_by_department] 無法解析科別，department=%r",
-            department,
+            "[Tool:find_nearby_facilities_by_department] 無法解析科別，departments=%r",
+            requested,
         )
-        return t("location.department.unknown").format(department=department)
+        return t("location.department.unknown").format(
+            department=_DEPARTMENT_SEPARATOR.join(result.unresolved_departments or requested)
+        )
+
+    canonicals = [match.canonical for match in result.matches]
 
     # 已知限制（Task 2 揭露）：科別與類型同時解析失敗時，service 層只會回報科別失敗
     # （科別的 early return 先發生），不會走到這裡。此處只需處理「科別解析成功、
@@ -357,19 +395,23 @@ async def find_nearby_facilities_by_department(
             logger.info(
                 "[Tool:find_nearby_facilities_by_department] 查無符合科別的藥局，"
                 "canonical=%r",
-                result.match.canonical,
+                canonicals,
             )
             return t("location.type.pharmacy_none").format(
                 radius_km=_km(NEARBY_SEARCH_STEPS[-1])
             )
         logger.info(
             "[Tool:find_nearby_facilities_by_department] 查無院所，canonical=%r",
-            result.match.canonical,
+            canonicals,
         )
-        return t("location.department.none").format(
-            department=result.match.requested,
+        message = t("location.department.none").format(
+            department=_DEPARTMENT_SEPARATOR.join(
+                match.requested for match in result.matches
+            ),
             radius_km=_km(NEARBY_SEARCH_STEPS[-1]),
         )
+        partial_note = _partial_unknown_note(result)
+        return f"{message}\n{partial_note}" if partial_note else message
 
     logger.info(
         "[Tool:find_nearby_facilities_by_department] 完成，回傳=%s 筆，"
@@ -381,7 +423,7 @@ async def find_nearby_facilities_by_department(
     # 科別與類型同時存在時（例如「大醫院的腸胃科」），把類型併進科別標題裡
     # （「附近的腸胃科（醫院）」），而不是只挑一邊呈現——否則使用者會看不出
     # 系統其實同時套用了兩個條件，以為篩選範圍比實際寬。
-    department_label = result.match.canonical
+    department_label = _DEPARTMENT_SEPARATOR.join(canonicals)
     if result.facility_type_match is not None:
         department_label = f"{department_label}（{result.facility_type_match.category}）"
     title_key = (
@@ -390,7 +432,7 @@ async def find_nearby_facilities_by_department(
         else "location.department.title"
     )
     title_department = (
-        result.match.canonical
+        _DEPARTMENT_SEPARATOR.join(canonicals)
         if title_key == "location.department.title_unspecified"
         else department_label
     )

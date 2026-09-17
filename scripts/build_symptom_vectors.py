@@ -8,7 +8,7 @@
     python scripts/build_symptom_vectors.py
 
 沿用 scripts/ingest_url.py 的模式：取向量是離線批次，不在啟動時做。
-391 條要打一次 API，約數十秒；放在啟動會讓每次重啟都付這個代價，
+全表數百條都要打一次 API，約數十秒；放在啟動會讓每次重啟都付這個代價，
 也讓沒有網路的環境起不來。
 """
 

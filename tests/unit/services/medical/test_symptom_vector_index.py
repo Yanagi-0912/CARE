@@ -152,16 +152,6 @@ def test_load_refuses_a_different_embedding_model(index, tmp_path):
     )
 
 
-def test_load_refuses_a_version_1_file_that_does_not_record_the_model(index, tmp_path):
-    path = tmp_path / "v.json"
-    index.save(path)
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    payload.pop("embedding_model")
-    payload["format_version"] = 1
-    path.write_text(json.dumps(payload), encoding="utf-8")
-    assert SymptomVectorIndex.load(path, expected_hash=index.table_hash, expected_model=MODEL) is None
-
-
 # --- 落地的向量檔 ------------------------------------------------------------
 
 

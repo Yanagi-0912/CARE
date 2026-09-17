@@ -375,10 +375,11 @@ def _urgency_condition(state: State) -> str:
 
 
 class Agent:
-    def __init__(self, llm, guardrail_service, urgency_classifier=None) -> None:
+    def __init__(self, llm, guardrail_service, urgency_classifier=None, rag_router=None) -> None:
         self._llm = llm
         self._guardrail_service = guardrail_service
         self._urgency_classifier = urgency_classifier
+        self._rag_router = rag_router
         self._graph = self._build_graph()
 
     def _build_graph(self):
@@ -389,6 +390,7 @@ class Agent:
             llm=self._llm,
             guardrail_service=self._guardrail_service,
             urgency_classifier=self._urgency_classifier,
+            rag_router=self._rag_router,
         )
 
         all_tools = get_all_tools(include_rag_tool=True)

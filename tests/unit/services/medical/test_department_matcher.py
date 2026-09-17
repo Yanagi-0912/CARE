@@ -4,7 +4,7 @@ from app.services.medical.department_matcher import (
     CANONICAL_DEPARTMENTS,
     DEPARTMENT_ALIASES,
     build_department_query,
-    extract_department_intent,
+    extract_department_intents,
     resolve_department,
 )
 
@@ -86,19 +86,71 @@ def test_resolve_department_returns_none_for_unknown(text):
         ("今天天氣如何", None),
     ],
 )
-def test_extract_department_intent(sentence, expected_canonical):
-    match = extract_department_intent(sentence)
+def test_extract_department_intents(sentence, expected_canonical):
+    matches = extract_department_intents(sentence)
     if expected_canonical is None:
-        assert match is None
+        assert matches == ()
     else:
-        assert match is not None
-        assert match.canonical == expected_canonical
+        assert [m.canonical for m in matches] == [expected_canonical]
 
 
 def test_extract_prefers_longest_candidate():
     """「腸胃科」不可被較短的別名（如「胃」開頭的詞）搶先命中。"""
-    match = extract_department_intent("我最近腸胃科想掛號，附近有嗎")
-    assert match.canonical == "內科"
+    matches = extract_department_intents("我最近腸胃科想掛號，附近有嗎")
+    assert [m.canonical for m in matches] == ["內科"]
+
+
+# --------------------------------------------------------------------------
+# 一句話列舉多個科別
+# --------------------------------------------------------------------------
+
+
+def test_fallback_button_sentence_yields_all_three_departments():
+    """
+    保底卡按鈕送出的句子。舊版只回一科，而且「家醫科」「不分科」一樣長，
+    取哪一個看 frozenset 的雜湊順序——抽到不分科時家醫科與內科都不會被搜尋。
+    """
+    matches = extract_department_intents("搜尋附近的家醫科、內科、不分科")
+    assert [m.canonical for m in matches] == ["家醫科", "內科", "不分科"]
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    ["附近有內科或家醫科嗎", "附近有內科跟家醫科嗎", "附近的內科，家醫科", "附近的內科家醫科"],
+)
+def test_enumerated_departments_are_all_collected(sentence):
+    matches = extract_department_intents(sentence)
+    assert [m.canonical for m in matches] == ["內科", "家醫科"]
+
+
+def test_department_mentioned_in_passing_is_not_collected():
+    """前半句的內科只是轉述，不是這次要找的科別；一起搜等於替使用者多加一科。"""
+    matches = extract_department_intents("我在內科看過了，附近有皮膚科嗎")
+    assert [m.canonical for m in matches] == ["皮膚科"]
+
+
+def test_same_canonical_is_collected_once_with_first_wording():
+    """腸胃科與心臟科都歸內科，查一次就夠；別名告知沿用使用者第一個說法。"""
+    matches = extract_department_intents("附近有腸胃科、心臟科嗎")
+    assert len(matches) == 1
+    assert matches[0].canonical == "內科"
+    assert matches[0].requested == "腸胃科"
+
+
+def test_build_department_query_accepts_several_departments():
+    """有一科是通科型就涵蓋未申報專科的院所，不分科不重複列。"""
+    assert build_department_query("家醫科", "內科", "不分科") == {
+        "departments": {"$regex": "家醫科|內科|不分科|西醫一般科", "$options": "i"}
+    }
+    assert build_department_query("眼科", "皮膚科") == {
+        "departments": {"$regex": "眼科|皮膚科", "$options": "i"}
+    }
+
+
+def test_build_department_query_refuses_no_department():
+    """空的 regex 會命中每一家院所，等於靜默退化成不分科別的搜尋。"""
+    with pytest.raises(ValueError):
+        build_department_query()
 
 
 def test_build_department_query_uses_regex_for_dirty_data():
@@ -158,7 +210,7 @@ def test_oral_maxillofacial_variant_is_not_silently_downgraded():
     """
     官方代碼寫「口腔顏面外科」、資料庫寫「口腔顎面外科」。
 
-    未收錄時 extract_department_intent 的子字串掃描會退而命中「外科」，產出
+    未收錄時 extract_department_intents 的子字串掃描會退而命中「外科」，產出
     canonical=外科、requested=外科、is_alias=False 的結果——答案是錯的，而且因為
     is_alias 為 False，連「你說的 X 歸類於 Y」的告知都不會觸發。這是「系統很有
     自信地答錯」，比「系統看不懂」更難察覺。
@@ -166,7 +218,7 @@ def test_oral_maxillofacial_variant_is_not_silently_downgraded():
     match = resolve_department("口腔顏面外科")
     assert match.canonical == "口腔顎面外科"
 
-    in_sentence = extract_department_intent("附近有沒有口腔顏面外科")
+    (in_sentence,) = extract_department_intents("附近有沒有口腔顏面外科")
     assert in_sentence.canonical == "口腔顎面外科"
     assert in_sentence.requested == "口腔顏面外科"
     assert in_sentence.is_alias is True
@@ -198,7 +250,8 @@ def test_family_medicine_normalizes_to_single_canonical():
     assert match.requested == "家庭醫學科"
     assert match.is_alias is True
 
-    assert extract_department_intent("附近有家庭醫學科嗎").canonical == "家醫科"
+    matches = extract_department_intents("附近有家庭醫學科嗎")
+    assert [m.canonical for m in matches] == ["家醫科"]
 
 
 def test_family_medicine_is_not_a_canonical_value():
@@ -227,4 +280,4 @@ def test_symptoms_still_never_resolve_to_a_department(symptom):
     本模組只收科別別名，這條線不因為新增了官方代碼來源就放寬。
     """
     assert resolve_department(symptom) is None
-    assert extract_department_intent(symptom) is None
+    assert extract_department_intents(symptom) == ()

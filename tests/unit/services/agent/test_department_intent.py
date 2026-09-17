@@ -101,16 +101,54 @@ def test_extract_department_from_history_looks_past_location_message():
         AIMessage(content="請分享您的位置"),
         HumanMessage(content=LOCATION_TEXT),
     ]
-    assert _extract_department_from_history(messages) == "腸胃科"
+    assert _extract_department_from_history(messages) == ["腸胃科"]
 
 
-def test_extract_department_from_history_returns_none_without_department():
+def test_extract_department_from_history_keeps_every_enumerated_department():
+    """保底卡按鈕的句子：三科都要帶到座標那一輪，不能只剩一科。"""
+    messages = [
+        HumanMessage(content="搜尋附近的家醫科、內科、不分科"),
+        AIMessage(content="請分享您的位置"),
+        HumanMessage(content=LOCATION_TEXT),
+    ]
+    assert _extract_department_from_history(messages) == ["家醫科", "內科", "不分科"]
+
+
+@pytest.mark.asyncio
+async def test_fallback_button_departments_carry_to_location_turn(
+    mock_llm_no_tool_calls, patched_tools
+):
+    """座標進來時一次帶上三科，只呼叫一次工具。"""
+    nodes = AgentNodes(llm=mock_llm_no_tool_calls, guardrail_service=MagicMock())
+    state = {
+        "messages": [
+            HumanMessage(content="搜尋附近的家醫科、內科、不分科"),
+            AIMessage(content="請分享您的位置"),
+            HumanMessage(content=LOCATION_TEXT),
+        ],
+        "allow_rag": False,
+    }
+
+    with patch("app.services.agent.utils.nodes.log_stage"):
+        res = await nodes.agent_node(state)
+
+    tool_calls = res["messages"][0].tool_calls
+    assert len(tool_calls) == 1
+    assert tool_calls[0]["name"] == "find_nearby_facilities_by_department"
+    assert tool_calls[0]["args"] == {
+        "lat": 25.033,
+        "lng": 121.56,
+        "departments": ["家醫科", "內科", "不分科"],
+    }
+
+
+def test_extract_department_from_history_returns_empty_without_department():
     messages = [
         HumanMessage(content="附近有醫院嗎"),
         AIMessage(content="請分享您的位置"),
         HumanMessage(content=LOCATION_TEXT),
     ]
-    assert _extract_department_from_history(messages) is None
+    assert _extract_department_from_history(messages) == []
 
 
 def test_extract_department_from_history_ignores_stale_mentions():
@@ -123,7 +161,7 @@ def test_extract_department_from_history_ignores_stale_mentions():
         HumanMessage(content="幫我量一下"),
         HumanMessage(content=LOCATION_TEXT),
     ]
-    assert _extract_department_from_history(messages) is None
+    assert _extract_department_from_history(messages) == []
 
 
 @pytest.mark.asyncio
@@ -151,7 +189,7 @@ async def test_shared_location_carries_department_from_previous_turn(
     assert call["args"] == {
         "lat": 25.033,
         "lng": 121.56,
-        "department": "腸胃科",
+        "departments": ["腸胃科"],
     }
 
 
@@ -276,5 +314,5 @@ async def test_visit_intent_department_carries_to_location_turn(
     assert call["args"] == {
         "lat": 25.033,
         "lng": 121.56,
-        "department": "大腸科",
+        "departments": ["大腸科"],
     }

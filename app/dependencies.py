@@ -39,6 +39,7 @@ from app.repositories.prescription_draft_repository import PrescriptionDraftRepo
 from app.repositories.safety_alert_repository import SafetyAlertRepository
 from app.repositories.user_profile_repository import UserProfileRepository
 from app.services.agent.agent import Agent
+from app.services.agent.utils.nodes import RAG_ROUTE_MODEL_PATH
 from app.services.appointment.appointment_scheduler import (
     start_appointment_scheduler as _start_appointment_scheduler,
 )
@@ -581,16 +582,22 @@ except Exception:
 _urgency_classifier = UrgencyClassifier(
     gemini_service=_gemini_service, local=_urgency_local
 )
-if not _symptom_table.verified:
-    logger.warning(
-        "症狀對照表尚未經人工審定（status != verified），"
-        "科別建議的正確性未經驗證"
-    )
+
+# 本地「直接送 RAG」分類器：有把握時跳過 agent 選工具的那次呼叫（見
+# AgentNodes._local_rag_shortcut）。模型檔不在或壞掉時每一則都照舊問 agent，
+# 不擋啟動。
+try:
+    _rag_router = LocalGuardrailClassifier.load(RAG_ROUTE_MODEL_PATH)
+    logger.info("RAG route shortcut enabled (local classifier)")
+except Exception:
+    logger.exception("本地 RAG 分流模型載入失敗，每一則都交給 agent 決定")
+    _rag_router = None
 
 _care_agent = Agent(
     llm=_gemini_service.chat_model,
     guardrail_service=_guardrail_service,
     urgency_classifier=_urgency_classifier,
+    rag_router=_rag_router,
 )
 
 _line_history_service = LineMessageHistoryService(
@@ -621,12 +628,6 @@ _user_profile_service = UserProfileService(
     rich_menu_service=_rich_menu_service
 )
 
-_consultation_service = ConsultationService(
-    chat_history_repository=_conversation_log_repository,
-    repository=_consultation_repository,
-    gemini_service=_gemini_service,
-    user_profile_service=_user_profile_service,
-)
 
 def _build_tts_service(service_url: str) -> TTSService | RemoteTTSService:
     """有 care-tts（TTS_SERVICE_URL）就交給它合成、存檔；沒有就在本行程合成（本機開發）。
@@ -824,6 +825,15 @@ _appointment_service = AppointmentService(
     repository=_appointment_repository,
     authorization_service=_family_authorization_service,
     user_profile_service=_user_profile_service,
+)
+
+_consultation_service = ConsultationService(
+    chat_history_repository=_conversation_log_repository,
+    repository=_consultation_repository,
+    gemini_service=_gemini_service,
+    user_profile_service=_user_profile_service,
+    medication_service=_medication_service,
+    appointment_repository=_appointment_repository,
 )
 
 # 藥袋辨識。藥證庫沿用上面已經載入的那一份（見 _drug_catalog_service）。
@@ -1292,3 +1302,36 @@ def reset_rate_limits() -> None:
     很快就會撞到每小時的上限，而那不是任何一個測試要驗的事。"""
     for dependency in ALL_RATE_LIMITS:
         dependency.limiter.reset()  # type: ignore[attr-defined]
+
+
+_clinic_transcript_service: "ClinicTranscriptService | None" = None
+
+
+def get_clinic_transcript_service() -> "ClinicTranscriptService":
+    """看診錄音服務。
+
+    第一次用到才建，而且 import 也延後到這裡：轉錄要 `google.genai` 的型別，
+    而 `app/services/speech/audio.py` 開頭那段註解記著，頂端 import 大套件會讓
+    backend／scheduler pod 啟動約 30 秒就被 OOMKilled。這個功能不是每個 pod
+    都會用到，沒有理由讓它進到啟動路徑。
+    """
+    global _clinic_transcript_service
+    if _clinic_transcript_service is None:
+        from app.repositories.medication_repository import MedicationRepository
+        from app.services.clinic_transcript.notifier import ClinicVisitNotifier
+        from app.services.clinic_transcript.service import ClinicTranscriptService
+        from app.services.clinic_transcript.summarizer import ClinicVisitSummarizer
+        from app.services.speech.clinic_transcribe import ClinicTranscriber
+
+        _clinic_transcript_service = ClinicTranscriptService(
+            transcriber=ClinicTranscriber(),
+            summarizer=ClinicVisitSummarizer(_gemini_service),
+            medication_repository=MedicationRepository,
+            notifier=ClinicVisitNotifier(
+                replier=_line_replier,
+                authorization_service=_family_authorization_service,
+                user_profile_service=_user_profile_service,
+                liff_url=settings.LIFF_URL,
+            ),
+        )
+    return _clinic_transcript_service

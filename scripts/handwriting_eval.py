@@ -230,7 +230,7 @@ async def run_model(
     model_name: str,
     cases: Sequence[tuple[Path, Optional[str]]],
     repeats: int,
-    temperature: float,
+    temperature: Optional[float],
     concurrency: int,
     call_timeout: float,
     prompt: str,
@@ -403,12 +403,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         raise SystemExit(f"找不到標註檔：{golden}")
 
     # 量穩定度必須讓模型有機會給出不同答案，所以預設拉高溫度並重複呼叫；
-    # 一般評測則沿用正式路徑的 temperature=0，單次呼叫。
+    # 一般評測沿用正式路徑＝**完全不設 temperature**（Gemini 3 官方要求，見
+    # `GeminiService.__init__` 的說明），單次呼叫。
     repeats = args.repeats if args.repeats is not None else (5 if args.self_consistency else 1)
     temperature = (
         args.temperature
         if args.temperature is not None
-        else (0.7 if args.self_consistency else 0.0)
+        else (0.7 if args.self_consistency else None)
     )
 
     cases = load_cases(golden, args.samples)

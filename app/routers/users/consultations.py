@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import date, datetime
 from typing import Annotated
 import jwt  # type: ignore[import-not-found]
@@ -22,7 +21,9 @@ from app.models.consultation import (
     ConsultationViewResponse,
     ConsultationSummary,
 )
+from app.models.medication import TAIPEI_TZ
 from app.services.consultation.consultation_service import ConsultationService
+from app.services.consultation.summary_export import render_summaries_txt
 from app.services.family.family_authorization_service import (
     FamilyAuthorizationService,
 )
@@ -39,12 +40,12 @@ class DownloadTokenResponse(BaseModel):
     expiresIn: int = Field(..., description="token 有效秒數")
 
 
-def _build_download_response(payload: list[dict]) -> Response:
-    filename = f"CARE_consult_summart_{datetime.now().strftime('%Y%m%d%H%M%S')}.json"
-    content = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+def _build_download_response(text: str, exported_at: datetime) -> Response:
+    filename = f"CARE_consult_summary_{exported_at:%Y%m%d%H%M%S}.txt"
+    # 加 BOM：部分手機與舊版記事本沒有 BOM 會猜錯編碼，泰文、日文變亂碼
     return Response(
-        content=content,
-        media_type="application/json; charset=utf-8",
+        content=text.encode("utf-8-sig"),
+        media_type="text/plain; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
@@ -86,7 +87,12 @@ async def get_raw_consultations(
     ],
 ) -> ConsultationViewResponse:
     try:
-        messages = await consultation_service.get_raw_view(current_user.line_user_id)
+        language = await consultation_service.resolve_summary_language(
+            current_user.line_user_id
+        )
+        messages = await consultation_service.get_raw_view(
+            current_user.line_user_id, language=language
+        )
         return ConsultationViewResponse(
             line_id=current_user.line_user_id,
             view_type="raw",
@@ -138,7 +144,7 @@ async def get_my_summary_download_token(
 @router.get(
     "/me/summary/download",
     summary="下載目前使用者所有摘要紀錄",
-    description="以 JSON 檔案下載目前登入使用者的所有諮詢摘要紀錄。",
+    description="以純文字檔（UTF-8 BOM）下載目前登入使用者的所有諮詢摘要紀錄。",
 )
 async def download_my_summary_history(
     # token 走查詢字串是瀏覽器下載的限制：<a download> 帶不了 Authorization 標頭，
@@ -152,14 +158,16 @@ async def download_my_summary_history(
     download_token_service: Annotated[
         AppJwtService, Depends(get_consultation_download_token_service)
     ] = ...,
-) -> ConsultationSummary:
+) -> Response:
     try:
         current_user_id = download_token_service.decode_user_id(download_token)
         summaries = await consultation_service.get_all_summaries(current_user_id)
-        payload = [
-            summary.model_dump(mode="json", exclude_none=True) for summary in summaries
-        ]
-        return _build_download_response(payload)
+        language = await consultation_service.resolve_summary_language(current_user_id)
+        # 檔名與檔頭用同一個時間點；容器時區是 UTC，要指定台北時間
+        exported_at = datetime.now(TAIPEI_TZ)
+        return _build_download_response(
+            render_summaries_txt(summaries, language, exported_at), exported_at
+        )
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="downloadToken expired")
     except jwt.InvalidTokenError:
@@ -249,7 +257,11 @@ async def get_member_raw_consultations(
     # 原始逐句對話是最敏感的一份，授權必須先於讀取（同上）。
     await authz.authorize(current_user.line_user_id, userId, "PRIVATE", "READ")
     try:
-        messages = await consultation_service.get_raw_view(userId)
+        # 卡片文字依查看者（不是被查看的家人）的語言顯示，與 LIFF 介面一致
+        language = await consultation_service.resolve_summary_language(
+            current_user.line_user_id
+        )
+        messages = await consultation_service.get_raw_view(userId, language=language)
         return ConsultationViewResponse(
             line_id=userId,
             view_type="raw",

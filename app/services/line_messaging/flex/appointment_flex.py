@@ -14,10 +14,13 @@
 
 from datetime import datetime
 from typing import Any, Literal, Optional
+from urllib.parse import quote, urlencode
 
 from linebot.v3.messaging import FlexContainer, FlexMessage
 
+from app.core.config import settings
 from app.i18n import t
+from app.services.line_messaging.rich_menu_layout import liff_uri
 from app.services.line_messaging.flex.medication_flex import _body, _header, _paragraph
 from resources.flex_messages import theme
 
@@ -129,6 +132,38 @@ def _report_button(
     return ft.secondary_button(label, postback)
 
 
+def _record_button(
+    ft: theme.FlexTheme,
+    reminder_id: str,
+    hospital_name: str,
+    language: Optional[str],
+) -> Optional[dict[str, Any]]:
+    """「進診間前按這裡」——直接開到錄音頁，不經過選單。
+
+    長輩在診間門口能完成的操作只有一兩下。從掛號提醒直接進錄音頁，
+    是整個看診錄音功能唯一可行的入口；要他自己開 LINE、找官方帳號、
+    進 LIFF、再找到功能，實務上不會發生。
+
+    `LIFF_URL` 沒設就回 None（本機與測試環境）。少一顆按鈕，不是壞掉。
+    """
+    base = settings.LIFF_URL
+    if not base:
+        return None
+    query = urlencode(
+        {"appointment_id": reminder_id, "hospital_name": hospital_name},
+        quote_via=quote,
+    )
+    label = t("flex.appt.button.record", language)
+    return ft.secondary_button(
+        label,
+        {
+            "type": "uri",
+            "label": label[:_POSTBACK_LABEL_MAX],
+            "uri": liff_uri(base, f"/clinic-visits/record?{query}"),
+        },
+    )
+
+
 def _footer(contents: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "type": "box",
@@ -180,9 +215,18 @@ def build_pre_reminder_flex(
         ),
         "footer": _footer(
             [
-                _report_button(
-                    ft, DEPART_ACTION, reminder_id, "flex.appt.button.depart", language
+                button
+                for button in (
+                    _report_button(
+                        ft, DEPART_ACTION, reminder_id, "flex.appt.button.depart", language
+                    ),
+                    # 只在本人版放錄音按鈕。家屬版的收件人不一定會陪去，
+                    # 給他一顆按了也沒用的按鈕只會造成誤解。
+                    None
+                    if patient_name
+                    else _record_button(ft, reminder_id, hospital_name, language),
                 )
+                if button is not None
             ]
         ),
     }

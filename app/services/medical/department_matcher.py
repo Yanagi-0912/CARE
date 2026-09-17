@@ -130,6 +130,19 @@ DEPARTMENT_ALIASES: dict[str, str] = {
 _INTENT_SUFFIX_RE = re.compile(r"(專科|門診|醫師|醫生|的醫院|的診所)$")
 _INTENT_PREFIX_RE = re.compile(r"^(我要找|我想找|幫我找|想看|要看|去看|找|看)")
 
+# 子字串掃描用的詞彙，長詞優先；一樣長時依字典序，掃描順序才不受 frozenset 的
+# 雜湊順序影響。單字別名（如「牙」「眼」）在整句掃描時誤判率太高，只在整句解析時採用。
+_SCAN_TERMS: tuple[str, ...] = tuple(
+    sorted(
+        (term for term in {*CANONICAL_DEPARTMENTS, *DEPARTMENT_ALIASES} if len(term) >= 2),
+        key=lambda term: (-len(term), term),
+    )
+)
+
+# 一句話列舉多個科別時，科別之間只允許隔著這些連接詞，或什麼都不隔。
+# 「，」不必收：normalize_department_text 已經把它剝掉，兩個科別會直接相鄰。
+_ENUMERATION_GAP_RE = re.compile(r"(?:[、和跟與或及/／]|以及|或是|還是|還有)?")
+
 
 def normalize_department_text(text: str) -> str:
     """去空白、去標點，並統一台→臺（資料庫使用「臺」）。"""
@@ -191,40 +204,80 @@ def resolve_department(text: str) -> DepartmentMatch | None:
     return None
 
 
-def extract_department_intent(text: str) -> DepartmentMatch | None:
+def _department_spans(cleaned: str) -> list[tuple[int, int]]:
     """
-    從一整句話裡找出科別，例如「附近有沒有腸胃科」→ 內科。
+    句中每個科別詞的 [start, end)，依出現順序排列。
 
-    以「最長優先」比對所有已知詞彙，避免「腸胃科」被較短的別名先吃掉。
+    長詞先佔位，短詞落在已佔的範圍內就不算：「腸胃內科」裡的「內科」、
+    「口腔顏面外科」裡的「外科」都不是另一個科別。
+    """
+    taken = [False] * len(cleaned)
+    spans: list[tuple[int, int]] = []
+    for term in _SCAN_TERMS:
+        start = cleaned.find(term)
+        while start != -1:
+            end = start + len(term)
+            if not any(taken[start:end]):
+                taken[start:end] = [True] * (end - start)
+                spans.append((start, end))
+            start = cleaned.find(term, start + 1)
+    return sorted(spans)
+
+
+def _is_enumeration_gap(cleaned: str, left: tuple[int, int], right: tuple[int, int]) -> bool:
+    """兩個相鄰的科別詞之間是否只隔著連接詞，也就是同一串列舉。"""
+    return _ENUMERATION_GAP_RE.fullmatch(cleaned[left[1] : right[0]]) is not None
+
+
+def extract_department_intents(text: str) -> tuple[DepartmentMatch, ...]:
+    """
+    從一整句話裡找出使用者要找的科別，例如「附近有沒有腸胃科」→ (內科,)。
+    沒有指名科別時回傳空的 tuple。
+
+    一句話可以列舉多科（保底卡按鈕的「搜尋附近的家醫科、內科、不分科」），所以
+    回傳一串。但只收與主科別以連接詞相連的那一串：「我在內科看過了，附近有皮膚科
+    嗎」要找的是皮膚科，前半句的內科只是轉述，一起搜等於替使用者多加了一個科別。
+
+    主科別取句中最長的科別詞（「腸胃科」不可被較短的詞先吃掉），一樣長時取最前面
+    的。舊版一樣長時看 frozenset 的雜湊順序，同一句話每次重啟服務都可能解析成
+    不同科別。同一個部定專科只留第一次出現的說法（「腸胃科、心臟科」都是內科）。
     """
     if not text:
-        return None
+        return ()
 
     cleaned = normalize_department_text(text)
     if not cleaned:
-        return None
+        return ()
 
     # 先嘗試整句（剝掉常見前後綴）當成純科別解析，命中率最高且最精準。
     stripped = _INTENT_PREFIX_RE.sub("", cleaned)
     stripped = _INTENT_SUFFIX_RE.sub("", stripped)
     direct = resolve_department(stripped)
     if direct is not None:
-        return direct
+        return (direct,)
 
-    # 退而求其次：在句中做子字串掃描。長詞優先，否則「腸胃科」會先中「胃」之類的短詞。
-    candidates = sorted(
-        (*CANONICAL_DEPARTMENTS, *DEPARTMENT_ALIASES),
-        key=len,
-        reverse=True,
+    # 退而求其次：在句中做子字串掃描，再從主科別往左右延伸出同一串列舉。
+    spans = _department_spans(cleaned)
+    if not spans:
+        return ()
+
+    primary = min(
+        range(len(spans)), key=lambda i: (spans[i][0] - spans[i][1], spans[i][0])
     )
-    for candidate in candidates:
-        # 單字別名（如「牙」「眼」）在整句掃描時誤判率太高，只在整句解析時採用。
-        if len(candidate) < 2:
-            continue
-        if candidate in cleaned:
-            return resolve_department(candidate)
+    first = last = primary
+    while first > 0 and _is_enumeration_gap(cleaned, spans[first - 1], spans[first]):
+        first -= 1
+    while last + 1 < len(spans) and _is_enumeration_gap(
+        cleaned, spans[last], spans[last + 1]
+    ):
+        last += 1
 
-    return None
+    matches: dict[str, DepartmentMatch] = {}
+    for start, end in spans[first : last + 1]:
+        match = resolve_department(cleaned[start:end])
+        if match is not None:
+            matches.setdefault(match.canonical, match)
+    return tuple(matches.values())
 
 
 # departments 為這些值代表「院所沒有申報專科」，不是某一個專科。實務上多為
@@ -252,11 +305,18 @@ def _departments_regex(values: Sequence[str]) -> dict:
     return {"departments": {"$regex": pattern, "$options": "i"}}
 
 
-def build_department_query(canonical: str) -> dict:
-    """指定科別的查詢條件。通科型科別會一併涵蓋未申報專科的院所。"""
-    values = [canonical]
-    if canonical in GENERAL_PRACTICE_DEPARTMENTS:
-        values.extend(v for v in UNSPECIFIED_DEPARTMENTS if v != canonical)
+def build_department_query(*canonicals: str) -> dict:
+    """
+    指定科別的查詢條件，可一次給多科，院所有其中任一科即命中。
+
+    只要有一科是通科型，就一併涵蓋未申報專科的院所。
+    """
+    if not canonicals:
+        # 空的 regex 會命中每一家院所，等於靜默退化成不分科別的搜尋。
+        raise ValueError("build_department_query 至少需要一個科別")
+    values = list(dict.fromkeys(canonicals))
+    if any(value in GENERAL_PRACTICE_DEPARTMENTS for value in values):
+        values.extend(v for v in UNSPECIFIED_DEPARTMENTS if v not in values)
     return _departments_regex(values)
 
 

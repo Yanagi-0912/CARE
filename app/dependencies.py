@@ -39,6 +39,7 @@ from app.repositories.prescription_draft_repository import PrescriptionDraftRepo
 from app.repositories.safety_alert_repository import SafetyAlertRepository
 from app.repositories.user_profile_repository import UserProfileRepository
 from app.services.agent.agent import Agent
+from app.services.agent.utils.nodes import RAG_ROUTE_MODEL_PATH
 from app.services.appointment.appointment_scheduler import (
     start_appointment_scheduler as _start_appointment_scheduler,
 )
@@ -582,10 +583,21 @@ _urgency_classifier = UrgencyClassifier(
     gemini_service=_gemini_service, local=_urgency_local
 )
 
+# 本地「直接送 RAG」分類器：有把握時跳過 agent 選工具的那次呼叫（見
+# AgentNodes._local_rag_shortcut）。模型檔不在或壞掉時每一則都照舊問 agent，
+# 不擋啟動。
+try:
+    _rag_router = LocalGuardrailClassifier.load(RAG_ROUTE_MODEL_PATH)
+    logger.info("RAG route shortcut enabled (local classifier)")
+except Exception:
+    logger.exception("本地 RAG 分流模型載入失敗，每一則都交給 agent 決定")
+    _rag_router = None
+
 _care_agent = Agent(
     llm=_gemini_service.chat_model,
     guardrail_service=_guardrail_service,
     urgency_classifier=_urgency_classifier,
+    rag_router=_rag_router,
 )
 
 _line_history_service = LineMessageHistoryService(

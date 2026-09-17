@@ -155,6 +155,16 @@ def main(argv: Optional[list[str]] = None) -> int:
             "白掛一個工具，漏判會讓使用者拿不到知識庫的答案"
         ),
     )
+    parser.add_argument(
+        "--exclude-from-thresholds",
+        default=None,
+        metavar="BUCKET_PREFIX",
+        help=(
+            "bucket 以此開頭的列照樣參與訓練，但不參與門檻選擇。給「線上根本到不了"
+            "這個分類器」的簡單負例用——算進誤判率分母只會把門檻壓得太寬"
+            "（例：RAG 分流的 everyday:，已被 guardrail 擋掉）"
+        ),
+    )
     parser.add_argument("--folds", type=int, default=5)
     parser.add_argument(
         "--max-features",
@@ -209,8 +219,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     oof = cross_val_predict(pipeline, X_train, y_train, cv=cv, method="predict_proba")[:, 1]
     print(f"交叉驗證 macro-F1（門檻 0.5）：{f1_score(y_train, oof >= 0.5, average='macro'):.4f}")
 
+    if args.exclude_from_thresholds:
+        keep = np.array(
+            [not buckets[i].startswith(args.exclude_from_thresholds) for i in train_idx]
+        )
+        print(f"門檻只看 {int(keep.sum())} 筆（排除 bucket 前綴 {args.exclude_from_thresholds!r}）")
+    else:
+        keep = np.ones(len(train_idx), dtype=bool)
     low, high, stats = _pick_thresholds(
-        oof, y_train, args.max_miss_rate, args.max_false_alarm_rate
+        oof[keep], y_train[keep], args.max_miss_rate, args.max_false_alarm_rate
     )
     print(
         f"門檻：low={low:.4f} high={high:.4f}  "

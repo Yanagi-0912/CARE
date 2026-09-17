@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import time
+from pathlib import Path
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
@@ -32,6 +33,10 @@ from resources.flex_messages.medical_messages.emergency_condition_flex_message i
 )
 
 logger = logging.getLogger(__name__)
+
+# 本地「直接送 RAG」分類器的權重表，由 scripts/build_rag_route_dataset.py 產資料、
+# scripts/build_guardrail_model.py 訓練。
+RAG_ROUTE_MODEL_PATH = Path(__file__).resolve().parents[4] / "resources" / "rag_route_model.json"
 
 
 def _already_ran_rag(messages) -> bool:
@@ -626,13 +631,106 @@ def _abandon_task(task: "asyncio.Task | None") -> None:
     task.exception()
 
 
+def _can_send_original_text_to_rag(state: State, tool_names: list[str], user_text: str) -> bool:
+    """不經模型、直接把使用者原句送 `get_rag_answer`，在決定性規則上是否站得住。
+
+    強制轉 RAG（模型沒呼叫任何工具）與本地捷徑（根本不問模型）共用這組條件。
+    兩條路送出的是同一種呼叫，排除的情況就必須一致——各寫一份，遲早有一邊
+    補了新規則、另一邊沒補。
+    """
+    messages = state["messages"]
+    return bool(
+        state.get("allow_rag")
+        and "get_rag_answer" in tool_names
+        and not _already_ran_rag(messages)
+        and not _already_used_location_tools(messages)
+        and not _already_ran_symptom_suggestion(messages)
+        and not _is_nearby_facility_intent(user_text)
+        and not _is_named_facility_lookup(user_text)
+        and not _is_official_site_intent(user_text)
+        and not _is_media_extracted_content(user_text)
+        and not _is_uploaded_document_question(user_text)
+    )
+
+
+def _original_text_rag_call(user_text: str, call_id: str) -> AIMessage:
+    return AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "get_rag_answer",
+                # TODO(對話記憶)：這裡把使用者這句話原樣當查詢，RAG 那頭
+                # 也只看這一句。追問（「那第二種呢」）沒有前文就查不到、
+                # 個人病史也進不了生成。要把對話歷史與個人檔案帶進 RAG
+                # 生成是獨立功能，規劃見 CARE_對話記憶功能規劃.md。
+                "args": {"query": user_text},
+                "id": call_id,
+                "type": "tool_call",
+            }
+        ],
+    )
+
+
 class AgentNodes:
-    def __init__(self, llm, guardrail_service, urgency_classifier=None):
+    def __init__(self, llm, guardrail_service, urgency_classifier=None, rag_router=None):
         self._llm = llm
         self._guardrail_service = guardrail_service
         # 未注入時等同永遠不緊急。讓既有的測試與其他進入點不必全部改簽名，
         # 但正式路徑一定要注入——沒注入就等於沒有安全檢查。
         self._urgency_classifier = urgency_classifier
+        # 本地「直接送 RAG」分類器（見 `_local_rag_shortcut`）。未注入＝每一則
+        # 都照舊問模型，行為與導入前相同。
+        self._rag_router = rag_router
+
+    def _local_rag_shortcut(self, state: State, tool_names: list[str], user_text: str) -> bool:
+        """本地模型有把握這句最後會走 RAG 時，跳過 agent 選工具的那次呼叫。
+
+        那次呼叫在正式環境（2026-09-07～17，144 次）中位數 3.2 秒、p90 7.2 秒，
+        而 guardrail 放行後的健康問題大多數最後都走 `get_rag_answer`。本地模型
+        的標籤是拿正式的 `agent_node` 逐句標出來的（scripts/build_rag_route_dataset.py），
+        學的是「agent 會怎麼選」，不是另訂一套規則。
+
+        **只用 `high`，不用 `low`。** 本地說「不是 RAG」時仍要模型決定是哪個
+        工具、參數是什麼，那是分類器做不到的，所以低分一律照舊問模型。
+
+        **只在這一輪還沒跑過任何工具時判斷。** 工具回來之後的那一步是在組回覆，
+        不是在選工具。
+
+        門檻（`high`）以「交叉驗證上，該交給其他工具的訊息誤送率 ≤ 1%」選定。
+        holdout 實測（2026-09-17，scripts/rag_route_eval.py）：agent 會走 RAG 的
+        健康問題有 53.7% 走捷徑（中文 41.2%，外語 49.5%～63.9%）；agent 選了別的
+        工具的 38 則誤送 2 則，生成的困難負例（掛哪科、查吃藥、查證、追問…）
+        567 則誤送 5 則，多半是追問句。
+
+        與模型路徑的差別：模型會把問句改寫成關鍵字串再送 RAG（6,342 則裡 6,065
+        則），捷徑送原句——與強制轉 RAG 相同。golden 題庫 31 題知識庫題的檢索：
+        原句命中 30、MRR 0.723；模型的關鍵字命中 29、MRR 0.755，看不出差別。
+        題庫都是短問句，長句口語上的差別沒有量到。
+        """
+        router = self._rag_router
+        if router is None:
+            return False
+        messages = state["messages"]
+        if any(isinstance(m, ToolMessage) for m in messages):
+            return False
+        if _parse_shared_location(user_text) is not None:
+            return False
+        if not _can_send_original_text_to_rag(state, tool_names, user_text):
+            return False
+        try:
+            probability = router.probability(user_text)
+        except Exception:
+            # 捷徑壞掉只是變慢，不該讓這則訊息失敗。
+            logger.exception("本地 RAG 分流推論失敗，照舊交給 agent")
+            return False
+        shortcut = probability >= router.high
+        log_stage(
+            logger,
+            "rag_route_local",
+            p=round(probability, 3),
+            outcome="shortcut" if shortcut else "agent",
+        )
+        return shortcut
 
     def _resolve_user_language(self, user_profile: dict | None) -> str:
         if not user_profile:
@@ -720,9 +818,13 @@ class AgentNodes:
     async def agent_node(self, state: State) -> dict:
         """LLM 決策節點：根據 allow_rag 動態綁定工具，讓 LLM 決定回話或呼叫工具。"""
         tools = get_all_tools(include_rag_tool=state.get("allow_rag", False))
-        llm_with_tools = self._llm.bind_tools(tools)
         tool_names = [t.name for t in tools]
+        user_text = _latest_human_text(state["messages"])
 
+        if self._local_rag_shortcut(state, tool_names, user_text):
+            return {"messages": [_original_text_rag_call(user_text, "shortcut_rag_1")]}
+
+        llm_with_tools = self._llm.bind_tools(tools)
         user_profile_text = format_user_profile_prompt(state.get("user_profile"))
         language = self._resolve_user_language(state.get("user_profile"))
         # 日期接在固定規則之後：模型要把「昨天」「禮拜一」換成查服藥狀況的 days_ago。
@@ -737,7 +839,6 @@ class AgentNodes:
         force_location = False
         force_nearby = False
         force_official_site = False
-        user_text = _latest_human_text(state["messages"])
         shared_location = _parse_shared_location(user_text)
 
         # 使用者已分享位置（prompt 規則 5(b)）。這裡必須是決定性的：模型若沒有
@@ -839,34 +940,8 @@ class AgentNodes:
             tool_calls = response.tool_calls
             called = ["answer_from_uploaded_document"]
             force_upload = True
-        elif (
-            state.get("allow_rag")
-            and "get_rag_answer" in tool_names
-            and not tool_calls
-            and not _already_ran_rag(state["messages"])
-            and not _already_used_location_tools(state["messages"])
-            and not _already_ran_symptom_suggestion(state["messages"])
-            and not _is_nearby_facility_intent(user_text)
-            and not _is_named_facility_lookup(user_text)
-            and not _is_official_site_intent(user_text)
-            and not _is_media_extracted_content(user_text)
-            and not _is_uploaded_document_question(user_text)
-        ):
-            response = AIMessage(
-                content="",
-                tool_calls=[
-                    {
-                        "name": "get_rag_answer",
-                        # TODO(對話記憶)：這裡把使用者這句話原樣當查詢，RAG 那頭
-                        # 也只看這一句。追問（「那第二種呢」）沒有前文就查不到、
-                        # 個人病史也進不了生成。要把對話歷史與個人檔案帶進 RAG
-                        # 生成是獨立功能，規劃見 CARE_對話記憶功能規劃.md。
-                        "args": {"query": user_text},
-                        "id": "forced_rag_1",
-                        "type": "tool_call",
-                    }
-                ],
-            )
+        elif not tool_calls and _can_send_original_text_to_rag(state, tool_names, user_text):
+            response = _original_text_rag_call(user_text, "forced_rag_1")
             tool_calls = response.tool_calls
             called = ["get_rag_answer"]
             force_rag = True

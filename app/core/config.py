@@ -42,6 +42,11 @@ class Settings:
     # Line Messaging API 配置
     LINE_CHANNEL_ID: str = os.getenv("LINE_CHANNEL_ID")
     LINE_CHANNEL_SECRET: str = os.getenv("LINE_CHANNEL_SECRET")
+    # 每一次 LINE Messaging API 呼叫（reply／push／loading）的逾時秒數。
+    # SDK 預設是 None＝無上限；呼叫已改到工作執行緒，但無上限仍會讓一個
+    # 排程 tick 或一則 webhook 永遠掛著。LINE API 正常在 1 秒內回應，
+    # 10 秒足以涵蓋跨區抖動。
+    LINE_API_TIMEOUT_SECONDS: float = float(os.getenv("LINE_API_TIMEOUT_SECONDS", "10"))
 
     # RAG / Embedding 配置
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
@@ -251,19 +256,6 @@ class Settings:
         "RAG_WEB_FALLBACK_ENABLED", "true"
     ).lower() in ("1", "true", "yes", "on")
 
-    # CRAG 判 ambiguous 後，啟動改寫第二輪的時間預算（秒）。0＝不設限。
-    #
-    # 第二輪要價約 19 秒（rewrite 5.3s ＋ 檢索精排 1.6s ＋ grade 11.8s，實測），
-    # 之後還得再付一次 generate。LINE Loading Animation 上限就是 60 秒
-    # （loading_animation.DEFAULT_LOADING_SECONDS），超過使用者連「還在處理」
-    # 都看不到，所以最壞路徑必須有上界。
-    #
-    # 超時是拿第一輪結果生成，不是轉網搜——網搜比第二輪更慢，為省時間走上
-    # 更慢的路沒有意義。細節見 rag/answer_service.DEFAULT_CRAG_REWRITE_BUDGET_SECONDS。
-    RAG_CRAG_REWRITE_BUDGET_SECONDS: float = float(
-        os.getenv("RAG_CRAG_REWRITE_BUDGET_SECONDS", "12")
-    )
-
     # 整條 RAG 管線的總逾時（秒）。0＝不設限。到點回 [RAG_ERR:TIMEOUT]，agent
     # 請使用者稍後再問。45 秒＝LINE loading 動畫上限 60 秒，扣掉 RAG 以外的段落；
     # 實測最慢一題 18.7 秒，正常題目不會被切。來由見
@@ -428,6 +420,14 @@ class Settings:
     PRESCRIPTION_SCAN_TIMEOUT_SECONDS: int = int(
         os.getenv("PRESCRIPTION_SCAN_TIMEOUT_SECONDS", "60")
     )
+    # 看診錄音的上傳上限 40 MB。上游真正的限制是時間不是位元組：開了語者分離之後
+    # 單檔上限 30 分鐘（ai.google.dev/gemini-api/docs/transcribe，也是
+    # clinic_transcribe.MAX_AUDIO_SECONDS）。瀏覽器 MediaRecorder 的預設位元率
+    # 各家不同，這個值是抓 30 分鐘在常見位元率下的寬鬆上界，用來擋住明顯的誤用
+    # （傳一部影片上來），不是精準的時間換算。真的錄過幾次之後應該改成擋時間長度。
+    CLINIC_RECORDING_MAX_BYTES: int = int(
+        os.getenv("CLINIC_RECORDING_MAX_BYTES", str(40 * 1024 * 1024))
+    )
     PRESCRIPTION_DRAFT_TTL_MINUTES: int = int(
         os.getenv("PRESCRIPTION_DRAFT_TTL_MINUTES", "60")
     )
@@ -540,6 +540,85 @@ class Settings:
     # 每位使用者每日的分享次數上限。防的是把族譜當廣播用。
     MEDICAL_NEWS_DAILY_SHARE_LIMIT: int = int(
         os.getenv("MEDICAL_NEWS_DAILY_SHARE_LIMIT", "5")
+    )
+
+    # --- LINE 進站流程 ---
+    #
+    # 一則訊息從進 agent 到拿回回覆的總上限（秒）。這個值只包住 agent.invoke，
+    # 不含之後的 TTS 與送 LINE；各段各自的上限如下，加總就是它的來由：
+    #   RAG 那條腿      45s（rag/answer_service.DEFAULT_RAG_ANSWER_TIMEOUT_SECONDS）
+    #   guardrail／急迫度判斷、agent 決策、最後生成：Gemini 呼叫本身沒有逾時
+    #                   （見 answer_service.py:92），實測 thinking 重的題目 10–25s
+    #   → 45 + 25 ≈ 70s，再留 20s 給 LINE 回傳／Mongo 的抖動，取 90s。
+    # 使用者實際等待時間還要再加 agent 之後的 Taigi TTS（最多 20s，
+    # speech/taigi_client.TTS_TIMEOUT_SECONDS）與送 LINE（LINE_API_TIMEOUT_SECONDS
+    # 10s）：最壞約 120s。超過這個值代表某段卡死了（例如 Gemini 無逾時的呼叫
+    # 掛住），與其讓使用者無限等，不如回一句「稍後再試」並放掉這一輪。
+    AGENT_TOTAL_TIMEOUT_SECONDS: float = float(
+        os.getenv("AGENT_TOTAL_TIMEOUT_SECONDS", "90")
+    )
+    # webhook 事件 id 的去重保留時間（秒）。LINE 的重送（isRedelivery）發生在
+    # 我們沒在時限內回 200 之後，通常是幾秒到幾分鐘內；10 分鐘足以蓋住重送
+    # 窗口，又不會讓 Redis 累積無用的 key。
+    LINE_WEBHOOK_EVENT_TTL_SECONDS: int = int(
+        os.getenv("LINE_WEBHOOK_EVENT_TTL_SECONDS", "600")
+    )
+
+    # --- 認證與家人權限 ---
+    #
+    # 執行環境。只有兩個值有意義：development 與其他。缺席時視為 production——
+    # 缺一個環境變數的後果應該是「起不來」（startup_checks 會拒絕預設 JWT
+    # 密鑰），不是「靜靜地用開發設定跑正式流量」。development 另外會打開
+    # /docs 與 /openapi.json。
+    APP_ENV: str = os.getenv("APP_ENV", "production").strip().lower() or "production"
+
+    # 請求頻率上限（app/core/rate_limit.py；每個行程各自計數，2 個 replica 即 2 倍）。
+    # LIFF 登入：前端每次開啟 LIFF 才登入一次，token 有效 120 分鐘；10 次／分鐘
+    # 足以涵蓋同一個家用 NAT 後面的所有人，擋的是拿偷來的 id_token 反覆試。
+    RATE_LIMIT_LIFF_LOGIN_PER_MINUTE: int = int(
+        os.getenv("RATE_LIMIT_LIFF_LOGIN_PER_MINUTE", "10")
+    )
+    # 邀請碼驗證：未登入端點，一次點開連結只查一次；邀請碼是 64 位元隨機值，
+    # 20 次／分鐘讓枚舉在數學上不可能，同時不影響真實使用者。
+    RATE_LIMIT_INVITE_VERIFY_PER_MINUTE: int = int(
+        os.getenv("RATE_LIMIT_INVITE_VERIFY_PER_MINUTE", "20")
+    )
+    # 手動摘要：每次都是一趟 Gemini 呼叫，摘要的是同一天的對話，重做幾次結果
+    # 也不會不同；5 次／小時擋的是把它當免費 LLM 用。
+    RATE_LIMIT_SUMMARY_GENERATE_PER_HOUR: int = int(
+        os.getenv("RATE_LIMIT_SUMMARY_GENERATE_PER_HOUR", "5")
+    )
+    # 藥袋辨識：每次都是一趟 Gemini 視覺呼叫。一次回診通常 1～3 個藥袋、拍壞
+    # 重拍一兩次，10 次／小時涵蓋得了。
+    RATE_LIMIT_PRESCRIPTION_SCAN_PER_HOUR: int = int(
+        os.getenv("RATE_LIMIT_PRESCRIPTION_SCAN_PER_HOUR", "10")
+    )
+    # 走失求救的位置上傳（每位使用者每分鐘）。長輩的定位頁每 20 秒傳一次，
+    # 正常是每分鐘 3 次；重新整理頁面、網路不穩重送都會多打幾次，給 4 倍餘裕。
+    # 撞到上限的代價是地圖少一個點，不會漏通知，所以不必再放寬。
+    RATE_LIMIT_LOST_LOCATION_PER_MINUTE: int = int(
+        os.getenv("RATE_LIMIT_LOST_LOCATION_PER_MINUTE", "12")
+    )
+    # --- 認證與家人權限（結束）---
+
+    # --- RAG／agent 管線 ---
+    #
+    # guardrail 升級給 Gemini 那一步的逾時（秒）。guardrail 與急迫度判斷並行跑在
+    # 每一則訊息的最前面；急迫度早就有 4 秒逾時（urgency.DEFAULT_TIMEOUT_SECONDS），
+    # guardrail 卻沒有——Gemini 一掛，「我阿公昏迷」的紅卡就被 guardrail 拖著，
+    # 而它的結果對緊急短路根本用不到。逾時後 fail-open（允許 RAG），與分類失敗
+    # 時的處置一致。4 秒與急迫度對齊：本機量 gemini-3.8-flash 的分類中位數約 2 秒。
+    GUARDRAIL_LLM_TIMEOUT_SECONDS: float = float(
+        os.getenv("GUARDRAIL_LLM_TIMEOUT_SECONDS", "4")
+    )
+    # 單次 Gemini 請求的逾時（秒）。langchain-google-genai 4.2.2 預設 timeout=None、
+    # 重試 6 次：一次卡死的連線可以把 RAG 的 45 秒總預算（RAG_ANSWER_TIMEOUT_SECONDS）
+    # 整個吃掉，之後還會再重試。30 秒的來由：管線裡最慢的單次呼叫是生成，實測
+    # 3.9–9.5 秒（answer_service 投機生成那段的數字），30 秒是它的 3 倍；同時小於
+    # 45 秒總預算，讓「一次連線卡住」不可能獨自把整條管線拖到逾時。重試次數在
+    # gemini_service.DEFAULT_MAX_RETRIES，不放這裡：它不該隨環境改。
+    GEMINI_REQUEST_TIMEOUT_SECONDS: float = float(
+        os.getenv("GEMINI_REQUEST_TIMEOUT_SECONDS", "30")
     )
 
 

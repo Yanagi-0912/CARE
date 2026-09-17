@@ -9,6 +9,7 @@ from app.tools.medical_tools import (
 from app.tools.medication_status_tools import get_medication_status
 from app.tools.official_site_tools import open_official_site
 from app.tools.rag_tools import get_rag_answer
+from app.tools.share_tools import share_care
 from app.tools.symptom_tools import suggest_department_for_symptom
 from app.tools.user_document_tools import answer_from_uploaded_document
 
@@ -22,6 +23,8 @@ def get_all_tools(include_rag_tool: bool = True) -> list:
         request_location_quick_reply,
         submit_knowledge_report,
         open_official_site,
+        # 分享 CARE 給朋友、邀請家人。跟知識庫無關，同樣不隨 include_rag_tool 開關。
+        share_care,
         # 與院所搜尋同屬醫療工具，不隨 include_rag_tool 開關——「我肚子痛要掛
         # 哪一科」問的是掛號科別而非查知識庫，guardrail 是否放行 RAG 與這件事
         # 無關。

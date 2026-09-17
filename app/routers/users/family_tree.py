@@ -39,6 +39,7 @@ from app.dependencies import (
     get_family_role_service,
     get_family_tree_service,
     get_current_user,
+    invite_verify_rate_limit,
     CurrentUser,
 )
 
@@ -174,6 +175,8 @@ async def get_invite_qr(
     response_model=VerifyInviteResponse,
     summary="驗證邀請碼",
     description="驗證邀請碼是否有效。此為公開 API，不需要認證。",
+    # 未登入端點，以來源 IP 限頻。上限與理由見 config RATE_LIMIT_INVITE_VERIFY_PER_MINUTE。
+    dependencies=[Depends(invite_verify_rate_limit)],
 )
 async def verify_invite(
     code: str, service: FamilyTreeService = Depends(get_family_tree_service)
@@ -199,6 +202,30 @@ async def accept_invite(
         invitee_id=current_user.line_user_id, code=req.code
     )
     return AcceptInviteResponse(status=status, message=message)
+
+
+@router.delete(
+    "/invites/{code}",
+    summary="撤銷邀請",
+    description=(
+        "把一張尚未被接受的邀請標為已撤銷，連結與 QR 立即失效。"
+        "僅該邀請的擁有者本人或其有效受委任者可呼叫；已被接受的邀請無法撤銷，"
+        "請改用移除家人。"
+    ),
+)
+async def revoke_invite(
+    code: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: FamilyTreeService = Depends(get_family_tree_service),
+    authz: FamilyAuthorizationService = Depends(get_family_authorization_service),
+):
+    """邀請連結可以被轉發，發出去之後要收得回來——以前只能等 7 天過期。"""
+    revoked = await service.revoke_invitation(
+        operator_id=current_user.line_user_id,
+        code=code,
+        authorization_service=authz,
+    )
+    return {"revoked": revoked}
 
 @router.post(
     "/relationship",

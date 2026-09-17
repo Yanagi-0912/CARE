@@ -41,6 +41,21 @@ DEFAULT_MODEL_PATH = _PROJECT_ROOT / "resources" / "guardrail_model.json"
 
 SUPPORTED_FORMAT = "char-tfidf-logreg-v1"
 
+# 一段文字裡，詞彙表認得的片段佔不到這個比例，本地模型就不該自己下判斷。
+#
+# 機率只看「認得的片段」：分母是命中片段的範數，所以只認得一個片段時，那個
+# 片段就拿走全部權重。2026-09-17 台語語音辨識出「恥笑漸漸光，咱就大聲仔想著煞」，
+# guardrail 詞彙表只認得「就大」一個片段（佔 2.8%），而訓練資料裡含「就大」的
+# 兩則剛好都是健康問題——整句靠這兩個字拿到 0.6046、越過 0.5989 被放行。這正是
+# 模組註解說的分佈外高信心答錯。
+#
+# 5% 的依據（同日量測，本機算、不打 API）：正式環境 30 天 154 則使用者訊息裡，
+# 低於 5% 而原本由本地判定的只有 3 則語音，全是辨識不通順的句子，而且急迫度那
+# 邊本來就在問 LLM，使用者不會多等。三份資料集的 holdout（各約 2,000～2,700
+# 則）裡，因此多等一次 LLM 的各 1 則。放寬到 10% 會開始收進「我得急性腸胃炎」
+# 這類短句（字少，3、4 字片段多半沒見過），所以取 5%。
+MIN_KNOWN_SHARE = 0.05
+
 
 class LocalGuardrailClassifier:
     """讀入權重表，對一段文字回傳「與健康醫療相關」的機率。"""
@@ -99,6 +114,18 @@ class LocalGuardrailClassifier:
         norm = math.sqrt(norm_sq)
         total = sum(value * coef for value, coef in weighted) / norm
         return total + self._intercept
+
+    def known_share(self, text: str) -> float:
+        """文字切出的片段（含重複）有多少比例在詞彙表裡。"""
+        counts = self._ngrams(text or "")
+        total = sum(counts.values())
+        if not total:
+            return 0.0
+        return sum(count for term, count in counts.items() if term in self._terms) / total
+
+    def recognizes(self, text: str) -> bool:
+        """認得的片段夠多，機率才有意義。不認得時呼叫端應交給 LLM，不要自己判。"""
+        return self.known_share(text) >= MIN_KNOWN_SHARE
 
     def probability(self, text: str) -> float:
         score = self.decision(text)

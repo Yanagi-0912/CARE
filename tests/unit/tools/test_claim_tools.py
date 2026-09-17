@@ -5,6 +5,7 @@ import pytest
 
 from app.services.rag.claim_verification.service import VerificationResult
 from app.core.rag_sources import SourceRef
+from app.services.line_messaging.flex.verdict_flex import CLAIM_VERDICT_KEY
 from app.tools.claim_tools import (
     _TFC_SOURCE_LABEL,
     _format_verdict_reply,
@@ -363,3 +364,27 @@ async def test_speech_text_is_outside_the_flex_size_budget():
 
     assert "speechText" in payload
     assert "speechText" not in str(payload["contents"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("verdict", "matched"), [("錯誤", True), ("證據不足", False)]
+)
+async def test_payload_carries_claim_verdict_outside_contents(verdict, matched):
+    """每日摘要只讀頂層的 CLAIM_VERDICT_KEY，不從卡片節點反解判定字樣。"""
+    result = VerificationResult(
+        user_question="網傳喝檸檬水可以排毒？",
+        verdict=verdict,
+        reasoning="查核說明。",
+        source_title="查核報告" if matched else "",
+        source_url="https://tfc-taiwan.org.tw/fact-check-reports/xxx" if matched else "",
+        matched=matched,
+        related_info="" if matched else "檸檬水並無排毒功效。",
+    )
+    configure_claim_tool(_fake_service(result))
+
+    payload = json.loads(await verify_claim.ainvoke({"query": "網傳喝檸檬水可以排毒？"}))
+
+    assert CLAIM_VERDICT_KEY == "claimVerdict"
+    assert payload[CLAIM_VERDICT_KEY] == {"verdict": verdict}
+    assert CLAIM_VERDICT_KEY not in str(payload["contents"])

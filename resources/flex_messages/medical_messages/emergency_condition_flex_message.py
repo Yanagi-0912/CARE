@@ -25,6 +25,10 @@ _TPL_BUTTON_BG = "#B71C1C"
 _TPL_ON_DARK = "#FFFFFF"
 _TPL_ON_DARK_MUTED = "#EEEEEE"
 
+# 卡片頂層的風險標記。對話紀錄存的是整張卡的 JSON，摘要靠這個 key 認出紅卡，
+# 不必比對隨語言而變的 altText；送往 LINE 時 replier 只取 altText／contents，不會帶出去。
+RISK_ALERT_KEY = "riskAlert"
+
 _BODY_KEYS: tuple[str, ...] = (
     "emergency.body.1",
     "emergency.body.2",
@@ -209,4 +213,5 @@ def build_emergency_condition_flex(
         "type": "flex",
         "altText": alt_text(language),
         "contents": bubble,
+        RISK_ALERT_KEY: {"reason": verdict.display},
     }

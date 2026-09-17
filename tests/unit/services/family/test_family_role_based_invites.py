@@ -67,8 +67,21 @@ class FakeRepo:
             tree.family_members.append(member)
         return tree
 
-    async def accept_invitation(self, invite_id):
-        self.accepted.append(invite_id)
+    async def accept_invitation(self, invite_id, accepted_by=None):
+        """與真實 repository 同語意：只有 pending 搶得到，搶到回邀請、否則 None。"""
+        invitation = self.invitations.get(invite_id)
+        if invitation is None or invitation.status != "pending":
+            return None
+        invitation.status = "accepted"
+        self.accepted.append((invite_id, accepted_by))
+        return invitation
+
+    async def revoke_invitation(self, invite_id, revoked_by):
+        invitation = self.invitations.get(invite_id)
+        if invitation is None or invitation.status != "pending":
+            return False
+        invitation.status = "revoked"
+        return True
 
 
 class FakeAuthz:
@@ -201,7 +214,12 @@ async def test_role_comes_from_the_invitation_record_not_the_request():
 
 @pytest.mark.asyncio
 async def test_role_is_written_one_way_only():
-    """受邀者從未表示要授予擁有者任何權限，反向那筆維持未設定。"""
+    """受邀者從未表示要授予擁有者任何權限：反向那筆是**明確的 MEMBER**，不是 GUARDIAN。
+
+    也不是「未設定」——未設定的成員在影子模式下走導入前的寬鬆行為（在族譜裡
+    就什麼都能讀），等於受邀者一接受邀請，邀請者就看得到他的病史與對話。
+    明確寫 MEMBER，那一邊立刻受矩陣約束、只讀得到 GENERAL。
+    """
     service, repo, authz = make_service({OWNER: tree(OWNER)})
     invitation = await service.create_invitation(
         OWNER, owner_id=OWNER, family_role="GUARDIAN", authorization_service=authz
@@ -209,7 +227,7 @@ async def test_role_is_written_one_way_only():
     await _accept(service, repo, invitation)
     invitee_side = [m for o, m in repo.added if o == INVITEE]
     assert invitee_side[0].user_id == OWNER
-    assert invitee_side[0].family_role is None
+    assert invitee_side[0].family_role == "MEMBER"
 
 
 @pytest.mark.asyncio
@@ -275,3 +293,140 @@ async def test_legacy_invitation_without_owner_id_still_works():
     )
     assert invitation.target_owner_id == INVITER
     assert invitation.family_role is None
+
+
+# ── 接受是原子的；邀請可撤銷 ─────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_accept_marks_the_invitation_before_linking():
+    service, repo, authz = make_service({OWNER: tree(OWNER)})
+    invitation = await service.create_invitation(OWNER, authorization_service=authz)
+    await _accept(service, repo, invitation)
+    assert repo.accepted == [(invitation.id, INVITEE)]
+    assert repo.invitations[invitation.id].status == "accepted"
+
+
+@pytest.mark.asyncio
+async def test_a_forwarded_invitation_can_only_be_accepted_once():
+    """兩個人拿到同一張轉發的邀請：第二個人看到的是已失效，不會也進到族譜。"""
+    service, repo, authz = make_service({OWNER: tree(OWNER)})
+    invitation = await service.create_invitation(OWNER, authorization_service=authz)
+    status, _ = await _accept(service, repo, invitation, invitee=INVITEE)
+    assert status == "joined"
+    with pytest.raises(HTTPException) as exc:
+        await _accept(service, repo, invitation, invitee="U-second")
+    assert exc.value.status_code == 410
+    assert {m.user_id for o, m in repo.added if o == OWNER} == {INVITEE}
+
+
+@pytest.mark.asyncio
+async def test_losing_the_race_to_claim_is_treated_as_already_used():
+    """讀到的時候還是 pending、搶的時候已經被搶走：當成已使用，不加人。"""
+
+    class RacyRepo(FakeRepo):
+        async def accept_invitation(self, invite_id, accepted_by=None):
+            return None  # 另一個請求剛好先搶到了
+
+    repo = RacyRepo({OWNER: tree(OWNER)})
+    service = FamilyTreeService(repository=repo)
+    invitation = await service.create_invitation(OWNER, authorization_service=FakeAuthz())
+    with pytest.raises(HTTPException) as exc:
+        await _accept(service, repo, invitation)
+    assert exc.value.status_code == 410
+    assert repo.added == []
+
+
+@pytest.mark.asyncio
+async def test_inviter_cannot_accept_their_own_invitation():
+    """發邀請的人與接受的人 SHALL NOT 是同一個人（受委任者替長輩建的邀請）。"""
+    service, repo, authz = make_service(
+        {OWNER: tree(OWNER)}, delegates={(INVITER, OWNER)}
+    )
+    invitation = await service.create_invitation(
+        INVITER, owner_id=OWNER, family_role="CAREGIVER", authorization_service=authz
+    )
+    with pytest.raises(HTTPException) as exc:
+        await _accept(service, repo, invitation, invitee=INVITER)
+    assert exc.value.status_code == 400
+    assert repo.added == []
+
+
+@pytest.mark.asyncio
+async def test_owner_can_revoke_a_pending_invitation():
+    service, repo, authz = make_service({OWNER: tree(OWNER)})
+    invitation = await service.create_invitation(OWNER, authorization_service=authz)
+    assert await service.revoke_invitation(OWNER, invitation.id, authz) is True
+    assert repo.invitations[invitation.id].status == "revoked"
+    # 撤銷後三條路都要失效：QR、verify、accept。
+    assert await service.is_invitation_usable(invitation.id) is False
+    with pytest.raises(HTTPException) as verify_exc:
+        await service.verify_invitation(invitation.id)
+    with pytest.raises(HTTPException) as accept_exc:
+        await service.accept_invitation(INVITEE, invitation.id)
+    assert verify_exc.value.status_code == 410
+    assert accept_exc.value.status_code == 410
+    assert repo.added == []
+
+
+@pytest.mark.asyncio
+async def test_revoking_twice_is_idempotent():
+    service, repo, authz = make_service({OWNER: tree(OWNER)})
+    invitation = await service.create_invitation(OWNER, authorization_service=authz)
+    await service.revoke_invitation(OWNER, invitation.id, authz)
+    assert await service.revoke_invitation(OWNER, invitation.id, authz) is False
+
+
+@pytest.mark.asyncio
+async def test_active_delegate_can_revoke_the_owners_invitation():
+    service, repo, authz = make_service(
+        {OWNER: tree(OWNER)}, delegates={(INVITER, OWNER)}
+    )
+    invitation = await service.create_invitation(
+        INVITER, owner_id=OWNER, family_role="MEMBER", authorization_service=authz
+    )
+    assert await service.revoke_invitation(INVITER, invitation.id, authz) is True
+
+
+@pytest.mark.asyncio
+async def test_stranger_cannot_revoke_and_learns_nothing():
+    """沒有權限回 404 而不是 403：回 403 等於告訴對方「這組碼存在」。"""
+    service, repo, authz = make_service({OWNER: tree(OWNER)})
+    invitation = await service.create_invitation(OWNER, authorization_service=authz)
+    with pytest.raises(HTTPException) as exc:
+        await service.revoke_invitation("U-stranger", invitation.id, authz)
+    assert exc.value.status_code == 404
+    assert repo.invitations[invitation.id].status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_inviter_who_lost_delegation_cannot_revoke():
+    service, repo, authz = make_service(
+        {OWNER: tree(OWNER)}, delegates={(INVITER, OWNER)}
+    )
+    invitation = await service.create_invitation(
+        INVITER, owner_id=OWNER, family_role="MEMBER", authorization_service=authz
+    )
+    authz.delegates.clear()
+    with pytest.raises(HTTPException) as exc:
+        await service.revoke_invitation(INVITER, invitation.id, authz)
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_unknown_code_is_404_on_revoke():
+    service, repo, authz = make_service()
+    with pytest.raises(HTTPException) as exc:
+        await service.revoke_invitation(OWNER, "no-such-code", authz)
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_accepted_invitation_cannot_be_revoked():
+    """人已經在族譜裡了，要拿掉他走移除成員，不是把邀請改成沒發生過。"""
+    service, repo, authz = make_service({OWNER: tree(OWNER)})
+    invitation = await service.create_invitation(OWNER, authorization_service=authz)
+    await _accept(service, repo, invitation)
+    with pytest.raises(HTTPException) as exc:
+        await service.revoke_invitation(OWNER, invitation.id, authz)
+    assert exc.value.status_code == 409

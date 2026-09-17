@@ -8,12 +8,22 @@ from linebot.v3.webhooks import (
     AudioMessageContent,
     FileMessageContent,
 )
+from app.core.request_logging import log_stage
 from app.core.user_language import (
     DEFAULT_USER_LANGUAGE,
+    normalize_user_language,
     reset_request_language,
     set_request_language,
 )
-from app.services.media.mutimedia_processor import media_processor_service
+from app.i18n.messages import t
+from app.services.media.mutimedia_processor import (
+    MAX_MEDIA_SIZE_BYTES,
+    NO_CONTENT_TEXT,
+    MediaServiceUnavailableError,
+    MediaTooLargeError,
+    MediaUnsupportedError,
+    media_processor_service,
+)
 from app.services.line_messaging.handler.message_handler import (
     BaseLineMessageHandler,
     LineValidationError,
@@ -39,6 +49,8 @@ class LineMediaHandler(BaseLineMessageHandler):
         user_document_ingest_service=None,
         safety_alert_service=None,
         emergency_family_alert_service=None,
+        lost_location_service=None,
+        urgency_classifier=None,
     ):
         # 語音、圖片、檔案抽出的文字同樣會過急迫度判斷；沒有把通報服務傳下去的話，
         # 當事人收得到紅卡，家人卻收不到通報——而長輩最常用的正是語音。
@@ -50,6 +62,8 @@ class LineMediaHandler(BaseLineMessageHandler):
             loading_animation_service,
             safety_alert_service,
             emergency_family_alert_service,
+            lost_location_service=lost_location_service,
+            urgency_classifier=urgency_classifier,
         )
         self._user_document_ingest_service = user_document_ingest_service
 
@@ -67,14 +81,21 @@ class LineMediaHandler(BaseLineMessageHandler):
             raise ValueError("Expected Media Message Content")
 
         user_id = getattr(event.source, "user_id", "")
+        # 讀取動畫在辨識之前就要開：下載＋n8n／STT 動輒 5–20 秒，以前要等辨識
+        # 完、進 _process_and_reply 才開，使用者這段時間看到的是已讀不回。
+        # _process_and_reply 會再開一次，那一次順便把 60 秒的窗口從 agent 開始
+        # 重新算，所以這裡不用擔心辨識太久動畫先消失。
+        if self._loading_animation_service is not None:
+            await self._loading_animation_service.start(user_id)
         # 辨識語音之前就要知道使用者的語言：選台語的走台語 STT，其他語言交給
-        # faster-whisper 當提示。語言原本要到 _process_and_reply 讀了 profile 才
+        # Gemini（備援 faster-whisper）當提示。語言原本要到 _process_and_reply 讀了 profile 才
         # 設定，那時辨識早就做完了——所有語音都是用預設的 zh-TW 辨識的
         # （2026-09-14 發現，ba9bf1b 的語言提示因此從沒生效）。
-        lang_token = set_request_language(await self._language_choice_for(user_id))
+        language_choice = await self._language_choice_for(user_id)
+        lang_token = set_request_language(language_choice)
         try:
             user_text, message_type, image_text = await self._extract_media_text(
-                message, user_id
+                message, user_id, language=normalize_user_language(language_choice)
             )
         finally:
             reset_request_language(lang_token)
@@ -94,9 +115,11 @@ class LineMediaHandler(BaseLineMessageHandler):
         return self._language_choice_from_profile(profile)
 
     async def _extract_media_text(
-        self, message, user_id: str
+        self, message, user_id: str, language: str | None = None
     ) -> tuple[str, str, str]:
         """回傳 (給 agent 的文字, 媒體類型, 圖片辨識原文)。
+
+        `language` 是錯誤說明用的語言；沒給就用 request context 的語言。
 
         第三項只有圖片才有值，其餘是空字串：n8n 裡只有圖片走影像解析的 prompt，
         表格卡吃的「值（註記）」Markdown 表格是那個 prompt 產的，文件與語音走的
@@ -124,21 +147,45 @@ class LineMediaHandler(BaseLineMessageHandler):
         if file_name is not None and not file_name.strip():
             raise LineValidationError("無效的媒體檔名")
 
-        media_content = await media_processor_service.process_media(
-            media_message_id=media_id,
-            user_media_type=media_type,
-            source_file_name=file_name,
-            user_id=user_id,
-        )
+        # 四種失敗分開講（理由見 mutimedia_processor.MediaProcessingError）。
+        # LineValidationError 由 dispatcher 原句回給使用者，所以這裡就要譯好。
+        kind = t(f"media.kind.{media_type}", language=language)
+        try:
+            media_content = await media_processor_service.process_media(
+                media_message_id=media_id,
+                user_media_type=media_type,
+                source_file_name=file_name,
+                user_id=user_id,
+            )
+        except MediaTooLargeError as exc:
+            log_stage(logger, "media_rejected", reason="too_large", bytes=exc.size_bytes)
+            raise LineValidationError(
+                t("media.too_large", language=language).format(
+                    kind=kind, limit_mb=MAX_MEDIA_SIZE_BYTES // (1024 * 1024)
+                )
+            ) from exc
+        except MediaUnsupportedError as exc:
+            log_stage(logger, "media_rejected", reason="unsupported", detail=str(exc)[:80])
+            raise LineValidationError(
+                t("media.unsupported", language=language).format(kind=kind)
+            ) from exc
+        except MediaServiceUnavailableError as exc:
+            log_stage(logger, "media_failed", reason="service", detail=str(exc)[:120])
+            raise LineValidationError(
+                t("media.service_unavailable", language=language).format(kind=kind)
+            ) from exc
 
-        cleaned_content = media_content.strip()
+        cleaned_content = (media_content or "").strip()
+        # NO_CONTENT_TEXT 是 processor 在「辨識成功但沒有內容」時的哨兵
+        # （靜音的語音、空白的圖）；舊版 n8n 也會回同一個開頭的句子。
         if (
             not cleaned_content
+            or cleaned_content == NO_CONTENT_TEXT
             or cleaned_content.startswith("Unable to extract text")
-            or cleaned_content.startswith("發生錯誤")
         ):
+            log_stage(logger, "media_rejected", reason="no_content")
             raise LineValidationError(
-                f"無法從您傳送的{media_type}中辨識出任何文字，請確認內容清晰並重新傳送。"
+                t("media.no_content", language=language).format(kind=kind)
             )
 
         if (

@@ -63,6 +63,66 @@ async def _send_reply(replier: LineReplier, **kwargs):
     return ok, messaging_api
 
 
+def _tool_flex_json(**extra) -> str:
+    import json
+
+    payload = {
+        "type": "flex",
+        "altText": "邀請朋友一起用 CARE",
+        "contents": {
+            "type": "bubble",
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "contents": [{"type": "text", "text": "CARE"}],
+            },
+        },
+        **extra,
+    }
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _sent_messages(messaging_api) -> list:
+    return messaging_api.reply_message.call_args[0][0].messages
+
+
+@pytest.mark.asyncio
+async def test_tool_flex_follow_up_text_is_sent_right_after_the_card(replier):
+    """分享卡的 followUpText 拆成第二則純文字：卡片裡的字不能長按複製。"""
+    link = "CARE 加好友連結：\nhttps://line.me/R/ti/p/%40460xmyhp"
+
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text=_tool_flex_json(followUpText=link),
+        user_id="U1",
+        voice_reply_enabled=False,
+    )
+
+    assert ok
+    messages = _sent_messages(messaging_api)
+    assert len(messages) == 2
+    assert isinstance(messages[0], FlexMessage)
+    assert isinstance(messages[1], TextMessage)
+    assert messages[1].text == link
+
+
+@pytest.mark.asyncio
+async def test_tool_flex_without_follow_up_text_sends_only_the_card(replier):
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text=_tool_flex_json(),
+        user_id="U1",
+        voice_reply_enabled=False,
+    )
+
+    assert ok
+    messages = _sent_messages(messaging_api)
+    assert len(messages) == 1
+    assert isinstance(messages[0], FlexMessage)
+
+
 @pytest.mark.asyncio
 async def test_reply_location_qr_label_uses_japanese(replier):
 
@@ -143,6 +203,31 @@ async def test_reply_speech_language_goes_to_tts_while_text_keeps_language():
     reply_req = messaging_api.reply_message.call_args[0][0]
     qr_label = reply_req.messages[-1].quick_reply.items[0].action.label
     assert qr_label == t("location.share_qr_label", "zh-TW")
+
+
+@pytest.mark.asyncio
+async def test_reply_adds_lost_button_after_location_button():
+    """走失分類器沒把握時的「我迷路了，通知家人」：與位置按鈕並存，都掛在最後一則。"""
+    fake_tts = FakeTTSService()
+    replier = LineReplier(token_manager=fake_line_token_manager("token"), tts_service=fake_tts)
+
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text="回答",
+        user_id="U1",
+        request_location=True,
+        voice_reply_enabled=True,
+        language="en",
+        lost_help_postback="action=lost_confirm&w=I cannot find the road",
+    )
+
+    assert ok is True
+    items = messaging_api.reply_message.call_args[0][0].messages[-1].quick_reply.items
+    assert [item.action.type for item in items] == ["location", "postback"]
+    assert items[1].action.label == t("lost.help.quick_reply", "en")
+    assert items[1].action.data == "action=lost_confirm&w=I cannot find the road"
+    assert items[1].action.display_text == t("lost.help.display", "en")
 
 
 @pytest.mark.asyncio

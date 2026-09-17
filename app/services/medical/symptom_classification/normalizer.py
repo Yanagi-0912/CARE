@@ -53,7 +53,13 @@ class SymptomResolver(Protocol):
 
 
 class SymptomNormalizer:
-    """口語症狀 → 對照表條目。目前唯一路徑是 LLM，enum 約束在封閉集合上。"""
+    """
+    口語症狀 → 對照表條目。
+
+    向量召回：分數夠高直接採用，中間帶交 LLM 在 top-k 裡決選，低於門檻視為未命中。
+    沒有索引或取向量失敗時，改由 LLM 在全表裡選。LLM 的輸出一律以 enum 約束在
+    封閉集合上。
+    """
 
     def __init__(
         self,
@@ -70,7 +76,6 @@ class SymptomNormalizer:
         top_k: int = TOP_K,
     ) -> None:
         self._terms = tuple(table_terms)
-        self._term_set = frozenset(self._terms)
         self._index = vector_index
         self._embed_query = embed_query
         self._gemini = gemini_service
@@ -86,17 +91,16 @@ class SymptomNormalizer:
                 f"{LOGGER_HEADER_TEXT} 未提供向量索引，比對層退回 LLM 全表兜底"
             )
 
-    def _build_schema(self, candidates: Sequence[str] | None = None) -> dict[str, Any]:
+    def _build_schema(self, candidates: Sequence[str]) -> dict[str, Any]:
         """輸出結構裡沒有科別欄位——模型沒有那個輸出通道。
 
-        candidates 是向量召回的結果；省略時退回全表。無論哪一種，enum 都是
-        封閉集合，模型不可能輸出集合以外的東西（決策 5）。
+        candidates 是這次允許的條目：向量召回的 top-k，或全表兜底時的整張表。
+        無論哪一種，enum 都是封閉集合，模型不可能輸出集合以外的東西（決策 5）。
         """
-        allowed = self._terms if candidates is None else tuple(candidates)
         return {
             "type": "object",
             "properties": {
-                "symptom": {"type": "string", "enum": [*allowed, UNKNOWN]}
+                "symptom": {"type": "string", "enum": [*candidates, UNKNOWN]}
             },
             "required": ["symptom"],
         }

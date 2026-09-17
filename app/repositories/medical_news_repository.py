@@ -20,18 +20,32 @@ from app.models.medical_news import DrugNews, MedicalNewsDelivery
 logger = logging.getLogger(__name__)
 
 
+# 「這位使用者今天已經有人在處理」的搶佔紀錄，與 medical_news_deliveries 分開放。
+#
+# 為什麼不是同一個 collection：deliveries 的 (user_id, news_ref) 唯一索引把
+# news_ref 缺席視為 null，同一位使用者的第二天「日搶佔」就會撞到第一天的；而
+# 改動既有索引（改成 partial）得先 drop 再建，滾動更新期間兩個實例會有一段時間
+# 沒有任何唯一約束。獨立一個 collection 就沒有這兩個問題，舊資料也不需要遷移。
+DAY_CLAIMS_COLLECTION_NAME = "medical_news_day_claims"
+
+
+def _day_claims_collection() -> Any:
+    return MongoDBManager.get_database()[DAY_CLAIMS_COLLECTION_NAME]
+
+
 async def ensure_indexes(
     *,
     drug_news_collection: Optional[Any] = None,
     deliveries_collection: Optional[Any] = None,
     shares_collection: Optional[Any] = None,
+    day_claims_collection: Optional[Any] = None,
 ) -> None:
-    """建立三個 collection 的索引。
+    """建立四個 collection 的索引。
 
-    刻意是模組層函式而非某個 class 的方法：三個 collection 的索引要一起建立，
-    掛在其中任一個 repository 底下都會讓另外兩個看起來不需要索引。
+    刻意是模組層函式而非某個 class 的方法：這幾個 collection 的索引要一起建立，
+    掛在其中任一個 repository 底下都會讓其他的看起來不需要索引。
 
-    每個 collection 各自 try/except：其中一個因既有重複資料而建不起來時，另外兩個
+    每個 collection 各自 try/except：其中一個因既有重複資料而建不起來時，其他的
     仍應建立成功。吞掉例外但留 exception log 的處理比照
     `MedicationLogRepository.ensure_indexes`——沒有唯一索引時去重與推播權搶佔都會
     失效，而那不會報錯，只會表現為重複推播，所以維運必須看得到這筆 log。
@@ -42,6 +56,23 @@ async def ensure_indexes(
         or MongoDBManager.get_medical_news_deliveries_collection()
     )
     shares = shares_collection or MongoDBManager.get_medical_news_shares_collection()
+    day_claims = day_claims_collection or _day_claims_collection()
+
+    try:
+        # 一位使用者一天只有一個實例能處理：滾動更新期間兩個排程實例並存，
+        # 各自挑到**不同**的消息時 (user_id, news_ref) 擋不住，使用者會在同一天
+        # 收到兩張卡。這個索引是「每日至多一則」在多實例下唯一的保證。
+        await day_claims.create_index(
+            [("user_id", 1), ("delivered_on", 1)],
+            unique=True,
+            name="uniq_user_day",
+        )
+    except Exception:
+        logger.exception(
+            "[medical_news] 無法建立 %s 唯一索引；"
+            "多實例並存時同一位使用者同一天可能收到兩張不同的卡",
+            DAY_CLAIMS_COLLECTION_NAME,
+        )
 
     try:
         await deliveries.create_index(
@@ -179,6 +210,23 @@ class MedicalNewsDeliveryRepository:
             return False
 
     @staticmethod
+    async def release(
+        user_id: str,
+        news_ref: str,
+        collection: Optional[Any] = None,
+    ) -> None:
+        """撤回 `claim`。只在推播**確定沒送出**時用（LINE 回 429 額度用完）。
+
+        留著會把這則記成「已推給這位使用者」，額度恢復後他永遠不會再收到它。
+        暫時性失敗（LINE 5xx、逾時）**不**撤回：那種情況送沒送到不確定，撤回
+        反而可能讓下次重推成第二張。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_medical_news_deliveries_collection()
+
+        await collection.delete_one({"user_id": user_id, "news_ref": news_ref})
+
+    @staticmethod
     async def find(
         user_id: str,
         news_ref: str,
@@ -245,6 +293,64 @@ class MedicalNewsDeliveryRepository:
 
         return await collection.count_documents(
             {"user_id": user_id, "shared_at": {"$gte": day_start}}
+        )
+
+
+class MedicalNewsDayClaimRepository:
+    """某位使用者「今天」的推播處理權。
+
+    搶佔發生在選材**之前**：兩個排程實例對同一位使用者可能挑到不同的消息
+    （選材之間 pushed_refs 可能已變），(user_id, news_ref) 的唯一索引擋不住那種
+    情況。先搶到「今天這位使用者歸我」的實例才往下選材與推播，另一個直接跳過。
+    """
+
+    @staticmethod
+    async def claim(
+        user_id: str,
+        delivered_on: str,
+        collection: Optional[Any] = None,
+    ) -> bool:
+        """搶下「今天推給這位使用者」的權利。插入成功回 True。
+
+        `delivered_on` 是台北日期（YYYY-MM-DD）——推播時間以台北時間排程，
+        「同一天」也要用同一個曆日來認，UTC 日期在台北 08:00 前會差一天。
+
+        同 `MedicalNewsDeliveryRepository.claim`：只接住 `DuplicateKeyError`，其他
+        例外往上拋，資料庫異常時不得被當成「已推過」而安靜地跳過整批使用者。
+        """
+        if collection is None:
+            collection = _day_claims_collection()
+
+        try:
+            await collection.insert_one(
+                {
+                    "_id": str(ObjectId()),
+                    "user_id": user_id,
+                    "delivered_on": delivered_on,
+                    "claimed_at": datetime.now(timezone.utc),
+                }
+            )
+            return True
+        except DuplicateKeyError:
+            return False
+
+    @staticmethod
+    async def release(
+        user_id: str,
+        delivered_on: str,
+        collection: Optional[Any] = None,
+    ) -> None:
+        """放掉今天的處理權。
+
+        兩種情況要放：推播額度用完（這位使用者今天其實沒收到，額度恢復或明天
+        重跑時不該被當成已處理）、以及兩層都沒有內容可推（稍後索引補上、當天
+        再跑一次時仍應輪得到他）。
+        """
+        if collection is None:
+            collection = _day_claims_collection()
+
+        await collection.delete_one(
+            {"user_id": user_id, "delivered_on": delivered_on}
         )
 
 

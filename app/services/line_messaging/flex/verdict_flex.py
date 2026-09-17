@@ -20,6 +20,10 @@ from app.services.rag.claim_verification.service import (
 )
 from resources.flex_messages import theme
 
+# 卡片頂層的判定標記。對話紀錄存的是整張卡的 JSON，摘要只讀這個 key 取得判定字樣，
+# 不必從卡片節點反解文字；送往 LINE 時 replier 只取 altText／contents，不會帶出去。
+CLAIM_VERDICT_KEY = "claimVerdict"
+
 _TFC_SOURCE_LABEL = "台灣事實查核中心"
 _RELATED_SOURCES_LABEL = "資料來源"
 

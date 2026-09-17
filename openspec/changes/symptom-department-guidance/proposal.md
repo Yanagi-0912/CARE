@@ -19,7 +19,7 @@
 - **新增人工審定的症狀對照表**：`resources/symptom_department_table/`。原料是來源醫院公開對照表的原文備份（`raw/*.md`），人工整併成 `symptom_department_reference.json`；repo 中沒有爬蟲腳本。表中只收來源所載的對應，不含本專案補列或人工排序（design 決策 14）；審定狀態以整張表的 `status` 表示。
 - **對照表的科別欄位一律先過 `resolve_department()` 轉成部定專科**，載入時驗證，對不上即失敗。否則會產生「系統說查過了但附近沒有」——`llm_term_resolver.py` 模組註解指出這比「系統看不懂」更糟。
 - **輸出一律為多候選 + 保底 + 免責**，並可直接銜接既有的 `find_nearby_facilities_by_department`。
-- `get_rag_answer`、`find_nearby_hospitals`、`find_nearby_facilities_by_department` 與 `department_matcher` 的別名表**行為不變**。`department_matcher` 維持不收症狀詞——症狀邏輯全部收斂在新模組，兩者職責不混。
+- `get_rag_answer`、`find_nearby_hospitals`、`find_nearby_facilities_by_department` 與 `department_matcher` 的別名表**行為不變**。唯一例外（2026-09-14）：保底卡的按鈕要一次搜尋全部保底科別，`find_nearby_facilities_by_department` 因此改收科別清單、`department_matcher` 能從一句話解析出多個科別；別名表本身不變（design 決策 13）。`department_matcher` 維持不收症狀詞——症狀邏輯全部收斂在新模組，兩者職責不混。
 
 ## Capabilities
 

@@ -48,10 +48,10 @@ async def test_table_hit_never_calls_llm():
         repository=FakeRepository(), department_resolver=resolver
     )
 
-    result = await service.find_nearby_facilities_by_department(25.0, 121.0, "腸胃科")
+    result = await service.find_nearby_facilities_by_department(25.0, 121.0, ["腸胃科"])
 
-    assert result.match.canonical == "內科"
-    assert result.match.source == "table"
+    assert result.matches[0].canonical == "內科"
+    assert result.matches[0].source == "table"
     assert resolver.asked == []
 
 
@@ -62,13 +62,13 @@ async def test_table_miss_falls_back_to_llm():
     service = MedicalService(repository=repository, department_resolver=resolver)
 
     result = await service.find_nearby_facilities_by_department(
-        25.0, 121.0, "腹腔鏡科"
+        25.0, 121.0, ["腹腔鏡科"]
     )
 
     assert resolver.asked == ["腹腔鏡科"]
-    assert result.match.canonical == "外科"
-    assert result.match.requested == "腹腔鏡科"
-    assert result.match.source == "llm"
+    assert result.matches[0].canonical == "外科"
+    assert result.matches[0].requested == "腹腔鏡科"
+    assert result.matches[0].source == "llm"
     # 兜底解析出來的科別要真的拿去查 DB，而不是只影響文案
     assert repository.queries[0] == {"departments": {"$regex": "外科", "$options": "i"}}
 
@@ -82,10 +82,10 @@ async def test_llm_also_unknown_keeps_honest_failure():
     )
 
     result = await service.find_nearby_facilities_by_department(
-        25.0, 121.0, "隨便什麼科"
+        25.0, 121.0, ["隨便什麼科"]
     )
 
-    assert result.match is None
+    assert result.matches == ()
     assert result.facilities == []
     assert repository.queries == []  # 解析失敗不可打 DB
 
@@ -95,13 +95,13 @@ async def test_without_resolver_behaviour_is_unchanged():
     """沒接兜底時行為與加這層之前完全相同。"""
     service = MedicalService(repository=FakeRepository())
 
-    result = await service.find_nearby_facilities_by_department(25.0, 121.0, "大腸科")
-    assert result.match.canonical == "外科"  # hotfix 之後已在表裡
+    result = await service.find_nearby_facilities_by_department(25.0, 121.0, ["大腸科"])
+    assert result.matches[0].canonical == "外科"  # hotfix 之後已在表裡
 
     unknown = await service.find_nearby_facilities_by_department(
-        25.0, 121.0, "隨便什麼科"
+        25.0, 121.0, ["隨便什麼科"]
     )
-    assert unknown.match is None
+    assert unknown.matches == ()
 
 
 @pytest.mark.asyncio
@@ -126,8 +126,8 @@ async def test_configure_llm_fallbacks_injects_after_construction():
     service.configure_llm_fallbacks(department_resolver=resolver)
 
     result = await service.find_nearby_facilities_by_department(
-        25.0, 121.0, "腹腔鏡科"
+        25.0, 121.0, ["腹腔鏡科"]
     )
 
-    assert result.match.canonical == "外科"
+    assert result.matches[0].canonical == "外科"
     assert resolver.asked == ["腹腔鏡科"]

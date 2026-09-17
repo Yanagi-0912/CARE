@@ -155,6 +155,7 @@ FIELD_CLASSIFICATION: dict[tuple[ResourceName, str], DataClassification] = {
     ("medication_reminder", "medications"): "GENERAL",
     ("medication_reminder", "created_at"): "GENERAL",
     ("medication_reminder", "updated_at"): "GENERAL",
+    ("medication_reminder", "enabled_at"): "GENERAL",
     # ── 掛號提醒 ──────────────────────────────────────────────────
     # 整份資源與用藥同級，全部 GENERAL——包括科別。有 GENERAL 讀取權的家屬在
     # LIFF 內本來就該看得到完整的門診資訊。科別的敏感性是**推播通道**的問題
@@ -318,7 +319,7 @@ PROXY_WRITE_FORBIDDEN_FIELDS: frozenset[str] = frozenset(
 )
 
 # 推播種類，包含:高風險藥物、加入非處方藥、緊急事件偵測、掛號提醒、用藥逾時未確認、
-# 血壓血糖超出提醒範圍
+# 血壓血糖超出提醒範圍、走失求救、看診錄音整理完成
 NotificationKind = Literal[
     "high_risk_drug_alert",
     "otc_medication_added",
@@ -326,6 +327,8 @@ NotificationKind = Literal[
     "appointment_reminder",
     "medication_missed",
     "health_out_of_range",
+    "elder_lost",
+    "clinic_visit_ready",
 ]
 
 # 通知政策。**與 PERMISSIONS 分開宣告，兩者的變更互不牽動。**
@@ -381,6 +384,22 @@ NOTIFICATION_POLICY: dict[NotificationKind, frozenset[FamilyRole]] = {
     # `notification_recipients(..., has_legacy_equivalent=False)` 判定收件人，
     # 不受影子模式放寬（design.md 決策 4）。
     "health_out_of_range": frozenset({"GUARDIAN", "CAREGIVER"}),
+    # 長輩說自己走丟了：通報、即時位置地圖、「已找到」都只給這份名單上的人
+    # （見 app/services/lost/lost_location_service.py）。位置是當下行蹤，比健康
+    # 資料更直接關係到人身安全，所以不給 MEMBER。
+    #
+    # 不列入 STRICT_NOTIFICATION_KINDS，理由同 medication_missed：還沒指派角色的
+    # 家庭（目前的預設狀態）嚴格篩選會一個人都收不到，而走失是最不能沒人收到的
+    # 通知。影子模式送族譜全員。
+    "elder_lost": frozenset({"GUARDIAN", "CAREGIVER"}),
+    # 看診錄音轉成文字了（見 app/services/clinic_transcript/notifier.py）。卡片上唯一
+    # 的按鈕是打開那份紀錄，而紀錄是 SENSITIVE、以嚴格判定讀取——有 SENSITIVE 讀取權
+    # 的家人恰好就是 GUARDIAN 與 CAREGIVER。收件人比這更寬，就會有人收到打不開的卡片；
+    # 比這更窄，就會有看得到紀錄的家人不知道它好了。
+    #
+    # 列入 STRICT_NOTIFICATION_KINDS，理由同掛號提醒：讀取在影子模式下也是嚴格判定，
+    # 推播若在影子模式下送族譜全員，MEMBER 就會收到按了必定 403 的卡片。
+    "clinic_visit_ready": frozenset({"GUARDIAN", "CAREGIVER"}),
 }
 
 # 影子模式下**仍然**依 NOTIFICATION_POLICY 篩選收件人的推播種類。
@@ -390,7 +409,7 @@ NOTIFICATION_POLICY: dict[NotificationKind, frozenset[FamilyRole]] = {
 # `has_legacy_equivalent=False` 是同一個道理。掛號提醒整個功能都是新的，它的寫入
 # 一律嚴格判定（已拍板），收件人必須跟著嚴格，卡片上的按鈕才按得下去。
 STRICT_NOTIFICATION_KINDS: frozenset[NotificationKind] = frozenset(
-    {"appointment_reminder"}
+    {"appointment_reminder", "clinic_visit_ready"}
 )
 
 # 每位資料擁有者各自持有的遷移狀態。強制以**擁有者**為邊界逐一啟用，

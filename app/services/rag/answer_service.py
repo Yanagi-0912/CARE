@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import re
-import time
 from typing import Any
 
 from langchain_core.documents import Document
@@ -51,31 +50,6 @@ RERANK_MAX_CHUNKS_PER_ARTICLE = 2
 # 數字取代 CRAG，是在 CRAG 不可用時補一張網。
 DEFAULT_DEGRADED_MIN_SCORE = 0.0
 
-# CRAG 判 ambiguous 時，啟動改寫第二輪的時間預算（秒）。0.0＝不設限，
-# 維持導入前的行為。
-#
-# 第二輪是整條管線最貴的一段。下列數字是在 gemini-2.5-flash（thinking 預設
-# 開啟）上實測的：rewrite 5.3s ＋ 第二輪檢索精排 1.6s ＋ grade 11.8s ≈ 19s，
-# 後面還要再付一次 generate（3.8-10.2s）。同一題走不走第二輪是 43.6s 與 ~25s
-# 的差別。
-#
-# ⚠ 預設模型已換成 gemini-3.8-flash，上面這組數字尚未在新模型上重測。實測新
-# 模型的純文字回應快了約一倍，所以這個預算值很可能過於寬鬆——要調之前先重測，
-# 不要照著舊數字推算。
-#
-# 為什麼是「用掉多少」而不是「還剩多少」：預算檢查點在第一輪 grade 之後，
-# 那時已經知道這一輪的 grader 有多慢——grader 慢通常代表第二次也會慢，
-# 用已花時間當預測比固定總時限準。
-#
-# 12 秒的來由：第一輪檢索＋精排＋grade 實測 5.0 / 9.1 / 13.9 秒，取在最慢
-# 那題之下，讓它跳過第二輪、其餘兩題不受影響。**這是依三題樣本抓的起點，
-# 不是調校過的值**；要調整請先用 evals/rag/golden.jsonl 量判定品質的變化。
-#
-# 超時的降級是「拿第一輪結果生成」而不是轉網搜：網搜要再打 Firecrawl
-# 搜尋、可能逐頁 scrape、再生成一次，比第二輪更慢——為了省時間而走上更慢
-# 的路是本末倒置。這與既有 rewrite 失敗時 `return ranked` 的降級一致。
-DEFAULT_CRAG_REWRITE_BUDGET_SECONDS = 12.0
-
 # 投機生成：CRAG 分級期間先把生成跑起來。
 #
 # 分級與生成互不依賴——生成只吃 ranked，分級不改動它——所以兩者可以並行。
@@ -89,10 +63,12 @@ DEFAULT_SPECULATIVE_GENERATE = True
 # 整條管線的總逾時（秒）。0＝不設限。
 #
 # 為什麼需要：各段各自有逾時（Cohere、Firecrawl、連結檢查），但加起來沒有上限；
-# Gemini 的呼叫則根本沒有逾時（langchain-google-genai 4.2.2 預設 timeout=None、
-# 重試 6 次）。實測過 rag_retrieve 卡 94 秒才回 0 筆，使用者等 107 秒換一句
-# 「查無資料」。檢索那段另有每條腿的逾時（retriever.DEFAULT_LEG_TIMEOUT_SECONDS），
-# 這裡是最後一道：不管卡在哪一段，到點就停。
+# Gemini 的呼叫以前根本沒有逾時（langchain-google-genai 4.2.2 預設 timeout=None、
+# 重試 6 次；2026-09-16 起由 gemini_service 統一設 GEMINI_REQUEST_TIMEOUT_SECONDS
+# 與重試 2 次，但單次上限×重試次數仍大於這裡的總預算）。實測過 rag_retrieve
+# 卡 94 秒才回 0 筆，使用者等 107 秒換一句「查無資料」。檢索那段另有每條腿的
+# 逾時（retriever.DEFAULT_LEG_TIMEOUT_SECONDS），這裡是最後一道：不管卡在哪一段，
+# 到點就停。
 #
 # 45 秒的來由：
 #   - 上界：LINE loading 動畫最長 60 秒（官方文件：「5 to 60 seconds」），超過
@@ -136,7 +112,6 @@ class RagAnswerService:
         web_search: WebSearchService | None = None,
         web_fallback_enabled: bool = False,
         degraded_min_score: float = DEFAULT_DEGRADED_MIN_SCORE,
-        crag_rewrite_budget_seconds: float = DEFAULT_CRAG_REWRITE_BUDGET_SECONDS,
         link_checker: LinkChecker | None = None,
         speculative_generate: bool = DEFAULT_SPECULATIVE_GENERATE,
         total_timeout_seconds: float = DEFAULT_RAG_ANSWER_TIMEOUT_SECONDS,
@@ -152,7 +127,6 @@ class RagAnswerService:
         self.web_search = web_search
         self.web_fallback_enabled = bool(web_fallback_enabled and web_search is not None)
         self.degraded_min_score = degraded_min_score
-        self.crag_rewrite_budget_seconds = crag_rewrite_budget_seconds
         # None＝不檢查來源網址存活，行為與導入前完全相同（見 link_check.py）
         self.link_checker = link_checker
         # 只有 CRAG 開啟時才有東西可以並行——沒有分級就沒有等待可以填。
@@ -197,9 +171,6 @@ class RagAnswerService:
         return rag_fail(RagFailCode.TIMEOUT)
 
     async def _answer(self, user_text: str, timing: dict[str, Any]) -> str:
-        # 預算從這裡起算，涵蓋第一輪檢索、精排與 grade——預算要防的是整體
-        # 延遲，只計 _apply_crag 內部會漏掉前面已經花掉的時間。
-        started = time.perf_counter()
         timing["path"] = "kb"
         # candidates＝第一輪的 docs；approved＝CRAG 放行的 docs。兩者刻意用不同
         # 名字：投機生成是否可用，正是靠「這兩個是不是同一個 list」判斷的。
@@ -218,12 +189,12 @@ class RagAnswerService:
         rewrite = self._start_speculative_rewrite(user_text, candidates)
         try:
             return await self._answer_from(
-                user_text, candidates, speculative, rewrite, started, timing
+                user_text, candidates, speculative, rewrite, timing
             )
         finally:
             # 冪等：正常路徑上任務已被 await，這裡不做事；提早 return 或例外
-            # 逃出時才真正收掉，不留 orphan task。CRAG 放行時改寫結果用不到，
-            # 也是在這裡被取消。
+            # 逃出時才真正收掉，不留 orphan task。CRAG 放行時改寫結果用不到
+            # （改寫現在只給網搜用），也是在這裡被取消。
             _abandon_task(speculative)
             _abandon_task(rewrite)
 
@@ -233,15 +204,12 @@ class RagAnswerService:
         candidates: list[Document],
         speculative: "asyncio.Task[str] | None",
         rewrite: "asyncio.Task[RewrittenQuery] | None",
-        started: float,
         timing: dict[str, Any],
     ) -> str:
         approved: list[Document] | None = candidates
         if self.crag_enabled:
             try:
-                approved = await self._apply_crag(
-                    user_text, candidates, started=started, rewrite=rewrite
-                )
+                approved = await self._apply_crag(user_text, candidates)
             except Exception:
                 logger.exception(
                     "CRAG failed; degrading to generate without grade crag_grade=degraded"
@@ -257,10 +225,20 @@ class RagAnswerService:
                     logger.info("rag_fail code=%s crag_grade=degraded_below_floor",
                                 RagFailCode.KB_EMPTY)
                     timing["path"] = "web_degraded_below_floor"
+                    _abandon_task(speculative)
                     return await self._web_or_no_hits(user_text, rewrite)
             else:
                 if approved is None:
                     timing["path"] = "web_crag_reject"
+                    # 這裡就收掉投機生成，不要留到 `_answer` 的 finally——網搜
+                    # 那段要跑 5~15 秒，留著等於讓一份確定不會用的 KB 生成整個
+                    # 跑完。2026-09-16 實測 5 題有 3 題走這條路，每題白燒一次
+                    # 2.9-7.4 秒的完整生成。牆鐘時間省不到（它本來就是並行的
+                    # task），省的是 Gemini 的 token。
+                    #
+                    # 只是盡力而為：請求已經在路上，取消關掉的是連線，供應商那
+                    # 端已經生成的 token 仍可能照算。
+                    _abandon_task(speculative)
                     return await self._web_or_no_hits(user_text, rewrite)
 
         kb_answer = await self._resolve_generate(
@@ -278,7 +256,15 @@ class RagAnswerService:
             )
             # 不能留在 path=kb：這一題知識庫其實沒答出來，記成 kb 會讓分流門檻
             # 的校準把它當成「這個分數帶知識庫答得出來」的樣本，門檻被往下拉。
+            # path 要在轉網搜之前就定下來：網搜那段不改 path，校準樣本才會留在
+            # kb_model_refuse 這一格，與 web_crag_reject 分得開。
             timing["path"] = "kb_model_refuse"
+            if self.web_fallback_enabled:
+                # 與「知識庫沒命中」「CRAG 判不相關」走同一條路：知識庫有文件但
+                # 模型判定答不出來，對使用者來說一樣是「官方網站還沒查過」。以前
+                # 這裡直接回 MODEL_REFUSE 叫使用者換個說法，而 CRAG 判 incorrect
+                # 的題目反而會去網搜——同一種「知識庫答不了」，兩條路待遇不同。
+                return await self._web_or_no_hits(user_text, rewrite)
             return rag_fail(RagFailCode.MODEL_REFUSE)
 
         dead = await self._dead_source_urls(kb_answer, ranked, timing)
@@ -431,12 +417,8 @@ class RagAnswerService:
         logger.info("rag_fail code=%s", code)
         return rag_fail(code)
 
-    async def _retrieve_and_rerank(
-        self, query: str, *, attempt: str = "first"
-    ) -> list[Document]:
-        # attempt 區分這是第一輪還是 CRAG 改寫後的第二輪：整段檢索＋精排會
-        # 跑兩次，兩次的 ms 分不開就看不出「慢是因為跑了兩遍」。
-        with stage_timer(logger, "rag_retrieve", attempt=attempt) as t_retrieve:
+    async def _retrieve_and_rerank(self, query: str) -> list[Document]:
+        with stage_timer(logger, "rag_retrieve") as t_retrieve:
             docs = await self.retriever.ainvoke(query)
             t_retrieve["docs"] = len(docs)
         if not docs:
@@ -445,7 +427,7 @@ class RagAnswerService:
         # 判斷「這篇文章還有沒有更高分的 chunk 沒被算進去」，只截斷後的
         # top_n 會讓去重看不到被擠掉的候選，等於沒去重。
         with stage_timer(
-            logger, "rag_rerank", attempt=attempt, docs_in=len(docs)
+            logger, "rag_rerank", docs_in=len(docs)
         ) as t_rerank:
             ranked = await self.reranker.rerank(query, docs, top_n=len(docs))
             t_rerank["docs_out"] = len(ranked)
@@ -453,73 +435,27 @@ class RagAnswerService:
         return deduped[: self.rerank_top_n]
 
     async def _apply_crag(
-        self,
-        user_text: str,
-        ranked: list[Document],
-        *,
-        started: float,
-        rewrite: "asyncio.Task[RewrittenQuery] | None" = None,
+        self, user_text: str, ranked: list[Document]
     ) -> list[Document] | None:
-        """回傳可用於生成的 docs；None 表示知識庫不足。
+        """回傳可用於生成的 docs；None 表示知識庫不足、改走網搜。
 
-        *started* 是本次 answer 的 `time.perf_counter()` 起點，供改寫第二輪的
-        時間預算判斷（見 DEFAULT_CRAG_REWRITE_BUDGET_SECONDS）。*rewrite* 是與
-        分級並行的改寫任務（見 `_start_speculative_rewrite`）。
+        只分一次級。以前 `ambiguous` 會再跑一輪「改寫 → 重新檢索精排 → 再分
+        一次級」，2026-09-16 實測那一輪要 8.7 秒（改寫 5.5 + 第二次分級 3.2），
+        而最慢的那題跑完第二輪仍是 ambiguous、照樣落到網搜——20.2 秒裡有 8.7
+        秒買了一個沒有改變結論的判斷。
+
+        `ambiguous` 現在與 `incorrect` 同樣直接走網搜。grader 對 ambiguous 的
+        語意是「有關但資訊不足」，而「資訊不足」正是網搜要補的東西；先前那條
+        「預算用完就拿第一輪 ranked 硬生成」的路等於在知識庫不足時仍從知識庫
+        生成，方向與這個判斷相反。
         """
         assert self.grader is not None
-        with stage_timer(logger, "rag_crag_grade", attempt="first") as t_grade:
+        with stage_timer(logger, "rag_crag_grade") as t_grade:
             grade = await self.grader.grade(user_text, ranked)
             t_grade["grade"] = grade.value
         logger.info("crag_grade=%s", grade.value)
 
-        if grade is Grade.CORRECT:
-            return ranked
-
-        if grade is Grade.INCORRECT:
-            return None
-
-        # ambiguous
-        if self.rewriter is None:
-            logger.info("crag_grade=ambiguous_no_rewriter")
-            return None
-
-        elapsed = time.perf_counter() - started
-        if self._rewrite_budget_exhausted(elapsed):
-            # 拿第一輪的 ranked 生成。grader 說的是「有關但資訊不足」，不是
-            # 「無關」，而 prompt 的「內容不足請說不知道」與 _is_cannot_answer
-            # 仍在後面把關。
-            logger.info(
-                "crag_grade=ambiguous_budget_exhausted elapsed_s=%.1f budget_s=%.1f",
-                elapsed,
-                self.crag_rewrite_budget_seconds,
-            )
-            return ranked
-
-        try:
-            rewritten = await self._await_rewrite(rewrite, user_text, ranked)
-        except Exception:
-            logger.exception(
-                "CRAG rewrite failed; degrading to generate crag_grade=rewrite_degraded"
-            )
-            return ranked
-
-        second = await self._retrieve_and_rerank(rewritten.kb_query, attempt="rewrite")
-        if not second:
-            logger.info("crag_grade=ambiguous_exhausted empty_retry")
-            return None
-
-        with stage_timer(logger, "rag_crag_grade", attempt="rewrite") as t_grade2:
-            grade2 = await self.grader.grade(rewritten.kb_query, second)
-            t_grade2["grade"] = grade2.value
-        logger.info("crag_grade=%s after_rewrite", grade2.value)
-        if grade2 is Grade.CORRECT:
-            return second
-        return None
-
-    def _rewrite_budget_exhausted(self, elapsed_seconds: float) -> bool:
-        """已花時間是否用完改寫預算。預算 <= 0 視為不設限（沿用本檔其他門檻的慣例）。"""
-        budget = self.crag_rewrite_budget_seconds
-        return budget > 0 and elapsed_seconds >= budget
+        return ranked if grade is Grade.CORRECT else None
 
     @staticmethod
     def _build_context(docs: list[Document]) -> str:

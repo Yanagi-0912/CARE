@@ -387,6 +387,29 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "การค้นหาครั้งนี้ใช้เวลานานเกินไปและยังไม่เสร็จสิ้น กรุณาลองใหม่ภายหลัง",
         "ja": "今回の検索に時間がかかりすぎたため、完了できませんでした。しばらくしてから再度お試しください。",
     },
+    "rag.fail.scam_notice": {
+        "zh-TW": "如果這是要你匯款、轉帳或點連結的醫療訊息，請先不要照做，可以撥打 165 反詐騙諮詢專線查證。",
+        "en": (
+            "If this health-related message is asking you to send money or click a link, "
+            "please don't. You can call the 165 anti-fraud hotline to check."
+        ),
+        "id": (
+            "Jika pesan kesehatan ini meminta Anda mentransfer uang atau membuka tautan, "
+            "jangan lakukan dulu. Anda bisa menelepon hotline anti-penipuan 165 untuk memastikan."
+        ),
+        "vi": (
+            "Nếu tin nhắn y tế này yêu cầu bạn chuyển tiền hoặc bấm vào đường link, "
+            "xin đừng làm theo. Bạn có thể gọi đường dây chống lừa đảo 165 để kiểm tra."
+        ),
+        "th": (
+            "หากข้อความด้านสุขภาพนี้ขอให้คุณโอนเงินหรือกดลิงก์ อย่าเพิ่งทำตาม "
+            "สามารถโทรสายด่วนต่อต้านการฉ้อโกง 165 เพื่อตรวจสอบได้"
+        ),
+        "ja": (
+            "この医療に関するメッセージが送金やリンクのクリックを求めている場合は、従わないでください。"
+            "165 詐欺相談専用ダイヤルで確認できます。"
+        ),
+    },
     "rag.fail.MODEL_REFUSE": {
         "zh-TW": "找到的資料不足以安全回答此問題。請換個方式描述，或必要時就醫。",
         "en": (
@@ -661,15 +684,61 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "{department} ใกล้เคียง",
         "ja": "近くの{department}",
     },
+    # 列表裡沒有一家登記所查科別時的標題（附近全是沒登記專科的診所）。長輩可能只看
+    # 標題不看副標，因此標題本身就要揭露「沒有搜尋到該科診所」，不能只寫搜尋條件。
+    "location.department.title_unspecified": {
+        "zh-TW": "附近沒有搜尋到「{department}」診所",
+        "en": 'No nearby clinic found for "{department}"',
+        "id": 'Tidak ditemukan klinik "{department}" di sekitar Anda',
+        "vi": 'Không tìm thấy phòng khám "{department}" gần đây',
+        "th": 'ไม่พบคลินิก "{department}" ใกล้เคียง',
+        "ja": "近くに「{department}」の診療所は見つかりませんでした",
+    },
+    "location.department.all_unspecified": {
+        "zh-TW": (
+            "※ 下面 {count} 間都沒有登記{department}。原因是健保院所資料只標示它們"
+            "未登記專科（多為一般門診），系統因為距離近而一併列出；是否有看"
+            "{department}，請先去電確認。"
+        ),
+        "en": (
+            "※ None of the {count} below list {department}: they have no specialty "
+            "registered in the NHI facility data (mostly general practice) and are "
+            "shown because they are closest to you. Please call ahead to check "
+            "whether they see {department} patients."
+        ),
+        "id": (
+            "※ Tidak satu pun dari {count} fasilitas di bawah mencantumkan {department}: "
+            "dalam data fasilitas NHI mereka tidak memiliki spesialisasi terdaftar "
+            "(umumnya praktik umum) dan ditampilkan karena paling dekat dengan Anda. "
+            "Sebaiknya telepon dulu untuk memastikan layanan {department}."
+        ),
+        "vi": (
+            "※ Cả {count} cơ sở bên dưới đều không ghi {department}: trong dữ liệu "
+            "cơ sở y tế NHI, họ không đăng ký chuyên khoa (phần lớn là khám tổng quát) "
+            "và được hiển thị vì gần bạn nhất. Vui lòng gọi trước để hỏi có khám "
+            "{department} không."
+        ),
+        "th": (
+            "※ สถานพยาบาลทั้ง {count} แห่งด้านล่างไม่ได้ระบุ{department}: "
+            "ในข้อมูลสถานพยาบาล NHI ไม่ได้ลงทะเบียนแผนกเฉพาะทาง (ส่วนใหญ่เป็นการตรวจโรคทั่วไป) "
+            "และแสดงเพราะอยู่ใกล้คุณที่สุด แนะนำให้โทรสอบถามก่อนว่ามีบริการ{department}หรือไม่"
+        ),
+        "ja": (
+            "※ 以下の {count} 件はいずれも{department}の登録がありません。健保の医療機関"
+            "データで専門科の登録がなく（主に一般診療）、最も近いため表示しています。"
+            "{department}を受診できるか、事前に電話でご確認ください。"
+        ),
+    },
     # 使用者說的科別在健保資料裡不存在時（例如腸胃科屬於內科），必須誠實說明這層
-    # 對應，否則使用者會以為系統真的找到了腸胃專科。
+    # 對應，否則使用者會以為系統真的找到了腸胃專科。句尾寫「依…搜尋」而非「以下為
+    # …院所」：搜內科會一併列出沒登記專科的一般門診，不能保證每一家都是內科。
     "location.department.alias_note": {
-        "zh-TW": "※「{requested}」在健保院所資料中歸類於「{canonical}」，以下為{canonical}院所。",
-        "en": '※ "{requested}" is classified under "{canonical}" in the NHI facility data. Results below are {canonical} facilities.',
-        "id": '※ "{requested}" diklasifikasikan sebagai "{canonical}" dalam data fasilitas NHI. Hasil di bawah adalah fasilitas {canonical}.',
-        "vi": '※ "{requested}" được xếp vào "{canonical}" trong dữ liệu cơ sở y tế NHI. Kết quả bên dưới là các cơ sở {canonical}.',
-        "th": "※ \"{requested}\" ถูกจัดอยู่ในหมวด \"{canonical}\" ในข้อมูลสถานพยาบาล NHI ผลลัพธ์ด้านล่างคือสถานพยาบาล{canonical}",
-        "ja": "※「{requested}」は健保の医療機関データでは「{canonical}」に分類されます。以下は{canonical}の医療機関です。",
+        "zh-TW": "※「{requested}」在健保院所資料中歸類於「{canonical}」，以下依{canonical}搜尋。",
+        "en": '※ "{requested}" is classified under "{canonical}" in the NHI facility data. Results below are from a {canonical} search.',
+        "id": '※ "{requested}" diklasifikasikan sebagai "{canonical}" dalam data fasilitas NHI. Hasil di bawah berdasarkan pencarian {canonical}.',
+        "vi": '※ "{requested}" được xếp vào "{canonical}" trong dữ liệu cơ sở y tế NHI. Kết quả bên dưới được tìm theo {canonical}.',
+        "th": "※ \"{requested}\" ถูกจัดอยู่ในหมวด \"{canonical}\" ในข้อมูลสถานพยาบาล NHI ผลลัพธ์ด้านล่างค้นหาตาม{canonical}",
+        "ja": "※「{requested}」は健保の医療機関データでは「{canonical}」に分類されます。以下は{canonical}で検索した結果です。",
     },
     "location.nearby.found_within": {
         "zh-TW": "已為您找到 {radius_km} 公里內最近的 {count} 間，點擊查看詳細資訊",
@@ -788,6 +857,16 @@ _MESSAGES: dict[str, dict[str, str]] = {
             "申し訳ありません。「{department}」がどの診療科に該当するか判断できませんでした。\n"
             "内科・外科・小児科・歯科・耳鼻咽喉科・整形外科・皮膚科・眼科・産婦人科・漢方など、一般的な診療科でお試しください。"
         ),
+    },
+    # 一次搜多科、其中幾科看不懂時：照查看得懂的，但要說清楚哪幾科沒被搜尋，
+    # 否則使用者會以為每一科都查過了。
+    "location.department.partial_unknown": {
+        "zh-TW": "※ 我不確定「{unresolved}」對應到哪一個科別，以下只列出{searched}的院所。",
+        "en": '※ I am not sure which specialty "{unresolved}" maps to, so only {searched} facilities are listed below.',
+        "id": '※ Saya tidak yakin "{unresolved}" termasuk spesialisasi apa, jadi hanya fasilitas {searched} yang ditampilkan di bawah.',
+        "vi": '※ Tôi không chắc "{unresolved}" thuộc chuyên khoa nào, nên bên dưới chỉ liệt kê các cơ sở {searched}.',
+        "th": "※ ฉันไม่แน่ใจว่า \"{unresolved}\" ตรงกับแผนกใด จึงแสดงเฉพาะสถานพยาบาล{searched}ด้านล่าง",
+        "ja": "※「{unresolved}」がどの診療科に該当するか判断できなかったため、以下は{searched}の医療機関のみです。",
     },
     "location.type.title": {
         "zh-TW": "附近的{type}",
@@ -1143,6 +1222,64 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "เปิด CARE",
         "ja": "CARE を開く",
     },
+    # --- Flex：分享 CARE（官方帳號 QR＋邀請家人） ---
+    "flex.share.title": {
+        "zh-TW": "邀請朋友一起用 CARE",
+        "en": "Invite friends to CARE",
+        "id": "Ajak teman memakai CARE",
+        "vi": "Mời bạn bè cùng dùng CARE",
+        "th": "ชวนเพื่อนมาใช้ CARE",
+        "ja": "友だちを CARE に招待",
+    },
+    "flex.share.desc": {
+        "zh-TW": "請朋友用 LINE 掃這個 QR code，或按下面的按鈕把 CARE 傳給他。",
+        "en": "Ask your friend to scan this QR code with LINE, or tap the button below to send CARE to them.",
+        "id": "Minta teman memindai kode QR ini dengan LINE, atau ketuk tombol di bawah untuk mengirim CARE kepadanya.",
+        "vi": "Nhờ bạn bè quét mã QR này bằng LINE, hoặc nhấn nút bên dưới để gửi CARE cho họ.",
+        "th": "ให้เพื่อนสแกน QR code นี้ด้วย LINE หรือแตะปุ่มด้านล่างเพื่อส่ง CARE ให้เพื่อน",
+        "ja": "友だちに LINE でこの QR コードを読み取ってもらうか、下のボタンで CARE を送ってください。",
+    },
+    "flex.share.button": {
+        "zh-TW": "分享給 LINE 好友",
+        "en": "Share with LINE friends",
+        "id": "Bagikan ke teman LINE",
+        "vi": "Chia sẻ cho bạn bè LINE",
+        "th": "แชร์ให้เพื่อนใน LINE",
+        "ja": "LINE の友だちに送る",
+    },
+    "flex.share.family_prompt": {
+        "zh-TW": "想讓家人看到你的用藥？",
+        "en": "Want your family to see your medications?",
+        "id": "Ingin keluarga bisa melihat obat Anda?",
+        "vi": "Muốn người thân xem được thuốc của bạn?",
+        "th": "อยากให้ครอบครัวเห็นยาที่คุณใช้ไหม",
+        "ja": "家族にお薬の状況を見てもらいませんか？",
+    },
+    "flex.share.family_button": {
+        "zh-TW": "邀請家人加入我的家庭",
+        "en": "Invite family members",
+        "id": "Undang anggota keluarga",
+        "vi": "Mời người thân vào gia đình",
+        "th": "ชวนคนในครอบครัว",
+        "ja": "家族を招待する",
+    },
+    # 分享卡後面那則純文字：卡片裡的字不能長按複製，這則才能複製、轉貼。
+    "share.link_text": {
+        "zh-TW": "CARE 加好友連結（長按可以複製、轉傳）：\n{url}",
+        "en": "CARE add-friend link (long-press to copy or forward):\n{url}",
+        "id": "Tautan tambah teman CARE (tekan lama untuk menyalin atau meneruskan):\n{url}",
+        "vi": "Liên kết kết bạn với CARE (nhấn giữ để sao chép hoặc chuyển tiếp):\n{url}",
+        "th": "ลิงก์เพิ่มเพื่อน CARE (กดค้างเพื่อคัดลอกหรือส่งต่อ):\n{url}",
+        "ja": "CARE の友だち追加リンク（長押しでコピー・転送できます）：\n{url}",
+    },
+    "share.unavailable": {
+        "zh-TW": "分享連結暫時拿不到，請稍後再試。",
+        "en": "The share link isn't available right now. Please try again later.",
+        "id": "Tautan berbagi belum bisa diambil. Silakan coba lagi nanti.",
+        "vi": "Hiện chưa lấy được liên kết chia sẻ. Vui lòng thử lại sau.",
+        "th": "ยังไม่สามารถดึงลิงก์แชร์ได้ในขณะนี้ กรุณาลองใหม่ภายหลัง",
+        "ja": "共有リンクを取得できませんでした。しばらくしてからもう一度お試しください。",
+    },
     # --- Flex：醫療院所共用 ---
     "flex.facility.eyebrow": {
         "zh-TW": "醫療院所",
@@ -1349,25 +1486,32 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "ja": "{day} {time} 開始",
     },
     "flex.facility.unspecified_department": {
-        "zh-TW": "此院所資料未載明科別，是依距離補列的鄰近選項，建議先去電確認有無此診。",
+        "zh-TW": (
+            "此院所資料未載明科別（屬一般門診），因離您近而一併列出，"
+            "不一定有您要找的科別，建議先去電確認。"
+        ),
         "en": (
-            "This facility lists no specialty; it is included as a nearby option "
-            "by distance. Please call ahead to confirm."
+            "This facility lists no specialty (general practice). It is shown "
+            "because it is nearby and may not offer the specialty you need. "
+            "Please call ahead to confirm."
         ),
         "id": (
-            "Fasilitas ini tidak mencantumkan spesialisasi; ditampilkan sebagai "
-            "opsi terdekat. Sebaiknya telepon dulu untuk memastikan."
+            "Fasilitas ini tidak mencantumkan spesialisasi (praktik umum). "
+            "Ditampilkan karena lokasinya dekat dan belum tentu memiliki "
+            "spesialisasi yang Anda cari. Sebaiknya telepon dulu untuk memastikan."
         ),
         "vi": (
-            "Cơ sở này không ghi chuyên khoa; được đưa vào theo khoảng cách. "
+            "Cơ sở này không ghi chuyên khoa (khám tổng quát). Được hiển thị vì "
+            "ở gần bạn, có thể không có chuyên khoa bạn cần. "
             "Vui lòng gọi trước để xác nhận."
         ),
         "th": (
-            "สถานพยาบาลนี้ไม่ได้ระบุแผนก แสดงเป็นตัวเลือกใกล้เคียงตามระยะทาง "
-            "แนะนำให้โทรสอบถามก่อน"
+            "สถานพยาบาลนี้ไม่ได้ระบุแผนก (ตรวจโรคทั่วไป) แสดงเพราะอยู่ใกล้คุณ "
+            "อาจไม่มีแผนกที่คุณต้องการ แนะนำให้โทรสอบถามก่อน"
         ),
         "ja": (
-            "この医療機関は診療科の記載がなく、距離順で補足表示しています。"
+            "この医療機関は診療科の記載がありません（一般診療）。"
+            "お近くのため表示していますが、お探しの診療科がない場合があります。"
             "受診前に電話でご確認ください。"
         ),
     },
@@ -1521,6 +1665,66 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "vi": "Tôi đã xuất phát",
         "th": "ออกเดินทางแล้ว",
         "ja": "出発しました",
+    },
+    # 進診間前按這裡，直接開到錄音頁。按鈕字數受 _POSTBACK_LABEL_MAX 限制，
+    # 各語言都要短——長輩在診間門口沒有時間讀完一句話。
+    "flex.appt.button.record": {
+        "zh-TW": "看診時錄音",
+        "en": "Record the visit",
+        "id": "Rekam kunjungan",
+        "vi": "Ghi âm buổi khám",
+        "th": "บันทึกเสียงการตรวจ",
+        "ja": "診察を録音",
+    },
+    # 看診錄音整理完成／失敗的推播（app/services/clinic_transcript/notifier.py）。
+    # 只說「好了」，不放任何摘要內容：LINE 聊天室列表誰都看得到。
+    "flex.clinic.ready.header": {
+        "zh-TW": "看診錄音整理好了",
+        "en": "Visit recording is ready",
+        "id": "Rekaman kunjungan sudah siap",
+        "vi": "Bản ghi buổi khám đã xong",
+        "th": "บันทึกการตรวจพร้อมแล้ว",
+        "ja": "診察の録音がまとまりました",
+    },
+    "flex.clinic.ready.body.self": {
+        "zh-TW": "你的看診錄音已經整理成文字，打開就能看到摘要和原文。",
+        "en": "Your visit recording has been turned into text. Open it to see the summary and transcript.",
+        "id": "Rekaman kunjungan Anda sudah diubah menjadi teks. Buka untuk melihat ringkasan dan transkrip.",
+        "vi": "Bản ghi âm buổi khám của bạn đã được chuyển thành văn bản. Mở để xem tóm tắt và nguyên văn.",
+        "th": "บันทึกเสียงการตรวจของคุณถูกแปลงเป็นข้อความแล้ว เปิดดูสรุปและข้อความต้นฉบับได้เลย",
+        "ja": "診察の録音を文字にまとめました。開くと要約と全文が見られます。",
+    },
+    "flex.clinic.ready.body.family": {
+        "zh-TW": "{name}的看診錄音已經整理成文字，打開就能看到摘要和原文。",
+        "en": "{name}'s visit recording has been turned into text. Open it to see the summary and transcript.",
+        "id": "Rekaman kunjungan {name} sudah diubah menjadi teks. Buka untuk melihat ringkasan dan transkrip.",
+        "vi": "Bản ghi âm buổi khám của {name} đã được chuyển thành văn bản. Mở để xem tóm tắt và nguyên văn.",
+        "th": "บันทึกเสียงการตรวจของ {name} ถูกแปลงเป็นข้อความแล้ว เปิดดูสรุปและข้อความต้นฉบับได้เลย",
+        "ja": "{name}さんの診察の録音を文字にまとめました。開くと要約と全文が見られます。",
+    },
+    "flex.clinic.failed.header": {
+        "zh-TW": "看診錄音沒有整理成功",
+        "en": "Visit recording couldn't be processed",
+        "id": "Rekaman kunjungan gagal diproses",
+        "vi": "Không xử lý được bản ghi buổi khám",
+        "th": "ประมวลผลบันทึกการตรวจไม่สำเร็จ",
+        "ja": "診察の録音をまとめられませんでした",
+    },
+    "flex.clinic.failed.body": {
+        "zh-TW": "打開可以看原因。下次看診可以再錄一次。",
+        "en": "Open it to see why. You can record again at your next visit.",
+        "id": "Buka untuk melihat alasannya. Anda bisa merekam lagi di kunjungan berikutnya.",
+        "vi": "Mở để xem lý do. Lần khám sau bạn có thể ghi âm lại.",
+        "th": "เปิดดูสาเหตุได้ ครั้งหน้าที่ไปตรวจสามารถบันทึกใหม่ได้",
+        "ja": "開くと理由が見られます。次の診察でもう一度録音できます。",
+    },
+    "flex.clinic.button.open": {
+        "zh-TW": "打開看看",
+        "en": "Open",
+        "id": "Buka",
+        "vi": "Mở xem",
+        "th": "เปิดดู",
+        "ja": "開く",
     },
     "flex.appt.button.attend": {
         "zh-TW": "我已到診",
@@ -3256,6 +3460,640 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "vi": "Mở CARE",
         "th": "เปิด CARE",
         "ja": "CARE を開く",
+    },
+    # --- LINE 進站流程 ---
+    #
+    # agent 超過 AGENT_TOTAL_TIMEOUT_SECONDS 還沒回：不是「發生錯誤」（那句會讓
+    # 人以為問題本身有問題），而是這一輪太久、請再問一次。
+    "line.fallback_busy": {
+        "zh-TW": "抱歉，這個問題處理得比較久，還沒有結果。請稍後再問一次。",
+        "en": "Sorry, this is taking longer than expected and hasn't finished. Please ask again in a moment.",
+        "id": "Maaf, pertanyaan ini butuh waktu lebih lama dan belum selesai. Silakan tanyakan lagi sebentar lagi.",
+        "vi": "Xin lỗi, câu hỏi này mất nhiều thời gian hơn dự kiến và chưa có kết quả. Vui lòng hỏi lại sau ít phút.",
+        "th": "ขออภัย คำถามนี้ใช้เวลานานกว่าปกติและยังไม่เสร็จ กรุณาถามใหม่อีกครั้งในอีกสักครู่",
+        "ja": "申し訳ありません。処理に時間がかかっており、まだ結果が出ていません。しばらくしてからもう一度お尋ねください。",
+    },
+    # 媒體訊息（圖片／語音／影片／檔案）辨識失敗的四種情況，分開講：
+    # 太大與不支援是使用者能自己改的；服務失敗要請他等一下再傳，不是重拍；
+    # 真的沒有內容才請他確認清晰度。{kind} 帶入 media.kind.* 的譯名。
+    "media.kind.image": {
+        "zh-TW": "圖片", "en": "image", "id": "gambar", "vi": "hình ảnh", "th": "รูปภาพ", "ja": "画像",
+    },
+    "media.kind.audio": {
+        "zh-TW": "語音", "en": "voice message", "id": "pesan suara", "vi": "tin nhắn thoại", "th": "ข้อความเสียง", "ja": "音声",
+    },
+    "media.kind.video": {
+        "zh-TW": "影片", "en": "video", "id": "video", "vi": "video", "th": "วิดีโอ", "ja": "動画",
+    },
+    "media.kind.file": {
+        "zh-TW": "檔案", "en": "file", "id": "berkas", "vi": "tệp", "th": "ไฟล์", "ja": "ファイル",
+    },
+    "media.too_large": {
+        "zh-TW": "您傳送的{kind}超過 {limit_mb} MB 的上限，請壓縮或裁切後再傳一次。",
+        "en": "The {kind} you sent is over the {limit_mb} MB limit. Please compress or trim it and send it again.",
+        "id": "{kind} yang Anda kirim melebihi batas {limit_mb} MB. Silakan kompres atau potong lalu kirim lagi.",
+        "vi": "{kind} bạn gửi vượt quá giới hạn {limit_mb} MB. Vui lòng nén hoặc cắt bớt rồi gửi lại.",
+        "th": "{kind} ที่คุณส่งเกินขีดจำกัด {limit_mb} MB กรุณาบีบอัดหรือตัดให้สั้นลงแล้วส่งใหม่",
+        "ja": "送信された{kind}は上限 {limit_mb} MB を超えています。圧縮または短くしてから、もう一度送ってください。",
+    },
+    "media.unsupported": {
+        "zh-TW": "抱歉，目前不支援這種{kind}格式。可以改傳圖片、語音，或 PDF／文字檔。",
+        "en": "Sorry, this {kind} format isn't supported yet. Please send an image, a voice message, or a PDF/text file instead.",
+        "id": "Maaf, format {kind} ini belum didukung. Silakan kirim gambar, pesan suara, atau berkas PDF/teks.",
+        "vi": "Xin lỗi, định dạng {kind} này chưa được hỗ trợ. Vui lòng gửi hình ảnh, tin nhắn thoại hoặc tệp PDF/văn bản.",
+        "th": "ขออภัย ยังไม่รองรับ{kind}รูปแบบนี้ กรุณาส่งรูปภาพ ข้อความเสียง หรือไฟล์ PDF/ข้อความแทน",
+        "ja": "申し訳ありません。この{kind}の形式には対応していません。画像・音声、または PDF／テキストファイルでお送りください。",
+    },
+    "media.service_unavailable": {
+        "zh-TW": "抱歉，{kind}辨識服務暫時無法使用，剛才那則沒有處理到。請過幾分鐘再傳一次。",
+        "en": "Sorry, the {kind} recognition service is temporarily unavailable and your last message wasn't processed. Please send it again in a few minutes.",
+        "id": "Maaf, layanan pengenalan {kind} sedang tidak tersedia dan pesan terakhir Anda belum diproses. Silakan kirim lagi beberapa menit lagi.",
+        "vi": "Xin lỗi, dịch vụ nhận dạng {kind} tạm thời không khả dụng nên tin nhắn vừa rồi chưa được xử lý. Vui lòng gửi lại sau vài phút.",
+        "th": "ขออภัย บริการรู้จำ{kind}ไม่พร้อมใช้งานชั่วคราว ข้อความล่าสุดของคุณจึงยังไม่ได้รับการประมวลผล กรุณาส่งใหม่ในอีกสักครู่",
+        "ja": "申し訳ありません。{kind}の認識サービスが一時的に利用できず、先ほどのメッセージは処理できませんでした。数分後にもう一度お送りください。",
+    },
+    "media.no_content": {
+        "zh-TW": "無法從您傳送的{kind}中辨識出任何文字，請確認內容清晰並重新傳送。",
+        "en": "I couldn't find any text in the {kind} you sent. Please make sure it's clear and send it again.",
+        "id": "Saya tidak dapat menemukan teks apa pun di {kind} yang Anda kirim. Pastikan isinya jelas lalu kirim lagi.",
+        "vi": "Tôi không nhận ra được nội dung nào trong {kind} bạn gửi. Vui lòng kiểm tra cho rõ rồi gửi lại.",
+        "th": "ไม่พบข้อความใด ๆ ใน{kind}ที่คุณส่ง กรุณาตรวจสอบให้ชัดเจนแล้วส่งใหม่",
+        "ja": "送信された{kind}から文字を読み取れませんでした。内容がはっきり写っているか確認して、もう一度お送りください。",
+    },
+    # --- RAG／agent 管線 ---
+    #
+    # 網搜服務被限流（Firecrawl 回 429）。以前這條路被吞成 0 筆、對使用者說
+    # 「找不到，請換個方式描述」——換十種說法都一樣找不到，因為根本沒搜。
+    # 限流與一般失敗分開一個 key：使用者該做的是等一下再問，而不是換說法。
+    "rag.fail.WEB_RATE_LIMITED": {
+        "zh-TW": "網路搜尋服務目前查詢太頻繁，暫時無法使用。請過一會兒再問一次。",
+        "en": "The web search service is temporarily unavailable due to too many requests. Please try again in a little while.",
+        "id": "Layanan pencarian web sementara tidak tersedia karena terlalu banyak permintaan. Silakan coba lagi sebentar lagi.",
+        "vi": "Dịch vụ tìm kiếm web tạm thời không khả dụng do có quá nhiều yêu cầu. Vui lòng thử lại sau ít phút.",
+        "th": "บริการค้นหาเว็บไม่สามารถใช้งานได้ชั่วคราวเนื่องจากมีคำขอมากเกินไป กรุณาลองใหม่อีกครั้งในอีกสักครู่",
+        "ja": "リクエストが集中しているため、ウェブ検索サービスを一時的に利用できません。しばらくしてからもう一度お試しください。",
+    },
+    # --- 走失求救與即時位置分享 ---
+    #
+    # 長輩端的字句是給正在慌的人看的：短句、一次只講一件事、先說「有人在幫你」
+    # 再說要做什麼。家人端要在通知列上就看得出是誰、發生什麼事。
+    "lost.elder.header.lost": {
+        "zh-TW": "別擔心，正在通知你的家人",
+        "en": "Don't worry, we're telling your family",
+        "id": "Jangan khawatir, kami sedang memberi tahu keluarga Anda",
+        "vi": "Đừng lo, chúng tôi đang báo cho gia đình bạn",
+        "th": "ไม่ต้องกังวล กำลังแจ้งครอบครัวของคุณ",
+        "ja": "大丈夫です。ご家族に知らせています",
+    },
+    "lost.elder.header.share": {
+        "zh-TW": "正在把你的位置告訴家人",
+        "en": "Sending your location to your family",
+        "id": "Mengirim lokasi Anda ke keluarga",
+        "vi": "Đang gửi vị trí của bạn cho gia đình",
+        "th": "กำลังส่งตำแหน่งของคุณให้ครอบครัว",
+        "ja": "ご家族に現在地を知らせています",
+    },
+    "lost.elder.header.active": {
+        "zh-TW": "家人已經收到通知，正在找你",
+        "en": "Your family has been told and is looking for you",
+        "id": "Keluarga Anda sudah diberi tahu dan sedang mencari Anda",
+        "vi": "Gia đình bạn đã được báo và đang tìm bạn",
+        "th": "ครอบครัวได้รับแจ้งแล้วและกำลังตามหาคุณ",
+        "ja": "ご家族に知らせました。探しに向かっています",
+    },
+    "lost.elder.body": {
+        "zh-TW": "按下面的按鈕，家人就能在地圖上看到你在哪裡。",
+        "en": "Tap the button below so your family can see where you are on a map.",
+        "id": "Ketuk tombol di bawah agar keluarga dapat melihat lokasi Anda di peta.",
+        "vi": "Bấm nút bên dưới để gia đình thấy bạn đang ở đâu trên bản đồ.",
+        "th": "กดปุ่มด้านล่าง ครอบครัวจะเห็นว่าคุณอยู่ที่ไหนบนแผนที่",
+        "ja": "下のボタンを押すと、ご家族が地図であなたの場所を見られます。",
+    },
+    "lost.elder.button": {
+        "zh-TW": "讓家人看到我在哪裡",
+        "en": "Show my family where I am",
+        "id": "Tunjukkan lokasi saya ke keluarga",
+        "vi": "Cho gia đình thấy tôi ở đâu",
+        "th": "ให้ครอบครัวเห็นว่าฉันอยู่ที่ไหน",
+        "ja": "家族に居場所を見せる",
+    },
+    "lost.elder.stay": {
+        "zh-TW": "打開後請不要關掉畫面，留在原地等家人。",
+        "en": "After it opens, keep the screen on and stay where you are.",
+        "id": "Setelah terbuka, jangan tutup layarnya dan tetap di tempat.",
+        "vi": "Sau khi mở, đừng tắt màn hình và hãy ở yên tại chỗ.",
+        "th": "เมื่อเปิดแล้วอย่าปิดหน้าจอ และรออยู่ที่เดิม",
+        "ja": "開いたら画面を閉じずに、その場で待っていてください。",
+    },
+    "lost.elder.fallback_hint": {
+        "zh-TW": "按鈕打不開的話，可以按聊天室下方的「傳送一次位置」。",
+        "en": "If the button doesn't open, tap \"Send location once\" at the bottom of the chat.",
+        "id": "Jika tombol tidak terbuka, ketuk \"Kirim lokasi sekali\" di bagian bawah obrolan.",
+        "vi": "Nếu nút không mở được, hãy bấm \"Gửi vị trí một lần\" ở cuối khung trò chuyện.",
+        "th": "ถ้าปุ่มเปิดไม่ได้ ให้กด \"ส่งตำแหน่งครั้งเดียว\" ด้านล่างของแชท",
+        "ja": "ボタンが開かないときは、トーク画面下の「現在地を1回送る」を押してください。",
+    },
+    "lost.elder.alt_text": {
+        "zh-TW": "按這裡讓家人看到你在哪裡",
+        "en": "Tap here so your family can see where you are",
+        "id": "Ketuk di sini agar keluarga bisa melihat lokasi Anda",
+        "vi": "Bấm vào đây để gia đình thấy bạn đang ở đâu",
+        "th": "กดที่นี่เพื่อให้ครอบครัวเห็นว่าคุณอยู่ที่ไหน",
+        "ja": "ここを押すと、ご家族があなたの場所を見られます",
+    },
+    # LINE 快速回覆的按鈕文字上限 20 字元。
+    "lost.elder.quick_reply": {
+        "zh-TW": "傳送一次位置",
+        "en": "Send location once",
+        "id": "Kirim lokasi sekali",
+        "vi": "Gửi vị trí một lần",
+        "th": "ส่งตำแหน่งครั้งเดียว",
+        "ja": "現在地を1回送る",
+    },
+    "lost.elder.family_notified": {
+        "zh-TW": "你的家人已經收到通知了。請留在原地，按上面的按鈕讓家人看到你在哪裡。",
+        "en": "Your family has been notified. Please stay where you are and tap the button above so they can see where you are.",
+        "id": "Keluarga Anda sudah diberi tahu. Tetaplah di tempat dan ketuk tombol di atas agar mereka bisa melihat lokasi Anda.",
+        "vi": "Gia đình bạn đã nhận được thông báo. Hãy ở yên tại chỗ và bấm nút phía trên để họ thấy bạn đang ở đâu.",
+        "th": "ครอบครัวของคุณได้รับการแจ้งเตือนแล้ว กรุณารออยู่ที่เดิม และกดปุ่มด้านบนเพื่อให้ครอบครัวเห็นว่าคุณอยู่ที่ไหน",
+        "ja": "ご家族に通知が届きました。その場を離れず、上のボタンを押して居場所を知らせてください。",
+    },
+    "lost.elder.notify_failed": {
+        "zh-TW": "通知家人沒有成功。請撥 110 報警，或請附近的店家、警察幫忙。",
+        "en": "We couldn't reach your family. Please call 110 (police), or ask a nearby shop or police officer for help.",
+        "id": "Kami tidak berhasil menghubungi keluarga Anda. Silakan telepon 110 (polisi), atau minta bantuan toko atau polisi terdekat.",
+        "vi": "Chưa báo được cho gia đình bạn. Hãy gọi 110 (cảnh sát), hoặc nhờ cửa hàng hay cảnh sát gần đó giúp đỡ.",
+        "th": "แจ้งครอบครัวไม่สำเร็จ กรุณาโทร 110 (ตำรวจ) หรือขอความช่วยเหลือจากร้านค้าหรือตำรวจใกล้ ๆ",
+        "ja": "ご家族に知らせることができませんでした。110番に電話するか、近くのお店や警察官に助けを求めてください。",
+    },
+    "lost.elder.no_family.title": {
+        "zh-TW": "請找人幫忙",
+        "en": "Please ask someone for help",
+        "id": "Silakan minta bantuan",
+        "vi": "Hãy nhờ người giúp đỡ",
+        "th": "กรุณาขอความช่วยเหลือ",
+        "ja": "周りの人に助けを求めてください",
+    },
+    "lost.elder.no_family.body": {
+        "zh-TW": "你還沒有加入家人，CARE 沒辦法幫你通知。請撥 110 報警，或把手機拿給附近的店家、警察看，請他們幫忙。",
+        "en": "You haven't added any family members yet, so CARE can't notify anyone. Please call 110 (police), or show your phone to a nearby shop or police officer and ask for help.",
+        "id": "Anda belum menambahkan anggota keluarga, jadi CARE tidak bisa memberi tahu siapa pun. Silakan telepon 110 (polisi), atau tunjukkan ponsel Anda ke toko atau polisi terdekat dan minta bantuan.",
+        "vi": "Bạn chưa thêm người thân nên CARE không thể báo cho ai. Hãy gọi 110 (cảnh sát), hoặc đưa điện thoại cho cửa hàng hay cảnh sát gần đó xem và nhờ họ giúp.",
+        "th": "คุณยังไม่ได้เพิ่มสมาชิกครอบครัว CARE จึงแจ้งใครไม่ได้ กรุณาโทร 110 (ตำรวจ) หรือยื่นโทรศัพท์ให้ร้านค้าหรือตำรวจใกล้ ๆ ดูและขอความช่วยเหลือ",
+        "ja": "まだご家族が登録されていないため、CARE から知らせることができません。110番に電話するか、近くのお店や警察官にこの画面を見せて助けを求めてください。",
+    },
+    "lost.elder.call_110": {
+        "zh-TW": "撥打 110",
+        "en": "Call 110",
+        "id": "Telepon 110",
+        "vi": "Gọi 110",
+        "th": "โทร 110",
+        "ja": "110番に電話",
+    },
+    "lost.elder.location_received": {
+        "zh-TW": "已經把你的位置傳給家人了，請留在原地。想讓家人一直看到你的位置，請按上面的「讓家人看到我在哪裡」。",
+        "en": "Your location has been sent to your family. Please stay where you are. To keep them updated, tap \"Show my family where I am\" above.",
+        "id": "Lokasi Anda sudah dikirim ke keluarga. Tetaplah di tempat. Agar mereka terus melihat lokasi Anda, ketuk \"Tunjukkan lokasi saya ke keluarga\" di atas.",
+        "vi": "Đã gửi vị trí của bạn cho gia đình. Hãy ở yên tại chỗ. Để gia đình luôn thấy vị trí của bạn, hãy bấm \"Cho gia đình thấy tôi ở đâu\" ở trên.",
+        "th": "ส่งตำแหน่งของคุณให้ครอบครัวแล้ว กรุณารออยู่ที่เดิม ถ้าต้องการให้ครอบครัวเห็นตำแหน่งตลอด ให้กด \"ให้ครอบครัวเห็นว่าฉันอยู่ที่ไหน\" ด้านบน",
+        "ja": "現在地をご家族に送りました。その場で待っていてください。ずっと居場所を知らせるには、上の「家族に居場所を見せる」を押してください。",
+    },
+    "lost.elder.reopen.header": {
+        "zh-TW": "家人還在找你",
+        "en": "Your family is still looking for you",
+        "id": "Keluarga Anda masih mencari Anda",
+        "vi": "Gia đình vẫn đang tìm bạn",
+        "th": "ครอบครัวยังตามหาคุณอยู่",
+        "ja": "ご家族がまだ探しています",
+    },
+    "lost.elder.reopen.body": {
+        "zh-TW": "你的位置停止更新了。請再按一次下面的按鈕，打開後不要關掉畫面。",
+        "en": "Your location has stopped updating. Please tap the button below again and keep the screen on.",
+        "id": "Lokasi Anda berhenti diperbarui. Ketuk lagi tombol di bawah dan jangan tutup layarnya.",
+        "vi": "Vị trí của bạn đã ngừng cập nhật. Hãy bấm lại nút bên dưới và đừng tắt màn hình.",
+        "th": "ตำแหน่งของคุณหยุดอัปเดตแล้ว กรุณากดปุ่มด้านล่างอีกครั้ง และอย่าปิดหน้าจอ",
+        "ja": "現在地の更新が止まっています。もう一度下のボタンを押して、画面を閉じないでください。",
+    },
+    "lost.elder.found": {
+        "zh-TW": "{finder}說已經找到你了，位置分享已經停止。",
+        "en": "{finder} says they've found you. Location sharing has stopped.",
+        "id": "{finder} bilang sudah menemukan Anda. Berbagi lokasi telah dihentikan.",
+        "vi": "{finder} cho biết đã tìm thấy bạn. Đã dừng chia sẻ vị trí.",
+        "th": "{finder} บอกว่าพบคุณแล้ว หยุดแชร์ตำแหน่งแล้ว",
+        "ja": "{finder}さんがあなたを見つけました。位置の共有を終了しました。",
+    },
+    "lost.elder.auto_ended": {
+        "zh-TW": "位置分享已經自動停止。如果還需要幫忙，再跟我說「我走丟了」，或撥 110。",
+        "en": "Location sharing has stopped automatically. If you still need help, tell me \"I'm lost\" again, or call 110.",
+        "id": "Berbagi lokasi otomatis dihentikan. Jika masih butuh bantuan, katakan lagi \"saya tersesat\", atau telepon 110.",
+        "vi": "Chia sẻ vị trí đã tự động dừng. Nếu vẫn cần giúp, hãy nói lại \"tôi bị lạc\", hoặc gọi 110.",
+        "th": "การแชร์ตำแหน่งหยุดโดยอัตโนมัติแล้ว ถ้ายังต้องการความช่วยเหลือ ให้บอกว่า \"ฉันหลงทาง\" อีกครั้ง หรือโทร 110",
+        "ja": "位置の共有は自動的に終了しました。まだ助けが必要なら、もう一度「迷子になった」と送るか、110番に電話してください。",
+    },
+    # 走失分類器沒把握時，回覆下方的快速回覆（見 app/services/lost/lost_classifier.py）。
+    # 按鈕文字上限 20 字元（LINE quick reply label）。
+    "lost.help.quick_reply": {
+        "zh-TW": "我迷路了，通知家人",
+        "en": "Lost? Tell my family",
+        "id": "Saya tersesat",
+        "vi": "Tôi bị lạc, báo nhà",
+        "th": "หลงทาง แจ้งครอบครัว",
+        "ja": "迷子です、家族に連絡",
+    },
+    # 按下之後，聊天室裡以使用者身分顯示的那句話。
+    "lost.help.display": {
+        "zh-TW": "我迷路了，請通知家人",
+        "en": "I'm lost, please tell my family",
+        "id": "Saya tersesat, tolong beri tahu keluarga saya",
+        "vi": "Tôi bị lạc, hãy báo cho gia đình tôi",
+        "th": "ฉันหลงทาง ช่วยแจ้งครอบครัวด้วย",
+        "ja": "道に迷いました。家族に知らせてください",
+    },
+    "lost.family.title.lost": {
+        "zh-TW": "走失求救",
+        "en": "Lost: needs help",
+        "id": "Tersesat: butuh bantuan",
+        "vi": "Bị lạc: cần giúp đỡ",
+        "th": "หลงทาง: ต้องการความช่วยเหลือ",
+        "ja": "迷子の連絡",
+    },
+    "lost.family.title.share": {
+        "zh-TW": "位置分享",
+        "en": "Location shared",
+        "id": "Lokasi dibagikan",
+        "vi": "Chia sẻ vị trí",
+        "th": "แชร์ตำแหน่ง",
+        "ja": "位置の共有",
+    },
+    "lost.family.lead.lost": {
+        "zh-TW": "{name}剛剛在 CARE 說自己走丟了。",
+        "en": "{name} just told CARE they are lost.",
+        "id": "{name} baru saja memberi tahu CARE bahwa dirinya tersesat.",
+        "vi": "{name} vừa nói với CARE rằng mình bị lạc.",
+        "th": "{name} เพิ่งบอก CARE ว่าหลงทาง",
+        "ja": "{name}さんが CARE で「迷子になった」と伝えてきました。",
+    },
+    "lost.family.lead.share": {
+        "zh-TW": "{name}想讓家人知道自己現在在哪裡。",
+        "en": "{name} wants the family to know where they are right now.",
+        "id": "{name} ingin keluarga tahu lokasinya saat ini.",
+        "vi": "{name} muốn gia đình biết mình đang ở đâu.",
+        "th": "{name} อยากให้ครอบครัวรู้ว่าตอนนี้อยู่ที่ไหน",
+        "ja": "{name}さんが今いる場所をご家族に知らせたいそうです。",
+    },
+    "lost.family.words_label": {
+        "zh-TW": "{name}說的話",
+        "en": "What {name} said",
+        "id": "Yang dikatakan {name}",
+        "vi": "Lời {name} nói",
+        "th": "สิ่งที่ {name} พูด",
+        "ja": "{name}さんの言葉",
+    },
+    "lost.family.waiting": {
+        "zh-TW": "正在等{name}打開定位畫面，收到位置後會再通知你。",
+        "en": "Waiting for {name} to open the location page. You'll be notified when the location arrives.",
+        "id": "Menunggu {name} membuka halaman lokasi. Anda akan diberi tahu saat lokasinya masuk.",
+        "vi": "Đang chờ {name} mở trang vị trí. Bạn sẽ được báo khi nhận được vị trí.",
+        "th": "กำลังรอ {name} เปิดหน้าตำแหน่ง เมื่อได้รับตำแหน่งแล้วจะแจ้งคุณอีกครั้ง",
+        "ja": "{name}さんが位置の画面を開くのを待っています。位置が届いたらお知らせします。",
+    },
+    "lost.family.view_map": {
+        "zh-TW": "看即時位置",
+        "en": "View live location",
+        "id": "Lihat lokasi langsung",
+        "vi": "Xem vị trí trực tiếp",
+        "th": "ดูตำแหน่งแบบสด",
+        "ja": "現在地を見る",
+    },
+    "lost.family.navigate": {
+        "zh-TW": "導航到最後位置",
+        "en": "Navigate to last location",
+        "id": "Navigasi ke lokasi terakhir",
+        "vi": "Chỉ đường đến vị trí cuối",
+        "th": "นำทางไปตำแหน่งล่าสุด",
+        "ja": "最後の位置へ案内",
+    },
+    "lost.family.footer": {
+        "zh-TW": "位置來自{name}的手機，可能有幾十公尺誤差。聯絡不上又找不到人時，請撥 110。",
+        "en": "The location comes from {name}'s phone and may be off by tens of meters. If you can't reach or find them, call 110.",
+        "id": "Lokasi berasal dari ponsel {name} dan bisa meleset puluhan meter. Jika tidak bisa dihubungi atau ditemukan, telepon 110.",
+        "vi": "Vị trí lấy từ điện thoại của {name}, có thể sai lệch vài chục mét. Nếu không liên lạc được hoặc không tìm thấy, hãy gọi 110.",
+        "th": "ตำแหน่งมาจากโทรศัพท์ของ {name} อาจคลาดเคลื่อนหลายสิบเมตร ถ้าติดต่อไม่ได้หรือหาไม่เจอ กรุณาโทร 110",
+        "ja": "位置は{name}さんのスマートフォンから届いたもので、数十メートルずれることがあります。連絡がつかず見つからないときは110番に電話してください。",
+    },
+    "lost.family.alt_text.lost": {
+        "zh-TW": "{name}說自己走丟了",
+        "en": "{name} says they are lost",
+        "id": "{name} bilang dirinya tersesat",
+        "vi": "{name} nói mình bị lạc",
+        "th": "{name} บอกว่าหลงทาง",
+        "ja": "{name}さんが迷子になったと連絡してきました",
+    },
+    "lost.family.alt_text.share": {
+        "zh-TW": "{name}想讓你知道自己在哪裡",
+        "en": "{name} wants you to know where they are",
+        "id": "{name} ingin Anda tahu lokasinya",
+        "vi": "{name} muốn bạn biết mình đang ở đâu",
+        "th": "{name} อยากให้คุณรู้ว่าอยู่ที่ไหน",
+        "ja": "{name}さんが居場所を知らせています",
+    },
+    "lost.family.started.alt_text": {
+        "zh-TW": "已經收到{name}的位置",
+        "en": "{name}'s location has arrived",
+        "id": "Lokasi {name} sudah masuk",
+        "vi": "Đã nhận được vị trí của {name}",
+        "th": "ได้รับตำแหน่งของ {name} แล้ว",
+        "ja": "{name}さんの位置が届きました",
+    },
+    "lost.family.started.body": {
+        "zh-TW": "點下面的按鈕看地圖，位置會自動更新。",
+        "en": "Tap the button below to open the map. It updates automatically.",
+        "id": "Ketuk tombol di bawah untuk membuka peta. Lokasinya diperbarui otomatis.",
+        "vi": "Bấm nút bên dưới để mở bản đồ. Vị trí sẽ tự động cập nhật.",
+        "th": "กดปุ่มด้านล่างเพื่อดูแผนที่ ตำแหน่งจะอัปเดตอัตโนมัติ",
+        "ja": "下のボタンで地図を開けます。位置は自動で更新されます。",
+    },
+    "lost.family.stale.alt_text": {
+        "zh-TW": "{name}的位置停止更新了",
+        "en": "{name}'s location stopped updating",
+        "id": "Lokasi {name} berhenti diperbarui",
+        "vi": "Vị trí của {name} đã ngừng cập nhật",
+        "th": "ตำแหน่งของ {name} หยุดอัปเดตแล้ว",
+        "ja": "{name}さんの位置の更新が止まりました",
+    },
+    "lost.family.stale.body": {
+        "zh-TW": "已經 {minutes} 分鐘沒有收到新位置，可能是畫面被關掉或手機沒訊號。地圖上是最後收到的位置。",
+        "en": "No new location for {minutes} minutes. The page may have been closed or the phone may have lost signal. The map shows the last location received.",
+        "id": "Tidak ada lokasi baru selama {minutes} menit. Halaman mungkin tertutup atau ponsel kehilangan sinyal. Peta menampilkan lokasi terakhir yang diterima.",
+        "vi": "Đã {minutes} phút không nhận được vị trí mới. Có thể màn hình đã bị tắt hoặc điện thoại mất sóng. Bản đồ hiển thị vị trí nhận được gần nhất.",
+        "th": "ไม่ได้รับตำแหน่งใหม่มา {minutes} นาทีแล้ว อาจปิดหน้าจอไปหรือโทรศัพท์ไม่มีสัญญาณ แผนที่แสดงตำแหน่งล่าสุดที่ได้รับ",
+        "ja": "{minutes}分間、新しい位置が届いていません。画面が閉じられたか、電波が届いていない可能性があります。地図には最後に届いた位置を表示しています。",
+    },
+    "lost.family.found": {
+        "zh-TW": "{finder}已經找到{name}了，位置分享已經停止。",
+        "en": "{finder} has found {name}. Location sharing has stopped.",
+        "id": "{finder} sudah menemukan {name}. Berbagi lokasi telah dihentikan.",
+        "vi": "{finder} đã tìm thấy {name}. Đã dừng chia sẻ vị trí.",
+        "th": "{finder} พบ {name} แล้ว หยุดแชร์ตำแหน่งแล้ว",
+        "ja": "{finder}さんが{name}さんを見つけました。位置の共有を終了しました。",
+    },
+    "lost.family.elder_safe": {
+        "zh-TW": "{name}說自己已經安全了，位置分享已經停止。",
+        "en": "{name} says they are safe now. Location sharing has stopped.",
+        "id": "{name} bilang dirinya sudah aman. Berbagi lokasi telah dihentikan.",
+        "vi": "{name} cho biết mình đã an toàn. Đã dừng chia sẻ vị trí.",
+        "th": "{name} บอกว่าปลอดภัยแล้ว หยุดแชร์ตำแหน่งแล้ว",
+        "ja": "{name}さんから「もう安全です」と連絡がありました。位置の共有を終了しました。",
+    },
+    "lost.family.auto_ended": {
+        "zh-TW": "{name}的位置分享已經超過 {hours} 小時，自動停止了。如果還沒找到人，請撥 110 報警。",
+        "en": "{name}'s location sharing passed {hours} hours and stopped automatically. If they still haven't been found, call 110.",
+        "id": "Berbagi lokasi {name} sudah lebih dari {hours} jam dan berhenti otomatis. Jika belum ditemukan, telepon 110.",
+        "vi": "Chia sẻ vị trí của {name} đã quá {hours} giờ nên tự động dừng. Nếu vẫn chưa tìm thấy, hãy gọi 110.",
+        "th": "การแชร์ตำแหน่งของ {name} เกิน {hours} ชั่วโมงแล้วจึงหยุดอัตโนมัติ ถ้ายังหาไม่เจอ กรุณาโทร 110",
+        "ja": "{name}さんの位置の共有は{hours}時間を過ぎたため自動的に終了しました。まだ見つかっていない場合は110番に電話してください。",
+    },
+    "lost.family.someone": {
+        "zh-TW": "一位家人",
+        "en": "A family member",
+        "id": "Seorang anggota keluarga",
+        "vi": "Một người thân",
+        "th": "สมาชิกในครอบครัว",
+        "ja": "ご家族の方",
+    },
+    # --- 諮詢摘要下載（純文字檔的檔頭） ------------------------------------
+    #
+    # 標題與 LIFF 的 consultRecord.summaryTitle 用同一組譯文，兩邊用詞一致。
+    "consultation_export.title": {
+        "zh-TW": "醫療諮詢紀錄摘要",
+        "en": "Medical Consultation Summary",
+        "id": "Ringkasan Konsultasi Medis",
+        "vi": "Tóm tắt tư vấn y tế",
+        "th": "สรุปการปรึกษาทางการแพทย์",
+        "ja": "医療相談記録の要約",
+    },
+    "consultation_export.exported_at": {
+        "zh-TW": "匯出時間：",
+        "en": "Exported at: ",
+        "id": "Diekspor pada: ",
+        "vi": "Thời gian xuất: ",
+        "th": "ส่งออกเมื่อ: ",
+        "ja": "出力日時：",
+    },
+    "consultation_export.empty": {
+        "zh-TW": "目前沒有摘要資料",
+        "en": "No summary data available.",
+        "id": "Belum ada data ringkasan.",
+        "vi": "Hiện không có dữ liệu tóm tắt.",
+        "th": "ยังไม่มีข้อมูลสรุป",
+        "ja": "要約データがありません。",
+    },
+    # --- 摘要欄位名稱（各語言對照） ----
+    "summary_field.health_issue": {
+        "zh-TW": "健康問題",
+        "en": "Health Issue",
+        "id": "Masalah Kesehatan",
+        "vi": "Vấn Đề Sức Khỏe",
+        "th": "ปัญหาสุขภาพ",
+        "ja": "健康上の問題",
+    },
+    "summary_field.medications_and_appointments": {
+        "zh-TW": "用藥與掛號紀錄",
+        "en": "Medications and Appointments",
+        "id": "Obat dan Catatan Janji Temu",
+        "vi": "Thuốc và Ghi Chép Khám Bệnh",
+        "th": "ยาและบันทึกการนัดหมาย",
+        "ja": "薬と診察記録",
+    },
+    "summary_field.recommendations": {
+        "zh-TW": "建議",
+        "en": "Recommendations",
+        "id": "Rekomendasi",
+        "vi": "Khuyến Cáo",
+        "th": "ข้อเสนอแนะ",
+        "ja": "推奨",
+    },
+    "summary_field.key_safety_alerts": {
+        "zh-TW": "關鍵情況與安全提醒",
+        "en": "Key Safety Alerts",
+        "id": "Peringatan Keselamatan Utama",
+        "vi": "Cảnh Báo An Toàn Chính",
+        "th": "การแจ้งเตือนความปลอดภัยหลัก",
+        "ja": "主要な安全警告",
+    },
+    "summary_field.other": {
+        "zh-TW": "其他",
+        "en": "Other",
+        "id": "Lainnya",
+        "vi": "Khác",
+        "th": "อื่นๆ",
+        "ja": "その他",
+    },
+    "summary_field.ai_summary": {
+        "zh-TW": "AI小摘要",
+        "en": "AI Summary",
+        "id": "Ringkasan AI",
+        "vi": "Tóm Tắt AI",
+        "th": "สรุป AI",
+        "ja": "AIの要約",
+    },
+    # --- 對話紀錄裡的工具卡片（原始對話頁與摘要對話稿） ------------------
+    #
+    # 卡片存的是整包 Flex JSON，顯示時依卡片頂層的結構化 key 換成一行字。
+    # 摘要對話稿固定用 zh-TW（摘要 prompt 以中文撰寫並引用 risk_alert 這句）。
+    "consultation_card.separator": {
+        "zh-TW": "｜",
+        "en": " | ",
+        "id": " | ",
+        "vi": " | ",
+        "th": " | ",
+        "ja": "｜",
+    },
+    "consultation_card.list_separator": {
+        "zh-TW": "、",
+        "en": ", ",
+        "id": ", ",
+        "vi": ", ",
+        "th": ", ",
+        "ja": "、",
+    },
+    "consultation_card.risk_alert": {
+        "zh-TW": "觸發風險警示",
+        "en": "Risk alert triggered",
+        "id": "Peringatan risiko terpicu",
+        "vi": "Đã kích hoạt cảnh báo rủi ro",
+        "th": "มีการแจ้งเตือนความเสี่ยง",
+        "ja": "リスク警告が発動",
+    },
+    "consultation_card.risk_alert.user_words": {
+        "zh-TW": "使用者輸入：「{words}」",
+        "en": 'User said: "{words}"',
+        "id": 'Pengguna menulis: "{words}"',
+        "vi": 'Người dùng nhập: "{words}"',
+        "th": 'ผู้ใช้พิมพ์ว่า: "{words}"',
+        "ja": "ユーザーの入力：「{words}」",
+    },
+    "consultation_card.risk_alert.reason": {
+        "zh-TW": "判定原因：{reason}",
+        "en": "Reason: {reason}",
+        "id": "Alasan: {reason}",
+        "vi": "Lý do: {reason}",
+        "th": "เหตุผล: {reason}",
+        "ja": "判定理由：{reason}",
+    },
+    "consultation_card.symptom_department": {
+        "zh-TW": "科別建議卡",
+        "en": "Department suggestion card",
+        "id": "Kartu saran poli",
+        "vi": "Thẻ gợi ý chuyên khoa",
+        "th": "การ์ดแนะนำแผนก",
+        "ja": "診療科提案カード",
+    },
+    "consultation_card.symptom_department.suggestion": {
+        "zh-TW": "建議科別：{departments}",
+        "en": "Suggested departments: {departments}",
+        "id": "Poli yang disarankan: {departments}",
+        "vi": "Chuyên khoa gợi ý: {departments}",
+        "th": "แผนกที่แนะนำ: {departments}",
+        "ja": "おすすめの診療科：{departments}",
+    },
+    "consultation_card.symptom_department.fallback": {
+        "zh-TW": "系統無法判斷症狀，初診方向：{departments}",
+        "en": "Symptom could not be determined; suggested first visit: {departments}",
+        "id": "Gejala tidak dapat ditentukan; arahan kunjungan awal: {departments}",
+        "vi": "Không xác định được triệu chứng; hướng khám ban đầu: {departments}",
+        "th": "ระบบระบุอาการไม่ได้ แนะนำให้เริ่มตรวจที่: {departments}",
+        "ja": "症状を判断できませんでした。初診の目安：{departments}",
+    },
+    "consultation_card.facilities": {
+        "zh-TW": "院所查詢卡",
+        "en": "Medical facility search card",
+        "id": "Kartu pencarian fasilitas kesehatan",
+        "vi": "Thẻ tra cứu cơ sở y tế",
+        "th": "การ์ดค้นหาสถานพยาบาล",
+        "ja": "医療機関検索カード",
+    },
+    "consultation_card.facilities.names": {
+        "zh-TW": "院所：{names}",
+        "en": "Facilities: {names}",
+        "id": "Fasilitas: {names}",
+        "vi": "Cơ sở: {names}",
+        "th": "สถานพยาบาล: {names}",
+        "ja": "医療機関：{names}",
+    },
+    "consultation_card.claim_verdict": {
+        "zh-TW": "查核判定卡",
+        "en": "Fact-check card",
+        "id": "Kartu cek fakta",
+        "vi": "Thẻ kiểm chứng thông tin",
+        "th": "การ์ดตรวจสอบข้อเท็จจริง",
+        "ja": "ファクトチェックカード",
+    },
+    "consultation_card.claim_verdict.verdict": {
+        "zh-TW": "判定結果：{verdict}",
+        "en": "Verdict: {verdict}",
+        "id": "Hasil: {verdict}",
+        "vi": "Kết luận: {verdict}",
+        "th": "ผลการตรวจสอบ: {verdict}",
+        "ja": "判定結果：{verdict}",
+    },
+    # 判定字樣是查核資料本身（matcher._VALID_VERDICTS 的五種），以原文當 key；
+    # 查不到翻譯時顯示原文。
+    "consultation_card.verdict.錯誤": {
+        "zh-TW": "錯誤",
+        "en": "False",
+        "id": "Salah",
+        "vi": "Sai",
+        "th": "เท็จ",
+        "ja": "誤り",
+    },
+    "consultation_card.verdict.部分錯誤": {
+        "zh-TW": "部分錯誤",
+        "en": "Partly false",
+        "id": "Sebagian salah",
+        "vi": "Sai một phần",
+        "th": "เท็จบางส่วน",
+        "ja": "一部誤り",
+    },
+    "consultation_card.verdict.正確": {
+        "zh-TW": "正確",
+        "en": "True",
+        "id": "Benar",
+        "vi": "Đúng",
+        "th": "จริง",
+        "ja": "正確",
+    },
+    "consultation_card.verdict.事實釐清": {
+        "zh-TW": "事實釐清",
+        "en": "Clarification",
+        "id": "Klarifikasi",
+        "vi": "Làm rõ sự thật",
+        "th": "ชี้แจงข้อเท็จจริง",
+        "ja": "事実の明確化",
+    },
+    "consultation_card.verdict.證據不足": {
+        "zh-TW": "證據不足",
+        "en": "Insufficient evidence",
+        "id": "Bukti tidak cukup",
+        "vi": "Không đủ bằng chứng",
+        "th": "หลักฐานไม่เพียงพอ",
+        "ja": "証拠不十分",
+    },
+    "consultation_card.official_site": {
+        "zh-TW": "官網入口卡",
+        "en": "Official site card",
+        "id": "Kartu situs resmi",
+        "vi": "Thẻ trang chính thức",
+        "th": "การ์ดเว็บไซต์ทางการ",
+        "ja": "公式サイトカード",
+    },
+    "consultation_card.unknown": {
+        "zh-TW": "[系統卡片]",
+        "en": "[System card]",
+        "id": "[Kartu sistem]",
+        "vi": "[Thẻ hệ thống]",
+        "th": "[การ์ดระบบ]",
+        "ja": "[システムカード]",
     },
 }
 

@@ -1,4 +1,6 @@
+import asyncio
 import sys
+import time
 import types
 from unittest.mock import AsyncMock, MagicMock
 
@@ -34,9 +36,11 @@ from app.core.request_context import reset_line_user_id, set_line_user_id
 from app.core.user_language import reset_request_language, set_request_language
 from app.i18n.messages import t
 from app.services.rag.query_rewriter import RewrittenQuery
-from app.services.rag.web_client import WebSearchHit
+from app.core.user_language import SUPPORTED_LANGUAGES
+from app.services.rag.web_client import WebSearchHit, WebSearchUnavailable
 from app.services.rag.fail_messages import RagFailCode, rag_fail
 from app.services.rag.web_search_service import (
+    CITE_TOP_K,
     NO_ANSWER_MESSAGE,
     WEB_ANSWER_PREFIX,
     WebSearchService,
@@ -209,11 +213,76 @@ async def test_answer_returns_no_answer_when_web_empty():
 
 
 @pytest.mark.asyncio
-async def test_answer_degrades_when_web_client_raises():
+async def test_answer_reports_web_error_when_search_is_unavailable():
+    """搜尋服務失敗（逾時、5xx）要回 WEB_ERROR，不是「找不到、請換個說法」；
+    也不重搜——逾時再等一次 15 秒沒有意義。"""
+    web = FakeWebClient(search_error=WebSearchUnavailable("timeout"))
+    svc, gemini = _make_service(web_client=web)
+    result = await svc.answer("問題")
+    assert result == rag_fail(RagFailCode.WEB_ERROR)
+    assert len(web.search_calls) == 1
+    gemini.chat_model.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_reports_its_own_code_without_zh_retry():
+    """429 當下立刻用原句重搜只會再吃一次 429；文案要說「太頻繁、等一下」。"""
+    web = FakeWebClient(search_error=WebSearchUnavailable("http_429", status=429))
+    svc, _ = _make_service(web_client=web)
+    result = await svc.answer("問題")
+    assert result == rag_fail(RagFailCode.WEB_RATE_LIMITED)
+    assert len(web.search_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_unexpected_client_exception_is_also_a_web_error():
+    """客戶端沒照契約丟 WebSearchUnavailable 的例外，一樣是「沒搜成」。"""
     web = FakeWebClient(search_error=RuntimeError("boom"))
     svc, _ = _make_service(web_client=web)
     result = await svc.answer("問題")
+    assert result == rag_fail(RagFailCode.WEB_ERROR)
+
+
+class _EnLegFailsWebClient(FakeWebClient):
+    """英文那一路（帶 include_domains）限流，中文那一路正常。"""
+
+    async def search(self, query: str, *, limit: int = 5, include_domains=None):
+        if include_domains:
+            self.search_calls.append(query)
+            raise WebSearchUnavailable("http_429", status=429)
+        return await super().search(query, limit=limit, include_domains=include_domains)
+
+
+@pytest.mark.asyncio
+async def test_one_leg_failing_still_answers_from_the_other_leg():
+    web = _EnLegFailsWebClient(hits=[_hit("國健署", "https://www.hpa.gov.tw/a")])
+    svc, _ = _make_service(
+        answer_content="根據公開網路資料 [1]。",
+        web_client=web,
+        en_search_domains=_EN_DOMAINS,
+    )
+    result = await svc.answer("PGAD 是什麼病", search_queries=_PGAD_QUERIES)
+    assert "https://www.hpa.gov.tw/a" in result
+    assert len(web.search_calls) == 2  # zh + en，沒有 zh_retry
+
+
+@pytest.mark.asyncio
+async def test_genuine_empty_result_still_retries_and_reports_web_empty():
+    """真的 0 筆才重搜、才說「找不到」——這條路的行為不變。"""
+    web = FakeWebClient(hits=[])
+    svc, _ = _make_service(web_client=web)
+    result = await svc.answer("完全查不到的問題")
     assert result == rag_fail(RagFailCode.WEB_EMPTY)
+    assert len(web.search_calls) == 2
+
+
+@pytest.mark.parametrize("language", SUPPORTED_LANGUAGES)
+def test_rate_limit_message_differs_from_not_found_in_every_language(language):
+    limited = rag_fail(RagFailCode.WEB_RATE_LIMITED, language)
+    assert limited.startswith("[RAG_ERR:WEB_RATE_LIMITED] ")
+    assert limited != rag_fail(RagFailCode.WEB_EMPTY, language)
+    assert limited != rag_fail(RagFailCode.WEB_ERROR, language)
+    assert "rag.fail." not in limited  # 每種語言都要有自己的文案，不能漏成 key
 
 
 @pytest.mark.asyncio
@@ -754,3 +823,116 @@ async def test_empty_model_output_is_treated_as_refusal():
     result = await svc.answer("高血壓要注意什麼")
 
     assert result == rag_fail(RagFailCode.MODEL_REFUSE)
+
+
+def _bare_hit(title, url):
+    """snippet 短到會觸發 scrape 的命中（對照 `_hit` 的長 snippet）。"""
+    return WebSearchHit(title=title, url=url, description="短")
+
+
+@pytest.mark.asyncio
+async def test_scrapes_run_in_parallel_not_one_after_another():
+    """缺內文的候選要同時抓。
+
+    單次 scrape 的逾時是 45 秒，逐一 await 時 n 筆抓不到就是 n×45 秒，整段
+    網搜的 45 秒總逾時撐不到第二筆。這裡用「牆鐘時間接近一筆而不是三筆」
+    來釘住並行，而不是只數呼叫次數——次數一樣，慢的才是問題。
+    """
+    delay = 0.05
+    urls = [f"https://www.hpa.gov.tw/p{i}" for i in range(3)]
+    web = FakeWebClient(
+        hits=[_bare_hit(f"衛教{i}", url) for i, url in enumerate(urls)],
+        pages={url: f"{url} 的內文夠長可以當作回答依據。" for url in urls},
+    )
+
+    async def slow_scrape(url: str) -> str:
+        web.scrape_calls.append(url)
+        await asyncio.sleep(delay)
+        return web.pages.get(url, "")
+
+    web.scrape = slow_scrape
+    svc, _ = _make_service(web_client=web)
+
+    started = time.perf_counter()
+    await svc.answer("高血壓要注意什麼")
+    elapsed = time.perf_counter() - started
+
+    assert len(web.scrape_calls) == 3
+    # 序列要 3×delay；抓一個 2 倍 delay 的門檻，慢機器上也不會假性失敗
+    assert elapsed < delay * 2
+
+
+@pytest.mark.asyncio
+async def test_scrape_window_is_bounded_to_the_slots_that_exist():
+    """只對前 CITE_TOP_K 筆發 scrape。
+
+    序列版是「抓不到就再往下一筆」，最壞情況會把八筆命中全部抓過一遍、
+    每筆各等一輪逾時。並行之後次數上限必須釘死，否則省下的是時間、賠掉的
+    是額度。
+    """
+    urls = [f"https://www.hpa.gov.tw/p{i}" for i in range(8)]
+    web = FakeWebClient(
+        hits=[_bare_hit(f"衛教{i}", url) for i, url in enumerate(urls)],
+        pages={},  # 全部抓不到
+    )
+    svc, _ = _make_service(web_client=web)
+
+    await svc.answer("高血壓要注意什麼")
+
+    assert len(web.scrape_calls) == CITE_TOP_K
+
+
+@pytest.mark.asyncio
+async def test_no_scrape_when_the_top_slots_already_have_usable_snippets():
+    """前 CITE_TOP_K 名的 snippet 都夠用時，一次都不抓。
+
+    這是實測打回來的迴歸：預抓視窗設得比 CITE_TOP_K 寬時，golden set 有一題
+    會去抓排在第 4 名的 nhi.gov.tw PDF、卡滿 45 秒逾時，而前三名其實全都
+    夠用。實測 153 筆候選裡 151 筆的 snippet ≥ 20 字，這條路才是常態。
+    """
+    good = [
+        WebSearchHit(
+            title=f"衛教{i}",
+            url=f"https://www.hpa.gov.tw/ok{i}",
+            description="這段描述明顯超過二十個字，足以直接當作回答依據，不必再抓全文。",
+        )
+        for i in range(3)
+    ]
+    slow_pdf = _bare_hit("公告", "https://media.nhi.gov.tw/md/dl-51926.pdf")
+    web = FakeWebClient(hits=[*good, slow_pdf], pages={})
+    svc, _ = _make_service(web_client=web)
+
+    await svc.answer("高血壓要注意什麼")
+
+    assert web.scrape_calls == []
+
+
+@pytest.mark.asyncio
+async def test_duplicate_url_is_scraped_only_once():
+    """同一個網址在命中清單裡出現兩次時只抓一次。
+
+    以前去重是等拿到內文才記進 seen，抓不到的網址不會進去，後面再出現就
+    會再抓一次、再等一輪逾時。
+    """
+    url = "https://www.hpa.gov.tw/same"
+    web = FakeWebClient(
+        hits=[_bare_hit("衛教", url), _bare_hit("衛教（重複）", url)],
+        pages={},
+    )
+    svc, _ = _make_service(web_client=web)
+
+    await svc.answer("高血壓要注意什麼")
+
+    assert web.scrape_calls == [url]
+
+
+@pytest.mark.asyncio
+async def test_short_snippet_survives_a_failed_scrape():
+    """scrape 抓不到時退回原本的短 snippet，而不是整筆丟掉。"""
+    url = "https://www.hpa.gov.tw/only-snippet"
+    web = FakeWebClient(hits=[_bare_hit("衛教", url)], pages={})
+    svc, _ = _make_service(web_client=web)
+
+    result = await svc.answer("高血壓要注意什麼")
+
+    assert url in result

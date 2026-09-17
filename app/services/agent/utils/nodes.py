@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import time
+from pathlib import Path
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
@@ -11,7 +12,7 @@ from app.core.user_language import normalize_user_language
 from app.services.agent.prompt import build_date_context, build_system_prompt
 from app.services.agent.utils.state import State
 from app.services.medical.department_matcher import (
-    extract_department_intent,
+    extract_department_intents,
     normalize_department_text,
 )
 from app.services.medical.facility_name_index import covers_known_facility_name
@@ -32,6 +33,10 @@ from resources.flex_messages.medical_messages.emergency_condition_flex_message i
 )
 
 logger = logging.getLogger(__name__)
+
+# 本地「直接送 RAG」分類器的權重表，由 scripts/build_rag_route_dataset.py 產資料、
+# scripts/build_guardrail_model.py 訓練。
+RAG_ROUTE_MODEL_PATH = Path(__file__).resolve().parents[4] / "resources" / "rag_route_model.json"
 
 
 def _already_ran_rag(messages) -> bool:
@@ -126,7 +131,7 @@ _DEPARTMENT_INTENT_LOOKBACK = 4
 
 # 「使用者有沒有指名某一科」與「那是哪一科」是兩個不同的問題，這裡只回答前者。
 #
-# 為什麼不能只靠 extract_department_intent：它解析不出來就回 None，於是
+# 為什麼不能只靠 extract_department_intents：它解析不出來就回空的，於是
 # 「指名了某一科，但別名表裡沒有」與「根本沒指名科別」在下游長得一模一樣。
 # 前者應該讓 medical_service 用 LLM 兜底、真的兜不出來就誠實說看不懂；後者才該
 # 做不分科搜尋。兩者混在一起的後果是科別被靜默丟掉——使用者說「大腸科」，卻拿到
@@ -199,11 +204,13 @@ def _looks_like_department_mention(text: str) -> str | None:
     return None
 
 
-def _extract_department_from_history(messages) -> str | None:
+def _extract_department_from_history(messages) -> list[str]:
     """
-    由新到舊掃描使用者訊息，找出最近一次提到的科別（回傳使用者的原始說法）。
+    由新到舊掃描使用者訊息，找出最近一次提到的科別（使用者的原始說法）。
 
-    只掃最近幾則，避免把很久以前、已經聊完的科別誤套到這次搜尋上。
+    同一則訊息列舉了多科（保底卡按鈕的「搜尋附近的家醫科、內科、不分科」）就全部
+    帶上；沒提到科別時回傳空清單。只掃最近幾則，避免把很久以前、已經聊完的科別
+    誤套到這次搜尋上。
     """
     scanned = 0
     for message in reversed(messages):
@@ -217,11 +224,11 @@ def _extract_department_from_history(messages) -> str | None:
 
         scanned += 1
         if scanned > _DEPARTMENT_INTENT_LOOKBACK:
-            return None
+            return []
 
-        match = extract_department_intent(text)
-        if match is not None:
-            return match.requested
+        matches = extract_department_intents(text)
+        if matches:
+            return [match.requested for match in matches]
 
         # 別名表查不到，但字面上確實指名了某一科 → 原樣往下傳，讓 service 層去對應。
         mention = _looks_like_department_mention(text)
@@ -230,9 +237,9 @@ def _extract_department_from_history(messages) -> str | None:
                 "[Agent] 別名表未收錄但字面指名了科別，交由 service 層解析：%r",
                 mention,
             )
-            return mention
+            return [mention]
 
-    return None
+    return []
 
 
 # 「現在有開的」是使用者主動加上的限定，不能從「附近有診所嗎」推論出來 ——
@@ -459,7 +466,7 @@ def _is_nearby_department_intent(text: str) -> bool:
         return False
     if not _PROXIMITY_RE.search(text):
         return False
-    return extract_department_intent(text) is not None
+    return bool(extract_department_intents(text))
 
 
 # 「我要看大腸科」既沒有鄰近詞，也沒有醫院／診所字眼，上面兩道判定都抓不到，
@@ -484,10 +491,8 @@ def _is_department_visit_intent(text: str) -> bool:
 
     # 別名表查不到時沿用 _looks_like_department_mention 的字面判定，
     # 「我要看腹腔鏡科」這類未收錄的說法才不會因為查表落空就掉回 RAG。
-    match = extract_department_intent(text)
-    term = (
-        match.requested if match is not None else _looks_like_department_mention(text)
-    )
+    matches = extract_department_intents(text)
+    term = matches[0].requested if matches else _looks_like_department_mention(text)
     if not term:
         return False
 
@@ -612,13 +617,123 @@ def format_user_profile_prompt(user_profile: dict | None) -> str:
     )
 
 
+def _abandon_task(task: "asyncio.Task | None") -> None:
+    """收掉不再需要的任務。冪等，可安全重複呼叫。
+
+    與 answer_service._abandon_task 相同：已完成且帶例外時要主動取出例外，
+    否則 asyncio 會噴 "Task exception was never retrieved"。
+    """
+    if task is None or task.cancelled():
+        return
+    if not task.done():
+        task.cancel()
+        return
+    task.exception()
+
+
+def _can_send_original_text_to_rag(state: State, tool_names: list[str], user_text: str) -> bool:
+    """不經模型、直接把使用者原句送 `get_rag_answer`，在決定性規則上是否站得住。
+
+    強制轉 RAG（模型沒呼叫任何工具）與本地捷徑（根本不問模型）共用這組條件。
+    兩條路送出的是同一種呼叫，排除的情況就必須一致——各寫一份，遲早有一邊
+    補了新規則、另一邊沒補。
+    """
+    messages = state["messages"]
+    return bool(
+        state.get("allow_rag")
+        and "get_rag_answer" in tool_names
+        and not _already_ran_rag(messages)
+        and not _already_used_location_tools(messages)
+        and not _already_ran_symptom_suggestion(messages)
+        and not _is_nearby_facility_intent(user_text)
+        and not _is_named_facility_lookup(user_text)
+        and not _is_official_site_intent(user_text)
+        and not _is_media_extracted_content(user_text)
+        and not _is_uploaded_document_question(user_text)
+    )
+
+
+def _original_text_rag_call(user_text: str, call_id: str) -> AIMessage:
+    return AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "get_rag_answer",
+                # TODO(對話記憶)：這裡把使用者這句話原樣當查詢，RAG 那頭
+                # 也只看這一句。追問（「那第二種呢」）沒有前文就查不到、
+                # 個人病史也進不了生成。要把對話歷史與個人檔案帶進 RAG
+                # 生成是獨立功能，規劃見 CARE_對話記憶功能規劃.md。
+                "args": {"query": user_text},
+                "id": call_id,
+                "type": "tool_call",
+            }
+        ],
+    )
+
+
 class AgentNodes:
-    def __init__(self, llm, guardrail_service, urgency_classifier=None):
+    def __init__(self, llm, guardrail_service, urgency_classifier=None, rag_router=None):
         self._llm = llm
         self._guardrail_service = guardrail_service
         # 未注入時等同永遠不緊急。讓既有的測試與其他進入點不必全部改簽名，
         # 但正式路徑一定要注入——沒注入就等於沒有安全檢查。
         self._urgency_classifier = urgency_classifier
+        # 本地「直接送 RAG」分類器（見 `_local_rag_shortcut`）。未注入＝每一則
+        # 都照舊問模型，行為與導入前相同。
+        self._rag_router = rag_router
+
+    def _local_rag_shortcut(self, state: State, tool_names: list[str], user_text: str) -> bool:
+        """本地模型有把握這句最後會走 RAG 時，跳過 agent 選工具的那次呼叫。
+
+        那次呼叫在正式環境（2026-09-07～17，144 次）中位數 3.2 秒、p90 7.2 秒，
+        而 guardrail 放行後的健康問題大多數最後都走 `get_rag_answer`。本地模型
+        的標籤是拿正式的 `agent_node` 逐句標出來的（scripts/build_rag_route_dataset.py），
+        學的是「agent 會怎麼選」，不是另訂一套規則。
+
+        **只用 `high`，不用 `low`。** 本地說「不是 RAG」時仍要模型決定是哪個
+        工具、參數是什麼，那是分類器做不到的，所以低分一律照舊問模型。
+
+        **只在這一輪還沒跑過任何工具時判斷。** 工具回來之後的那一步是在組回覆，
+        不是在選工具。
+
+        門檻（`high`）以「交叉驗證上，該交給其他工具的訊息誤送率 ≤ 1%」選定。
+        holdout 實測（2026-09-17，scripts/rag_route_eval.py）：agent 會走 RAG 的
+        健康問題有 53.7% 走捷徑（中文 41.2%，外語 49.5%～63.9%）；agent 選了別的
+        工具的 38 則誤送 2 則，生成的困難負例（掛哪科、查吃藥、查證、追問…）
+        567 則誤送 5 則，多半是追問句。
+
+        與模型路徑的差別：模型會把問句改寫成關鍵字串再送 RAG（6,342 則裡 6,065
+        則），捷徑送原句——與強制轉 RAG 相同。golden 題庫 31 題知識庫題的檢索：
+        原句命中 30、MRR 0.723；模型的關鍵字命中 29、MRR 0.755，看不出差別。
+        題庫都是短問句，長句口語上的差別沒有量到。
+        """
+        router = self._rag_router
+        if router is None:
+            return False
+        messages = state["messages"]
+        if any(isinstance(m, ToolMessage) for m in messages):
+            return False
+        if _parse_shared_location(user_text) is not None:
+            return False
+        if not _can_send_original_text_to_rag(state, tool_names, user_text):
+            return False
+        try:
+            probability = router.probability(user_text)
+            recognized = router.recognizes(user_text)
+        except Exception:
+            # 捷徑壞掉只是變慢，不該讓這則訊息失敗。
+            logger.exception("本地 RAG 分流推論失敗，照舊交給 agent")
+            return False
+        # 認得的片段太少時機率沒有意義（見 guardrail.local.MIN_KNOWN_SHARE）。
+        shortcut = recognized and probability >= router.high
+        log_stage(
+            logger,
+            "rag_route_local",
+            p=round(probability, 3),
+            outcome="shortcut" if shortcut else "agent",
+            reason=None if recognized else "unrecognized",
+        )
+        return shortcut
 
     def _resolve_user_language(self, user_profile: dict | None) -> str:
         if not user_profile:
@@ -633,6 +748,12 @@ class AgentNodes:
         兩者併發執行：急迫度判斷擋在所有回覆前面，序列化等於把它的延遲直接
         加到每一則訊息上。兩個判斷彼此獨立，沒有順序需求。
 
+        但等待的方式不是 gather：先等急迫度，判定緊急就直接短路，不等 guardrail。
+        緊急卡不進 agent、不跑 RAG，guardrail 的結果對它完全用不到；以前用
+        gather 等兩邊都回來，Gemini 一慢，「我阿公昏迷」的紅卡就被一個沒人要的
+        判斷拖住（guardrail 直到 2026-09-16 才有逾時，急迫度早就有 4 秒）。
+        不緊急時仍要等 guardrail，總時間與 gather 相同——兩個任務一開始就同時起跑。
+
         急迫度為什麼在這裡而不是做成 tool：
             做成 tool 就代表「agent 可以選擇不呼叫」，而前一版失敗的原因正是
             agent 把「我阿公昏迷」判給了 RAG、從未呼叫到帶有安全檢查的工具。
@@ -642,16 +763,31 @@ class AgentNodes:
         language = self._resolve_user_language(state.get("user_profile"))
         t0 = time.perf_counter()
 
-        allow_rag, verdict = await asyncio.gather(
-            self._guardrail_service.allow_rag_tool(user_input),
-            self._classify_urgency(user_input, language),
+        guardrail_task = asyncio.create_task(
+            self._guardrail_service.allow_rag_tool(user_input)
         )
+        try:
+            verdict = await self._classify_urgency(user_input, language)
+        except BaseException:
+            _abandon_task(guardrail_task)
+            raise
+
+        if verdict.is_emergency:
+            # 緊急短路：guardrail 還在跑就取消，跑完了也不看。allow_rag 給 False
+            # 只是讓 state 有值——emergency_node 根本不掛工具。
+            _abandon_task(guardrail_task)
+            allow_rag = False
+        else:
+            allow_rag = await guardrail_task
 
         log_stage(
             logger,
             "guardrail",
             allow_rag=allow_rag,
             urgency=verdict.level if verdict.is_emergency else None,
+            # 緊急時 guardrail 被放掉，ms 量的只有急迫度那一段；沒有這個欄位會
+            # 把「guardrail 很快」與「根本沒等它」混在一起。
+            guardrail_skipped=True if verdict.is_emergency else None,
             ms=int((time.perf_counter() - t0) * 1000),
         )
         return {
@@ -685,9 +821,13 @@ class AgentNodes:
     async def agent_node(self, state: State) -> dict:
         """LLM 決策節點：根據 allow_rag 動態綁定工具，讓 LLM 決定回話或呼叫工具。"""
         tools = get_all_tools(include_rag_tool=state.get("allow_rag", False))
-        llm_with_tools = self._llm.bind_tools(tools)
         tool_names = [t.name for t in tools]
+        user_text = _latest_human_text(state["messages"])
 
+        if self._local_rag_shortcut(state, tool_names, user_text):
+            return {"messages": [_original_text_rag_call(user_text, "shortcut_rag_1")]}
+
+        llm_with_tools = self._llm.bind_tools(tools)
         user_profile_text = format_user_profile_prompt(state.get("user_profile"))
         language = self._resolve_user_language(state.get("user_profile"))
         # 日期接在固定規則之後：模型要把「昨天」「禮拜一」換成查服藥狀況的 days_ago。
@@ -702,7 +842,6 @@ class AgentNodes:
         force_location = False
         force_nearby = False
         force_official_site = False
-        user_text = _latest_human_text(state["messages"])
         shared_location = _parse_shared_location(user_text)
 
         # 使用者已分享位置（prompt 規則 5(b)）。這裡必須是決定性的：模型若沒有
@@ -717,13 +856,13 @@ class AgentNodes:
             lat, lng = shared_location
             # 使用者稍早若指定過科別（「附近有腸胃科嗎」），座標進來時必須沿用，
             # 否則會退化成搜尋所有科別，回傳一堆牙科、婦產科。
-            department = _extract_department_from_history(state["messages"])
+            departments = _extract_department_from_history(state["messages"])
             # 類型（大醫院／診所／藥局）與科別是各自獨立的維度，需分開判斷，
             # 兩者可同時帶入同一次工具呼叫（見 _facility_type_intent 的說明）。
             facility_type = _extract_facility_type_from_history(state["messages"])
-            if department:
+            if departments:
                 forced_tool_name = "find_nearby_facilities_by_department"
-                forced_args = {"lat": lat, "lng": lng, "department": department}
+                forced_args = {"lat": lat, "lng": lng, "departments": departments}
             else:
                 forced_tool_name = "find_nearby_hospitals"
                 forced_args = {"lat": lat, "lng": lng}
@@ -804,30 +943,8 @@ class AgentNodes:
             tool_calls = response.tool_calls
             called = ["answer_from_uploaded_document"]
             force_upload = True
-        elif (
-            state.get("allow_rag")
-            and "get_rag_answer" in tool_names
-            and not tool_calls
-            and not _already_ran_rag(state["messages"])
-            and not _already_used_location_tools(state["messages"])
-            and not _already_ran_symptom_suggestion(state["messages"])
-            and not _is_nearby_facility_intent(user_text)
-            and not _is_named_facility_lookup(user_text)
-            and not _is_official_site_intent(user_text)
-            and not _is_media_extracted_content(user_text)
-            and not _is_uploaded_document_question(user_text)
-        ):
-            response = AIMessage(
-                content="",
-                tool_calls=[
-                    {
-                        "name": "get_rag_answer",
-                        "args": {"query": user_text},
-                        "id": "forced_rag_1",
-                        "type": "tool_call",
-                    }
-                ],
-            )
+        elif not tool_calls and _can_send_original_text_to_rag(state, tool_names, user_text):
+            response = _original_text_rag_call(user_text, "forced_rag_1")
             tool_calls = response.tool_calls
             called = ["get_rag_answer"]
             force_rag = True

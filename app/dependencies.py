@@ -46,6 +46,7 @@ from app.repositories.prescription_draft_repository import PrescriptionDraftRepo
 from app.repositories.safety_alert_repository import SafetyAlertRepository
 from app.repositories.user_profile_repository import UserProfileRepository
 from app.services.agent.agent import Agent
+from app.services.agent.utils.nodes import RAG_ROUTE_MODEL_PATH
 from app.services.appointment.appointment_scheduler import (
     start_appointment_scheduler as _start_appointment_scheduler,
 )
@@ -83,6 +84,8 @@ from app.services.safety.ingredient_overlap import (
     load_local_action_forms,
 )
 from app.services.safety.emergency_alert_service import EmergencyFamilyAlertService
+from app.services.lost.lost_classifier import LostIntentDetector
+from app.services.lost.lost_location_service import LostLocationService
 from app.services.medication.tcm_catalog_service import TcmCatalogService
 from app.services.safety.otc_alert_service import OtcAlertService
 from app.services.safety.atc_interaction import ClassPairTable
@@ -113,6 +116,8 @@ from app.services.line_messaging.reply.reply import LineReplier
 from app.services.line_messaging.reply.remote_tts_service import RemoteTTSService
 from app.services.line_messaging.reply.tts_service import TTSService, build_local_tts_service
 from app.services.line_messaging.rich_menu_service import RichMenuService
+from app.services.line_messaging.official_account import OfficialAccountService
+from app.services.line_messaging.share_card import ShareCardService
 from app.services.line_messaging.token_manager import LineTokenManager
 from app.services.medical.facility_name_index import configure_facility_names
 from app.services.medical.medical_service import MedicalService, medical_service
@@ -159,7 +164,10 @@ from app.services.rag.retrieval_grader import (
     GRADE_THINKING_LEVEL,
     GeminiRetrievalGrader,
 )
-from app.services.rag.web_search_service import WebSearchService
+from app.services.rag.web_search_service import (
+    WEB_GENERATE_THINKING_LEVEL,
+    WebSearchService,
+)
 from app.services.medical_news.grader import GeminiNewsGrader
 from app.services.medical_news.index_service import DrugNewsIndexService
 from app.services.medical_news.kb_digest_service import KbDigestService
@@ -171,6 +179,7 @@ from app.tools.medication_status_tools import configure_medication_status_tool
 from app.tools.medical_tools import configure_medical_tools
 from app.tools.official_site_tools import configure_official_site_tool
 from app.tools.rag_tools import configure_rag_tool
+from app.tools.share_tools import configure_share_tool
 from app.tools.symptom_tools import configure_symptom_tool
 from app.tools.user_document_tools import configure_user_document_tool
 from app.tools.web_tools import configure_web_tool
@@ -368,7 +377,14 @@ else:
     logger.info("RAG_LINK_CHECK_ENABLED=false; citation URLs will not be verified")
 
 _web_search_service = WebSearchService(
-    gemini_service=_gemini_service,
+    # 網搜答案生成用獨立的低 thinking 實例（數字見
+    # web_search_service.WEB_GENERATE_THINKING_LEVEL）。不改共用的
+    # _gemini_service：知識庫生成、guardrail、問診都在用它，沒一起量過。
+    gemini_service=GeminiService(
+        api_key=settings.GEMINI_API_KEY,
+        model_name=settings.MODEL_NAME,
+        thinking_level=WEB_GENERATE_THINKING_LEVEL,
+    ),
     web_client=_firecrawl_client,
     on_web_fallback_success=_knowledge_report_service.create_from_web_fallback,
     link_checker=_link_checker,
@@ -383,7 +399,6 @@ _rag_answer_service = RagAnswerService(
     max_chunks_per_article=settings.RAG_RERANK_MAX_CHUNKS_PER_ARTICLE,
     grader=_rag_grader,
     rewriter=_rag_rewriter,
-    crag_rewrite_budget_seconds=settings.RAG_CRAG_REWRITE_BUDGET_SECONDS,
     speculative_generate=settings.RAG_SPECULATIVE_GENERATE,
     crag_enabled=settings.RAG_CRAG_ENABLED,
     web_search=_web_search_service,
@@ -581,16 +596,22 @@ except Exception:
 _urgency_classifier = UrgencyClassifier(
     gemini_service=_gemini_service, local=_urgency_local
 )
-if not _symptom_table.verified:
-    logger.warning(
-        "症狀對照表尚未經人工審定（status != verified），"
-        "科別建議的正確性未經驗證"
-    )
+
+# 本地「直接送 RAG」分類器：有把握時跳過 agent 選工具的那次呼叫（見
+# AgentNodes._local_rag_shortcut）。模型檔不在或壞掉時每一則都照舊問 agent，
+# 不擋啟動。
+try:
+    _rag_router = LocalGuardrailClassifier.load(RAG_ROUTE_MODEL_PATH)
+    logger.info("RAG route shortcut enabled (local classifier)")
+except Exception:
+    logger.exception("本地 RAG 分流模型載入失敗，每一則都交給 agent 決定")
+    _rag_router = None
 
 _care_agent = Agent(
     llm=_gemini_service.chat_model,
     guardrail_service=_guardrail_service,
     urgency_classifier=_urgency_classifier,
+    rag_router=_rag_router,
 )
 
 _line_history_service = LineMessageHistoryService(
@@ -604,6 +625,13 @@ _line_token_manager = LineTokenManager(
 
 _line_loading_animation_service = LineLoadingAnimationService(_line_token_manager)
 
+# 分享卡：關鍵字秒回（message handler）與 AI 工具 share_care 共用同一個服務。
+_official_account_service = OfficialAccountService(_line_token_manager)
+_share_card_service = ShareCardService(
+    _official_account_service, liff_url=settings.LIFF_URL
+)
+configure_share_tool(_share_card_service)
+
 _rich_menu_service = RichMenuService(
     get_access_token=_line_token_manager.get_token,
 )
@@ -614,12 +642,6 @@ _user_profile_service = UserProfileService(
     rich_menu_service=_rich_menu_service
 )
 
-_consultation_service = ConsultationService(
-    chat_history_repository=_conversation_log_repository,
-    repository=_consultation_repository,
-    gemini_service=_gemini_service,
-    user_profile_service=_user_profile_service,
-)
 
 def _build_tts_service(service_url: str) -> TTSService | RemoteTTSService:
     """有 care-tts（TTS_SERVICE_URL）就交給它合成、存檔；沒有就在本行程合成（本機開發）。
@@ -752,6 +774,16 @@ _emergency_family_alert_service = EmergencyFamilyAlertService(
     authorization_service=_family_authorization_service,
     user_profile_service=_user_profile_service,
 )
+# 走失求救與即時位置分享。收件人同樣走 NOTIFICATION_POLICY（elder_lost）；沒有
+# 開關，理由同緊急通報。LIFF_ID 沒設時卡片不放定位頁按鈕，只剩「傳送一次位置」。
+_lost_location_service = LostLocationService(
+    replier=_line_replier,
+    authorization_service=_family_authorization_service,
+    user_profile_service=_user_profile_service,
+    liff_id=settings.LIFF_ID,
+    # 關鍵字先判，認不得的講法與外語交給本地分類器；模型檔缺席時只用關鍵字。
+    intent_detector=LostIntentDetector.load(),
+)
 
 _message_handler = LineMessageHandler(
     agent=_care_agent,
@@ -761,6 +793,9 @@ _message_handler = LineMessageHandler(
     loading_animation_service=_line_loading_animation_service,
     safety_alert_service=_enabled_safety_alert_service,
     emergency_family_alert_service=_emergency_family_alert_service,
+    share_card_service=_share_card_service,
+    lost_location_service=_lost_location_service,
+    urgency_classifier=_urgency_classifier,
 )
 _media_handler = LineMediaHandler(
     agent=_care_agent,
@@ -771,6 +806,8 @@ _media_handler = LineMediaHandler(
     user_document_ingest_service=_user_document_ingest_service,
     safety_alert_service=_enabled_safety_alert_service,
     emergency_family_alert_service=_emergency_family_alert_service,
+    lost_location_service=_lost_location_service,
+    urgency_classifier=_urgency_classifier,
 )
 _location_handler = LineLocationHandler(
     agent=_care_agent,
@@ -778,6 +815,7 @@ _location_handler = LineLocationHandler(
     user_profile_service=_user_profile_service,
     replier=_line_replier,
     loading_animation_service=_line_loading_animation_service,
+    lost_location_service=_lost_location_service,
 )
 # 稽核與角色指派共用同一份：移除成員收回的是全部權限，要跟角色變更排在同一條時序上。
 _family_tree_service = FamilyTreeService(audit_repository=FamilyRoleAuditRepository)
@@ -837,6 +875,15 @@ _appointment_service = AppointmentService(
     repository=_appointment_repository,
     authorization_service=_family_authorization_service,
     user_profile_service=_user_profile_service,
+)
+
+_consultation_service = ConsultationService(
+    chat_history_repository=_conversation_log_repository,
+    repository=_consultation_repository,
+    gemini_service=_gemini_service,
+    user_profile_service=_user_profile_service,
+    medication_service=_medication_service,
+    appointment_repository=_appointment_repository,
 )
 
 # 藥袋辨識。藥證庫沿用上面已經載入的那一份（見 _drug_catalog_service）。
@@ -1134,6 +1181,10 @@ def get_line_replier() -> LineReplier:
     return _line_replier
 
 
+def get_lost_location_service() -> LostLocationService:
+    return _lost_location_service
+
+
 def get_user_profile_service() -> UserProfileService:
     return _user_profile_service
 
@@ -1179,6 +1230,12 @@ def get_user_document_ingest_service() -> UserDocumentIngestService | None:
 def get_user_document_answer_service() -> UserDocumentAnswerService | None:
     """取得使用者上傳文件問答服務；未設定 vector index 時回傳 None。"""
     return _user_document_answer_service
+
+
+# ── 認證與家人權限 ─────────────────────────────────────────────────
+from fastapi import Request  # noqa: E402 - 只有下面的頻率限制 dependency 用到
+
+from app.core.rate_limit import RateLimiter, client_ip  # noqa: E402
 
 
 @dataclass
@@ -1243,3 +1300,104 @@ async def require_admin_user(
     if role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return current_user
+
+
+# ── 請求頻率限制 ───────────────────────────────────────────────────
+#
+# 兩個工廠各回傳一支 dependency。**做成具名的模組層物件**（下面四個），路由
+# 用 `Depends(liff_login_rate_limit)` 掛上；測試就能以 app.dependency_overrides
+# 換掉或換成更小的上限，不必動 settings 這個整個行程共用的單例。
+#
+# 兩支都是 async def：同步 dependency 會被 FastAPI 丟到 threadpool，計數器
+# 就得跨執行緒，沒必要。
+
+
+def limit_by_client_ip(limiter: RateLimiter):
+    """未登入端點：以來源 IP 計數（Cloudflare 標頭優先，見 rate_limit.client_ip）。"""
+
+    async def dependency(request: Request) -> None:
+        limiter.enforce(client_ip(request))
+
+    dependency.limiter = limiter  # type: ignore[attr-defined] - 測試要 reset
+    return dependency
+
+
+def limit_by_user(limiter: RateLimiter):
+    """已登入端點：以 line_user_id 計數。
+
+    依賴 `get_current_user`，所以沒帶 token 的請求會先拿到 401、不進計數——
+    未登入的濫用另有 IP 層的限制，這裡只管「同一個帳號」。
+    """
+
+    async def dependency(
+        current_user: CurrentUser = Depends(get_current_user),
+    ) -> None:
+        limiter.enforce(current_user.line_user_id)
+
+    dependency.limiter = limiter  # type: ignore[attr-defined]
+    return dependency
+
+
+liff_login_rate_limit = limit_by_client_ip(
+    RateLimiter(limit=settings.RATE_LIMIT_LIFF_LOGIN_PER_MINUTE, window_seconds=60)
+)
+invite_verify_rate_limit = limit_by_client_ip(
+    RateLimiter(limit=settings.RATE_LIMIT_INVITE_VERIFY_PER_MINUTE, window_seconds=60)
+)
+summary_generate_rate_limit = limit_by_user(
+    RateLimiter(limit=settings.RATE_LIMIT_SUMMARY_GENERATE_PER_HOUR, window_seconds=3600)
+)
+prescription_scan_rate_limit = limit_by_user(
+    RateLimiter(limit=settings.RATE_LIMIT_PRESCRIPTION_SCAN_PER_HOUR, window_seconds=3600)
+)
+lost_location_rate_limit = limit_by_user(
+    RateLimiter(limit=settings.RATE_LIMIT_LOST_LOCATION_PER_MINUTE, window_seconds=60)
+)
+
+ALL_RATE_LIMITS = (
+    liff_login_rate_limit,
+    invite_verify_rate_limit,
+    summary_generate_rate_limit,
+    prescription_scan_rate_limit,
+    lost_location_rate_limit,
+)
+
+
+def reset_rate_limits() -> None:
+    """清空全部計數。給測試用：同一個行程跑上百個 HTTP 測試，同一個假使用者
+    很快就會撞到每小時的上限，而那不是任何一個測試要驗的事。"""
+    for dependency in ALL_RATE_LIMITS:
+        dependency.limiter.reset()  # type: ignore[attr-defined]
+
+
+_clinic_transcript_service: "ClinicTranscriptService | None" = None
+
+
+def get_clinic_transcript_service() -> "ClinicTranscriptService":
+    """看診錄音服務。
+
+    第一次用到才建，而且 import 也延後到這裡：轉錄要 `google.genai` 的型別，
+    而 `app/services/speech/audio.py` 開頭那段註解記著，頂端 import 大套件會讓
+    backend／scheduler pod 啟動約 30 秒就被 OOMKilled。這個功能不是每個 pod
+    都會用到，沒有理由讓它進到啟動路徑。
+    """
+    global _clinic_transcript_service
+    if _clinic_transcript_service is None:
+        from app.repositories.medication_repository import MedicationRepository
+        from app.services.clinic_transcript.notifier import ClinicVisitNotifier
+        from app.services.clinic_transcript.service import ClinicTranscriptService
+        from app.services.clinic_transcript.summarizer import ClinicVisitSummarizer
+        from app.services.speech.clinic_transcribe import ClinicTranscriber
+
+        _clinic_transcript_service = ClinicTranscriptService(
+            transcriber=ClinicTranscriber(),
+            summarizer=ClinicVisitSummarizer(_gemini_service),
+            medication_repository=MedicationRepository,
+            notifier=ClinicVisitNotifier(
+                replier=_line_replier,
+                authorization_service=_family_authorization_service,
+                user_profile_service=_user_profile_service,
+                liff_url=settings.LIFF_URL,
+            ),
+        )
+    return _clinic_transcript_service

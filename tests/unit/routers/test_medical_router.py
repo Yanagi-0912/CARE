@@ -203,7 +203,7 @@ def test_nearby_routes_to_department_search_when_department_given(
             facilities=[_facility("腸胃科診所", 900)],
             reached_meters=5_000,
             satisfied=True,
-            match=DepartmentMatch(canonical="內科", requested="腸胃科"),
+            matches=(DepartmentMatch(canonical="內科", requested="腸胃科"),),
         )
     )
 
@@ -213,6 +213,9 @@ def test_nearby_routes_to_department_search_when_department_given(
     )
 
     override_medical_service.find_nearby_hospitals.assert_not_awaited()
+    # service 一次可查多科；/nearby 仍是單科，包成一個元素的清單交過去。
+    department_search = override_medical_service.find_nearby_facilities_by_department
+    assert department_search.await_args.kwargs["departments"] == ["腸胃科"]
     body = response.json()
     assert body["department"] == {
         "requested": "腸胃科",
@@ -230,7 +233,7 @@ def test_nearby_reports_unresolved_department_as_200(
     跟「Atlas 掛了」混在同一個錯誤橫幅裡，使用者無從得知系統其實沒聽懂哪一科。
     """
     override_medical_service.find_nearby_facilities_by_department.return_value = (
-        DepartmentSearchResult(match=None)
+        DepartmentSearchResult(unresolved_departments=("宇宙科",))
     )
 
     response = client.get(

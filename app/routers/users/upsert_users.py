@@ -2,7 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.models.user import ProxyHealthUpdate, UserProfileData, UserSettingsUpdate
 from app.services.users.user_profile_service import UserProfileService
-from app.models.family_authorization import PROXY_WRITE_FORBIDDEN_FIELDS
+from app.models.family_authorization import (
+    FIELD_CLASSIFICATION,
+    PROXY_WRITE_FORBIDDEN_FIELDS,
+)
 from app.services.family.family_authorization_service import (
     FamilyAuthorizationService,
 )
@@ -16,6 +19,16 @@ from app.dependencies import (
 from fastapi import HTTPException
 
 router = APIRouter(tags=["Profile"])
+
+# 跨使用者輸出時**允許存在**的健康檔案欄位：登記表裡屬於 health_profile 的
+# 那些。未登記的（`_id`、`role`、`settings`、時間戳、任何日後新增的欄位）在
+# 進到角色遮蔽之前就先拿掉——遮蔽只在該操作者受矩陣約束時生效，而尚未指派
+# 角色的家人在影子模式下是原樣回傳，那條路曾把整份 Mongo 文件送出去。
+HEALTH_PROFILE_REGISTERED_FIELDS: frozenset[str] = frozenset(
+    field
+    for (resource, field) in FIELD_CLASSIFICATION
+    if resource == "health_profile"
+)
 
 
 @router.get(
@@ -142,8 +155,15 @@ async def get_member_profile(
     if not profile:
         raise HTTPException(status_code=404, detail="找不到該成員的健康資料")
 
+    # 先砍到登記表認得的欄位，再依角色遮蔽。兩步都要：前者 fail-closed 擋住
+    # 未登記欄位（不論影子或強制），後者依角色決定 SENSITIVE 給不給。
+    registered = {
+        field: value
+        for field, value in dict(profile).items()
+        if field in HEALTH_PROFILE_REGISTERED_FIELDS
+    }
     return await authz.mask_response(
-        profile, "health_profile", requester_id, userId
+        registered, "health_profile", requester_id, userId
     )
 
 

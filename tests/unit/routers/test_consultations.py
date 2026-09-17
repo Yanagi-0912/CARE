@@ -31,6 +31,7 @@ class FakeConsultationService:
     ) -> None:
         self.get_all_summaries = AsyncMock(return_value=summaries or [])
         self.get_raw_view = AsyncMock(return_value=messages or [])
+        self.resolve_summary_language = AsyncMock(return_value="zh-TW")
 
 
 class FakeDownloadTokenService:
@@ -167,25 +168,26 @@ def test_get_my_summary_download_token_returns_token(
     }
 
 
-def test_download_my_summary_history_returns_json_attachment(
+def test_download_my_summary_history_returns_txt_attachment(
     client,
     override_consultation_service,
     override_download_token_service,
 ):
+    # 與 repository 一樣新到舊；router 不排序，照 service 給的順序輸出
     summaries = [
+        ConsultationSummary(
+            line_id="U123",
+            summary_date=date(2026, 5, 27),
+            summary='{"health_issue": "頭痛"}',
+            language="zh-TW",
+            created_at=datetime(2026, 5, 27, 13, 14, 15),
+        ),
         ConsultationSummary(
             line_id="U123",
             summary_date=date(2026, 5, 26),
             summary="5/26 摘要",
-            language="zh-TW",
-            created_at=datetime(2026, 5, 26, 10, 11, 12),
-        ),
-        ConsultationSummary(
-            line_id="U123",
-            summary_date=date(2026, 5, 27),
-            summary="5/27 摘要",
             language="en",
-            created_at=datetime(2026, 5, 27, 13, 14, 15),
+            created_at=datetime(2026, 5, 26, 10, 11, 12),
         ),
     ]
     fake_service = override_consultation_service(
@@ -202,28 +204,17 @@ def test_download_my_summary_history_returns_json_attachment(
 
     assert response.status_code == 200
     assert response.headers["content-disposition"] == (
-        'attachment; filename="CARE_consult_summart_20260529134559.json"'
+        'attachment; filename="CARE_consult_summary_20260529134559.txt"'
     )
-    assert response.headers["content-type"] == "application/json; charset=utf-8"
-    assert response.json() == [
-        {
-            "line_id": "U123",
-            "summary_date": "2026-05-26",
-            "summary": "5/26 摘要",
-            "language": "zh-TW",
-            "created_at": "2026-05-26T10:11:12",
-        },
-        {
-            "line_id": "U123",
-            "summary_date": "2026-05-27",
-            "summary": "5/27 摘要",
-            "language": "en",
-            "created_at": "2026-05-27T13:14:15",
-        },
-    ]
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.content.startswith(b"\xef\xbb\xbf")
+    text = response.content.decode("utf-8-sig")
+    assert text.startswith("醫療諮詢紀錄摘要\n匯出時間：2026-05-29 13:45\n")
+    assert "■ 健康問題\n頭痛" in text
+    assert "5/26 摘要" in text
+    assert text.index("2026-05-27") < text.index("2026-05-26")
     fake_service.get_all_summaries.assert_awaited_once_with("U123")
-
-
+    fake_service.resolve_summary_language.assert_awaited_once_with("U123")
 # ── /{userId} 家庭授權 ────────────────────────────────────────────────────────
 # 這兩支端點吐的是別人的諮詢內容，是全專案最敏感的資料。若只驗登入態不驗族譜，
 # 任何持有自己 token 的人只要知道對方的 LINE userId 就能整份撈走，因此正反兩面都要蓋到。
@@ -304,7 +295,7 @@ def test_get_member_raw_consultations_allows_family_member(
     assert body["view_type"] == "raw"
     assert body["messages"][0]["content"] == "最近頭很痛"
     assert family_service.tree_reads == ["U_MEMBER"]
-    fake_service.get_raw_view.assert_awaited_once_with("U_MEMBER")
+    fake_service.get_raw_view.assert_awaited_once_with("U_MEMBER", language="zh-TW")
 
 
 def test_get_member_raw_consultations_rejects_non_family_member(
@@ -339,7 +330,41 @@ def test_get_member_raw_consultations_allows_self_without_family_lookup(
     # 查自己不解析角色、也不查族譜——一個人對自己資料的權限不需要任何人授予，
     # 也不該因為族譜讀取失敗而消失。
     assert family_service.tree_reads == []
-    fake_service.get_raw_view.assert_awaited_once_with("U123")
+    fake_service.get_raw_view.assert_awaited_once_with("U123", language="zh-TW")
+
+
+def test_member_raw_consultations_use_viewer_language(
+    client, override_current_user, override_consultation_service, override_family_service
+):
+    """家人頁的卡片文字依查看者的語言顯示，不是被查看的家人。"""
+    override_current_user("U123")
+    fake_service = override_consultation_service(
+        FakeConsultationService(messages=_sample_messages())
+    )
+    fake_service.resolve_summary_language.return_value = "en"
+    override_family_service(["U_MEMBER"])
+
+    response = client.get("/api/consultations/U_MEMBER/messages/raw")
+
+    assert response.status_code == 200
+    fake_service.resolve_summary_language.assert_awaited_once_with("U123")
+    fake_service.get_raw_view.assert_awaited_once_with("U_MEMBER", language="en")
+
+
+def test_my_raw_consultations_use_my_language(
+    client, override_current_user, override_consultation_service
+):
+    override_current_user("U123")
+    fake_service = override_consultation_service(
+        FakeConsultationService(messages=_sample_messages())
+    )
+    fake_service.resolve_summary_language.return_value = "ja"
+
+    response = client.get("/api/consultations/me/messages/raw")
+
+    assert response.status_code == 200
+    fake_service.resolve_summary_language.assert_awaited_once_with("U123")
+    fake_service.get_raw_view.assert_awaited_once_with("U123", language="ja")
 
 
 def test_raw_consultations_returns_503_when_conversation_log_is_unavailable(

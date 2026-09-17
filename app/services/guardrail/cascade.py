@@ -13,10 +13,14 @@ GuardChain（arXiv:2512.19011）量到便宜分類器在分佈外會「高信心
 門檻的不對稱也是刻意的：
   - `low` 由漏判率上限決定（預設 0.2%）。本地說「不是」而其實是醫療問題，
     使用者就拿不到知識庫的答案——**這是真傷害**。
-  - `high` 由誤判率上限決定（預設 5%，比漏判寬 25 倍）。本地說「是」而其實
-    無關，後果只是把 RAG 工具掛給 agent，agent 未必會用——**這只是浪費**。
+  - `high` 由誤判率上限決定（guardrail 用 10%，比漏判寬 50 倍，理由見
+    `scripts/build_guardrail_model.py`）。本地說「是」而其實無關，後果只是把
+    RAG 工具掛給 agent，agent 未必會用——**這只是浪費**。
 
-實測（holdout 598 筆）：本地解掉 83.4%，本地漏判 0 則。
+訓練資料涵蓋六種語言（外語併入方式見 `scripts/merge_guardrail_foreign.py`）。
+2026-09-15 重訓後實測（holdout 2,066 筆）：本地解掉 78.9%，本地漏判 3 則；
+其中中文 598 筆本地解掉 81%、漏判 0 則。只用中文訓練的舊模型把英文健康問題
+198 題擋掉 195 題。
 
 失效方向與 `GuardrailService` 一致：本地模型載入失敗時，`dependencies` 會
 直接退回純 LLM 的版本；推論本身若拋例外，這裡升級給 LLM 而不是擅自放行。
@@ -54,11 +58,19 @@ class CascadeGuardrailService:
 
         try:
             probability = self._local.probability(user_text)
+            recognized = self._local.recognizes(user_text)
         except Exception:
             # 本地推論不該有例外，但真的有的話，升級給 LLM 而不是自己決定。
             logger.exception("本地 guardrail 推論失敗，升級給 LLM")
             return await self._fallback.allow_rag_tool(user_text)
 
+        if not recognized:
+            # 認得的片段太少，機率只是少數幾個片段湊出來的（見 local.MIN_KNOWN_SHARE）。
+            log_stage(
+                logger, "guardrail_local", outcome="escalate", reason="unrecognized",
+                p=round(probability, 4),
+            )
+            return await self._fallback.allow_rag_tool(user_text)
         if probability >= self._local.high:
             log_stage(logger, "guardrail_local", outcome="allow", p=round(probability, 4))
             return True

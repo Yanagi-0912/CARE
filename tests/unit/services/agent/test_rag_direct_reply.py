@@ -7,6 +7,7 @@ from app.i18n.messages import t
 from app.services.agent.agent import (
     _insert_before_sources,
     _rag_direct_reply_node,
+    _rag_fail_direct_reply_node,
     _route_after_tools,
     _trailing_tool_messages,
 )
@@ -49,14 +50,49 @@ def test_other_tool_alone_goes_back_to_the_model():
     assert _route_after_tools(state) == "agent"
 
 
-def test_rag_failure_message_is_not_passed_through():
-    """失敗文案是給模型當素材的，直接送出會漏掉既有的降級話術。"""
+def test_rag_failure_goes_to_fixed_fail_reply():
+    """失敗時不交回模型：2026-09-17 模型把「查無資料」寫成一段沒人問的情緒支持。"""
     from app.services.rag.fail_messages import RagFailCode, rag_fail
 
     state = _state(
         [HumanMessage(content="問題"), _tool("get_rag_answer", rag_fail(RagFailCode.KB_EMPTY))]
     )
-    assert _route_after_tools(state) == "agent"
+    assert _route_after_tools(state) == "rag_fail_direct"
+
+
+def _fail_reply(user_text: str, code: str) -> str:
+    from app.services.rag.fail_messages import rag_fail
+
+    state = _state([HumanMessage(content=user_text), _tool("get_rag_answer", rag_fail(code, "zh-TW"))])
+    (message,) = _rag_fail_direct_reply_node(state)["messages"]
+    return message.content
+
+
+def test_fail_reply_is_the_fixed_text_without_code_or_rag_prefix():
+    from app.services.rag.fail_messages import RagFailCode
+
+    reply = _fail_reply("恥笑漸漸光，咱就大聲仔想著煞", RagFailCode.MODEL_REFUSE)
+
+    assert reply == t("rag.fail.MODEL_REFUSE", "zh-TW")
+    assert "RAG_ERR" not in reply
+    assert not reply.startswith(t("agent.rag_prefix", "zh-TW"))
+
+
+def test_fail_reply_adds_165_when_user_is_about_to_pay_or_click():
+    from app.services.rag.fail_messages import RagFailCode
+
+    reply = _fail_reply("簡訊說健保點數要歸零，叫我點連結填信用卡，要照做嗎", RagFailCode.WEB_EMPTY)
+
+    assert reply.endswith(t("rag.fail.scam_notice"))
+
+
+def test_timeout_never_gets_scam_notice():
+    # 逾時跟使用者問什麼無關，文案是「稍後再問」。
+    from app.services.rag.fail_messages import RagFailCode
+
+    reply = _fail_reply("叫我點連結匯款是真的嗎", RagFailCode.TIMEOUT)
+
+    assert reply == t("rag.fail.TIMEOUT", "zh-TW")
 
 
 def test_previous_turns_tool_messages_do_not_block_passthrough():

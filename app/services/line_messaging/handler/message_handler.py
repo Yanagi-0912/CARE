@@ -6,6 +6,7 @@ from typing import Optional
 
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
+from app.core.config import settings
 from app.core.request_logging import log_stage
 from app.core.rag_sources import begin_request_rag_sources, reset_request_rag_sources
 from app.core.user_font_size import (
@@ -26,6 +27,16 @@ from app.core.user_language import (
 )
 from app.i18n.messages import t
 from app.services.line_messaging.reply.reply import LineReplier
+from app.services.line_messaging.share_intent import is_share_intent
+from linebot.v3.messaging import FlexContainer, FlexMessage
+
+from resources.flex_messages.lost_location_flex_message import (
+    build_no_family_flex,
+    lost_confirm_postback_data,
+)
+from resources.flex_messages.medical_messages.emergency_condition_flex_message import (
+    build_emergency_condition_flex,
+)
 from app.core.request_context import reset_line_user_id, set_line_user_id
 
 logger = logging.getLogger(__name__)
@@ -49,6 +60,9 @@ class BaseLineMessageHandler:
         loading_animation_service=None,
         safety_alert_service=None,
         emergency_family_alert_service=None,
+        share_card_service=None,
+        lost_location_service=None,
+        urgency_classifier=None,
     ):
         self._agent = agent
         self._history_service = history_service
@@ -59,6 +73,13 @@ class BaseLineMessageHandler:
         # 整條路徑一步都不會執行（見 app/dependencies.py 的組裝）。
         self._safety_alert_service = safety_alert_service
         self._emergency_family_alert_service = emergency_family_alert_service
+        # 沒注入時（媒體訊息的 handler 就沒有）分享卡的秒回路徑整段不執行。
+        self._share_card_service = share_card_service
+        # 沒注入時「我走丟了」照一般訊息進 agent。
+        self._lost_location_service = lost_location_service
+        # 走失流程不進 agent，也就跳過了 agent 裡的急迫度判斷；這裡補跑同一個判斷器
+        # （見 start_lost_flow）。沒注入時不補跑。
+        self._urgency_classifier = urgency_classifier
         # 併行任務要被持有參考直到完成，否則可能在跑完之前就被 GC 回收。
         self._safety_alert_tasks: set[asyncio.Task] = set()
 
@@ -126,6 +147,61 @@ class BaseLineMessageHandler:
             # 年齡同理：症狀科別建議要靠它決定該不該給兒科，而那段程式在
             # LangChain tool 底下，拿不到 user_profile。
             age_token = set_request_age((user_profile or {}).get("age"))
+
+            # 走失求救：「我走丟了」「傳位置給家人」直接回定位卡並通知家人、不進
+            # agent（理由見 lost_intent）。語音也要攔：慌張的長輩最可能用講的。
+            # 位置與字級一樣排在語言設好之後，卡片才會照使用者的設定。
+            lost_help_postback = None
+            if (
+                message_type in ("text", "audio")
+                and self._lost_location_service is not None
+            ):
+                detection = self._lost_location_service.detect_intent(user_text)
+                font_size = self._font_size_from_profile(user_profile)
+                if detection.intent is not None and detection.needs_confirmation:
+                    # 分類器沒把握：不攔，照常進 agent，回覆下方多一顆「我迷路了，
+                    # 通知家人」。不先問「你是不是迷路了？」：沒把握的訊息裡有急症
+                    # 與自傷（「叫不醒」「我站在頂樓」），攔下來問就拿不到紅卡。
+                    lost_help_postback = lost_confirm_postback_data(user_text)
+                    log_stage(
+                        logger, "lost_detect", outcome="button", source=detection.source,
+                        p=round(detection.probability or 0.0, 4),
+                    )
+                elif detection.intent is not None:
+                    log_stage(
+                        logger, "lost_detect", source=detection.source,
+                        p=None if detection.probability is None else round(detection.probability, 4),
+                    )
+                    await self.start_lost_flow(
+                        user_id=user_id,
+                        reply_token=reply_token,
+                        user_text=user_text,
+                        intent=detection.intent,
+                        language=user_language,
+                        font_size=font_size,
+                    )
+                    return
+
+            # 分享卡：常見說法直接回卡、不進 agent（理由見 share_intent）。排在語言
+            # 與字級設好之後，卡片才會照使用者的設定；排在 rag 來源 holder 與讀取
+            # 動畫之前，那兩樣只有 agent 那條路用得到。只看使用者親手打的字——
+            # 照片辨識出的文字剛好有「加好友」不算。不唸語音、不寫進對話紀錄，
+            # 比照貼圖（見 dispatcher._reply_to_sticker）。
+            if (
+                message_type == "text"
+                and self._share_card_service is not None
+                and is_share_intent(user_text)
+            ):
+                success = await self._replier.reply(
+                    reply_token=reply_token,
+                    message_text=await self._share_card_service.build_reply_text(),
+                    user_id=user_id,
+                    voice_reply_enabled=False,
+                    language=user_language,
+                )
+                log_stage(logger, "share_card", ok=success)
+                return
+
             # 每輪開頭建立 holder：上一輪的來源殘留下來，會變成這一輪卡片上
             # 不屬於這個問題的來源按鈕。必須在 agent 執行之前、於這一層建立，
             # tool 才改得到同一個物件（見 app/core/rag_sources.py）。
@@ -137,11 +213,35 @@ class BaseLineMessageHandler:
             t1 = time.perf_counter()
             line_user_token = set_line_user_id(user_id)
             try:
-                agent_response = await self._agent.invoke(
-                    user_input=user_text,
-                    messages=chat_history,
-                    user_profile=user_profile,
+                # 總上限（來由見 config.AGENT_TOTAL_TIMEOUT_SECONDS）。agent 裡
+                # 只有 RAG 那條腿有自己的逾時，Gemini 呼叫本身沒有；少了這層，
+                # 一次掛住的呼叫會讓這位使用者的 per-user lock 永遠不放，之後
+                # 的每一句都排在後面等。
+                agent_response = await asyncio.wait_for(
+                    self._agent.invoke(
+                        user_input=user_text,
+                        messages=chat_history,
+                        user_profile=user_profile,
+                    ),
+                    timeout=settings.AGENT_TOTAL_TIMEOUT_SECONDS,
                 )
+            except asyncio.TimeoutError:
+                log_stage(
+                    logger,
+                    "agent_timeout",
+                    timeout_s=settings.AGENT_TOTAL_TIMEOUT_SECONDS,
+                    ms=int((time.perf_counter() - t1) * 1000),
+                )
+                # 不存對話紀錄：這一輪沒有回答，存進去只會讓下一輪的 agent 看到
+                # 一句沒被回應的問題。
+                await self._replier.reply(
+                    reply_token=reply_token,
+                    message_text=t("line.fallback_busy", language=user_language),
+                    user_id=user_id,
+                    voice_reply_enabled=False,
+                    language=user_language,
+                )
+                return
             finally:
                 reset_line_user_id(line_user_token)
             log_stage(
@@ -198,6 +298,7 @@ class BaseLineMessageHandler:
                 # 緊急時紅卡要是第一則（理由同上方家人通報），表格卡會把它擠到第二則，不送。
                 image_text="" if agent_response.get("emergency") else image_text,
                 speech_language=language_choice,
+                lost_help_postback=None if agent_response.get("emergency") else lost_help_postback,
             )
             log_stage(
                 logger,
@@ -235,6 +336,94 @@ class BaseLineMessageHandler:
                 reset_request_age(age_token)
             if rag_sources_token is not None:
                 reset_request_rag_sources(rag_sources_token)
+
+    async def start_lost_flow(
+        self,
+        *,
+        user_id: str,
+        reply_token: str,
+        user_text: str,
+        intent: str,
+        language: str,
+        font_size: str,
+    ) -> None:
+        """回長輩定位卡，並在背景通知家人。
+
+        卡片先回、通知在背景：推給每位家人各要一次 LINE API，長輩不該等它們跑完
+        才看到按鈕。「家人已經收到通知」是推播真的送出之後才補的一則，理由同
+        緊急通報（notify_patient_family_was_told）：卡片上不寫可能不成立的話。
+        """
+        service = self._lost_location_service
+        report = await service.report(user_id, user_text, intent)
+
+        if report.outcome == "no_family":
+            card = build_no_family_flex(language=language, font_size=font_size)
+        else:
+            header_key = (
+                "lost.elder.header.active"
+                if report.outcome == "already_active"
+                else f"lost.elder.header.{intent}"
+            )
+            card = service.elder_card(header_key, language, font_size)
+        ok = await self._replier.reply_flex(
+            reply_token=reply_token, flex_message=card, user_id=user_id
+        )
+        log_stage(logger, "lost", intent=intent, outcome=report.outcome, ok=ok)
+        self._schedule_urgency_check_for_lost(user_id, user_text, language, font_size)
+
+        if report.outcome != "started" or report.session is None:
+            return
+        session = report.session
+
+        async def _notify() -> None:
+            try:
+                sent = await service.notify_family_of_report(session)
+                key = "lost.elder.family_notified" if sent else "lost.elder.notify_failed"
+                await self._replier.push_text(user_id, t(key, language))
+            except Exception:
+                logger.exception("走失通報任務失敗")
+
+        task = asyncio.create_task(_notify())
+        self._safety_alert_tasks.add(task)
+        task.add_done_callback(self._safety_alert_tasks.discard)
+
+    def _schedule_urgency_check_for_lost(
+        self, user_id: str, user_text: str, language: str, font_size: str
+    ) -> None:
+        """走失流程沒進 agent，補跑急迫度判斷；緊急就補推紅卡並通報家人。
+
+        為什麼需要：走失判斷會把少數急症當成走失（holdout 989 則急症中 1 則，
+        「阮後生不知按怎叫袂醒身軀冷冰冰」），而走失流程不經過 agent 的紅卡。
+        為什麼不先判急迫度再決定要不要走失流程：急迫度的本地模型沒看過走失的
+        句子，「快來接我」這類求救多半落在沒把握區間、要等 Gemini，長輩的定位卡
+        就得多等一次 API。放背景跑，定位卡照常秒回，紅卡晚幾秒到。
+        """
+        if self._urgency_classifier is None or not user_text:
+            return
+
+        async def _run() -> None:
+            try:
+                verdict = await self._urgency_classifier.classify(user_text, language=language)
+                if not verdict.is_emergency:
+                    return
+                payload = build_emergency_condition_flex(
+                    verdict, language=language, font_size=font_size
+                )
+                card = FlexMessage(
+                    altText=payload["altText"],
+                    contents=FlexContainer.from_dict(payload["contents"]),
+                )
+                ok = await self._replier.push_flex(user_id, card)
+                log_stage(logger, "lost_emergency", ok=ok)
+                self._schedule_emergency_family_alert(
+                    user_id, verdict.display, language, patient_words=user_text
+                )
+            except Exception:
+                logger.exception("走失流程的急迫度補判失敗")
+
+        task = asyncio.create_task(_run())
+        self._safety_alert_tasks.add(task)
+        task.add_done_callback(self._safety_alert_tasks.discard)
 
     def _schedule_safety_alert_check(self, user_id: str, user_text: str) -> None:
         """把一次風險評估丟到背景執行。

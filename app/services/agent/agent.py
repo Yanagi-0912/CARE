@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import Any, Optional
 
@@ -24,7 +25,12 @@ from app.services.medical.symptom_classification.urgency import (
     URGENCY_NONE,
 )
 from app.services.gemini.shared.parser import content_to_text
-from app.services.rag.fail_messages import is_rag_fail
+from app.services.rag.fail_messages import (
+    RagFailCode,
+    is_rag_fail,
+    parse_rag_fail_code,
+    rag_fail_user_text,
+)
 from app.tools.user_document_tools import is_document_answer_unavailable
 from app.tools.medication_status_tools import MEDICATION_STATUS_TOOL_NAME
 from app.tools.registry import get_all_tools
@@ -79,8 +85,10 @@ def _route_after_tools(state: State) -> str:
 
     - **多工具同時呼叫**（例如又查核又 RAG）必須回模型，因為只有它能把兩份
       輸出合成一段話。
-    - **RAG 失敗訊息**（`is_rag_fail`）不直通。那些文案是給模型當素材用的
-      錯誤說明，直接丟給使用者會漏掉既有的降級話術。
+    - **RAG 失敗訊息**（`is_rag_fail`）走 `rag_fail_direct`，回固定文案。
+      以前交回模型，期待它照 prompt 第 10 條「簡短說暫無相符資料」；
+      2026-09-17 一則辨識不通順的台語語音查無資料，模型花 10.8 秒寫了
+      「以下為 RAG 回應：」加一段沒人問的情緒支持與 1925 專線。
     - `get_medication_status` 同理直通（見 `_medication_direct_reply_node`），條件
       一樣收緊：這一輪只有它一個工具、而且沒有出錯。
     - 其餘工具（附近院所、查核卡）本來就有自己的直通路徑，不經過這裡。
@@ -106,7 +114,7 @@ def _route_after_tools(state: State) -> str:
     if getattr(only, "status", None) == "error":
         return "agent"
     if is_rag_fail(content_to_text(only.content)):
-        return "agent"
+        return "rag_fail_direct"
     return "rag_direct"
 
 
@@ -157,6 +165,54 @@ def _rag_direct_reply_node(state: State) -> dict:
         answer = f"{prefix}\n{answer}"
 
     log_stage(logger, "rag_direct_reply", chars=len(answer))
+    return {"messages": [AIMessage(content=answer)]}
+
+
+# 使用者正要照可疑訊息匯款、轉帳或點連結。只在 RAG 查無資料時用來決定要不要
+# 附 165 提醒——原本 prompt 第 10 條交給模型判斷，改成固定文案後改用字面比對。
+# 漏抓只是少一句提醒（查無資料的文案本身仍叫人必要時就醫或查證），誤抓只是
+# 多一句，所以寧可寬一點。
+_SCAM_ACTION_RE = re.compile(
+    r"匯款|匯錢|轉帳|付款|刷卡|信用卡|點數|連結|網址|點進去|加賴|加LINE|ATM"
+    r"|\b(?:transfer|wire|payment|pay|credit card|bank account|click|link)\b"
+    r"|bayar|kartu kredit|klik|tautan"
+    r"|chuyển khoản|chuyển tiền|thanh toán|thẻ tín dụng|bấm vào|đường link|liên kết"
+    r"|โอนเงิน|จ่ายเงิน|บัตรเครดิต|คลิก|ลิงก์"
+    r"|振込|振り込|送金|支払|クレジットカード|クリック|リンク",
+    re.IGNORECASE,
+)
+
+# 查無資料類的失敗才可能是「使用者拿可疑訊息來問」。逾時、服務壞掉跟內容無關。
+_NO_DATA_FAIL_CODES = frozenset(
+    {RagFailCode.KB_EMPTY, RagFailCode.WEB_EMPTY, RagFailCode.MODEL_REFUSE}
+)
+
+
+def _latest_user_text(messages: list[AnyMessage]) -> str:
+    for msg in reversed(messages or []):
+        if isinstance(msg, HumanMessage):
+            return content_to_text(msg.content)
+    return ""
+
+
+def _rag_fail_direct_reply_node(state: State) -> dict:
+    """RAG 沒有答案時，直接回失敗代碼對應的固定文案。
+
+    文案已依代碼分好：查無資料叫人換個說法或必要時就醫，逾時與服務壞掉叫人
+    稍後再問（見 i18n `rag.fail.*`）。不加 RAG 前綴——這一輪沒有任何 RAG 內容。
+    """
+    messages = state.get("messages") or []
+    content = content_to_text(_trailing_tool_messages(messages)[-1].content)
+    code = parse_rag_fail_code(content)
+    answer = rag_fail_user_text(content)
+
+    scam = code in _NO_DATA_FAIL_CODES and bool(
+        _SCAM_ACTION_RE.search(_latest_user_text(messages))
+    )
+    if scam:
+        answer = f"{answer}\n\n{t('rag.fail.scam_notice')}"
+
+    log_stage(logger, "rag_fail_direct_reply", code=code, scam_notice=scam or None)
     return {"messages": [AIMessage(content=answer)]}
 
 
@@ -375,10 +431,11 @@ def _urgency_condition(state: State) -> str:
 
 
 class Agent:
-    def __init__(self, llm, guardrail_service, urgency_classifier=None) -> None:
+    def __init__(self, llm, guardrail_service, urgency_classifier=None, rag_router=None) -> None:
         self._llm = llm
         self._guardrail_service = guardrail_service
         self._urgency_classifier = urgency_classifier
+        self._rag_router = rag_router
         self._graph = self._build_graph()
 
     def _build_graph(self):
@@ -389,6 +446,7 @@ class Agent:
             llm=self._llm,
             guardrail_service=self._guardrail_service,
             urgency_classifier=self._urgency_classifier,
+            rag_router=self._rag_router,
         )
 
         all_tools = get_all_tools(include_rag_tool=True)
@@ -402,6 +460,7 @@ class Agent:
         builder.add_node("agent", nodes.agent_node)
         builder.add_node("tools", tools_node)
         builder.add_node("rag_direct", _rag_direct_reply_node)
+        builder.add_node("rag_fail_direct", _rag_fail_direct_reply_node)
         builder.add_node("medication_direct", _medication_direct_reply_node)
 
         builder.add_edge(START, "guardrail")
@@ -424,11 +483,13 @@ class Agent:
             _route_after_tools,
             {
                 "rag_direct": "rag_direct",
+                "rag_fail_direct": "rag_fail_direct",
                 "medication_direct": "medication_direct",
                 "agent": "agent",
             },
         )
         builder.add_edge("rag_direct", END)
+        builder.add_edge("rag_fail_direct", END)
         builder.add_edge("medication_direct", END)
 
         return builder.compile()
@@ -446,11 +507,11 @@ class Agent:
             if not messages or messages[-1].content != user_input:
                 messages = list(messages) + [HumanMessage(content=user_input)]
 
-        logger.info(
-            "[Agent] 開始執行，messages=%s, user_input_preview=%s",
-            len(messages),
-            (user_input or "")[:80],
-        )
+        logger.info("[Agent] 開始執行，messages=%s", len(messages))
+        # 使用者原文只在 DEBUG 印：INFO 進 Cloud Logging 會長期保存，而這裡的原文
+        # 是病史、用藥、家人狀況。對話原文本來就另存 Mongo（30 天），不需要再留一份
+        # 在 log 裡。
+        logger.debug("[Agent] user_input_preview=%s", (user_input or "")[:80])
 
         with stage_timer(logger, "agent_graph") as timing:
             result = await self._graph.ainvoke(
@@ -489,6 +550,7 @@ class Agent:
             "request_location_quick_reply",  # 分享位置
             "open_official_site",  # 官網／LIFF 入口 Flex
             "verify_claim",  # 查核判定卡 Flex
+            "share_care",  # 分享 CARE 卡（官方帳號 QR＋邀請家人）
             # 症狀科別建議卡。除了 Flex JSON 不能被改寫之外，這裡還有安全理由：
             # 紅旗卡刻意不含任何門診科別，讓模型重寫有可能把「請立即就醫」稀釋
             # 成「可以考慮掛某某科」，那正是本功能要避免的失效模式。

@@ -595,13 +595,27 @@ class MedicationService:
 
     async def delete_reminder(self, creator_user_id: str, reminder_id: str) -> bool:
         """刪除用藥提醒"""
-        reminder = await MedicationReminderRepository.get_reminder_by_id(reminder_id)
+        reminder = await self._reminder_repository.get_reminder_by_id(reminder_id)
         if not reminder:
             raise HTTPException(status_code=404, detail="找不到該用藥提醒")
 
         # 授權由呼叫端判定（同 update_reminder）。
 
-        return await MedicationReminderRepository.delete_reminder(reminder_id)
+        deleted = await self._reminder_repository.delete_reminder(reminder_id)
+
+        # 刪除與關閉對當日紀錄的後果相同（見 update_reminder 的說明）：三階推播
+        # 只查紀錄、不回頭確認規則還在不在，規則刪掉之後當天已展開、還沒確認的
+        # 那筆仍會走完 T+20 催促與 T+30 家屬逾時警報——使用者刪了提醒，家人卻
+        # 收到他漏吃的通知。刪除成功後才註銷：刪除失敗代表規則還在，紀錄該留。
+        if deleted:
+            cancelled = await self._log_repository.cancel_pending_by_reminder(reminder_id)
+            if cancelled:
+                logger.info(
+                    "[MedicationService] 刪除提醒 %s，註銷當日未確認的執行紀錄 %d 筆",
+                    reminder_id,
+                    cancelled,
+                )
+        return deleted
 
     async def confirm_medication(
         self, log_id: str, user_id: str, medication_id: Optional[str] = None

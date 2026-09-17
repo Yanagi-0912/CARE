@@ -52,6 +52,32 @@ class FakeTreeRepository:
         return self.trees[user_id]
 
 
+class FakeDelegations:
+    """記下撤銷了哪些 (owner, delegate)；`active` 裡有的才算真的撤到。"""
+
+    def __init__(self, active=(), fail=False):
+        self.active = set(active)
+        self.revoked = []
+        self._fail = fail
+
+    async def revoke(self, owner_id, delegate_user_id, revoked_by):
+        if self._fail:
+            raise RuntimeError("delegations down")
+        self.revoked.append((owner_id, delegate_user_id, revoked_by))
+        if (owner_id, delegate_user_id) in self.active:
+            self.active.discard((owner_id, delegate_user_id))
+            return 1
+        return 0
+
+
+def make_service(repo, audit=None, delegations=None):
+    return FamilyTreeService(
+        repository=repo,
+        audit_repository=audit,
+        delegation_repository=delegations or FakeDelegations(),
+    )
+
+
 class RecordingAudit:
     def __init__(self, fail=False):
         self.entries = []
@@ -86,7 +112,7 @@ def ids(tree: FamilyTree) -> list[str]:
 async def test_removal_cuts_both_directions():
     repo = FakeTreeRepository(linked_family())
 
-    await FamilyTreeService(repository=repo).remove_member(ELDER, KID)
+    await make_service(repo).remove_member(ELDER, KID)
 
     assert KID not in ids(repo.trees[ELDER])
     assert ELDER not in ids(repo.trees[KID])
@@ -97,7 +123,7 @@ async def test_family_member_can_leave_the_elders_family():
     """同一支端點由孩子那一側按下：放棄自己的存取，不是取得權限。"""
     repo = FakeTreeRepository(linked_family())
 
-    await FamilyTreeService(repository=repo).remove_member(KID, ELDER)
+    await make_service(repo).remove_member(KID, ELDER)
 
     assert KID not in ids(repo.trees[ELDER])
     assert ELDER not in ids(repo.trees[KID])
@@ -107,7 +133,7 @@ async def test_family_member_can_leave_the_elders_family():
 async def test_third_parties_are_untouched():
     repo = FakeTreeRepository(linked_family())
 
-    await FamilyTreeService(repository=repo).remove_member(ELDER, KID)
+    await make_service(repo).remove_member(ELDER, KID)
 
     assert ids(repo.trees[ELDER]) == [OTHER]
     assert ids(repo.trees[OTHER]) == [ELDER]
@@ -120,7 +146,7 @@ async def test_one_sided_link_is_still_removed():
     trees[KID] = make_tree(KID, [])
     repo = FakeTreeRepository(trees)
 
-    await FamilyTreeService(repository=repo).remove_member(ELDER, KID)
+    await make_service(repo).remove_member(ELDER, KID)
 
     assert KID not in ids(repo.trees[ELDER])
 
@@ -130,7 +156,7 @@ async def test_removing_someone_who_is_not_family_is_404():
     repo = FakeTreeRepository(linked_family())
 
     with pytest.raises(HTTPException) as exc:
-        await FamilyTreeService(repository=repo).remove_member(ELDER, "U-stranger")
+        await make_service(repo).remove_member(ELDER, "U-stranger")
 
     assert exc.value.status_code == 404
 
@@ -140,7 +166,7 @@ async def test_removing_yourself_is_400():
     repo = FakeTreeRepository(linked_family())
 
     with pytest.raises(HTTPException) as exc:
-        await FamilyTreeService(repository=repo).remove_member(ELDER, ELDER)
+        await make_service(repo).remove_member(ELDER, ELDER)
 
     assert exc.value.status_code == 400
 
@@ -150,9 +176,7 @@ async def test_removal_is_audited_on_both_sides_with_the_previous_role():
     repo = FakeTreeRepository(linked_family())
     audit = RecordingAudit()
 
-    await FamilyTreeService(repository=repo, audit_repository=audit).remove_member(
-        ELDER, KID
-    )
+    await make_service(repo, audit=audit).remove_member(ELDER, KID)
 
     assert audit.entries == [
         {
@@ -178,9 +202,7 @@ async def test_removal_is_audited_on_both_sides_with_the_previous_role():
 async def test_audit_failure_does_not_turn_a_done_removal_into_an_error():
     repo = FakeTreeRepository(linked_family())
 
-    await FamilyTreeService(
-        repository=repo, audit_repository=RecordingAudit(fail=True)
-    ).remove_member(ELDER, KID)
+    await make_service(repo, audit=RecordingAudit(fail=True)).remove_member(ELDER, KID)
 
     assert KID not in ids(repo.trees[ELDER])
 
@@ -199,6 +221,57 @@ async def test_removing_the_last_unassigned_member_switches_the_owner():
     }
     repo = FakeTreeRepository(trees)
 
-    await FamilyTreeService(repository=repo).remove_member(ELDER, OTHER)
+    await make_service(repo).remove_member(ELDER, OTHER)
 
     assert (ELDER, "enforced") in repo.state_writes
+
+
+# ── 移除成員連帶撤銷委任 ──────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_removal_revokes_delegations_in_both_directions():
+    """人都不在族譜裡了，委任沒有存在的理由；留著的話重新受邀時會直接復活成 GUARDIAN。"""
+    repo = FakeTreeRepository(linked_family())
+    delegations = FakeDelegations(active={(ELDER, KID)})
+
+    await make_service(repo, delegations=delegations).remove_member(ELDER, KID)
+
+    assert (ELDER, KID, ELDER) in delegations.revoked
+    assert (KID, ELDER, ELDER) in delegations.revoked
+    assert delegations.active == set()
+
+
+@pytest.mark.asyncio
+async def test_removal_by_the_delegate_side_also_revokes():
+    """孩子自己退出長輩的家庭，長輩給他的委任一樣要收回。"""
+    repo = FakeTreeRepository(linked_family())
+    delegations = FakeDelegations(active={(ELDER, KID)})
+
+    await make_service(repo, delegations=delegations).remove_member(KID, ELDER)
+
+    assert delegations.active == set()
+
+
+@pytest.mark.asyncio
+async def test_revoked_delegation_is_audited_only_when_one_existed():
+    repo = FakeTreeRepository(linked_family())
+    audit = RecordingAudit()
+    delegations = FakeDelegations(active={(ELDER, KID)})
+
+    await make_service(repo, audit=audit, delegations=delegations).remove_member(ELDER, KID)
+
+    events = [(e["event"], e["owner_id"], e["member_id"]) for e in audit.entries]
+    assert ("delegation_revoked", ELDER, KID) in events
+    assert ("delegation_revoked", KID, ELDER) not in events
+
+
+@pytest.mark.asyncio
+async def test_delegation_revocation_failure_does_not_undo_the_removal():
+    """撤銷失敗只記 log：is_active_delegate 另外要求成員資格，權限不會因此復活。"""
+    repo = FakeTreeRepository(linked_family())
+
+    await make_service(repo, delegations=FakeDelegations(fail=True)).remove_member(ELDER, KID)
+
+    assert KID not in ids(repo.trees[ELDER])
+    assert ELDER not in ids(repo.trees[KID])

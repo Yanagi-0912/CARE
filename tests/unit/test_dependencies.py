@@ -100,6 +100,21 @@ def test_media_handler_gets_the_emergency_family_alert_service():
     assert handler._media_handler._emergency_family_alert_service is service
 
 
+def test_lost_location_service_reaches_text_voice_and_location_handlers():
+    """「我走丟了」用打的、用講的、傳位置，三條路都要接到同一個走失服務。
+
+    建構子參數是可選的，漏傳不會報錯，只會讓那一條路的求救悄悄變成一般問答——
+    語音漏接的話，最可能用講的慌張長輩就叫不到家人。
+    """
+    handler = dependencies.get_line_event_handler()
+    service = dependencies.get_lost_location_service()
+
+    assert service is not None
+    assert handler._message_handler._lost_location_service is service
+    assert handler._media_handler._lost_location_service is service
+    assert handler._location_handler._lost_location_service is service
+
+
 def test_claim_verification_service_is_wired_with_identity_verifier():
     """Task 10 教訓比照 Task 3 review 記錄的 gemini_service 疏漏：
     identity_verifier 是可選參數，忘記在這裡注入不會拋任何例外，只會讓

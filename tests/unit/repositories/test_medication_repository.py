@@ -12,6 +12,7 @@ from app.repositories.medication_repository import (
     MedicationRepository,
     _active_date_window,
 )
+from app.repositories.push_claim import MAX_PUSH_ATTEMPTS, PUSH_CLAIM_LEASE
 
 
 @pytest.fixture()
@@ -602,15 +603,27 @@ async def test_claim_patient_reminder_guards_on_flag(override_medication_logs_co
     col = MagicMock()
     col.update_one = AsyncMock(return_value=MagicMock(modified_count=1))
     override_medication_logs_col(col)
+    now = datetime(2026, 9, 16, 0, 5, tzinfo=timezone.utc)
 
-    assert await MedicationLogRepository.claim_patient_reminder("L123") is True
+    assert await MedicationLogRepository.claim_patient_reminder("L123", now=now) is True
     args, _ = col.update_one.await_args
-    assert args[0] == {
-        "_id": "L123",
+    assert args[0]["_id"] == "L123"
+    fresh, stale = args[0]["$or"]
+    # 正常路徑：旗標仍為 False 才能搶。
+    assert fresh == {"status": "pending", "patient_reminder_sent": False}
+    # 租約接手：旗標 True 但既沒送達也沒略過、搶佔早於租約、且沒放棄過。
+    assert stale == {
         "status": "pending",
-        "patient_reminder_sent": False,
+        "patient_reminder_sent": True,
+        "patient_reminder_sent_at": None,
+        "patient_reminder_skipped_at": None,
+        "patient_reminder_claimed_at": {"$lt": now - PUSH_CLAIM_LEASE},
+        "patient_reminder_attempts": {"$not": {"$gte": MAX_PUSH_ATTEMPTS}},
     }
-    assert args[1] == {"$set": {"patient_reminder_sent": True}}
+    # 搶佔同時記下搶佔時刻，租約才有起算點。
+    assert args[1] == {
+        "$set": {"patient_reminder_sent": True, "patient_reminder_claimed_at": now}
+    }
 
 
 @pytest.mark.asyncio
@@ -641,7 +654,11 @@ async def test_claims_require_status_still_pending(claim, override_medication_lo
 
     await claim("L123")
     args, _ = col.update_one.await_args
-    assert args[0]["status"] == "pending"
+    # 正常路徑與租約接手兩個分支都要限定狀態（T+30 接手時看到的是搶佔
+    # 已寫下的 missed），不能只在其中一邊擋。
+    fresh, stale = args[0]["$or"]
+    assert fresh["status"] == "pending"
+    assert stale["status"] in ("pending", "missed")
 
 
 @pytest.mark.asyncio
@@ -660,14 +677,26 @@ async def test_claim_caregiver_alert_does_not_clobber_taken(
     override_medication_logs_col(col)
 
     # 使用者已按下確認（status=taken）→ filter 不成立 → 不取得推播權
-    assert await MedicationLogRepository.claim_caregiver_alert("L123") is False
+    now = datetime(2026, 9, 16, 0, 35, tzinfo=timezone.utc)
+    assert await MedicationLogRepository.claim_caregiver_alert("L123", now=now) is False
     args, _ = col.update_one.await_args
-    assert args[0] == {
-        "_id": "L123",
+    fresh, stale = args[0]["$or"]
+    assert fresh == {
         "status": "pending",
         "caregiver_alert_sent": False,
+        # T+0 從未送達的不判漏服（見「推播權租約」段落）。
+        "patient_reminder_sent_at": {"$ne": None},
     }
-    assert args[1] == {"$set": {"caregiver_alert_sent": True, "status": "missed"}}
+    # 租約接手看的是第一次搶佔留下的 missed；taken 同樣搶不到。
+    assert stale["status"] == "missed"
+    assert stale["patient_reminder_sent_at"] == {"$ne": None}
+    assert args[1] == {
+        "$set": {
+            "caregiver_alert_sent": True,
+            "caregiver_alert_claimed_at": now,
+            "status": "missed",
+        }
+    }
 
 
 @pytest.mark.asyncio
@@ -1525,7 +1554,11 @@ async def test_mark_as_taken_with_taken_medication_ids_adds_to_set(
     assert log.taken_medication_ids == ["M1", "M2"]
     (query, update), _ = col.update_one.call_args
     assert query == {"_id": "L123", "status": {"$in": ["pending", "missed", "cancelled"]}}
-    assert update["$set"] == {"status": "taken", "taken_at": now}
+    assert update["$set"]["status"] == "taken"
+    assert update["$set"]["taken_at"] == now
+    # 按下確認的牆鐘時刻另外記一份（見 MedicationLog.confirmed_at）。
+    assert isinstance(update["$set"]["confirmed_at"], datetime)
+    assert set(update["$set"]) == {"status", "taken_at", "confirmed_at"}
     assert update["$addToSet"] == {"taken_medication_ids": {"$each": ["M1", "M2"]}}
 
 

@@ -4,7 +4,10 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from app.services.liff.auth_service import LiffAuthApplicationService
-from app.dependencies import get_liff_auth_application_service
+from app.dependencies import (
+    get_liff_auth_application_service,
+    liff_login_rate_limit,
+)
 
 router = APIRouter()
 
@@ -32,6 +35,9 @@ class LiffLoginResponse(BaseModel):
     response_model=LiffLoginResponse,
     summary="LIFF 登入",
     description="前端送 LIFF ID token，後端向 LINE verify endpoint 驗證後，簽發應用內 JWT 給前端後續 API 使用。",
+    # 未登入端點，以來源 IP 限頻：擋的是拿偷來或猜的 id_token 反覆打 LINE verify
+    # （每一次都是一趟對外往返）。上限與理由見 config RATE_LIMIT_LIFF_LOGIN_PER_MINUTE。
+    dependencies=[Depends(liff_login_rate_limit)],
 )
 async def liff_login(
     req: LiffLoginRequest,

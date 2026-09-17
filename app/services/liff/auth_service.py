@@ -3,6 +3,7 @@ import logging
 
 import requests
 from fastapi import HTTPException
+from pymongo.errors import DuplicateKeyError
 
 from app.core.config import settings
 from app.services.liff.jwt_service import AppJwtService
@@ -77,12 +78,22 @@ class LiffAuthApplicationService:
                 )
                 or DEFAULT_LANGUAGE
             )
-            await self._user_profile_service.create_default_user_profile(
-                line_id=line_user_id,
-                display_name=display_name,
-                picture_url=picture_url,
-                language=language,
-            )
+            try:
+                await self._user_profile_service.create_default_user_profile(
+                    line_id=line_user_id,
+                    display_name=display_name,
+                    picture_url=picture_url,
+                    language=language,
+                )
+            except DuplicateKeyError:
+                # users.line_id 有唯一索引後，同一位新使用者的兩個登入請求
+                # （LIFF 雙分頁、前端重試）同時 upsert，落後的那個會撞索引。
+                # 這不是錯誤：別的請求已經建好檔了，照舊使用者的路徑同步即可。
+                logger.info("LIFF 登入：使用者檔案已由並行請求建立，改走同步路徑")
+                await self._user_profile_service.sync_line_profile(
+                    line_id=line_user_id,
+                    picture_url=picture_url,
+                )
         else:
             # 舊使用者：一律以資料庫（settings.language）的值為準，
             # 不再打 Messaging API，避免蓋掉使用者在前端手動選擇的語言

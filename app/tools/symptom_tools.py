@@ -18,6 +18,7 @@ from app.services.medical.symptom_classification.symptom_department_service impo
 )
 from resources.flex_messages.medical_messages.symptom_department_flex_message import (
     build_symptom_department_flex,
+    pediatric_note,
 )
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,11 @@ def _format_plain_reply(result: SymptomTriageResult) -> str:
         header = f"依「{result.matched_term}」整理的看診方向："
         intro = "常見的看診方向："
 
-    lines = [header, intro]
+    lines = [header]
+    note = pediatric_note(result)
+    if note is not None:
+        lines.append(note)
+    lines.append(intro)
     for index, candidate in enumerate(result.candidates, start=1):
         suffix = (
             f"（{'或'.join(candidate.subgroups)}方向）" if candidate.subgroups else ""

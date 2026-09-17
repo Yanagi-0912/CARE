@@ -4,13 +4,13 @@
 
 - [ ] 1.1 **急症召回率**：整理急症敘述測試集（真實口語形式，例如「我阿公昏迷」「我剛剛被車撞，現在流好多血」「胸口悶還喘不過氣」），以及必須**不**觸發的對照組（「中風前兆有哪些」「食物中毒可以吃什麼」「中風的保險理賠」），量測判斷器的漏放率與誤報率。結果寫入 `openspec/changes/symptom-department-guidance/coverage.md`
 - [ ] 1.2 **對照表覆蓋率**：以人工審定後的表為準，從常見口語症狀問句（每條目改寫 2 種說法，含「肚子痛」這類表內不存在的口語詞）量測命中率；同樣記入 `coverage.md`
-- [ ] 1.3 **門檻校準**：以 1.2 的正樣本（同條目改寫）與負樣本（相鄰但不同科的症狀）掃 `SYMPTOM_MATCH_MIN_SCORE`，取誤配率為 0 的最低門檻
+- [ ] 1.3 **門檻校準**：以 1.2 的正樣本（同條目改寫）與負樣本（相鄰但不同科的症狀）掃 `MIN_MATCH_SCORE`，取誤配率為 0 的最低門檻
 - [ ] 1.4 **決策點**：急症漏放率不為 0 → **停止本 change**；覆蓋率低於 40% → 於 proposal.md 補記結論並重新評估優先序
 
 ## 2. 資料整備（人工，非程式）
 
 - [V] 2.1 `resources/symsptom_department_table/` 更名為 `resources/symptom_department_table/`（修正拼字）
-- [ ] 2.2 人工審定 `vghtpe_yuli_department_schema.json`：逐條確認科別、改寫病症描述（design 決策 11）、移除院所特有分科（傳統醫學科、疼痛科）與非科別值（`15歲以下兒童` 應改為兒科）
+- [ ] 2.2 人工審定對照表（原稿 `vghtpe_yuli_department_schema.json` 已整併為 `resources/symptom_department_table/symptom_department_reference.json`，repo 中不再有原稿）：逐條確認科別、改寫病症描述（design 決策 11）、移除院所特有分科（傳統醫學科、疼痛科）與非科別值（`15歲以下兒童` 應改為兒科）
 - [ V] 2.3 修正來源錯字（「穿恐」→「穿孔」、「坐骨神精痛」→「坐骨神經痛」；「打曀」「火燒急觸電」「嚴重車禍急外傷」經人工確認不是錯字），處理 `vghtpe_yuli_review.json` 的 10 筆待複查條目
 - [ ] 2.4 **重建 `emergency` 標註**：不沿用爬蟲的關鍵字初篩結果（design 決策 3），逐條人工定案
 - [~] 2.5 ~~審定完成的條目 `confidence` 改為 `verified`；未審定者維持 `unverified` 並**不得**進入線上表~~ —— **改為整表 `status`**：逐條 `confidence` 未實作，審定狀態以表頭 `status` 表示（spec「對照表載入時強制轉為部定專科並驗證來源」，2026-09-11）
@@ -39,10 +39,10 @@
 - [x] 5.1 `app/services/medical/symptom_classification/symptom_table.py`：載入審定後的表，**載入時對每個科別呼叫 `resolve_department()`，任一條無法解析即拋錯**（design 決策 4）
 - [~] 5.2 ~~`confidence` 非 `verified` 的條目載入時略過~~ —— 同 2.5，改為整表 `status`：非 `verified` 時照常載入並留下警告
 - [x] 5.3 `app/services/medical/symptom_classification/symptom_department_service.py`：正規化 → 比對 → 建議。**本服務不做急迫度判斷**（design 決策 3）
-- [x] 5.4 低於 `SYMPTOM_MATCH_MIN_SCORE`、或候選超過 `MAX_CANDIDATES`（目前 5）個 → 走保底建議（家醫科、內科、不分科 + 無法判斷說明），SHALL NOT 取最接近的一條（design 決策 6、7）
+- [x] 5.4 低於 `MIN_MATCH_SCORE`、或候選超過 `MAX_CANDIDATES`（目前 5）個 → 走保底建議（家醫科、內科、不分科 + 無法判斷說明），SHALL NOT 取最接近的一條（design 決策 6、7）
 - [x] 5.5 輸出含免責、就醫提示與來源標示；用語 SHALL NOT 為診斷語氣（design 決策 8）
 - [x] 5.6 **SHALL NOT 呼叫 `request_location_quick_reply`**（design 決策 9）。由 `tests/unit/services/agent/test_department_intent.py::test_symptom_with_registration_intent_does_not_request_location` 守著（2026-09-12 補）
-- [x] 5.7 `tests/unit/services/medical/test_symptom_department_service.py`：命中單一候選、命中多候選、超過 `MAX_CANDIDATES` 個候選走保底、未命中走保底、**斷言輸出的科別皆為部定專科**、**斷言不觸發位置請求**
+- [x] 5.7 `tests/unit/services/medical/test_symptom_department_service.py`：命中單一候選、命中多候選、超過 `MAX_CANDIDATES` 個候選走保底、未命中走保底、**斷言輸出的科別皆為部定專科**、**斷言不觸發位置請求**（期望值會隨資料改變的案例已移至 `test_symptom_acceptance.py`，見 9.8）
 
 ## 6. Agent tool 與接線
 
@@ -50,7 +50,7 @@
 - [x] 6.2 `app/tools/registry.py` 納入，常駐工具集、不隨 `include_rag_tool` 開關（~~`SYMPTOM_DEPARTMENT_ENABLED` 為 false 時不提供~~：旗標已取消，design 決策 10）
 - [x] 6.3 `app/services/agent/prompt.py`：於工具優先順序新增分流規則與反例；**明確保留「純症狀敘述無掛號意圖 → 仍走 (g) `get_rag_answer`」**
 - [x] 6.4 `app/dependencies.py` 組裝 `SymptomDepartmentService`
-- [x] 6.5 ~~`app/core/config.py` 與 `.env.example` 新增 `SYMPTOM_DEPARTMENT_ENABLED`（default false）~~——旗標已取消（design 決策 10）。**`SYMPTOM_MATCH_MIN_SCORE` 不進 env**——門檻與維度是對「特定模型 × 特定版本對照表」校準的，跨環境調整沒有意義且危險，改為模組常數與向量檔一同版控（design 決策 12）
+- [x] 6.5 ~~`app/core/config.py` 與 `.env.example` 新增 `SYMPTOM_DEPARTMENT_ENABLED`（default false）~~——旗標已取消（design 決策 10）。**`MIN_MATCH_SCORE` 不進 env**——門檻與維度是對「特定模型 × 特定版本對照表」校準的，跨環境調整沒有意義且危險，改為模組常數與向量檔一同版控（design 決策 12）
 - [x] 6.6 `tests/unit/tools/test_symptom_tools.py`：工具常駐（`include_rag_tool` 開與關皆納入）、輸出與降級
 
 ## 7. 迴歸（確認既有行為未變）

@@ -147,3 +147,31 @@ async def test_existing_user_without_language_field_falls_back_to_default(monkey
 
     assert result["language"] == DEFAULT_LANGUAGE
     line_language_service.get_language.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_first_login_hitting_unique_index_falls_back_to_sync(monkeypatch):
+    """users.line_id 唯一索引下，第二個並行的首次登入撞 DuplicateKeyError 不能變 500。"""
+    from pymongo.errors import DuplicateKeyError
+
+    monkeypatch.setattr(
+        "app.services.liff.auth_service.settings.LIFF_CHANNEL_ID", "liff-client-id"
+    )
+    monkeypatch.setattr(
+        "app.services.liff.auth_service.settings.LINE_CHANNEL_ID", "line-client-id"
+    )
+    service, user_profile_service, _ = _build_service(
+        verify_payload={"sub": "U123", "name": "Amy", "picture": "https://x/p.jpg"},
+        existing_profile=None,
+        line_api_language="ja",
+    )
+    user_profile_service.create_default_user_profile = AsyncMock(
+        side_effect=DuplicateKeyError("E11000 duplicate key")
+    )
+
+    result = await service.login_with_id_token("id-token")
+
+    assert result["access_token"] == "app-jwt"
+    user_profile_service.sync_line_profile.assert_awaited_once_with(
+        line_id="U123", picture_url="https://x/p.jpg"
+    )

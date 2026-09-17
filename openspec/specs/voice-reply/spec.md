@@ -38,6 +38,8 @@ TBD - created by archiving change voice-rate-and-multilingual-tts. Update Purpos
 
 使用者傳送語音訊息時，系統 SHALL 在辨識之前取得該使用者的 `settings.language`。語言為 `nan-TW` 時 SHALL 以台語 STT 辨識；台語 STT 失敗或未設定時 SHALL 改走一般辨識流程，並以 `zh-TW` 作為語言提示。其他語言 SHALL 以該語言作為一般辨識流程的語言提示。
 
+一般辨識流程 SHALL 先以 Gemini（`gemini-3.5-flash-lite`）聽寫；Gemini 失敗、逾時或未設定時 SHALL 改以 faster-whisper 辨識並帶同一個語言提示，SHALL NOT 因此回覆辨識失敗。
+
 #### Scenario: 台語使用者的語音走台語辨識
 
 - **WHEN** 使用者 `settings.language` 為 `nan-TW` 並傳送一則語音訊息
@@ -46,7 +48,12 @@ TBD - created by archiving change voice-rate-and-multilingual-tts. Update Purpos
 #### Scenario: 其他語言的語音帶語言提示
 
 - **WHEN** 使用者 `settings.language` 為 `vi` 並傳送一則語音訊息
-- **THEN** 一般辨識流程收到的語言提示為 `vi`
+- **THEN** Gemini 收到的語言提示為 `vi`，不送 faster-whisper
+
+#### Scenario: Gemini 失敗改用 faster-whisper
+
+- **WHEN** Gemini 聽寫拋出例外或逾時
+- **THEN** 語音改送 faster-whisper 辨識，使用者仍得到回覆
 
 ### Requirement: 語音語速可由使用者設定
 

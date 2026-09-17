@@ -118,6 +118,13 @@ async def test_agent_node_puts_the_date_context_into_the_system_prompt(monkeypat
     assert "［日期標記］" in system_msg.content
 
 
+def test_system_prompt_routes_share_requests_to_share_care():
+    """想把 CARE 分享給朋友或邀請家人 → share_care。關鍵字秒回攔不到的講法
+    （句子較長或換了說法）靠這條規則叫出同一張卡。"""
+    assert "share_care" in SYSTEM_PROMPT
+    assert "怎麼讓我朋友也用這個" in SYSTEM_PROMPT
+
+
 def test_system_prompt_rule_9_lists_verify_claim_among_flex_verbatim_tools():
     """次要 finding 3：規則 9 的 Flex 原樣輸出工具清單過去只列了
     find_nearby_hospitals／find_nearby_facilities_by_department／
@@ -127,3 +134,16 @@ def test_system_prompt_rule_9_lists_verify_claim_among_flex_verbatim_tools():
     避免日後有人以「規則 9 已涵蓋」為由精簡掉那段機制。"""
     assert "verify_claim" in SYSTEM_PROMPT
     assert "Flex Message" in SYSTEM_PROMPT
+
+
+def test_system_prompt_rule_10_treats_web_search_failures_like_timeout():
+    """
+    WEB_ERROR／WEB_RATE_LIMITED 是「沒搜成」不是「找不到」：要跟 TIMEOUT 一樣請
+    使用者稍後再問，不能叫他換個說法——換十種說法都一樣，因為根本沒搜。
+    """
+    start = SYSTEM_PROMPT.index("若代碼是 TIMEOUT")
+    retry_clause = SYSTEM_PROMPT[start : start + 200]
+    assert "WEB_ERROR" in retry_clause
+    assert "WEB_RATE_LIMITED" in retry_clause
+    assert "稍後再問一次" in retry_clause
+    assert "不要叫使用者換個說法" in retry_clause

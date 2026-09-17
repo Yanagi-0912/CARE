@@ -24,7 +24,7 @@ from app.services.rag.fail_messages import (
 )
 from app.services.rag.link_check import LinkChecker, dead_urls
 from app.services.rag.query_rewriter import RewrittenQuery
-from app.services.rag.web_client import WebSearchClient
+from app.services.rag.web_client import WebSearchClient, WebSearchUnavailable
 from app.services.gemini.shared.parser import content_to_text
 from app.services.rag.whitelist import (
     is_allowed_url,
@@ -41,6 +41,15 @@ WEB_SEARCH_LIMIT = 8
 WEB_PAGE_CHAR_LIMIT = 8000
 # search snippet 達此長度就不打 scrape（避免 gov.tw 頁面常逾時）
 WEB_SNIPPET_MIN_CHARS = 20
+# 網搜答案生成用的 thinking 等級。gemini-3.8-flash 預設是 medium，low 是有文件
+# 保證的最低檔（minimal 會回 400，見 query_rewriter.REWRITE_THINKING_LEVEL）。
+#
+# 為什麼先動這一段：2026-09-16 完整管線實測（5 題），網搜答案生成 4.0-5.2 秒，
+# 是走網搜那條路上最大的單一段；它排在搜尋之後、沒有任何東西與它並行，省下
+# 的每一秒都直接是使用者少等的一秒。分級與改寫 9/14 已經是 low。
+#
+# 品質驗證見 commit message（golden set 前後對照）。
+WEB_GENERATE_THINKING_LEVEL = "low"
 
 OnWebFallbackSuccess = Callable[..., Awaitable[Any]]
 
@@ -98,7 +107,20 @@ class WebSearchService:
         self, query: str, *, search_queries: RewrittenQuery | None = None
     ) -> str:
         """*search_queries* 只決定「拿什麼去搜」；生成與知識回報一律用原句。"""
-        web_docs = await self._fetch_web_docs(query, search_queries)
+        try:
+            web_docs = await self._fetch_web_docs(query, search_queries)
+        except WebSearchUnavailable as exc:
+            # 「沒搜成」與「搜了沒有」分開回：WEB_EMPTY 的文案叫使用者換個說法，
+            # 對限流與逾時完全沒用（理由見 web_client.WebSearchUnavailable）。
+            code = (
+                RagFailCode.WEB_RATE_LIMITED
+                if exc.rate_limited
+                else RagFailCode.WEB_ERROR
+            )
+            logger.warning(
+                "rag_fail code=%s status=%s reason=%s", code, exc.status, exc.reason
+            )
+            return rag_fail(code)
         if not web_docs:
             logger.info("rag_fail code=%s", RagFailCode.WEB_EMPTY)
             return rag_fail(RagFailCode.WEB_EMPTY)
@@ -229,6 +251,11 @@ class WebSearchService:
         10 組裡有 2 組一次 0 筆、一次 5 筆。重搜用原句，因為改寫過的關鍵字
         不一定比原句好搜；沒有改寫時就是同一句再搜一次。只在完全沒有可用
         文件時才重搜，所以多花的時間只落在原本就會失敗的題目上。
+
+        重搜只針對「搜了、真的 0 筆」。任一路是「沒搜成」（WebSearchUnavailable：
+        429、逾時、5xx）且沒有任何一路拿到文件時，直接把失敗往上拋、不重搜——
+        限流當下立刻再打一次只會再吃一次 429，逾時再等一次 15 秒也一樣。
+        有一路拿到文件就照常用它，另一路的失敗只留在 stage log。
         """
         if self.web_client is None:
             return []
@@ -253,9 +280,24 @@ class WebSearchService:
                     limit=CITE_TOP_K,
                 )
             )
-        docs = _interleave(await asyncio.gather(*legs), limit=CITE_TOP_K)
+        outcomes = await asyncio.gather(*legs, return_exceptions=True)
+        failures = [o for o in outcomes if isinstance(o, WebSearchUnavailable)]
+        unexpected = [
+            o
+            for o in outcomes
+            if isinstance(o, BaseException) and not isinstance(o, WebSearchUnavailable)
+        ]
+        if unexpected:
+            # 只有搜尋服務的失敗會被轉成 WebSearchUnavailable；其他例外是程式錯誤，
+            # 照 gather 原本的行為往上拋，不要包成「搜尋服務暫時無法使用」。
+            raise unexpected[0]
+        docs = _interleave(
+            [o for o in outcomes if isinstance(o, list)], limit=CITE_TOP_K
+        )
         if docs:
             return docs
+        if failures:
+            raise failures[0]
         return await self._search_leg("zh_retry", with_whitelist_site_filter(query))
 
     async def _search_leg(
@@ -274,21 +316,89 @@ class WebSearchService:
                     limit=limit,
                     include_domains=include_domains,
                 )
-            except Exception:
+            except WebSearchUnavailable as exc:
+                # hits 記成 unavailable 而不是 0：以前記 error 後回空 list，
+                # 從外面看與「搜到 0 筆」分不開，429 就這樣被當成找不到。
+                t_search["hits"] = "unavailable"
+                t_search["status"] = exc.status
+                raise
+            except Exception as exc:
+                # 客戶端沒照契約丟 WebSearchUnavailable 的例外也是「沒搜成」，
+                # 轉成同一種型別讓上層用同一條路處置。
                 t_search["hits"] = "error"
-                return []
+                raise WebSearchUnavailable(type(exc).__name__) from exc
             t_search["hits"] = len(hits)
 
-        # scrape 是逐一 await 的，整段的 ms 與次數要分開記：單次 scrape 不慢
-        # 但跑了六次，與單次就卡滿逾時，是兩個不同的問題、兩種不同的修法。
+        # 整段的 ms 與次數要分開記：單次 scrape 不慢但跑了六次，與單次就卡滿
+        # 逾時，是兩個不同的問題、兩種不同的修法。scrape 改並行之後這裡的 ms
+        # 是「最慢的那一筆」而不是總和，要看總量得配 scrapes= 一起讀。
         with stage_timer(logger, "rag_web_scrape_loop", leg=leg) as t_loop:
             return await self._collect_web_docs(hits, t_loop)
 
     async def _collect_web_docs(
         self, hits: list[Any], t_loop: dict[str, Any]
     ) -> list[Document]:
-        scrapes = 0
+        """把搜尋結果收成最多 CITE_TOP_K 份文件；缺內文的候選並行補抓。
+
+        scrape 是並行而不是逐一 await 的：單次 scrape 的逾時是 45 秒，序列時
+        n 筆抓不到就是 n×45 秒，整段網搜的 45 秒總逾時撐不到第二筆。並行之後
+        這一段的牆鐘時間是「最慢的那一筆」而不是「全部相加」。併發總量由
+        FirecrawlClient 的閘控制（firecrawl_client.DEFAULT_MAX_CONCURRENCY），
+        這裡不再自己疊一層：兩層閘會讓「到底卡在哪一層」從 log 判讀不出來。
+        """
+        candidates = self._candidates(hits)
+        # 只抓「會被採用的那幾筆」，也就是前 CITE_TOP_K 名。視窗設得比這更寬
+        # 是實測驗證過的錯：2026-09-16 用 scripts/web_search_latency_bench.py
+        # 跑 golden set 的 21 題網搜題，視窗設 CITE_TOP_K+2 時，有一題把排在
+        # 第 4、5 名的 nhi.gov.tw PDF 也預抓了，那一筆卡滿 45 秒逾時——而前
+        # 三名的 snippet 全都夠用，逐一 await 的舊版走到第三份就停、根本不會
+        # 碰它。預抓把「可能用不到的補救」變成「一定付出的成本」。
+        #
+        # 視窗內抓不到時不再往後補抓：後面的候選幾乎都有夠長的 snippet
+        # （同一輪實測 153 筆候選裡 151 筆 ≥ 20 字），下面的走訪會直接拿它們
+        # 遞補，不必再花一次逾時。
+        window = candidates[:CITE_TOP_K]
+        # 優先用 search snippet，避免 Firecrawl scrape 15–45s 連逾時拖死整輪
+        to_scrape = [
+            url for url, _title, snippet in window
+            if len(snippet) < WEB_SNIPPET_MIN_CHARS
+        ]
+        scraped_by_url = await self._scrape_all(to_scrape)
+
         docs: list[Document] = []
+        for url, title, snippet in candidates:
+            text = snippet
+            if len(text) < WEB_SNIPPET_MIN_CHARS:
+                # 抓不到就退回原本的短 snippet：短歸短，它仍是這個網址目前唯一
+                # 的內容，丟掉只會讓這一筆連來源都排不進清單。
+                text = scraped_by_url.get(url, "") or text
+            if not text:
+                continue
+            docs.append(
+                Document(
+                    page_content=text[:WEB_PAGE_CHAR_LIMIT],
+                    metadata={
+                        "source_name": title or url,
+                        "url": url,
+                    },
+                )
+            )
+            if len(docs) >= CITE_TOP_K:
+                break
+        t_loop["hits"] = len(hits)
+        t_loop["scrapes"] = len(to_scrape)
+        t_loop["docs"] = len(docs)
+        return docs
+
+    @staticmethod
+    def _candidates(hits: list[Any]) -> list[tuple[str, str, str]]:
+        """過白名單、去重、保序，回傳 (url, title, snippet)。
+
+        去重在這裡一次做完，而不是像以前那樣等拿到內文才記進 seen：以前同一個
+        網址若第一次抓不到內文就不會進 seen，後面再出現時會**再抓一次**，白白
+        多花一次 scrape 去等同一個逾時。
+        """
+        out: list[tuple[str, str, str]] = []
         seen: set[str] = set()
         for hit in hits:
             raw_url = (hit.url or "").strip()
@@ -302,39 +412,31 @@ class WebSearchService:
             url = normalize_url(raw_url)
             if url is None or url in seen or not is_allowed_url(url):
                 continue
-            # 優先用 search snippet，避免 Firecrawl scrape 15–45s 連逾時拖死整輪
-            text = (hit.description or "").strip()
-            if len(text) < WEB_SNIPPET_MIN_CHARS:
-                scrapes += 1
-                with stage_timer(logger, "rag_web_scrape", url=url) as t_scrape:
-                    try:
-                        scraped = (await self.web_client.scrape(url) or "").strip()
-                    except Exception:
-                        scraped = ""
-                    # 逾時被 FirecrawlClient 吞掉後回空字串，從外面看不出
-                    # 「等滿逾時」與「頁面本來就沒內容」的差別——chars=0 配上
-                    # 一個接近逾時值的 ms，就是前者。
-                    t_scrape["chars"] = len(scraped)
-                if scraped:
-                    text = scraped
-            if not text:
-                continue
             seen.add(url)
-            docs.append(
-                Document(
-                    page_content=text[:WEB_PAGE_CHAR_LIMIT],
-                    metadata={
-                        "source_name": (hit.title or "").strip() or url,
-                        "url": url,
-                    },
-                )
+            out.append(
+                (url, (hit.title or "").strip(), (hit.description or "").strip())
             )
-            if len(docs) >= CITE_TOP_K:
-                break
-        t_loop["hits"] = len(hits)
-        t_loop["scrapes"] = scrapes
-        t_loop["docs"] = len(docs)
-        return docs
+        return out
+
+    async def _scrape_all(self, urls: list[str]) -> dict[str, str]:
+        """並行 scrape，回傳 {url: 內文}；抓不到的是空字串。"""
+        if not urls:
+            return {}
+
+        async def scrape_one(url: str) -> tuple[str, str]:
+            with stage_timer(logger, "rag_web_scrape", url=url) as t_scrape:
+                try:
+                    scraped = (await self.web_client.scrape(url) or "").strip()
+                except Exception:
+                    scraped = ""
+                # 逾時被 FirecrawlClient 吞掉後回空字串，從外面看不出
+                # 「等滿逾時」與「頁面本來就沒內容」的差別——chars=0 配上
+                # 一個接近逾時值的 ms，就是前者。
+                t_scrape["chars"] = len(scraped)
+            return url, scraped
+
+        pairs = await asyncio.gather(*(scrape_one(url) for url in urls))
+        return dict(pairs)
 
     @staticmethod
     def _is_cannot_answer(text: str) -> bool:

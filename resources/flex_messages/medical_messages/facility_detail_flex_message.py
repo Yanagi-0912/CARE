@@ -13,6 +13,7 @@ from app.schemas import MedicalFacility
 from app.services.medical.business_hours import TAIPEI_TZ, WEEKDAY_KEYS
 from resources.flex_messages import theme
 from resources.flex_messages.medical_messages.facility_brief_flex_message import (
+    FACILITIES_KEY,
     _build_flex_map_uri,
     _build_flex_tel_uri,
     _build_status_indicator,
@@ -574,4 +575,5 @@ def generate_facility_detail_flex_message(
                 "contents": footer_contents,
             },
         },
+        FACILITIES_KEY: {"names": [facility.name] if facility.name else []},
     }

@@ -205,3 +205,34 @@ def test_create_invite_still_works_without_public_base_url(
 
     assert body["invite_token"] == "token123"
     assert body["qr_url"] is None
+
+
+# ── DELETE /api/family/invites/{code} ────────────────────────────────
+
+
+def test_revoke_invite_passes_operator_and_authz(
+    client, override_family_service, override_current_user
+):
+    from app.dependencies import get_family_authorization_service
+
+    override_current_user("U_ME")
+    authz = object()
+    app.dependency_overrides[get_family_authorization_service] = lambda: authz
+    override_family_service.revoke_invitation.return_value = True
+
+    response = client.delete("/api/family/invites/token123")
+
+    assert response.status_code == 200
+    assert response.json() == {"revoked": True}
+    kwargs = override_family_service.revoke_invitation.await_args.kwargs
+    assert kwargs == {
+        "operator_id": "U_ME",
+        "code": "token123",
+        "authorization_service": authz,
+    }
+
+
+def test_revoke_invite_requires_login(client, override_family_service):
+    response = client.delete("/api/family/invites/token123")
+    assert response.status_code == 401
+    override_family_service.revoke_invitation.assert_not_awaited()

@@ -23,8 +23,13 @@ numpy 或任何模型檔，`uv sync --no-dev` 也不會把它們裝進正式映�
 一個工具。
 
 用法（專案根目錄，需先 source .venv）：
-  python scripts/build_guardrail_model.py
+  python scripts/build_guardrail_model.py --max-false-alarm-rate 0.10   # 正式的 guardrail 模型
   python scripts/build_guardrail_model.py --max-miss-rate 0.005 --out /tmp/m.json
+
+guardrail 用 0.10 而不是預設的 0.05：2026-09-15 併入外語資料（見
+scripts/merge_guardrail_foreign.py）後，0.05 會把 high 推到 0.70，中文要問 LLM 的比例
+從 17% 升到 25%；0.10 的 high 是 0.60，中文 19%、外語 17～25%，本地漏判仍是 0～2 則。
+預設值不改，因為急迫度模型（scripts/build_urgency_dataset.py）也用這支腳本。
 """
 
 from __future__ import annotations
@@ -150,7 +155,26 @@ def main(argv: Optional[list[str]] = None) -> int:
             "白掛一個工具，漏判會讓使用者拿不到知識庫的答案"
         ),
     )
+    parser.add_argument(
+        "--exclude-from-thresholds",
+        default=None,
+        metavar="BUCKET_PREFIX",
+        help=(
+            "bucket 以此開頭的列照樣參與訓練，但不參與門檻選擇。給「線上根本到不了"
+            "這個分類器」的簡單負例用——算進誤判率分母只會把門檻壓得太寬"
+            "（例：RAG 分流的 everyday:，已被 guardrail 擋掉）"
+        ),
+    )
     parser.add_argument("--folds", type=int, default=5)
+    parser.add_argument(
+        "--max-features",
+        type=int,
+        default=MAX_FEATURES,
+        help=(
+            "詞彙表上限。執行期整份載進記憶體（6 萬片段約 30 MB），任務窄的模型"
+            "（走失求救）可以調小"
+        ),
+    )
     args = parser.parse_args(argv)
 
     if not args.dataset.exists():
@@ -174,7 +198,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                     analyzer="char",
                     ngram_range=NGRAM_RANGE,
                     min_df=MIN_DF,
-                    max_features=MAX_FEATURES,
+                    max_features=args.max_features,
                     lowercase=True,
                     sublinear_tf=False,
                     norm="l2",
@@ -195,8 +219,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     oof = cross_val_predict(pipeline, X_train, y_train, cv=cv, method="predict_proba")[:, 1]
     print(f"交叉驗證 macro-F1（門檻 0.5）：{f1_score(y_train, oof >= 0.5, average='macro'):.4f}")
 
+    if args.exclude_from_thresholds:
+        keep = np.array(
+            [not buckets[i].startswith(args.exclude_from_thresholds) for i in train_idx]
+        )
+        print(f"門檻只看 {int(keep.sum())} 筆（排除 bucket 前綴 {args.exclude_from_thresholds!r}）")
+    else:
+        keep = np.ones(len(train_idx), dtype=bool)
     low, high, stats = _pick_thresholds(
-        oof, y_train, args.max_miss_rate, args.max_false_alarm_rate
+        oof[keep], y_train[keep], args.max_miss_rate, args.max_false_alarm_rate
     )
     print(
         f"門檻：low={low:.4f} high={high:.4f}  "

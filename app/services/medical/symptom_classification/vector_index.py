@@ -13,9 +13,9 @@
     由誰是正解交給 enum LLM 決定（normalizer._classify）。
 
 為什麼不走 Atlas $vectorSearch：
-    只有 391 筆。$vectorSearch 是 ANN 近似搜尋，會讓門檻校準的數字不穩，
+    條目只有數百筆。$vectorSearch 是 ANN 近似搜尋，會讓門檻校準的數字不穩，
     還要在 Atlas 手動建第三個索引、每則訊息多一次網路往返。
-    391 × 768 維在記憶體暴力精確比對實測 4.6 ms，純 Python 即可，
+    校準時 391 筆 × 768 維在記憶體暴力精確比對實測 4.6 ms，純 Python 即可，
     不需要 numpy。Mongo／檔案只負責持久化，不負責查詢。
 
 為什麼綁 hash：
@@ -141,11 +141,8 @@ class SymptomVectorIndex:
     def table_hash(self) -> str:
         return self._table_hash
 
-    def __len__(self) -> int:
-        return len(self._terms)
-
     def search(self, query_vector: Sequence[float], k: int = TOP_K) -> tuple[Match, ...]:
-        """回傳分數由高到低的前 k 個條目。391 筆暴力精確比對，實測 4.6 ms。"""
+        """回傳分數由高到低的前 k 個條目。全表暴力精確比對，校準時 391 筆實測 4.6 ms。"""
         query = normalize(query_vector)
         if len(query) != self._dim:
             raise ValueError(
@@ -254,8 +251,9 @@ class SymptomVectorIndex:
             )
             return None
 
-        dim = int(payload.get("dim", VECTOR_DIM))
         try:
+            # 第 2 版一律寫入 dim；缺了就是檔案不合法，與其他欄位缺漏同樣拒用。
+            dim = int(payload["dim"])
             vectors = [_unpack(blob, dim) for blob in payload["vectors"]]
             return cls(
                 terms=payload["terms"],

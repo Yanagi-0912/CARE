@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.models.medical_news import DrugNews
+from app.services.line_messaging.send_result import SendResult
 from app.services.medical_news.kb_digest_service import KbArticle
 from app.services.medical_news.push_scheduler import MedicalNewsPushScheduler
 
@@ -31,9 +32,24 @@ class FakeReplier:
     def __init__(self):
         self.pushed = []
 
-    async def push_flex(self, user_id, flex_message):
+    async def push_flex_result(self, user_id, flex_message):
         self.pushed.append(user_id)
+        return SendResult.success()
+
+    async def push_flex(self, user_id, flex_message):
+        return (await self.push_flex_result(user_id, flex_message)).ok
+
+
+class FakeDayClaimRepo:
+    def __init__(self):
+        self.claims = []
+
+    async def claim(self, user_id, delivered_on, collection=None):
+        self.claims.append(user_id)
         return True
+
+    async def release(self, user_id, delivered_on, collection=None):
+        return None
 
 
 class FakeProfileService:
@@ -96,6 +112,7 @@ def _scheduler(profiles, delivery=None):
         max_age_days=30,
         drug_news_repository=FakeNewsRepo(),
         delivery_repository=delivery or FakeDeliveryRepo(),
+        day_claim_repository=FakeDayClaimRepo(),
         medication_repository=FakeMedRepo(),
         user_repository=FakeUserRepo(list(profiles) or ["U1"]),
     ), replier

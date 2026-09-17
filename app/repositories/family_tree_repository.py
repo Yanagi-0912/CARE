@@ -2,6 +2,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from pymongo import ReturnDocument
+
 from app.db.mongodb import MongoDBManager
 from app.models.family_authorization import ASSIGNABLE_FAMILY_ROLES
 from app.models.family_tree import FamilyMember, FamilyTree, PendingInvitation
@@ -468,10 +470,53 @@ class FamilyTreeRepository:
         return PendingInvitation(**docs[0])
 
     @staticmethod
-    async def accept_invitation(invite_id: str) -> None:
-        """將邀請狀態更新為 accepted。"""
-        col = MongoDBManager.get_pending_invitations_collection()
-        await col.update_one(
-            {"_id": invite_id},
-            {"$set": {"status": "accepted"}},
+    async def accept_invitation(
+        invite_id: str,
+        accepted_by: Optional[str] = None,
+        collection: Optional[Any] = None,
+    ) -> Optional[PendingInvitation]:
+        """把邀請從 pending 原子地改成 accepted；搶到的回傳更新後的邀請，沒搶到回 None。
+
+        篩選條件帶 `status: "pending"`，是「同一張邀請只能被一個人接受」的唯一
+        保證：兩個人同時按下接受，只有一個 `find_one_and_update` 會匹配到文件，
+        另一個拿到 None。以前是無條件 `$set`，兩邊都會成功、兩邊都加進族譜——
+        邀請連結可以被轉發，這就是轉發者與被轉發者同時進到長輩照護圈的路。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_pending_invitations_collection()
+        now = datetime.now(tz=timezone.utc)
+        doc = await collection.find_one_and_update(
+            {"_id": invite_id, "status": "pending"},
+            {
+                "$set": {
+                    "status": "accepted",
+                    "accepted_at": now,
+                    "accepted_by": accepted_by,
+                }
+            },
+            return_document=ReturnDocument.AFTER,
         )
+        if not doc:
+            return None
+        return PendingInvitation(**doc)
+
+    @staticmethod
+    async def revoke_invitation(
+        invite_id: str,
+        revoked_by: str,
+        collection: Optional[Any] = None,
+    ) -> bool:
+        """把 pending 的邀請標成 revoked。回傳這次有沒有真的改到。
+
+        同樣以 `status: "pending"` 為條件：已接受的邀請不能被「撤銷」成沒發生
+        過——人已經在族譜裡了，要拿掉他走的是移除成員。已撤銷者不重複標記，
+        免得 revoked_at 被蓋成更晚的時間。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_pending_invitations_collection()
+        now = datetime.now(tz=timezone.utc)
+        result = await collection.update_one(
+            {"_id": invite_id, "status": "pending"},
+            {"$set": {"status": "revoked", "revoked_at": now, "revoked_by": revoked_by}},
+        )
+        return result.modified_count > 0

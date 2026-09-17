@@ -207,6 +207,13 @@ class MongoDBManager:
         return cls.get_database()["safety_alerts"]
 
     @classmethod
+    def get_lost_sessions_collection(cls):
+        """
+        取得 lost_sessions collection（走失求救的即時位置分享，開始後 24 小時刪除）
+        """
+        return cls.get_database()["lost_sessions"]
+
+    @classmethod
     def get_conversation_messages_collection(cls):
         """
         取得 conversation_messages collection（對話原文的正式紀錄，保存 30 天）

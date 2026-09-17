@@ -21,7 +21,7 @@ from app.services.agent.utils.nodes import (
     _facility_type_intent,
     _is_nearby_facility_intent,
 )
-from app.services.medical.department_matcher import extract_department_intent
+from app.services.medical.department_matcher import extract_department_intents
 from app.services.medical.facility_name_index import configure_facility_names
 from app.services.medical.facility_type_matcher import all_facility_type_terms
 
@@ -275,8 +275,8 @@ def test_dental_clinic_maps_to_both_department_and_type():
     這個 scenario 先前完全沒有測試覆蓋。
     """
     text = "附近的牙醫診所"
-    department = extract_department_intent(text)
-    assert department is not None and department.canonical == "牙科"
+    departments = extract_department_intents(text)
+    assert [d.canonical for d in departments] == ["牙科"]
     assert _facility_type_intent(text) == "牙醫診所"
 
 
@@ -419,7 +419,7 @@ async def test_shared_location_with_only_department(
     assert call["args"] == {
         "lat": 25.033,
         "lng": 121.56,
-        "department": "腸胃科",
+        "departments": ["腸胃科"],
     }
 
 
@@ -472,7 +472,7 @@ async def test_shared_location_with_department_and_facility_type(
     assert call["args"] == {
         "lat": 25.033,
         "lng": 121.56,
-        "department": "腸胃科",
+        "departments": ["腸胃科"],
         "facility_type": "大醫院",
     }
 

@@ -75,3 +75,59 @@ async def test_retention_is_enforced_by_ttl_index_on_expires_at():
     assert [(call.args[0], call.kwargs["expireAfterSeconds"]) for call in ttl_calls] == [
         ([("expires_at", 1)], 0)
     ]
+
+
+# 每日摘要排程只需要昨天那一天：查詢要限定在區間內，不是撈 30 天再在 Python 過濾。
+async def test_list_messages_limits_query_to_utc_range():
+    cursor = MagicMock()
+    cursor.sort.return_value = cursor
+    cursor.to_list = AsyncMock(return_value=[])
+    collection = MagicMock()
+    collection.find.return_value = cursor
+    since = datetime(2026, 9, 13, 16, 0, tzinfo=timezone.utc)
+    until = datetime(2026, 9, 14, 16, 0, tzinfo=timezone.utc)
+
+    await ConversationLogRepository.list_messages(
+        "U123", collection=collection, since=since, until=until
+    )
+
+    query, projection = collection.find.call_args.args
+    assert query == {"line_id": "U123", "timestamp": {"$gte": since, "$lt": until}}
+    assert projection == {"_id": 0, "expires_at": 0}
+
+
+async def test_list_messages_without_range_queries_everything():
+    cursor = MagicMock()
+    cursor.sort.return_value = cursor
+    cursor.to_list = AsyncMock(return_value=[])
+    collection = MagicMock()
+    collection.find.return_value = cursor
+
+    await ConversationLogRepository.list_messages("U123", collection=collection)
+
+    assert collection.find.call_args.args[0] == {"line_id": "U123"}
+
+
+async def test_list_line_ids_with_range_only_counts_users_active_in_range():
+    collection = MagicMock()
+    collection.distinct = AsyncMock(return_value=["U2", "U1"])
+    since = datetime(2026, 9, 13, 16, 0, tzinfo=timezone.utc)
+    until = datetime(2026, 9, 14, 16, 0, tzinfo=timezone.utc)
+
+    ids = await ConversationLogRepository.list_line_ids(
+        collection=collection, since=since, until=until
+    )
+
+    assert ids == ["U1", "U2"]
+    collection.distinct.assert_awaited_once_with(
+        "line_id", {"timestamp": {"$gte": since, "$lt": until}}
+    )
+
+
+async def test_list_line_ids_without_range_has_empty_filter():
+    collection = MagicMock()
+    collection.distinct = AsyncMock(return_value=[])
+
+    await ConversationLogRepository.list_line_ids(collection=collection)
+
+    collection.distinct.assert_awaited_once_with("line_id", {})

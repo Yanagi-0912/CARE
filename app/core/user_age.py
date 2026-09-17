@@ -14,8 +14,9 @@ from __future__ import annotations
 
 from contextvars import ContextVar, Token
 
-# 兒科的年齡界線。三份來源不一致（14／15／18 歲皆有），本專案採 15 歲以下，
-# 決策記於 symptom_department_reference.json 的 resolved_questions。
+# 兒科的年齡界線。三份來源不一致（玉里 15 歲以下、成大 18 歲含以下、台大雲林
+# 18 歲以下），本專案採未滿 15 歲，滿 15 歲即對應成人科別；決策記於
+# symptom_department_reference.json 兒科區塊的 age_note。
 PEDIATRIC_AGE_LIMIT = 15
 
 # 預設 None 而非某個數字：拿不到年齡時應該表現為「不知道」，由呼叫端決定要

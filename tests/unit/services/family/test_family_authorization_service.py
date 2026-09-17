@@ -78,10 +78,23 @@ def make_service(
     )
 
 
+# 「在族譜裡但擁有者還沒指派角色」的成員。授權上等同 MEMBER，但影子模式只對
+# 這種人放寬（見 FamilyAuthorizationService._is_strict）。
+UNASSIGNED = "UNASSIGNED"
+
+
+def _members(role: Optional[str]):
+    if role is None:
+        return []
+    if role == UNASSIGNED:
+        return [FamilyMember(user_id=OPERATOR)]
+    return [FamilyMember(user_id=OPERATOR, family_role=role)]
+
+
 def service_with_role(role: Optional[str], state: str = "enforced"):
-    """建一個「OPERATOR 對 OWNER 是 role」的服務。role=None 代表不是家人。"""
-    members = [] if role is None else [FamilyMember(user_id=OPERATOR, family_role=role)]
-    return make_service({OWNER: make_tree(OWNER, members, state=state)})
+    """建一個「OPERATOR 對 OWNER 是 role」的服務。role=None 代表不是家人，
+    UNASSIGNED 代表在族譜裡但沒指派角色。"""
+    return make_service({OWNER: make_tree(OWNER, _members(role), state=state)})
 
 
 # ── 角色解析 ──────────────────────────────────────────────────────────
@@ -343,6 +356,19 @@ async def test_owner_is_never_their_own_delegate():
     assert await service.is_active_delegate(OWNER, OWNER, now=NOW) is False
 
 
+@pytest.mark.asyncio
+async def test_delegate_who_is_no_longer_a_member_is_not_active():
+    """委任紀錄還在、人已經被移出族譜：不能再代擁有者行事。
+
+    `remove_member` 會撤銷委任，但那是兩個寫入；撤銷失敗或中間的窗口都不該
+    讓一個已經不在族譜裡的人還能替長輩建邀請、指派角色。族譜是最外層的閘門。
+    """
+    not_a_member = make_service({OWNER: make_tree(OWNER, [])}, [delegation()])
+    no_tree = make_service({}, [delegation()])
+    assert await not_a_member.is_active_delegate(OPERATOR, OWNER, now=NOW) is False
+    assert await no_tree.is_active_delegate(OPERATOR, OWNER, now=NOW) is False
+
+
 # ── authorize：影子模式與強制 ────────────────────────────────────────
 
 
@@ -356,9 +382,56 @@ async def test_enforced_owner_rejects_member_reading_sensitive():
 
 
 @pytest.mark.asyncio
-async def test_shadow_owner_allows_member_reading_sensitive():
-    """影子模式下行為與導入前完全相同：在族譜裡就放行。"""
+async def test_shadow_owner_allows_unassigned_member_reading_sensitive():
+    """影子模式下，**還沒被指派角色**的成員行為與導入前相同：在族譜裡就放行。"""
+    service = service_with_role(UNASSIGNED, state="shadow")
+    assert await service.authorize(OPERATOR, OWNER, "SENSITIVE", "READ") == "MEMBER"
+
+
+@pytest.mark.asyncio
+async def test_shadow_owner_rejects_explicitly_assigned_member():
+    """擁有者親自把他設成 MEMBER，那個決定要立刻生效，不等其他人指派完。
+
+    以前要等擁有者把**每一位**成員都指派完才切 enforced；在那之前，被明確
+    設成 MEMBER 的人照樣看得到病史——擁有者做了決定卻沒有任何效果。
+    """
     service = service_with_role("MEMBER", state="shadow")
+    with pytest.raises(HTTPException) as exc:
+        await service.authorize(OPERATOR, OWNER, "SENSITIVE", "READ")
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_shadow_owner_applies_matrix_to_explicit_caregiver():
+    """明確指派的角色照矩陣：CAREGIVER 讀得到 SENSITIVE、讀不到 PRIVATE。"""
+    service = service_with_role("CAREGIVER", state="shadow")
+    assert await service.authorize(OPERATOR, OWNER, "SENSITIVE", "READ") == "CAREGIVER"
+    with pytest.raises(HTTPException):
+        await service.authorize(OPERATOR, OWNER, "PRIVATE", "READ")
+
+
+@pytest.mark.asyncio
+async def test_shadow_owner_applies_matrix_to_active_delegate():
+    """有效委任也算「明確」：受委任者在影子狀態下同樣照 GUARDIAN 的矩陣（PRIVATE 不可寫）。"""
+    service = make_service(
+        {OWNER: make_tree(OWNER, [FamilyMember(user_id=OPERATOR)], state="shadow")},
+        [delegation()],
+    )
+    assert await service.authorize(OPERATOR, OWNER, "SENSITIVE", "WRITE", now=NOW) == "GUARDIAN"
+    with pytest.raises(HTTPException):
+        await service.authorize(OPERATOR, OWNER, "PRIVATE", "WRITE", now=NOW)
+
+
+@pytest.mark.asyncio
+async def test_global_kill_switch_also_relaxes_explicit_roles():
+    """總閘關閉是緊急退回：連明確指派的角色也回到導入前的行為。"""
+    service = FamilyAuthorizationService(
+        family_tree_repository=FakeTreeRepository(
+            {OWNER: make_tree(OWNER, _members("MEMBER"), state="shadow")}
+        ),
+        delegation_repository=FakeDelegationRepository(),
+        enforcement_enabled=False,
+    )
     assert await service.authorize(OPERATOR, OWNER, "SENSITIVE", "READ") == "MEMBER"
 
 
@@ -395,9 +468,10 @@ async def test_migration_state_follows_target_not_operator():
                 [FamilyMember(user_id=OPERATOR, family_role="MEMBER")],
                 state="enforced",
             ),
+            # 乙還沒指派過他（影子模式只對這種人放寬）。
             OTHER_OWNER: make_tree(
                 OTHER_OWNER,
-                [FamilyMember(user_id=OPERATOR, family_role="MEMBER")],
+                [FamilyMember(user_id=OPERATOR)],
                 state="shadow",
             ),
         }
@@ -445,11 +519,25 @@ async def test_new_path_allows_guardian_even_in_shadow():
 async def test_tighten_diff_is_recorded_in_shadow(caplog):
     import logging
 
-    service = service_with_role("MEMBER", state="shadow")
+    service = service_with_role(UNASSIGNED, state="shadow")
     with caplog.at_level(logging.INFO):
         await service.authorize(OPERATOR, OWNER, "SENSITIVE", "READ")
     assert any("family_rbac_migration_diff" in r.message % r.args for r in caplog.records)
     assert any("tighten" in str(r.args) for r in caplog.records)
+
+
+@pytest.mark.asyncio
+async def test_diff_is_still_recorded_when_explicit_role_is_enforced_in_shadow(caplog):
+    """明確指派的成員被拒絕時，差異照記、並標明 strict——遷移指標的分子不因此少算。"""
+    import logging
+
+    service = service_with_role("MEMBER", state="shadow")
+    with caplog.at_level(logging.INFO):
+        with pytest.raises(HTTPException):
+            await service.authorize(OPERATOR, OWNER, "SENSITIVE", "READ")
+    diffs = [r for r in caplog.records if "family_rbac_migration_diff" in r.message % r.args]
+    assert diffs
+    assert "'strict': True" in str(diffs[0].args)
 
 
 @pytest.mark.asyncio
@@ -477,7 +565,7 @@ async def test_loosen_diff_is_logged_at_error_level(caplog):
             # 角色解析出 GUARDIAN，但 legacy 判定為「不是家人」。這個組合在
             # 真實實作裡不可能出現（family boundary 會先擋下），必須用替身
             # 構造，才驗得到記錄行為本身。
-            return "GUARDIAN", False
+            return "GUARDIAN", False, False
 
     service = LooseService(
         family_tree_repository=FakeTreeRepository({OWNER: make_tree(OWNER, [])}),
@@ -559,12 +647,27 @@ async def test_mask_response_does_not_mask_in_shadow_mode():
     導入前沒有任何遮蔽。若在影子狀態就把適應症拿掉，使用者會在沒有任何切換
     的情況下發現東西不見了——那正是影子模式要避免的事。
     """
-    service = service_with_role("MEMBER", state="shadow")
+    service = service_with_role(UNASSIGNED, state="shadow")
     result = await service.mask_response(
         MEDICATION_PAYLOAD, "medication", OPERATOR, OWNER
     )
     assert result == MEDICATION_PAYLOAD
     assert result["indication"] == "糖尿病"
+
+
+@pytest.mark.asyncio
+async def test_mask_response_masks_explicitly_assigned_member_in_shadow():
+    """遮蔽與放行用同一個嚴格判定：被明確設成 MEMBER 的人在影子狀態下也看不到適應症。
+
+    否則他被 authorize 擋在 SENSITIVE 端點外，卻能從 GENERAL 端點的回應裡
+    讀到適應症。
+    """
+    service = service_with_role("MEMBER", state="shadow")
+    result = await service.mask_response(
+        MEDICATION_PAYLOAD, "medication", OPERATOR, OWNER
+    )
+    assert "indication" not in result
+    assert result["name"] == "Metformin"
 
 
 @pytest.mark.asyncio
@@ -901,13 +1004,21 @@ def _described_member(role: str, state: str, delegated: bool = False) -> dict:
 @pytest.mark.asyncio
 async def test_strict_permissions_ignore_shadow_mode():
     """影子模式下 my_permissions 照 legacy 回報 GENERAL WRITE；嚴格的那份不回報。"""
-    described = (await _described_member("MEMBER", "shadow"))[OWNER]
+    described = (await _described_member(None, "shadow"))[OWNER]
     assert described["my_permissions"]["general"] == ["READ", "WRITE"]
     assert described["my_strict_permissions"] == {
         "general": ["READ"],
         "sensitive": [],
         "private": [],
     }
+
+
+@pytest.mark.asyncio
+async def test_described_permissions_follow_the_matrix_for_an_explicit_role_in_shadow():
+    """擁有者明確設了 MEMBER，族譜頁報的權限就是矩陣值，前端才不會渲染出必定 403 的入口。"""
+    described = (await _described_member("MEMBER", "shadow"))[OWNER]
+    assert described["my_permissions"] == described["my_strict_permissions"]
+    assert described["my_permissions"]["sensitive"] == []
 
 
 @pytest.mark.asyncio
@@ -1073,12 +1184,19 @@ async def test_describe_reflects_enforced_matrix():
 @pytest.mark.asyncio
 async def test_describe_reflects_legacy_behaviour_in_shadow():
     """影子模式下描述的是「現在真的能做什麼」，不是矩陣的理論值。"""
-    service = service_with_role("MEMBER", state="shadow")
+    service = service_with_role(UNASSIGNED, state="shadow")
     described = await service.describe(OPERATOR, [OWNER])
     assert described[OWNER]["sensitive"] == ["READ"]
     assert described[OWNER]["private"] == ["READ"]
     # 舊碼從來沒有代寫健康資料的路徑，不能描述成有
     assert "WRITE" not in described[OWNER]["sensitive"]
+
+
+@pytest.mark.asyncio
+async def test_describe_reflects_matrix_for_explicit_role_in_shadow():
+    service = service_with_role("MEMBER", state="shadow")
+    described = await service.describe(OPERATOR, [OWNER])
+    assert described[OWNER] == {"general": ["READ"], "sensitive": [], "private": []}
 
 
 @pytest.mark.asyncio
@@ -1119,10 +1237,9 @@ class RecordingMetrics:
 
 
 def service_with_metrics(role, state="shadow", metrics=None):
-    members = [] if role is None else [FamilyMember(user_id=OPERATOR, family_role=role)]
     return FamilyAuthorizationService(
         family_tree_repository=FakeTreeRepository(
-            {OWNER: make_tree(OWNER, members, state=state)}
+            {OWNER: make_tree(OWNER, _members(role), state=state)}
         ),
         delegation_repository=FakeDelegationRepository(),
         enforcement_enabled=True,
@@ -1134,11 +1251,24 @@ def service_with_metrics(role, state="shadow", metrics=None):
 async def test_tighten_diff_is_counted():
     """判準 1 的分子。"""
     metrics = RecordingMetrics()
-    service = service_with_metrics("MEMBER", metrics=metrics)
+    service = service_with_metrics(UNASSIGNED, metrics=metrics)
 
     await service.authorize(OPERATOR, OWNER, "SENSITIVE", "READ")
 
     assert metrics.diffs == [(OWNER, "tighten")]
+
+
+@pytest.mark.asyncio
+async def test_tighten_diff_is_counted_for_explicit_role_too():
+    """明確指派的成員已經被收緊了，仍計入分子——指標量的是切換後的影響範圍。"""
+    metrics = RecordingMetrics()
+    service = service_with_metrics("MEMBER", metrics=metrics)
+
+    with pytest.raises(HTTPException):
+        await service.authorize(OPERATOR, OWNER, "SENSITIVE", "READ")
+
+    assert metrics.diffs == [(OWNER, "tighten")]
+    assert metrics.decisions == [OWNER]
 
 
 @pytest.mark.asyncio
@@ -1157,7 +1287,7 @@ async def test_every_decision_is_counted_as_the_denominator():
 async def test_counters_are_keyed_by_the_target_owner():
     """判準要問的是「這位擁有者能不能進入強制」，是逐家庭的問題。"""
     metrics = RecordingMetrics()
-    service = service_with_metrics("MEMBER", metrics=metrics)
+    service = service_with_metrics(UNASSIGNED, metrics=metrics)
 
     await service.authorize(OPERATOR, OWNER, "SENSITIVE", "READ")
 
@@ -1179,6 +1309,6 @@ async def test_metrics_failure_never_breaks_authorization():
 @pytest.mark.asyncio
 async def test_no_metrics_repository_means_no_behaviour_change():
     """未注入計數器時，授權行為與注入前完全相同。"""
-    service = service_with_metrics("MEMBER", metrics=None)
+    service = service_with_metrics(UNASSIGNED, metrics=None)
 
     assert await service.authorize(OPERATOR, OWNER, "SENSITIVE", "READ") == "MEMBER"

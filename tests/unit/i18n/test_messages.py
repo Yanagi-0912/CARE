@@ -1,3 +1,5 @@
+import string
+
 import pytest
 
 from app.core.user_language import SUPPORTED_LANGUAGES, set_request_language
@@ -175,3 +177,19 @@ def test_safety_patient_messages_carry_their_placeholders(language):
     assert "{drug}" in _MESSAGES["safety.patient.high"][language]
     assert "{reason}" in _MESSAGES["safety.patient.high"][language]
     assert "{name}" in _MESSAGES["flex.safety.alt.family"][language]
+
+
+_CONSULTATION_CARD_KEYS = sorted(
+    key for key in _MESSAGES if key.startswith("consultation_card.")
+)
+
+
+@pytest.mark.parametrize("key", _CONSULTATION_CARD_KEYS)
+def test_consultation_card_keys_cover_every_language_with_same_placeholders(key):
+    def placeholders(template: str) -> set[str]:
+        return {name for _, name, _, _ in string.Formatter().parse(template) if name}
+
+    expected = placeholders(_MESSAGES[key]["zh-TW"])
+    for language in SUPPORTED_LANGUAGES:
+        assert _MESSAGES[key].get(language), (key, language)
+        assert placeholders(_MESSAGES[key][language]) == expected, (key, language)

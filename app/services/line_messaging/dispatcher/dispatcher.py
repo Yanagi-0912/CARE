@@ -1,6 +1,9 @@
 import asyncio
 import logging
 import time
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from typing import Awaitable, Callable, Optional
 from urllib.parse import parse_qs
 
 from linebot.v3.webhooks import (
@@ -13,6 +16,8 @@ from linebot.v3.webhooks import (
     PostbackEvent,
     StickerMessageContent,
     TextMessageContent,
+    UnfollowEvent,
+    UserSource,
     VideoMessageContent,
 )
 from app.core.request_context import (
@@ -34,6 +39,7 @@ from app.core.user_language import (
 )
 from app.core.request_logging import log_done, log_stage, log_start
 from app.i18n.messages import t
+from resources.flex_messages.lost_location_flex_message import LOST_CONFIRM_ACTION
 from app.models.medication import to_taipei_hm
 from app.services.appointment.appointment_service import AppointmentError
 from app.services.line_messaging.flex.appointment_flex import (
@@ -54,8 +60,13 @@ from app.services.line_messaging.handler.media_handler import LineMediaHandler
 from app.services.line_messaging.handler.location_handler import LineLocationHandler
 from app.services.line_messaging.reply.reply import LineReplier
 from app.services.line_messaging.sticker_reply import sticker_reply_key
+from app.repositories.user_profile_repository import UserProfileRepository
 
 logger = logging.getLogger(__name__)
+
+# 追蹤狀態 (line_id, following, at) → 是否有更新到。預設走 repository 的
+# 靜態方法；測試以建構子注入替身。
+SetFollowingFn = Callable[[str, bool, datetime], Awaitable[bool]]
 
 
 def _event_label(event) -> str:
@@ -98,6 +109,7 @@ class LineEventDispatcher:
         appointment_service=None,
         line_language_service=None,
         liff_url: str = "",
+        set_following: Optional[SetFollowingFn] = None,
     ):
         self._message_handler = message_handler
         self._media_handler = media_handler
@@ -114,15 +126,40 @@ class LineEventDispatcher:
         # 語言；liff_url 為空時卡片省略填資料按鈕。
         self._line_language_service = line_language_service
         self._liff_url = liff_url
+        self._set_following = set_following
+        # 同一位使用者的事件要照順序處理：webhook 現在是每個事件各開一個 task
+        # （見 routers/line/webhook.py），同一個人連傳兩句會併行，第二句的
+        # agent 讀不到第一句的對話紀錄，回覆順序也可能顛倒。不同使用者之間
+        # 仍然併行。dict 以使用者為鍵，值是 (lock, 等待中的事件數)；沒人在
+        # 用就移除，所以大小上限是「此刻正在處理的使用者數」，不會無限長。
+        self._user_locks: dict[str, list] = {}
 
-
-    async def handle(self, event: MessageEvent) -> None:
+    async def handle(self, event) -> None:
         """分發單一事件至對應的方法處理。"""
-        user_id = getattr(event.source, "user_id", "")
-        reply_token = getattr(event, "reply_token", "")
-        if not user_id or not reply_token:
-            logger.warning("LINE event source missing user_id or reply_token")
+        source = getattr(event, "source", None)
+        if not isinstance(source, UserSource):
+            # 群組／聊天室（GroupSource／RoomSource）的事件：CARE 是一對一的
+            # 健康助理，個人檔案、對話紀錄、家人通報都綁在個人上，群組裡的
+            # 訊息不能拿某個人的檔案去回。只記 info、不回覆。
+            logger.info(
+                "略過非一對一來源的 LINE 事件 source=%s event=%s",
+                getattr(source, "type", None) or type(source).__name__,
+                type(event).__name__,
+            )
             return
+
+        user_id = getattr(source, "user_id", "") or ""
+        if not user_id:
+            logger.warning("LINE 事件缺少 user_id，無法處理 event=%s", type(event).__name__)
+            return
+
+        # reply_token 只有 message／postback／follow 這類事件才有；unfollow 沒有，
+        # 那不是格式錯誤。缺 token 的可回覆事件照常處理：replier 會自動改走 push。
+        reply_token = getattr(event, "reply_token", "") or ""
+        if not reply_token and not isinstance(event, UnfollowEvent):
+            logger.warning(
+                "LINE 事件缺少 reply_token，回覆將改走 push event=%s", type(event).__name__
+            )
 
         rid_token = set_request_id(new_request_id())
         started = time.perf_counter()
@@ -130,38 +167,69 @@ class LineEventDispatcher:
         event_type = type(event).__name__
         handler = getattr(self, f"_handle_{event_type}", self._handle_unsupported_event)
 
+        # 語言在進 handler 之前就決定好：以前是在 except 裡才查，處理失敗時
+        # 再查一次 Mongo——如果失敗的原因正是 Mongo 掛了，這一查會在 except
+        # 裡再炸一次，使用者連「發生錯誤」都收不到。
+        user_language = await self._resolve_user_language_safely(user_id)
+
         try:
             log_start(
                 logger,
                 event=_event_label(event),
                 user=user_id[:10],
             )
-            await handler(event)
+            async with self._user_lock(user_id):
+                await handler(event)
         except LineValidationError as e:
             status = "validation_error"
-            user_language = await self._resolve_user_language(user_id)
-            await self._replier.reply(
-                reply_token=reply_token,
-                message_text=str(e),
-                user_id=user_id,
-                voice_reply_enabled=False,
-                language=user_language,
-            )
+            await self._reply_error_safely(reply_token, user_id, str(e), user_language)
         except Exception:
             status = "error"
             logger.exception("Error in event dispatcher handling event %s", event_type)
-            user_language = await self._resolve_user_language(user_id)
-            await self._replier.reply(
-                reply_token=reply_token,
-                message_text=t("line.fallback_process_error", language=user_language),
-                user_id=user_id,
-                voice_reply_enabled=False,
-                language=user_language,
+            await self._reply_error_safely(
+                reply_token,
+                user_id,
+                t("line.fallback_process_error", language=user_language),
+                user_language,
             )
         finally:
             total_ms = int((time.perf_counter() - started) * 1000)
             log_done(logger, status=status, total_ms=total_ms)
             reset_request_id(rid_token)
+
+    @asynccontextmanager
+    async def _user_lock(self, user_id: str):
+        entry = self._user_locks.setdefault(user_id, [asyncio.Lock(), 0])
+        entry[1] += 1
+        try:
+            async with entry[0]:
+                yield
+        finally:
+            entry[1] -= 1
+            if entry[1] <= 0 and self._user_locks.get(user_id) is entry:
+                del self._user_locks[user_id]
+
+    async def _resolve_user_language_safely(self, user_id: str) -> str:
+        try:
+            return await self._resolve_user_language(user_id)
+        except Exception:
+            logger.warning("讀取使用者語言失敗，以預設語言回覆", exc_info=True)
+            return DEFAULT_USER_LANGUAGE
+
+    async def _reply_error_safely(
+        self, reply_token: str, user_id: str, text: str, language: str
+    ) -> None:
+        """except 分支裡的回覆：這裡再拋出去就沒有人接了（webhook 已回 200）。"""
+        try:
+            await self._replier.reply(
+                reply_token=reply_token,
+                message_text=text,
+                user_id=user_id,
+                voice_reply_enabled=False,
+                language=language,
+            )
+        except Exception:
+            logger.exception("錯誤說明也送不出去 user_id=%s", user_id[:10])
 
     async def _handle_MessageEvent(self, event: MessageEvent) -> None:
         message = event.message
@@ -358,6 +426,17 @@ class LineEventDispatcher:
                 language=user_language,
                 font_size=self._font_size_from_profile(user_profile),
             )
+        elif action == LOST_CONFIRM_ACTION:
+            # 走失分類器沒把握時，回覆下方多一顆「我迷路了，通知家人」，他按了。
+            # 原話從 postback 帶回來，家人收到的通報才有他當時說的話。
+            await self._message_handler.start_lost_flow(
+                user_id=user_id,
+                reply_token=reply_token,
+                user_text=params.get("w", [""])[0],
+                intent="lost",
+                language=user_language,
+                font_size=self._font_size_from_profile(user_profile),
+            )
         elif action == "already_done":
             await self._replier.reply(
                 reply_token=reply_token,
@@ -485,6 +564,9 @@ class LineEventDispatcher:
         發生錯誤」，那不該是新好友收到的第一則訊息。
         """
         user_id = getattr(event.source, "user_id", "")
+        # 封鎖後再加回：先前 unfollow 標成不再追蹤，這裡要標回來，排程器才會
+        # 再推播給他。標記失敗不擋歡迎卡。
+        await self._mark_following(user_id, True)
         try:
             language, font_size = await self._welcome_preferences(user_id)
             await self._replier.reply_flex(
@@ -496,6 +578,32 @@ class LineEventDispatcher:
             )
         except Exception:
             logger.exception("Failed to send welcome card")
+
+    async def _handle_UnfollowEvent(self, event: UnfollowEvent) -> None:
+        """封鎖或刪除好友：只把 profile 標成不再追蹤，不回覆（也沒有 reply token）。
+
+        不刪資料：LINE 的封鎖是可逆的，解除封鎖會再收到 FollowEvent；而且家人
+        族譜、用藥紀錄還掛在這個人身上。標記是給排程器用的——推播給封鎖我們的
+        人會被 LINE 拒收（400），白白吃額度還算成失敗。
+        """
+        user_id = getattr(event.source, "user_id", "")
+        updated = await self._mark_following(user_id, False)
+        log_stage(logger, "unfollow", updated=updated)
+
+    async def _mark_following(self, user_id: str, following: bool) -> bool:
+        """更新追蹤旗標；沒有 profile（從沒開過 LIFF）就沒東西可標，回 False。"""
+        if not user_id:
+            return False
+        set_following = self._set_following or UserProfileRepository.set_following
+        try:
+            return bool(
+                await set_following(user_id, following, datetime.now(tz=timezone.utc))
+            )
+        except Exception:
+            logger.exception(
+                "更新追蹤狀態失敗 user_id=%s following=%s", user_id[:10], following
+            )
+            return False
 
     async def _welcome_preferences(self, user_id: str) -> tuple[str, str]:
         """歡迎卡的語言與字級。

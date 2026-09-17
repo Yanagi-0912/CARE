@@ -126,16 +126,45 @@ async def test_accept_invitation_success(service):
     
     with patch("app.repositories.family_tree_repository.FamilyTreeRepository.get_invitation", new_callable=AsyncMock) as mock_get_invite, \
          patch("app.repositories.family_tree_repository.FamilyTreeRepository.get_by_user_id", new_callable=AsyncMock) as mock_get_tree, \
-         patch.object(FamilyTreeService, "add_to_family", new_callable=AsyncMock) as mock_add:
+         patch("app.repositories.family_tree_repository.FamilyTreeRepository.accept_invitation", new_callable=AsyncMock) as mock_claim, \
+         patch.object(FamilyTreeService, "_link_members", new_callable=AsyncMock) as mock_link:
         
         mock_get_invite.return_value = mock_invite
         mock_get_tree.return_value = None # 尚未建立族譜或對方族譜為空
+        mock_claim.return_value = mock_invite  # 原子搶佔成功
         
         status, message = await service.accept_invitation(invitee_id, code)
         
         assert status == "joined"
         assert message is None
-        mock_add.assert_called_once_with(invitee_id, code)
+        # 先搶邀請（帶上是誰接受的），再連結雙方族譜
+        mock_claim.assert_awaited_once_with(code, accepted_by=invitee_id)
+        mock_link.assert_awaited_once_with(inviter_id, invitee_id, None)
+
+
+@pytest.mark.asyncio
+async def test_accept_invitation_claimed_by_someone_else_is_410(service):
+    """讀到時還是 pending、搶的時候已被搶走：當成已使用，不改族譜。"""
+    code = "raced-token"
+    mock_invite = PendingInvitation(
+        _id=code,
+        inviter_id="U_INVITER",
+        status="pending",
+        created_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=1)
+    )
+    with patch("app.repositories.family_tree_repository.FamilyTreeRepository.get_invitation", new_callable=AsyncMock) as mock_get_invite, \
+         patch("app.repositories.family_tree_repository.FamilyTreeRepository.get_by_user_id", new_callable=AsyncMock) as mock_get_tree, \
+         patch("app.repositories.family_tree_repository.FamilyTreeRepository.accept_invitation", new_callable=AsyncMock) as mock_claim, \
+         patch.object(FamilyTreeService, "_link_members", new_callable=AsyncMock) as mock_link:
+        mock_get_invite.return_value = mock_invite
+        mock_get_tree.return_value = None
+        mock_claim.return_value = None
+
+        with pytest.raises(HTTPException) as excinfo:
+            await service.accept_invitation("U_NEW", code)
+        assert excinfo.value.status_code == 410
+        mock_link.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -242,10 +271,11 @@ def _invitation(*, status: str = "pending", expires_in: timedelta = timedelta(da
     [
         (_invitation(), True),
         (_invitation(status="accepted"), False),
+        (_invitation(status="revoked"), False),
         (_invitation(expires_in=timedelta(days=-1)), False),
         (None, False),
     ],
-    ids=["pending", "accepted", "expired", "missing"],
+    ids=["pending", "accepted", "revoked", "expired", "missing"],
 )
 async def test_is_invitation_usable(service, invitation, expected):
     with patch(

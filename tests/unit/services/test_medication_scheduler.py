@@ -11,10 +11,26 @@ from app.models.medication import (
     ReminderEntry,
 )
 from app.services.line_messaging.flex.medication_flex import MedicationGroup, MedicationListEntry
+from app.services.line_messaging.send_result import SendOutcome, SendResult
 from app.services.medication.medication_scheduler import (
     MedicationScheduler,
     _TickMedicationNameCache,
 )
+from app.services.scheduling.push_tick_scheduler import DispatchOutcome
+
+
+def _push_flex_result_via(replier):
+    """讓替身同時支援新舊兩種推播介面：排程器現在呼叫 `push_flex_result`，
+    既有測試仍以 `push_flex` 設定回傳值與斷言呼叫——`True` 翻成送達、
+    `False` 翻成暫時性失敗、例外原樣拋出（由排程器分類）。"""
+
+    async def _push(user_id, card):
+        outcome = await replier.push_flex(user_id, card)
+        if isinstance(outcome, SendResult):
+            return outcome
+        return SendResult.success() if outcome else SendResult(SendOutcome.TRANSIENT)
+
+    return AsyncMock(side_effect=_push)
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────
@@ -32,6 +48,7 @@ from app.services.medication.medication_scheduler import (
 def mock_replier():
     replier = MagicMock()
     replier.push_flex = AsyncMock(return_value=True)
+    replier.push_flex_result = _push_flex_result_via(replier)
     return replier
 
 
@@ -66,6 +83,11 @@ def log_repository():
     repo.release_patient_reminder = AsyncMock(return_value=True)
     repo.release_patient_urgent_reminder = AsyncMock(return_value=True)
     repo.release_caregiver_alert = AsyncMock(return_value=True)
+    # 推播權租約的三個結果回呼（送達／略過／立刻放棄）與不追蹤者的註銷。
+    repo.mark_stage_sent = AsyncMock(return_value=True)
+    repo.mark_stage_skipped = AsyncMock(return_value=True)
+    repo.give_up_stage = AsyncMock(return_value=True)
+    repo.cancel_pending_by_reminder = AsyncMock(return_value=1)
     # 用藥提醒拉霸：預設沒有歷史、寫入選項也拿不回紀錄，排程器因此照現行版本
     # 送出。拉霸本身的行為見 test_medication_scheduler_variants.py。
     repo.list_variant_outcomes = AsyncMock(return_value=[])
@@ -566,7 +588,8 @@ async def test_push_failure_releases_claim(scheduler, mock_replier, log_reposito
     await scheduler.process_ticks(now=now)
 
     mock_replier.push_flex.assert_awaited_once()
-    log_repository.release_patient_reminder.assert_awaited_once_with("LOG_1")
+    # 還回去時附上失敗分類（寫進 last_push_error），事後查得出這頓為什麼沒送到。
+    log_repository.release_patient_reminder.assert_awaited_once_with("LOG_1", error="transient")
 
 
 @pytest.mark.asyncio
@@ -578,7 +601,7 @@ async def test_push_exception_releases_claim(scheduler, mock_replier, log_reposi
 
     await scheduler.process_ticks(now=now)
 
-    log_repository.release_patient_reminder.assert_awaited_once_with("LOG_1")
+    log_repository.release_patient_reminder.assert_awaited_once_with("LOG_1", error="transient")
 
 
 # ── 推播文案的藥品區塊：只在組裝文案時解析，推播路徑不讀 medication_ids ──
@@ -1193,7 +1216,7 @@ async def test_send_patient_reminder_pushes_even_when_entries_have_no_thumbnail(
 
     sent = await scheduler._send_patient_reminder(log, cache)
 
-    assert sent is True
+    assert sent.ok
     mock_replier.push_flex.assert_awaited_once()
     call_args = mock_replier.push_flex.call_args[0]
     rendered = str(call_args[1].contents.to_dict())
@@ -1228,7 +1251,7 @@ async def test_send_patient_reminder_reads_names_from_shared_cache(scheduler, mo
 
     sent = await scheduler._send_patient_reminder(log, cache)
 
-    assert sent is True
+    assert sent.ok
     mock_replier.push_flex.assert_awaited_once()
     call_args = mock_replier.push_flex.call_args[0]
     rendered = str(call_args[1].contents.to_dict())
@@ -1249,7 +1272,7 @@ async def test_send_urgent_reminder_reads_names_from_shared_cache(scheduler, moc
 
     sent = await scheduler._send_urgent_reminder(log, cache)
 
-    assert sent is True
+    assert sent.ok
     mock_replier.push_flex.assert_awaited_once()
     call_args = mock_replier.push_flex.call_args[0]
     rendered = str(call_args[1].contents.to_dict())
@@ -1286,7 +1309,7 @@ async def test_send_caregiver_alert_reads_names_from_shared_cache(
 
     sent = await scheduler._send_caregiver_alert(log, cache)
 
-    assert sent is True
+    assert sent is DispatchOutcome.DELIVERED
     mock_replier.push_flex.assert_awaited_once()
     call_args = mock_replier.push_flex.call_args[0]
     assert call_args[0] == "U_CARE"  # 收件人仍是通報家屬
@@ -1526,10 +1549,11 @@ async def test_patient_reminder_suppressed_when_notify_reminder_off(
     sent = await scheduler._send_patient_reminder(log, scheduler._medication_cache([log]))
 
     mock_replier.push_flex.assert_not_awaited()
-    # 回 True 代表「這個階段已處理完」，不是「送成功」。_dispatch 的合約是
-    # 送失敗就把推播權還回去、下個 tick 重試；關掉通知若回 False，這筆會每
-    # 60 秒重試一次而永遠不會停。
-    assert sent is True
+    # SKIPPED 代表「這個階段已處理完、刻意不送」，不是失敗。_dispatch 的合約是
+    # 失敗就把推播權還回去、下個 tick 重試；關掉通知若當成失敗，這筆會每
+    # 60 秒重試一次而永遠不會停。也不是 DELIVERED：T+20／T+30 只對真的送達
+    # 的那一頓進行。
+    assert sent is DispatchOutcome.SKIPPED
 
 
 @pytest.mark.asyncio
@@ -1574,7 +1598,7 @@ async def test_urgent_reminder_suppressed_when_notify_reminder_off(
     sent = await scheduler._send_urgent_reminder(log, scheduler._medication_cache([log]))
 
     mock_replier.push_flex.assert_not_awaited()
-    assert sent is True
+    assert sent is DispatchOutcome.SKIPPED
 
 
 @pytest.mark.asyncio
@@ -1594,7 +1618,7 @@ async def test_caregiver_alert_suppressed_when_family_member_opts_out(
     sent = await scheduler._send_caregiver_alert(log, scheduler._medication_cache([log]))
 
     mock_replier.push_flex.assert_not_awaited()
-    assert sent is True
+    assert sent is DispatchOutcome.SKIPPED
 
 
 @pytest.mark.asyncio
@@ -1612,15 +1636,21 @@ async def test_caregiver_alert_sent_when_family_opts_in(
 
 
 @pytest.mark.asyncio
-async def test_notify_reminder_does_not_gate_caregiver_alert(
+async def test_patient_opt_out_means_family_is_not_alerted(
     scheduler, mock_replier, mock_user_profile_service
 ):
-    """兩個開關管的是不同的收件人，不得互相影響。"""
+    """用藥者關掉「用藥提醒通知」＝不追蹤他的服藥：家屬的 notify_family 再開，
+    也不會收到「他漏吃了」——他從頭到尾沒收到任何提醒可以回應。
+
+    這與「家屬各自決定要不要被通報」不衝突：那個開關管的是家屬收不收，
+    這裡管的是這個人的服藥到底算不算數。
+    """
     mock_user_profile_service.get_user_profile = AsyncMock(
         return_value=_profile_with(notify_reminder=False, notify_family=True)
     )
     log = _pending_log(alert_notify_user_id="U_FAMILY")
 
-    await scheduler._send_caregiver_alert(log, scheduler._medication_cache([log]))
+    sent = await scheduler._send_caregiver_alert(log, scheduler._medication_cache([log]))
 
-    mock_replier.push_flex.assert_awaited()
+    mock_replier.push_flex.assert_not_awaited()
+    assert sent is DispatchOutcome.SKIPPED

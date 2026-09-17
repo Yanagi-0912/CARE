@@ -109,7 +109,7 @@ async def _suggest(table, term, age, text="要看哪一科"):
 
 _REFERENCES = tuple(
     SourceReference(code=code, name=f"{code} 醫院", url=f"https://example.com/{code}")
-    for code in ("TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "A", "B", "D", "E")
+    for code in ("TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "A", "B", "D", "E")
 )
 
 
@@ -344,7 +344,7 @@ def test_T11_candidates_sorted_by_source_count_then_facility_count(table):
 @pytest.mark.parametrize(
     ("term", "expected"),
     [
-        ("坐骨神經痛", ["復健科", "神經外科", "骨科"]),
+        ("坐骨神經痛", ["神經外科", "復健科", "骨科", "神經科"]),
         ("性病", ["內科", "皮膚科", "泌尿科"]),
     ],
 )
@@ -584,14 +584,14 @@ def test_T27_largest_card_passes_line_validation(font_size):
 _SUGGESTION_CASES = [
     ("D1", "咳嗽", 40, 4, [("內科", ("胸腔內科",), 3)], ["NCKUH_TN", "NTUH_YL", "CTH_XD"]),
     ("D2", "咳嗽", 8, 4, [("內科", ("胸腔內科",), 3), ("兒科", (), 1)], ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "CTH_XD"]),
-    ("D4", "嘔吐", 8, 2, [("內科", ("胃腸肝膽科",), 1), ("兒科", (), 1)], ["TPVGH_YL", "CTH_XD"]),
+    ("D4", "嘔吐", 8, 3, [("內科", ("胃腸肝膽科",), 2), ("兒科", (), 1)], ["TPVGH_YL", "CTH_XD", "AFGH_TY"]),
     (
         "D6",
         "坐骨神經痛",
         40,
-        5,
-        [("復健科", (), 3), ("神經外科", (), 3), ("骨科", (), 1)],
-        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH"],
+        6,
+        [("神經外科", (), 4), ("復健科", (), 3), ("骨科", (), 1), ("神經科", ("神經內科",), 1)],
+        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY"],
     ),
     (
         "D7",
@@ -601,12 +601,12 @@ _SUGGESTION_CASES = [
         [("內科", ("感染科",), 2), ("皮膚科", (), 2), ("泌尿科", (), 1)],
         ["NCKUH_TN", "NTUH_YL", "AFGH_KH"],
     ),
-    ("D8", "感冒", 40, 5, [("內科", (), 5), ("耳鼻喉科", (), 1)], ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH"]),
-    ("D9", "氣喘", 40, 6, [("內科", ("胸腔內科",), 5)], ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH"]),
-    ("D10", "高血脂", 40, 2, [("內科", ("新陳代謝內分泌科", "心臟內科"), 2)], ["NCKUH_TN", "NTUH_YL"]),
-    ("D11", "酒癮", 40, 5, [("精神科", (), 5)], ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH"]),
+    ("D8", "感冒", 40, 6, [("內科", (), 5), ("耳鼻喉科", (), 2)], ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY"]),
+    ("D9", "氣喘", 40, 7, [("內科", ("胸腔內科",), 6)], ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY"]),
+    ("D10", "高血脂", 40, 2, [("內科", ("新陳代謝及內分泌科", "心臟內科"), 2)], ["NCKUH_TN", "NTUH_YL"]),
+    ("D11", "酒癮", 40, 6, [("精神科", (), 6)], ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY"]),
     ("D12", "身心障礙者牙科照護", 40, 1, [("牙科", ("特殊需求者牙科",), 1)], ["NTUH_YL"]),
-    ("D16", "腹瀉", 40, 3, [("內科", ("胃腸肝膽科",), 3)], ["TPVGH_YL", "NCKUH_TN", "CTH_XD"]),
+    ("D16", "腹瀉", 40, 4, [("內科", ("胃腸肝膽科",), 4)], ["TPVGH_YL", "NCKUH_TN", "CTH_XD", "AFGH_TY"]),
 ]
 
 

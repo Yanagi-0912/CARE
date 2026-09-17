@@ -109,7 +109,7 @@ async def _suggest(table, term, age, text="要看哪一科"):
 
 _REFERENCES = tuple(
     SourceReference(code=code, name=f"{code} 醫院", url=f"https://example.com/{code}")
-    for code in ("V", "N", "Y", "A", "B", "C", "D", "E")
+    for code in ("V", "N", "Y", "H", "A", "B", "C", "D", "E")
 )
 
 
@@ -344,7 +344,7 @@ def test_T11_candidates_sorted_by_source_count_then_facility_count(table):
 @pytest.mark.parametrize(
     ("term", "expected"),
     [
-        ("坐骨神經痛", ["神經外科", "復健科", "骨科"]),
+        ("坐骨神經痛", ["復健科", "神經外科", "骨科"]),
         ("性病", ["內科", "皮膚科", "泌尿科"]),
     ],
 )
@@ -353,7 +353,7 @@ def test_T12_order_follows_sources_not_manual_rank(table, term, expected):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("term", ["咳嗽", "感冒", "氣喘", "高血脂"])
+@pytest.mark.parametrize("term", ["咳嗽", "氣喘", "高血脂"])
 async def test_T13_withdrawn_additions_leave_only_internal_medicine(table, term):
     result = await _suggest(table, term, 40)
     assert result.kind == RESULT_SUGGESTION
@@ -589,9 +589,9 @@ _SUGGESTION_CASES = [
         "D6",
         "坐骨神經痛",
         40,
-        3,
-        [("神經外科", (), 2), ("復健科", (), 1), ("骨科", (), 1)],
-        ["V", "N", "Y"],
+        4,
+        [("復健科", (), 2), ("神經外科", (), 2), ("骨科", (), 1)],
+        ["V", "N", "Y", "H"],
     ),
     (
         "D7",
@@ -601,12 +601,12 @@ _SUGGESTION_CASES = [
         [("內科", ("感染科",), 2), ("皮膚科", (), 1), ("泌尿科", (), 1)],
         ["N", "Y"],
     ),
-    ("D8", "感冒", 40, 2, [("內科", (), 2)], ["N", "Y"]),
-    ("D9", "氣喘", 40, 3, [("內科", ("胸腔內科",), 2)], ["N", "Y"]),
+    ("D8", "感冒", 40, 3, [("內科", (), 3), ("耳鼻喉科", (), 1)], ["N", "Y", "H"]),
+    ("D9", "氣喘", 40, 4, [("內科", ("胸腔內科",), 3)], ["N", "Y", "H"]),
     ("D10", "高血脂", 40, 2, [("內科", ("新陳代謝內分泌科", "心臟內科"), 2)], ["N", "Y"]),
-    ("D11", "酒癮", 40, 3, [("精神科", (), 3)], ["V", "N", "Y"]),
+    ("D11", "酒癮", 40, 4, [("精神科", (), 4)], ["V", "N", "Y", "H"]),
     ("D12", "身心障礙者牙科照護", 40, 1, [("牙科", ("特殊需求者牙科",), 1)], ["Y"]),
-    ("D13", "頭痛", 40, 3, [("神經科", (), 3), ("家醫科", (), 1)], ["V", "N", "Y"]),
+    ("D13", "頭痛", 40, 4, [("神經科", (), 4), ("內科", ("一般內科",), 1), ("家醫科", (), 1)], ["V", "N", "Y", "H"]),
     ("D16", "腹瀉", 40, 2, [("內科", ("胃腸肝膽科",), 2)], ["V", "N"]),
 ]
 

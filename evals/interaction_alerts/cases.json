@@ -1,0 +1,123 @@
+{
+  "_readme": [
+    "用藥風險偵測（OtcAlertService）的手動測資。每一組都由 verify.py 以 repo 內真實的",
+    "drug_catalog.json、tcm_catalog.json、tcm_drug_interactions.json 驗證過會落在",
+    "expect 指定的規則上——品名取自藥證庫且在全庫唯一，掃描時才定得出證號。",
+    "",
+    "existing = 當事人目前仍有效的用藥（先加進用藥提醒）。",
+    "added    = 這一次掃描新加入的藥（觸發側，必須含成藥或中藥，否則整條通道不啟動）。",
+    "expect   = bleeding | overlap | stacking | tcm | none。優先序見 OtcAlertService._check。",
+    "",
+    "中藥沒有藥證字號，走方名比對，因此 tcm 的品項只給 name。"
+  ],
+  "cases": [
+    {
+      "id": "T1_tcm_formula_x_warfarin",
+      "rule": "tcm",
+      "story": "阿嬤自費看中醫拿了六味地黃丸，家裡還有醫師開的抗凝血藥",
+      "existing": [{"name": "可邁丁錠２．５公絲", "license_number": "衛署藥輸字第020346號"}],
+      "added": [{"name": "六味地黃丸", "kind": "tcm"}],
+      "expect": {"rule": "tcm", "tcm": "六味地黃丸", "western": "WARFARIN"}
+    },
+    {
+      "id": "T2_tcm_herb_x_amitriptyline",
+      "rule": "tcm",
+      "story": "感冒拿葛根湯，正在吃三環抗憂鬱劑；命中的是方裡的麻黃，不是方名",
+      "existing": [{"name": "怡神定糖衣錠", "license_number": "衛署藥製字第004829號"}],
+      "added": [{"name": "葛根湯", "kind": "tcm"}],
+      "expect": {"rule": "tcm", "tcm": "麻黃", "western": "AMITRIPTYLINE"}
+    },
+    {
+      "id": "T3_tcm_licorice_x_digoxin",
+      "rule": "tcm",
+      "story": "參苓白朮散裡的人參與甘草都與毛地黃登錄過交互作用；方裡藥材順序讓人參先命中",
+      "existing": [{"name": "隆我心錠", "license_number": "衛署藥輸字第009554號"}],
+      "added": [{"name": "參苓白朮散", "kind": "tcm"}],
+      "expect": {"rule": "tcm", "tcm": "人參", "western": "DIGOXIN"}
+    },
+    {
+      "id": "T4_tcm_formula_x_amlodipine",
+      "rule": "tcm",
+      "story": "血府逐瘀湯會影響 Amlodipine 的降血壓效果",
+      "existing": [{"name": "安洛適錠5毫克", "license_number": "衛部藥製字第059415號"}],
+      "added": [{"name": "血府逐瘀湯", "kind": "tcm"}],
+      "expect": {"rule": "tcm", "tcm": "血府逐瘀湯", "western": "AMLODIPINE"}
+    },
+    {
+      "id": "T5_tcm_reverse_otc_added",
+      "rule": "tcm",
+      "story": "反向：正在吃小青龍湯，自己去藥局買了布洛芬止痛",
+      "existing": [{"name": "小青龍湯", "kind": "tcm"}],
+      "added": [{"name": "達利炎錠", "license_number": "衛署藥製字第010823號"}],
+      "expect": {"rule": "tcm", "tcm": "小青龍湯", "western": "IBUPROFEN"}
+    },
+    {
+      "id": "T6_tcm_x_tcm_shared_herb",
+      "rule": "overlap",
+      "story": "同一次拿兩帖中藥，兩帖都含甘草",
+      "existing": [],
+      "added": [
+        {"name": "參苓白朮散", "kind": "tcm"},
+        {"name": "益氣聰明湯", "kind": "tcm"}
+      ],
+      "expect": {"rule": "overlap", "shared": ["甘草"]}
+    },
+    {
+      "id": "T7_otc_overlap_acetaminophen",
+      "rule": "overlap",
+      "story": "一盒當止痛藥、一盒當感冒散，兩邊都有乙醯胺酚",
+      "existing": [],
+      "added": [
+        {"name": "泰諾強效錠", "license_number": "衛署藥輸字第023230號"},
+        {"name": "分能鎮錠", "license_number": "衛署藥製字第018150號"}
+      ],
+      "expect": {"rule": "overlap", "shared_contains": "ACETAMINOPHEN"}
+    },
+    {
+      "id": "T8_otc_stacking_anticholinergic",
+      "rule": "stacking",
+      "story": "鼻子過敏的藥配暈車藥，成分不同但抗膽鹼作用加倍",
+      "existing": [],
+      "added": [
+        {"name": "怡尼錠", "license_number": "衛署藥製字第002985號"},
+        {"name": "樂得寧錠５０毫克", "license_number": "衛署藥輸字第023587號"}
+      ],
+      "expect": {"rule": "stacking", "pair": ["CHLORPHENIRAMINE MALEATE", "DIMENHYDRINATE"]}
+    },
+    {
+      "id": "T9_bleeding_nsaid_x_warfarin",
+      "rule": "bleeding",
+      "story": "最重要的一組：自己買的止痛藥配醫師開的抗凝血藥",
+      "existing": [{"name": "可邁丁錠２．５公絲", "license_number": "衛署藥輸字第020346號"}],
+      "added": [{"name": "達利炎錠", "license_number": "衛署藥製字第010823號"}],
+      "expect": {"rule": "bleeding", "pair_id": "nsaid_x_antithrombotic"}
+    },
+    {
+      "id": "N1_all_prescription",
+      "rule": "none",
+      "story": "陰性對照：新加入的全是處方藥，這條通道整個不啟動",
+      "existing": [],
+      "added": [
+        {"name": "安洛適錠5毫克", "license_number": "衛部藥製字第059415號"},
+        {"name": "\"國嘉\"濾糖素錠850毫克", "license_number": "衛部藥製字第058523號"}
+      ],
+      "expect": {"rule": "none", "why": "new_otc 為空"}
+    },
+    {
+      "id": "N2_local_action_eye_drop",
+      "rule": "none",
+      "story": "陰性對照：眼藥水與過敏藥都含 chlorpheniramine，但點眼是局部作用，不該報",
+      "existing": [{"name": "新一點靈Ｂ１２眼藥水", "license_number": "內衛藥製字第016863號"}],
+      "added": [{"name": "怡尼錠", "license_number": "衛署藥製字第002985號"}],
+      "expect": {"rule": "none", "why": "點眼液劑在 local_action_dosage_forms"}
+    },
+    {
+      "id": "N3_tcm_no_registered_pair",
+      "rule": "none",
+      "story": "陰性對照：中藥與西藥都在，但配對表沒登錄這一組",
+      "existing": [{"name": "\"國嘉\"濾糖素錠850毫克", "license_number": "衛部藥製字第058523號"}],
+      "added": [{"name": "四君子湯", "kind": "tcm"}],
+      "expect": {"rule": "none", "why": "METFORMIN 只與大黃配對"}
+    }
+  ]
+}

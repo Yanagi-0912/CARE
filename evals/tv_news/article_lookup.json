@@ -3,46 +3,10 @@
     "channel": "台視",
     "headline": "6週就見效! 研究曝\"番茄\"能改善脂肪肝",
     "query": "台視 6週就見效! 研究曝 番茄 能改善脂肪肝",
-    "channel_only": [
-      {
-        "title": "6週就見效！ 研究曝「番茄」能改善脂肪肝- 台視影音",
-        "url": "https://ttv.com.tw/videocity/video_play.asp?id=943033&from=613",
-        "domain": "ttv.com.tw",
-        "own_site": true,
-        "score": 1.0
-      },
-      {
-        "title": "新竹球場沒雨積水高虹安:排水預算被刪- 台視影音",
-        "url": "https://ttv.com.tw/videocity/video_play.asp?id=654961&sid=5&from=707",
-        "domain": "ttv.com.tw",
-        "own_site": true,
-        "score": 0.0
-      },
-      {
-        "title": "【寶島西米樂守護】第217集預告| 台視八點檔年度大戲",
-        "url": "https://ttv.com.tw/videocity/video_play.asp?id=912662&from=613",
-        "domain": "ttv.com.tw",
-        "own_site": true,
-        "score": 0.0
-      },
-      {
-        "title": "6週就見效！ 研究曝「番茄」能改善脂肪肝- 台視影音",
-        "url": "https://www.ttv.com.tw/videocity/video_play.asp?id=942471&sid=5&from=707",
-        "domain": "www.ttv.com.tw",
-        "own_site": true,
-        "score": 1.0
-      },
-      {
-        "title": "就讓盧卡斯大師來好好幫兩位美女開示一下…。 | 台視60週年大戲",
-        "url": "https://www.ttv.com.tw/videocity/video_play.asp?id=626923&sid=8424&from=707",
-        "domain": "www.ttv.com.tw",
-        "own_site": true,
-        "score": 0.125
-      }
-    ],
     "open": [
       {
         "title": "6週就見效！ 研究曝「番茄」能改善脂肪肝 - YouTube",
+        "description": "番茄#脂肪肝#慢性發炎台灣每三人就有一人罹患脂肪肝！不過國際最新研究指出，每天攝取200公克生番茄，再加上適量番茄醬，持續六週，就能顯著降低肝臟 ...",
         "url": "https://www.youtube.com/watch?v=2phSRAP8igw",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -50,6 +14,7 @@
       },
       {
         "title": "研究曝「番茄」能改善脂肪肝6週就見效！ #番茄| 台視新聞台",
+        "description": "研究曝「番茄」能改善脂肪肝6週就見效！ #番茄.",
         "url": "https://www.facebook.com/ttvnews/videos/%E7%A0%94%E7%A9%B6%E6%9B%9D%E7%95%AA%E8%8C%84%E8%83%BD%E6%94%B9%E5%96%84%E8%84%82%E8%82%AA%E8%82%9D-6%E9%80%B1%E5%B0%B1%E8%A6%8B%E6%95%88-%E7%95%AA%E8%8C%84/1030163902955131/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -57,6 +22,7 @@
       },
       {
         "title": "700萬台人有脂肪肝！研究曝「這水果」能改善脂肪肝：6週就見效",
+        "description": "台灣脂肪肝盛行率高，每3名成人就有1人受影響。一項研究發現，每天攝取200克番茄及50克番茄醬，持續6週後，肝臟脂肪堆積降幅顯著優於對照組。",
         "url": "https://tw.news.yahoo.com/700%E8%90%AC%E5%8F%B0%E4%BA%BA%E6%9C%89%E8%84%82%E8%82%AA%E8%82%9D-%E7%A0%94%E7%A9%B6%E6%9B%9D-%E9%80%99%E6%B0%B4%E6%9E%9C-%E8%83%BD%E6%94%B9%E5%96%84%E8%84%82%E8%82%AA%E8%82%9D-6%E9%80%B1%E5%B0%B1%E8%A6%8B%E6%95%88-085300867.html",
         "domain": "tw.news.yahoo.com",
         "own_site": false,
@@ -64,6 +30,7 @@
       },
       {
         "title": "6週就見效！ 研究曝「番茄」能改善脂肪肝- 台視影音",
+        "description": "02:02. 三高族群罹帶狀皰疹風險高40%？恐增中風心梗風險 ; 02:09. 體適能與長壽相關研究：表現佳者死亡風險降61% ; 01:52. 睡前喝牛奶助眠30歲女罹患「猛爆性齲齒」 ; 01:47.",
         "url": "https://ttv.com.tw/videocity/video_play.asp?id=943033&from=613",
         "domain": "ttv.com.tw",
         "own_site": true,
@@ -71,6 +38,7 @@
       },
       {
         "title": "脂肪肝天天吃番茄有差！研究曝：6週肝脂肪指標下降| 中天電視台",
+        "description": "更重要的是，這項研究觀察到的是肝臟脂肪指標改善，並不代表「吃番茄就能治好脂肪肝」，研究也沒有發現肝纖維化出現明顯改善。加上研究只有79人、追蹤 ...",
         "url": "https://today.line.me/tw/v3/article/qoRgl1w",
         "domain": "today.line.me",
         "own_site": false,
@@ -82,46 +50,10 @@
     "channel": "台視",
     "headline": "健檢.癌篩.打疫苗可獲得 健康幣預計10月上線",
     "query": "台視 健檢.癌篩.打疫苗可獲得 健康幣預計10月上線",
-    "channel_only": [
-      {
-        "title": "「健康幣」10月上線！健檢、疫苗接種都能賺可兌換健康商品",
-        "url": "https://news.ttv.com.tw/news/11508270004600W",
-        "domain": "news.ttv.com.tw",
-        "own_site": true,
-        "score": 0.4
-      },
-      {
-        "title": "健檢.癌篩.打疫苗可獲得健康幣預計10月上線 - 台視",
-        "url": "https://www.ttv.com.tw/videocity/video_play.asp?id=945391&sid=5&from=707",
-        "domain": "www.ttv.com.tw",
-        "own_site": true,
-        "score": 1.0
-      },
-      {
-        "title": "「健康幣」10月上線健檢800幣.癌篩最高1000幣擬與超商合作",
-        "url": "https://news.ttv.com.tw/news/11508280012600I",
-        "domain": "news.ttv.com.tw",
-        "own_site": true,
-        "score": 0.4
-      },
-      {
-        "title": "賴總統推健康幣健檢.癌篩.打疫苗「有做就有幣」 - 台視新聞",
-        "url": "https://news.ttv.com.tw/news/11508270011700I",
-        "domain": "news.ttv.com.tw",
-        "own_site": true,
-        "score": 0.4
-      },
-      {
-        "title": "「健康幣」要來了！健檢、打疫苗可積點這5大通路換好禮 - 台視新聞",
-        "url": "https://news.ttv.com.tw/news/11509170001200W",
-        "domain": "news.ttv.com.tw",
-        "own_site": true,
-        "score": 0.3
-      }
-    ],
     "open": [
       {
         "title": "口腔癌篩檢及疫苗接種服務。 不知道自己或家人符合哪些資格？歡迎來電 ...",
+        "description": "3 days ago · ※健康幣的上線 ... 衛福部規劃10 月推出健康幣。符合資格完成成人健檢、癌症篩檢或指 定疫苗接種，就有機會累積健康幣。成人健檢目前規劃 可累積800 幣。",
         "url": "https://www.facebook.com/weihope168/videos/-%E5%81%9A%E5%81%A5%E5%BA%B7%E6%AA%A2%E6%9F%A5%E9%82%84%E6%9C%89%E6%A9%9F%E6%9C%83%E7%B4%AF%E7%A9%8D%E5%81%A5%E5%BA%B7%E5%B9%A3%E8%A1%9B%E7%A6%8F%E9%83%A8%E8%A6%8F%E5%8A%83-10-%E6%9C%88%E6%8E%A8%E5%87%BA%E5%81%A5%E5%BA%B7%E5%B9%A3%E7%AC%A6%E5%90%88%E8%B3%87%E6%A0%BC%E5%AE%8C%E6%88%90%E6%88%90%E4%BA%BA%E5%81%A5%E6%AA%A2%E7%99%8C%E7%97%87%E7%AF%A9%E6%AA%A2%E6%88%96%E6%8C%87%E5%AE%9A%E7%96%AB%E8%8B%97%E6%8E%A5%E7%A8%AE%E5%B0%B1%E6%9C%89%E6%A9%9F%E6%9C%83%E7%B4%AF%E7%A9%8D%E5%81%A5%E5%BA%B7%E5%B9%A3%E6%88%90%E4%BA%BA%E5%81%A5%E6%AA%A2%E7%9B%AE%E5%89%8D%E8%A6%8F%E5%8A%83%E5%8F%AF%E7%B4%AF%E7%A9%8D-800-%E5%B9%A3%E5%BD%B1%E7%89%87%E5%B8%B6/1096678636419530/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -129,6 +61,7 @@
       },
       {
         "title": "健檢.癌篩.打疫苗可獲得健康幣預計10月上線 - YouTube",
+        "description": "#賴清德 #健康幣 #疫苗 總統賴清德推動健康台灣，預計在今天宣布「健康幣」政策，鼓勵民眾接受健康檢查、癌症篩檢和疫苗注射，就可以獲得健康幣，規劃 ...",
         "url": "https://www.youtube.com/watch?v=PVDKQz_45pk",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -136,6 +69,7 @@
       },
       {
         "title": "打疫苗.癌篩賺健康幣估10月上線可換超商食品| 華視新聞 - LINE TODAY",
+        "description": "藉由健康幣鼓勵民眾主動接受成人預防保健，不只施打疫苗可以獲得，另外包含B型、C型肝炎、乳癌、口腔癌等篩檢，也納入健康幣獎勵範圍，可以到四大超商兌換 ...",
         "url": "https://today.line.me/tw/v3/article/KwVmvJn",
         "domain": "today.line.me",
         "own_site": false,
@@ -143,6 +77,7 @@
       },
       {
         "title": "健康幣10月上路癌篩打疫苗可集點國健署：12月起兌換商品 - 中央社",
+        "description": "# 健康幣10月上路癌篩打疫苗可集點　國健署：12月起兌換商品\n2026/9/16 11:44（9/16 11:55 更新）\n\n[![](https://imgcdn.cna.com.tw/www/website/img/support.svg)](https://www.cna.com.tw/donate/)\n\n![健康幣10月上線，打疫苗可獲得點數。（中央社檔案照片）](https://imgcdn.cna.com.tw/www/WebPhotos/800/20260907/2000x1500_wmky_717722437415_0.jpg)健康幣10月上線，打疫苗可獲得點數。（\n\n（中央社記者 [陳婕翎](https://www.cna.com.tw/author/0110/) 台北16日電）健康幣10月開跑，適用對象是18歲以上具健保資格的民眾，包含外籍人士，癌篩、打疫苗可獲點數，最高可累積1萬3150點。\n\n沈靜芬表示，健康幣10月上線後，系統正式啟動，民眾就可以開始累積健康行為所獲得的點數；至於實際開始兌換，則預計要到12月。\n\n[#COVID-19](https://www.cna.com.tw/tag/364/)\n\n[#國健署](https://www.cna.com.tw/tag/13247/)\n\n[#流感](https://www.cna.com.tw/tag/27133/)\n\n[#疫苗](https://www.cna.com.tw/tag/27172/)\n\n[#沈靜芬](https://www.cna.com.tw/tag/51958/)\n\n[#健康幣](https://www.cna.com.tw/tag/55634/)\n\n延伸閱讀\n\n[健康幣10月上線　健檢癌篩打疫苗2年最高賺1.3萬元](https://www.cna.com.tw/news/ahel/202608270289.aspx) [健康幣外國人在內有健保卡就能用　兌換處有望加入健身房](https://www.cna.com.tw/news/ahel/202609010165.aspx) [健康幣怎麼用？委員建議戒菸、買原型食物都納獎勵](https://www.cna.com.tw/news/aipl/202608270349.aspx) [健康幣超商1點抵1元　10月後完成癌篩疫苗才能領](https://www.cna.com.tw/news/ahel/202608270344.aspx) [公費流感疫苗10/1開打　首次引進加強型流感疫苗是什麼？QA一次看](https://www.cna.com.tw/news/ahel/202609075003.aspx)\n\n[健康幣](https://www.cna.com.tw/topic/newstopic/5074.aspx)\n\n- 健康幣10月上路癌篩打疫苗可集點　國健署：12月起兌換商品\n\n2026/09/16 11:44\n\n- [台灣首度引進長者加強型流感疫苗　衛福部拚116年增至60萬劑](https://www.cna.com.tw/news/ahel/202609070068.aspx)\n\n2026/09/07 11:53\n\n2026/09/01 15:03\n\n支持中央社\n\n台灣首度引進長者加強型流感疫苗　衛福部拚116年增至60萬劑\n\n12\n\n更多編輯台推薦新聞：",
         "url": "https://www.cna.com.tw/news/ahel/202609160088.aspx",
         "domain": "www.cna.com.tw",
         "own_site": false,
@@ -150,6 +85,7 @@
       },
       {
         "title": "有做就有幣！健康幣10月正式上線健檢、癌篩、打疫苗都能賺幣",
+        "description": "接受成人預防保健及B、C型肝炎篩檢、或是癌症篩檢部分,乳癌、口腔癌及肺癌篩檢都可以獲得健康幣 納入獎勵範圍",
         "url": "https://www.nownews.com/news/6869492?srsltid=AU7gw4XAird3Mhv0shs74m3b3CjveHCywzJMYOcHJhGR9jMGjw0RlyQ5",
         "domain": "www.nownews.com",
         "own_site": false,
@@ -161,39 +97,10 @@
     "channel": "台視",
     "headline": "賴總統推動\"健康幣\" 鼓勵民眾健檢.接種疫苗",
     "query": "台視 賴總統推動 健康幣  鼓勵民眾健檢.接種疫苗",
-    "channel_only": [
-      {
-        "title": "賴總統推健康幣健檢.癌篩.打疫苗「有做就有幣」 - 台視新聞",
-        "url": "https://news.ttv.com.tw/news/11508270011700I",
-        "domain": "news.ttv.com.tw",
-        "own_site": true,
-        "score": 0.611
-      },
-      {
-        "title": "「健康幣」要來了！健檢、打疫苗可積點這5大通路換好禮 - 台視新聞",
-        "url": "https://news.ttv.com.tw/news/11509170001200W",
-        "domain": "news.ttv.com.tw",
-        "own_site": true,
-        "score": 0.389
-      },
-      {
-        "title": "「健康幣」10月上線！健檢、疫苗接種都能賺可兌換健康商品",
-        "url": "https://news.ttv.com.tw/news/11508270004600W",
-        "domain": "news.ttv.com.tw",
-        "own_site": true,
-        "score": 0.389
-      },
-      {
-        "title": "健檢.癌篩.打疫苗可獲得健康幣預計10月上線 - 台視",
-        "url": "https://www.ttv.com.tw/videocity/video_play.asp?id=945391&sid=5&from=707",
-        "domain": "www.ttv.com.tw",
-        "own_site": true,
-        "score": 0.167
-      }
-    ],
     "open": [
       {
         "title": "健檢.癌篩.打疫苗可獲得健康幣預計10月上線 - YouTube",
+        "description": "賴清德 #健康幣 #疫苗 總統賴清德推動健康台灣，預計在今天宣布「健康幣」政策，鼓勵民眾接受健康檢查、癌症篩檢和疫苗注射，就可以獲得健康幣，規劃 ...",
         "url": "https://www.youtube.com/watch?v=PVDKQz_45pk",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -201,6 +108,7 @@
       },
       {
         "title": "賴總統推健康幣健檢.癌篩.打疫苗「有做就有幣」 - Yahoo新聞",
+        "description": "總統賴清德推動健康台灣，預計在今（27）天宣布「健康幣」政策，鼓勵民眾接受健康檢查、癌症篩檢和疫苗注射，就可以獲得健康幣，並規劃用在超商、量販 ...",
         "url": "https://tw.news.yahoo.com/%E8%B3%B4%E7%B8%BD%E7%B5%B1%E6%8E%A8%E5%81%A5%E5%BA%B7%E5%B9%A3-%E5%81%A5%E6%AA%A2-%E7%99%8C%E7%AF%A9-%E6%89%93%E7%96%AB%E8%8B%97-%E6%9C%89%E5%81%9A%E5%B0%B1%E6%9C%89%E5%B9%A3-053717730.html",
         "domain": "tw.news.yahoo.com",
         "own_site": false,
@@ -208,6 +116,7 @@
       },
       {
         "title": "健康集點大作戰衛福部推健康幣賴清德總統宣布 - Threads",
+        "description": "衛福部將於十月推出健康幣政策，只要滿十八歲並完成公費健檢、癌症篩檢或疫苗接種，即可累積點數，未來可在超商、賣場及藥局折抵消費。",
         "url": "https://www.threads.com/@yjfps2021/post/DcscRakEpbT/%E5%81%A5%E5%BA%B7%E9%9B%86%E9%BB%9E%E5%A4%A7%E4%BD%9C%E6%88%B0-%E8%A1%9B%E7%A6%8F%E9%83%A8%E6%8E%A8%E5%81%A5%E5%BA%B7%E5%B9%A3%E8%B3%B4%E6%B8%85%E5%BE%B7%E7%B8%BD%E7%B5%B1%E5%AE%A3%E5%B8%83%E5%9B%A0%E7%82%BA%E5%8F%B0%E7%81%A3%E5%B7%B2%E9%80%B2%E5%85%A5%E8%B6%85%E9%AB%98%E9%BD%A1%E7%A4%BE%E6%9C%83%E5%81%A5%E5%BA%B7%E6%94%BF%E7%AD%96%E5%BF%85%E9%A0%88%E7%94%B1%E7%96%BE%E7%97%85%E6%B2%BB%E7%99%82%E9%80%90%E6%AD%A5%E8%BD%89%E5%90%91%E5%81%A5%E5%BA%B7%E4%BF%83%E9%80%B2%E8%88%87%E9%A0%90%E9%98%B2%E9%86%AB%E5%AD%B8%E5%9B%A0%E6%AD%A4%E4%BB%8A%E5%B9%B410%E6%9C%88%E8%A1%9B%E7%A6%8F%E9%83%A8%E5%B0%87%E6%8E%A8%E5%87%BA%E5%81%A5%E5%BA%B7%E5%B9%A3%E6%94%BF%E7%AD%96%E8%AE%93%E6%B0%91%E7%9C%BE%E9%A1%98/",
         "domain": "www.threads.com",
         "own_site": false,
@@ -215,6 +124,7 @@
       },
       {
         "title": "賴總統推健康幣健檢.癌篩.打疫苗「有做就有幣」 - 台視新聞",
+        "description": "賴總統預計在週四（27日）下午的健康台灣推動委員會，拍板「健康幣」的重要政策，鼓勵民眾接受成人健康檢查、癌症篩檢和疫苗接種，就能獲得健康幣，並規劃 ...",
         "url": "https://news.ttv.com.tw/news/11508270011700I",
         "domain": "news.ttv.com.tw",
         "own_site": true,
@@ -222,6 +132,7 @@
       },
       {
         "title": "健檢、癌篩、打疫苗都能領獎勵！賴清德預告「健康幣」10月上路",
+        "description": "〔記者陳昀／台北報導〕總統賴清德今主持健康台灣推動委員會會議時宣布，衛福部將於10月正式推出「健康幣」政策，獎勵國人主動進行健檢、癌症篩檢與 ...",
         "url": "https://today.line.me/tw/v3/article/vX8GDRl",
         "domain": "today.line.me",
         "own_site": false,
@@ -233,10 +144,10 @@
     "channel": "中視",
     "headline": "日專家:多吃蛋不可怕! 85歲\"每天5顆蛋\"變有精神",
     "query": "中視 日專家:多吃蛋不可怕! 85歲 每天5顆蛋 變有精神",
-    "channel_only": [],
     "open": [
       {
         "title": "多吃蛋不可怕! 85歲\"每天5顆蛋\"變有精神 中視新聞20221113 - YouTube",
+        "description": "日專家:多吃蛋不可怕! 85歲\"每天5顆蛋\"變有精神│中視新聞20221113 · Comments.",
         "url": "https://www.youtube.com/watch?v=zhHwfPes4Rw",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -244,6 +155,7 @@
       },
       {
         "title": "大家一天都吃幾顆蛋？ | 中視新聞 - Facebook",
+        "description": "日專家:多吃蛋不可怕! 85歲\"每天5顆蛋\"變有精神 … 4y 1 劉家瑋 就算沒吃雞蛋也是會有膽固醇~吃雞蛋補充",
         "url": "https://www.facebook.com/Ctfansctvnews/videos/%E6%97%A5%E5%B0%88%E5%AE%B6%E5%A4%9A%E5%90%83%E8%9B%8B%E4%B8%8D%E5%8F%AF%E6%80%95-85%E6%AD%B2%E6%AF%8F%E5%A4%A95%E9%A1%86%E8%9B%8B%E8%AE%8A%E6%9C%89%E7%B2%BE%E7%A5%9E/847726726660974/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -251,6 +163,7 @@
       },
       {
         "title": "【長者更要吃蛋，別因膽固醇錯過營養】 「年紀大了，蛋黃少吃一點",
+        "description": "✓ 每天可適量吃蛋 ✓ 搭配豆類、魚類與蔬菜 ✓ 少油炸、少加工、少高糖 ✓ 配合運動，才能守住肌肉與體力 但若有高血脂、糖尿病、心血管疾病或腎臟病，仍 ...",
         "url": "https://www.facebook.com/61590281136232/videos/%E9%95%B7%E8%80%85%E6%9B%B4%E8%A6%81%E5%90%83%E8%9B%8B%E5%88%A5%E5%9B%A0%E8%86%BD%E5%9B%BA%E9%86%87%E9%8C%AF%E9%81%8E%E7%87%9F%E9%A4%8A%E5%B9%B4%E7%B4%80%E5%A4%A7%E4%BA%86%E8%9B%8B%E9%BB%83%E5%B0%91%E5%90%83%E4%B8%80%E9%BB%9E%E8%86%BD%E5%9B%BA%E9%86%87%E6%89%8D%E4%B8%8D%E6%9C%83%E5%A4%AA%E9%AB%98%E5%BE%88%E5%A4%9A%E9%95%B7%E8%80%85%E5%9B%A0%E7%82%BA%E9%80%99%E5%8F%A5%E8%A9%B1%E9%80%A3%E9%9B%9E%E8%9B%8B%E9%83%BD%E4%B8%8D%E6%95%A2%E5%90%83%E4%BD%86%E7%9C%9F%E6%AD%A3%E8%A6%81%E6%93%94%E5%BF%83%E7%9A%84%E5%8F%AF%E8%83%BD%E4%B8%8D%E5%8F%AA%E6%98%AF%E8%86%BD%E5%9B%BA%E9%86%87%E8%80%8C%E6%98%AF%E8%9B%8B%E7%99%BD%E8%B3%AA%E5%90%83%E4%B8%8D%E5%A4%A0%E8%82%8C%E8%82%89%E6%85%A2%E6%85%A2%E6%B5%81%E5%A4%B1%E9%AB%94%E5%8A%9B/1977033336343045/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -258,6 +171,7 @@
       },
       {
         "title": "80歲男虛弱需人攙扶「自認最後一次回診了」醫囑每天吃5顆水煮蛋竟不 ...",
+        "description": "一位80多歲虛弱長者成重拾元氣與精神活力,完全不靠吃藥,而是每天吃5顆蛋,而且兩個月內就「回春」。 專家:是「元氣指數」 栗原毅解釋,白蛋白 … 特別是肉類 ...",
         "url": "https://health.tvbs.com.tw/nutrition/355192",
         "domain": "health.tvbs.com.tw",
         "own_site": false,
@@ -265,6 +179,7 @@
       },
       {
         "title": "一天吃5顆蛋85歲男回春身體大逆轉 - 中時新聞網",
+        "description": "日專家:多吃蛋不可怕! 85歲\"每天5顆蛋\"變有精神 ・ 抽血指數、精神狀態都變好了; 醫師建議他「多吃肉跟蛋」。 4個月後A先生再度回診 ・ 一口氣增加至4.5g ...",
         "url": "https://www.chinatimes.com/realtimenews/20221113001130-260405",
         "domain": "www.chinatimes.com",
         "own_site": false,
@@ -276,18 +191,10 @@
     "channel": "中視",
     "headline": "這些食物連皮吃竟能抗癌?! 高麗菜外葉.番茄皮超營養?!",
     "query": "中視 這些食物連皮吃竟能抗癌?! 高麗菜外葉.番茄皮超營養?!",
-    "channel_only": [
-      {
-        "title": "這些食物\"連皮吃\"竟能抗癌?! 高麗菜外葉.番茄皮\"超營養\"?!  中視新聞 ...",
-        "url": "https://www.ctv.com.tw/Article/%E9%80%99%E4%BA%9B%E9%A3%9F%E7%89%A9-%E9%80%A3%E7%9A%AE%E5%90%83-%E7%AB%9F%E8%83%BD%E6%8A%97%E7%99%8C-%E9%AB%98%E9%BA%97%E8%8F%9C%E5%A4%96%E8%91%89-%E7%95%AA%E8%8C%84%E7%9A%AE-%E8%B6%85%E7%87%9F%E9%A4%8A-%E4%B8%AD%E8%A6%96%E6%96%B0%E8%81%9E-20260410",
-        "domain": "www.ctv.com.tw",
-        "own_site": true,
-        "score": 1.0
-      }
-    ],
     "open": [
       {
         "title": "這些食物-連皮吃-竟能抗癌-高麗菜外葉-番茄皮-超營養-中視新聞-20260410",
+        "description": "其實是植物的防護罩 … 其實是植物的防護罩,營養密度常常比果肉還要高,像是番茄皮.高麗菜外層都非常營養,還有些蔬果外皮吃了竟然可以抗癌。",
         "url": "https://www.ctv.com.tw/Article/%E9%80%99%E4%BA%9B%E9%A3%9F%E7%89%A9-%E9%80%A3%E7%9A%AE%E5%90%83-%E7%AB%9F%E8%83%BD%E6%8A%97%E7%99%8C-%E9%AB%98%E9%BA%97%E8%8F%9C%E5%A4%96%E8%91%89-%E7%95%AA%E8%8C%84%E7%9A%AE-%E8%B6%85%E7%87%9F%E9%A4%8A-%E4%B8%AD%E8%A6%96%E6%96%B0%E8%81%9E-20260410",
         "domain": "www.ctv.com.tw",
         "own_site": true,
@@ -295,6 +202,7 @@
       },
       {
         "title": "這些食物連皮吃竟能抗癌?! 高麗菜外葉.番茄皮超營養?! 中視新聞 ...",
+        "description": "這些食物連皮吃竟能抗癌?! 高麗菜外葉.番茄皮超營養 ?!│中視新聞20260410 吃蔬菜水果很多人習慣先削皮，但其實削掉的不只是皮 還是滿滿的精華，營養 ...",
         "url": "https://www.facebook.com/Ctfansctvnews/photos/%E9%80%99%E4%BA%9B%E9%A3%9F%E7%89%A9-%E9%80%A3%E7%9A%AE%E5%90%83-%E7%AB%9F%E8%83%BD%E6%8A%97%E7%99%8C-%E9%AB%98%E9%BA%97%E8%8F%9C%E5%A4%96%E8%91%89%E7%95%AA%E8%8C%84%E7%9A%AE-%E8%B6%85%E7%87%9F%E9%A4%8A-%E4%B8%AD%E8%A6%96%E6%96%B0%E8%81%9E-20260410%E5%90%83%E8%94%AC%E8%8F%9C%E6%B0%B4%E6%9E%9C%E5%BE%88%E5%A4%9A%E4%BA%BA%E7%BF%92%E6%85%A3%E5%85%88%E5%89%8A%E7%9A%AE%E4%BD%86%E5%85%B6%E5%AF%A6%E5%89%8A%E6%8E%89%E7%9A%84%E4%B8%8D%E5%8F%AA%E6%98%AF%E7%9A%AE%E9%82%84%E6%98%AF%E6%BB%BF%E6%BB%BF%E7%9A%84%E7%B2%BE%E8%8F%AF%E7%87%9F%E9%A4%8A%E5%B8%AB%E8%AA%AA%E6%9E%9C%E7%9A%AE%E5%85%B6%E5%AF%A6%E6%98%AF%E6%A4%8D/1034361562595067/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -302,6 +210,7 @@
       },
       {
         "title": "你吃蔬果習慣把皮削得乾乾淨淨嗎？小心你削掉的不是皮，而是最精華的 ...",
+        "description": "茄紅素與多種營養主要集中在果皮，建議連皮一起吃效 果最好。 高麗菜外層：降低癌症風險 重點功效：富含蘿蔔硫素、維生素C、葉綠素與植化素 ，可抗發炎 ...",
         "url": "https://www.facebook.com/irtalking/videos/%E4%BD%A0%E5%90%83%E8%94%AC%E6%9E%9C%E7%BF%92%E6%85%A3%E6%8A%8A%E7%9A%AE%E5%89%8A%E5%BE%97%E4%B9%BE%E4%B9%BE%E6%B7%A8%E6%B7%A8%E5%97%8E%E5%B0%8F%E5%BF%83%E4%BD%A0%E5%89%8A%E6%8E%89%E7%9A%84%E4%B8%8D%E6%98%AF%E7%9A%AE%E8%80%8C%E6%98%AF%E6%9C%80%E7%B2%BE%E8%8F%AF%E7%9A%84%E7%87%9F%E9%A4%8A%E5%85%B6%E5%AF%A6%E8%94%AC%E6%9E%9C%E7%9A%AE%E6%98%AF%E6%A4%8D%E7%89%A9%E7%9A%84%E5%A4%A9%E7%84%B6%E9%98%B2%E8%AD%B7%E7%BD%A9%E5%BE%80%E5%BE%80%E5%90%AB%E6%9C%89%E6%AF%94%E6%9E%9C%E8%82%89%E6%9B%B4%E8%B1%90%E5%AF%8C%E7%9A%84%E6%8A%97%E6%B0%A7%E5%8C%96%E7%89%A9%E7%BA%96%E7%B6%AD%E5%92%8C%E6%A4%8D%E5%8C%96%E7%B4%A0-%E7%95%AA%E8%8C%84%E7%9A%AE%E8%8C%84%E7%B4%85%E7%B4%A0%E8%B6%85%E8%B1%90%E5%AF%8C%E9%87%8D%E9%BB%9E%E5%8A%9F/2140645293393800/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -309,6 +218,7 @@
       },
       {
         "title": "這些食物\"連皮吃\"竟能抗癌?! 高麗菜外葉.番茄皮\"超營養\"?! 中視 ... - YouTube",
+        "description": "Share your videos with friends, family, and the world.",
         "url": "https://www.youtube.com/watch?v=Z4z8HEqKpLs",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -316,6 +226,7 @@
       },
       {
         "title": "網傳影片「高麗菜切碎後靜置30分鐘才能產生抗癌成分」？",
+        "description": "一、營養師表示，網傳影片稱高麗菜切碎後靜置可產生的抗癌物質，實為異硫氰酸鹽類的植化素，具抗氧化、抗發炎特性，但並非高麗菜獨有，多數十字花科蔬菜皆 ...",
         "url": "https://www.myccf.org.tw/21067/%E7%B6%B2%E5%82%B3%E5%BD%B1%E7%89%87%E3%80%8C%E9%AB%98%E9%BA%97%E8%8F%9C%E5%88%87%E7%A2%8E%E5%BE%8C%E9%9D%9C%E7%BD%AE30%E5%88%86%E9%90%98%E6%89%8D%E8%83%BD%E7%94%A2%E7%94%9F%E6%8A%97%E7%99%8C%E6%88%90",
         "domain": "www.myccf.org.tw",
         "own_site": false,
@@ -327,46 +238,10 @@
     "channel": "中視",
     "headline": "高麗菜外層\"超營養\"別丟! 這些食物\"連皮吃\"竟能抗癌?!",
     "query": "中視 高麗菜外層 超營養 別丟! 這些食物 連皮吃 竟能抗癌?!",
-    "channel_only": [
-      {
-        "title": "這些食物\"連皮吃\"竟能抗癌?! 高麗菜外葉.番茄皮\"超營養\"?!  中視新聞 ...",
-        "url": "https://www.ctv.com.tw/Article/%E9%80%99%E4%BA%9B%E9%A3%9F%E7%89%A9-%E9%80%A3%E7%9A%AE%E5%90%83-%E7%AB%9F%E8%83%BD%E6%8A%97%E7%99%8C-%E9%AB%98%E9%BA%97%E8%8F%9C%E5%A4%96%E8%91%89-%E7%95%AA%E8%8C%84%E7%9A%AE-%E8%B6%85%E7%87%9F%E9%A4%8A-%E4%B8%AD%E8%A6%96%E6%96%B0%E8%81%9E-20260410",
-        "domain": "www.ctv.com.tw",
-        "own_site": true,
-        "score": 0.524
-      },
-      {
-        "title": "放閃! 和妻\"大學照\"曝蔣萬安靦腆\"不敢牽手\"?  中視新聞20210314",
-        "url": "https://www.ctv.com.tw/Article/%E6%94%BE%E9%96%83-%E5%92%8C%E5%A6%BB-%E5%A4%A7%E5%AD%B8%E7%85%A7-%E6%9B%9D-%E8%94%A3%E8%90%AC%E5%AE%89%E9%9D%A6%E8%85%86-%E4%B8%8D%E6%95%A2%E7%89%BD%E6%89%8B-%E4%B8%AD%E8%A6%96%E6%96%B0%E8%81%9E-20210314",
-        "domain": "www.ctv.com.tw",
-        "own_site": true,
-        "score": 0.0
-      },
-      {
-        "title": "民代竟是暴力討債主嫌-蒐證3年終逮人-中視新聞-20191002",
-        "url": "https://www.ctv.com.tw/Article/%E6%B0%91%E4%BB%A3%E7%AB%9F%E6%98%AF%E6%9A%B4%E5%8A%9B%E8%A8%8E%E5%82%B5%E4%B8%BB%E5%AB%8C-%E8%92%90%E8%AD%893%E5%B9%B4%E7%B5%82%E9%80%AE%E4%BA%BA-%E4%B8%AD%E8%A6%96%E6%96%B0%E8%81%9E-20191002",
-        "domain": "www.ctv.com.tw",
-        "own_site": true,
-        "score": 0.048
-      },
-      {
-        "title": "全民星攻略-甜點男友分類學-主委現場親自授課 - 中視",
-        "url": "https://www.ctv.com.tw/Article/-%E5%85%A8%E6%B0%91%E6%98%9F%E6%94%BB%E7%95%A5-%E7%94%9C%E9%BB%9E%E7%94%B7%E5%8F%8B%E5%88%86%E9%A1%9E%E5%AD%B8-%E4%B8%BB%E5%A7%94%E7%8F%BE%E5%A0%B4%E8%A6%AA%E8%87%AA%E6%8E%88%E8%AA%B2-",
-        "domain": "www.ctv.com.tw",
-        "own_site": true,
-        "score": 0.0
-      },
-      {
-        "title": "中年喪子-李登輝一生不可承受之痛-中視新聞-20200730",
-        "url": "https://www.ctv.com.tw/Article/%E4%B8%AD%E5%B9%B4%E5%96%AA%E5%AD%90-%E6%9D%8E%E7%99%BB%E8%BC%9D%E4%B8%80%E7%94%9F%E4%B8%8D%E5%8F%AF%E6%89%BF%E5%8F%97%E4%B9%8B%E7%97%9B-%E4%B8%AD%E8%A6%96%E6%96%B0%E8%81%9E-20200730",
-        "domain": "www.ctv.com.tw",
-        "own_site": true,
-        "score": 0.0
-      }
-    ],
     "open": [
       {
         "title": "《原來如此 》 看完之後，對吃榴槤皮充滿自信 - Threads",
+        "description": "GIV 中視新聞HD HD 綜合許謙林稚惠台南23-29 這些食物物”連皮吃”美竟能抗癌？！ 高麗莱外葉番茄皮”超營養?! ... 吃蔬菜水果習慣削皮,恐怕都做了,原來皮都是 ...",
         "url": "https://www.threads.com/@teresalove1224/video/DXF-MfzEx0L/video-%E5%8E%9F%E4%BE%86%E5%A6%82%E6%AD%A4%E7%9C%8B%E5%AE%8C%E4%B9%8B%E5%BE%8C%E5%B0%8D%E5%90%83%E6%A6%B4%E6%A7%A4%E7%9A%AE%E5%85%85%E6%BB%BF%E8%87%AA%E4%BF%A1",
         "domain": "www.threads.com",
         "own_site": false,
@@ -374,6 +249,7 @@
       },
       {
         "title": "這些食物-連皮吃-竟能抗癌-高麗菜外葉-番茄皮-超營養-中視新聞-20260410",
+        "description": "吃蔬菜水果很多人習慣先削皮，但其實削掉的不只是皮還是滿滿的精華，營養師說果皮其實是植物的防護罩，營養密度常常比果肉還要高，像是番茄皮.高麗菜 ...",
         "url": "https://www.ctv.com.tw/Article/%E9%80%99%E4%BA%9B%E9%A3%9F%E7%89%A9-%E9%80%A3%E7%9A%AE%E5%90%83-%E7%AB%9F%E8%83%BD%E6%8A%97%E7%99%8C-%E9%AB%98%E9%BA%97%E8%8F%9C%E5%A4%96%E8%91%89-%E7%95%AA%E8%8C%84%E7%9A%AE-%E8%B6%85%E7%87%9F%E9%A4%8A-%E4%B8%AD%E8%A6%96%E6%96%B0%E8%81%9E-20260410",
         "domain": "www.ctv.com.tw",
         "own_site": true,
@@ -381,6 +257,7 @@
       },
       {
         "title": "超後悔！以前高麗菜外葉都丟掉？外葉藏「3大驚人祕密」這樣煮變好吃",
+        "description": "高麗菜外葉別丟！這樣煮＝營養＋好吃 · 快炒：將外葉切細後，加入蒜頭和適量油脂快炒。 · 煮湯：將外葉加入湯中，例如搭配蛋花或豆腐一同熬煮，高麗菜的甜味 ...",
         "url": "https://health.tvbs.com.tw/nutrition/362040",
         "domain": "health.tvbs.com.tw",
         "own_site": false,
@@ -388,6 +265,7 @@
       },
       {
         "title": "網傳影片「高麗菜切碎後靜置30分鐘才能產生抗癌成分」？",
+        "description": "黃淑惠表示，雖然高麗菜切碎後靜置確實會產生具有抗氧化成分的異硫氰酸鹽類，但並不是只有高麗菜有，而是包括芥菜、油菜、白蘿蔔等所有十字花科蔬菜都 ...",
         "url": "https://www.myccf.org.tw/21067/%E7%B6%B2%E5%82%B3%E5%BD%B1%E7%89%87%E3%80%8C%E9%AB%98%E9%BA%97%E8%8F%9C%E5%88%87%E7%A2%8E%E5%BE%8C%E9%9D%9C%E7%BD%AE30%E5%88%86%E9%90%98%E6%89%8D%E8%83%BD%E7%94%A2%E7%94%9F%E6%8A%97%E7%99%8C%E6%88%90",
         "domain": "www.myccf.org.tw",
         "own_site": false,
@@ -395,6 +273,7 @@
       },
       {
         "title": "你吃蔬果習慣把皮削得乾乾淨淨嗎？小心你削掉的不是皮，而是最精華的 ...",
+        "description": "茄紅素與多種營養主要集中在果皮，建議連皮一起吃效 果最好。 高麗菜外層：降低癌症風險 重點功效：富含蘿蔔硫素、維生素C、葉綠素與植化素 ，可抗發炎 ...",
         "url": "https://www.facebook.com/irtalking/videos/%E4%BD%A0%E5%90%83%E8%94%AC%E6%9E%9C%E7%BF%92%E6%85%A3%E6%8A%8A%E7%9A%AE%E5%89%8A%E5%BE%97%E4%B9%BE%E4%B9%BE%E6%B7%A8%E6%B7%A8%E5%97%8E%E5%B0%8F%E5%BF%83%E4%BD%A0%E5%89%8A%E6%8E%89%E7%9A%84%E4%B8%8D%E6%98%AF%E7%9A%AE%E8%80%8C%E6%98%AF%E6%9C%80%E7%B2%BE%E8%8F%AF%E7%9A%84%E7%87%9F%E9%A4%8A%E5%85%B6%E5%AF%A6%E8%94%AC%E6%9E%9C%E7%9A%AE%E6%98%AF%E6%A4%8D%E7%89%A9%E7%9A%84%E5%A4%A9%E7%84%B6%E9%98%B2%E8%AD%B7%E7%BD%A9%E5%BE%80%E5%BE%80%E5%90%AB%E6%9C%89%E6%AF%94%E6%9E%9C%E8%82%89%E6%9B%B4%E8%B1%90%E5%AF%8C%E7%9A%84%E6%8A%97%E6%B0%A7%E5%8C%96%E7%89%A9%E7%BA%96%E7%B6%AD%E5%92%8C%E6%A4%8D%E5%8C%96%E7%B4%A0-%E7%95%AA%E8%8C%84%E7%9A%AE%E8%8C%84%E7%B4%85%E7%B4%A0%E8%B6%85%E8%B1%90%E5%AF%8C%E9%87%8D%E9%BB%9E%E5%8A%9F/2140645293393800/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -406,10 +285,10 @@
     "channel": "中視",
     "headline": "吃茄子削皮\"等於白吃\" 深紫色富含\"花青素\"比肉還多",
     "query": "中視 吃茄子削皮 等於白吃  深紫色富含 花青素 比肉還多",
-    "channel_only": [],
     "open": [
       {
         "title": "你吃蔬果習慣把皮削得乾乾淨淨嗎？小心你削掉的不是皮，而是最精華的 ...",
+        "description": "其實，蔬果皮是植物的「天然防護罩」，往往含有比果 肉更豐富的抗氧化物、纖維和植化素。 番茄皮：茄紅素超豐富 重點功效：抗氧化力強、膳食纖維倍增。",
         "url": "https://www.facebook.com/irtalking/videos/%E4%BD%A0%E5%90%83%E8%94%AC%E6%9E%9C%E7%BF%92%E6%85%A3%E6%8A%8A%E7%9A%AE%E5%89%8A%E5%BE%97%E4%B9%BE%E4%B9%BE%E6%B7%A8%E6%B7%A8%E5%97%8E%E5%B0%8F%E5%BF%83%E4%BD%A0%E5%89%8A%E6%8E%89%E7%9A%84%E4%B8%8D%E6%98%AF%E7%9A%AE%E8%80%8C%E6%98%AF%E6%9C%80%E7%B2%BE%E8%8F%AF%E7%9A%84%E7%87%9F%E9%A4%8A%E5%85%B6%E5%AF%A6%E8%94%AC%E6%9E%9C%E7%9A%AE%E6%98%AF%E6%A4%8D%E7%89%A9%E7%9A%84%E5%A4%A9%E7%84%B6%E9%98%B2%E8%AD%B7%E7%BD%A9%E5%BE%80%E5%BE%80%E5%90%AB%E6%9C%89%E6%AF%94%E6%9E%9C%E8%82%89%E6%9B%B4%E8%B1%90%E5%AF%8C%E7%9A%84%E6%8A%97%E6%B0%A7%E5%8C%96%E7%89%A9%E7%BA%96%E7%B6%AD%E5%92%8C%E6%A4%8D%E5%8C%96%E7%B4%A0-%E7%95%AA%E8%8C%84%E7%9A%AE%E8%8C%84%E7%B4%85%E7%B4%A0%E8%B6%85%E8%B1%90%E5%AF%8C%E9%87%8D%E9%BB%9E%E5%8A%9F/2140645293393800/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -417,6 +296,7 @@
       },
       {
         "title": "【健康好生活超精彩回顧】紅得發紫！「花青素」蔬果護眼抗老又防癌 ...",
+        "description": "... 素#酚類化合物#血管彈性#紫甘籃#紅葉生菜#茄子#紫洋蔥#火龍果#甜菜素#醬香茄子#酒釀#豬肉料理#藍莓煙燻鴨胸#藍莓果醬#葡萄酒#鴨肉料理#口服皮膚化妝品 ...",
         "url": "https://www.youtube.com/watch?v=bbGpvIFP5fU",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -424,6 +304,7 @@
       },
       {
         "title": "茄子不只吸油！穩血壓成分是其他蔬菜2900倍| 大紀元 - 大纪元",
+        "description": "紫茄子的大部分花青素和茄色苷都集中在外皮,連皮吃還能多得到一些膳食纖維。所以只要皮還嫩、吃起來不礙口,留下來更划算。",
         "url": "https://www.epochtimes.com/b5/26/8/24/n14835279.htm",
         "domain": "www.epochtimes.com",
         "own_site": false,
@@ -431,6 +312,7 @@
       },
       {
         "title": "最強花青素食物是什麼？營養師整理12種花青素食物排行 - VITABOX",
+        "description": "紫色高麗菜比起一般的綠色高麗菜，含有更豐富的維生素C、鉀、銅、花青素等營養素，其中花青素含量更高達109～185mg／100g 的，是花青素含量最高的蔬菜！",
         "url": "https://shop.vitabox.com.tw/pages/anthocyanin-food?srsltid=AU7gw4WJJvg6_QMaZwQ8fYtkTyrb0NMY85DNIUW9XQrxLrOTFh50hu5U",
         "domain": "shop.vitabox.com.tw",
         "own_site": false,
@@ -438,6 +320,7 @@
       },
       {
         "title": "「食物顏色研究所」紫色快tag討厭吃茄子的朋友今天要介紹 ... - Instagram",
+        "description": "你身邊有討厭吃茄子的朋友嗎？ 快tag他過來看看！ 而紫色的水果與蔬菜通常會含有： 花青素、白藜蘆醇、羥基肉桂酸 今天舉出四種紫色食物來評比 1.芋心甘薯 ...",
         "url": "https://www.instagram.com/p/CQfYtPsHJfO/",
         "domain": "www.instagram.com",
         "own_site": false,
@@ -449,46 +332,10 @@
     "channel": "華視",
     "headline": "吃麵食不怕肥 寬麵比細麵熱量低",
     "query": "華視 吃麵食不怕肥 寬麵比細麵熱量低",
-    "channel_only": [
-      {
-        "title": "吃麵食不怕肥寬麵比細麵熱量低- 生活- 華視新聞網",
-        "url": "https://news.cts.com.tw/cts/life/202201/202201072068045.html",
-        "domain": "news.cts.com.tw",
-        "own_site": true,
-        "score": 1.0
-      },
-      {
-        "title": "身體也要排毒除濕自我檢測四關鍵- 生活- 華視新聞網",
-        "url": "https://news.cts.com.tw/cts/life/202201/202201212069439.html",
-        "domain": "news.cts.com.tw",
-        "own_site": true,
-        "score": 0.0
-      },
-      {
-        "title": "吐司夾蛋\"多道手續\" 熱量可減少四成! - 生活 - 華視新聞網",
-        "url": "https://news.cts.com.tw/cts/life/202111/202111192062891.html",
-        "domain": "news.cts.com.tw",
-        "own_site": true,
-        "score": 0.143
-      },
-      {
-        "title": "【台語新聞】藏身巷弄西螺國中30年肉羹麵攤滋味不凡",
-        "url": "https://news.cts.com.tw/cts/life/202203/202203182074754.html",
-        "domain": "news.cts.com.tw",
-        "own_site": true,
-        "score": 0.143
-      },
-      {
-        "title": "腹式呼吸簡單運動一招減緩恐慌症狀 - 華視新聞網",
-        "url": "https://news.cts.com.tw/cts/life/202202/202202112071420.html",
-        "domain": "news.cts.com.tw",
-        "own_site": true,
-        "score": 0.0
-      }
-    ],
     "open": [
       {
         "title": "吃麵食不怕肥寬麵比細麵熱量低｜健康大群組｜華視新聞20220107",
+        "description": "您吃飯還是吃麵？今天除了要來探討麵的熱量外，還要來分享2個有關麵的議題，高敏敏營養師認為吃麵可以看出1個人的性格，他為什麼會這麼說，準嗎？",
         "url": "https://www.youtube.com/watch?v=SGVN1cnZvcE",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -496,6 +343,7 @@
       },
       {
         "title": "吃麵食不怕肥寬麵比細麵熱量低 - Yahoo新聞",
+        "description": "您吃飯還是吃麵？今天除了要來探討麵的熱量外，還要來分享2個有關麵的議題，高敏敏營養師認為吃麵可以看出1個人的性格，他為什麼會這麼說，準嗎？還有麵 ...",
         "url": "https://tw.news.yahoo.com/%E5%90%83%E9%BA%B5%E9%A3%9F%E4%B8%8D%E6%80%95%E8%82%A5-%E5%AF%AC%E9%BA%B5%E6%AF%94%E7%B4%B0%E9%BA%B5%E7%86%B1%E9%87%8F%E4%BD%8E-012500930.html",
         "domain": "tw.news.yahoo.com",
         "own_site": false,
@@ -503,6 +351,7 @@
       },
       {
         "title": "吃麵食不怕肥寬麵比細麵熱量低- 生活- 華視新聞網",
+        "description": "您吃飯還是吃麵？今天除了要來探討麵的熱量外，還要來分享2個有關麵的議題，高敏敏營養師認為吃麵可以看出1個人的性格，他為什麼會這麼說，準嗎？",
         "url": "https://news.cts.com.tw/cts/life/202201/202201072068045.html",
         "domain": "news.cts.com.tw",
         "own_site": true,
@@ -510,6 +359,7 @@
       },
       {
         "title": "乾麵、湯麵哪個好？寬麵好還是細麵？營養師教你5大攻略吃麵食不怕肥",
+        "description": "寬麵好還是細麵更熱量更低呢？台灣營養學會理事、輔仁大學營養科學系副教授劉沁瑜提供5大麵食 ... 再者寬麵條因為接觸面積的關係，沾上油脂和調味料的面積會比等量的細麵少。",
         "url": "https://health.tvbs.com.tw/nutrition/323017",
         "domain": "health.tvbs.com.tw",
         "own_site": false,
@@ -517,6 +367,7 @@
       },
       {
         "title": "吃麵食不怕肥寬麵比細麵熱量低| 華視新聞 - LINE TODAY",
+        "description": "您吃飯還是吃麵？今天除了要來探討麵的熱量外，還要來分享2個有關麵的議題，高敏敏營養師認為吃麵可以看出1個人的性格，他為什麼會這麼說，準嗎？",
         "url": "https://today.line.me/tw/v3/article/x2Nqy9w",
         "domain": "today.line.me",
         "own_site": false,
@@ -528,46 +379,10 @@
     "channel": "民視",
     "headline": "電磁波.基地台危害健康? NCC實測澄清",
     "query": "民視 電磁波.基地台危害健康? NCC實測澄清",
-    "channel_only": [
-      {
-        "title": "電磁波、基地台危害健康？NCC實測澄清 - 民視新聞",
-        "url": "https://www.ftvnews.com.tw/news/detail/2019913L01M1",
-        "domain": "www.ftvnews.com.tw",
-        "own_site": true,
-        "score": 1.0
-      },
-      {
-        "title": "【電磁波大解密#1】電磁波、基地台危害健康？NCC實測澄清",
-        "url": "https://www.ftvnews.com.tw/news/detail/2019916W0016",
-        "domain": "www.ftvnews.com.tw",
-        "own_site": true,
-        "score": 1.0
-      },
-      {
-        "title": "電磁波- 第1頁- 相關新聞- 民視新聞網",
-        "url": "https://www.ftvnews.com.tw/tag/%E9%9B%BB%E7%A3%81%E6%B3%A2/",
-        "domain": "www.ftvnews.com.tw",
-        "own_site": true,
-        "score": 0.176
-      },
-      {
-        "title": "怕致癌？光的電磁波比手機基地台強幾十萬倍- 民視新聞網",
-        "url": "https://www.ftvnews.com.tw/news/detail/2019914P01M1",
-        "domain": "www.ftvnews.com.tw",
-        "own_site": true,
-        "score": 0.353
-      },
-      {
-        "title": "最高、最偏遠基地台！聯繫泰雅部落災害通訊 - 民視新聞",
-        "url": "https://www.ftvnews.com.tw/news/detail/2019A03L02M1",
-        "domain": "www.ftvnews.com.tw",
-        "own_site": true,
-        "score": 0.235
-      }
-    ],
     "open": [
       {
         "title": "電磁波、基地台危害健康? NCC實測澄清－民視新聞 - YouTube",
+        "description": "【民視即時新聞】行動通訊越來越便利，但是很多民眾都害怕基地台設在自家附近，電磁波會對人體健康產生危害，NCC就要帶大家去看看他們樓頂的基地台， ...",
         "url": "https://www.youtube.com/watch?v=PIR8faHWQzQ",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -575,6 +390,7 @@
       },
       {
         "title": "電磁波、基地台危害健康？NCC實測澄清 - 民視新聞",
+        "description": "行動通訊越來越便利，但是很多民眾都害怕 ...",
         "url": "https://www.ftvnews.com.tw/news/detail/2019913L01M1",
         "domain": "www.ftvnews.com.tw",
         "own_site": true,
@@ -582,6 +398,7 @@
       },
       {
         "title": "【電磁波大解密#1】電磁波、基地台危害健康？NCC實測澄清 - 民視新聞",
+        "description": "Your browser can't ...",
         "url": "https://www.ftvnews.com.tw/news/detail/2019916W0016",
         "domain": "www.ftvnews.com.tw",
         "own_site": true,
@@ -589,6 +406,7 @@
       },
       {
         "title": "【電磁波大解密#1】電磁波、基地台危害健康？NCC實測澄清 - Yahoo新聞",
+        "description": "溫俊瑜解釋，「如果基地台電磁波，對人體健康有害的話，你想我們怎麼可能，把基地台設在我們樓頂上，我在這邊其實已經上班20年，我的身體還很健康。」.",
         "url": "https://tw.news.yahoo.com/%E9%9B%BB%E7%A3%81%E6%B3%A2%E5%A4%A7%E8%A7%A3%E5%AF%86-1-%E9%9B%BB%E7%A3%81%E6%B3%A2-%E5%9F%BA%E5%9C%B0%E5%8F%B0%E5%8D%B1%E5%AE%B3%E5%81%A5%E5%BA%B7-ncc%E5%AF%A6%E6%B8%AC%E6%BE%84%E6%B8%85-110905764.html",
         "domain": "tw.news.yahoo.com",
         "own_site": false,
@@ -596,6 +414,7 @@
       },
       {
         "title": "討論牆| 電磁波、基地台危害健康？NCC實測澄清 - LINE TODAY",
+        "description": "電磁波、基地台危害健康？NCC實測澄清. 影片• 民視新聞影音 · 已有0貼文，看看大家怎麼說. 最新 熱門. 尚無內容。 內容已至結尾。請注意，部分內容可能未顯示。",
         "url": "https://today.line.me/tw/v3/posts/list/article/W7GW35",
         "domain": "today.line.me",
         "own_site": false,
@@ -607,46 +426,10 @@
     "channel": "民視",
     "headline": "研究證實間歇性斷食 讓身體更健康",
     "query": "民視 研究證實間歇性斷食 讓身體更健康",
-    "channel_only": [
-      {
-        "title": "「這樣」進食竟會變健康！美國研究證實有效 - 民視財經網",
-        "url": "https://finance.ftvnews.com.tw/news/detail/2020103A12M1",
-        "domain": "finance.ftvnews.com.tw",
-        "own_site": true,
-        "score": 0.267
-      },
-      {
-        "title": "間歇性斷食- 第1頁- 相關新聞- 民視新聞網",
-        "url": "https://www.ftvnews.com.tw/tag/%E9%96%93%E6%AD%87%E6%80%A7%E6%96%B7%E9%A3%9F/",
-        "domain": "www.ftvnews.com.tw",
-        "own_site": true,
-        "score": 0.333
-      },
-      {
-        "title": "伊能靜輕斷食成功甩肉醫揭減重關鍵在「養好粒線體」 - 民視財經網",
-        "url": "https://finance.ftvnews.com.tw/news/detail/2025A14W0712",
-        "domain": "finance.ftvnews.com.tw",
-        "own_site": true,
-        "score": 0.2
-      },
-      {
-        "title": "各式「斷食法」真能有效瘦身？夫妻實測72小時體態變化驚呆網",
-        "url": "https://www.ftvnews.com.tw/news/detail/2021B15W0084",
-        "domain": "www.ftvnews.com.tw",
-        "own_site": true,
-        "score": 0.267
-      },
-      {
-        "title": "夏天前想甩肉必看！168斷食並非最佳方法？營養師揭真相：恐越減越肥",
-        "url": "https://www.ftvnews.com.tw/news/detail/2025314W0516",
-        "domain": "www.ftvnews.com.tw",
-        "own_site": true,
-        "score": 0.133
-      }
-    ],
     "open": [
       {
         "title": "美國研究證實「間歇性斷食」讓身體更健康－民視新聞 - YouTube",
+        "description": "【民視即時新聞】一天24小時當中只集中在8小時進食，這樣的「間歇性斷食」法，您聽過嗎？這是近年來相當流行的減重方式，也有不少人推崇，現在美國有 ...",
         "url": "https://www.youtube.com/watch?v=33Q4MNTATc8",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -654,6 +437,7 @@
       },
       {
         "title": "7 天只喝水，身體竟然「大改造」？ - 常春醫院",
+        "description": "這篇研究的結論，其實比我們想像中更震撼——原來長時間斷食，不只是「在燃燒脂肪」，而是啟動了一套「全身大改造」的生理程式。 研究是怎麼做的？7 天只喝水的極限挑戰. 受 ...",
         "url": "https://www.cchospital.org.tw/service/8/79",
         "domain": "www.cchospital.org.tw",
         "own_site": false,
@@ -661,6 +445,7 @@
       },
       {
         "title": "斷食為什麼越來越多人在做？8 個科學證實的好處一次看懂 ... - Facebook",
+        "description": "有些研究也指出：男性與女性對斷食的血糖反應 可能不同，女性要特別留意。 ⠀ 2️⃣ 降低身體慢性發炎： 間歇性斷食一個月，就能讓發炎指標下降。每天 ...",
         "url": "https://www.facebook.com/cofit.me/posts/%E6%96%B7%E9%A3%9F%E7%82%BA%E4%BB%80%E9%BA%BC%E8%B6%8A%E4%BE%86%E8%B6%8A%E5%A4%9A%E4%BA%BA%E5%9C%A8%E5%81%9A8-%E5%80%8B%E7%A7%91%E5%AD%B8%E8%AD%89%E5%AF%A6%E7%9A%84%E5%A5%BD%E8%99%95%E4%B8%80%E6%AC%A1%E7%9C%8B%E6%87%82%E6%96%B7%E9%A3%9F%E5%B0%B1%E6%98%AF%E5%9C%A8%E4%B8%80%E6%AE%B5%E6%99%82%E9%96%93%E4%B8%8D%E5%90%83%E6%9D%B1%E8%A5%BF%E8%80%8C%E6%9C%80%E5%B8%B8%E8%A6%8B%E7%9A%84%E5%B0%B1%E6%98%AF%E9%96%93%E6%AD%87%E6%80%A7%E6%96%B7%E9%A3%9F%E4%BE%8B%E5%A6%82-168%E5%9C%A8%E5%90%83%E8%88%87%E4%B8%8D%E5%90%83%E4%B9%8B%E9%96%93%E5%BE%AA%E7%92%B0%E7%9C%8B%E4%BC%BC%E7%B0%A1%E5%96%AE%E4%BD%86%E5%AE%83%E5%B8%B6%E4%BE%86%E7%9A%84%E8%AE%8A%E5%8C%96%E4%B8%8D%E5%B0%91%E4%B8%8B/1366321148621256/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -668,6 +453,7 @@
       },
       {
         "title": "「這樣」進食竟會變健康！美國研究證實有效 - 民視新聞",
+        "description": "美國的大學教授Ravussin研究指出 ...",
         "url": "https://www.ftvnews.com.tw/news/detail/2020103A12M1",
         "domain": "www.ftvnews.com.tw",
         "own_site": true,
@@ -675,6 +461,7 @@
       },
       {
         "title": "間歇性斷食對於人類健康的影響",
+        "description": "在肥胖方面，有顯著的減重效果，且同時能保存更多非脂肪組織；在血糖調節方面，能降低胰島素敏抗性延緩糖尿病的發生；心血管疾病方面，間歇性斷食有助於減少發炎指數和氧化 ...",
         "url": "https://www.airitilibrary.com/Article/Detail/P20161114001-202011-202011300003-202011300003-703-708",
         "domain": "www.airitilibrary.com",
         "own_site": false,
@@ -686,10 +473,10 @@
     "channel": "民視",
     "headline": "健康瘦身成現代顯學 \"間歇性斷食\"受矚目",
     "query": "民視 健康瘦身成現代顯學  間歇性斷食 受矚目",
-    "channel_only": [],
     "open": [
       {
         "title": "人為什麼要間歇性斷食？ 它的九大好處您知道幾個？ 您應該 ... - YouTube",
+        "description": "間歇性的斷食對自身的健康、衰老、疾病，甚至新冠病情都有深刻的影響。那間歇性斷食有什麼具體好處？我們怎麼判斷自己是否應該間歇性斷食， ...",
         "url": "https://www.youtube.com/watch?v=w1wVV_aQ5Ls",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -697,6 +484,7 @@
       },
       {
         "title": "「間歇性斷食」比一般節食更有效？科學研究3字解密 - Yahoo新聞",
+        "description": "減重是許多人的志業，「間歇性斷食」頗受歡迎，醫師王思恒表示，一項新研究比較各種間歇性斷食和傳統節食的減重效果。結果發現，間歇性斷食的減重效果僅為 ...",
         "url": "https://tw.news.yahoo.com/%E9%96%93%E6%AD%87%E6%80%A7%E6%96%B7%E9%A3%9F-%E6%AF%94-%E8%88%AC%E7%AF%80%E9%A3%9F%E6%9B%B4%E6%9C%89%E6%95%88-%E7%A7%91%E5%AD%B8%E7%A0%94%E7%A9%B63%E5%AD%97%E8%A7%A3%E5%AF%86-002700605.html",
         "domain": "tw.news.yahoo.com",
         "own_site": false,
@@ -704,6 +492,7 @@
       },
       {
         "title": "7 天只喝水，身體竟然「大改造」？ - 常春醫院",
+        "description": "這篇研究的結論，其實比我們想像中更震撼——原來長時間斷食，不只是「在燃燒脂肪」，而是啟動了一套「全身大改造」的生理程式。 研究是怎麼做的？7 天只喝水的極限挑戰. 受 ...",
         "url": "https://www.cchospital.org.tw/service/8/79",
         "domain": "www.cchospital.org.tw",
         "own_site": false,
@@ -711,6 +500,7 @@
       },
       {
         "title": "斷食4大好處、壞處！168、輕斷食哪種好：名醫宋晏仁推它 - Hello 醫師",
+        "description": "本篇由糖尿病權威、減肥名醫及暢銷書《終身瘦用211全平衡瘦身法》作者宋晏仁醫師來帶你了解斷食完整攻略及成功 ... 認識4種間歇性斷食法輕鬆減肥）. 如何斷 ...",
         "url": "https://helloyishi.com.tw/healthy-eating/special-diets/intermittent-fasting-benefits-and-potential-risks/",
         "domain": "helloyishi.com.tw",
         "own_site": false,
@@ -718,6 +508,7 @@
       },
       {
         "title": "減肥與禁食：間歇性禁食的方式、好處與禁忌- BBC News 中文",
+        "description": "減肥趨勢：間歇性斷食為何如此受歡迎？ 用餐時間學問大吃得健康不發胖 ... 她表示，有充分證據顯示每隔一天或是5:2禁食法對減肥和其它健康益處效果最佳。",
         "url": "https://www.bbc.com/zhongwen/trad/science-57258572",
         "domain": "www.bbc.com",
         "own_site": false,
@@ -729,46 +520,10 @@
     "channel": "民視",
     "headline": "集中在8小時進食 \"間歇性斷食\"成減重大法",
     "query": "民視 集中在8小時進食  間歇性斷食 成減重大法",
-    "channel_only": [
-      {
-        "title": "「這樣」進食竟會變健康！美國研究證實有效 - 民視新聞",
-        "url": "https://www.ftvnews.com.tw/news/detail/2020103A12M1",
-        "domain": "www.ftvnews.com.tw",
-        "own_site": true,
-        "score": 0.111
-      },
-      {
-        "title": "168斷食這樣吃最大效果台大研究：最後一餐得趕晚上7點前 - 民視新聞",
-        "url": "https://www.ftvnews.com.tw/news/detail/2026326W0278",
-        "domain": "www.ftvnews.com.tw",
-        "own_site": true,
-        "score": 0.222
-      },
-      {
-        "title": "纖維- 第1頁- 相關新聞- 民視新聞網",
-        "url": "https://www.ftvnews.com.tw/tag/%E7%BA%96%E7%B6%AD/",
-        "domain": "www.ftvnews.com.tw",
-        "own_site": true,
-        "score": 0.0
-      },
-      {
-        "title": "重量訓練- 民視運動網",
-        "url": "https://sport.ftvnews.com.tw/tag/%E9%87%8D%E9%87%8F%E8%A8%93%E7%B7%B4/1",
-        "domain": "sport.ftvnews.com.tw",
-        "own_site": true,
-        "score": 0.056
-      },
-      {
-        "title": "剛果伊波拉防疫爆暴力衝突紅十字會志工遭襲受傷 - 民視新聞",
-        "url": "https://www.ftvnews.com.tw/news/detail/2026825W0036",
-        "domain": "www.ftvnews.com.tw",
-        "own_site": true,
-        "score": 0.0
-      }
-    ],
     "open": [
       {
         "title": "完整新聞連結在留言區近年來「168斷食法」在網路上非常流行，許多網民 ...",
+        "description": "#完整新聞連結在留言區 近年來「168斷食法」在網路上非常流行，許多網民分 享，透過每天禁食16小時、集中8小時進食，號稱不但 能減重，還能改善血糖、逆轉 ...",
         "url": "https://www.facebook.com/daaiworldnews/videos/%E5%AE%8C%E6%95%B4%E6%96%B0%E8%81%9E%E9%80%A3%E7%B5%90%E5%9C%A8%E7%95%99%E8%A8%80%E5%8D%80%E8%BF%91%E5%B9%B4%E4%BE%86168%E6%96%B7%E9%A3%9F%E6%B3%95%E5%9C%A8%E7%B6%B2%E8%B7%AF%E4%B8%8A%E9%9D%9E%E5%B8%B8%E6%B5%81%E8%A1%8C%E8%A8%B1%E5%A4%9A%E7%B6%B2%E6%B0%91%E5%88%86%E4%BA%AB%E9%80%8F%E9%81%8E%E6%AF%8F%E5%A4%A9%E7%A6%81%E9%A3%9F16%E5%B0%8F%E6%99%82%E9%9B%86%E4%B8%AD8%E5%B0%8F%E6%99%82%E9%80%B2%E9%A3%9F%E8%99%9F%E7%A8%B1%E4%B8%8D%E4%BD%86%E8%83%BD%E6%B8%9B%E9%87%8D%E9%82%84%E8%83%BD%E6%94%B9%E5%96%84%E8%A1%80%E7%B3%96%E9%80%86%E8%BD%89%E6%85%A2%E6%80%A7%E7%96%BE%E7%97%85%E7%94%9A%E8%87%B3%E5%BB%B6%E7%B7%A9%E8%80%81%E5%8C%96%E4%B8%8D%E9%81%8E%E9%86%AB%E5%B8%AB%E6%8F%90/2928315627527398/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -776,6 +531,7 @@
       },
       {
         "title": "8小時斷食法｜營養師點評「黃金8小時減肥法」 | healthyD.com",
+        "description": "所謂「8小時減肥法」,是將一日三餐集中於8小時內完成,其餘16小時不進食,達致瘦身效果。 8小時高脂飲食無助減肥 … 紓緩瘦身壓力",
         "url": "https://www.healthyd.com/articles/sportsandfood/%E7%87%9F%E9%A4%8A%E5%B8%AB%E9%BB%9E%E8%A9%95-8%E5%B0%8F%E6%99%82%E6%B8%9B%E8%82%A5%E6%B3%95",
         "domain": "www.healthyd.com",
         "own_site": false,
@@ -783,6 +539,7 @@
       },
       {
         "title": "日本研究：這個時間進行168輕斷食最有效！ - YouTube",
+        "description": "... 減重嗎？ 3:45 吃宵夜會降低隔天的代謝率？ 4:49 晨型人該什麼時候吃5:49 夜貓子的飲食建議 碳水循環減 ... 間歇性斷食恐增91%心臟病死亡風險？揭秘斷食 ...",
         "url": "https://www.youtube.com/watch?v=XCI62cXcvF4",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -790,6 +547,7 @@
       },
       {
         "title": "「這樣」進食竟會變健康！美國研究證實有效 - 民視新聞",
+        "description": "一天24小時當中只集中在8小時進食，這 ...",
         "url": "https://www.ftvnews.com.tw/news/detail/2020103A12M1",
         "domain": "www.ftvnews.com.tw",
         "own_site": true,
@@ -797,6 +555,7 @@
       },
       {
         "title": "而是「什麼時候吃完最後一餐」！ 許多對減重或改善代謝有興趣的朋友 ...",
+        "description": "針對間歇性斷食與時間限制進 食的高品質研究,其實給了我們一個非常重要的提醒: 對肥胖與代謝症候群族群來說,影響健康壽命的關鍵",
         "url": "https://www.facebook.com/angelhsuehdietitian/posts/-168%E6%96%B7%E9%A3%9F%E7%9A%84%E7%9C%9F%E7%9B%B8%E5%A4%A7%E5%85%AC%E9%96%8B%E6%83%B3%E9%9D%A0%E9%99%90%E6%99%82%E9%80%B2%E9%A3%9F%E5%BB%B6%E9%95%B7%E5%81%A5%E5%BA%B7%E5%A3%BD%E5%91%BD%E6%9C%80%E6%96%B0%E7%A0%94%E7%A9%B6%E6%8F%AD%E7%A4%BA%E9%87%8D%E9%BB%9E%E4%B8%8D%E5%9C%A8%E9%A4%93%E5%A4%9A%E4%B9%85%E8%80%8C%E6%98%AF%E4%BB%80%E9%BA%BC%E6%99%82%E5%80%99%E5%90%83%E5%AE%8C%E6%9C%80%E5%BE%8C%E4%B8%80%E9%A4%90%E8%A8%B1%E5%A4%9A%E5%B0%8D%E6%B8%9B%E9%87%8D%E6%88%96%E6%94%B9%E5%96%84%E4%BB%A3%E8%AC%9D%E6%9C%89%E8%88%88%E8%B6%A3%E7%9A%84%E6%9C%8B%E5%8F%8B%E4%B8%80%E8%81%BD%E5%88%B0168%E9%99%90%E6%99%82%E9%80%B2%E9%A3%9F%E8%85%A6%E4%B8%AD%E6%B5%AE%E7%8F%BE%E7%9A%84/1541175798015377/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -808,46 +567,10 @@
     "channel": "公視",
     "headline": "成人健檢送800點 累積滿千可兌商品.服務",
     "query": "公視 成人健檢送800點 累積滿千可兌商品.服務",
-    "channel_only": [
-      {
-        "title": "衛福部推健康幣10月上路累積滿千可兌商品或服務 - 公視新聞- 公共電視",
-        "url": "https://news.pts.org.tw/article/824422",
-        "domain": "news.pts.org.tw",
-        "own_site": true,
-        "score": 0.632
-      },
-      {
-        "title": "衛福部｜ 標籤｜ 第1頁 - 公視新聞",
-        "url": "https://news.pts.org.tw/tag/538/",
-        "domain": "news.pts.org.tw",
-        "own_site": true,
-        "score": 0.0
-      },
-      {
-        "title": "健康｜ 標籤｜ 第1頁 - 公視新聞",
-        "url": "https://news.pts.org.tw/tag/19944/",
-        "domain": "news.pts.org.tw",
-        "own_site": true,
-        "score": 0.053
-      },
-      {
-        "title": "10月｜ 標籤｜ 第1頁 - 公視新聞",
-        "url": "https://news.pts.org.tw/tag/17709/",
-        "domain": "news.pts.org.tw",
-        "own_site": true,
-        "score": 0.053
-      },
-      {
-        "title": "健身房｜ 標籤｜ 第1頁 - 公視新聞",
-        "url": "https://news.pts.org.tw/tag/5517/",
-        "domain": "news.pts.org.tw",
-        "own_site": true,
-        "score": 0.053
-      }
-    ],
     "open": [
       {
         "title": "衛福部推健康幣10月上路累積滿千可兌商品或服務 - 僑新聞OCAC NEWS",
+        "description": "第一階段納入成人預防保健、癌症篩檢、疫苗接種等健康行為，像是完成成人健檢就可以獲得800幣，累積滿1000幣就能兌換健康概念商品或服務。總統賴清德強調 ...",
         "url": "https://ocacnews.net/article/430876",
         "domain": "ocacnews.net",
         "own_site": false,
@@ -855,6 +578,7 @@
       },
       {
         "title": "口腔癌篩檢及疫苗接種服務。 不知道自己或家人符合哪些資格？歡迎來電 ...",
+        "description": "3 days ago · 符合資格完成成人健檢、癌症篩檢或指 定疫苗接種，就有機會累積健康幣。成人健檢目前規劃 可累積800 幣。影片帶您了解這項新政策！ 為好診所提供成人健 ...",
         "url": "https://www.facebook.com/weihope168/videos/-%E5%81%9A%E5%81%A5%E5%BA%B7%E6%AA%A2%E6%9F%A5%E9%82%84%E6%9C%89%E6%A9%9F%E6%9C%83%E7%B4%AF%E7%A9%8D%E5%81%A5%E5%BA%B7%E5%B9%A3%E8%A1%9B%E7%A6%8F%E9%83%A8%E8%A6%8F%E5%8A%83-10-%E6%9C%88%E6%8E%A8%E5%87%BA%E5%81%A5%E5%BA%B7%E5%B9%A3%E7%AC%A6%E5%90%88%E8%B3%87%E6%A0%BC%E5%AE%8C%E6%88%90%E6%88%90%E4%BA%BA%E5%81%A5%E6%AA%A2%E7%99%8C%E7%97%87%E7%AF%A9%E6%AA%A2%E6%88%96%E6%8C%87%E5%AE%9A%E7%96%AB%E8%8B%97%E6%8E%A5%E7%A8%AE%E5%B0%B1%E6%9C%89%E6%A9%9F%E6%9C%83%E7%B4%AF%E7%A9%8D%E5%81%A5%E5%BA%B7%E5%B9%A3%E6%88%90%E4%BA%BA%E5%81%A5%E6%AA%A2%E7%9B%AE%E5%89%8D%E8%A6%8F%E5%8A%83%E5%8F%AF%E7%B4%AF%E7%A9%8D-800-%E5%B9%A3%E5%BD%B1%E7%89%87%E5%B8%B6/1096678636419530/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -862,6 +586,7 @@
       },
       {
         "title": "12項健康行為都能賺！ - Threads",
+        "description": "衛福部預計今年10月推出「健康幣」，年滿18歲民眾只要完成指定健康行為，包括成人健檢、癌症篩檢及疫苗接種等，就能累積點數；集滿1,000幣，即可兌換健康 ...健康幣10月上路！先累幣、12月才能換 - Threads打疫苗賺健康幣10月上路！ 12月起可兌換超商藥局等五類商品服務More results from www.threads.com",
         "url": "https://www.threads.com/@people.tw.news/post/DckXcp-ID_Y/-12%E9%A0%85%E5%81%A5%E5%BA%B7%E8%A1%8C%E7%82%BA%E9%83%BD%E8%83%BD%E8%B3%BA%E5%8F%AA%E8%A6%81%E4%BD%A0%E5%B9%B4%E6%BB%BF18%E6%AD%B2%E5%B0%B1%E8%83%BD%E5%8F%83%E5%8A%A0%E7%AC%AC%E4%B8%80%E9%9A%8E%E6%AE%B5%E4%B8%80%E6%AC%A1%E5%88%97%E5%87%BA12%E9%A0%85%E5%81%A5%E5%BA%B7%E8%A1%8C%E7%82%BA%E6%8E%A1%E6%9C%89%E5%81%9A%E5%B0%B1%E6%9C%89%E5%B9%A3%E7%B4%AF%E7%A9%8D%E6%BB%BF1000%E5%B9%A3%E5%B0%B1%E8%83%BD%E5%85%8C%E6%8F%9B%E8%A6%8F%E5%8A%83%E6%95%88%E6%9C%9F2%E5%B9%B4%E5%88%B0%E5%BA%95%E5%93%AA%E4%BA%9B%E8%A1%8C%E7%82%BA%E5%8F%AF%E4%BB%A5%E8%B3%BA%E4%B8%80%E6%AC%A1%E7%9C%8B-%E9%A6%96%E6%AC%A1%E7%99%BB%E5%85%A5%E5%81%A5/",
         "domain": "www.threads.com",
         "own_site": false,
@@ -869,6 +594,7 @@
       },
       {
         "title": "衛福部推健康幣10月上路累積滿千可兌商品或服務｜20260827 公視晚間新聞",
+        "description": "衛福部規劃10月推出「健康幣」，年滿18歲民眾都可以參加。第一階段納入成人預防保健、癌症篩檢、疫苗接種等健康行為，像是完成成人健檢就可以獲得800 ...",
         "url": "https://www.youtube.com/watch?v=rG96Xh7-WHw",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -876,6 +602,7 @@
       },
       {
         "title": "健康幣10月上線年滿18歲就能領／成人健檢可獲800幣 - 自由時報",
+        "description": "成人健檢可獲八百幣,癌症篩檢依項目可拿九百至一千幣,累積滿一千幣即可兌換健康商品或服務,未來還將納入運動步數、三高控制等項目。",
         "url": "https://news.ltn.com.tw/news/life/paper/1768343",
         "domain": "news.ltn.com.tw",
         "own_site": false,
@@ -887,25 +614,10 @@
     "channel": "公視",
     "headline": "運動強化身體機能 30多歲男找教練指導",
     "query": "公視 運動強化身體機能 30多歲男找教練指導",
-    "channel_only": [
-      {
-        "title": "[PDF] 公視2026 年4-6 月環保永續節目 - 公共電視",
-        "url": "https://info-material.pts.org.tw/prg/ESG/2026_ESG_q2.pdf",
-        "domain": "info-material.pts.org.tw",
-        "own_site": true,
-        "score": 0.056
-      },
-      {
-        "title": "尖鋒對話 - 公視新聞- 公共電視",
-        "url": "https://news.pts.org.tw/program/%E5%B0%96%E9%8B%92%E5%B0%8D%E8%A9%B1",
-        "domain": "news.pts.org.tw",
-        "own_site": true,
-        "score": 0.0
-      }
-    ],
     "open": [
       {
         "title": "身體機能都仲keep得住！ 但30歲後呢…… ⚠️ 基礎代謝下降：每10年 ...",
+        "description": "所以，30歲後重力訓練變得極度重要！ ‍♀️ 為咩要做重力訓練？ ✓ 提升基礎代謝率：增加肌肉量，即使休息都可以消耗更 ...",
         "url": "https://www.instagram.com/p/DH5lsFEMx_F/",
         "domain": "www.instagram.com",
         "own_site": false,
@@ -913,6 +625,7 @@
       },
       {
         "title": "型男「黃金健身」準則！20、30、40不同年紀，該做的運動項目也不一樣！",
+        "description": "20歲認為身體強健，幹嘛要運動？30歲認為，拚生活都來不及了 ... 20歲的大男孩，就是要趁青春，多強化肌肉，多鍛鍊體力，來儲備你的人生健康體能。",
         "url": "https://www.pitstophk.com/ct/health-data/-20-30-40-",
         "domain": "www.pitstophk.com",
         "own_site": false,
@@ -920,6 +633,7 @@
       },
       {
         "title": "克羅埃西亞95歲健身教練推廣食老著愛運動| 公視台語台 - YouTube",
+        "description": "佇巴爾幹半島的克羅埃西亞，有一个95歲的健身教練，50外年來，一直推動健身，希望予家己和身軀邊的人攏會當有活力。 詳細新聞內容請見公視新聞網台語 ...",
         "url": "https://www.youtube.com/watch?v=aNlPVXUaPa4",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -927,6 +641,7 @@
       },
       {
         "title": "30歲以下才做得到?發起挑戰 大家的身體機能如何? 你們跳得起來嗎 ...",
+        "description": "健身教練的奇怪挑戰又來了 這次挑戰的不只是核心， 還有控制力跟一點點運氣 規則很簡單： 槓片放腿 ...",
         "url": "https://www.instagram.com/reel/DZr4kNGk5YY/",
         "domain": "www.instagram.com",
         "own_site": false,
@@ -934,6 +649,7 @@
       },
       {
         "title": "(35歲男性) 關於這個年紀開始健身的建議。 : r/AskMenOver30 - Reddit",
+        "description": "查一下你的睪固酮。我30多歲的時候被誤診為纖維肌痛,因為我一直肌肉痠痛和慢性疼痛。 找個適合新手的訓練計畫,或者找個教練,至少自己做點功課。小心健身 ...",
         "url": "https://www.reddit.com/r/AskMenOver30/comments/1iabt3l/35m_advice_on_starting_to_go_to_the_gym_at_this/?tl=zh-hant",
         "domain": "www.reddit.com",
         "own_site": false,
@@ -945,46 +661,10 @@
     "channel": "公視",
     "headline": "總統宣布10月推\"健康幣\" 鼓勵健康生活",
     "query": "公視 總統宣布10月推 健康幣  鼓勵健康生活",
-    "channel_only": [
-      {
-        "title": "衛福部推健康幣10月上路累積滿千可兌商品或服務 - 公視新聞- 公共電視",
-        "url": "https://news.pts.org.tw/article/824422",
-        "domain": "news.pts.org.tw",
-        "own_site": true,
-        "score": 0.235
-      },
-      {
-        "title": "衛福部｜ 標籤｜ 第1頁 - 公視新聞",
-        "url": "https://news.pts.org.tw/tag/538/",
-        "domain": "news.pts.org.tw",
-        "own_site": true,
-        "score": 0.059
-      },
-      {
-        "title": "健康｜ 標籤｜ 第1頁 - 公視新聞",
-        "url": "https://news.pts.org.tw/tag/19944/",
-        "domain": "news.pts.org.tw",
-        "own_site": true,
-        "score": 0.118
-      },
-      {
-        "title": "健康台灣推動委員會｜ 標籤｜ 第1頁 - 公視新聞",
-        "url": "https://news.pts.org.tw/tag/35924/",
-        "domain": "news.pts.org.tw",
-        "own_site": true,
-        "score": 0.118
-      },
-      {
-        "title": "10月｜ 標籤｜ 第1頁 - 公視新聞",
-        "url": "https://news.pts.org.tw/tag/17709/",
-        "domain": "news.pts.org.tw",
-        "own_site": true,
-        "score": 0.176
-      }
-    ],
     "open": [
       {
         "title": "衛福部推健康幣10月上路累積滿千可兌商品或服務｜20260827 公視晚間新聞",
+        "description": "... 總統賴清德強調，台灣已經邁入超高齡社會，希望鼓勵民眾健康管理，讓健康政策從疾病治療，逐步轉向健康促進及預防醫學。 詳細新聞內容請見【公視新聞 ...",
         "url": "https://www.youtube.com/watch?v=rG96Xh7-WHw",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -992,6 +672,7 @@
       },
       {
         "title": "衛福部推健康幣10月上路累積滿千可兌商品或服務 - 公視新聞- 公共電視",
+        "description": "# 衛福部推健康幣10月上路 累積滿千可兌商品或服務\n- [健康幣](https://news.pts.org.tw/tag/42723/)\n\n總統賴清德強調，台灣已經邁入超高齡社會，希望鼓勵民眾健康管理，讓健康政策從疾病治療，逐步轉向健康促進及預防醫學。\n\n總統賴清德主持健康台灣推動委員會時宣布，衛福部10月將推出「健康幣」，希望讓健康行為融入日常生活。\n\n總統賴清德指出，「將在今（2026）年10月運用創新的數位健康科技，推出健康幣政策，以獎勵機制鼓勵健康行為，將健康行為融入日常生活。」\n\n健身房運動者文先生認為，「如果說有健康幣的話，可以鼓勵很多中高齡的大哥大姐一起走出來。」\n\n希望透過「有做健康，就有健康幣」的方式，促使民眾養成健康生活習慣，朝增加國人健康餘命、降低癌症及三高標準化死亡率的目標邁進。\n\n- [生活](https://news.pts.org.tw/tag/19936/)\n\n- [健康幣](https://news.pts.org.tw/tag/42723/)",
         "url": "https://news.pts.org.tw/article/824422",
         "domain": "news.pts.org.tw",
         "own_site": true,
@@ -999,6 +680,7 @@
       },
       {
         "title": "健康集點大作戰衛福部推健康幣賴清德總統宣布 - Threads",
+        "description": "衛福部將於十月推出健康幣政策，只要滿十八歲並完成公費健檢、癌症篩檢或疫苗接種，即可累積點數，未來可在超商、賣場及藥局折抵消費。",
         "url": "https://www.threads.com/@yjfps2021/post/DcscRakEpbT/%E5%81%A5%E5%BA%B7%E9%9B%86%E9%BB%9E%E5%A4%A7%E4%BD%9C%E6%88%B0-%E8%A1%9B%E7%A6%8F%E9%83%A8%E6%8E%A8%E5%81%A5%E5%BA%B7%E5%B9%A3%E8%B3%B4%E6%B8%85%E5%BE%B7%E7%B8%BD%E7%B5%B1%E5%AE%A3%E5%B8%83%E5%9B%A0%E7%82%BA%E5%8F%B0%E7%81%A3%E5%B7%B2%E9%80%B2%E5%85%A5%E8%B6%85%E9%AB%98%E9%BD%A1%E7%A4%BE%E6%9C%83%E5%81%A5%E5%BA%B7%E6%94%BF%E7%AD%96%E5%BF%85%E9%A0%88%E7%94%B1%E7%96%BE%E7%97%85%E6%B2%BB%E7%99%82%E9%80%90%E6%AD%A5%E8%BD%89%E5%90%91%E5%81%A5%E5%BA%B7%E4%BF%83%E9%80%B2%E8%88%87%E9%A0%90%E9%98%B2%E9%86%AB%E5%AD%B8%E5%9B%A0%E6%AD%A4%E4%BB%8A%E5%B9%B410%E6%9C%88%E8%A1%9B%E7%A6%8F%E9%83%A8%E5%B0%87%E6%8E%A8%E5%87%BA%E5%81%A5%E5%BA%B7%E5%B9%A3%E6%94%BF%E7%AD%96%E8%AE%93%E6%B0%91%E7%9C%BE%E9%A1%98/",
         "domain": "www.threads.com",
         "own_site": false,
@@ -1006,6 +688,7 @@
       },
       {
         "title": "賴總統：10月推「健康幣」 創新獎勵打造韌性生態系| 青年日報",
+        "description": ",10月即將上路的「健康幣」政策,旨在運用數位科技鼓勵民眾主動參與健檢、癌症篩檢與健康管理,將健康行為融入日常。",
         "url": "https://today.line.me/tw/v3/article/2Dqjo5O",
         "domain": "today.line.me",
         "own_site": false,
@@ -1013,6 +696,7 @@
       },
       {
         "title": "總統府健康台灣委員會明將宣布健康幣10月正式上線",
+        "description": "總統府健康台灣推動委員會27日將召開會議，據了解，會中將宣布健康幣10月正式上線，透過正向獎勵機制，鼓勵民眾接受成人健康檢查、癌症篩檢及疫苗接種 ...",
         "url": "https://money.udn.com/money/story/7307/9715682",
         "domain": "money.udn.com",
         "own_site": false,
@@ -1024,46 +708,10 @@
     "channel": "公視",
     "headline": "調節血糖.血脂健康食品 刪除動物功效實驗",
     "query": "公視 調節血糖.血脂健康食品 刪除動物功效實驗",
-    "channel_only": [
-      {
-        "title": "健康食品認證新制上路須以人體試驗驗證 - 公視新聞",
-        "url": "https://news.pts.org.tw/article/823575",
-        "domain": "news.pts.org.tw",
-        "own_site": true,
-        "score": 0.278
-      },
-      {
-        "title": "虐待動物｜ 標籤｜ 第1頁 - 公視新聞",
-        "url": "https://news.pts.org.tw/tag/5609/",
-        "domain": "news.pts.org.tw",
-        "own_site": true,
-        "score": 0.111
-      },
-      {
-        "title": "血糖｜ 標籤｜ 第1頁 - 公視新聞",
-        "url": "https://news.pts.org.tw/tag/5284/",
-        "domain": "news.pts.org.tw",
-        "own_site": true,
-        "score": 0.111
-      },
-      {
-        "title": "血脂｜ 標籤｜ 第1頁 - 公視新聞",
-        "url": "https://news.pts.org.tw/tag/9743/",
-        "domain": "news.pts.org.tw",
-        "own_site": true,
-        "score": 0.111
-      },
-      {
-        "title": "小綠人｜ 標籤｜ 第1頁 - 公視新聞",
-        "url": "https://news.pts.org.tw/tag/4827/",
-        "domain": "news.pts.org.tw",
-        "own_site": true,
-        "score": 0.0
-      }
-    ],
     "open": [
       {
         "title": "【行動進展】健康食品功效宣稱再刪除動物實驗｜本會與立法委員林淑芬",
+        "description": "衛福部相關單位亦努力推動，將於114至118年間，陸續修正9種健康食品保健功效評估方法，包括：調節血脂、調節血糖、不易形成體脂肪、護肝、免疫調節 ...",
         "url": "https://www.east.org.tw/action/869681",
         "domain": "www.east.org.tw",
         "own_site": false,
@@ -1071,6 +719,7 @@
       },
       {
         "title": "健康食品認證新制上路須以人體試驗驗證｜20260821 公視晚間新聞",
+        "description": "俗稱「小綠人」的健康食品認證又有新制，由於過去屢遭外界質疑虐待動物，食藥署公告修正健康食品之調節血糖、血脂保健功效評估方法，刪除動物功效實驗 ...",
         "url": "https://www.youtube.com/watch?v=r7h3FNegoyk",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -1078,6 +727,7 @@
       },
       {
         "title": "衛生福利部預告： ​ ​ 健康食品功效認證中的「降血脂」與「降血糖」兩 ...",
+        "description": "2026/05/05，衛生福利部預告： 健康食品功效認證中的「降血脂」與「降血糖」兩項評 估方法，刪除動物實驗要求。 ... 視為「理所當 然需要動物實驗」的領域。",
         "url": "https://www.facebook.com/Kitanimals.org/posts/%E5%8B%95%E7%89%A9%E7%9A%84%E5%8B%9D%E5%88%A9%E4%B9%9F%E6%98%AF%E7%A7%91%E5%AD%B8%E7%9A%84%E5%8B%9D%E5%88%A9-20260505%E8%A1%9B%E7%94%9F%E7%A6%8F%E5%88%A9%E9%83%A8%E9%A0%90%E5%91%8A-%E5%81%A5%E5%BA%B7%E9%A3%9F%E5%93%81%E5%8A%9F%E6%95%88%E8%AA%8D%E8%AD%89%E4%B8%AD%E7%9A%84%E9%99%8D%E8%A1%80%E8%84%82%E8%88%87%E9%99%8D%E8%A1%80%E7%B3%96%E5%85%A9%E9%A0%85%E8%A9%95%E4%BC%B0%E6%96%B9%E6%B3%95%E5%88%AA%E9%99%A4%E5%8B%95%E7%89%A9%E5%AF%A6%E9%A9%97%E8%A6%81%E6%B1%82%E8%8B%A5%E5%90%84%E6%96%B9%E6%B2%92%E6%9C%89%E5%A4%AA%E5%A4%A7%E6%84%8F%E8%A6%8B60%E5%A4%A9%E5%BE%8C%E5%B0%87%E6%9C%83%E6%AD%A3%E5%BC%8F%E5%85%AC%E5%91%8A%E4%BF%AE/1267701705542307/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -1085,6 +735,7 @@
       },
       {
         "title": "健康食品認證新制上路須以人體試驗驗證 - 公視新聞",
+        "description": "4 days ago · 衛福部食藥署公告修正健康食品之調節血糖、血脂保健功效評估方法,均刪除動物功效實驗, 食藥署在2022年率先刪除、輔助調節血壓的動物功效實驗 … 如今再納 ...",
         "url": "https://news.pts.org.tw/article/823575",
         "domain": "news.pts.org.tw",
         "own_site": true,
@@ -1092,6 +743,7 @@
       },
       {
         "title": "勝利！調節血糖、調節血脂保健食品擬刪除動物實驗 - KiTA台灣友善動物協會",
+        "description": "健康食品功效認證中的「降血脂」與「降血糖」兩項評估方法，刪除動物實驗要求。若各方沒有太大意見，60天後將會正式公告修正。這代表，未來相關健康食品若要申請功效認證， ...",
         "url": "https://www.kitanimals.org/posts/390",
         "domain": "www.kitanimals.org",
         "own_site": false,
@@ -1103,10 +755,10 @@
     "channel": "公視",
     "headline": "健康食品多經動物實驗 挨批涉嫌虐待動物",
     "query": "公視 健康食品多經動物實驗 挨批涉嫌虐待動物",
-    "channel_only": [],
     "open": [
       {
         "title": "【行動進展】健康食品功效宣稱再刪除動物實驗｜本會與立法委員林淑芬",
+        "description": "本會長期推動各項動物保護工作，就實驗動物議題——繼去(2025)年4月推動衛福部刪除健康食品「骨質保健功效」評估方法的動物實驗後，今年再推進衛福部於1 ...",
         "url": "https://www.east.org.tw/action/869681",
         "domain": "www.east.org.tw",
         "own_site": false,
@@ -1114,6 +766,7 @@
       },
       {
         "title": "多年來完全違背國際規範 即要宣稱健康食品保健的「功效性」",
+        "description": "讓廠商可以選擇不做人體實驗 ，只需拿動物來折磨虐待一番，就可掛上「小綠人標章 」，嚴重誤導民眾，讓消費者以為吃下去就能改善關節 炎症狀！ 本會與 ...",
         "url": "https://www.facebook.com/east.org.tw/posts/%E8%83%A1%E6%90%9E%E7%9E%8E%E6%90%9E%E7%9A%84%E8%A1%9B%E7%A6%8F%E9%83%A8%E9%A3%9F%E8%97%A5%E7%BD%B2-%E7%84%A1%E8%A6%96%E6%B0%91%E7%9C%BE%E5%81%A5%E5%BA%B7%E7%8D%A8%E5%8E%9A%E5%BB%A0%E5%95%86%E5%A0%85%E6%8C%81%E8%99%90%E5%BE%85%E5%8B%95%E7%89%A9-%E7%94%B1%E8%A1%9B%E7%A6%8F%E9%83%A8%E9%A3%9F%E8%97%A5%E7%BD%B2%E6%A0%B8%E7%99%BC%E5%88%B6%E5%AE%9A%E7%9A%84%E5%81%A5%E5%BA%B7%E9%A3%9F%E5%93%81%E5%B0%8F%E7%B6%A0%E4%BA%BA%E6%A8%99%E7%AB%A0%E5%A4%9A%E5%B9%B4%E4%BE%86%E5%AE%8C%E5%85%A8%E9%81%95%E8%83%8C%E5%9C%8B%E9%9A%9B%E8%A6%8F%E7%AF%84%E5%8D%B3%E8%A6%81%E5%AE%A3%E7%A8%B1%E5%81%A5%E5%BA%B7%E9%A3%9F%E5%93%81%E4%BF%9D%E5%81%A5%E7%9A%84%E5%8A%9F%E6%95%88%E6%80%A7%E6%87%89%E8%A9%B2%E9%80%8F%E9%81%8E%E4%BA%BA/3351549208210107/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -1121,6 +774,7 @@
       },
       {
         "title": "健康食品認證新制上路須以人體試驗驗證｜20260821 公視晚間新聞",
+        "description": "俗稱「小綠人」的健康食品認證又有新制，由於過去屢遭外界質疑虐待動物，食藥署公告修正健康食品之調節血糖、血脂保健功效評估方法，刪除動物功效實驗 ...",
         "url": "https://www.youtube.com/watch?v=r7h3FNegoyk",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -1128,6 +782,7 @@
       },
       {
         "title": "虐待動物｜ 標籤｜ 第1頁 - 公視新聞",
+        "description": "俗稱「小綠人」的健康食品認證又有新制，由於過去屢遭外界質疑虐待動物，食藥署公告修正健康食品之調節血糖、血脂保健功效評估方法，刪除動物功效實驗，改以人體試驗來 ...",
         "url": "https://news.pts.org.tw/tag/5609/",
         "domain": "news.pts.org.tw",
         "own_site": true,
@@ -1135,6 +790,7 @@
       },
       {
         "title": "台灣健康食品企業殘害動物只為營銷健康宣稱 - PETA Asia",
+        "description": "以上6家企業最近禁止動物實驗的決定無疑是一個正面的榜樣，其他台灣的企業也可以效仿，做安全的人類研究，而不是為了推銷有健康宣稱的食品和飲料而折磨動物。 請立即向以下 ...",
         "url": "https://secure.petaasia.com/page/81941/-/1?locale=en-US",
         "domain": "secure.petaasia.com",
         "own_site": false,
@@ -1146,46 +802,10 @@
     "channel": "TVBS",
     "headline": "醫示警\"不吃藥會死\" 38歲洗腎男路倒不治",
     "query": "TVBS 醫示警 不吃藥會死  38歲洗腎男路倒不治",
-    "channel_only": [
-      {
-        "title": "以為是感冒！男就醫驚覺「要洗腎」 醫曝10警訊+1招逆轉 - TVBS新聞",
-        "url": "https://news.tvbs.com.tw/health/2748172",
-        "domain": "news.tvbs.com.tw",
-        "own_site": true,
-        "score": 0.167
-      },
-      {
-        "title": "就醫相關新聞報導第60頁- TVBS新聞網",
-        "url": "https://news.tvbs.com.tw/news/searchresult/%E5%B0%B1%E9%86%AB/news/60",
-        "domain": "news.tvbs.com.tw",
-        "own_site": true,
-        "score": 0.056
-      },
-      {
-        "title": "醫警告：天天吃這食物腸道發霉！害你脹氣還口臭腦霧，靠這招除霉",
-        "url": "https://health.tvbs.com.tw/regimen/365255",
-        "domain": "health.tvbs.com.tw",
-        "own_site": true,
-        "score": 0.167
-      },
-      {
-        "title": "20歲《紅人榜》歌手於飯店廁所猝逝醫師盤點年輕人猝死病因 - 健康2.0",
-        "url": "https://health.tvbs.com.tw/medical/343609",
-        "domain": "health.tvbs.com.tw",
-        "own_site": true,
-        "score": 0.111
-      },
-      {
-        "title": "過動症的孩子會自己好嗎？專家揭放任不治療未來適應社會能力更弱",
-        "url": "https://health.tvbs.com.tw/medical/350297",
-        "domain": "health.tvbs.com.tw",
-        "own_site": true,
-        "score": 0.167
-      }
-    ],
     "open": [
       {
         "title": "【TVBS健康單元】醫示警「不吃藥會死」洗腎男不聽路倒不治高膽固醇 ...",
+        "description": "【TVBS健康單元】醫示警「不吃藥會死」洗腎男不聽路倒不治高膽固醇基因也有救!醫揭降壞膽固醇吃法｜TVBS新聞20260910 ‪@TVBSNEWS01‬.",
         "url": "https://www.youtube.com/watch?v=OnKoYfRjGdA",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -1193,6 +813,7 @@
       },
       {
         "title": "台灣洗腎人口逼近10萬大關！醫師揭吃西藥5大錯誤迷思！ - YouTube",
+        "description": "台灣洗腎人口高居世界第一，擁有「洗腎王國」稱號，腎臟科醫師洪永祥曝患者若抽籤式吃藥，恐走向洗腎之路，更盤點長輩排斥西藥「5大經典語錄」。",
         "url": "https://www.youtube.com/watch?v=Fxsyfnxo07E",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -1200,6 +821,7 @@
       },
       {
         "title": "盡量不要吃呀... 【每天狂嗑50顆！65歲男腎功能急墜醫揭致命元凶】",
+        "description": "【尿酸8.1卻大喊沒病醫嘆錯過黃金期洗腎、心梗全來】 沒症狀不代表健康。醫師葉宗勲分享案例指出，一名長期回診的患者在抽血發現尿酸偏高，得嚴格飲控 ...",
         "url": "https://www.threads.com/@tvbslivenews/post/DWod05YjxVm/%E7%9B%A1%E9%87%8F%E4%B8%8D%E8%A6%81%E5%90%83%E5%91%80%E6%AF%8F%E5%A4%A9%E7%8B%82%E5%97%9150%E9%A1%8665%E6%AD%B2%E7%94%B7%E8%85%8E%E5%8A%9F%E8%83%BD%E6%80%A5%E5%A2%9C-%E9%86%AB%E6%8F%AD%E8%87%B4%E5%91%BD%E5%85%83%E5%87%B6%E7%A4%BA%E6%84%8F%E5%9C%96shutterstock%E9%81%94%E5%BF%97%E5%BD%B1%E5%83%8F",
         "domain": "www.threads.com",
         "own_site": false,
@@ -1207,6 +829,7 @@
       },
       {
         "title": "【晨間快訊】TVBS新聞 - YouTube",
+        "description": "4 days ago · 【TVBS健康單元】醫示警「不吃藥會死」洗腎男不聽路倒不治高膽固醇基因也有救!醫揭降壞膽固醇吃法｜TVBS新聞20260910 @TVBSNEWS01. TVBS NEWS. 12K ...",
         "url": "https://www.youtube.com/playlist?list=PLpVngkNmlnOyh2R41xPwmpKw5jdxlxEQP",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -1214,6 +837,7 @@
       },
       {
         "title": "「再不吃藥你會死」 醫一語成真38歲洗腎男路倒不治 - 中時新聞網",
+        "description": "不要鐵齒。家醫科醫師陳昱彰分享有一名38歲男子，不到10年，從抽血數值完全正常，變成全是紅字，患有三高且洗腎，期間多位醫師苦勸吃藥，男子都不理， ...",
         "url": "https://www.chinatimes.com/realtimenews/20260909003590-260418",
         "domain": "www.chinatimes.com",
         "own_site": false,
@@ -1225,46 +849,10 @@
     "channel": "TVBS",
     "headline": "爸媽小心! 流感進入流行期 腸病毒開學後恐更旺",
     "query": "TVBS 爸媽小心! 流感進入流行期 腸病毒開學後恐更旺",
-    "channel_only": [
-      {
-        "title": "新冠、流感H1N1明開學迎流行風險重症醫六建議防病毒入侵",
-        "url": "https://news.tvbs.com.tw/health/4014819",
-        "domain": "news.tvbs.com.tw",
-        "own_site": true,
-        "score": 0.3
-      },
-      {
-        "title": "公費流感疫苗首度採購破700萬劑！10月開打可兌換健康幣 - TVBS新聞",
-        "url": "https://news.tvbs.com.tw/health/4012526",
-        "domain": "news.tvbs.com.tw",
-        "own_site": true,
-        "score": 0.15
-      },
-      {
-        "title": "就診人數破11萬！流感提前進入流行期「H1N1」占多數 - TVBS新聞",
-        "url": "https://news.tvbs.com.tw/life/2997006",
-        "domain": "news.tvbs.com.tw",
-        "own_site": true,
-        "score": 0.35
-      },
-      {
-        "title": "同時中A流又染新冠！雙重感染案例增加小心兩種藥不可互替代",
-        "url": "https://news.tvbs.com.tw/health/4017872",
-        "domain": "news.tvbs.com.tw",
-        "own_site": true,
-        "score": 0.1
-      },
-      {
-        "title": "抗癌女染新冠隔天亡！單週仍爆2萬人就醫疫苗只打到9/9 - TVBS新聞",
-        "url": "https://news.tvbs.com.tw/health/4015887",
-        "domain": "news.tvbs.com.tw",
-        "own_site": true,
-        "score": 0.0
-      }
-    ],
     "open": [
       {
         "title": "【TVBS健康單元】陳幸妤趙建銘為錢互槓小孩怎自保醫提四招爸媽小心 ...",
+        "description": "【TVBS健康單元】陳幸妤趙建銘為錢互槓小孩怎自保醫提四招爸媽小心! 流感進入流行期腸病毒開學後恐更旺20260909 ‪@TVBSNEWS01‬.",
         "url": "https://www.youtube.com/watch?v=uLkvt1Z3jxw",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -1272,6 +860,7 @@
       },
       {
         "title": "家中有寶貝的要注意囉！ - 國內腸病毒疫情持續上升，加上開學後學童間 ...",
+        "description": "3 days ago · 家中有寶貝的要注意囉！ - 國內腸病毒疫情持續上升，加上開學後學童間互動密切增加腸病毒傳播風險，繼而增加家庭及社區群聚感染的機會。",
         "url": "https://www.threads.com/@knews_taiwan/post/DdTeUKsEtk7/%E5%AE%B6%E4%B8%AD%E6%9C%89%E5%AF%B6%E8%B2%9D%E7%9A%84%E8%A6%81%E6%B3%A8%E6%84%8F%E5%9B%89-%E5%9C%8B%E5%85%A7%E8%85%B8%E7%97%85%E6%AF%92%E7%96%AB%E6%83%85%E6%8C%81%E7%BA%8C%E4%B8%8A%E5%8D%87%E5%8A%A0%E4%B8%8A%E9%96%8B%E5%AD%B8%E5%BE%8C%E5%AD%B8%E7%AB%A5%E9%96%93%E4%BA%92%E5%8B%95%E5%AF%86%E5%88%87%E5%A2%9E%E5%8A%A0%E8%85%B8%E7%97%85%E6%AF%92%E5%82%B3%E6%92%AD%E9%A2%A8%E9%9A%AA%E7%B9%BC%E8%80%8C%E5%A2%9E%E5%8A%A0%E5%AE%B6%E5%BA%AD%E5%8F%8A%E7%A4%BE%E5%8D%80%E7%BE%A4%E8%81%9A%E6%84%9F%E6%9F%93%E7%9A%84%E6%A9%9F%E6%9C%83%E7%96%BE%E7%97%85%E7%AE%A1%E5%88%B6%E7%BD%B2%E9%A0%90%E4%BC%B0%E6%9C%80%E5%BF%AB%E6%96%BC%E6%9C%AC%E5%91%A8%E7%AA%81%E7%A0%B4%E6%B5%81%E8%A1%8C%E9%96%BE%E5%80%BC%E6%AD%A3%E5%BC%8F%E9%80%B2",
         "domain": "www.threads.com",
         "own_site": false,
@@ -1279,6 +868,7 @@
       },
       {
         "title": "開學季逢腸病毒流行期，請注意個人衛生並落實生病不上課",
+        "description": "學齡前嬰幼兒為腸病毒重症的高危險群，且大多數感染者沒有症狀或僅有類似感冒的症狀，成人的症狀更加輕微，不容易察覺及預防，容易成為潛在傳染源。因此疾管署提醒，民眾應 ...",
         "url": "https://www.mohw.gov.tw/fp-16-20137-1.html",
         "domain": "www.mohw.gov.tw",
         "own_site": false,
@@ -1286,6 +876,7 @@
       },
       {
         "title": "流感正式進入流行期！ 腸病毒也升開學後恐更旺 - Yahoo新聞",
+        "description": "腸病毒也升開學後恐更旺 自由時報 流感正式進入流行期! 突破11.0%的流行閾值,代表流感正式進入流行期。 目前流感病毒以A型為主,其中A型H1N1占79.4%",
         "url": "https://tw.news.yahoo.com/%E6%B5%81%E6%84%9F%E6%AD%A3%E5%BC%8F%E9%80%B2%E5%85%A5%E6%B5%81%E8%A1%8C%E6%9C%9F-%E8%85%B8%E7%97%85%E6%AF%92%E4%B9%9F%E5%8D%87-%E9%96%8B%E5%AD%B8%E5%BE%8C%E6%81%90%E6%9B%B4%E6%97%BA-062319869.html",
         "domain": "tw.news.yahoo.com",
         "own_site": false,
@@ -1293,6 +884,7 @@
       },
       {
         "title": "醫師家長「隱匿孩童腸病毒」害群聚感染！女童抱病到校「只為考試成績 ...",
+        "description": "醫師家長「隱匿孩童腸病毒」害群聚感染！女童抱病到校「只為考試成績」衛生局最高開罰30萬！【頭條600秒】. @57ETFN32 likes7.6K views7 months ago",
         "url": "https://www.youtube.com/watch?v=QgZivklwiu4",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -1304,18 +896,10 @@
     "channel": "三立",
     "headline": "對抗隱形殺手 百位醫師推薦紅麴磷蝦油",
     "query": "三立 對抗隱形殺手 百位醫師推薦紅麴磷蝦油",
-    "channel_only": [
-      {
-        "title": "小綠人相關報導| 三立新聞網SETN.COM",
-        "url": "https://www.setn.com/klist/68531",
-        "domain": "www.setn.com",
-        "own_site": true,
-        "score": 0.0
-      }
-    ],
     "open": [
       {
         "title": "家後紅麴磷蝦油 - Facebook",
+        "description": "小心！默默堆積的#血脂 #膽固醇，是健康的隱形殺手！ 推薦給每一位辛苦奔波於家庭、工作的你們 健康的守護者☛ https://lihi1.com/0Z7sT 飲食不均衡或 ...",
         "url": "https://www.facebook.com/Sabrina.Pai.Sky/videos/%E5%AE%B6%E5%BE%8C-%E7%B4%85%E9%BA%B4%E7%A3%B7%E8%9D%A6%E6%B2%B9/371708311415593/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -1323,6 +907,7 @@
       },
       {
         "title": "三高族群染疫轉重症風險高醫師推薦紅麴磷蝦油顧健康 - 三立新聞",
+        "description": "「家後複方358紅麴磷蝦油」獲得衛福部頒布小綠人健康食品標章和SNQ國家品質認證標章，是中油生技公司專業團隊授權研發，獲得百位醫師親自食用、一致推薦， ...",
         "url": "https://www.setn.com/news/958522",
         "domain": "www.setn.com",
         "own_site": true,
@@ -1330,6 +915,7 @@
       },
       {
         "title": "百位醫師推薦家後紅麴磷蝦油國家認證才安心‪@57healthy‬ - YouTube",
+        "description": "家後磷蝦油，經實驗證實8週有效降總膽固醇，有國家認證更安心。 百位醫師推薦紅麴磷蝦油→ https://reurl.cc/g8oAqL #降低膽固醇#家後健康生活館#紅麴 ...",
         "url": "https://www.youtube.com/watch?v=HWIFecbK6XA",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -1337,6 +923,7 @@
       },
       {
         "title": "只因背景硬！這款油保健熱銷有玄機 - 熱門新訊- 自由時報",
+        "description": "其中紅麴是調節血脂的明星成分，磷蝦油則富含Omega-3脂肪酸、蝦紅素、豐富的EPA和DHA，能調節生理機能及思緒清晰。 產品更添加了葡萄籽萃取的養顏成分， ...",
         "url": "https://market.ltn.com.tw/article/14012",
         "domain": "market.ltn.com.tw",
         "own_site": false,
@@ -1344,6 +931,7 @@
       },
       {
         "title": "【健康零極限】紅麴加磷蝦油體內循環清道夫幫你搞定 - YouTube",
+        "description": "紅麴加磷蝦油#降脂配方#血管清道夫.",
         "url": "https://www.youtube.com/watch?v=LmZCX8Yi0u8",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -1355,46 +943,10 @@
     "channel": "三立",
     "headline": "疫情期間這樣吃 \"當令防疫餐\"助抗病毒",
     "query": "三立 疫情期間這樣吃  當令防疫餐 助抗病毒",
-    "channel_only": [
-      {
-        "title": "疫情期間這樣吃！「當令防疫餐」助抗病毒地瓜空心菜入列 - 祝你健康",
-        "url": "https://health.setn.com/news/1113679",
-        "domain": "health.setn.com",
-        "own_site": true,
-        "score": 1.0
-      },
-      {
-        "title": "疫情期間這樣吃！「當令防疫餐」助抗病毒地瓜空心菜入列 ... - 三立新聞",
-        "url": "https://www.setn.com/m/news.aspx?newsid=1113679&p=0",
-        "domain": "www.setn.com",
-        "own_site": true,
-        "score": 1.0
-      },
-      {
-        "title": "疫情期間這樣吃！「當令防疫餐」助抗病毒地瓜空心菜入列 - 三立新聞",
-        "url": "https://www.setn.com/news.aspx?newsid=1113679&from=search&key=%E6%84%9F%E5%86%92",
-        "domain": "www.setn.com",
-        "own_site": true,
-        "score": 1.0
-      },
-      {
-        "title": "確診數飆！醫揭數據喊別慌：大部分人可當作經歷一次感冒 - 三立新聞",
-        "url": "https://www.setn.com/News.aspx?NewsID=1112696",
-        "domain": "www.setn.com",
-        "own_site": true,
-        "score": 0.062
-      },
-      {
-        "title": "中藥「金銀花」抗新冠肺炎高醫大研究證實但這2類人不宜 - 三立新聞",
-        "url": "https://www.setn.com/news.aspx?newsid=1113419&p=0",
-        "domain": "www.setn.com",
-        "own_site": true,
-        "score": 0.062
-      }
-    ],
     "open": [
       {
         "title": "疫情期間這樣吃「當令防疫餐」助抗病毒｜三立新聞台 - YouTube Music",
+        "description": "疫情嚴峻時期除了外出要做好防護！其實也可以從日常三餐中增加免疫力，當令食節可以多吃空心菜有維生素C、維生素A可以抗感冒，地瓜富含維生素A跟免疫調節有關， ...",
         "url": "https://music.youtube.com/watch?v=geO_RTsicFM&list=PLFRLDe00XnCi0R3sKd8KRzcDIK37CiecG",
         "domain": "music.youtube.com",
         "own_site": false,
@@ -1402,6 +954,7 @@
       },
       {
         "title": "疫情期間這樣吃！「當令防疫餐」助抗病毒地瓜空心菜入列 - 祝你健康",
+        "description": "疫情嚴峻時期除了外出要做好防護，其實也可以從日常三餐中增加免疫力。當令食節可以多吃空心菜，有維生素C、維生素A可以抗感冒，地瓜富含維生素A跟免疫 ...",
         "url": "https://health.setn.com/news/1113679",
         "domain": "health.setn.com",
         "own_site": true,
@@ -1409,6 +962,7 @@
       },
       {
         "title": "確診這樣吃避免輕症變重症！1種飲食法增強免疫力這道料理吃到滿滿多酚",
+        "description": "科學研究發現，掌握2大飲食重點，每天吃蔬果及好油的地中海飲食法，有效幫助增強免疫力，避免輕症變重症。營養師程涵宇推薦一道料理「酪梨烤櫛瓜豆腐 ...",
         "url": "https://health.tvbs.com.tw/nutrition/332781",
         "domain": "health.tvbs.com.tw",
         "own_site": false,
@@ -1416,6 +970,7 @@
       },
       {
         "title": "疫情期間這樣吃！「當令防疫餐」助抗病毒地瓜空心菜入列 ... - 三立新聞",
+        "description": "疫情嚴峻時期除了外出要做好防護，其實也可以從日常三餐中增加免疫力。當令食節可以多吃空心菜，有維生素C、維生素A可以抗感冒，地瓜富含維生素A跟免疫調節有關，從生活 ...",
         "url": "https://www.setn.com/m/news.aspx?newsid=1113679&p=0",
         "domain": "www.setn.com",
         "own_site": true,
@@ -1423,6 +978,7 @@
       },
       {
         "title": "新冠病毒疫情爆發期間，飲食與營養的建議 - 聖馬爾定醫院",
+        "description": "吃蔬菜與適量水果(每日2-4份/每份約1平碗)，豆類(例如:小扁豆，豆類)，適量堅果(每日1-2份/每份約1湯匙)和全穀類(例如:糙米、南瓜、馬鈴薯、芋頭、山藥、 ...",
         "url": "https://www.stm.org.tw/Nutrition-room/news_detail.aspx?ids=264",
         "domain": "www.stm.org.tw",
         "own_site": false,
@@ -1434,32 +990,10 @@
     "channel": "三立",
     "headline": "地瓜維生素A保護黏膜 蛤蜊含鋅助抗氧化",
     "query": "三立 地瓜維生素A保護黏膜 蛤蜊含鋅助抗氧化",
-    "channel_only": [
-      {
-        "title": "疫情期間這樣吃！「當令防疫餐」助抗病毒地瓜空心菜入列 - 祝你健康",
-        "url": "https://health.setn.com/news/1113679",
-        "domain": "health.setn.com",
-        "own_site": true,
-        "score": 0.111
-      },
-      {
-        "title": "疫情期間這樣吃！「當令防疫餐」助抗病毒地瓜空心菜入列 - 三立新聞",
-        "url": "https://www.setn.com/news.aspx?newsid=1113679&from=search&key=%E6%84%9F%E5%86%92",
-        "domain": "www.setn.com",
-        "own_site": true,
-        "score": 0.111
-      },
-      {
-        "title": "居家防疫吃什麼才好？營養師推10大食材：有助整體免疫",
-        "url": "https://health.setn.com/news/945005",
-        "domain": "health.setn.com",
-        "own_site": true,
-        "score": 0.056
-      }
-    ],
     "open": [
       {
         "title": "logo - 啟新健康世界-專業健康檢查/醫學健康促進",
+        "description": "維生素A 屬於強化黏膜的營養素，被稱作「抗傳染病維生素」，可維護眼、鼻、口、肺部、腸胃道等處的黏膜健康，幫助免疫細胞產生，提升自我防禦力。因此，維生素A可防止肺炎 ...",
         "url": "https://www.ch.com.tw/index.aspx?chapter=epaper20231204",
         "domain": "www.ch.com.tw",
         "own_site": false,
@@ -1467,6 +1001,7 @@
       },
       {
         "title": "增強免疫力、預防感冒！多吃這些「蔬菜水果」有好處｜聖女番茄、奇異 ...",
+        "description": "增強免疫力、預防感冒！多吃這些「蔬菜水果」有好處｜聖女番茄、奇異果「維生素C」含量高地瓜「維生素A」保護黏膜蛤蜊「含鋅」堅果「含銅、維生素E」抗 ...",
         "url": "https://www.youtube.com/watch?v=Y5TyY34cYXA",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -1474,6 +1009,7 @@
       },
       {
         "title": "不是地瓜葉！營養師推「超級食物」護心、助解毒配油吃更強 - 祝你健康",
+        "description": "林俐岑分享羽衣甘藍4大益處，首先是「強效抗氧化與抗發炎」，羽衣甘藍含有槲皮素和山奈酚，協助清除體內自由基，減輕細胞的氧化壓力，有助於保護細胞、抗發炎；再者是「護 ...",
         "url": "https://health.setn.com/news/1841397",
         "domain": "health.setn.com",
         "own_site": true,
@@ -1481,6 +1017,7 @@
       },
       {
         "title": "對維生素保健品的需求大增，但其實有許多天然食材深藏著極高的營養素 ...",
+        "description": "鋅 鋅對於免疫系統也非常重要，協助身體防禦和防止病原 體進入，有助於抗氧化、抗發炎，可以從貝類、牡蠣、 洋菜、胚芽米、小麥胚芽、南瓜子、松子 ...",
         "url": "https://www.facebook.com/Everydayhealth.Taiwan/posts/%E7%B6%AD%E7%94%9F%E7%B4%A0%E5%8F%AF%E8%AA%AA%E6%98%AF%E6%88%91%E5%80%91%E7%94%9F%E6%B4%BB%E4%B8%AD%E6%9C%80%E5%B8%B8%E8%A6%8B%E4%B8%94%E6%9C%80%E5%B8%B8%E8%A2%AB%E6%8F%90%E5%8F%8A%E7%9A%84%E7%87%9F%E9%A4%8A%E7%B4%A0%E7%89%B9%E5%88%A5%E6%98%AF%E7%96%AB%E6%83%85%E6%9C%9F%E9%96%93%E5%B0%8D%E7%B6%AD%E7%94%9F%E7%B4%A0%E4%BF%9D%E5%81%A5%E5%93%81%E7%9A%84%E9%9C%80%E6%B1%82%E5%A4%A7%E5%A2%9E%E4%BD%86%E5%85%B6%E5%AF%A6%E6%9C%89%E8%A8%B1%E5%A4%9A%E5%A4%A9%E7%84%B6%E9%A3%9F%E6%9D%90%E6%B7%B1%E8%97%8F%E8%91%97%E6%A5%B5%E9%AB%98%E7%9A%84%E7%87%9F%E9%A4%8A%E7%B4%A0%E5%A1%AB%E9%A3%BD%E8%82%9A%E5%AD%90%E7%9A%84%E5%90%8C%E6%99%82%E4%B9%9F%E8%83%BD%E6%94%9D%E5%8F%96%E7%87%9F%E9%A4%8A%E5%A2%9E%E5%8A%A0%E5%85%8D%E7%96%AB%E5%8A%9B/1394017786087173/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -1488,6 +1025,7 @@
       },
       {
         "title": "抗癌這樣吃！「4營養素」保護內臟器官發酵食物調節免疫、防癌｜健康 ...",
+        "description": "平時靠飲食也能防癌！ 營養師教你多補充「4營養素」保護內臟器官 -- 最強清潔3神器▶️ https://healthtvbs.pse.is/8lu6le ✓ 更多健康知識在 ...",
         "url": "https://www.facebook.com/TVBS56.health/videos/%E6%8A%97%E7%99%8C%E9%80%99%E6%A8%A3%E5%90%834%E7%87%9F%E9%A4%8A%E7%B4%A0%E4%BF%9D%E8%AD%B7%E5%85%A7%E8%87%9F%E5%99%A8%E5%AE%98-%E7%99%BC%E9%85%B5%E9%A3%9F%E7%89%A9%E8%AA%BF%E7%AF%80%E5%85%8D%E7%96%AB%E9%98%B2%E7%99%8C%E5%81%A5%E5%BA%B720/1493755336086150/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -1499,46 +1037,10 @@
     "channel": "東森",
     "headline": "第一口沒吃對比吃太多更傷!醫師示警健康風險",
     "query": "東森 第一口沒吃對比吃太多更傷!醫師示警健康風險",
-    "channel_only": [
-      {
-        "title": "醫起看／吃蛋黃膽固醇飆高？打破雞蛋三大營養迷思 - 東森新聞",
-        "url": "https://news.ebc.net.tw/news/health/559849",
-        "domain": "news.ebc.net.tw",
-        "own_site": true,
-        "score": 0.05
-      },
-      {
-        "title": "難怪變胖！醫示警「吃飯配劇」藏恐怖迴力鏢：下一餐會失控",
-        "url": "https://health.ettoday.net/news/3181635",
-        "domain": "health.ettoday.net",
-        "own_site": true,
-        "score": 0.15
-      },
-      {
-        "title": "週日處暑！5大生肖谷底翻身第一名正財旺適合談加薪｜東森新聞",
-        "url": "https://news.ebc.net.tw/news/living/567385",
-        "domain": "news.ebc.net.tw",
-        "own_site": true,
-        "score": 0.1
-      },
-      {
-        "title": "東森深度週報／護心護腦抗發炎！ 營養師激推鮭魚超健康",
-        "url": "https://news.ebc.net.tw/news/living/551155",
-        "domain": "news.ebc.net.tw",
-        "own_site": true,
-        "score": 0.15
-      },
-      {
-        "title": "「好好吃早餐」心血管死亡風險降29%！ 醫揭必備3大元素",
-        "url": "https://health.ettoday.net/news/3174061",
-        "domain": "health.ettoday.net",
-        "own_site": true,
-        "score": 0.15
-      }
-    ],
     "open": [
       {
         "title": "第一口沒吃對比吃太多更傷！醫師示警健康風險‪@newsebc‬ - YouTube",
+        "description": "現代飲食精緻，多數人「纖維攝取不足」，醫師提醒，如果進食第一口沒有纖維，整餐的節奏失衡，加上久坐運動量不足，就容易引發三高危機。",
         "url": "https://www.youtube.com/watch?v=FSO9gZkJxIM",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -1546,6 +1048,7 @@
       },
       {
         "title": "【醫師好辣】知道卻做不到！變健康的替代方案這樣做？！ EP1781 預告",
+        "description": "【醫師好辣】知道卻做不到！變健康的替代方案這樣做？！ EP1781 預告｜每週六日下午5點東森綜合32頻道. @ettv323 likes542 views4 months ago",
         "url": "https://www.youtube.com/watch?v=yjFjCQZmMXA",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -1553,6 +1056,7 @@
       },
       {
         "title": "台灣洗腎率居全球之冠！6大傷腎地雷曝光！「湯頭.醬料」鈉含量超驚人 ...",
+        "description": "台灣洗腎率居全球之冠!6大傷腎地雷曝光!「湯頭.醬料」鈉含量超驚人【東森醫起看】 @ebchellodoctor10 likes626 views3 months ago",
         "url": "https://www.youtube.com/watch?v=Zf29Ez-j4Pg",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -1560,6 +1064,7 @@
       },
       {
         "title": "35歲不菸不酒竟血管鈣化！醫師曝5種熱門台灣小吃恐是元凶：磷酸鹽太多",
+        "description": "不少外食族自認飲食清淡，卻可能落入隱形的健康陷阱。一名35歲的林先生，平時不菸不酒、不喝手搖飲，卻因頻尿、易喘就醫，檢查竟發現腎功能已掉到第3 ...",
         "url": "https://today.line.me/tw/v3/article/PG38Ry7",
         "domain": "today.line.me",
         "own_site": false,
@@ -1567,6 +1072,7 @@
       },
       {
         "title": "醫定沒問題 - 東森財經新聞",
+        "description": "每一集，我們邀請專業醫師／營養師／健身教練與你面對面，拆解常見的健康迷思、提供實用的保健方案、帶你從生活習慣出發，真正做到『醫定』（醫生定見）也『沒問題』。",
         "url": "https://fnc.ebc.net.tw/fncvideo/program/28",
         "domain": "fnc.ebc.net.tw",
         "own_site": true,
@@ -1578,46 +1084,10 @@
     "channel": "東森",
     "headline": "奇亞籽是排便神器? 吃錯乾吞恐釀「食道阻塞」",
     "query": "東森 奇亞籽是排便神器? 吃錯乾吞恐釀 食道阻塞",
-    "channel_only": [
-      {
-        "title": "東森深度周報／吃超級食物別踩雷！奇亞籽須泡水乾吞恐便祕",
-        "url": "https://news.ebc.net.tw/news/health/570755",
-        "domain": "news.ebc.net.tw",
-        "own_site": true,
-        "score": 0.333
-      },
-      {
-        "title": "財經主播廖廷娟懷胎5月 裸背透視婚紗曝長腿翹臀 | ETtoday星光雲 | ET...",
-        "url": "https://star.ettoday.net/news/294752",
-        "domain": "star.ettoday.net",
-        "own_site": true,
-        "score": 0.0
-      },
-      {
-        "title": "五熊破壞日本國寶「佛足石」有1273年歷史 藥師寺還是世界遺產 | ETtod...",
-        "url": "https://travel.ettoday.net/article/3224627.htm",
-        "domain": "travel.ettoday.net",
-        "own_site": true,
-        "score": 0.056
-      },
-      {
-        "title": "「我想你進入我」... 8句「情話」激發性慾讓做愛更高潮 | ETtoday健康...",
-        "url": "https://health.ettoday.net/news/824286",
-        "domain": "health.ettoday.net",
-        "own_site": true,
-        "score": 0.0
-      },
-      {
-        "title": "快訊／眾量級開撕一審出爐！家寧獲判無罪...媽媽1年8月恐入獄 | ETtod...",
-        "url": "https://www.ettoday.net/news/20260811/3217243.htm",
-        "domain": "www.ettoday.net",
-        "own_site": true,
-        "score": 0.056
-      }
-    ],
     "open": [
       {
         "title": "東森深度周報／吃超級食物別踩雷！奇亞籽須泡水乾吞恐便祕 - Yahoo新聞",
+        "description": "6 days ago · 但要注意奇亞籽千萬不能直接乾吃，因為遇水後會持續膨脹，吞下肚後可能在食道形成凝膠，造成阻塞；如果食用後沒有補充足夠水分，也可能奪走腸道水分，反而 ...",
         "url": "https://tw.news.yahoo.com/%E6%9D%B1%E6%A3%AE%E6%B7%B1%E5%BA%A6%E5%91%A8%E5%A0%B1-%E5%90%83%E8%B6%85%E7%B4%9A%E9%A3%9F%E7%89%A9%E5%88%A5%E8%B8%A9%E9%9B%B7-%E5%A5%87%E4%BA%9E%E7%B1%BD%E9%A0%88%E6%B3%A1%E6%B0%B4-%E4%B9%BE%E5%90%9E%E6%81%90%E4%BE%BF%E7%A5%95-220000272.html",
         "domain": "tw.news.yahoo.com",
         "own_site": false,
@@ -1625,6 +1095,7 @@
       },
       {
         "title": "吃超級食物別踩雷！奇亞籽須泡水乾吞恐便祕【東森深度報導】@newsebc",
+        "description": "7 days ago · ... 奇亞籽遇水就會膨脹超過十倍，千萬不能乾吃，必須以一比十的比例加水泡開至少30分鐘，而且吃了還要再多喝水消化，如果直接乾吞下肚，不只容易阻塞食道 ...",
         "url": "https://www.youtube.com/watch?v=z0VIeuz15pY",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -1632,6 +1103,7 @@
       },
       {
         "title": "東森深度周報／吃超級食物別踩雷！奇亞籽須泡水乾吞恐便祕",
+        "description": "6 days ago · 但要注意奇亞籽千萬不能直接乾吃，因為遇水後會持續膨脹，吞下肚後可能在食道形成凝膠，造成阻塞；如果食用後沒有補充足夠水分，也可能奪走腸道水分，反而 ...",
         "url": "https://news.ebc.net.tw/news/health/570755",
         "domain": "news.ebc.net.tw",
         "own_site": true,
@@ -1639,6 +1111,7 @@
       },
       {
         "title": "奇亞籽別再亂吃了！吃錯了竟會「腸阻塞」！醫師緊急提醒：：這4類人 ...",
+        "description": "那些纖維會在你的腸道裡越積越多, 加上奇亞籽吸走了腸道裡大量的水分, 你的糞便反而會變得更加乾硬, 更加難以排出, 結果就是, 你本來吃期辣子是為了解決 ...",
         "url": "https://www.facebook.com/61573953825505/videos/%E5%A5%87%E4%BA%9E%E7%B1%BD%E5%88%A5%E5%86%8D%E4%BA%82%E5%90%83%E4%BA%86%E5%90%83%E9%8C%AF%E4%BA%86%E7%AB%9F%E6%9C%83%E8%85%B8%E9%98%BB%E5%A1%9E%E9%86%AB%E5%B8%AB%E7%B7%8A%E6%80%A5%E6%8F%90%E9%86%92%E9%80%994%E9%A1%9E%E4%BA%BA%E4%B8%80%E5%8F%A3%E9%83%BD%E4%B8%8D%E8%83%BD%E7%A2%B090%E7%9A%84%E4%BA%BA%E9%83%BD%E5%90%83%E9%8C%AF%E4%BA%86%E4%B8%8D%E4%BD%86%E6%B2%92%E7%87%9F%E9%A4%8A%E9%82%84%E5%8F%AF%E8%83%BD%E9%80%81%E6%80%A5%E8%A8%BA/1305302395107959/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -1646,6 +1119,7 @@
       },
       {
         "title": "同樣一包奇亞籽，有人喝完排便超順 - Threads",
+        "description": "若水分攝取不足，奇亞籽會吸乾腸道水分，引發便秘、嚴重脹氣或腸胃痙攣；若直接乾吞或水分太少，更可能在食道膨脹導致阻塞或吞嚥困難。 ​正確與安全吃法​ ...",
         "url": "https://www.threads.com/@pcos.rere.pharm/post/DXN7UcdkqBF/video-%E5%90%8C%E6%A8%A3%E4%B8%80%E5%8C%85%E5%A5%87%E4%BA%9E%E7%B1%BD%E6%9C%89%E4%BA%BA%E5%96%9D%E5%AE%8C%E6%8E%92%E4%BE%BF%E8%B6%85%E9%A0%86%E6%88%91%E6%9C%8B%E5%8F%8B%E5%96%9D%E5%AE%8C%E4%BE%BF%E7%A7%98%E4%B8%89%E5%A4%A9%E5%B7%AE%E5%88%A5%E5%8F%AA%E5%9C%A8%E5%96%9D%E6%B3%95%E4%BB%96%E4%B8%80%E6%AC%A1%E5%8A%A0%E4%BA%86%E4%BA%94%E6%B9%AF%E5%8C%99%E8%A6%BA%E5%BE%97%E5%8A%A0%E8%B6%8A%E5%A4%9A%E8%B6%8A%E6%9C%89%E6%95%88%E7%84%B6%E5%BE%8C%E4%BB%96%E5%B9%B3%E5%B8%B8%E6%9C%AC%E4%BE%86%E5%B0%B1%E4%B8%8D%E5%A4%AA%E6%84%9B%E5%96%9D%E6%B0%B4%E5%8F%AA%E9%85%8D%E4%BA%86200cc%E7%9A%84%E6%B0%B4%E5%A5%87%E4%BA%9E%E7%B1%BD%E9%80%B2%E5%88%B0%E8%85%B8%E9%81%93%E4%B9%8B%E5%BE%8C%E9%82%84%E6%9C%83",
         "domain": "www.threads.com",
         "own_site": false,
@@ -1657,10 +1131,10 @@
     "channel": "東森",
     "headline": "奇亞籽怎吃?專家曝撇步 比例1:10泡水半小時",
     "query": "東森 奇亞籽怎吃?專家曝撇步 比例1:10泡水半小時",
-    "channel_only": [],
     "open": [
       {
         "title": "東森深度周報／吃超級食物別踩雷！奇亞籽須泡水乾吞恐便祕 - Yahoo新聞",
+        "description": "6 days ago · 奇亞籽碰到水後會膨脹10至15倍，因此加水後要立即快速攪拌，讓種子充分吸收水分，直到變成果凍狀。 食用時建議以1比10的比例加水，一湯匙奇亞籽搭配約 ...",
         "url": "https://tw.news.yahoo.com/%E6%9D%B1%E6%A3%AE%E6%B7%B1%E5%BA%A6%E5%91%A8%E5%A0%B1-%E5%90%83%E8%B6%85%E7%B4%9A%E9%A3%9F%E7%89%A9%E5%88%A5%E8%B8%A9%E9%9B%B7-%E5%A5%87%E4%BA%9E%E7%B1%BD%E9%A0%88%E6%B3%A1%E6%B0%B4-%E4%B9%BE%E5%90%9E%E6%81%90%E4%BE%BF%E7%A5%95-220000272.html",
         "domain": "tw.news.yahoo.com",
         "own_site": false,
@@ -1668,6 +1142,7 @@
       },
       {
         "title": "五代中醫獨到吃法奇亞籽| 健康1+1 · 直播精選 - YouTube",
+        "description": "奇亞籽含有Omega-3 、膳食纖維、維生素、礦物質等多種營養素。哪些奇亞籽吃法，可以吸收更多營養、幫助減肥呢？ Time Code: 00:02 奇亞籽是什麽02:06 ...",
         "url": "https://www.youtube.com/watch?v=7dwvc6XX9Os",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -1675,6 +1150,7 @@
       },
       {
         "title": "奇亞籽不是泡了就好！營養師曝「2個關鍵吃法」 很多人第一步就做錯",
+        "description": "3 days ago · 不少人把奇亞籽倒進豆漿後就立刻喝下肚，但營養師夏子雯提醒，奇亞籽吸水力很強，建議先加入水、豆漿、牛奶或優酪乳中，浸泡約15～30分鐘，等到奇亞籽充分 ...",
         "url": "https://fashion.ettoday.net/news/3238138",
         "domain": "fashion.ettoday.net",
         "own_site": true,
@@ -1682,6 +1158,7 @@
       },
       {
         "title": "重點是份量、喝水量和吃法想靠奇亞籽增加飽足感， 記得先泡開 - Instagram",
+        "description": "留言「好想瘦」 領取提高代謝不復胖菜單 小提醒：奇亞籽記得從少量（1-2湯匙）開始嘗試，並 ...",
         "url": "https://www.instagram.com/reel/DZkMeydDHxU/",
         "domain": "www.instagram.com",
         "own_site": false,
@@ -1689,6 +1166,7 @@
       },
       {
         "title": "東森深度周報／吃超級食物別踩雷！奇亞籽須泡水乾吞恐便祕",
+        "description": "6 days ago · 食用時建議以1比10的比例加水，一湯匙奇亞籽搭配約200毫升常溫水或飲品 ... 營養師夏子雯建議，奇亞籽泡水至少30分鐘後再飲用，也可以製作成隔夜 ...",
         "url": "https://news.ebc.net.tw/news/health/570755",
         "domain": "news.ebc.net.tw",
         "own_site": true,
@@ -1700,10 +1178,10 @@
     "channel": "中天",
     "headline": "被鐵人部長圈粉! 陳時中率防疫團隊獲高滿意度",
     "query": "中天 被鐵人部長圈粉! 陳時中率防疫團隊獲高滿意度",
-    "channel_only": [],
     "open": [
       {
         "title": "孟買春秋專欄︱台灣防疫成就：必須給陳時中應有的評價 - 思想坦克",
+        "description": "11月26日，除了還給陳時中在防疫中應有的評價，肯定他帶領台灣走過疫情的行政能力，更重要的是在投票之際，不僅在台北而是在全台灣，眼光不該僅限於地方 ...",
         "url": "https://voicettank.org/%E5%8F%B0%E7%81%A3%E9%98%B2%E7%96%AB%E6%88%90%E5%B0%B1%E5%BF%85%E9%A0%88%E7%B5%A6%E9%99%B3%E6%99%82%E4%B8%AD%E6%87%89%E6%9C%89%E7%9A%84%E8%A9%95%E5%83%B9/",
         "domain": "voicettank.org",
         "own_site": false,
@@ -1711,6 +1189,7 @@
       },
       {
         "title": "陳時中：防疫做不到一百分堅定腳步坦然接受批評 新冠肺炎疫情爆發後",
+        "description": "◤陳時中：防疫做不到一百分堅定腳步坦然接受批評◢ 新冠肺炎疫情爆發後，衛福部長陳時中天天都有重大決 策等著他決定，面對防疫挑戰，他不諱言自己也會 ...",
         "url": "https://www.facebook.com/cwgroup/videos/%E9%99%B3%E6%99%82%E4%B8%AD%E9%98%B2%E7%96%AB%E5%81%9A%E4%B8%8D%E5%88%B0%E4%B8%80%E7%99%BE%E5%88%86-%E5%A0%85%E5%AE%9A%E8%85%B3%E6%AD%A5%E5%9D%A6%E7%84%B6%E6%8E%A5%E5%8F%97%E6%89%B9%E8%A9%95/670683010633591/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -1718,6 +1197,7 @@
       },
       {
         "title": "【民報書摘】戰疫：鐵人部長陳時中與台灣抗疫英雄們 - Yahoo新聞",
+        "description": "說話不太流暢 … 時中說話給人一種溫和、實在的感覺,民眾很信賴;尤其他公布疫情,好的、壞的全講",
         "url": "https://tw.news.yahoo.com/%E6%B0%91%E5%A0%B1%E6%9B%B8%E6%91%98-%E6%88%B0%E7%96%AB-%E9%90%B5%E4%BA%BA%E9%83%A8%E9%95%B7%E9%99%B3%E6%99%82%E4%B8%AD%E8%88%87%E5%8F%B0%E7%81%A3%E6%8A%97%E7%96%AB%E8%8B%B1%E9%9B%84%E5%80%91-052300726.html",
         "domain": "tw.news.yahoo.com",
         "own_site": false,
@@ -1725,6 +1205,7 @@
       },
       {
         "title": "TVBS民調：陳時中滿意度高達82％ 國人對政府防疫有信心 - 自由時報",
+        "description": "陳時中率團隊防疫,民眾十分有感。對於陳的表現,有82%民眾表示滿意,僅6%不滿意,另12%沒有意見;民眾對蔡英文滿意度則上升至54%",
         "url": "https://news.ltn.com.tw/news/politics/breakingnews/3067554",
         "domain": "news.ltn.com.tw",
         "own_site": false,
@@ -1732,6 +1213,7 @@
       },
       {
         "title": "日媒讚陳時中「台灣鐵人大臣」！天天開記者會問到飽，還曾25小時不眠不休",
+        "description": "日本每日新聞發自台北的報導指出,台灣防疫有成,未讓疫情擴大,66歲陳時中受到台灣民眾的愛戴,民眾看到他不眠不休的工作,稱他是「鋼鐵部長」(日文:鐵人大臣 ...",
         "url": "https://www.storm.mg/lifestyle/2456428",
         "domain": "www.storm.mg",
         "own_site": false,
@@ -1743,10 +1225,10 @@
     "channel": "中天",
     "headline": "蔡政府防疫評價? 94%認為及格 85%對未來有信心",
     "query": "中天 蔡政府防疫評價? 94%認為及格 85%對未來有信心",
-    "channel_only": [],
     "open": [
       {
         "title": "新民調：八成以上台灣人不認同自己是中國人對蔡英文政府防疫能力有信心",
+        "description": "在新冠病毒在全球蔓延之際，台灣民意基金會星期一(2月24日)針對“武漢肺炎、政府效能與兩岸關係”發布最新民調中，高達85.6%民眾對蔡英文政府“未來有效控制 ...",
         "url": "https://www.voacantonese.com/a/poll-shows-over-80percent-taiwanese-identify-only-as-taiwnese-and-have-confidence-in-government-handling-coronavirus-202002226/5306500.html",
         "domain": "www.voacantonese.com",
         "own_site": false,
@@ -1754,6 +1236,7 @@
       },
       {
         "title": "[PDF] 台灣人會不會擔心感染Omicron？",
+        "description": "我們問：「一般說來，您會不會擔心自己或家人染疫？」結果發現：24.3%非常擔心，. 44.6%還算擔心，24%不太擔心，6.1%一點也不擔心，1%沒意見、不知道、拒答。換句.",
         "url": "https://www.tpof.org/wp-content/uploads/2022/08/20220125-p-13-3.pdf",
         "domain": "www.tpof.org",
         "own_site": false,
@@ -1761,6 +1244,7 @@
       },
       {
         "title": "這支影片，獻給每一個台灣人。 時間和病毒對每個人而言，都是公平的 ...",
+        "description": "這次疫情，每一個台灣人，從政府到民間，都團結在一 起，全力防疫。這支影片的每一幕，對我們而言，都是 最真實的感受，也是最光榮的時刻。 這份光榮， ...",
         "url": "https://www.facebook.com/tsaiingwen/videos/%E5%8F%B0%E7%81%A3%E6%A8%A1%E5%BC%8F/173503507378160/?locale=zh_CN",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -1768,6 +1252,7 @@
       },
       {
         "title": "清零或共存？蔡英文因一句話拍板防疫新台灣模式 - 快讀",
+        "description": "2022年初，變異加速感染力但輕症化的新型變種病毒omicron 攻入台灣後， 蔡英文政府就開始思考防疫政策究竟在「清零」與「和病毒共存」 間如何抉擇？",
         "url": "https://blog.hamibook.com.tw/%E5%B0%81%E9%9D%A2%E6%95%85%E4%BA%8B/%E6%B8%85%E9%9B%B6%E6%88%96%E5%85%B1%E5%AD%98%EF%BC%9F%E8%94%A1%E8%8B%B1%E6%96%87%E5%9B%A0%E4%B8%80%E5%8F%A5%E8%A9%B1-%E6%8B%8D%E6%9D%BF%E9%98%B2%E7%96%AB%E6%96%B0%E5%8F%B0%E7%81%A3%E6%A8%A1%E5%BC%8F/?p=172276",
         "domain": "blog.hamibook.com.tw",
         "own_site": false,
@@ -1775,6 +1260,7 @@
       },
       {
         "title": "US Poll: 66% of Americans Believe \"Taiwan's Security Is US ... - YouTube",
+        "description": "Comments ; 23:18. Go to channel 少康戰情室TVBS Situation Room · 少康戰情室TVBS Situation Room•34K views ; 12:16. Go to channel 全球大視野 · 全球大 ...",
         "url": "https://www.youtube.com/watch?v=WjEQ7qXwqjA",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -1786,10 +1272,10 @@
     "channel": "中天",
     "headline": "政府宣導嘸效? 70%民眾搭捷運.公車\"一定戴口罩\"",
     "query": "中天 政府宣導嘸效? 70%民眾搭捷運.公車 一定戴口罩",
-    "channel_only": [],
     "open": [
       {
         "title": "新聞稿-即日起搭乘大眾運輸工具全面強制戴口罩 - 臺北市政府交通局",
+        "description": "為防制新冠肺炎疫情，使民眾安心搭乘大眾運輸工具，中央疫情指揮中心今天宣布，搭乘大眾運輸工具應全面戴口罩，未戴者會予以勸導，勸導不聽者將開罰3000元至1萬5000元 ...",
         "url": "https://dot.gov.taipei/News_Content.aspx?n=D739A9F6B5C0AB95&s=474B2D6654E573B5",
         "domain": "dot.gov.taipei",
         "own_site": false,
@@ -1797,6 +1283,7 @@
       },
       {
         "title": "一張圖秒懂》搭公車、捷運忘了戴口罩？不聽勸最高開罰1萬5 | 信傳媒",
+        "description": "自4月4日起強制實施搭捷運須戴口罩,請旅客務必於進閘門前及搭乘捷運全程戴口罩,如經勸導不聽,將依法開罰。",
         "url": "https://www.cmmedia.com.tw/home/articles/20681",
         "domain": "www.cmmedia.com.tw",
         "own_site": false,
@@ -1804,6 +1291,7 @@
       },
       {
         "title": "口罩解禁！除8場所搭公車、捷運免戴口罩，醫籲4大族群先不要脫",
+        "description": "今起實施1111天的口罩令大鬆綁，搭乘捷運、公車不再需要戴口罩，僅剩醫療院所、長照機構等場所仍須強制佩戴。但是記者直擊捷運和公車搭乘狀況，大部分民眾 ...",
         "url": "https://health.gvm.com.tw/article/101764",
         "domain": "health.gvm.com.tw",
         "own_site": false,
@@ -1811,6 +1299,7 @@
       },
       {
         "title": "室內口罩令放寬中市交通局：搭乘大眾運輸仍應全程戴口罩 - 臺中市政府",
+        "description": "搭乘大眾運輸仍應全程戴口罩 · 交通局提醒，民眾搭乘捷運、公車、計程車等大眾運輸工具，駕駛及乘客於車上應依照規定佩戴口罩.",
         "url": "https://www.taichung.gov.tw/8868/8872/9962/2290402",
         "domain": "www.taichung.gov.tw",
         "own_site": false,
@@ -1818,6 +1307,7 @@
       },
       {
         "title": "指揮中心宣布公共運輸戴口罩規定放寬規劃，如疫情穩定預計自4月17日實施",
+        "description": "公共運輸戴口罩,改為建議戴口罩。 按規定全程戴口罩。 場所不戴口罩之例外情形:飲食、拍照、不適合或無法戴口罩之檢查、治療或活動。 搭乘公共運輸交通工具及特定運具 … ...",
         "url": "https://at.cdc.gov.tw/Lc76jj",
         "domain": "at.cdc.gov.tw",
         "own_site": false,
@@ -1829,46 +1319,10 @@
     "channel": "中天",
     "headline": "\"健康幣\"10月正式上線 賴清德主持健康台灣委員會",
     "query": "中天  健康幣 10月正式上線 賴清德主持健康台灣委員會",
-    "channel_only": [
-      {
-        "title": "賴清德總統：今年10月推出「健康幣」 鼓勵民眾主動篩檢",
-        "url": "https://ctinews.com/news/items/gOnLmwg5Wk",
-        "domain": "ctinews.com",
-        "own_site": true,
-        "score": 0.182
-      },
-      {
-        "title": "健康幣10月上路！戒菸、買菜、打疫苗都能賺錢",
-        "url": "https://ctinews.com/news/items/m0x7Nq9dav",
-        "domain": "ctinews.com",
-        "own_site": true,
-        "score": 0.318
-      },
-      {
-        "title": "健康幣10月上線！健檢、癌篩最高賺1.3萬元",
-        "url": "https://ctinews.com/news/items/57nGVRDwxk",
-        "domain": "ctinews.com",
-        "own_site": true,
-        "score": 0.409
-      },
-      {
-        "title": "健康台灣相關報導 - 中天新聞網",
-        "url": "https://ctinews.com/tags/%E5%81%A5%E5%BA%B7%E5%8F%B0%E7%81%A3",
-        "domain": "ctinews.com",
-        "own_site": true,
-        "score": 0.182
-      },
-      {
-        "title": "推動「國家藥物韌性整備計畫」 賴清德：4年240億建構產製供應防線",
-        "url": "https://ctinews.com/news/items/BexXN9dEWb",
-        "domain": "ctinews.com",
-        "own_site": true,
-        "score": 0.136
-      }
-    ],
     "open": [
       {
         "title": "【中天直播#LIVE】\"健康幣\"10月正式上線賴清德主持健康台灣委員會 ...",
+        "description": "健康幣#賴清德#健康台灣委員會#總統府#中天電視#新聞直播#不斷電直播#直播#LIVE #監督的力量在中天 支持監督的力量，請加入中天電視 ...",
         "url": "https://www.youtube.com/watch?v=SccMCxpSsrg",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -1876,6 +1330,7 @@
       },
       {
         "title": "賴清德明日健康台灣委員會宣布「健康幣」10月正式上線| 上報",
+        "description": "總統賴清德將於明天（27日）再次召開總統府「健康台灣推動委員會」會議。據了解，賴清德將在會中正式宣布「健康幣」政策預計於今年10月正式上線，透過 ...",
         "url": "https://today.line.me/tw/v3/article/Ggwz9BP",
         "domain": "today.line.me",
         "own_site": false,
@@ -1883,6 +1338,7 @@
       },
       {
         "title": "總統主持「健康台灣」第8次委員會議強調推動健康平權、10月推出健康幣",
+        "description": "賴清德總統今（27）日下午主持「健康台灣推動委員會第8次委員會議」時表示，實現全民健康覆蓋，是打造永續韌性國家的必要條件，政府將透過「原住民族健康韌性國家行動 ...",
         "url": "https://www.president.gov.tw/News/40296",
         "domain": "www.president.gov.tw",
         "own_site": false,
@@ -1890,6 +1346,7 @@
       },
       {
         "title": "全民邁向「健康生活」！ 賴清德總統今（27）日親自主持「健康台灣推動 ...",
+        "description": "賴清德總統今（27）日親自主持「健康台灣推動委員會 第8次委員會議 ... 【健康幣即將於10 月1 日正式上線！ 】 誠摯邀請各大產業夥伴齊聚，透過 ...",
         "url": "https://www.facebook.com/mohw.gov.tw/posts/%E5%81%A5%E5%BA%B7%E5%8F%B0%E7%81%A3%E6%8C%81%E7%BA%8C%E5%89%8D%E9%80%B2%E5%85%A8%E6%B0%91%E9%82%81%E5%90%91%E5%81%A5%E5%BA%B7%E7%94%9F%E6%B4%BB%E8%B3%B4%E6%B8%85%E5%BE%B7%E7%B8%BD%E7%B5%B1%E4%BB%8A27%E6%97%A5%E8%A6%AA%E8%87%AA%E4%B8%BB%E6%8C%81%E5%81%A5%E5%BA%B7%E5%8F%B0%E7%81%A3%E6%8E%A8%E5%8B%95%E5%A7%94%E5%93%A1%E6%9C%83%E7%AC%AC8%E6%AC%A1%E5%A7%94%E5%93%A1%E6%9C%83%E8%AD%B0%E8%81%9A%E7%84%A6%E5%8E%9F%E4%BD%8F%E6%B0%91%E6%97%8F%E5%81%A5%E5%BA%B7%E9%9F%8C%E6%80%A7%E5%9C%8B%E5%AE%B6%E8%A1%8C%E5%8B%95%E5%B0%87%E5%8A%A0%E5%BF%AB%E8%85%B3%E6%AD%A5%E8%90%BD%E5%AF%A6%E5%81%A5%E5%BA%B7%E5%B9%B3%E6%AC%8A%E4%B8%A6%E6%8E%A8%E5%8B%95%E6%95%B8%E4%BD%8D%E5%81%A5%E5%BA%B7%E6%B2%BB%E7%90%86%E6%96%B0/1528435122656196/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -1897,6 +1354,7 @@
       },
       {
         "title": "賴清德明日健康台灣委員會宣布「健康幣」10月正式上線 - Yahoo新聞",
+        "description": "總統賴清德將於明天（27日）再次召開總統府「健康台灣推動委員會」會議。據了解，賴清德將在會中正式宣布「健康幣」政策預計於今年10月正式上線，透過 ...",
         "url": "https://tw.news.yahoo.com/%E8%B3%B4%E6%B8%85%E5%BE%B7%E6%98%8E%E6%97%A5%E5%81%A5%E5%BA%B7%E5%8F%B0%E7%81%A3%E5%A7%94%E5%93%A1%E6%9C%83-%E5%AE%A3%E5%B8%83-%E5%81%A5%E5%BA%B7%E5%B9%A3-10%E6%9C%88%E6%AD%A3%E5%BC%8F%E4%B8%8A%E7%B7%9A-094000373.html",
         "domain": "tw.news.yahoo.com",
         "own_site": false,
@@ -1908,46 +1366,10 @@
     "channel": "壹電視",
     "headline": "健康好樂活!張朝凱教授帶您守護健康",
     "query": "壹電視 健康好樂活!張朝凱教授帶您守護健康",
-    "channel_only": [
-      {
-        "title": "《壹起下午茶》健康台灣深耕計畫張朝凱教授全解析長照3.0補助加碼 ...",
-        "url": "https://www.nexttv.com.tw/NextTV/News/Home/healthy/2026-06-02/2371294.html",
-        "domain": "www.nexttv.com.tw",
-        "own_site": true,
-        "score": 0.438
-      },
-      {
-        "title": "《壹起下午茶》白內障手術大進化人工水晶體該怎麼選？不是越貴就 ...",
-        "url": "https://www.nexttv.com.tw/NextTV/News/Home/healthy/2026-06-11/2381136.html",
-        "domain": "www.nexttv.com.tw",
-        "own_site": true,
-        "score": 0.0
-      },
-      {
-        "title": "《壹起下午茶》AI 算命測疾病！眼科智慧醫療新時代百萬儀器變手持 ...",
-        "url": "https://www.nexttv.com.tw/NextTV/News/Home/healthy/2026-06-02/2365495.html",
-        "domain": "www.nexttv.com.tw",
-        "own_site": true,
-        "score": 0.0
-      },
-      {
-        "title": "《壹起下午茶》再生醫療雙法上路四大保障病患權益攻兆元生技商機 ...",
-        "url": "https://www.nexttv.com.tw/NextTV/News/Home/AfternoonTea/m/2026-08-11/2446043.html",
-        "domain": "www.nexttv.com.tw",
-        "own_site": true,
-        "score": 0.0
-      },
-      {
-        "title": "《壹起下午茶》健康臺灣關鍵拼圖！健保醫病新未來健保補位？第二 ...",
-        "url": "https://www.nexttv.com.tw/NextTV/News/Home/AfternoonTea/m/2026-07-24/2439309.html",
-        "domain": "www.nexttv.com.tw",
-        "own_site": true,
-        "score": 0.188
-      }
-    ],
     "open": [
       {
         "title": "壹起下午茶 拍攝花絮Part 1 大家趕快追起來 壹電視49台每週一至週五16 ...",
+        "description": "... 健康好樂活——————————— 由韻翔主播與張朝凱教授，領航醫療新視野，帶您守護健康！ 張朝凱眼科醫師#主播徐韻翔#壹起下午茶.",
         "url": "https://www.facebook.com/arianehsu/videos/%EF%B8%8F%E5%A3%B9%E8%B5%B7%E4%B8%8B%E5%8D%88%E8%8C%B6%E6%8B%8D%E6%94%9D%E8%8A%B1%E7%B5%AEpart-1%E5%A4%A7%E5%AE%B6%E8%B6%95%E5%BF%AB%E8%BF%BD%E8%B5%B7%E4%BE%86%E5%A3%B9%E9%9B%BB%E8%A6%9649%E5%8F%B0-%E6%AF%8F%E9%80%B1%E4%B8%80%E8%87%B3%E9%80%B1%E4%BA%941600-1700%E6%AF%8F%E5%91%A8%E4%B8%80-%E9%86%AB%E7%95%8C%E7%9C%8B%E5%A4%A9%E4%B8%8B%E6%AF%8F%E5%91%A8%E5%9B%9B-%E5%81%A5%E5%BA%B7%E5%A5%BD%E6%A8%82%E6%B4%BB%E7%94%B1%E9%9F%BB%E7%BF%94%E4%B8%BB%E6%92%AD%E8%88%87%E5%BC%B5%E6%9C%9D%E5%87%B1%E6%95%99%E6%8E%88%E9%A0%98%E8%88%AA%E9%86%AB%E7%99%82%E6%96%B0%E8%A6%96/1047329738277951/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -1955,6 +1377,7 @@
       },
       {
         "title": "️週一至週五壹起下午茶16:00 由韻翔主播與張朝凱教授，領航醫療新視野 ...",
+        "description": "週一至週五壹起下午茶16:00 由韻翔主播與張朝凱教授，領航醫療新視野，帶您守護健康！ ——————————— 每周一醫界看天下每周四健康好樂活——————————— ...",
         "url": "https://www.facebook.com/arianehsu/posts/%EF%B8%8F%E9%80%B1%E4%B8%80%E8%87%B3%E9%80%B1%E4%BA%94-%E5%A3%B9%E8%B5%B7%E4%B8%8B%E5%8D%88%E8%8C%B61600%E7%94%B1%E9%9F%BB%E7%BF%94%E4%B8%BB%E6%92%AD%E8%88%87%E5%BC%B5%E6%9C%9D%E5%87%B1%E6%95%99%E6%8E%88%E9%A0%98%E8%88%AA%E9%86%AB%E7%99%82%E6%96%B0%E8%A6%96%E9%87%8E%E5%B8%B6%E6%82%A8%E5%AE%88%E8%AD%B7%E5%81%A5%E5%BA%B7-%E6%AF%8F%E5%91%A8%E4%B8%80-%E9%86%AB%E7%95%8C%E7%9C%8B%E5%A4%A9%E4%B8%8B%E6%AF%8F%E5%91%A8%E5%9B%9B-%E5%81%A5%E5%BA%B7%E5%A5%BD%E6%A8%82%E6%B4%BB%E5%A3%B9%E8%B5%B7%E4%B8%8B%E5%8D%88%E8%8C%B6%E7%AC%AC%E4%B8%80%E9%9B%86%E7%B7%9A%E4%B8%8A%E7%9C%8Bai-%E7%AE%97%E5%91%BD%E6%B8%AC%E7%96%BE%E7%97%85%E7%9C%BC%E7%A7%91/1532773981541614/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -1962,6 +1385,7 @@
       },
       {
         "title": "️壹起下午茶NG幕後花絮 大家趕快追起來 壹電視49台每週一至週五16 ...",
+        "description": "... 看天下每周四健康好樂活——————————— 由韻翔主播與張朝凱教授，領航醫療新視野，帶您守護健康！ 張朝凱眼科醫師#主播徐韻翔\".",
         "url": "https://www.instagram.com/reel/DcFOtWAzFvR/",
         "domain": "www.instagram.com",
         "own_site": false,
@@ -1969,6 +1393,7 @@
       },
       {
         "title": "️壹起下午茶NG幕後花絮 大家趕快追起來 壹電視49台每週一至週五16 ...",
+        "description": "☕️壹起下午茶 NG幕後花絮 大家趕快追起來 壹電視49台 每週一至週五16:00-17:00 ——————————— 每周一醫界看天下 每周四健康好樂活 ——————————— 由韻翔 ...",
         "url": "https://www.facebook.com/arianehsu/videos/%EF%B8%8F%E5%A3%B9%E8%B5%B7%E4%B8%8B%E5%8D%88%E8%8C%B6-ng%E5%B9%95%E5%BE%8C%E8%8A%B1%E7%B5%AE%E5%A4%A7%E5%AE%B6%E8%B6%95%E5%BF%AB%E8%BF%BD%E8%B5%B7%E4%BE%86%E5%A3%B9%E9%9B%BB%E8%A6%9649%E5%8F%B0-%E6%AF%8F%E9%80%B1%E4%B8%80%E8%87%B3%E9%80%B1%E4%BA%941600-1700%E6%AF%8F%E5%91%A8%E4%B8%80-%E9%86%AB%E7%95%8C%E7%9C%8B%E5%A4%A9%E4%B8%8B%E6%AF%8F%E5%91%A8%E5%9B%9B-%E5%81%A5%E5%BA%B7%E5%A5%BD%E6%A8%82%E6%B4%BB%E7%94%B1%E9%9F%BB%E7%BF%94%E4%B8%BB%E6%92%AD%E8%88%87%E5%BC%B5%E6%9C%9D%E5%87%B1%E6%95%99%E6%8E%88%E9%A0%98%E8%88%AA%E9%86%AB%E7%99%82%E6%96%B0%E8%A6%96%E9%87%8E%E5%B8%B6%E6%82%A8/1670643654029760/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -1976,6 +1401,7 @@
       },
       {
         "title": "《#壹起下午茶》大健康產業未來從治療跨入全人照護誤判責任歸誰？醫 ...",
+        "description": "今天我們就要請長期投入智慧醫療、公共衛生與醫療政 策的張朝凱教授，帶我們深度解析。現在台灣也面臨很 大的醫療資源不均問題，健康不平等問題，未來AI與 ...",
         "url": "https://www.facebook.com/NextTV/videos/%E5%A3%B9%E8%B5%B7%E4%B8%8B%E5%8D%88%E8%8C%B6%E5%A4%A7%E5%81%A5%E5%BA%B7%E7%94%A2%E6%A5%AD%E6%9C%AA%E4%BE%86-%E5%BE%9E%E6%B2%BB%E7%99%82%E8%B7%A8%E5%85%A5%E5%85%A8%E4%BA%BA%E7%85%A7%E8%AD%B7-%E8%AA%A4%E5%88%A4%E8%B2%AC%E4%BB%BB%E6%AD%B8%E8%AA%B0%E9%86%AB%E7%B1%B2%E5%AE%8C%E5%96%84ai%E9%86%AB%E7%99%82%E5%88%B6%E5%BA%A6%E8%A7%80%E7%9C%BE%E6%9C%8B%E5%8F%8B%E6%82%A8%E8%83%BD%E4%B8%8D%E8%83%BD%E6%83%B3%E5%83%8F%E6%9C%AA%E4%BE%86%E7%9A%84%E6%99%BA%E6%85%A7%E9%86%AB%E7%99%82%E7%B6%A0%E8%89%B2%E9%86%AB%E9%99%A2%E6%9C%83%E6%98%AF%E4%BB%80%E9%BA%BC%E6%A8%A1%E6%A8%A3%E7%B8%BD%E7%B5%B1%E8%B3%B4%E6%B8%85%E5%BE%B7%E6%8E%A8%E5%8B%95%E7%9A%84%E5%81%A5%E5%BA%B7%E5%8F%B0%E7%81%A3%E6%B7%B1%E8%80%95/1283922330323838/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -1987,10 +1413,10 @@
     "channel": "壹電視",
     "headline": "屈光不正影響大!視力矯正精準護眼",
     "query": "壹電視 屈光不正影響大!視力矯正精準護眼",
-    "channel_only": [],
     "open": [
       {
         "title": "《#壹起下午茶》屈光不正無法聚焦四大視力症狀解析AI導航建三維模型 ...",
+        "description": "8 days ago · 台灣眼科權威張朝凱教授在《壹起下午茶》節目中解 析，屈光不正並非疾病，而是光線無法精準聚焦於視網 膜的視力狀態。如今眼科醫療已從傳統的「視力矯正」 ...",
         "url": "https://www.facebook.com/NextTV/videos/%E5%A3%B9%E8%B5%B7%E4%B8%8B%E5%8D%88%E8%8C%B6%E5%B1%88%E5%85%89%E4%B8%8D%E6%AD%A3%E7%84%A1%E6%B3%95%E8%81%9A%E7%84%A6-%E5%9B%9B%E5%A4%A7%E8%A6%96%E5%8A%9B%E7%97%87%E7%8B%80%E8%A7%A3%E6%9E%90ai%E5%B0%8E%E8%88%AA%E5%BB%BA%E4%B8%89%E7%B6%AD%E6%A8%A1%E5%9E%8B-%E7%B2%BE%E6%BA%96%E9%A9%97%E5%85%89%E5%AE%88%E8%AD%B7%E5%81%A5%E5%BA%B7%E5%BE%9E%E5%AD%B8%E7%AB%A5%E8%BF%91%E8%A6%96%E7%88%86%E5%A2%9E%E4%B8%8A%E7%8F%AD%E6%97%8F%E7%9C%BC%E7%9D%9B%E4%B9%BE%E6%BE%80%E5%88%B0%E4%B8%AD%E5%B9%B4%E5%87%BA%E7%8F%BE%E8%80%81%E8%8A%B1%E4%B8%8D%E5%90%8C%E5%B9%B4%E9%BD%A1%E5%B1%A4%E7%9A%84%E8%A6%96%E5%8A%9B%E5%9B%B0%E6%93%BE%E8%83%8C%E5%BE%8C%E9%83%BD%E8%88%87%E5%B1%88%E5%85%89%E4%B8%8D%E6%AD%A3%E6%81%AF/2134741167460325/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -1998,6 +1424,7 @@
       },
       {
         "title": "《壹起下午茶》近視雷射怎麼選？醫師解析三大主流選設備也要 ... - YouTube",
+        "description": "... 眼症狀。 ○術後隔天就正常生活，不影響日常生活。 ○近視散光問題都改善，一次矯正 ... 眼科醫師曝3大護眼秘訣：天然食物這樣吃才有效Feat台灣 ...",
         "url": "https://www.youtube.com/watch?v=tUDavSC3wsY",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -2005,6 +1432,7 @@
       },
       {
         "title": "隨即引發網友怒火。 #雷射筆#港星#古天樂#眼睛 - Instagram",
+        "description": "天生瞳孔色素較薄,即使在普通光線下也會感到刺眼、流淚甚至劇烈疼痛。他發聲呼籲社會大眾少一分誤解,理解太陽眼鏡對畏光患者來說是維持日常生活的護眼工 ...",
         "url": "https://www.instagram.com/p/DWYSpyWgXmN/",
         "domain": "www.instagram.com",
         "own_site": false,
@@ -2012,6 +1440,7 @@
       },
       {
         "title": "《壹起下午茶》屈光不正無法聚焦四大視力症狀解析AI導航建三維模型精準 ...",
+        "description": "屈光不正並非疾病,而是光線無法精準聚焦於視網膜的視力狀態。如今眼科醫療已從傳統的「視力矯正」導入「近視控制與精準護眼」智慧眼科醫療模式",
         "url": "https://www.nexttv.com.tw/NextTV/News/Home/healthy/2026-08-31/2463246.html",
         "domain": "www.nexttv.com.tw",
         "own_site": true,
@@ -2019,6 +1448,7 @@
       },
       {
         "title": "《#壹起下午茶》#近視雷射怎麼選？醫師解析三大主流選 ... - Facebook",
+        "description": "醫師解析三大主流選設備也要選醫師 精準評估成功關鍵 今天我們要來和觀眾朋友聊聊近視話題，如果您是眼鏡 族，或許常有這些經驗，每天起床第一件事，就是 ...",
         "url": "https://www.facebook.com/NextTV/videos/%E5%A3%B9%E8%B5%B7%E4%B8%8B%E5%8D%88%E8%8C%B6%E8%BF%91%E8%A6%96%E9%9B%B7%E5%B0%84-%E6%80%8E%E9%BA%BC%E9%81%B8%E9%86%AB%E5%B8%AB%E8%A7%A3%E6%9E%90%E4%B8%89%E5%A4%A7%E4%B8%BB%E6%B5%81-%E9%81%B8%E8%A8%AD%E5%82%99%E4%B9%9F%E8%A6%81%E9%81%B8%E9%86%AB%E5%B8%AB-%E7%B2%BE%E6%BA%96%E8%A9%95%E4%BC%B0%E6%88%90%E5%8A%9F%E9%97%9C%E9%8D%B5%E4%BB%8A%E5%A4%A9%E6%88%91%E5%80%91%E8%A6%81%E4%BE%86%E5%92%8C%E8%A7%80%E7%9C%BE%E6%9C%8B%E5%8F%8B%E8%81%8A%E8%81%8A%E8%BF%91%E8%A6%96%E8%A9%B1%E9%A1%8C%E5%A6%82%E6%9E%9C%E6%82%A8%E6%98%AF%E7%9C%BC%E9%8F%A1%E6%97%8F%E6%88%96%E8%A8%B1%E5%B8%B8%E6%9C%89%E9%80%99%E4%BA%9B%E7%B6%93%E9%A9%97%E6%AF%8F%E5%A4%A9%E8%B5%B7%E5%BA%8A%E7%AC%AC%E4%B8%80%E4%BB%B6%E4%BA%8B%E5%B0%B1/27332339253104852/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -2030,25 +1460,10 @@
     "channel": "非凡",
     "headline": "換季過敏好發 營養師:建議補充4營養素",
     "query": "非凡 換季過敏好發 營養師:建議補充4營養素",
-    "channel_only": [
-      {
-        "title": "【非凡新聞】換季過敏好發營養師建議:補充4營養素",
-        "url": "http://news.ustv.com.tw/program/0/8P7LaZg0xss",
-        "domain": "news.ustv.com.tw",
-        "own_site": true,
-        "score": 1.0
-      },
-      {
-        "title": "業者下重本搶客!五星自助餐推和牛料理 - 非凡新聞",
-        "url": "https://news.ustv.com.tw/newsdetail/20171109A138",
-        "domain": "news.ustv.com.tw",
-        "own_site": true,
-        "score": 0.0
-      }
-    ],
     "open": [
       {
         "title": "【非凡新聞】換季過敏好發營養師建議:補充4營養素- YouTube",
+        "description": "營養師提醒透過食物補充對的營養素，像是維生素A、B還有鈣鎂及水份的攝取，就能遠離這些惱人的小疾病▻▻▻更多內容敬請鎖定【 非凡新聞台】【 非凡 ...",
         "url": "https://www.youtube.com/watch?v=8P7LaZg0xss",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -2056,6 +1471,7 @@
       },
       {
         "title": "【非凡新聞】換季過敏好發營養師建議:補充4營養素",
+        "description": "營養師提醒透過食物補充對的營養素,像是維生素A、B還有鈣鎂及水份的攝取,就能遠離這些惱人的小疾病",
         "url": "https://news.ustv.com.tw/program/0/8P7LaZg0xss",
         "domain": "news.ustv.com.tw",
         "own_site": true,
@@ -2063,6 +1479,7 @@
       },
       {
         "title": "營養師高敏敏on Instagram: \"哈啾~~~ 有人在想你？NO～其實是換季過敏 ...",
+        "description": "建議從紅花籽油、葵花油、羊肉、牛肉、乳製品等食物中補充喔！ 補充對的營養素才能幫助身體抗發炎減少過敏不適不過光是增加好食物還不夠日常生活中 ...",
         "url": "https://www.instagram.com/p/DPLDiJrEUID/",
         "domain": "www.instagram.com",
         "own_site": false,
@@ -2070,6 +1487,7 @@
       },
       {
         "title": "換季過敏好發營養師:建議補充4營養素 - Yahoo",
+        "description": "營養師提醒透過食物補充對的營養素，像是維生素A、B還有鈣鎂及水份的攝取，就能遠離這些惱人的小疾病. 升級到 Yahoo App 讓AI 幫你彙整重點、秒懂 ...",
         "url": "https://tw.yahoo.com/video/%E6%8F%9B%E5%AD%A3%E9%81%8E%E6%95%8F%E5%A5%BD%E7%99%BC-%E7%87%9F%E9%A4%8A%E5%B8%AB-%E5%BB%BA%E8%AD%B0%E8%A3%9C%E5%85%854%E7%87%9F%E9%A4%8A%E7%B4%A0-123700005.html?format=embed",
         "domain": "tw.yahoo.com",
         "own_site": false,
@@ -2077,6 +1495,7 @@
       },
       {
         "title": "換季變天過敏大爆發！過敏救星4類食物不吃藥也能舒緩 - 早安健康",
+        "description": "婉萍營養師建議優先攝取維生素C、維生素E、維生素D和植化素中的槲皮素。那這些營養素可以在哪些食材中吃到？維生素C含量高的水果，像是白肉或紅肉芭樂、 ...",
         "url": "https://edh.tw/articles/sDq6g2i",
         "domain": "edh.tw",
         "own_site": false,
@@ -2088,10 +1507,10 @@
     "channel": "非凡",
     "headline": "國內研究證實 交通廢氣空汙增\"肺阻塞\"風險",
     "query": "非凡 國內研究證實 交通廢氣空汙增 肺阻塞 風險",
-    "channel_only": [],
     "open": [
       {
         "title": "空汙PM2.5與肺癌、中風等4疾病死亡率相關！3招自保降風險",
+        "description": "國衛院國家環境醫學研究所研究員陳裕政表示,國內近10 年PM2.5汙染改善效果,也顯示在慢性疾病死亡率上。 肺癌死亡率下降4.26%、慢性阻塞性肺病死亡率下降6 ...",
         "url": "https://cancer.commonhealth.com.tw/article/1213",
         "domain": "cancer.commonhealth.com.tw",
         "own_site": false,
@@ -2099,6 +1518,7 @@
       },
       {
         "title": "PM2.5為一級致癌物！台大研究證實：空汙增肺腺癌風險高於吸菸 - 健康遠見",
+        "description": "台大公衛學院最新研究發現，若居住地區空汙細懸浮微粒（PM2.5）濃度，30年來每立方公尺增加10微克，罹患肺腺癌風險高出每天吸菸一包以上重度吸菸者患非肺 ...",
         "url": "https://health.gvm.com.tw/article/112488",
         "domain": "health.gvm.com.tw",
         "own_site": false,
@@ -2106,6 +1526,7 @@
       },
       {
         "title": "國民健康署說明肺腺癌成因多元，空氣污染並非唯一風險因子 - 衛生福利部",
+        "description": "目前我國依據國內外實證,提供下列高風險族群2年 具肺癌家族史:50至74歲男性或45至74歲女性,其父母、子女或兄弟姊妹經診斷為肺癌。",
         "url": "https://www.mohw.gov.tw/cp-17-76985-1.html",
         "domain": "www.mohw.gov.tw",
         "own_site": false,
@@ -2113,6 +1534,7 @@
       },
       {
         "title": "北醫、萬芳醫院研究團隊實驗揭慢性肺阻塞與空污高度相關 - 公視新聞",
+        "description": "4 days ago · 萬芳醫院院長李岡遠指出，「PM2.5它會產生非常多的有毒的物質，含過氧化物，那些過氧化物，它會開始破壞我們肺裡面的組織，那我們的肺破掉了，它沒辦法 ...",
         "url": "https://news.pts.org.tw/article/822837",
         "domain": "news.pts.org.tw",
         "own_site": false,
@@ -2120,6 +1542,7 @@
       },
       {
         "title": "空污傷肺又「傷心」－國衛院10年追蹤報告揭PM2.5危害 - 倡議家",
+        "description": "PM2.5與肺癌、肺阻塞、中風、慢性心臟疾病等息息相關,減少空汙,就可降低死亡率。圖為高雄林園石化工業區。",
         "url": "https://ubrand.udn.com/ubrand/story/123658/7963040",
         "domain": "ubrand.udn.com",
         "own_site": false,
@@ -2131,10 +1554,10 @@
     "channel": "寰宇",
     "headline": "智慧體重機結合AI分析 偵測疾病前期徵兆",
     "query": "寰宇 智慧體重機結合AI分析 偵測疾病前期徵兆",
-    "channel_only": [],
     "open": [
       {
         "title": "預防勝於治療的革命：AI與精準代謝檢測如何在疾病來臨前發出警訊？",
+        "description": "不同於傳統僅觀察器官功能是否異常，代謝體學檢測能追蹤身體每一項代謝路徑與其產出的數千種代謝物，進而量化分析身體最早期的異常徵兆。 傳統健檢的 ...",
         "url": "https://prevent.starnic.com.tw/zh/article/358",
         "domain": "prevent.starnic.com.tw",
         "own_site": false,
@@ -2142,6 +1565,7 @@
       },
       {
         "title": "合力建構「肥胖症智慧預測系統」齊心守護國人健康－國衛院 - 衛生福利部",
+        "description": "本預測系統具有76%之準確率與81%之檢測真實性，可以用於精準診斷及預防，在糖尿病病人中找出容易併發腎病變的高風險病人。",
         "url": "https://www.mohw.gov.tw/cp-16-71103-1.html",
         "domain": "www.mohw.gov.tw",
         "own_site": false,
@@ -2149,6 +1573,7 @@
       },
       {
         "title": "「智慧感測足壓異常分析功能襪」、「大腸內視鏡病理切片AI」 國泰綜合 ...",
+        "description": "平台結合自助式操作介面，設計友善，可支援多語言及無障礙功能，讓病人能夠自主匯入、燒錄及交換醫療影像資料，照顧不同族群需求；資安方面則採用多重身份 ...",
         "url": "https://www.healthnews.com.tw/article/67007",
         "domain": "www.healthnews.com.tw",
         "own_site": false,
@@ -2156,6 +1581,7 @@
       },
       {
         "title": "衛福部啟動AI智慧防治肥胖衍生疾病 - Facebook",
+        "description": "衛福部啟動AI人工智慧防治肥胖衍生疾病 調查發現國人有#體重過重，甚至#肥胖 問題的人口超過了四成。 為了預防民眾因為肥胖進而衍生疾病，衛福部從明年起 ，每年將 ...",
         "url": "https://www.facebook.com/ptsslnews/videos/%E8%A1%9B%E7%A6%8F%E9%83%A8%E5%95%9F%E5%8B%95ai%E6%99%BA%E6%85%A7-%E9%98%B2%E6%B2%BB%E8%82%A5%E8%83%96%E8%A1%8D%E7%94%9F%E7%96%BE%E7%97%85/920489761679998/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -2163,6 +1589,7 @@
       },
       {
         "title": "用AI分析你的智慧體重計資料 - Wellness Project",
+        "description": "19 hours ago · 用AI 分析智慧體重計資料，做法是先把體重計同步到Wellness Project，再用一般口語向Claude 或ChatGPT 詢問體重與體脂趨勢。回答會建立在你實際記錄的 ...",
         "url": "https://wellnessproject.ai/zh-hant/guides/analyze-your-smart-scale-data-with-ai",
         "domain": "wellnessproject.ai",
         "own_site": false,
@@ -2174,10 +1601,10 @@
     "channel": "寰宇",
     "headline": "中年過半膝蓋卡卡 醫推翻傳統退化論",
     "query": "寰宇 中年過半膝蓋卡卡 醫推翻傳統退化論",
-    "channel_only": [],
     "open": [
       {
         "title": "所以建議民眾可以在家復健、鍛鍊大腿與核心肌群，甚至穿戴結合AI的裝置 ...",
+        "description": "【保健你的膝蓋】 您身邊是否也有年紀大的親友，常常抱怨膝蓋一天到晚痠痛不已？要注意了這可能不是單純老化。骨科醫師指出，高達9成的膝痛是因為日常 ...",
         "url": "https://www.facebook.com/GlobalNewsTW/videos/%E4%BF%9D%E5%81%A5%E4%BD%A0%E7%9A%84%E8%86%9D%E8%93%8B%E6%82%A8%E8%BA%AB%E9%82%8A%E6%98%AF%E5%90%A6%E4%B9%9F%E6%9C%89%E5%B9%B4%E7%B4%80%E5%A4%A7%E7%9A%84%E8%A6%AA%E5%8F%8B%E5%B8%B8%E5%B8%B8%E6%8A%B1%E6%80%A8%E8%86%9D%E8%93%8B%E4%B8%80%E5%A4%A9%E5%88%B0%E6%99%9A%E7%97%A0%E7%97%9B%E4%B8%8D%E5%B7%B2%E8%A6%81%E6%B3%A8%E6%84%8F%E4%BA%86%E9%80%99%E5%8F%AF%E8%83%BD%E4%B8%8D%E6%98%AF%E5%96%AE%E7%B4%94%E8%80%81%E5%8C%96%E9%AA%A8%E7%A7%91%E9%86%AB%E5%B8%AB%E6%8C%87%E5%87%BA%E9%AB%98%E9%81%949%E6%88%90%E7%9A%84%E8%86%9D%E7%97%9B%E6%98%AF%E5%9B%A0%E7%82%BA%E6%97%A5%E5%B8%B8%E9%8C%AF%E8%AA%A4%E5%8B%95%E4%BD%9C%E5%B0%8E%E8%87%B4%E4%B8%8D%E9%81%8E%E5%BE%88%E9%9B%A3%E5%AE%8C%E5%85%A8%E9%81%BF%E5%85%8D%E6%89%80%E4%BB%A5/2284892985655125/",
         "domain": "www.facebook.com",
         "own_site": false,
@@ -2185,6 +1612,7 @@
       },
       {
         "title": "【骨科主任周禮智】膝痛卡卡、有怪聲？ 6招減緩退化性膝關節炎| 衛教資訊",
+        "description": "樂生療養院骨科主任兼副院長周禮智指出， 退化性膝關節炎的患者一般會感到關節疼痛，有時是間歇地隱隱作痛、活動受限，症狀惡化到最後可能會失去活動能力。 ... 周禮智提醒， ...",
         "url": "https://www.lslp.mohw.gov.tw/?aid=111&pid=14&page_name=detail&iid=235",
         "domain": "www.lslp.mohw.gov.tw",
         "own_site": false,
@@ -2192,6 +1620,7 @@
       },
       {
         "title": "久坐比爬山更傷膝蓋？90%關節炎的真正凶手是它，小心打針反而更惡化",
+        "description": "00:00 開場重點 ; 00:36 日常最傷膝的隱形動作：超過60度的危險角 ; 03:08 破解退化迷思：軟骨是無辜的 ; 04:18 兇手現形：從保鮮膜變成菜瓜布的內側皺襞 ; 05 ...",
         "url": "https://www.youtube.com/watch?v=yCz-OAJbtGc",
         "domain": "www.youtube.com",
         "own_site": false,
@@ -2199,6 +1628,7 @@
       },
       {
         "title": "膝蓋退化是坐出來的？醫曝一動作比跪著更傷膝：像拿菜瓜布刷骨頭",
+        "description": "傳統醫學認為，九成的骨性膝關節炎屬於「不明原因」，簡化為「退化」，也因此俗稱為「退化性」膝關節炎。但呂紹睿醫師的研究卻指出：這九成的病例，其實都 ...",
         "url": "https://dalin.tzuchi-healthcare.org.tw/index.php/jointcenter-news/xi-gai-tui-hua-shi-zuo-chu-lai-de-yi-pu-yi-dong-zuo-bi-gui-zhe-geng-shang-xi-xiang-na-cai-gua-bu-shua-gu-tou",
         "domain": "dalin.tzuchi-healthcare.org.tw",
         "own_site": false,
@@ -2206,6 +1636,7 @@
       },
       {
         "title": "5旬婦膝蓋\"卡卡\"! 醫:髕骨症候群 中視新聞20160308 - YouTube",
+        "description": "隨著年齡增長，膝蓋會開始退化!一名53歲婦女平常熱愛爬山運動，但膝蓋總是隱隱作痛，有腫脹、卡住的感覺，一度無法行走，醫生診斷是\"髕骨症候群\"， ...",
         "url": "https://www.youtube.com/watch?v=_bkJNRzdyTc",
         "domain": "www.youtube.com",
         "own_site": false,

@@ -10,7 +10,8 @@
 資料用 `evals/tv_news/golden.jsonl` 的 35 組（台別, 標題），那是 2026-09-12
 從 13 台 26 支健康新聞人工標註的畫面標題，就是這個功能真正會拿到的輸入。
 
-**會真的打 Firecrawl**：每個標題兩次搜尋（限定該台網域／不限定），預設 70 次。
+**會真的打 Firecrawl**：每個標題一次搜尋（不限定網域——限定網域的結果是它的
+子集，實測自家命中都在前五）。
 `--limit` 可以先抽幾則試跑。結果存到 evals/tv_news/，判讀要人看——哪一筆是
 同一則新聞沒有自動標註可以比對。
 
@@ -58,13 +59,7 @@ def load_cases(path: Path) -> list[tuple[str, str]]:
 async def run_one(client: FirecrawlClient, channel: str, headline: str, limit: int) -> dict:
     query = build_query(headline, channel)
     out: dict = {"channel": channel, "headline": headline, "query": query}
-    for mode, domains in (
-        ("channel_only", list(CHANNEL_DOMAINS.get(channel, ()))),
-        ("open", None),
-    ):
-        if mode == "channel_only" and not domains:
-            out[mode] = {"error": "unknown_channel"}
-            continue
+    for mode, domains in (("open", None),):
         try:
             hits = await client.search(query, limit=limit, include_domains=domains)
         except Exception as exc:  # noqa: BLE001
@@ -73,6 +68,7 @@ async def run_one(client: FirecrawlClient, channel: str, headline: str, limit: i
         out[mode] = [
             {
                 "title": hit.title,
+                "description": hit.description,
                 "url": hit.url,
                 "domain": domain_of(hit.url),
                 "own_site": is_channel_domain(hit.url, channel),
@@ -106,7 +102,7 @@ async def main() -> int:
         row = await run_one(client, channel, headline, args.hits)
         results.append(row)
         best = max(
-            (h["score"] for h in row.get("channel_only", []) if isinstance(h, dict)),
+            (h["score"] for h in row.get("open", []) if isinstance(h, dict) and h["own_site"]),
             default=None,
         )
         print(f"[{index}/{len(cases)}] {channel} {headline[:24]} 自家最佳={best}", file=sys.stderr)

@@ -35,8 +35,15 @@ HEADLINE = "6週就見效! 研究曝\"番茄\"能改善脂肪肝"
 def test_標點與引號不影響吻合度():
     """電視標題用 .‧! 當分隔，網站標題用全形標點，同一句話不能因此比不出來。"""
     assert title_match_score(HEADLINE, "6週就見效！ 研究曝「番茄」能改善脂肪肝- 台視影音") == 1.0
-    # 同一事件的別篇報導：字面重疊低
-    assert title_match_score(HEADLINE, "吃番茄有助改善脂肪肝？營養師這樣說") < 0.75
+
+
+def test_螢幕標題與網站標題是兩套寫法時仍要過門檻():
+    """真實案例：TVBS 的螢幕標題「添色素‧影響智力」，網站版是「摻色素…傷智力」。
+
+    門檻若設在 0.75，這種改寫過的標題會被擋掉——那正是長輩最常拍到的情況。
+    """
+    score = title_match_score("維他命添色素‧影響智力", "維他命摻色素專家：恐過敏傷智力 - TVBS新聞")
+    assert score >= TvNewsArticleFinder.MATCH_THRESHOLD
 
 
 def test_搜尋字串帶台名且拿掉引號():
@@ -81,8 +88,14 @@ async def test_不收別人上傳的同名影片():
 
 @pytest.mark.asyncio
 async def test_同一台的別則新聞被門檻擋掉():
-    search = _Search([_Hit("賴總統推健康幣 健檢.癌篩「有做就有幣」 - 台視新聞", "https://news.ttv.com.tw/news/2")])
-    assert await TvNewsArticleFinder(search).find("成人健檢送800點 累積滿千可兌商品.服務", "台視") is None
+    """實測中真正接錯的樣子：同一台、同一個健康主題，但不是那一則。"""
+    search = _Search(
+        [
+            _Hit("不是地瓜葉！營養師推「超級食物」護心、助解毒配油吃更強 - 祝你健康", "https://health.setn.com/news/1"),
+            _Hit("虐待動物｜ 標籤｜ 第1頁 - 公視新聞", "https://news.pts.org.tw/tag/1"),
+        ]
+    )
+    assert await TvNewsArticleFinder(search).find("地瓜維生素A保護黏膜 蛤蜊含鋅助抗氧化", "三立") is None
 
 
 @pytest.mark.asyncio
@@ -103,6 +116,17 @@ async def test_認不出台別就不搜():
     search = _Search([_Hit("6週就見效！ 研究曝「番茄」能改善脂肪肝", "https://news.ttv.com.tw/a")])
     assert await TvNewsArticleFinder(search).find(HEADLINE, "") is None
     assert search.queries == []
+
+
+@pytest.mark.asyncio
+async def test_摘要裡的別則標題不算數():
+    """整點彙整的摘要常引用別則新聞的完整標題，只比標題才擋得掉。"""
+    search = _Search(
+        [
+            _Hit("【晨間快訊】TVBS新聞 - YouTube", "https://www.youtube.com/watch?v=y"),
+        ]
+    )
+    assert await TvNewsArticleFinder(search).find('醫示警"不吃藥會死" 38歲洗腎男路倒不治', "TVBS") is None
 
 
 @pytest.mark.asyncio

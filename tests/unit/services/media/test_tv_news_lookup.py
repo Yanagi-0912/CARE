@@ -111,11 +111,31 @@ async def test_文章優先於影片():
 
 
 @pytest.mark.asyncio
-async def test_認不出台別就不搜():
-    """沒有台別就只剩標題相似度，擋不住同名事件的別則報導——那不如不附。"""
-    search = _Search([_Hit("6週就見效！ 研究曝「番茄」能改善脂肪肝", "https://news.ttv.com.tw/a")])
+async def test_認不出台別時改用高門檻_接受任何一台自己的報導():
+    """線上兩次電視新聞查核都是 channel=-（畫面糊掉、台標被切掉），不能因此不查。"""
+    search = _Search([_Hit("6週就見效！ 研究曝「番茄」能改善脂肪肝- 台視影音", "https://news.ttv.com.tw/a")])
+    article = await TvNewsArticleFinder(search).find(HEADLINE, "")
+    assert article is not None
+    # 查詢字串不帶台名——台別本來就不知道
+    assert search.queries == ["6週就見效! 研究曝 番茄 能改善脂肪肝"]
+
+
+@pytest.mark.asyncio
+async def test_認不出台別時改寫過的標題不收():
+    """放寬成「任何一台」之後誤接的空間變大，門檻跟著收緊到 0.70。
+
+    實測中公視的「調節血糖.血脂健康食品」在 0.60 會接成東森的另一篇報導。
+    """
+    search = _Search(
+        [_Hit("血糖、血脂健康食品新制上路「三高」認證動物實驗全面退場", "https://news.ebc.net.tw/news/1")]
+    )
+    assert await TvNewsArticleFinder(search).find("調節血糖.血脂健康食品 刪除動物功效實驗", "") is None
+
+
+@pytest.mark.asyncio
+async def test_認不出台別時仍然只收電視台自己的報導():
+    search = _Search([_Hit("6週就見效！ 研究曝「番茄」能改善脂肪肝 - Yahoo新聞", "https://tw.news.yahoo.com/a")])
     assert await TvNewsArticleFinder(search).find(HEADLINE, "") is None
-    assert search.queries == []
 
 
 @pytest.mark.asyncio

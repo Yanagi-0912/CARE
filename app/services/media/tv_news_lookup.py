@@ -6,12 +6,14 @@
 **寧可不附，也不附錯的。** 附上別則新聞比沒有連結更糟：長輩會以為那就是他
 看到的報導，而我們沒有任何機制讓他發現接錯了。所以兩道條件都要過：
 
-1. 出處必須是該台自己的新聞網站（`CHANNEL_DOMAINS`），或該台自己上傳的
+1. 出處必須是電視台自己的新聞網站（`CHANNEL_DOMAINS`），或電視台自己上傳的
    YouTube 影片（網域是 YouTube 且標題裡有台名）。
 2. 螢幕上的標題要幾乎整句出現在文章標題裡（`MATCH_THRESHOLD`）。
 
-抽不到台別、或那台不在對照表裡，就完全不查——沒有出處可比，只剩標題相似度，
-擋不住同名事件的別則報導。
+**台別認不出來時仍然查**，只是門檻拉高到 `UNKNOWN_CHANNEL_THRESHOLD`，而且
+接受任何一台自己的網站。畫面糊掉、台標被切掉、或那台不在 n8n 的清單裡都會
+沒有台別——2026-09-18 線上兩次電視新聞查核就都是 `channel=-`，舊版因此連搜都
+沒搜。標題夠獨特時，哪一台播的可以由搜尋結果自己回答。
 
 **刻意不收轉載站**（Yahoo、LINE TODAY、Facebook）與別家媒體：2026-09-18 的
 實測裡，TVBS 那則「38歲洗腎男路倒不治」在中時有一篇 0.83 分的報導，那是別家
@@ -22,7 +24,7 @@
 （實測中 TVBS 的「晨間快訊」摘要裡就有另一支影片的完整標題，摘要分數 0.83、
 標題分數 0.00），拿它當依據會把整點新聞彙整接成長輩看到的那一則。
 
-**命中率**：35 組真實標題中 15 組找得到，且一筆都沒接錯（實測見
+**命中率**：台別已知時，35 組真實標題中 15 組找得到（台別不明時 9 組），且一筆都沒接錯（實測見
 `scripts/tv_news_article_eval.py`）。其餘 20 組是搜尋結果裡根本沒有該台的
 那則報導——電視台不是每則新聞都上網，那是這個做法的上限，不是門檻的問題。
 """
@@ -57,6 +59,10 @@ CHANNEL_DOMAINS: dict[str, tuple[str, ...]] = {
     "壹電視": ("nexttv.com.tw",),
     "非凡": ("ustv.com.tw",),
     "寰宇": ("globalnewstv.com.tw",),
+    # 以下兩台不在 n8n 的台別清單裡，所以永遠不會是「已知台別」那條路；列在這裡
+    # 是為了台別不明時，它們的網站也算得上「電視台自己的報導」。
+    "鏡新聞": ("mnews.tw",),
+    "八大": ("gtv.com.tw",),
 }
 
 # 標題比對前要丟掉的東西：電視標題用的分隔符（‧·．.、!?）、引號、空白，
@@ -86,6 +92,8 @@ CHANNEL_ALIASES: dict[str, tuple[str, ...]] = {
     "壹電視": ("壹電視", "壹起"),
     "非凡": ("非凡",),
     "寰宇": ("寰宇",),
+    "鏡新聞": ("鏡新聞",),
+    "八大": ("八大",),
 }
 
 
@@ -182,6 +190,19 @@ class TvNewsArticleFinder:
     # 不再往下調：0.25～0.33 之間真假混在一起（東森奇亞籽 0.33 是真的、
     # 東森另一篇 0.25 是假的），靠標題分不開。
     MATCH_THRESHOLD = 0.50
+    # 台別不明時的門檻。比對的對象從「那一台」放寬成「任何一台」，誤接的空間
+    # 因此變大，門檻要跟著收緊。
+    #
+    # 2026-09-18 實測（同一批 35 組標題，查詢字串不帶台名，結果在
+    # evals/tv_news/article_lookup_no_channel.json）：
+    #
+    #   門檻   找得到    接到別台
+    #   0.80    9/35      0
+    #   0.70    9/35      0     ← 採用
+    #   0.60   10/35      1（公視的「調節血糖.血脂健康食品」接成東森的報導）
+    #
+    # 0.70 與 0.80 找得到的數量一樣，取低的那個留一點餘裕給改寫過的標題。
+    UNKNOWN_CHANNEL_THRESHOLD = 0.70
     SEARCH_LIMIT = 5
 
     def __init__(
@@ -189,20 +210,38 @@ class TvNewsArticleFinder:
         search_client: SearchClient | None,
         *,
         threshold: float | None = None,
+        unknown_channel_threshold: float | None = None,
     ) -> None:
         self._search = search_client
         self._threshold = self.MATCH_THRESHOLD if threshold is None else threshold
+        self._unknown_threshold = (
+            self.UNKNOWN_CHANNEL_THRESHOLD
+            if unknown_channel_threshold is None
+            else unknown_channel_threshold
+        )
+
+    def _owner(self, url: str, title: str) -> str | None:
+        """這筆是哪一台自己的東西（網站或官方影片）；都不是回 None。"""
+        for channel in CHANNEL_DOMAINS:
+            if is_channel_domain(url, channel) or is_channel_video(url, title, channel):
+                return channel
+        return None
 
     async def find(self, headline: str, channel: str) -> Optional[TvNewsArticle]:
-        """找不到、認不得台別、或搜尋失敗都回 None——這是加值，不能擋住查核。"""
-        if not self._search or not headline or channel not in CHANNEL_DOMAINS:
+        """找不到或搜尋失敗都回 None——這是加值，不能擋住查核。
+
+        台別已知時只認那一台，查詢字串帶上台名；台別不明時認任何一台，查詢
+        只有標題、門檻改用 `UNKNOWN_CHANNEL_THRESHOLD`。
+        """
+        if not self._search or not headline:
             return None
-        # 不限定網域搜一次就好：限定網域的結果是這一份的子集（實測 7 筆自家
-        # 命中在開放搜尋裡也都在前五），多搜一次只是多花一次額度。
+        known = channel in CHANNEL_DOMAINS
+        # 不限定網域搜一次就好：限定網域的結果是這一份的子集（實測自家命中都
+        # 在前五），多搜一次只是多花一次額度。
+        query = build_query(headline, channel) if known else build_query(headline, "")
+        threshold = self._threshold if known else self._unknown_threshold
         try:
-            hits = await self._search(
-                build_query(headline, channel), limit=self.SEARCH_LIMIT
-            )
+            hits = await self._search(query, limit=self.SEARCH_LIMIT)
         except Exception as exc:  # noqa: BLE001 - 搜不到就不附連結，不影響判定卡
             logger.warning("stage=tv_news_article 搜尋失敗：%s", type(exc).__name__)
             return None
@@ -211,12 +250,17 @@ class TvNewsArticleFinder:
         for hit in hits or []:
             url = getattr(hit, "url", "") or ""
             title = getattr(hit, "title", "") or ""
-            is_own_site = is_channel_domain(url, channel)
-            is_video = is_channel_video(url, title, channel)
-            if not is_own_site and not is_video:
+            if known:
+                owner = channel if (
+                    is_channel_domain(url, channel) or is_channel_video(url, title, channel)
+                ) else None
+            else:
+                owner = self._owner(url, title)
+            if owner is None:
                 continue
+            is_video = is_channel_video(url, title, owner)
             score = title_match_score(headline, title)
-            if score < self._threshold:
+            if score < threshold:
                 continue
             # 同分時文章優先於影片：長輩在 LINE 裡開文章比開影片省流量，也讀得快。
             better = best is None or score > best.score or (
@@ -229,7 +273,7 @@ class TvNewsArticleFinder:
         log_score = round(best.score, 3) if best else None
         logger.info(
             "stage=tv_news_article channel=%s hits=%d matched=%s score=%s",
-            channel,
+            channel or "-",
             len(hits or []),
             bool(best),
             log_score,

@@ -141,6 +141,36 @@ def test_load_from_path_reads_entries(tmp_path):
     assert service.match("立普妥錠10毫克") is not None
 
 
+def test_load_from_path_populates_dosage_form(tmp_path):
+    """劑型要跟著進 entry——成分重複偵測靠它排除局部作用劑型。
+
+    這個欄位曾經漏在 `DrugCatalogEntry` 外面：產出物有、載入時丟掉，而
+    `OtcAlertService._to_view` 用 `getattr(entry, "dosage_form", "")` 取值，
+    於是排除規則靜默失效（眼藥水與口服藥的抗組織胺重複照樣發推播）。
+    """
+    path = tmp_path / "drug_catalog.json"
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "license_number": "內衛藥製字第016863號",
+                    "name_zh": "新一點靈Ｂ１２眼藥水",
+                    "name_en": "NEW 1-TEN-RIN B12",
+                    "dosage_form": "點眼液劑",
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    service = DrugCatalogService.load_from_path(str(path), threshold=0.88)
+    entry = service.entry_by_license_number("內衛藥製字第016863號")
+
+    assert entry is not None
+    assert entry.dosage_form == "點眼液劑"
+
+
 def test_load_from_path_populates_appearance_fields(tmp_path):
     path = tmp_path / "drug_catalog.json"
     path.write_text(

@@ -155,6 +155,13 @@ class DrugCatalogEntry:
     # 空字串在下游一律不觸發成分重複偵測——寧可少偵測，不要對一個我們不知道
     # 是什麼的東西發警報。
     drug_class: str = ""
+    # 劑型（食藥署「劑型」欄，見 scripts/build_drug_catalog.py）。用途只有一個：
+    # 讓成分重複偵測把局部作用劑型排除在比對之外（見
+    # `ingredient_overlap.load_local_action_forms`）。這個欄位曾經漏掉而
+    # `_to_view` 用 `getattr(entry, "dosage_form", "")` 取值，於是線上永遠取到
+    # 空字串、排除從未生效——單元測試用的假 entry 自己帶了這個欄位，因此測試
+    # 一直是綠的。預設空字串而非 None，理由與 `ingredients` 相同。
+    dosage_form: str = ""
     # 正規化後的主成分清單（英文學名，已去括號補述）。用學名而非中文品名比對，
     # 因為普拿疼、斯斯、明通治痛丹的品名毫無交集，主成分都是 ACETAMINOPHEN。
     #
@@ -362,6 +369,7 @@ class DrugCatalogService:
                     # 舊 commit 產出的檔案沒有這些鍵，缺鍵時視為空字串而不是
                     # 讓載入失敗——外觀欄位是既有藥證資料的擴充，不是前提。
                     drug_class=item.get("drug_class", ""),
+                    dosage_form=item.get("dosage_form", ""),
                     ingredients=tuple(item.get("ingredients") or ()),
                     atc_codes=tuple(item.get("atc_codes") or ()),
                     image_url=item.get("image_url", ""),

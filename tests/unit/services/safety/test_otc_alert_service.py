@@ -10,6 +10,7 @@ from typing import Any, Optional
 import pytest
 
 from app.services.safety.ingredient_overlap import IngredientClass, IngredientWatchlist
+from app.services.medication.drug_catalog_service import DrugCatalogEntry
 from app.services.medication.tcm_catalog_service import TcmCatalogEntry, TcmCatalogService
 from app.services.safety.atc_interaction import ClassPairTable
 from app.services.safety.otc_alert_service import OtcAlertService
@@ -24,12 +25,30 @@ ANTICHOLINERGICS = IngredientClass(
 )
 
 
-@dataclass
-class _Entry:
-    drug_class: str
-    ingredients: tuple[str, ...]
-    dosage_form: str = "膜衣錠"
-    atc_codes: tuple[str, ...] = ()
+def _Entry(
+    drug_class: str,
+    ingredients: tuple[str, ...],
+    dosage_form: str = "膜衣錠",
+    atc_codes: tuple[str, ...] = (),
+) -> DrugCatalogEntry:
+    """建真的 `DrugCatalogEntry`，不是形狀相符的自製 stub。
+
+    這裡曾經是一個只帶四個欄位的 dataclass，而那正是「局部作用劑型不參與
+    比對」從上線到 2026-09-18 一次都沒生效的原因：真的 `DrugCatalogEntry`
+    沒有 `dosage_form` 欄位，服務端 `getattr(entry, "dosage_form", "")` 因此
+    永遠取到空字串，而 stub 自己帶了這個欄位，於是下面那些測試全部是綠的。
+
+    用真結構建，測試才問得出「服務讀的欄位真的存在嗎」——形狀相符的假物件
+    只能回答「如果它存在，邏輯對不對」。
+    """
+    return DrugCatalogEntry(
+        license_number="L-TEST",
+        name_zh="測試藥",
+        drug_class=drug_class,
+        ingredients=tuple(ingredients),
+        dosage_form=dosage_form,
+        atc_codes=tuple(atc_codes),
+    )
 
 
 @dataclass

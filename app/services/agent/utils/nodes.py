@@ -447,6 +447,33 @@ def _is_media_extracted_content(text: str) -> bool:
     return bool(text and _MEDIA_EXTRACTED_CONTENT_RE.match(text))
 
 
+# 長輩拍電視新聞畫面。n8n 的影像節點認出 tv_news 時，`text` 一律由台別與標題
+# 重建成這個格式（CARE-n8n `mutimedia process.json` 的 Code 節點；受訪者字幕與
+# 跑馬燈刻意不下送，那是 scripts/tv_news_eval.py 量到的主要失效）：
+#
+#     以下為使用者傳送的image媒體內容：
+#     【電視新聞畫面】
+#     電視台：TVBS
+#     新聞標題：維他命添色素‧影響智力
+#     （標題可能不完整或有字看不清楚）
+_TV_NEWS_MARKER = "【電視新聞畫面】"
+_TV_NEWS_HEADLINE_RE = re.compile(r"^新聞標題：(.+)$", re.MULTILINE)
+
+
+def _tv_news_claim(text: str) -> str | None:
+    """電視新聞畫面上的主標題，也就是要拿去查核的那句話。
+
+    沒抓到標題的畫面回 None：n8n 那端會改寫「畫面上沒有看到這則新聞的標題」，
+    拿台別去查核沒有意義，那種畫面就照一般媒體內容描述給長輩聽。
+    """
+    if not _is_media_extracted_content(text) or _TV_NEWS_MARKER not in text:
+        return None
+    match = _TV_NEWS_HEADLINE_RE.search(text)
+    if not match:
+        return None
+    return match.group(1).strip() or None
+
+
 # 「附近有腸胃科嗎」不含醫院／診所等字眼，_FACILITY_SEARCH_RE 抓不到，
 # 但它確實是在找附近院所。改以「鄰近詞 + 科別」的組合另行判定。
 # 之所以要求同時出現鄰近詞，是為了把「我牙齒痛」這類純症狀敘述排除在外 ——
@@ -653,6 +680,47 @@ def _can_send_original_text_to_rag(state: State, tool_names: list[str], user_tex
     )
 
 
+def _tv_news_claim_call(
+    state: State, tool_names: list[str], user_text: str
+) -> AIMessage | None:
+    """長輩拍了電視新聞畫面時，直接拿標題去查核，不問模型。
+
+    為什麼要決定性地送：prompt 規則 (e) 本來禁止媒體內容查知識庫，因為文件與
+    圖片抽出的文字多半是「請讀給我聽」而不是提問。但電視新聞的標題正好相反，
+    它是一句待查證的主張——2026-09-17 長輩拍了「維他命添色素‧影響智力」，
+    CARE 只能照畫面複述，給不出任何出處，而那正是最需要查核的一種訊息。
+
+    先 `verify_claim` 而不是 `get_rag_answer`：標題是「某某會怎樣」的主張，
+    查核中心收錄過就有判定與原始查核報告連結；沒收錄時判定卡也會附上知識庫
+    裡的相關衛教（見 claim_verification/service.py），兩種情況都給得出來源。
+    查核服務沒開時退而求其次送知識庫，至少答案帶參考資料。
+
+    **不放行非健康的新聞**：這裡要求 `allow_rag`，而 guardrail 不放行的畫面
+    （颱風、選舉）拿不到任何知識庫工具，維持照畫面描述的舊行為。
+    """
+    if not state.get("allow_rag"):
+        return None
+    # 工具回來之後那一步是在組回覆，不是在選工具（同 `_local_rag_shortcut`）。
+    if any(isinstance(m, ToolMessage) for m in state["messages"]):
+        return None
+    claim = _tv_news_claim(user_text)
+    if not claim:
+        return None
+    if "verify_claim" in tool_names:
+        name, call_id = "verify_claim", "tv_news_claim_1"
+    elif "get_rag_answer" in tool_names:
+        name, call_id = "get_rag_answer", "tv_news_rag_1"
+    else:
+        return None
+    log_stage(logger, "tv_news_claim", tool=name)
+    return AIMessage(
+        content="",
+        tool_calls=[
+            {"name": name, "args": {"query": claim}, "id": call_id, "type": "tool_call"}
+        ],
+    )
+
+
 def _original_text_rag_call(user_text: str, call_id: str) -> AIMessage:
     return AIMessage(
         content="",
@@ -823,6 +891,10 @@ class AgentNodes:
         tools = get_all_tools(include_rag_tool=state.get("allow_rag", False))
         tool_names = [t.name for t in tools]
         user_text = _latest_human_text(state["messages"])
+
+        tv_news_call = _tv_news_claim_call(state, tool_names, user_text)
+        if tv_news_call is not None:
+            return {"messages": [tv_news_call]}
 
         if self._local_rag_shortcut(state, tool_names, user_text):
             return {"messages": [_original_text_rag_call(user_text, "shortcut_rag_1")]}

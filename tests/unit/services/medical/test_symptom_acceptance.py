@@ -49,7 +49,8 @@ EXPECTED_FALLBACK = ["家醫科", "內科", "不分科"]
 
 ONLY_PEDIATRIC_REASON = "這個症狀在對照表中只列了兒科"
 
-WITHDRAWN_TERMS = ("流鼻水", "流鼻血", "痰多", "帶狀皰疹（皮蛇）")
+# 流鼻水、流鼻血曾在此列，MMH_TP 併入後耳鼻喉科有了來源醫院佐證，不再屬於撤回的補列。
+WITHDRAWN_TERMS = ("痰多", "帶狀皰疹（皮蛇）")
 
 # acceptance C1：維護用語與寫死的家數都不得出現在卡片上。
 FORBIDDEN_ON_CARD = (
@@ -109,7 +110,7 @@ async def _suggest(table, term, age, text="要看哪一科"):
 
 _REFERENCES = tuple(
     SourceReference(code=code, name=f"{code} 醫院", url=f"https://example.com/{code}")
-    for code in ("V", "N", "Y", "A", "B", "C", "D", "E")
+    for code in ("TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL", "A", "B", "D", "E")
 )
 
 
@@ -164,8 +165,8 @@ def _valid_table() -> dict:
     return {
         "status": "verified",
         "sources": {
-            "V": {"name": "甲醫院", "url": "https://example.com/V"},
-            "N": {"name": "乙醫院", "url": "https://example.com/N"},
+            "TPVGH_YL": {"name": "甲醫院", "url": "https://example.com/TPVGH_YL"},
+            "NCKUH_TN": {"name": "乙醫院", "url": "https://example.com/NCKUH_TN"},
         },
         "departments": [
             {
@@ -176,7 +177,7 @@ def _valid_table() -> dict:
                         "term": "咳嗽",
                         "kind": "symptom",
                         "subgroup": "胸腔內科",
-                        "sources": ["V", "N"],
+                        "sources": ["TPVGH_YL", "NCKUH_TN"],
                         "note": "維護紀錄",
                         "downgraded_from": "胸腔科",
                     }
@@ -186,7 +187,7 @@ def _valid_table() -> dict:
                 "canonical": "兒科",
                 "db_facility_count": 50,
                 "symptoms": [
-                    {"term": "咳嗽", "kind": "symptom", "subgroup": None, "sources": ["V"]}
+                    {"term": "咳嗽", "kind": "symptom", "subgroup": None, "sources": ["TPVGH_YL"]}
                 ],
             },
         ],
@@ -217,7 +218,7 @@ def test_T01_empty_sources_rejected(tmp_path):
 
 def test_T02_unregistered_source_code_rejected(tmp_path):
     data = _valid_table()
-    _first_symptom(data)["sources"] = ["V", "X"]
+    _first_symptom(data)["sources"] = ["TPVGH_YL", "X"]
     with pytest.raises(SymptomTableError, match="未登記的來源代碼"):
         _load(tmp_path, data)
 
@@ -235,7 +236,7 @@ def test_T03_field_outside_whitelist_rejected(tmp_path, field, value):
 def test_T04_duplicate_term_within_a_department_rejected(tmp_path):
     data = _valid_table()
     data["departments"][0]["symptoms"].append(
-        {"term": "咳嗽", "kind": "symptom", "subgroup": None, "sources": ["N"]}
+        {"term": "咳嗽", "kind": "symptom", "subgroup": None, "sources": ["NCKUH_TN"]}
     )
     with pytest.raises(SymptomTableError, match="重複的症狀與科別"):
         _load(tmp_path, data)
@@ -249,7 +250,7 @@ def test_T04_duplicate_term_across_blocks_of_the_same_department_rejected(tmp_pa
             "canonical": "內科",
             "db_facility_count": 100,
             "symptoms": [
-                {"term": "咳嗽", "kind": "symptom", "subgroup": None, "sources": ["N"]}
+                {"term": "咳嗽", "kind": "symptom", "subgroup": None, "sources": ["NCKUH_TN"]}
             ],
         }
     )
@@ -259,7 +260,7 @@ def test_T04_duplicate_term_across_blocks_of_the_same_department_rejected(tmp_pa
 
 def test_T05_duplicate_source_code_rejected(tmp_path):
     data = _valid_table()
-    _first_symptom(data)["sources"] = ["V", "V"]
+    _first_symptom(data)["sources"] = ["TPVGH_YL", "TPVGH_YL"]
     with pytest.raises(SymptomTableError, match="來源代碼重複"):
         _load(tmp_path, data)
 
@@ -343,20 +344,12 @@ def test_T11_candidates_sorted_by_source_count_then_facility_count(table):
 @pytest.mark.parametrize(
     ("term", "expected"),
     [
-        ("坐骨神經痛", ["神經外科", "復健科", "骨科"]),
-        ("性病", ["內科", "皮膚科", "泌尿科"]),
+        ("坐骨神經痛", ["神經外科", "復健科", "骨科", "神經科", "麻醉科"]),
+        ("性病", ["皮膚科", "泌尿科", "內科", "家醫科", "婦產科"]),
     ],
 )
 def test_T12_order_follows_sources_not_manual_rank(table, term, expected):
     assert [c.canonical for c in table.lookup(term).candidates] == expected
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("term", ["咳嗽", "感冒", "氣喘", "高血脂"])
-async def test_T13_withdrawn_additions_leave_only_internal_medicine(table, term):
-    result = await _suggest(table, term, 40)
-    assert result.kind == RESULT_SUGGESTION
-    assert [c.canonical for c in result.candidates] == ["內科"]
 
 
 # ---------------------------------------------------------------- 保底與年齡
@@ -371,7 +364,7 @@ async def test_T14_fallback_departments(table):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("term", ["嘔吐", "慢性咳嗽"])
+@pytest.mark.parametrize("term", ["生長發育遲緩"])
 async def test_T15_adult_gets_fallback_when_only_pediatrics_lists_it(table, term):
     result = await _suggest(table, term, 40)
     assert result.kind == RESULT_FALLBACK
@@ -382,14 +375,14 @@ async def test_T15_adult_gets_fallback_when_only_pediatrics_lists_it(table, term
 
 @pytest.mark.asyncio
 async def test_T16_child_asking_about_vomiting_gets_pediatrics_only(table):
-    result = await _suggest(table, "嘔吐", 8)
+    result = await _suggest(table, "生長發育遲緩", 8)
     assert result.kind == RESULT_SUGGESTION
     assert [c.canonical for c in result.candidates] == ["兒科"]
 
 
 @pytest.mark.asyncio
 async def test_T17_fourteen_is_a_child(table):
-    result = await _suggest(table, "尿床", 14)
+    result = await _suggest(table, "生長發育遲緩", 14)
     assert result.kind == RESULT_SUGGESTION
     assert [c.canonical for c in result.candidates] == ["兒科"]
 
@@ -397,20 +390,20 @@ async def test_T17_fourteen_is_a_child(table):
 @pytest.mark.asyncio
 async def test_T17_fifteen_is_an_adult(table):
     """兒科區塊的 age_note：滿 15 歲者改對應成人科別。"""
-    result = await _suggest(table, "尿床", 15)
+    result = await _suggest(table, "生長發育遲緩", 15)
     assert result.kind == RESULT_FALLBACK
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("age", [None, -1, 131, "12", True, 12.5])
 async def test_T18_unknown_or_invalid_age_is_treated_as_adult(table, age):
-    result = await _suggest(table, "尿床", age)
+    result = await _suggest(table, "生長發育遲緩", age)
     assert result.kind == RESULT_FALLBACK
 
 
 @pytest.mark.asyncio
 async def test_T18_parent_mentioning_a_child_keeps_pediatrics(table):
-    result = await _suggest(table, "尿床", None, text="我兒子尿床要看哪一科")
+    result = await _suggest(table, "生長發育遲緩", None, text="我兒子發育比較慢要看哪一科")
     assert result.kind == RESULT_SUGGESTION
     assert [c.canonical for c in result.candidates] == ["兒科"]
 
@@ -424,7 +417,7 @@ def _table_with_candidates(tmp_path, departments):
     """每一科各列同一個症狀、同一家來源；院所數遞減，順序因此固定。"""
     data = {
         "status": "verified",
-        "sources": {"V": {"name": "甲醫院", "url": "https://example.com/V"}},
+        "sources": {"TPVGH_YL": {"name": "甲醫院", "url": "https://example.com/TPVGH_YL"}},
         "departments": [
             {
                 "canonical": name,
@@ -434,7 +427,7 @@ def _table_with_candidates(tmp_path, departments):
                         "term": "多科症狀",
                         "kind": "symptom",
                         "subgroup": None,
-                        "sources": ["V"],
+                        "sources": ["TPVGH_YL"],
                     }
                 ],
             }
@@ -487,25 +480,25 @@ def _only_reason(card) -> str:
 
 
 def test_T20_annotation_when_a_single_hospital_lists_the_symptom():
-    reason = _only_reason(_card(_single(("Y",), ("Y",))))
+    reason = _only_reason(_card(_single(("NTUH_YL",), ("NTUH_YL",))))
     assert reason.endswith("（僅 1 家醫院的對照表收錄此症狀，建議先去電確認）")
 
 
 def test_T21_annotation_when_one_of_several_hospitals_lists_this_department():
-    reason = _only_reason(_card(_single(("V",), ("V", "N", "Y"))))
+    reason = _only_reason(_card(_single(("TPVGH_YL",), ("TPVGH_YL", "NCKUH_TN", "NTUH_YL"))))
     assert reason.endswith(
         "（收錄此症狀的 3 家醫院中，有 1 家列在此科，建議先去電確認）"
     )
 
 
 def test_T22_annotation_when_every_hospital_agrees_claims_no_unanimity():
-    reason = _only_reason(_card(_single(("V", "N", "Y"), ("V", "N", "Y"))))
+    reason = _only_reason(_card(_single(("TPVGH_YL", "NCKUH_TN", "NTUH_YL"), ("TPVGH_YL", "NCKUH_TN", "NTUH_YL"))))
     assert reason.endswith("（收錄此症狀的 3 家醫院中，有 3 家列在此科）")
     assert "都" not in reason
 
 
 def test_T23_annotation_when_some_hospitals_list_this_department():
-    reason = _only_reason(_card(_single(("N", "Y"), ("V", "N", "Y"))))
+    reason = _only_reason(_card(_single(("NCKUH_TN", "NTUH_YL"), ("TPVGH_YL", "NCKUH_TN", "NTUH_YL"))))
     assert reason.endswith("（收錄此症狀的 3 家醫院中，有 2 家列在此科）")
 
 
@@ -581,32 +574,66 @@ def test_T27_largest_card_passes_line_validation(font_size):
 # 預期值由原始 JSON 直接推導（撤回補列與 rank 後依來源家數、院所數排序），
 # 不經過服務程式。
 _SUGGESTION_CASES = [
-    ("D1", "咳嗽", 40, 3, [("內科", ("胸腔內科",), 2)], ["N", "Y"]),
-    ("D2", "咳嗽", 8, 3, [("內科", ("胸腔內科",), 2), ("兒科", (), 1)], ["V", "N", "Y"]),
-    ("D4", "嘔吐", 8, 1, [("兒科", (), 1)], ["V"]),
+    ("D1", "咳嗽", 40, 6, [("內科", ("胸腔內科",), 4), ("中醫一般科", (), 1), ("家醫科", (), 1), ("耳鼻喉科", (), 1)], ["NCKUH_TN", "NTUH_YL", "CTH_XD", "MMH_TP", "TZUCHI_HL"]),
+    (
+        "D2",
+        "咳嗽",
+        8,
+        6,
+        [("內科", ("胸腔內科",), 4), ("中醫一般科", (), 1), ("家醫科", (), 1), ("兒科", (), 1), ("耳鼻喉科", (), 1)],
+        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "CTH_XD", "MMH_TP", "TZUCHI_HL"],
+    ),
+    ("D4", "嘔吐", 8, 4, [("內科", ("胃腸肝膽科",), 3), ("家醫科", (), 1), ("兒科", (), 1)], ["TPVGH_YL", "CTH_XD", "AFGH_TY", "MMH_TP"]),
     (
         "D6",
         "坐骨神經痛",
         40,
-        3,
-        [("神經外科", (), 2), ("復健科", (), 1), ("骨科", (), 1)],
-        ["V", "N", "Y"],
+        9,
+        [("神經外科", (), 7), ("復健科", (), 4), ("骨科", (), 3), ("神經科", ("神經內科",), 2), ("麻醉科", ("疼痛科",), 2)],
+        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL"],
     ),
     (
         "D7",
         "性病",
         40,
-        2,
-        [("內科", ("感染科",), 2), ("皮膚科", (), 1), ("泌尿科", (), 1)],
-        ["N", "Y"],
+        5,
+        [("皮膚科", (), 3), ("泌尿科", (), 3), ("內科", ("感染科",), 2), ("家醫科", (), 1), ("婦產科", (), 1)],
+        ["NCKUH_TN", "NTUH_YL", "AFGH_KH", "MMH_TP", "TZUCHI_HL"],
     ),
-    ("D8", "感冒", 40, 2, [("內科", (), 2)], ["N", "Y"]),
-    ("D9", "氣喘", 40, 3, [("內科", ("胸腔內科",), 2)], ["N", "Y"]),
-    ("D10", "高血脂", 40, 2, [("內科", ("新陳代謝內分泌科", "心臟內科"), 2)], ["N", "Y"]),
-    ("D11", "酒癮", 40, 3, [("精神科", (), 3)], ["V", "N", "Y"]),
-    ("D12", "身心障礙者牙科照護", 40, 1, [("牙科", ("特殊需求者牙科",), 1)], ["Y"]),
-    ("D13", "頭痛", 40, 3, [("神經科", (), 3), ("家醫科", (), 1)], ["V", "N", "Y"]),
-    ("D16", "腹瀉", 40, 2, [("內科", ("胃腸肝膽科",), 2)], ["V", "N"]),
+    (
+        "D8",
+        "感冒",
+        40,
+        9,
+        [("內科", (), 5), ("耳鼻喉科", (), 3), ("家醫科", (), 2), ("中醫一般科", (), 1)],
+        ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL"],
+    ),
+    (
+        "D9",
+        "氣喘",
+        40,
+        9,
+        [("內科", ("胸腔內科",), 6), ("中醫一般科", (), 2)],
+        ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "TZUCHI_HL"],
+    ),
+    ("D10", "高血脂", 40, 3, [("內科", ("新陳代謝及內分泌科", "心臟內科", "腎臟內科"), 3), ("家醫科", (), 1)], ["NCKUH_TN", "NTUH_YL", "CMUH_HC"]),
+    (
+        "D11",
+        "酒癮",
+        40,
+        8,
+        [("精神科", (), 8)],
+        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY", "CMUH_HC", "TZUCHI_HL"],
+    ),
+    ("D12", "身心障礙者牙科照護", 40, 1, [("牙科", ("特殊需求者牙科",), 1)], ["NTUH_YL"]),
+    (
+        "D16",
+        "腹瀉",
+        40,
+        7,
+        [("內科", ("胃腸肝膽科",), 6), ("外科", ("大腸直腸外科",), 2), ("中醫一般科", (), 1), ("家醫科", (), 1)],
+        ["TPVGH_YL", "NCKUH_TN", "CTH_XD", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL"],
+    ),
 ]
 
 
@@ -635,12 +662,12 @@ async def test_T28_acceptance_suggestion_cases(
 
 
 @pytest.mark.asyncio
-async def test_T28_acceptance_D14_bedwetting_adult_falls_back(table):
+async def test_T28_acceptance_D14_bedwetting_adult_gets_urology(table):
+    """尿床原本只有兒科收錄、成人走保底；TZUCHI_HL 的泌尿科也列了尿床，成人改拿泌尿科。"""
     result = await _suggest(table, "尿床", 40)
-    assert result.kind == RESULT_FALLBACK
-    assert result.fallback_reason == ONLY_PEDIATRIC_REASON
-    assert [c.canonical for c in result.candidates] == EXPECTED_FALLBACK
-    assert _cited_codes(_card(result)) == []
+    assert result.kind == RESULT_SUGGESTION
+    assert [c.canonical for c in result.candidates] == ["泌尿科"]
+    assert _cited_codes(_card(result)) == ["TZUCHI_HL"]
 
 
 # ---------------------------------------------------------------- 孩童的保底

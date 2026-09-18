@@ -22,7 +22,9 @@ def _tool(name: str) -> MagicMock:
     return tool
 
 
-def _tools_factory(*, rag_names=("get_rag_answer", "answer_from_uploaded_document", "verify_claim")):
+def _tools_factory(
+    *, rag_names=("get_rag_answer", "answer_from_uploaded_document", "verify_claim", "verify_tv_news")
+):
     def _mock_tools(include_rag_tool: bool = False):
         names = ["request_location_quick_reply", "find_nearby_hospitals", "get_medication_status"]
         if include_rag_tool:
@@ -66,15 +68,35 @@ def test_只抽主標題_字幕與台別不當成待查主張():
 
 
 @pytest.mark.asyncio
-async def test_電視新聞標題直接送查核(monkeypatch, llm):
+async def test_電視新聞標題直接送查核並帶上台別(monkeypatch, llm):
     result = await _run(monkeypatch, llm, _state(TV_NEWS))
 
     (message,) = result["messages"]
     (call,) = message.tool_calls
-    assert call["name"] == "verify_claim"
+    # verify_tv_news 的判定卡會多一顆「看新聞原文」，所以優先於 verify_claim。
+    assert call["name"] == "verify_tv_news"
     # 送的是標題本身，不是整段畫面描述——描述會把台別與註記一起當成查核主張。
-    assert call["args"] == {"query": "維他命添色素‧影響智力"}
+    assert call["args"] == {"headline": "維他命添色素‧影響智力", "channel": "TVBS"}
     llm.bind_tools.return_value.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_沒有電視新聞工具時退回一般查核(monkeypatch, llm):
+    result = await _run(
+        monkeypatch, llm, _state(TV_NEWS), tools=_tools_factory(rag_names=("get_rag_answer", "verify_claim"))
+    )
+    (call,) = result["messages"][0].tool_calls
+    assert call["name"] == "verify_claim"
+    assert call["args"] == {"query": "維他命添色素‧影響智力"}
+
+
+@pytest.mark.asyncio
+async def test_認不出台別時台別留空(monkeypatch, llm):
+    """n8n 認不出台別時整行不會出現；留空讓工具只做查核、不找新聞。"""
+    text = f"{MEDIA_PREFIX}\n【電視新聞畫面】\n新聞標題：維他命添色素‧影響智力"
+    result = await _run(monkeypatch, llm, _state(text))
+    (call,) = result["messages"][0].tool_calls
+    assert call["args"] == {"headline": "維他命添色素‧影響智力", "channel": ""}
 
 
 @pytest.mark.asyncio
@@ -82,7 +104,7 @@ async def test_標題不完整的註記不會被當成標題的一部分(monkeyp
     text = TV_NEWS + "\n（標題可能不完整或有字看不清楚）"
     result = await _run(monkeypatch, llm, _state(text))
     (call,) = result["messages"][0].tool_calls
-    assert call["args"]["query"] == "維他命添色素‧影響智力"
+    assert call["args"]["headline"] == "維他命添色素‧影響智力"
 
 
 @pytest.mark.asyncio

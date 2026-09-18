@@ -11,6 +11,7 @@ from app.tools.official_site_tools import open_official_site
 from app.tools.rag_tools import get_rag_answer
 from app.tools.share_tools import share_care
 from app.tools.symptom_tools import suggest_department_for_symptom
+from app.tools.tv_news_tools import is_tv_news_tool_configured, verify_tv_news
 from app.tools.user_document_tools import answer_from_uploaded_document
 
 
@@ -42,5 +43,9 @@ def get_all_tools(include_rag_tool: bool = True) -> list:
         # 不新增第二個布林參數（YAGNI）。
         if is_claim_tool_configured():
             tools.append(verify_claim)
+        # 電視新聞畫面專用的查核（判定卡多一顆「看新聞原文」）。與
+        # verify_claim 同一道開關，因為它們用的是同一個查核服務。
+        if is_tv_news_tool_configured():
+            tools.append(verify_tv_news)
 
     return tools

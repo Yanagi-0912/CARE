@@ -9,6 +9,7 @@ from app.services.line_messaging.flex.verdict_flex import (
     CLAIM_VERDICT_KEY,
     build_verdict_flex,
 )
+from app.services.media.tv_news_lookup import TvNewsArticle
 from app.services.rag.claim_verification.service import VerificationResult
 from resources.flex_messages.size_guard import fits
 
@@ -38,7 +39,9 @@ def is_claim_tool_configured() -> bool:
     return _claim_verification_service is not None
 
 
-def _format_verdict_reply(result: VerificationResult) -> str:
+def _format_verdict_reply(
+    result: VerificationResult, news_article: TvNewsArticle | None = None
+) -> str:
     """純文字判定卡：Flex 版判定卡組裝失敗時的 fallback，仍須符合
     line-reply-rules 的「不得輸出 Markdown」。這是 Flex 化之前唯一的輸出
     格式，保留它而非刪除，是因為它是「Flex 組裝出錯也不能讓使用者拿到
@@ -57,6 +60,9 @@ def _format_verdict_reply(result: VerificationResult) -> str:
         "",
         result.reasoning,
     ]
+    if news_article is not None and news_article.url.strip():
+        label = "新聞影片" if news_article.is_video else "新聞原文"
+        lines.extend(["", f"{label}：{news_article.title}", news_article.url])
     if result.matched:
         lines.extend(["", f"資料來源：{_TFC_SOURCE_LABEL}", result.source_url])
     elif result.related_info:
@@ -102,7 +108,9 @@ def _format_verdict_speech(result: VerificationResult) -> str:
     return "\n".join(line for line in lines if line and line.strip())
 
 
-def _to_flex_message_text(result: VerificationResult) -> str | None:
+def _to_flex_message_text(
+    result: VerificationResult, news_article: TvNewsArticle | None = None
+) -> str | None:
     """把判定卡組成 LINE Flex Message JSON 字串；超過大小門檻時回傳 None。
 
     格式比照 `official_site_tools.open_official_site`：
@@ -118,7 +126,7 @@ def _to_flex_message_text(result: VerificationResult) -> str | None:
     的單一職責。回傳 None 而非拋例外，是為了讓「太大」與「組裝壞掉」在
     `verify_claim` 裡分別留下不同的 log——兩者都退回純文字，但成因不同。
     """
-    flex_message = build_verdict_flex(result)
+    flex_message = build_verdict_flex(result, news_article=news_article)
     payload = flex_message.to_dict()
     if not fits(payload["contents"]):
         return None
@@ -138,6 +146,40 @@ def _to_flex_message_text(result: VerificationResult) -> str | None:
     return json.dumps(payload, ensure_ascii=False)
 
 
+def render_verification(
+    result: VerificationResult, news_article: TvNewsArticle | None = None
+) -> str:
+    """把一次查核結果渲染成要送給 LINE 的字串（Flex JSON，或退回純文字）。
+
+    `verify_claim` 與 `verify_tv_news`（tv_news_tools）共用這裡：兩者的差別只
+    在查核之外多不多一個新聞連結，而「太大退純文字」「組裝失敗退純文字」這
+    兩道 fallback 沒有理由各寫一份——寫兩份就會有一邊先補了新規則。
+    """
+    try:
+        flex_text = _to_flex_message_text(result, news_article)
+    except Exception:  # noqa: BLE001
+        # Flex 組裝是呈現層的最後一步，任何非預期例外都不該讓使用者拿到堆疊
+        # 追蹤或空白回覆；退回 Flex 化之前就存在的純文字格式，判定內容仍能
+        # 送到使用者手上。
+        logger.warning("判定卡 Flex 組裝失敗，改回純文字格式", exc_info=True)
+        return _format_verdict_reply(result, news_article)
+
+    if flex_text is None:
+        # 超過 LINE 的 bubble 上限。硬送出去會在 reply_message() 被以 400
+        # 拒收，例外被 reply() 的 except 吞掉後使用者什麼都收不到，比純文字
+        # 糟得多。會超標的通常是未命中側：related_info 雖然有界（
+        # `_RELATED_INFO_TOP_K` 段 × chunk 上限 500 字），但那個上限是照著
+        # `SAFE_BUBBLE_BYTES` 的餘裕挑的，只剩 223 bytes（見
+        # `claim_verification/service.py` 該常數上方的實測表），標題偏長時
+        # 仍會擠爆。
+        logger.warning(
+            "判定卡超過 Flex 大小上限，改回純文字格式，matched=%s", result.matched
+        )
+        return _format_verdict_reply(result, news_article)
+
+    return flex_text
+
+
 @tool
 async def verify_claim(query: str) -> str:
     """當使用者要查證某個特定說法是真是假時呼叫。典型句型是「網傳⋯是真的
@@ -150,27 +192,13 @@ async def verify_claim(query: str) -> str:
     if _claim_verification_service is None:
         return "查核判定服務未初始化，請稍後再試。"
     result = await _claim_verification_service.verify(query)
-    try:
-        flex_text = _to_flex_message_text(result)
-    except Exception:  # noqa: BLE001
-        # Flex 組裝是呈現層的最後一步，任何非預期例外都不該讓使用者拿到堆疊
-        # 追蹤或空白回覆；退回 Flex 化之前就存在的純文字格式，判定內容仍能
-        # 送到使用者手上。
-        logger.warning("判定卡 Flex 組裝失敗，改回純文字格式", exc_info=True)
-        return _format_verdict_reply(result)
+    return render_verification(result)
 
-    if flex_text is None:
-        # 超過 LINE 的 bubble 上限。硬送出去會在 reply_message() 被以 400
-        # 拒收，例外被 reply() 的 except 吞掉後使用者什麼都收不到，比純文字
-        # 糟得多。會超標的通常是未命中側：related_info 雖然有界（
-        # `_RELATED_INFO_TOP_K` 段 × chunk 上限 500 字），但那個上限是照著
-        # `SAFE_BUBBLE_BYTES` 的餘裕挑的，只剩 223 bytes（見
-        # `claim_verification/service.py` 該常數上方的實測表），標題偏長時
-        # 仍會擠爆。此處原本寫「衛教文章全文、沒有長度上限」，與
-        # `_fetch_related_info` 的實作不符，一併更正。
-        logger.warning(
-            "判定卡超過 Flex 大小上限，改回純文字格式，matched=%s", result.matched
-        )
-        return _format_verdict_reply(result)
 
-    return flex_text
+def claim_verification_service():
+    """目前注入的 ClaimVerificationService，未設定時為 None。
+
+    給 `tv_news_tools` 取用同一個實例：查核設定（開關、門檻、索引）只有一份，
+    第二個工具自己再建一個服務，兩者的行為遲早會漂移。
+    """
+    return _claim_verification_service

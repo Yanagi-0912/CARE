@@ -14,6 +14,7 @@ from typing import Any, Optional, Sequence
 from linebot.v3.messaging import FlexContainer, FlexMessage
 
 from app.core.rag_sources import SourceRef
+from app.services.media.tv_news_lookup import TvNewsArticle
 from app.services.rag.claim_verification.service import (
     NOT_ENOUGH_EVIDENCE_SLUG,
     VerificationResult,
@@ -281,8 +282,30 @@ def _alt_text(result: VerificationResult, user_question: str) -> str:
     return text[:_ALT_TEXT_MAX_LEN]
 
 
+def _news_article_button(
+    article: "TvNewsArticle | None", ft: theme.FlexTheme
+) -> Optional[dict[str, Any]]:
+    """長輩拍的那則新聞本身。
+
+    與「查核報告」「相關衛教」並列但語意不同：那兩者是判定的依據，這一顆是
+    **被查核的東西**。所以按鈕字樣直說是新聞原文／原影片，不用「來源」二字，
+    免得被讀成「這則新聞就是判定依據」。
+
+    只有在確定是同一則時才會有值（見 tv_news_lookup 的兩道條件），呼叫端不需
+    要再判斷一次。
+    """
+    if article is None or not article.url.strip():
+        return None
+    label = "看新聞影片" if article.is_video else "看新聞原文"
+    return ft.secondary_button(
+        f"{label} →", {"type": "uri", "label": label, "uri": article.url}
+    )
+
+
 def build_verdict_flex(
-    result: VerificationResult, font_size: str | None = None
+    result: VerificationResult,
+    font_size: str | None = None,
+    news_article: "TvNewsArticle | None" = None,
 ) -> FlexMessage:
     """把一次查核結果組成判定卡。
 
@@ -304,6 +327,11 @@ def build_verdict_flex(
     ]
 
     footer_buttons: list[dict[str, Any]] = []
+    # 新聞原文排在最前面：使用者是為了那則新聞才拍照的，先讓他確認自己看到的
+    # 是哪一則，再往下讀判定依據。
+    news_button = _news_article_button(news_article, ft)
+    if news_button is not None:
+        footer_buttons.append(news_button)
     if result.matched:
         body_contents.extend(_source_note(ft, result.source_published_at))
         matched_button = _source_button(result.source_url, ft)

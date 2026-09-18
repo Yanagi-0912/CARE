@@ -458,6 +458,7 @@ def _is_media_extracted_content(text: str) -> bool:
 #     （標題可能不完整或有字看不清楚）
 _TV_NEWS_MARKER = "【電視新聞畫面】"
 _TV_NEWS_HEADLINE_RE = re.compile(r"^新聞標題：(.+)$", re.MULTILINE)
+_TV_NEWS_CHANNEL_RE = re.compile(r"^電視台：(.+)$", re.MULTILINE)
 
 
 def _tv_news_claim(text: str) -> str | None:
@@ -472,6 +473,14 @@ def _tv_news_claim(text: str) -> str | None:
     if not match:
         return None
     return match.group(1).strip() or None
+
+
+def _tv_news_channel(text: str) -> str:
+    """畫面上的電視台。n8n 認不出台別時整行不會出現，所以沒有「不確定」這個值。"""
+    if not _is_media_extracted_content(text):
+        return ""
+    match = _TV_NEWS_CHANNEL_RE.search(text)
+    return match.group(1).strip() if match else ""
 
 
 # 「附近有腸胃科嗎」不含醫院／診所等字眼，_FACILITY_SEARCH_RE 抓不到，
@@ -706,17 +715,24 @@ def _tv_news_claim_call(
     claim = _tv_news_claim(user_text)
     if not claim:
         return None
-    if "verify_claim" in tool_names:
+    # verify_tv_news 的判定卡會多一顆「看新聞原文」：長輩拍畫面就是為了那則
+    # 新聞，查核報告與衛教文章都回答不了「我看到的那則在哪裡」。
+    if "verify_tv_news" in tool_names:
+        name, call_id = "verify_tv_news", "tv_news_verify_1"
+        args = {"headline": claim, "channel": _tv_news_channel(user_text)}
+    elif "verify_claim" in tool_names:
         name, call_id = "verify_claim", "tv_news_claim_1"
+        args = {"query": claim}
     elif "get_rag_answer" in tool_names:
         name, call_id = "get_rag_answer", "tv_news_rag_1"
+        args = {"query": claim}
     else:
         return None
     log_stage(logger, "tv_news_claim", tool=name)
     return AIMessage(
         content="",
         tool_calls=[
-            {"name": name, "args": {"query": claim}, "id": call_id, "type": "tool_call"}
+            {"name": name, "args": args, "id": call_id, "type": "tool_call"}
         ],
     )
 

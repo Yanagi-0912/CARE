@@ -34,12 +34,19 @@ ASSIGNABLE_FAMILY_ROLES: frozenset[str] = frozenset({"GUARDIAN", "CAREGIVER", "M
 # 在指派上不等價，這個區分由欄位的「有無」承載，不需要額外欄位。
 DEFAULT_FAMILY_ROLE: FamilyRole = "MEMBER"
 
-# 三級資料分類。
+# 四級資料分類。
 #
 # - GENERAL：用藥設定（藥品名稱、時段、頻率、提醒規則）、掛號提醒，以及顯示名稱與頭像
-# - SENSITIVE：健康狀況（年齡、性別、身高、體重、病史），以及適應症
+# - SENSITIVE：健康狀況（年齡、性別、身高、體重、病史）、適應症，以及血壓血糖量測、
+#   提醒範圍、步數
 # - PRIVATE：與 LINE 健康機器人的對話摘要與原始逐句對話
-DataClassification = Literal["GENERAL", "SENSITIVE", "PRIVATE"]
+# - PERSONAL：只有本人可讀寫，任何家人角色（含受委任者）一律無權，不受遷移狀態
+#   放寬。目前只有經期紀錄——經期不是照顧者需要知道的資訊，看護更不應該看到
+#   長輩的經期。PERSONAL 與其餘三級是不同軸：GENERAL/SENSITIVE/PRIVATE 描述的是
+#   「哪些角色分別能看多少」，PERSONAL 描述的是「除了本人以外誰都不能看」——
+#   把它塞進 PRIVATE（GUARDIAN 可讀）或另立布林旗標，都無法讓 fail-closed 的
+#   欄位登記表（見 FIELD_CLASSIFICATION）自然涵蓋它。
+DataClassification = Literal["GENERAL", "SENSITIVE", "PRIVATE", "PERSONAL"]
 
 Action = Literal["READ", "WRITE"]
 
@@ -53,26 +60,33 @@ Action = Literal["READ", "WRITE"]
 # 「可寫不可讀」的格子，但把蘊含關係寫進程式碼會讓這張表不再是唯一真相——
 # 日後要加一個「可提交但不可回看」的分類時，那條隱含規則會擋住它，而且擋在
 # 一個沒人記得的地方。
+# PERSONAL 這一欄，三個非 OWNER 角色一律是空集合——包括 GUARDIAN，即使他對
+# SENSITIVE 有完整讀寫權。這不是漏填，是決策本身：PERSONAL 不從任何其他分類的
+# 權限推導，見 DataClassification 的說明。
 PERMISSIONS: dict[FamilyRole, dict[DataClassification, frozenset[Action]]] = {
     "OWNER": {
         "GENERAL": frozenset({"READ", "WRITE"}),
         "SENSITIVE": frozenset({"READ", "WRITE"}),
         "PRIVATE": frozenset({"READ", "WRITE"}),
+        "PERSONAL": frozenset({"READ", "WRITE"}),
     },
     "GUARDIAN": {
         "GENERAL": frozenset({"READ", "WRITE"}),
         "SENSITIVE": frozenset({"READ", "WRITE"}),
         "PRIVATE": frozenset({"READ"}),
+        "PERSONAL": frozenset(),
     },
     "CAREGIVER": {
         "GENERAL": frozenset({"READ", "WRITE"}),
         "SENSITIVE": frozenset({"READ"}),
         "PRIVATE": frozenset(),
+        "PERSONAL": frozenset(),
     },
     "MEMBER": {
         "GENERAL": frozenset({"READ"}),
         "SENSITIVE": frozenset(),
         "PRIVATE": frozenset(),
+        "PERSONAL": frozenset(),
     },
 }
 
@@ -85,6 +99,10 @@ ResourceName = Literal[
     "health_profile",
     "consultation_summary",
     "consultation_raw",
+    "health_measurement",
+    "health_alert_threshold",
+    "menstrual_record",
+    "step_count",
 ]
 
 # 資源整體的分類。
@@ -98,6 +116,15 @@ CLASSIFICATION_OF: dict[ResourceName, DataClassification] = {
     "health_profile": "SENSITIVE",
     "consultation_summary": "PRIVATE",
     "consultation_raw": "PRIVATE",
+    # 血壓、血糖量測與提醒範圍：GUARDIAN 可讀寫（代量、代設）、CAREGIVER 只能讀，
+    # 與健康檔案同級——都是「這個人的健康狀況」。
+    "health_measurement": "SENSITIVE",
+    "health_alert_threshold": "SENSITIVE",
+    # 經期只屬於本人，見 DataClassification 對 PERSONAL 的說明。
+    "menstrual_record": "PERSONAL",
+    # 步數本身不揭露病情，但持續的活動量是照顧者判斷長輩狀況的依據，與其他
+    # 生理量測同級。
+    "step_count": "SENSITIVE",
 }
 
 # 欄位分類登記表。跨使用者輸出的資源，**每一個**欄位都要在這裡登記。
@@ -214,6 +241,50 @@ FIELD_CLASSIFICATION: dict[tuple[ResourceName, str], DataClassification] = {
     ("health_profile", "chronic_custom"): "SENSITIVE",
     ("health_profile", "major_illness_history"): "SENSITIVE",
     ("health_profile", "surgery_history"): "SENSITIVE",
+    # ── 血壓血糖量測 ──────────────────────────────────────────────
+    # 全部 SENSITIVE，包含 recorded_by 與 level：誰代記的、判定結果如何，
+    # 揭露的健康資訊量與數值本身相同，不能因為不是數字就降級。
+    ("health_measurement", "id"): "SENSITIVE",
+    ("health_measurement", "user_id"): "SENSITIVE",
+    ("health_measurement", "kind"): "SENSITIVE",
+    ("health_measurement", "measured_at"): "SENSITIVE",
+    ("health_measurement", "recorded_by"): "SENSITIVE",
+    ("health_measurement", "systolic"): "SENSITIVE",
+    ("health_measurement", "diastolic"): "SENSITIVE",
+    ("health_measurement", "pulse"): "SENSITIVE",
+    ("health_measurement", "glucose_mg_dl"): "SENSITIVE",
+    ("health_measurement", "meal_context"): "SENSITIVE",
+    ("health_measurement", "level"): "SENSITIVE",
+    ("health_measurement", "created_at"): "SENSITIVE",
+    # ── 提醒範圍 ──────────────────────────────────────────────────
+    ("health_alert_threshold", "user_id"): "SENSITIVE",
+    ("health_alert_threshold", "systolic_high"): "SENSITIVE",
+    ("health_alert_threshold", "systolic_low"): "SENSITIVE",
+    ("health_alert_threshold", "diastolic_high"): "SENSITIVE",
+    ("health_alert_threshold", "diastolic_low"): "SENSITIVE",
+    ("health_alert_threshold", "glucose_fasting_high"): "SENSITIVE",
+    ("health_alert_threshold", "glucose_nonfasting_high"): "SENSITIVE",
+    ("health_alert_threshold", "glucose_low"): "SENSITIVE",
+    ("health_alert_threshold", "updated_by"): "SENSITIVE",
+    ("health_alert_threshold", "updated_at"): "SENSITIVE",
+    # ── 經期 ──────────────────────────────────────────────────────
+    # 全部 PERSONAL：登記在這裡不是為了給任何家人角色開權限（PERSONAL 矩陣
+    # 整欄皆空），而是讓 fail-closed 的守門測試認得這些欄位——沒有登記的欄位
+    # 一律視為「漏登記」而不是「刻意不給」，兩者在程式碼裡要能分得出來。
+    ("menstrual_record", "id"): "PERSONAL",
+    ("menstrual_record", "user_id"): "PERSONAL",
+    ("menstrual_record", "start_date"): "PERSONAL",
+    ("menstrual_record", "end_date"): "PERSONAL",
+    ("menstrual_record", "flow"): "PERSONAL",
+    ("menstrual_record", "note"): "PERSONAL",
+    ("menstrual_record", "created_at"): "PERSONAL",
+    ("menstrual_record", "updated_at"): "PERSONAL",
+    ("menstrual_record", "cycle_length_days"): "PERSONAL",
+    ("menstrual_record", "period_length_days"): "PERSONAL",
+    # ── 步數 ──────────────────────────────────────────────────────
+    ("step_count", "user_id"): "SENSITIVE",
+    ("step_count", "date"): "SENSITIVE",
+    ("step_count", "steps"): "SENSITIVE",
 }
 
 # 刻意不登記、因此永遠不跨使用者輸出的欄位。
@@ -248,13 +319,14 @@ PROXY_WRITE_FORBIDDEN_FIELDS: frozenset[str] = frozenset(
 )
 
 # 推播種類，包含:高風險藥物、加入非處方藥、緊急事件偵測、掛號提醒、用藥逾時未確認、
-# 走失求救、看診錄音整理完成
+# 血壓血糖超出提醒範圍、走失求救、看診錄音整理完成
 NotificationKind = Literal[
     "high_risk_drug_alert",
     "otc_medication_added",
     "emergency_detected",
     "appointment_reminder",
     "medication_missed",
+    "health_out_of_range",
     "elder_lost",
     "clinic_visit_ready",
 ]
@@ -306,6 +378,12 @@ NOTIFICATION_POLICY: dict[NotificationKind, frozenset[FamilyRole]] = {
     #   還沒指派角色的家庭（目前的預設狀態）會連建立者都收不到。
     # 強制之後照這一列篩選，只送給能管理用藥設定的 GUARDIAN 與 CAREGIVER。
     "medication_missed": frozenset({"GUARDIAN", "CAREGIVER"}),
+    # 血壓血糖超出提醒範圍。收件人與高風險藥物通報相同——能收到完整訊息（含
+    # 數值，SENSITIVE）的就是這兩個角色；MEMBER 對 SENSITIVE 無讀取權，收到
+    # 只會是一則看不懂數值的訊息。這種通知在本能力導入前不存在，呼叫端一律以
+    # `notification_recipients(..., has_legacy_equivalent=False)` 判定收件人，
+    # 不受影子模式放寬（design.md 決策 4）。
+    "health_out_of_range": frozenset({"GUARDIAN", "CAREGIVER"}),
     # 長輩說自己走丟了：通報、即時位置地圖、「已找到」都只給這份名單上的人
     # （見 app/services/lost/lost_location_service.py）。位置是當下行蹤，比健康
     # 資料更直接關係到人身安全，所以不給 MEMBER。

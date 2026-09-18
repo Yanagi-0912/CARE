@@ -25,6 +25,13 @@ from app.repositories.family_role_audit_repository import (
     FamilyRoleAuditRepository,
 )
 from app.repositories.family_tree_repository import FamilyTreeRepository
+from app.repositories.health_alert_claim_repository import HealthAlertClaimRepository
+from app.repositories.health_alert_threshold_repository import (
+    HealthAlertThresholdRepository,
+)
+from app.repositories.health_measurement_repository import HealthMeasurementRepository
+from app.repositories.menstrual_record_repository import MenstrualRecordRepository
+from app.repositories.step_session_repository import StepSessionRepository
 from app.repositories.knowledge_report_preview_repository import (
     KnowledgeReportPreviewRepository,
 )
@@ -53,6 +60,13 @@ from app.services.family.family_delegation_service import (
 )
 from app.services.family.family_role_service import FamilyRoleService
 from app.services.family.family_tree_service import FamilyTreeService
+from app.services.health.health_alert_service import HealthAlertService
+from app.services.health.health_alert_threshold_service import (
+    HealthAlertThresholdService,
+)
+from app.services.health.health_measurement_service import HealthMeasurementService
+from app.services.health.menstrual_service import MenstrualRecordService
+from app.services.health.step_service import StepService
 from app.services.medication.drug_appearance_image_service import (
     resolve_drug_appearance_image_url,
 )
@@ -818,6 +832,42 @@ _family_delegation_service = FamilyDelegationService(
 )
 _medication_service = MedicationService(indication_service=_drug_indication_service)
 
+# 個人健康紀錄（personal-health-tracking）。Task 3 組裝提醒範圍；Task 4 接著
+# 加血壓血糖量測；Task 5 在這裡接著加經期；Task 6 加計步；Task 7 加超出
+# 範圍與經期異常推播。
+_health_alert_threshold_service = HealthAlertThresholdService(
+    repository=HealthAlertThresholdRepository
+)
+# 超出範圍／經期異常推播。與高風險通報、非處方藥通知、緊急通報走同一個
+# LineReplier；收件人判定走同一個 _family_authorization_service，只是查
+# NOTIFICATION_POLICY 裡的 health_out_of_range（見該服務模組 docstring）。
+# HEALTH_ALERTS_ENABLED 預設 false：憑證與文案就緒前，等級照常判定與儲存，
+# 只是不推播。
+_health_alert_service = HealthAlertService(
+    replier=_line_replier,
+    claim_repository=HealthAlertClaimRepository,
+    authorization_service=_family_authorization_service,
+    user_profile_service=_user_profile_service,
+    enabled=settings.HEALTH_ALERTS_ENABLED,
+    liff_url=settings.LIFF_URL,
+)
+_health_measurement_service = HealthMeasurementService(
+    measurement_repository=HealthMeasurementRepository,
+    threshold_repository=HealthAlertThresholdRepository,
+    alert_service=_health_alert_service,
+)
+# 經期是 PERSONAL 分類（見 app/models/family_authorization.py），建立時要看
+# 本人個人健康檔案的性別，因此注入既有的 _user_profile_service（在上面已
+# 組裝好），不另外重建一份。
+_menstrual_record_service = MenstrualRecordService(
+    repository=MenstrualRecordRepository,
+    user_profile_service=_user_profile_service,
+    alert_service=_health_alert_service,
+)
+# 計步：repository 直接傳類別本身（同其餘 health 服務的慣例），clock 使用
+# StepService 自己的預設值（真正的 UTC now），不需要在這裡另外指定。
+_step_service = StepService(repository=StepSessionRepository)
+
 # 掛號提醒。出發／到診的授權在服務層（LIFF 與 LINE postback 兩個入口共用），
 # 所以授權服務注入給服務本身；CRUD 的授權仍在 router，與用藥相同。
 _appointment_repository = AppointmentReminderRepository()
@@ -1071,6 +1121,22 @@ def get_family_authorization_service() -> FamilyAuthorizationService:
 
 def get_medication_service() -> MedicationService:
     return _medication_service
+
+
+def get_health_alert_threshold_service() -> HealthAlertThresholdService:
+    return _health_alert_threshold_service
+
+
+def get_health_measurement_service() -> HealthMeasurementService:
+    return _health_measurement_service
+
+
+def get_menstrual_record_service() -> MenstrualRecordService:
+    return _menstrual_record_service
+
+
+def get_step_service() -> StepService:
+    return _step_service
 
 
 def get_appointment_service() -> AppointmentService:

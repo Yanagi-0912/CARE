@@ -43,7 +43,16 @@ from app.repositories.clinic_transcript_repository import (
 from app.repositories.family_delegation_repository import FamilyDelegationRepository
 from app.repositories.family_rbac_metrics_repository import FamilyRbacMetricsRepository
 from app.repositories.family_role_audit_repository import FamilyRoleAuditRepository
+from app.repositories.health_alert_claim_repository import HealthAlertClaimRepository
+from app.repositories.health_alert_threshold_repository import (
+    HealthAlertThresholdRepository,
+)
+from app.repositories.health_measurement_repository import (
+    HealthMeasurementRepository,
+)
+from app.repositories.menstrual_record_repository import MenstrualRecordRepository
 from app.repositories.safety_alert_repository import SafetyAlertRepository
+from app.repositories.step_session_repository import StepSessionRepository
 from app.repositories.lost_session_repository import LostSessionRepository
 from app.services.lost.lost_location_scheduler import start_lost_location_scheduler
 from app.services.medical_news.index_scheduler import (
@@ -61,6 +70,7 @@ from app.services.consultation.scheduler import (
 from app.services.rag.user_document_store import ensure_user_docs_indexes_on_startup
 
 from app.routers.users.family_tree import router as family_tree_router
+from app.routers.users.health import router as health_router
 from app.routers.users.knowledge_reports import router as knowledge_reports_router
 from app.routers.users.medical import router as medical_router
 from app.routers.users.medications import router as medications_router
@@ -155,6 +165,19 @@ async def lifespan(app: FastAPI):
     await FamilyRoleAuditRepository.ensure_indexes()
     await FamilyRbacMetricsRepository.ensure_indexes()
     await ensure_user_docs_indexes_on_startup()
+
+    # 個人健康紀錄的五份新 collection（personal-health-tracking design.md
+    # 「資料格式」段末：family-rbac 曾經漏掉「寫了 ensure_indexes 但沒有任何
+    # 地方呼叫」這一步，索引因此在正式環境永遠不會存在，見
+    # test_startup_creates_indexes_for_every_new_health_collection）。
+    # health_alert_claims 的 (user_id, alert_key) 唯一索引加 expires_at TTL
+    # 是推播節流的唯一保證，總開關關閉時也照常建立——開關只影響要不要推播，
+    # 不影響索引要不要先備好。
+    await HealthMeasurementRepository.ensure_indexes()
+    await HealthAlertThresholdRepository.ensure_indexes()
+    await MenstrualRecordRepository.ensure_indexes()
+    await StepSessionRepository.ensure_indexes()
+    await HealthAlertClaimRepository.ensure_indexes()
 
     # 預載院所名稱索引，供判斷使用者說的「診所／醫院／藥局」是專名還是泛稱。
     # 放在啟動而非對話路徑：名稱集合約 512 KB，載入一次即可，
@@ -301,6 +324,7 @@ app.include_router(
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(family_tree_router, prefix="/api/family", tags=["Family Tree"])
 app.include_router(medications_router, prefix="/api/medications", tags=["Medications"])
+app.include_router(health_router, prefix="/api/health", tags=["Health"])
 app.include_router(appointments_router, prefix="/api/appointments", tags=["Appointments"])
 app.include_router(lost_router, prefix="/api/lost", tags=["Lost Location"])
 app.include_router(

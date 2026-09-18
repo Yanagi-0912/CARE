@@ -505,6 +505,16 @@ class Settings:
         "on",
     )
 
+    # 個人健康紀錄超出範圍／經期異常推播的總開關（health-alerts spec「推播
+    # 總開關」）。預設**關閉**，方向與上面兩個安全通報開關相反：那兩個是
+    # 「預設開、出事才關」的煞車，這個是「推播文案審閱完成、LINE 憑證到位
+    # 之前，先讓紀錄功能上線」的起跑線。關閉時等級照常判定與儲存，只是不
+    # 推播——由 HealthAlertService 內部短路，呼叫端（health_measurement_service
+    # ／menstrual_service）無需知道這個旗標。
+    HEALTH_ALERTS_ENABLED: bool = os.getenv(
+        "HEALTH_ALERTS_ENABLED", "false"
+    ).lower() in ("1", "true", "yes", "on")
+
     # ── 每日醫療消息卡（medical-news-push）────────────────────────
     #
     # 整條的煞車。理由與 SAFETY_ALERT_ENABLED 相同、程度更強：這是**主動**

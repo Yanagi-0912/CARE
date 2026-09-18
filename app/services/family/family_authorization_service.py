@@ -659,6 +659,7 @@ class FamilyAuthorizationService:
         subject_owner_id: str,
         kind: NotificationKind,
         now: Optional[datetime] = None,
+        has_legacy_equivalent: bool = True,
     ) -> List[str]:
         """某位當事人的某種推播，實際該送給誰。
 
@@ -673,15 +674,26 @@ class FamilyAuthorizationService:
 
         例外是 `STRICT_NOTIFICATION_KINDS`：導入之後才有的推播沒有「導入前」
         可言，兩種模式都依政策表篩選（見該表的說明）。
+
+        `has_legacy_equivalent` 與 `authorize` 同義（見該處說明），預設 `True`
+        以維持既有呼叫端的行為不變。`False` 時完全跳過上述的影子模式放行與
+        `STRICT_NOTIFICATION_KINDS` 判斷——這條路徑在導入前根本不存在，收件人
+        一律依 `NOTIFICATION_POLICY` 與操作者**實際**角色（含有效委任解析為
+        GUARDIAN）判定，不受任何遷移狀態影響。健康量測超出範圍的通知
+        （`health_out_of_range`）用這個模式呼叫：正式環境大多數家人尚未被指派
+        角色，沿用影子模式會把含 SENSITIVE 數值的推播送給依矩陣根本看不到這些
+        數值的人（design.md 決策 4）。
         """
         tree = await self._get_tree(subject_owner_id)
         if tree is None:
             return []
 
         member_ids = [m.user_id for m in tree.family_members if m.user_id]
-        state = await self.migration_state(subject_owner_id)
-        if state != "enforced" and kind not in STRICT_NOTIFICATION_KINDS:
-            return member_ids
+
+        if has_legacy_equivalent:
+            state = await self.migration_state(subject_owner_id)
+            if state != "enforced" and kind not in STRICT_NOTIFICATION_KINDS:
+                return member_ids
 
         moment = now or datetime.now(tz=timezone.utc)
         recipients: List[str] = []

@@ -8,6 +8,9 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from app.services.agent.utils.nodes import AgentNodes, _tv_news_claim
 
 MEDIA_PREFIX = "以下為使用者傳送的image媒體內容："
+TV_NEWS_NO_CHANNEL = (
+    f"{MEDIA_PREFIX}\n【電視新聞畫面】\n新聞標題：維他命添色素‧影響智力"
+)
 TV_NEWS = (
     f"{MEDIA_PREFIX}\n"
     "【電視新聞畫面】\n"
@@ -23,7 +26,14 @@ def _tool(name: str) -> MagicMock:
 
 
 def _tools_factory(
-    *, rag_names=("get_rag_answer", "answer_from_uploaded_document", "verify_claim", "verify_tv_news")
+    *,
+    rag_names=(
+        "get_rag_answer",
+        "answer_from_uploaded_document",
+        "verify_claim",
+        "verify_tv_news",
+        "find_tv_news_article",
+    ),
 ):
     def _mock_tools(include_rag_tool: bool = False):
         names = ["request_location_quick_reply", "find_nearby_hospitals", "get_medication_status"]
@@ -147,3 +157,59 @@ async def test_一般圖片不受影響(monkeypatch, llm):
     result = await _run(monkeypatch, llm, _state(f"{MEDIA_PREFIX}\n| 項目 | 值 |\n| --- | --- |"))
     assert not getattr(result["messages"][0], "tool_calls", None)
     llm.bind_tools.return_value.ainvoke.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_使用者回答是哪一台就去找那則報導(monkeypatch, llm):
+    """回問台別之後，長輩只會回兩個字；交給模型判斷它會把台名當成健康問題去查。"""
+    state = {
+        "messages": [
+            HumanMessage(content=TV_NEWS_NO_CHANNEL),
+            AIMessage(content="（判定卡）"),
+            HumanMessage(content="這則新聞是民視"),
+        ],
+        "allow_rag": True,
+        "user_profile": None,
+    }
+    result = await _run(monkeypatch, llm, state)
+    (call,) = result["messages"][0].tool_calls
+    assert call["name"] == "find_tv_news_article"
+    assert call["args"] == {"headline": "維他命添色素‧影響智力", "channel": "民視"}
+    llm.bind_tools.return_value.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_長輩自己打台名也認得(monkeypatch, llm):
+    state = {
+        "messages": [HumanMessage(content=TV_NEWS_NO_CHANNEL), AIMessage(content="x"), HumanMessage(content="民視新聞")],
+        "allow_rag": True,
+        "user_profile": None,
+    }
+    (call,) = (await _run(monkeypatch, llm, state))["messages"][0].tool_calls
+    assert call["name"] == "find_tv_news_article"
+
+
+@pytest.mark.asyncio
+async def test_沒有前一張電視畫面時不接(monkeypatch, llm):
+    """「民視」單獨出現不代表在回答台別。"""
+    state = {"messages": [HumanMessage(content="這則新聞是民視")], "allow_rag": True, "user_profile": None}
+    result = await _run(monkeypatch, llm, state)
+    calls = getattr(result["messages"][0], "tool_calls", None) or []
+    # 落回既有行為（模型沒選工具就強制轉知識庫），不會被當成在回答台別
+    assert all(call["name"] != "find_tv_news_article" for call in calls)
+
+
+@pytest.mark.asyncio
+async def test_帶內容的句子照常走查核而不是當成回答台別(monkeypatch, llm):
+    """「民視報導說吃芒果會怎樣」是個問題，不是在回答我們問的台別。"""
+    state = {
+        "messages": [
+            HumanMessage(content=TV_NEWS_NO_CHANNEL),
+            AIMessage(content="x"),
+            HumanMessage(content="民視報導說吃芒果會讓血糖飆高是真的嗎"),
+        ],
+        "allow_rag": True,
+        "user_profile": None,
+    }
+    (call,) = (await _run(monkeypatch, llm, state))["messages"][0].tool_calls
+    assert call["name"] != "find_tv_news_article"

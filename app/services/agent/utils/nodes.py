@@ -11,6 +11,7 @@ from app.core.request_logging import log_stage
 from app.core.user_language import normalize_user_language
 from app.services.agent.prompt import build_date_context, build_system_prompt
 from app.services.agent.utils.state import State
+from app.services.media.tv_news_lookup import CHANNEL_ALIASES, CHANNEL_DOMAINS
 from app.services.medical.department_matcher import (
     extract_department_intents,
     normalize_department_text,
@@ -475,6 +476,36 @@ def _tv_news_claim(text: str) -> str | None:
     return match.group(1).strip() or None
 
 
+def _tv_news_channel_answer(text: str) -> str:
+    """使用者回答「這則新聞是哪一台」時說的台名；不是在回答台別就回空字串。
+
+    快速回覆按鈕送出的是「這則新聞是民視」，但長輩也可能自己打「民視」或
+    「民視新聞」，所以認的是台名與別名，不是整句比對。限制長度是為了不要把
+    「民視報導說吃芒果會怎樣」這種有實質內容的問句誤判成在回答台別——那句
+    該照常走查核。
+    """
+    stripped = (text or "").strip()
+    if not stripped or len(stripped) > 12:
+        return ""
+    for channel, aliases in CHANNEL_ALIASES.items():
+        if channel not in CHANNEL_DOMAINS:
+            continue
+        if any(alias.lower() in stripped.lower() for alias in aliases):
+            return channel
+    return ""
+
+
+def _previous_tv_news_headline(messages) -> str:
+    """對話裡最近一張電視新聞畫面的標題。找不到回空字串。"""
+    for message in reversed(messages):
+        if not isinstance(message, HumanMessage):
+            continue
+        claim = _tv_news_claim(str(message.content or ""))
+        if claim:
+            return claim
+    return ""
+
+
 def _tv_news_channel(text: str) -> str:
     """畫面上的電視台。n8n 認不出台別時整行不會出現，所以沒有「不確定」這個值。"""
     if not _is_media_extracted_content(text):
@@ -686,6 +717,41 @@ def _can_send_original_text_to_rag(state: State, tool_names: list[str], user_tex
         and not _is_official_site_intent(user_text)
         and not _is_media_extracted_content(user_text)
         and not _is_uploaded_document_question(user_text)
+    )
+
+
+def _tv_news_channel_followup(
+    state: State, tool_names: list[str], user_text: str
+) -> AIMessage | None:
+    """上一張電視新聞畫面認不出台別、這一句在回答是哪一台 → 直接去找原始報導。
+
+    為什麼要決定性地送：這句話只有兩個字（「民視」），交給模型判斷等於讓它猜
+    上下文，而它猜錯的方式是把台名當成一個健康問題送去查知識庫。這裡的條件
+    夠窄——上一輪必須真的有電視新聞畫面——所以可以直接接。
+
+    不重做查核：判定上一則訊息已經給過了，使用者現在缺的只有連結。
+    """
+    if "find_tv_news_article" not in tool_names:
+        return None
+    if any(isinstance(m, ToolMessage) for m in state["messages"]):
+        return None
+    channel = _tv_news_channel_answer(user_text)
+    if not channel:
+        return None
+    headline = _previous_tv_news_headline(state["messages"])
+    if not headline:
+        return None
+    log_stage(logger, "tv_news_channel_answer", channel=channel)
+    return AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "find_tv_news_article",
+                "args": {"headline": headline, "channel": channel},
+                "id": "tv_news_followup_1",
+                "type": "tool_call",
+            }
+        ],
     )
 
 
@@ -907,6 +973,10 @@ class AgentNodes:
         tools = get_all_tools(include_rag_tool=state.get("allow_rag", False))
         tool_names = [t.name for t in tools]
         user_text = _latest_human_text(state["messages"])
+
+        followup_call = _tv_news_channel_followup(state, tool_names, user_text)
+        if followup_call is not None:
+            return {"messages": [followup_call]}
 
         tv_news_call = _tv_news_claim_call(state, tool_names, user_text)
         if tv_news_call is not None:

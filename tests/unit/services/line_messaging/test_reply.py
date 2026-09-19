@@ -907,3 +907,58 @@ async def test_table_card_is_not_read_aloud():
     assert sent[1].text == ANSWER
     assert sent[2].original_content_url == "https://example.com/audio.mp3"
     assert [call["text"] for call in fake_tts.calls] == [ANSWER]
+
+
+@pytest.mark.asyncio
+async def test_工具自帶的快速回覆要搬到最後一則(replier):
+    """LINE 只顯示最後一則的 quickReply。
+
+    電視新聞的判定卡在找不到原始報導時會附「這是哪一台？」的按鈕，而卡片後面
+    還會接一則 followUpText——不搬過去，那排按鈕就靜靜消失。
+    """
+    quick_reply = {
+        "items": [
+            {
+                "type": "action",
+                "action": {"type": "message", "label": "民視", "text": "這則新聞是民視"},
+            }
+        ]
+    }
+
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text=_tool_flex_json(quickReply=quick_reply, followUpText="這則新聞是哪一台？"),
+        user_id="U1",
+        voice_reply_enabled=False,
+    )
+
+    assert ok
+    messages = _sent_messages(messaging_api)
+    assert len(messages) == 2
+    assert messages[0].quick_reply is None
+    assert messages[-1].quick_reply is not None
+    assert messages[-1].quick_reply.items[0].action.text == "這則新聞是民視"
+
+
+@pytest.mark.asyncio
+async def test_只有卡片一則時快速回覆留在卡片上(replier):
+    quick_reply = {
+        "items": [
+            {
+                "type": "action",
+                "action": {"type": "message", "label": "民視", "text": "這則新聞是民視"},
+            }
+        ]
+    }
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text=_tool_flex_json(quickReply=quick_reply),
+        user_id="U1",
+        voice_reply_enabled=False,
+    )
+    assert ok
+    messages = _sent_messages(messaging_api)
+    assert len(messages) == 1
+    assert messages[0].quick_reply is not None

@@ -173,6 +173,7 @@ from app.services.medical_news.index_service import DrugNewsIndexService
 from app.services.medical_news.kb_digest_service import KbDigestService
 from app.services.medical_news.share_service import MedicalNewsShareService
 from app.services.users.user_profile_service import UserProfileService
+from app.services.media.tv_news_channels import TvNewsChannelMemory
 from app.services.media.tv_news_lookup import TvNewsArticleFinder
 from app.tools.claim_tools import configure_claim_tool
 from app.tools.tv_news_tools import configure_tv_news_tool
@@ -551,7 +552,8 @@ if settings.CLAIM_VERIFICATION_ENABLED:
     # 電視新聞畫面的查核多附一顆「看新聞原文」。找新聞靠 Firecrawl 搜尋；沒有
     # 金鑰時仍然提供工具，只是不附連結——判定卡本身不依賴它。
     configure_tv_news_tool(
-        TvNewsArticleFinder(_firecrawl_client.search if _firecrawl_client else None)
+        TvNewsArticleFinder(_firecrawl_client.search if _firecrawl_client else None),
+        TvNewsChannelMemory(),
     )
 else:
     logger.info("CLAIM_VERIFICATION_ENABLED=false; verify_claim tool not configured")

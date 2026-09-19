@@ -146,6 +146,47 @@ class UserProfileRepository:
         )
         return result.matched_count > 0
 
+    # --- 電視新聞 ---
+
+    @staticmethod
+    async def record_tv_news_channel(line_id: str, channel: str) -> bool:
+        """記一次「這個人看的是哪一台」，用來在台標認不出來時優先比對他常看的台。
+
+        存的是次數（`tv_news_channels.<台名>`）而不是單一「最愛的台」：長輩不會
+        只看一台，而我們要的是排序，不是唯一解。次數只增不減——這不是精確的
+        收視統計，是搜尋時的先驗，舊資料變舊了頂多讓排序反應慢一點。
+
+        只更新既有 profile、不 upsert（同 `set_following`）：沒有 profile 的人
+        就是沒開過 LIFF，替他憑空建一筆沒有意義。
+        """
+        if not line_id or not channel:
+            return False
+        col = MongoDBManager.get_users_collection()
+        result = await col.update_one(
+            {"line_id": line_id},
+            {
+                "$inc": {f"tv_news_channels.{channel}": 1},
+                "$set": {"updated_at": datetime.now(tz=timezone.utc)},
+            },
+        )
+        return result.matched_count > 0
+
+    @staticmethod
+    def preferred_tv_channels(profile: Optional[Dict[str, Any]], limit: int = 3) -> List[str]:
+        """常看的台，次數多的排前面。
+
+        取前三台而不是全部：拿過一次的台就享有較低的比對門檻（見
+        `tv_news_lookup`），清單愈長、誤接別台的機會愈大。
+        """
+        counts = (profile or {}).get("tv_news_channels")
+        if not isinstance(counts, dict):
+            return []
+        ranked = sorted(
+            ((name, n) for name, n in counts.items() if isinstance(n, (int, float))),
+            key=lambda item: (-item[1], item[0]),
+        )
+        return [name for name, _ in ranked[:limit]]
+
     # --- LINE 進站流程 ---
 
     @staticmethod

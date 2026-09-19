@@ -15,6 +15,10 @@
 沒有台別——2026-09-18 線上兩次電視新聞查核就都是 `channel=-`，舊版因此連搜都
 沒搜。標題夠獨特時，哪一台播的可以由搜尋結果自己回答。
 
+**使用者常看的台別享有較低的門檻**（`preferred_channels`，同已知台別的
+`MATCH_THRESHOLD`）。他以前拍過、或親口說過的台就是先驗：同樣一筆結果，來自
+他常看的台比來自隨便一台更可能是他這次看到的那一則。
+
 **刻意不收轉載站**（Yahoo、LINE TODAY、Facebook）與別家媒體：2026-09-18 的
 實測裡，TVBS 那則「38歲洗腎男路倒不治」在中時有一篇 0.83 分的報導，那是別家
 記者寫的同一件事，不是長輩看到的那一則；Yahoo／LINE TODAY 雖然多半是原文
@@ -227,15 +231,26 @@ class TvNewsArticleFinder:
                 return channel
         return None
 
-    async def find(self, headline: str, channel: str) -> Optional[TvNewsArticle]:
+    async def find(
+        self,
+        headline: str,
+        channel: str,
+        preferred_channels: Sequence[str] = (),
+    ) -> Optional[TvNewsArticle]:
         """找不到或搜尋失敗都回 None——這是加值，不能擋住查核。
 
         台別已知時只認那一台，查詢字串帶上台名；台別不明時認任何一台，查詢
-        只有標題、門檻改用 `UNKNOWN_CHANNEL_THRESHOLD`。
+        只有標題、門檻改用 `UNKNOWN_CHANNEL_THRESHOLD`，但 `preferred_channels`
+        （使用者常看的台）沿用較低的 `MATCH_THRESHOLD`。
+
+        2026-09-18 實測（35 組標題、查詢不帶台名）：常看的台恰好就是這次拍的
+        那台時，0.50 找得到 12/35（只靠 0.70 的任何一台規則是 9/35）；拍到的
+        不是常看的台時，整批只有 1 筆會因為 0.50 被誤收（公視那則的東森版）。
         """
         if not self._search or not headline:
             return None
         known = channel in CHANNEL_DOMAINS
+        preferred = {c for c in preferred_channels if c in CHANNEL_DOMAINS}
         # 不限定網域搜一次就好：限定網域的結果是這一份的子集（實測自家命中都
         # 在前五），多搜一次只是多花一次額度。
         query = build_query(headline, channel) if known else build_query(headline, "")
@@ -260,7 +275,7 @@ class TvNewsArticleFinder:
                 continue
             is_video = is_channel_video(url, title, owner)
             score = title_match_score(headline, title)
-            if score < threshold:
+            if score < (self._threshold if owner in preferred else threshold):
                 continue
             # 同分時文章優先於影片：長輩在 LINE 裡開文章比開影片省流量，也讀得快。
             better = best is None or score > best.score or (

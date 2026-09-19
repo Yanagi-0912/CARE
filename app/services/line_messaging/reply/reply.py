@@ -189,6 +189,12 @@ class LineReplier:
                 )
             if quick_items and messages:
                 messages[-1].quick_reply = QuickReply(items=quick_items)
+            elif len(messages) > 1 and getattr(messages[0], "quick_reply", None):
+                # 工具自帶的 quickReply（電視新聞回問台別）原本掛在卡片上，但
+                # 卡片後面還會接 followUpText 與語音，而 LINE 只顯示**最後一則**
+                # 的 quickReply——不搬過去，按鈕就靜靜消失了。
+                messages[-1].quick_reply = messages[0].quick_reply
+                messages[0].quick_reply = None
 
         except Exception:
             # 組訊息就失敗（TTS、卡片、token）：使用者不能什麼都收不到。

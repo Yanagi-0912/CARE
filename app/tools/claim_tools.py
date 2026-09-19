@@ -109,7 +109,9 @@ def _format_verdict_speech(result: VerificationResult) -> str:
 
 
 def _to_flex_message_text(
-    result: VerificationResult, news_article: TvNewsArticle | None = None
+    result: VerificationResult,
+    news_article: TvNewsArticle | None = None,
+    extra_payload: dict | None = None,
 ) -> str | None:
     """把判定卡組成 LINE Flex Message JSON 字串；超過大小門檻時回傳 None。
 
@@ -143,20 +145,28 @@ def _to_flex_message_text(
     # speechText/quickReply，`CLAIM_VERDICT_KEY` 不會被送往 LINE。
     payload["speechText"] = _format_verdict_speech(result)
     payload[CLAIM_VERDICT_KEY] = {"verdict": result.verdict}
+    if extra_payload:
+        payload.update(extra_payload)
     return json.dumps(payload, ensure_ascii=False)
 
 
 def render_verification(
-    result: VerificationResult, news_article: TvNewsArticle | None = None
+    result: VerificationResult,
+    news_article: TvNewsArticle | None = None,
+    extra_payload: dict | None = None,
 ) -> str:
     """把一次查核結果渲染成要送給 LINE 的字串（Flex JSON，或退回純文字）。
 
     `verify_claim` 與 `verify_tv_news`（tv_news_tools）共用這裡：兩者的差別只
     在查核之外多不多一個新聞連結，而「太大退純文字」「組裝失敗退純文字」這
     兩道 fallback 沒有理由各寫一份——寫兩份就會有一邊先補了新規則。
+
+    `extra_payload` 併進 Flex 的頂層鍵（`quickReply`、`followUpText`），給電視
+    新聞那支工具回問台別用。**只在 Flex 這條路生效**：退回純文字時 LINE 收到的
+    是一則 TextMessage，頂層鍵無處可放，所以呼叫端要把該問的話也寫進文字裡。
     """
     try:
-        flex_text = _to_flex_message_text(result, news_article)
+        flex_text = _to_flex_message_text(result, news_article, extra_payload)
     except Exception:  # noqa: BLE001
         # Flex 組裝是呈現層的最後一步，任何非預期例外都不該讓使用者拿到堆疊
         # 追蹤或空白回覆；退回 Flex 化之前就存在的純文字格式，判定內容仍能

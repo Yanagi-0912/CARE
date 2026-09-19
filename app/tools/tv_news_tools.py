@@ -196,6 +196,16 @@ async def ask_tv_news_channel(headline: str) -> str:
     return _ask_channel_flex(headline, await _preferred_channels())
 
 
+def _missing_note(channel: str) -> str:
+    """找過、沒找到時卡片上的那一句。
+
+    講的是「電視台沒放上網」而不是「找不到」：後者聽起來像系統壞了，前者才是
+    實情——實測 35 則裡有 20 則在該台網站上根本沒有（見 tv_news_lookup）。
+    """
+    who = f"{channel}這則新聞" if channel else "這則新聞"
+    return f"我找不到{who}的網路版，電視台不一定會把每則新聞都放上網站。"
+
+
 @tool
 async def verify_tv_news(headline: str, channel: str = "") -> str:
     """當使用者傳來電視新聞畫面、系統已抽出新聞標題時呼叫，查證該標題的說法。
@@ -226,4 +236,5 @@ async def verify_tv_news(headline: str, channel: str = "") -> str:
         result.matched,
         bool(article),
     )
-    return render_verification(result, article)
+    note = "" if article is not None else _missing_note(channel)
+    return render_verification(result, article, news_missing_note=note)

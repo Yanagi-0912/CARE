@@ -306,6 +306,7 @@ def build_verdict_flex(
     result: VerificationResult,
     font_size: str | None = None,
     news_article: "TvNewsArticle | None" = None,
+    news_missing_note: str = "",
 ) -> FlexMessage:
     """把一次查核結果組成判定卡。
 
@@ -332,6 +333,10 @@ def build_verdict_flex(
     news_button = _news_article_button(news_article, ft)
     if news_button is not None:
         footer_buttons.append(news_button)
+    elif news_missing_note:
+        # 找過、沒找到，就要說一句。什麼都不說的話，長輩只會覺得「上次有連結
+        # 這次沒有」，而看不出是電視台沒把這則放上網。
+        body_contents.append(_paragraph(news_missing_note, ft, size=ft.caption))
     if result.matched:
         body_contents.extend(_source_note(ft, result.source_published_at))
         matched_button = _source_button(result.source_url, ft)

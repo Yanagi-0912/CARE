@@ -40,7 +40,9 @@ def is_claim_tool_configured() -> bool:
 
 
 def _format_verdict_reply(
-    result: VerificationResult, news_article: TvNewsArticle | None = None
+    result: VerificationResult,
+    news_article: TvNewsArticle | None = None,
+    news_missing_note: str = "",
 ) -> str:
     """純文字判定卡：Flex 版判定卡組裝失敗時的 fallback，仍須符合
     line-reply-rules 的「不得輸出 Markdown」。這是 Flex 化之前唯一的輸出
@@ -63,6 +65,8 @@ def _format_verdict_reply(
     if news_article is not None and news_article.url.strip():
         label = "新聞影片" if news_article.is_video else "新聞原文"
         lines.extend(["", f"{label}：{news_article.title}", news_article.url])
+    elif news_missing_note:
+        lines.extend(["", news_missing_note])
     if result.matched:
         lines.extend(["", f"資料來源：{_TFC_SOURCE_LABEL}", result.source_url])
     elif result.related_info:
@@ -112,6 +116,7 @@ def _to_flex_message_text(
     result: VerificationResult,
     news_article: TvNewsArticle | None = None,
     extra_payload: dict | None = None,
+    news_missing_note: str = "",
 ) -> str | None:
     """把判定卡組成 LINE Flex Message JSON 字串；超過大小門檻時回傳 None。
 
@@ -128,7 +133,9 @@ def _to_flex_message_text(
     的單一職責。回傳 None 而非拋例外，是為了讓「太大」與「組裝壞掉」在
     `verify_claim` 裡分別留下不同的 log——兩者都退回純文字，但成因不同。
     """
-    flex_message = build_verdict_flex(result, news_article=news_article)
+    flex_message = build_verdict_flex(
+        result, news_article=news_article, news_missing_note=news_missing_note
+    )
     payload = flex_message.to_dict()
     if not fits(payload["contents"]):
         return None
@@ -154,6 +161,7 @@ def render_verification(
     result: VerificationResult,
     news_article: TvNewsArticle | None = None,
     extra_payload: dict | None = None,
+    news_missing_note: str = "",
 ) -> str:
     """把一次查核結果渲染成要送給 LINE 的字串（Flex JSON，或退回純文字）。
 
@@ -166,13 +174,15 @@ def render_verification(
     是一則 TextMessage，頂層鍵無處可放，所以呼叫端要把該問的話也寫進文字裡。
     """
     try:
-        flex_text = _to_flex_message_text(result, news_article, extra_payload)
+        flex_text = _to_flex_message_text(
+            result, news_article, extra_payload, news_missing_note
+        )
     except Exception:  # noqa: BLE001
         # Flex 組裝是呈現層的最後一步，任何非預期例外都不該讓使用者拿到堆疊
         # 追蹤或空白回覆；退回 Flex 化之前就存在的純文字格式，判定內容仍能
         # 送到使用者手上。
         logger.warning("判定卡 Flex 組裝失敗，改回純文字格式", exc_info=True)
-        return _format_verdict_reply(result, news_article)
+        return _format_verdict_reply(result, news_article, news_missing_note)
 
     if flex_text is None:
         # 超過 LINE 的 bubble 上限。硬送出去會在 reply_message() 被以 400
@@ -185,7 +195,7 @@ def render_verification(
         logger.warning(
             "判定卡超過 Flex 大小上限，改回純文字格式，matched=%s", result.matched
         )
-        return _format_verdict_reply(result, news_article)
+        return _format_verdict_reply(result, news_article, news_missing_note)
 
     return flex_text
 

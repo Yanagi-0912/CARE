@@ -207,3 +207,25 @@ async def test_常看的台別會傳給搜尋():
     tv_news_tools.configure_tv_news_tool(finder, _Memory(["三立"]))
     await tv_news_tools.verify_tv_news.ainvoke({"headline": HEADLINE, "channel": "TVBS"})
     assert finder.calls == [(HEADLINE, "TVBS", ("三立",))]
+
+
+def _card_text(payload: dict) -> str:
+    return json.dumps(payload["contents"], ensure_ascii=False)
+
+
+@pytest.mark.asyncio
+async def test_找不到原文時卡片要說一句_不是靜靜地沒有連結():
+    """什麼都不說，長輩只會覺得「上次有連結這次沒有」，看不出是電視台沒放上網。"""
+    claim_tools.configure_claim_tool(_Service())
+    tv_news_tools.configure_tv_news_tool(_Finder(None), _Memory())
+
+    payload = json.loads(await tv_news_tools.verify_tv_news.ainvoke({"headline": HEADLINE, "channel": "三立"}))
+    assert "三立這則新聞的網路版" in _card_text(payload)
+
+
+@pytest.mark.asyncio
+async def test_找到原文時不會再說找不到():
+    claim_tools.configure_claim_tool(_Service())
+    tv_news_tools.configure_tv_news_tool(_Finder(ARTICLE), _Memory())
+    payload = json.loads(await tv_news_tools.verify_tv_news.ainvoke({"headline": HEADLINE, "channel": "TVBS"}))
+    assert "網路版" not in _card_text(payload)

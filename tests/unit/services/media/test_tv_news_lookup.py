@@ -37,13 +37,21 @@ def test_標點與引號不影響吻合度():
     assert title_match_score(HEADLINE, "6週就見效！ 研究曝「番茄」能改善脂肪肝- 台視影音") == 1.0
 
 
-def test_螢幕標題與網站標題是兩套寫法時仍要過門檻():
-    """真實案例：TVBS 的螢幕標題「添色素‧影響智力」，網站版是「摻色素…傷智力」。
-
-    門檻若設在 0.75，這種改寫過的標題會被擋掉——那正是長輩最常拍到的情況。
-    """
-    score = title_match_score("維他命添色素‧影響智力", "維他命摻色素專家：恐過敏傷智力 - TVBS新聞")
-    assert score >= TvNewsArticleFinder.MATCH_THRESHOLD
+@pytest.mark.parametrize(
+    "headline,title",
+    [
+        # 2026-09-18 線上：TVBS 螢幕「添色素‧影響智力」，網站「摻色素…傷智力」（0.70）
+        ("維他命添色素‧影響智力", "維他命摻色素專家：恐過敏傷智力 - TVBS新聞"),
+        # 2026-09-19 線上：三立整個改寫標題（0.48），門檻 0.50 時就是差這 0.02 沒附到
+        (
+            "i-dle薇娟健康檢查片惹議 恐觸犯南韓醫療法",
+            "i-dle薇娟拍健檢片爆違法！舒眠胃鏡過程全公開遭韓政府單位報警處理",
+        ),
+    ],
+)
+def test_螢幕標題與網站標題是兩套寫法時仍要過門檻(headline, title):
+    """網站編輯幾乎都會重寫標題，這是常態不是例外；高門檻會把真的擋掉。"""
+    assert title_match_score(headline, title) >= TvNewsArticleFinder.MATCH_THRESHOLD
 
 
 def test_搜尋字串帶台名且拿掉引號():

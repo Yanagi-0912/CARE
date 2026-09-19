@@ -19,6 +19,7 @@ True 還是 False，都沒有管道能回頭覆寫它——`is_same_claim` 唯�
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Protocol
 
@@ -132,6 +133,38 @@ def _checked_claim(match: ClaimMatch) -> str:
     在後，而不是兩者互斥擇一。"""
     parts = [part for part in (match.title, match.claim) if part]
     return "｜".join(parts)
+
+
+_MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")
+_BARE_URL_RE = re.compile(r"[（(\[【]?\s*(?:https?://|www\.)\S+?[）)\]】]?(?=[\s，。；、）)】]|$)")
+_DANGLING_RE = re.compile(r"[（(\[【]\s*[）)\]】]")
+_SPACE_RE = re.compile(r"[ \t]{2,}")
+# 刪掉網址之後常留下「…資料來源 。」這種尾巴：標點前的空白、連著的標點都要收。
+_SPACE_BEFORE_PUNCT_RE = re.compile(r"[ \t]+([，。；、：）)】])")
+_DUP_PUNCT_RE = re.compile(r"([，、；])(?=[，。；、])")
+
+
+def strip_urls(text: str) -> str:
+    """把內文裡的網址拿掉，只留看得懂的字。
+
+    卡片的來源已經是可點的按鈕，內文再放一長串網址對長輩只是雜訊——他也點不到
+    （Flex 的 text 不可點）。2026-09-19 James 連續兩次回報「相關衛教資訊貼了
+    一堆網址」：知識庫有 14%（1,459/10,601 段）的內文本身就含網址，生成時會被
+    照抄出來，光是換成 RAG 生成並不會讓它們消失。
+
+    Markdown 連結保留文字、丟掉網址；裸網址整段刪掉，順手清掉刪完剩下的空括號
+    與多餘空白。行內引用標記 `[1]` 不受影響——那是對應來源按鈕的編號，刪了就對
+    不回去。
+    """
+    if not text:
+        return text
+    cleaned = _MARKDOWN_LINK_RE.sub(r"\1", text)
+    cleaned = _BARE_URL_RE.sub("", cleaned)
+    cleaned = _DANGLING_RE.sub("", cleaned)
+    cleaned = _SPACE_RE.sub(" ", cleaned)
+    cleaned = _SPACE_BEFORE_PUNCT_RE.sub(r"\1", cleaned)
+    cleaned = _DUP_PUNCT_RE.sub("", cleaned)
+    return "\n".join(line.rstrip() for line in cleaned.splitlines()).strip()
 
 
 class ClaimVerificationService:
@@ -351,8 +384,9 @@ class ClaimVerificationService:
         if self._related_answer is not None:
             try:
                 text, sources = await self._related_answer(claim)
-                if text.strip():
-                    return text.strip(), tuple(sources)
+                cleaned = strip_urls(text)
+                if cleaned:
+                    return cleaned, tuple(sources)
             except Exception:  # noqa: BLE001 - 同 _fetch_related_info 的 fail-open
                 logger.warning("相關衛教資訊改用 RAG 生成時失敗，退回原始片段", exc_info=True)
         return await self._fetch_related_info(claim)
@@ -423,7 +457,8 @@ class ClaimVerificationService:
                 )
                 if len(excerpts) >= _RELATED_INFO_TOP_K:
                     break
-            return "\n\n".join(excerpts), tuple(sources)
+            # 原始片段這條路更需要清網址：貼的就是文章原文。
+            return strip_urls("\n\n".join(excerpts)), tuple(sources)
         except Exception as exc:  # noqa: BLE001
             # 對齊 matcher/normalizer 的 fail-open：相關資訊只是附加參考，
             # 不是判定依據，抓不到就留白，不能讓查核流程中斷。

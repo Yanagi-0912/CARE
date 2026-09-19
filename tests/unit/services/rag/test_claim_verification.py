@@ -11,6 +11,7 @@ import pytest
 from langchain_core.documents import Document
 
 from app.core.rag_sources import SourceRef
+from app.services.rag.claim_verification.service import strip_urls
 
 from app.services.rag.claim_verification.matcher import ClaimMatch
 from app.services.rag.claim_verification.service import (
@@ -999,3 +1000,44 @@ async def test_rag生成不出東西時退回原始片段(answer):
     result = await service.verify("網傳喝咖啡會導致骨質疏鬆？")
 
     assert "鈣質攝取與骨密度" in result.related_info
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        # 知識庫有 14%（1,459/10,601 段）的內文自帶網址，生成時會被照抄出來
+        ("依國健署說明（https://www.hpa.gov.tw/Pages/Detail.aspx?nodeid=1），每日…", "依國健署說明，每日…"),
+        ("詳見 [國健署衛教手冊](https://www.hpa.gov.tw/a/b) 的說明。", "詳見 國健署衛教手冊 的說明。"),
+        ("資料來源 www.example.com 。", "資料來源。"),
+        # 行內引用要留著：它對應卡片下方的來源按鈕，刪了就對不回去
+        ("咖啡與骨鬆沒有直接因果[1]。", "咖啡與骨鬆沒有直接因果[1]。"),
+    ],
+)
+def test_內文網址清掉但保留引用編號(raw, expected):
+    assert strip_urls(raw) == expected
+
+
+@pytest.mark.asyncio
+async def test_rag生成的內文也要清掉網址():
+    """換成 RAG 生成並不會讓網址消失——模型是照抄知識庫內文裡的網址。"""
+    answer = _RelatedAnswer(
+        text="孕婦每日需要 400 IU 維生素 D（https://www.hpa.gov.tw/x）。",
+        sources=(SourceRef(index=1, label="國健署", url="https://hpa.gov.tw/x"),),
+    )
+    service = _make_service(match=None, related_answer=answer)
+
+    result = await service.verify("網傳孕婦不能曬太陽？")
+
+    assert "http" not in result.related_info
+    assert result.related_sources[0].url == "https://hpa.gov.tw/x"  # 來源仍在按鈕上
+
+
+@pytest.mark.asyncio
+async def test_退回原始片段時同樣清掉網址():
+    docs = [Document(page_content="每週曬太陽 3-4 次，詳見 https://www.hpa.gov.tw/y 的說明。")]
+    service = _make_service(match=None, related_retriever=_StaticRelatedRetriever(docs))
+
+    result = await service.verify("網傳孕婦不能曬太陽？")
+
+    assert "http" not in result.related_info
+    assert "每週曬太陽 3-4 次" in result.related_info

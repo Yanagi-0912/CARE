@@ -930,8 +930,24 @@ class AgentNodes:
         language = self._resolve_user_language(state.get("user_profile"))
         t0 = time.perf_counter()
 
-        guardrail_task = asyncio.create_task(
-            self._guardrail_service.allow_rag_tool(user_input)
+        # 回答我們問的「這則新聞是哪一台」時直接放行，不問 guardrail。
+        #
+        # 2026-09-19 線上：使用者點了快速回覆的「這則新聞是三立」（7 個字），
+        # guardrail 判定不是健康問題（allow_rag=False），於是查核工具整組沒被
+        # 提供，電視新聞的後續路由接不上，模型自己寫了一段沒有出處的說明。
+        #
+        # 這句話本身當然不像健康問題——它是我們自己問出來的答案。要判斷的是
+        # 前一輪那張電視畫面，而那一輪已經被 guardrail 放行過了。條件很窄：
+        # 對話裡必須真的有一張帶標題的電視新聞畫面（見 _previous_tv_news_headline）。
+        answering_tv_news = bool(
+            _tv_news_channel_answer(user_input)
+            and _previous_tv_news_headline(state["messages"])
+        )
+
+        guardrail_task = (
+            None
+            if answering_tv_news
+            else asyncio.create_task(self._guardrail_service.allow_rag_tool(user_input))
         )
         try:
             verdict = await self._classify_urgency(user_input, language)
@@ -944,6 +960,8 @@ class AgentNodes:
             # 只是讓 state 有值——emergency_node 根本不掛工具。
             _abandon_task(guardrail_task)
             allow_rag = False
+        elif guardrail_task is None:
+            allow_rag = True
         else:
             allow_rag = await guardrail_task
 
@@ -951,6 +969,7 @@ class AgentNodes:
             logger,
             "guardrail",
             allow_rag=allow_rag,
+            tv_news_answer=answering_tv_news or None,
             urgency=verdict.level if verdict.is_emergency else None,
             # 緊急時 guardrail 被放掉，ms 量的只有急迫度那一段；沒有這個欄位會
             # 把「guardrail 很快」與「根本沒等它」混在一起。

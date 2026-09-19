@@ -226,3 +226,50 @@ async def test_帶內容的句子照常走查核而不是當成回答台別(monk
     }
     (call,) = (await _run(monkeypatch, llm, state))["messages"][0].tool_calls
     assert call["name"] != "verify_tv_news"
+
+
+class _Guardrail:
+    """記錄有沒有被問過。放行與否由 allow 決定。"""
+
+    def __init__(self, allow: bool = False):
+        self.allow = allow
+        self.calls: list[str] = []
+
+    async def allow_rag_tool(self, text: str) -> bool:
+        self.calls.append(text)
+        return self.allow
+
+
+@pytest.mark.asyncio
+async def test_回答台別那一句不問guardrail直接放行(monkeypatch):
+    """2026-09-19 線上：「這則新聞是三立」被判成不是健康問題，查核工具整組沒提供，
+    模型自己寫了一段沒有出處的說明。要判斷的是前一輪那張畫面，不是這七個字。"""
+    monkeypatch.setattr("app.services.agent.utils.nodes.log_stage", lambda *a, **k: None)
+    guardrail = _Guardrail(allow=False)
+    nodes = AgentNodes(llm=MagicMock(), guardrail_service=guardrail)
+
+    state = {
+        "messages": [
+            HumanMessage(content=TV_NEWS_NO_CHANNEL),
+            AIMessage(content="（問是哪一台）"),
+            HumanMessage(content="這則新聞是三立"),
+        ],
+        "user_profile": None,
+    }
+    result = await nodes.guardrail_node(state)
+
+    assert result["allow_rag"] is True
+    assert guardrail.calls == []  # 連問都不用問，省掉線上量到的 1.4～4 秒
+
+
+@pytest.mark.asyncio
+async def test_沒有前一張電視畫面時照常問guardrail(monkeypatch):
+    monkeypatch.setattr("app.services.agent.utils.nodes.log_stage", lambda *a, **k: None)
+    guardrail = _Guardrail(allow=False)
+    nodes = AgentNodes(llm=MagicMock(), guardrail_service=guardrail)
+
+    state = {"messages": [HumanMessage(content="這則新聞是三立")], "user_profile": None}
+    result = await nodes.guardrail_node(state)
+
+    assert result["allow_rag"] is False
+    assert guardrail.calls == ["這則新聞是三立"]

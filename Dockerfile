@@ -35,6 +35,12 @@ ENV PATH="/app/.venv/bin:$PATH"
 COPY scripts/fetch_text_encoder.py ./scripts/fetch_text_encoder.py
 RUN python scripts/fetch_text_encoder.py
 
+# 向量同步腳本：由 CARE-infra 的 care-vector-sync CronJob 以這個 image 執行
+# （command 是 python scripts/sync_vectors_to_pg.py）。上面那行只複製了
+# fetch_text_encoder.py 單一檔案，所以這裡必須明著再加一個——2026-09-19
+# 第一次部署時就是漏了這行，Job 起來報 No such file or directory。
+COPY scripts/sync_vectors_to_pg.py ./scripts/sync_vectors_to_pg.py
+
 # 複製應用程式原始碼（含 Flex Message 等 top-level resources）
 COPY app ./app
 COPY resources ./resources

@@ -26,6 +26,12 @@ from resources.flex_messages import theme
 CLAIM_VERDICT_KEY = "claimVerdict"
 
 _TFC_SOURCE_LABEL = "台灣事實查核中心"
+
+# Cofacts 的資料採 CC BY-SA 4.0，授權條款要求顯示時標明社群名稱與授權
+# （見 CARE-data/scraper_cofacts.py 的 COFACTS_ATTRIBUTION）。這不是版面裝飾，
+# 是使用條款的一部分，拿掉就違反授權。
+_COFACTS_SOURCE_LABEL = "Cofacts 真的假的"
+_COFACTS_LICENCE_NOTE = "內容採 CC BY-SA 4.0 授權"
 _RELATED_SOURCES_LABEL = "資料來源"
 
 # CARE-data 舊站遷移文章的 verdict_slug 可能帶這個前綴（例如 "legacy:錯誤"），
@@ -153,23 +159,33 @@ def _paragraph(
     }
 
 
-def _source_note(ft: theme.FlexTheme, published_at: str = "") -> list[dict[str, Any]]:
-    """命中時的來源標示（design 決策 5）：系統是在轉述 TFC 的判定，不是 CARE
+def _source_note(
+    ft: theme.FlexTheme, published_at: str = "", source_name: str = ""
+) -> list[dict[str, Any]]:
+    """命中時的來源標示（design 決策 5）：系統是在轉述別人的判定，不是 CARE
     自己查核出來的結論，卡片必須讓使用者看得出這件事——這行文字與 source_url
     是否有值無關，一律要出現。
+
+    **來源名稱要照實寫**。2026-09-19 之前庫裡只有 TFC，這裡寫死「台灣事實查核
+    中心」；補進食藥署闢謠專區、國健署真相與闢謠、Cofacts 之後，寫死那句話等於
+    把別人做的判定掛到 TFC 名下。沒帶來源名時退回 TFC，是為了不讓舊資料（在這
+    個欄位加進來之前寫入的）顯示成空白。
 
     有發布日期時一併顯示。刻意只呈現、不由系統依日期篩選：查核報告不會過期，
     2021 年查核過的謠言在 2026 年重傳時那份報告依然有效，用日期硬篩會擋掉
     大量仍然正確的答案。這則查核有多新該由使用者自己判斷。
     """
-    label = _TFC_SOURCE_LABEL
+    label = (source_name or "").strip() or _TFC_SOURCE_LABEL
     date = (published_at or "").strip()
     if date:
         label = f"{label}（{date} 發布）"
-    return [
+    lines = [
         theme.divider(),
         _paragraph(f"判定來源：{label}", ft, margin="lg"),
     ]
+    if label.startswith(_COFACTS_SOURCE_LABEL):
+        lines.append(_paragraph(_COFACTS_LICENCE_NOTE, ft, size=ft.caption))
+    return lines
 
 
 def _source_button(source_url: str, ft: theme.FlexTheme) -> Optional[dict[str, Any]]:
@@ -338,7 +354,9 @@ def build_verdict_flex(
         # 這次沒有」，而看不出是電視台沒把這則放上網。
         body_contents.append(_paragraph(news_missing_note, ft, size=ft.caption))
     if result.matched:
-        body_contents.extend(_source_note(ft, result.source_published_at))
+        body_contents.extend(
+            _source_note(ft, result.source_published_at, result.source_name)
+        )
         matched_button = _source_button(result.source_url, ft)
         if matched_button is not None:
             footer_buttons.append(matched_button)

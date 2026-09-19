@@ -428,3 +428,55 @@ def test_matched_side_ignores_related_sources():
     assert len(actions) == 1
     assert actions[0]["uri"] == "https://tfc-taiwan.org.tw/fact-check-reports/xxx"
     assert "不該出現" not in str(rendered)
+
+
+def test_判定來源照實顯示_不再寫死查核中心():
+    """2026-09-19 補進政府闢謠與 Cofacts 之後，寫死 TFC 等於把別人的判定掛到它名下。"""
+    result = VerificationResult(
+        user_question="皮蛋是用馬尿泡的嗎",
+        verdict="錯誤",
+        reasoning="食藥署說明並非事實。",
+        source_title="皮蛋是用馬尿浸泡製成的，這是真的嗎？",
+        source_url="https://www.fda.gov.tw/TC/newsContent.aspx?id=1",
+        matched=True,
+        related_info="",
+        verdict_slug="incorrect",
+        source_name="食藥署闢謠專區",
+    )
+    text = json.dumps(build_verdict_flex(result).contents.to_dict(), ensure_ascii=False)
+    assert "判定來源：食藥署闢謠專區" in text
+    assert "台灣事實查核中心" not in text
+
+
+def test_沒帶來源名時退回查核中心():
+    """這個欄位加進來之前寫入的資料沒有來源名，不能顯示成空白。"""
+    result = VerificationResult(
+        user_question="喝咖啡會骨鬆嗎",
+        verdict="錯誤",
+        reasoning="查核報告指出錯誤。",
+        source_title="網傳喝咖啡導致骨質疏鬆",
+        source_url="https://tfc-taiwan.org.tw/articles/1",
+        matched=True,
+        related_info="",
+        verdict_slug="incorrect",
+    )
+    text = json.dumps(build_verdict_flex(result).contents.to_dict(), ensure_ascii=False)
+    assert "判定來源：台灣事實查核中心" in text
+
+
+def test_cofacts_要標授權():
+    """CC BY-SA 4.0 的條款要求顯示時標明社群與授權，拿掉就違反授權。"""
+    result = VerificationResult(
+        user_question="吃鳳梨心可以治痛風嗎",
+        verdict="錯誤",
+        reasoning="協作查核指出沒有實證。",
+        source_title="吃鳳梨心可以治痛風",
+        source_url="https://cofacts.tw/article/abc",
+        matched=True,
+        related_info="",
+        verdict_slug="incorrect",
+        source_name="Cofacts 真的假的",
+    )
+    text = json.dumps(build_verdict_flex(result).contents.to_dict(), ensure_ascii=False)
+    assert "判定來源：Cofacts 真的假的" in text
+    assert "CC BY-SA 4.0" in text

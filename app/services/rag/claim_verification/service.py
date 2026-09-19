@@ -104,6 +104,10 @@ class VerificationResult:
     # 有預設值是因為這個欄位本來就可能為空：食藥署公告那 576 篇連同 url
     # 一起沒有日期，上游 API 結構上不提供。
     source_published_at: str = ""
+    # 判定出自哪一個來源（台灣事實查核中心、食藥署闢謠專區、Cofacts 真的假的…）。
+    # 呈現層要照這個顯示，不能再寫死 TFC——2026-09-19 補進政府闢謠與 Cofacts
+    # 之後，寫死那句話就是把別人的判定掛到 TFC 名下。
+    source_name: str = ""
     # 未命中時 `related_info` 那幾段各自的出處，命中時為空。與 `related_info`
     # 並存而非取代它：那個字串是給純文字 fallback 與卡片內文用的可讀段落，
     # 這裡是給呈現層做連結用的結構化資料，兩者用途不同（理由同
@@ -295,6 +299,7 @@ class ClaimVerificationService:
             verdict_slug=match.verdict_slug,
             reasoning=reasoning,
             source_title=match.title,
+            source_name=match.source_name,
             source_url=match.url,
             source_published_at=match.published_at,
             matched=True,

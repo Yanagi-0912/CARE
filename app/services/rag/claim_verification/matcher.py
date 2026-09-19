@@ -79,6 +79,10 @@ class ClaimMatch:
     content: str
     score: float
     published_at: str = ""
+    # 這則判定是誰做的。2026-09-19 之前庫裡只有 TFC，呈現層因此寫死「判定來源：
+    # 台灣事實查核中心」；補上政府闢謠與 Cofacts 之後那句話會說謊，所以要跟著
+    # 判定一起帶出來。
+    source_name: str = ""
 
 
 class ClaimMatcher(Protocol):
@@ -244,6 +248,7 @@ class MongoAtlasClaimMatcher:
             content=content,
             score=float(score),
             published_at=str(best.get("published_at") or ""),
+            source_name=str(best.get("source_name") or ""),
         )
 
     async def _search(self, claim: str) -> list[dict[str, Any]]:

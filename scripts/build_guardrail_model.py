@@ -22,14 +22,44 @@ numpy 或任何模型檔，`uv sync --no-dev` 也不會把它們裝進正式映�
 代價不對稱——漏判會讓使用者問醫療問題卻得不到知識庫的答案，誤判只是白掛
 一個工具。
 
-用法（專案根目錄，需先 source .venv）：
-  python scripts/build_guardrail_model.py --max-false-alarm-rate 0.10   # 正式的 guardrail 模型
-  python scripts/build_guardrail_model.py --max-miss-rate 0.005 --out /tmp/m.json
+## 四個模型各自的訓練指令（專案根目錄，需先 source .venv）
+
+**每個模型的門檻參數都不一樣，而且以前只散落在各自的 build_*_dataset.py 裡、
+急迫度那個根本沒寫。** 2026-09-19 重訓時是靠比對線上模型的 threshold_stats
+才反推回來的——那一趟很不值得，所以四條指令一起記在這裡：
+
+  # guardrail：誤判只是白掛一個工具，放寬到 0.10 換取更多流量留在本地
+  python scripts/build_guardrail_model.py --max-false-alarm-rate 0.10
+
+  # 急迫度：--max-miss-rate 0，一則都不能在本地說「不緊急」
+  python scripts/build_guardrail_model.py --dataset evals/urgency/dataset.jsonl \\
+      --out resources/urgency_model.json --max-miss-rate 0
+
+  # 走失求救：誤報會讓家人收到一則「他走丟了」的通報，所以誤判收得很緊
+  python scripts/build_guardrail_model.py --dataset evals/lost/dataset.jsonl \\
+      --out resources/lost_model.json --max-miss-rate 0.005 --max-false-alarm-rate 0.002
+
+  # RAG 捷徑：誤送 RAG 會拿不到該有的卡片，誤判也收緊
+  python scripts/build_guardrail_model.py --dataset evals/rag_route/dataset.jsonl \\
+      --out resources/rag_route_model.json --max-miss-rate 0.002 \\
+      --max-false-alarm-rate 0.0075 --exclude-from-thresholds everyday:
 
 guardrail 用 0.10 而不是預設的 0.05：2026-09-15 併入外語資料（見
 scripts/merge_guardrail_foreign.py）後，0.05 會把 high 推到 0.70，中文要問 LLM 的比例
 從 17% 升到 25%；0.10 的 high 是 0.60，中文 19%、外語 17～25%，本地漏判仍是 0～2 則。
-預設值不改，因為急迫度模型（scripts/build_urgency_dataset.py）也用這支腳本。
+預設值不改，因為四個模型都用這支腳本，預設得是最保守的那一組。
+
+急迫度的 `--max-miss-rate 0` 不是可選的：`tests/unit/services/medical/
+test_urgency_local_model.py` 有一份 MUST_REACH_THE_LLM 清單（「我想跳樓」等），
+用預設的 0.002 重訓會讓 low 從 0.0715 升到 0.1442，那些句子就會被本地判成
+「不緊急」——那份測試就是為了擋住這件事而存在的。
+
+## 特徵：字元片段，以及（預設開啟）句向量
+
+2026-09-19 起預設會多算一段 multilingual-e5-small 的句向量接在字元片段後面。
+為什麼、實測數字、為什麼是「加上去」而不是「換掉」，見
+`app/services/guardrail/text_encoder.py` 的模組註解。用 `--no-dense` 可以
+產出舊的 v1 格式（重現舊模型、或在沒有編碼器的環境訓練）。
 """
 
 from __future__ import annotations
@@ -50,7 +80,9 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import f1_score
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import Pipeline
+from scipy.sparse import csr_matrix, hstack
 
 DEFAULT_DATASET = _PROJECT_ROOT / "evals" / "guardrail" / "dataset.jsonl"
 DEFAULT_OUT = _PROJECT_ROOT / "resources" / "guardrail_model.json"
@@ -82,6 +114,76 @@ def _load(path: Path) -> tuple[list[str], list[int], list[str], list[str]]:
         splits.append(row.get("split", "train"))
         buckets.append(row.get("bucket", ""))
     return texts, labels, splits, buckets
+
+
+class _TextAndEmbedding(BaseEstimator, TransformerMixin):
+    """以「列索引」當輸入，內部取原文做 TF-IDF，再把預先算好的句向量接在後面。
+
+    為什麼要繞索引這一圈：交叉驗證每一折都必須重新 fit 向量器，否則詞彙表
+    看過驗證折的文字，拿來選門檻的 out-of-fold 機率就會偏樂觀，而門檻正是
+    這支腳本最重要的產出。sklearn 的 Pipeline 只會把 X 原樣往下傳，而這裡
+    需要同時拿到「這一折的原文」與「對應那幾列的句向量」——用索引當 X 是讓
+    兩者保持對齊最簡單的方式。
+
+    句向量在外面一次算完（`_embed_splits`），不在每一折重算：它與標籤無關，
+    重算只是把同一份結果再算五次。
+    """
+
+    def __init__(self, texts: list[str], embeddings: Optional[np.ndarray], max_features: int):
+        self.texts = texts
+        self.embeddings = embeddings
+        self.max_features = max_features
+
+    def fit(self, X, y=None):
+        self.vectorizer_ = TfidfVectorizer(
+            analyzer="char",
+            ngram_range=NGRAM_RANGE,
+            min_df=MIN_DF,
+            max_features=self.max_features,
+            lowercase=True,
+            sublinear_tf=False,
+            norm="l2",
+        )
+        self.vectorizer_.fit([self.texts[i] for i in np.asarray(X).ravel()])
+        return self
+
+    def transform(self, X):
+        idx = np.asarray(X).ravel()
+        sparse = self.vectorizer_.transform([self.texts[i] for i in idx])
+        if self.embeddings is None:
+            return sparse
+        # 順序是「稀疏在前、稠密在後」，export_model 依這個順序切係數，
+        # 執行期 local.py 也假設同一個順序。三處要一起改。
+        return hstack([sparse, csr_matrix(self.embeddings[idx])]).tocsr()
+
+
+def _embed_splits(
+    texts: list[str], encoder_dir: Optional[Path]
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """把全部文字轉成句向量，並回傳要寫進模型檔的中繼資料。
+
+    用的是執行期同一支 `OnnxTextEncoder`（同一個模型檔、同一套 mean pooling
+    與正規化、同一個前綴）。訓練與推論共用同一段程式，是這裡唯一能保證
+    「訓練時的特徵」與「執行期的特徵」一致的方式——兩邊各寫一份遲早會漂。
+    """
+    from app.services.guardrail.text_encoder import (
+        DEFAULT_MODEL_DIR,
+        DEFAULT_PREFIX,
+        OnnxTextEncoder,
+    )
+
+    model_dir = encoder_dir or DEFAULT_MODEL_DIR
+    # 訓練是離線批次，執行緒可以多開；執行期的預設 1 是為了 pod 的 CPU 配額。
+    encoder = OnnxTextEncoder(model_dir, threads=0)
+    print(f"用 {model_dir} 算 {len(texts)} 筆句向量…", flush=True)
+    vectors = np.array([encoder.encode(t, DEFAULT_PREFIX) for t in texts], dtype=np.float64)
+    meta = {
+        "model": "multilingual-e5-small-int8",
+        "prefix": DEFAULT_PREFIX,
+        "dim": int(vectors.shape[1]),
+    }
+    print(f"  完成 {vectors.shape}")
+    return vectors, meta
 
 
 def _pick_thresholds(
@@ -167,6 +269,31 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     parser.add_argument("--folds", type=int, default=5)
     parser.add_argument(
+        "--no-dense",
+        action="store_true",
+        help=(
+            "只用字元片段訓練，產出舊的 v1 格式。預設會加上句向量特徵——"
+            "2026-09-19 四個模型實測合併後全部變好（見 text_encoder 模組註解），"
+            "所以預設是加，這個開關是為了重現舊模型或在沒有編碼器的環境訓練。"
+        ),
+    )
+    parser.add_argument(
+        "--encoder-dir",
+        type=Path,
+        default=None,
+        help="句向量模型目錄，預設用 app.services.guardrail.text_encoder 的預設路徑",
+    )
+    parser.add_argument(
+        "--C",
+        type=float,
+        default=None,
+        help=(
+            "邏輯回歸的正則化強度。不給時：只用字元片段 4.0（上線值），"
+            "加句向量 32.0（2026-09-19 在四個資料集上掃 8/32/128/512/2048，"
+            "32 都是交叉驗證的峰值）。"
+        ),
+    )
+    parser.add_argument(
         "--max-features",
         type=int,
         default=MAX_FEATURES,
@@ -190,33 +317,33 @@ def main(argv: Optional[list[str]] = None) -> int:
     y_hold = np.array([labels[i] for i in hold_idx])
     print(f"train {len(X_train)} / holdout {len(X_hold)}")
 
+    use_dense = not args.no_dense
+    dense_meta: dict[str, Any] | None = None
+    E_train = E_hold = None
+    if use_dense:
+        E_all, dense_meta = _embed_splits(texts, args.encoder_dir)
+        E_train, E_hold = E_all[train_idx], E_all[hold_idx]
+
+    C = args.C if args.C is not None else (32.0 if use_dense else 4.0)
+    # liblinear：資料量小、特徵稀疏時穩定，且不需要額外的收斂調參。接上稠密
+    # 向量之後矩陣不再稀疏，liblinear 會慢很多且沒有好處，改用 lbfgs。
+    solver = "lbfgs" if use_dense else "liblinear"
+    print(f"特徵：字元片段{'＋句向量' if use_dense else ''}  C={C:g}  solver={solver}")
+
     pipeline = Pipeline(
         [
-            (
-                "tfidf",
-                TfidfVectorizer(
-                    analyzer="char",
-                    ngram_range=NGRAM_RANGE,
-                    min_df=MIN_DF,
-                    max_features=args.max_features,
-                    lowercase=True,
-                    sublinear_tf=False,
-                    norm="l2",
-                ),
-            ),
-            (
-                "clf",
-                # liblinear：資料量小、特徵稀疏時穩定，且不需要額外的收斂調參。
-                LogisticRegression(C=4.0, max_iter=2000, solver="liblinear"),
-            ),
+            ("feat", _TextAndEmbedding(X_train, E_train, args.max_features)),
+            ("clf", LogisticRegression(C=C, max_iter=4000, solver=solver)),
         ]
     )
+    # 餵進去的是列索引不是原文，理由見 _TextAndEmbedding 的說明。
+    idx_train = np.arange(len(X_train)).reshape(-1, 1)
 
     # 門檻要在「模型沒看過的資料」上選，否則會樂觀。用交叉驗證的 out-of-fold
     # 機率而不是 holdout：holdout 要留給最後的誠實評測，一份資料不能既拿來
     # 選門檻又拿來宣稱效果。
     cv = StratifiedKFold(n_splits=args.folds, shuffle=True, random_state=20260909)
-    oof = cross_val_predict(pipeline, X_train, y_train, cv=cv, method="predict_proba")[:, 1]
+    oof = cross_val_predict(pipeline, idx_train, y_train, cv=cv, method="predict_proba")[:, 1]
     print(f"交叉驗證 macro-F1（門檻 0.5）：{f1_score(y_train, oof >= 0.5, average='macro'):.4f}")
 
     if args.exclude_from_thresholds:
@@ -234,10 +361,20 @@ def main(argv: Optional[list[str]] = None) -> int:
         f"本地解掉 {stats['local_share']:.1%}、升級 {stats['escalate_share']:.1%}"
     )
 
-    pipeline.fit(X_train, y_train)
+    pipeline.fit(idx_train, y_train)
+    vectorizer = pipeline.named_steps["feat"].vectorizer_
+    clf = pipeline.named_steps["clf"]
 
     if len(X_hold):
-        hold_probs = pipeline.predict_proba(X_hold)[:, 1]
+        # holdout 不能走 _TextAndEmbedding：那支的索引是對著 X_train。
+        # 這裡直接用訓練好的向量器轉換，順序與 transform 一致。
+        sparse_hold = vectorizer.transform(X_hold)
+        A_hold = (
+            sparse_hold
+            if E_hold is None
+            else hstack([sparse_hold, csr_matrix(E_hold)]).tocsr()
+        )
+        hold_probs = clf.predict_proba(A_hold)[:, 1]
         macro = f1_score(y_hold, hold_probs >= 0.5, average="macro")
         local_mask = (hold_probs < low) | (hold_probs >= high)
         missed = int(((hold_probs < low) & (y_hold == 1)).sum())
@@ -246,8 +383,17 @@ def main(argv: Optional[list[str]] = None) -> int:
             f"本地漏判 {missed} 則"
         )
 
-    model = export_model(pipeline, thresholds=(low, high), stats=stats,
-                         dataset=args.dataset, n_train=len(X_train))
+    # export_model 只讀 named_steps 的 tfidf 與 clf，所以這裡組一個扁平的
+    # Pipeline 給它——不把 _TextAndEmbedding 傳進去，是為了讓匯出邏輯不必
+    # 知道訓練期那套索引把戲。
+    model = export_model(
+        Pipeline([("tfidf", vectorizer), ("clf", clf)]),
+        thresholds=(low, high),
+        stats=stats,
+        dataset=args.dataset,
+        n_train=len(X_train),
+        dense=dense_meta,
+    )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(model, ensure_ascii=False), encoding="utf-8")
     size_mb = args.out.stat().st_size / 1024 / 1024
@@ -267,11 +413,17 @@ def export_model(
     stats: dict[str, Any],
     dataset: Path,
     n_train: int,
+    dense: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """把訓練好的 pipeline 攤平成執行期的權重表。
 
     抽成獨立函式是為了讓 parity 測試能拿它與 `LocalGuardrailClassifier`
     對照——測試若自己重寫一次匯出邏輯，就驗不到匯出本身寫錯的情況。
+
+    *dense* 不是 None 時輸出 v2 格式：分類器的係數前 `len(vocabulary)` 個
+    屬於字元片段、其餘屬於句向量。這個切法能成立是因為訓練時就是
+    `hstack([tfidf, embeddings])`——稀疏那塊在前，順序與 `vocabulary_` 的
+    索引一致。
     """
     vec: TfidfVectorizer = pipeline.named_steps["tfidf"]
     clf: LogisticRegression = pipeline.named_steps["clf"]
@@ -279,6 +431,24 @@ def export_model(
     vocabulary = vec.vocabulary_
     idf = vec.idf_
     low, high = thresholds
+
+    dense_block: dict[str, Any] | None = None
+    if dense is not None:
+        n_sparse = len(vocabulary)
+        dense_coef = coef[n_sparse:]
+        if len(dense_coef) != dense["dim"]:
+            raise ValueError(
+                f"句向量係數數量不符：預期 {dense['dim']}，實得 {len(dense_coef)}。"
+                f"多半是 hstack 的順序或詞彙表大小與訓練時不一致。"
+            )
+        dense_block = {
+            "model": dense["model"],
+            # 執行期必須用與訓練時相同的前綴，所以把它寫進模型檔，
+            # 而不是讓兩邊各自從常數讀（那樣改了一邊不會有人發現）。
+            "prefix": dense["prefix"],
+            "dim": dense["dim"],
+            "coef": [float(v) for v in dense_coef],
+        }
 
     # **整份詞彙表都要留，不能依權重修剪。** TfidfVectorizer 的 L2 正規化
     # 分母是「這則訊息命中的所有詞彙表片段」的平方和——砍掉權重接近 0 的
@@ -291,8 +461,8 @@ def export_model(
         for term, index in vocabulary.items()
     }
 
-    return {
-        "format": "char-tfidf-logreg-v1",
+    payload: dict[str, Any] = {
+        "format": "char-tfidf-logreg-v1" if dense_block is None else "char-tfidf-e5-logreg-v2",
         "trained_at": datetime.now(timezone.utc).isoformat(),
         "dataset": str(dataset),
         "n_train": n_train,
@@ -306,6 +476,9 @@ def export_model(
         # 片段查一次，分開存會查兩次 dict 並多一份 key 的記憶體。
         "terms": kept,
     }
+    if dense_block is not None:
+        payload["dense"] = dense_block
+    return payload
 
 
 if __name__ == "__main__":

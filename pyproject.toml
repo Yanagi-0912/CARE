@@ -68,6 +68,16 @@ dependencies = [
     # 少了它，app/models/medication.py 的 ZoneInfo("Asia/Taipei") 會在 import
     # 期間直接拋 ZoneInfoNotFoundError，整個服務起不來。
     "tzdata==2026.3",
+
+    # 本地分類器的句向量特徵（app/services/guardrail/text_encoder.py）。
+    # 只有這兩個套件，沒有 torch——模型是預先匯出的 int8 ONNX，執行期不需要
+    # 訓練框架。兩者加起來約 50MB，模型檔另外 135MB（Dockerfile build 時抓）。
+    #
+    # 為什麼值得：2026-09-19 實測四個模型合併字面＋語意特徵後全部變好，
+    # rag_route 的「本地解掉」從 54.2% 升到 66.7%，等於多 12.5% 的訊息
+    # 跳過 agent 選工具那次呼叫（中位數 3.2 秒）。詳見 text_encoder 模組註解。
+    "onnxruntime==1.30.0",
+    "tokenizers==0.23.2",
 ]
 
 # 測試相關（pytest-asyncio 0.25 僅支援 pytest<9）。
@@ -78,15 +88,23 @@ dev = [
     "pytest-asyncio==0.25.0",
     "pytest-cov==7.0.0",
 
-    # guardrail 分類器的**訓練**用（scripts/build_guardrail_model.py）。
-    # 刻意留在 dev：訓練是建置期的事，產出物是 resources/guardrail_model.json
-    # ——一張「字詞 → 權重」的表。執行期只做查表與加總，不需要 sklearn 或
-    # numpy，Dockerfile 的 `uv sync --no-dev` 也不會把它們裝進映像
-    # （sklearn + numpy + scipy 逾 100MB，而那台 K3s VM 有磁碟壓力前科）。
+    # 四個本地分類器的**訓練**用（scripts/build_guardrail_model.py）。
+    # sklearn 仍然只在建置期需要：訓練產出的是 resources/*_model.json 裡的
+    # 權重，執行期只做查表、點積與一次 sigmoid。
+    #
+    # 2026-09-19 前這裡還寫著「執行期不需要任何模型框架」，理由是
+    # 「sklearn + numpy + scipy 逾 100MB，而那台 K3s VM 有磁碟壓力前科」。
+    # 那個限制已經不成立：當時 / 用到 79%，是因為每次部署留下的舊映像
+    # 沒有任何機制回收（74 個映像只有 14 個在用）；CARE-infra f141fdc 讓
+    # 部署後自動保留最新 3 版，磁碟降到 32%、可用 40G。**限制解除之後
+    # 才加依賴，不是因為需要就繞過它。**
     #
     # 與 scripts/build_drug_catalog.py 同一個模式：重的工具留在建置期，
-    # 正式映像只 COPY app 與 resources。
+    # 正式映像只 COPY app、resources 與 models。
     "scikit-learn>=1.5,<2",
+    # 訓練時要算句向量，而算的方式必須與執行期完全相同（同一支
+    # OnnxTextEncoder）。所以 onnxruntime／tokenizers 兩邊都要有——
+    # 它們在 [project.dependencies] 裡，dev 環境自然也裝得到，這裡不必重列。
 ]
 
 # CARE 是應用程式不是函式庫：不建置成套件，`app` 由 pytest.ini 的 pythonpath 匯入。

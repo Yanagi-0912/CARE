@@ -7,7 +7,8 @@ import pytest
 
 from app.services.guardrail.local import (
     DEFAULT_MODEL_PATH,
-    SUPPORTED_FORMAT,
+    DENSE_FORMAT,
+    SUPPORTED_FORMATS,
     MIN_KNOWN_SHARE,
     LocalGuardrailClassifier,
 )
@@ -73,6 +74,91 @@ def test_matches_sklearn_decision_function_exactly():
         assert got == pytest.approx(want, abs=1e-9), text
 
 
+class _FakeEncoder:
+    """把文字對到訓練時用的那個向量。
+
+    用假的編碼器而不是真的 ONNX 模型：這個測試要驗的是「稀疏與稠密兩塊的
+    順序、係數切法、點積」有沒有寫錯，那與向量本身長什麼樣無關。真模型是
+    135MB 的檔案，不該成為單元測試的前提。
+    """
+
+    def __init__(self, table):
+        self._table = table
+
+    def encode(self, text, prefix=""):
+        assert prefix == "query: ", f"執行期用了與訓練不同的前綴：{prefix!r}"
+        return self._table[text]
+
+
+def test_dense_model_matches_sklearn_decision_function_exactly():
+    """v2（字元片段＋句向量）同樣要與 sklearn 對齊到浮點誤差內。
+
+    這裡最容易出錯而且**不會有任何症狀**的是兩件事：hstack 的順序（稀疏在
+    前、稠密在後）與 export_model 切係數的位置。兩者任一錯了，模型照樣載入、
+    照樣吐得出 0~1 的機率，只是那個機率沒有意義，而門檻還是舊的那一組。
+    """
+    pytest.importorskip("sklearn", reason="sklearn 是 dev 依賴，正式映像沒有")
+    import numpy as np
+    from scipy.sparse import csr_matrix, hstack
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.pipeline import Pipeline
+
+    from scripts.build_guardrail_model import export_model
+
+    texts = HEALTH + NOT_HEALTH
+    labels = [1] * len(HEALTH) + [0] * len(NOT_HEALTH)
+
+    rng = np.random.default_rng(20260919)
+    vectors = rng.normal(size=(len(texts), 8))
+    vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
+    table = {t: v.tolist() for t, v in zip(texts, vectors)}
+
+    vec = TfidfVectorizer(analyzer="char", ngram_range=(2, 4), min_df=1)
+    sparse = vec.fit_transform(texts)
+    combined = hstack([sparse, csr_matrix(vectors)]).tocsr()
+    clf = LogisticRegression(C=4.0, max_iter=2000).fit(combined, labels)
+
+    model = export_model(
+        Pipeline([("tfidf", vec), ("clf", clf)]),
+        thresholds=(0.2, 0.8),
+        stats={},
+        dataset="(test)",
+        n_train=len(texts),
+        dense={"model": "fake", "prefix": "query: ", "dim": 8},
+    )
+    assert model["format"] == DENSE_FORMAT
+
+    local = LocalGuardrailClassifier(model, encoder=_FakeEncoder(table))
+    expected = clf.decision_function(combined)
+    for text, want in zip(texts, expected):
+        assert local.decision(text) == pytest.approx(want, abs=1e-9), text
+
+
+def test_dense_model_escalates_when_encoder_fails():
+    """編碼失敗時必須落在 (low, high) 之間，讓呼叫端照既有路徑升級給 LLM。
+
+    不能退回「只算字元片段」：那是一個少了一半特徵的分數，卻會被拿去跟同一
+    組門檻比較，於是一次失敗會偽裝成一次正常判斷。
+    """
+
+    class _Broken:
+        def encode(self, text, prefix=""):
+            raise RuntimeError("模型檔不見了")
+
+    model = {
+        "format": DENSE_FORMAT,
+        "terms": {},
+        "intercept": 0.0,
+        "ngram_range": [2, 4],
+        "thresholds": {"low": 0.2, "high": 0.8},
+        "dense": {"model": "fake", "prefix": "query: ", "dim": 3, "coef": [1.0, 1.0, 1.0]},
+    }
+    local = LocalGuardrailClassifier(model, encoder=_Broken())
+    prob = local.probability("我血壓有點高怎麼辦")
+    assert local.low < prob < local.high, prob
+
+
 def test_probability_matches_sigmoid_of_decision():
     model = json.loads(DEFAULT_MODEL_PATH.read_text(encoding="utf-8"))
     local = LocalGuardrailClassifier(model)
@@ -109,7 +195,16 @@ def test_shipped_model_is_loadable_and_well_formed():
     local = LocalGuardrailClassifier.load()
     payload = json.loads(DEFAULT_MODEL_PATH.read_text(encoding="utf-8"))
 
-    assert payload["format"] == SUPPORTED_FORMAT
+    assert payload["format"] in SUPPORTED_FORMATS
+    if payload["format"] == DENSE_FORMAT:
+        # v2 多帶一段句向量權重。維度寫死 384 是刻意的：換模型就是換維度，
+        # 而換了之後 `dense.model` 與執行期載入的 ONNX 若對不上，分數會靜靜
+        # 地全錯（權重與向量的每一維意義都不同了）。這裡讓它在測試就炸。
+        dense = payload["dense"]
+        assert dense["dim"] == 384
+        assert len(dense["coef"]) == 384
+        assert dense["model"] == "multilingual-e5-small-int8"
+        assert dense["prefix"] == "query: "
     assert payload["terms"], "詞彙表是空的"
     assert 0.0 < local.low < local.high < 1.0, (local.low, local.high)
 

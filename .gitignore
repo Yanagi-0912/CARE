@@ -247,3 +247,7 @@ resources/*.before*.json
 
 # 由 scripts/seed_rbac_e2e.py 產生的 E2E curl 清單（內含測試帳號 token，不入版控）
 scripts/e2e_curls.generated.sh
+
+# 句向量模型（135 MB）。由 scripts/fetch_text_encoder.py 下載，Dockerfile 在
+# build 時取得——不進 git：二進位大檔會讓每次更版都在歷史裡留一份完整副本。
+models/

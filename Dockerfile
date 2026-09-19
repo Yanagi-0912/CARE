@@ -28,6 +28,13 @@ RUN uv sync --locked --no-dev
 # 讓 uvicorn 等執行檔直接可用，CMD 不必前綴 uv run
 ENV PATH="/app/.venv/bin:$PATH"
 
+# 句向量模型（本地分類器的第二種特徵，見 app/services/guardrail/text_encoder.py）。
+# 135MB 的二進位檔不進 git，在這裡下載——放在 COPY app 之前，程式碼變動時
+# 這一層才不會失效重抓。腳本只用標準函式庫，且自帶重試（build 期的網路失敗
+# 會直接擋住部署，kubeconform 那次就是這樣壞的）。
+COPY scripts/fetch_text_encoder.py ./scripts/fetch_text_encoder.py
+RUN python scripts/fetch_text_encoder.py
+
 # 複製應用程式原始碼（含 Flex Message 等 top-level resources）
 COPY app ./app
 COPY resources ./resources

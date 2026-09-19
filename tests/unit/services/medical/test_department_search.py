@@ -213,9 +213,18 @@ async def test_all_departments_unknown_does_not_query_database():
 
 
 @pytest.mark.asyncio
-async def test_single_string_is_rejected():
-    """字串也是 Sequence[str]，照收會被拆成「腸」「胃」「科」一個個字去解析。"""
-    service = MedicalService(repository=FakeRepository([]))
+async def test_single_string_is_taken_as_one_department():
+    """字串也是 Sequence[str]，不能被拆成「腸」「胃」「科」一個個字去解析。
 
-    with pytest.raises(TypeError):
-        await service.find_nearby_facilities_by_department(25.0, 121.0, "腸胃科")
+    6cc6b8c 起改為相容單科字串的舊呼叫端（見 _resolve_departments），
+    所以這裡要守住的是「整串當成一科」，不是拒收。
+    """
+    repository = FakeRepository([_facility("院所", 500)])
+    service = MedicalService(repository=repository)
+
+    result = await service.find_nearby_facilities_by_department(25.0, 121.0, "腸胃科")
+
+    assert [m.requested for m in result.matches] == ["腸胃科"]
+    assert [m.canonical for m in result.matches] == ["內科"]
+    assert result.unresolved_departments == ()
+    assert len(repository.calls) == 1

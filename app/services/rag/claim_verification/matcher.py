@@ -361,3 +361,183 @@ class MongoAtlasClaimMatcher:
             str(best.get("original_title") or ""),
             best.get("score"),
         )
+
+
+# 兩段式查詢第一段（halfvec 索引）要取幾倍候選再送進 float32 精算。
+#
+# 不沿用 `_NUM_CANDIDATES_MULTIPLIER`（30，即 300 筆）是因為 PG 這邊的成本
+# 結構不同：精算階段要把候選的 float32 向量從 TOAST 讀出來算，3072 維乘上
+# 候選數就是實際的 I/O。2026-09-19 在 care-vm 實測（k=10）：
+#
+#   候選 300 → 523 ms
+#   候選 100 →  92 ms
+#
+# 而兩者的 top-10 完全重疊（10/10）——halfvec 的排序已經夠接近精確排序，
+# 多出來的 200 筆候選只是白算。真正的召回保障是 iterative_scan，不是候選數。
+_PG_CANDIDATES_MULTIPLIER = 10
+
+
+class PgVectorClaimMatcher(MongoAtlasClaimMatcher):
+    """與 `MongoAtlasClaimMatcher` 同樣的比對邏輯，但向量查詢走 pgvector。
+
+    2026-09-19 向量從 Atlas 搬到 PostgreSQL（背景見
+    `services/rag/pgvector_retriever.py` 的模組註解）。`health_articles_chunks`
+    的 `embedding` 欄位已從 Atlas 清掉，原本的 `$vectorSearch` 會永遠回 0 筆，
+    所以這條路徑必須跟著改。
+
+    只覆寫 `_search()` 與 `_ensure_collection()`：去重、平手改判日期、verdict
+    合法性檢核、fail-open 降級這些邏輯一行都沒動，全部沿用父類別。
+
+    為什麼要兩段式查詢（halfvec 找候選 → float32 精算）：
+        `CLAIM_MATCH_MIN_SCORE` 是 0.86，而且校準過（design.md 決策 3：誤配是
+        這個設計唯一嚴重的失效模式）。HNSW 索引建在 halfvec 上，float32 轉
+        float16 是有損的，門檻附近的案例可能因為小數點後幾位的差異而翻轉。
+        所以先用 halfvec 的索引快速取一批候選，再用未失真的 float32 欄位重算
+        距離排序——候選階段的誤差只影響「有沒有進候選」，最終分數則與 Atlas
+        時期同樣是 float32 精度。
+    """
+
+    def __init__(
+        self,
+        *,
+        embeddings: Any,
+        dsn: str,
+        mongo_uri: str,
+        db_name: str,
+        collection_name: str,
+        table_name: str = "health_articles_chunks",
+        vector_column: str = "embedding_half",
+        exact_vector_column: str = "embedding",
+        claim_field: str = "claim",
+        content_field: str = "chunk_content",
+        k: int = 10,
+        min_score: float = DEFAULT_CLAIM_MATCH_MIN_SCORE,
+    ) -> None:
+        super().__init__(
+            embeddings=embeddings,
+            mongo_uri=mongo_uri,
+            db_name=db_name,
+            collection_name=collection_name,
+            # 父類別的 _ensure_collection 會檢查 index_name，但 PG 版本用不到
+            # Atlas 的向量索引；這裡給一個非空值讓那道檢查通過，實際上不會被用。
+            index_name="unused-pgvector",
+            claim_field=claim_field,
+            content_field=content_field,
+            k=k,
+            min_score=min_score,
+        )
+        self.dsn = dsn
+        self.table_name = table_name
+        self.vector_column = vector_column
+        self.exact_vector_column = exact_vector_column
+        self._pool: Any = None
+
+    async def _ensure_pool(self) -> Any:
+        if self._pool is not None:
+            return self._pool
+        if not self.dsn:
+            raise ValueError("Missing PGVECTOR_DSN")
+
+        import asyncpg
+
+        self._pool = await asyncpg.create_pool(
+            self.dsn, min_size=1, max_size=2, command_timeout=10
+        )
+        return self._pool
+
+    async def _search(self, claim: str) -> list[dict[str, Any]]:
+        query_embedding = await self.embeddings.aembed_query(claim)
+        if not query_embedding:
+            return []
+
+        vector_literal = "[" + ",".join(repr(float(v)) for v in query_embedding) + "]"
+        candidate_limit = self.k * _PG_CANDIDATES_MULTIPLIER
+
+        # verdict 的前置過濾在 WHERE 裡，與 Atlas 版的 $vectorSearch filter 同義
+        # （父類別註解記了實測：後置過濾會讓召回從 10/10 掉到 4/10）。差別是
+        # pgvector 0.8 的 iterative index scan 讓 HNSW 在有 WHERE 的情況下也能
+        # 掃到足夠的結果，不會因為過濾而回不滿 k 筆。
+        sql = (
+            "WITH candidates AS ("
+            f"  SELECT id, {self.exact_vector_column} AS exact_vec"
+            f"  FROM {self.table_name}"
+            f"  WHERE verdict = ANY($2) AND {self.vector_column} IS NOT NULL"
+            f"  ORDER BY {self.vector_column} <=> $1::halfvec"
+            "   LIMIT $3"
+            ") "
+            "SELECT id, exact_vec <=> $1::vector AS distance "
+            "FROM candidates ORDER BY distance LIMIT $4"
+        )
+
+        pool = await self._ensure_pool()
+        with stage_timer(logger, "claim_vector_search"):
+            async with pool.acquire() as conn:
+                await conn.execute("SET hnsw.iterative_scan = relaxed_order")
+                rows = await conn.fetch(
+                    sql,
+                    vector_literal,
+                    sorted(_VALID_VERDICTS),
+                    candidate_limit,
+                    self.k,
+                )
+
+        if not rows:
+            return []
+
+        # Atlas 的 vectorSearchScore 對 cosine 是 (1 + cos) / 2，而 pgvector 的
+        # `<=>` 是 1 - cos，換算即 1 - distance/2。這一步不能省：CLAIM_MATCH_
+        # MIN_SCORE 0.86 是照 Atlas 的標度校準的。
+        score_by_id = {
+            str(row["id"]): 1.0 - (float(row["distance"]) / 2.0) for row in rows
+        }
+
+        return await self._fetch_claim_docs(score_by_id)
+
+    async def _fetch_claim_docs(
+        self, score_by_id: dict[str, float]
+    ) -> list[dict[str, Any]]:
+        """依 PG 給的 id 到 Mongo 取判定與原文，組成與 Atlas 版相同的 dict 結構。
+
+        回傳的每個 dict 必須帶齊 `_dedup_by_url`／`_best_verdicted_match`／
+        `_resolve` 會讀的欄位，下游才不必知道向量換了家。
+        """
+        from bson import ObjectId
+
+        object_ids = []
+        for raw_id in score_by_id:
+            try:
+                object_ids.append(ObjectId(raw_id))
+            except Exception:
+                logger.warning("claim_match_bad_object_id id=%s", raw_id)
+        if not object_ids:
+            return []
+
+        projection = {
+            "_id": 1,
+            self.claim_field: 1,
+            "verdict": 1,
+            "verdict_slug": 1,
+            "url": 1,
+            "original_title": 1,
+            "published_at": 1,
+            "source_name": 1,
+            self.content_field: 1,
+        }
+        docs = await (
+            self._ensure_collection()
+            .find({"_id": {"$in": object_ids}}, projection)
+            .to_list(length=None)
+        )
+
+        results: list[dict[str, Any]] = []
+        for doc in docs:
+            score = score_by_id.get(str(doc.get("_id")))
+            if score is None:
+                continue
+            doc = dict(doc)
+            doc.pop("_id", None)
+            doc["score"] = score
+            results.append(doc)
+
+        results.sort(key=lambda d: d["score"], reverse=True)
+        return results

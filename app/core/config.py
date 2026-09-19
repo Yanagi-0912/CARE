@@ -97,6 +97,21 @@ class Settings:
     # Atlas Search index（BM25 用；與 MONGODB_VECTOR_INDEX 是兩個不同的索引）
     MONGODB_TEXT_INDEX: str = os.getenv("MONGODB_TEXT_INDEX", "")
 
+    # PostgreSQL + pgvector：RAG 的向量檢索。
+    #
+    # 2026-09-19 從 Atlas 搬過來——3072 維向量一筆 42 KB，把免費層 512 MB 撐爆，
+    # 寫入被鎖導致後端 ensure_indexes() 失敗、新版 pod 起不來。搬完 Atlas 降到
+    # 約 51 MB。內文與 BM25 仍在 Atlas（lucene.cjk 中文分詞在 PG 沒有等價品）。
+    #
+    # MONGODB_VECTOR_INDEX 保留但已不再被 RAG 主路徑使用：使用者上傳文件與
+    # 查核主張比對還走 Atlas $vectorSearch，兩者搬遷另案處理。
+    PGVECTOR_DSN: str = os.getenv("PGVECTOR_DSN", "")
+    PGVECTOR_TABLE: str = os.getenv("PGVECTOR_TABLE", "health_articles_chunks")
+    # halfvec(3072)：pgvector 的 vector 型別索引上限 2000 維，3072 維建不了
+    # HNSW；halfvec 上限 4000 維可以。實測無索引暴力掃描 213 ms、HNSW 1.6 ms，
+    # 且 top-10 與 Atlas 完全一致。
+    PGVECTOR_VECTOR_COLUMN: str = os.getenv("PGVECTOR_VECTOR_COLUMN", "embedding_half")
+
     # 使用者上傳文件暫存向量庫（與官方 MONGODB_COLLECTION 分離）
     MONGODB_USER_DOCS_COLLECTION: str = os.getenv("MONGODB_USER_DOCS_COLLECTION", "")
     MONGODB_USER_DOCS_VECTOR_INDEX: str = os.getenv(

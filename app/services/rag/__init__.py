@@ -15,6 +15,7 @@ from app.services.rag.rank_fusion import (
     convex_combination_fusion,
     reciprocal_rank_fusion,
 )
+from app.services.rag.pgvector_retriever import PgVectorRetriever
 from app.services.rag.retriever import (
     DEFAULT_MIN_SCORE,
     HybridRetriever,
@@ -37,6 +38,7 @@ __all__ = [
     "HybridRetriever",
     "MongoAtlasTextRetriever",
     "MongoAtlasVectorRetriever",
+    "PgVectorRetriever",
     "RagAnswerService",
     "convex_combination_fusion",
     "reciprocal_rank_fusion",

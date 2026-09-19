@@ -45,10 +45,16 @@ dependencies = [
     "langgraph==1.1.10",
     "orjson>=3.11.5",
 
-    # MongoDB（RAG 向量搜尋：Motor 非同步；其他腳本仍可用 pymongo）
+    # MongoDB（內文與 BM25；RAG 的向量那一半已移到 pgvector）
     # Motor 3.6 鎖 pymongo<4.10，與 4.16 衝突；3.7+ 為 pymongo>=4.9,<5
     "pymongo==4.16.0",
     "motor==3.7.1",
+
+    # PostgreSQL + pgvector（RAG 向量檢索，見 services/rag/pgvector_retriever.py）。
+    # 2026-09-19 從 Atlas 搬過來：3072 維向量把免費層 512 MB 撐爆導致寫入被鎖。
+    # 只用 asyncpg 不引入 pgvector 套件——查詢向量以文字字面量傳入再由 PG 轉型，
+    # 少一個相依，代價是每次查詢多一次字串組裝（相對整條管線可忽略）。
+    "asyncpg==0.31.0",
 
     # 守門測試需要實際解碼已提交的藥丸照片縮圖以驗證尺寸與格式
     # （tests/unit/resources/test_drug_appearance_images.py），非建置腳本本身

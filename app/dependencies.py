@@ -141,11 +141,11 @@ from app.services.line_messaging.handler.facility_detail_handler import (
 from app.services.rag import (
     HybridRetriever,
     MongoAtlasTextRetriever,
-    MongoAtlasVectorRetriever,
+    PgVectorRetriever,
     RagAnswerService,
 )
 from app.services.rag.claim_verification.identity import GeminiClaimIdentityVerifier
-from app.services.rag.claim_verification.matcher import MongoAtlasClaimMatcher
+from app.services.rag.claim_verification.matcher import PgVectorClaimMatcher
 from app.services.rag.claim_verification.normalizer import GeminiClaimNormalizer
 from app.services.rag.claim_verification.service import ClaimVerificationService
 from app.services.rag.cohere_reranker import CohereReranker, VectorScoreReranker
@@ -239,13 +239,16 @@ if settings.MONGODB_VECTOR_DIM > 0:
     _ingest_embeddings_kwargs["output_dimensionality"] = settings.MONGODB_VECTOR_DIM
 _ingest_embeddings = GoogleGenerativeAIEmbeddings(**_ingest_embeddings_kwargs)
 
-_rag_vector_retriever = MongoAtlasVectorRetriever(
+# 向量檢索走 pgvector：Atlas 只剩內文與 BM25。
+# 搬遷背景見 config.PGVECTOR_DSN 與 services/rag/pgvector_retriever.py 的模組註解。
+_rag_vector_retriever = PgVectorRetriever(
     embeddings=_query_embeddings,
+    dsn=settings.PGVECTOR_DSN,
     mongo_uri=settings.MONGODB_URI,
     db_name=settings.MONGODB_DB,
     collection_name=settings.MONGODB_COLLECTION,
-    index_name=settings.MONGODB_VECTOR_INDEX,
-    vector_field=settings.MONGODB_VECTOR_FIELD,
+    table_name=settings.PGVECTOR_TABLE,
+    vector_column=settings.PGVECTOR_VECTOR_COLUMN,
     text_field=settings.MONGODB_TEXT_FIELD,
     vector_dim=settings.MONGODB_VECTOR_DIM if settings.MONGODB_VECTOR_DIM > 0 else None,
     k=settings.RAG_RETRIEVE_CANDIDATES,
@@ -531,13 +534,18 @@ configure_user_document_tool(_user_document_answer_service)
 # 必須兩個都接對；tests/unit/test_dependencies.py 另外釘住這裡的接線。
 _claim_verification_service: ClaimVerificationService | None = None
 if settings.CLAIM_VERIFICATION_ENABLED:
-    _claim_matcher = MongoAtlasClaimMatcher(
+    # 向量查 pgvector、判定與原文仍讀 Atlas。兩段式查詢（halfvec 取候選、
+    # float32 精算分數）的理由見 PgVectorClaimMatcher 的類別註解：
+    # CLAIM_MATCH_MIN_SCORE 0.86 是照 Atlas 的分數標度校準的，不能被
+    # halfvec 的精度損失推移。
+    _claim_matcher = PgVectorClaimMatcher(
         embeddings=_query_embeddings,
+        dsn=settings.PGVECTOR_DSN,
         mongo_uri=settings.MONGODB_URI,
         db_name=settings.MONGODB_DB,
         collection_name=settings.MONGODB_COLLECTION,
-        index_name=settings.MONGODB_VECTOR_INDEX,
-        vector_field=settings.MONGODB_VECTOR_FIELD,
+        table_name=settings.PGVECTOR_TABLE,
+        vector_column=settings.PGVECTOR_VECTOR_COLUMN,
         content_field=settings.MONGODB_TEXT_FIELD,
         min_score=settings.CLAIM_MATCH_MIN_SCORE,
     )
@@ -1070,7 +1078,7 @@ def get_query_embeddings() -> GoogleGenerativeAIEmbeddings:
     return _query_embeddings
 
 
-def get_rag_retriever() -> MongoAtlasVectorRetriever | HybridRetriever:
+def get_rag_retriever() -> PgVectorRetriever | HybridRetriever:
     """取得 RAG retriever：依 RAG_HYBRID_ENABLED 為純向量或 hybrid（兩者介面相同）"""
     return _rag_retriever
 

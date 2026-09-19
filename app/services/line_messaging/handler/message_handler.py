@@ -90,7 +90,12 @@ class BaseLineMessageHandler:
         message_type: str,
         *,
         image_text: str = "",
+        speech_language: str | None = None,
     ) -> None:
+        """`speech_language` 是這一則語音實際聽出來的語言（台語或華語），語音訊息
+        才有。有值時它蓋過使用者設定的語言，決定回覆要用哪一種念：講台語就用台語
+        念回去，不必先到設定頁切語言。文字訊息沒有音訊可判，仍照設定。
+        """
         user_id = getattr(event.source, "user_id", "")
         reply_token = getattr(event, "reply_token", "")
         event_time = datetime.fromtimestamp(event.timestamp / 1000, tz=timezone.utc)
@@ -136,7 +141,9 @@ class BaseLineMessageHandler:
 
             # 文字與語音可能不同：選台語的使用者文字是 zh-TW、語音是 nan-TW。
             # ContextVar 存使用者的選擇，get_request_language() 取出來的是文字語言。
-            language_choice = self._language_choice_from_profile(user_profile)
+            language_choice = speech_language or self._language_choice_from_profile(
+                user_profile
+            )
             user_language = normalize_user_language(language_choice)
             lang_token = set_request_language(language_choice)
             # Agent 產生的 Flex Message 走 LangChain tool，拿不到 user_profile，

@@ -514,10 +514,15 @@ async def test_uploaded_audio_file_transcript_reaches_agent_as_plain_text(media_
 
 # 辨識語音之前就要設好使用者的語言：選台語的才會走台語 STT，其他語言的提示也才送得到
 # faster-whisper。以前語言要到 _process_and_reply 才設，辨識時一律是預設的 zh-TW。
-async def _handle_voice_and_capture_languages(profiles):
+async def _handle_voice_and_capture_languages(profiles, detected=None):
+    """`detected` 模擬辨識那邊聽出來的語言（見 mutimedia_processor）。"""
     from linebot.v3.webhooks import AudioMessageContent, ContentProvider
 
-    from app.core.user_language import get_request_language, get_request_speech_language
+    from app.core.user_language import (
+        get_request_language,
+        get_request_speech_language,
+        set_detected_speech_language,
+    )
 
     agent = MagicMock()
     agent.invoke = AsyncMock(return_value={"response": "AI 回覆"})
@@ -534,6 +539,7 @@ async def _handle_voice_and_capture_languages(profiles):
     async def _process_media(**_kwargs):
         seen["speech"] = get_request_speech_language()
         seen["text"] = get_request_language()
+        set_detected_speech_language(detected)
         return "阿公，你食飽未？"
 
     event = _event(
@@ -577,3 +583,25 @@ async def test_profile_read_failure_before_transcription_uses_default_language()
     seen, _ = await _handle_voice_and_capture_languages(profiles)
 
     assert seen == {"speech": "zh-TW", "text": "zh-TW"}
+
+
+# 講台語就用台語念回去，使用者不必先到設定頁把語言切成台語（設定仍然是預設的華語）。
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "stored,detected,speech",
+    [
+        (None, "nan-TW", "nan-TW"),  # 沒設定過，講台語
+        ("zh-TW", "nan-TW", "nan-TW"),  # 設華語，這一句講台語
+        ("nan-TW", "zh-TW", "zh-TW"),  # 設台語，這一句講華語
+        ("nan-TW", None, "nan-TW"),  # 判不出來（非語音路徑）就照設定
+    ],
+)
+async def test_detected_speech_language_decides_voice_reply(stored, detected, speech):
+    profiles = MagicMock()
+    profiles.get_user_profile = AsyncMock(return_value={"settings": {"language": stored}})
+
+    _, reply_kwargs = await _handle_voice_and_capture_languages(profiles, detected=detected)
+
+    assert reply_kwargs["speech_language"] == speech
+    # 文字回覆一律華語：台語只換語音（見 user_language.TAIWANESE_LANGUAGE）。
+    assert reply_kwargs["language"] == "zh-TW"

@@ -11,8 +11,11 @@ from linebot.v3.webhooks import (
 from app.core.request_logging import log_stage
 from app.core.user_language import (
     DEFAULT_USER_LANGUAGE,
+    get_detected_speech_language,
     normalize_user_language,
+    reset_detected_speech_language,
     reset_request_language,
+    set_detected_speech_language,
     set_request_language,
 )
 from app.i18n.messages import t
@@ -87,20 +90,30 @@ class LineMediaHandler(BaseLineMessageHandler):
         # 重新算，所以這裡不用擔心辨識太久動畫先消失。
         if self._loading_animation_service is not None:
             await self._loading_animation_service.start(user_id)
-        # 辨識語音之前就要知道使用者的語言：選台語的走台語 STT，其他語言交給
-        # Gemini（備援 faster-whisper）當提示。語言原本要到 _process_and_reply 讀了 profile 才
-        # 設定，那時辨識早就做完了——所有語音都是用預設的 zh-TW 辨識的
-        # （2026-09-14 發現，ba9bf1b 的語言提示因此從沒生效）。
+        # 辨識語音之前就要知道使用者的語言：說中文的人同時送台語 STT 與 Gemini
+        # 再選一份，其他語言只送 Gemini（備援 faster-whisper）並把語言當提示。
+        # 語言原本要到 _process_and_reply 讀了 profile 才設定，那時辨識早就做完了
+        # ——所有語音都是用預設的 zh-TW 辨識的（2026-09-14 發現，ba9bf1b 的語言
+        # 提示因此從沒生效）。
         language_choice = await self._language_choice_for(user_id)
         lang_token = set_request_language(language_choice)
+        # 語音實際聽出來的語言由辨識那邊寫進來（見 mutimedia_processor
+        # ._transcribe_zh_or_taiwanese）。先清乾淨，免得讀到別的請求留下的值。
+        detected_token = set_detected_speech_language(None)
         try:
             user_text, message_type, image_text = await self._extract_media_text(
                 message, user_id, language=normalize_user_language(language_choice)
             )
+            detected_speech_language = get_detected_speech_language()
         finally:
+            reset_detected_speech_language(detected_token)
             reset_request_language(lang_token)
         await self._process_and_reply(
-            event, user_text, message_type, image_text=image_text
+            event,
+            user_text,
+            message_type,
+            image_text=image_text,
+            speech_language=detected_speech_language,
         )
 
     async def _language_choice_for(self, user_id: str) -> str:

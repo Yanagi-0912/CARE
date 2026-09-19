@@ -3,14 +3,15 @@ from typing import Any, Optional
 from datetime import datetime
 import mimetypes
 from app.core.config import settings
-from app.core.request_logging import stage_timer
+from app.core.request_logging import log_stage, stage_timer
 from app.core.user_language import (
-    TAIWANESE_LANGUAGE,
+    DEFAULT_USER_LANGUAGE,
     get_request_language,
-    get_request_speech_language,
+    set_detected_speech_language,
 )
 from app.services.speech import audio
-from app.services.speech.gemini_stt import GeminiTranscriber
+from app.services.speech.gemini_stt import GEMINI_STT_TIMEOUT_SECONDS, GeminiTranscriber
+from app.services.speech.speech_language import choose_transcript
 from app.services.speech.taigi_client import TaigiClient
 
 import asyncio
@@ -54,6 +55,12 @@ MEDIA_EXTENSIONS = {
 # 長錄音切成好幾段時，同時送台語 STT 的段數上限。廠商沒寫速率限制，只說太密會回
 # 429，所以不一次全丟；一般的 LINE 語音在 25 秒內，只有一段。
 TAIGI_STT_CONCURRENCY = 3
+
+# 平行辨識時台語那路的總預算。兩條路是一起 await 的，慢的那條決定使用者要等多久，
+# 而台語 STT 自己的逾時是「每一段」15 秒（taigi_client.STT_TIMEOUT_SECONDS）、長錄音
+# 還會分批，不設總預算的話最壞情況會比現在只走 Gemini 還久。對齊 Gemini 的 8 秒
+# （gemini_stt.GEMINI_STT_TIMEOUT_SECONDS），超過就當台語那路沒回，用 Gemini 那份。
+TAIGI_PARALLEL_BUDGET_SECONDS = GEMINI_STT_TIMEOUT_SECONDS
 
 # 語音裡沒有聽到內容時，跟 webhook 沒抽到字時回同一句。
 NO_CONTENT_TEXT = "Unable to extract text from media file (no content extracted)"
@@ -123,13 +130,14 @@ class MediaProcessorService:
                 user_media_type,
                 source_file_name=source_file_name,
             )
-            # 語音：台語使用者先走台語 STT，其餘（含台語 STT 失敗）交給 Gemini，
-            # 都不行才送 n8n／faster-whisper。圖片、影片、文件照舊走 n8n。
+            # 語音：說中文的使用者同時送台語 STT 與 Gemini，回來再選一份（見
+            # _transcribe_zh_or_taiwanese）；其他語言只走 Gemini。兩邊都不行才送
+            # n8n／faster-whisper。圖片、影片、文件照舊走 n8n。
             user_text = None
             is_audio = user_media_type.lower().strip() == "audio"
-            if is_audio and get_request_speech_language() == TAIWANESE_LANGUAGE:
-                user_text = await self._transcribe_taiwanese_or_none(temp_file_path)
-            if is_audio and user_text is None:
+            if is_audio and get_request_language() == DEFAULT_USER_LANGUAGE:
+                user_text = await self._transcribe_zh_or_taiwanese(temp_file_path)
+            elif is_audio:
                 user_text = await self._transcribe_with_gemini_or_none(temp_file_path)
             if user_text is None:
                 user_text = await asyncio.to_thread(
@@ -152,10 +160,63 @@ class MediaProcessorService:
             if temp_file_path:
                 self._cleanup_temp_file(temp_file_path)
 
-    async def _transcribe_taiwanese_or_none(self, file_path: Path) -> Optional[str]:
-        """語言選台語的使用者，語音改走 Taigi 台語 STT。
+    async def _transcribe_zh_or_taiwanese(self, file_path: Path) -> Optional[str]:
+        """台語 STT 與 Gemini 同時聽，回來選一份，並記下聽出來的語言。
 
-        失敗回 None，由呼叫端改走 Gemini、再不行才 n8n／faster-whisper（此時送的
+        使用者不必先到設定頁把語言切成台語：講什麼就用什麼辨識，回覆也用同一種念。
+        兩條路平行送，等待時間是兩者取大的那個，不是相加：2026-09-19 跑 48 段測試
+        音檔，這個函式從頭到尾的中位數 1.59 秒（最長 4.26 秒），跟先前只走 Gemini
+        的 1.4～2.0 秒（2026-09-15 實測）差不多。
+
+        兩邊都失敗回 None，由呼叫端退回 n8n／faster-whisper。
+        """
+        taigi_task = (
+            self._taigi_within_budget(file_path)
+            if self._taigi_client.available()
+            else None
+        )
+        gemini_task = self._transcribe_with_gemini_or_none(file_path)
+        if taigi_task is None:
+            # 沒設 TAIGI_API_KEY：只有華語那路，語言就是華語。
+            text = await gemini_task
+            set_detected_speech_language(DEFAULT_USER_LANGUAGE)
+            return text
+        taigi_text, gemini_text = await asyncio.gather(taigi_task, gemini_task)
+        # 「聽不到內容」的哨兵不是逐字稿，不能拿去判語言，但要留著分辨「靜音」與
+        # 「那一路失敗了」——前者該回哨兵讓使用者知道沒聽到，後者才退 n8n。
+        taigi_heard = None if taigi_text in (None, NO_CONTENT_TEXT) else taigi_text
+        gemini_heard = None if gemini_text in (None, NO_CONTENT_TEXT) else gemini_text
+        chosen, language = choose_transcript(taigi_heard, gemini_heard)
+        set_detected_speech_language(language)
+        log_stage(
+            logger,
+            "stt_lang",
+            lang=language,
+            taigi_chars=len(taigi_heard or ""),
+            gemini_chars=len(gemini_heard or ""),
+        )
+        if chosen is not None:
+            return chosen
+        if NO_CONTENT_TEXT in (taigi_text, gemini_text):
+            return NO_CONTENT_TEXT
+        return None
+
+    async def _taigi_within_budget(self, file_path: Path) -> Optional[str]:
+        """台語那路超過 TAIGI_PARALLEL_BUDGET_SECONDS 就放掉，理由見該常數。"""
+        try:
+            return await asyncio.wait_for(
+                self._transcribe_taiwanese_or_none(file_path),
+                timeout=TAIGI_PARALLEL_BUDGET_SECONDS,
+            )
+        except (asyncio.TimeoutError, TimeoutError):
+            logger.warning("台語 STT 超過 %s 秒，改用華語那份", TAIGI_PARALLEL_BUDGET_SECONDS)
+            return None
+
+    async def _transcribe_taiwanese_or_none(self, file_path: Path) -> Optional[str]:
+        """Taigi 台語 STT。說中文的使用者一律跑這一路（與 Gemini 平行），由
+        `_transcribe_zh_or_taiwanese` 決定要不要採用它的結果。
+
+        失敗回 None：只剩 Gemini 那份，再不行才 n8n／faster-whisper（此時送的
         語言提示是文字語言 zh-TW，兩者都不認得台語）。
         """
         if not self._taigi_client.available():

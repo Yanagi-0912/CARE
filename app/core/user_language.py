@@ -20,6 +20,14 @@ _request_language: ContextVar[str] = ContextVar(
     default=DEFAULT_USER_LANGUAGE,
 )
 
+# 這一則語音實際聽出來的語言（見 speech.speech_language）。語音進來時由媒體辨識
+# 設定、由 media_handler 讀走，決定這一則要用哪種語言念回去——使用者不必先到設定
+# 頁把語言切成台語才能用台語問。文字訊息沒有音訊可判，維持 None。
+_detected_speech_language: ContextVar[str | None] = ContextVar(
+    "care_detected_speech_language",
+    default=None,
+)
+
 
 def normalize_user_language(language: str | None) -> str:
     """使用者的選擇 → 文字語言（台語 → zh-TW；不認得的 → 預設）。"""
@@ -52,3 +60,19 @@ def set_request_language(language: str) -> Token:
 
 def reset_request_language(token: Token) -> None:
     _request_language.reset(token)
+
+
+def set_detected_speech_language(language: str | None) -> Token:
+    """記下這一則語音聽出來的語言（台語或華語）。"""
+    return _detected_speech_language.set(
+        normalize_language_choice(language) if language else None
+    )
+
+
+def get_detected_speech_language() -> str | None:
+    """這一則語音聽出來的語言；不是語音、或還沒判就是 None。"""
+    return _detected_speech_language.get()
+
+
+def reset_detected_speech_language(token: Token) -> None:
+    _detected_speech_language.reset(token)

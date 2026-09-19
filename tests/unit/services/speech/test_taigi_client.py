@@ -121,3 +121,42 @@ def test_transcribe_non_json_raises(monkeypatch):
     )
     with pytest.raises(TaigiError):
         TaigiClient(api_key="k").transcribe_wav(b"x")
+
+
+# ── 暫時性錯誤重試一次，429 不重試（理由見 taigi_client.STT_RETRY_STATUS）──────
+
+
+def test_transcribe_retries_once_on_server_error(monkeypatch):
+    post = MagicMock(
+        side_effect=[_response(status=503, text="upstream down"),
+                     _response(payload={"best": "阿公你食飽未"})]
+    )
+    monkeypatch.setattr(taigi_module.requests, "post", post)
+    monkeypatch.setattr(taigi_module.time, "sleep", lambda _s: None)
+
+    out = TaigiClient(api_key="k").transcribe_wav(b"RIFF")
+
+    assert out == "阿公你食飽未"
+    assert post.call_count == 2
+
+
+def test_transcribe_does_not_retry_on_429(monkeypatch):
+    """速率限制的窗口是分鐘級，馬上重送必然再撞一次，白白多等。"""
+    post = MagicMock(return_value=_response(status=429, text="アクセスが頻繁すぎます"))
+    monkeypatch.setattr(taigi_module.requests, "post", post)
+
+    with pytest.raises(TaigiError, match="429"):
+        TaigiClient(api_key="k").transcribe_wav(b"RIFF")
+
+    assert post.call_count == 1
+
+
+def test_transcribe_gives_up_after_one_retry(monkeypatch):
+    post = MagicMock(return_value=_response(status=502, text="bad gateway"))
+    monkeypatch.setattr(taigi_module.requests, "post", post)
+    monkeypatch.setattr(taigi_module.time, "sleep", lambda _s: None)
+
+    with pytest.raises(TaigiError, match="502"):
+        TaigiClient(api_key="k").transcribe_wav(b"RIFF")
+
+    assert post.call_count == 2

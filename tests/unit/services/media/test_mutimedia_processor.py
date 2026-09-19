@@ -8,7 +8,12 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 import pytest
 
-from app.core.user_language import reset_request_language, set_request_language
+from app.core.user_language import (
+    get_detected_speech_language,
+    reset_request_language,
+    set_detected_speech_language,
+    set_request_language,
+)
 from app.services.media.mutimedia_processor import NO_CONTENT_TEXT, MediaProcessorService
 from app.services.speech import audio as speech_audio
 
@@ -193,7 +198,7 @@ def test_webhook_gets_zh_tw_hint_for_taiwanese_user(svc, tmp_path):
     assert post.call_args.kwargs["data"] == {"language": "zh-TW"}
 
 
-# ── 語言選台語的使用者，語音走 Taigi 台語 STT ─────────────────────────
+# ── 說中文的使用者：台語 STT 與 Gemini 平行送，回來選一份 ─────────────
 
 RATE = 16_000
 
@@ -215,7 +220,11 @@ def _wav_seconds(wav: bytes) -> float:
 
 
 class FakeTaigiClient:
-    """回傳「N秒」，N 是收到那段音檔的長度，用來確認分段順序。"""
+    """回傳「食飽N秒」，N 是收到那段音檔的長度，用來確認分段順序。
+
+    帶「食飽」是因為選擇器要看到台語用字才會採用這一份（speech_language）；
+    沒帶的話它會被當成台語模型聽華語寫出來的亂字而丟掉。
+    """
 
     def __init__(self, text=None, exc=None, available=True):
         self.text = text
@@ -232,7 +241,16 @@ class FakeTaigiClient:
             raise self.exc
         if self.text is not None:
             return self.text
-        return f"{round(_wav_seconds(wav))}秒"
+        return f"食飽{round(_wav_seconds(wav))}秒"
+
+
+# 台語專用模型聽華語音檔的兩種樣子（都是實測）：
+# - 大致聽對，只是寫成台語用字。兩份很像，選擇器判華語。
+TAIGI_HEARD_MANDARIN = "我忘記早上有無食藥"
+GEMINI_HEARD_MANDARIN = "我忘記早上有沒有吃藥"
+# - 完全聽不出來的亂字（2026-09-14，原句是「爺爺，你今天吃藥了沒有？」）。只剩這一份
+#   時沒得比對，靠台語用字判斷，而它沒有，所以會被丟掉。
+TAIGI_GIBBERISH = "野野，離近仔日，鐵藥了無有"
 
 
 class FakeTranscriber:
@@ -264,6 +282,9 @@ async def _process_as(
         transcriber=transcriber if transcriber is not None else FakeTranscriber(),
     )
     token = set_request_language(lang)
+    # 偵測結果留在 ContextVar 裡給測試讀（media_handler 也是這樣讀的），所以這裡
+    # 只在每次呼叫前清成 None，不 reset。
+    set_detected_speech_language(None)
     try:
         with patch.object(svc, "_download_media_to_tmp", return_value=p), \
              patch.object(svc, "_extract_user_text_via_webhook", return_value=webhook_text) as webhook:
@@ -274,18 +295,35 @@ async def _process_as(
 
 
 @pytest.mark.asyncio
-async def test_taiwanese_audio_goes_to_taigi_as_16k_wav(tmp_path):
+@pytest.mark.parametrize("lang", ["zh-TW", "nan-TW"])
+async def test_taiwanese_audio_uses_taigi_transcript(tmp_path, lang):
+    """講台語就用台語那份，使用者不必先把設定切成台語。"""
     taigi = FakeTaigiClient(text="阿公，你食飽未？")
     gemini = FakeTranscriber()
 
-    out, webhook = await _process_as("nan-TW", "audio", taigi, tmp_path, transcriber=gemini)
+    out, webhook = await _process_as(lang, "audio", taigi, tmp_path, transcriber=gemini)
 
     assert out == "阿公，你食飽未？"
+    assert get_detected_speech_language() == "nan-TW"
     webhook.assert_not_called()
-    assert gemini.languages == []
+    # 兩條路平行送，所以 Gemini 也收到了這段音檔。
+    assert gemini.languages == ["zh-TW"]
     assert len(taigi.wavs) == 1
     with wave.open(io.BytesIO(taigi.wavs[0])) as w:
         assert (w.getframerate(), w.getnchannels()) == (RATE, 1)
+
+
+@pytest.mark.asyncio
+async def test_mandarin_audio_uses_gemini_transcript(tmp_path):
+    """華語音檔：兩邊聽到同一句，用華語那份，回覆也不能念成台語。"""
+    taigi = FakeTaigiClient(text=TAIGI_HEARD_MANDARIN)
+    gemini = FakeTranscriber(text=GEMINI_HEARD_MANDARIN)
+
+    out, webhook = await _process_as("nan-TW", "audio", taigi, tmp_path, transcriber=gemini)
+
+    assert out == GEMINI_HEARD_MANDARIN
+    assert get_detected_speech_language() == "zh-TW"
+    webhook.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -295,13 +333,20 @@ async def test_long_taiwanese_audio_is_split_and_joined_in_order(tmp_path):
 
     out, _ = await _process_as("nan-TW", "audio", taigi, tmp_path, pcm=pcm)
 
-    assert out == "18秒 22秒 10秒"
+    assert out == "食飽18秒 食飽22秒 食飽10秒"
     assert all(_wav_seconds(w) <= speech_audio.MAX_STT_CHUNK_SECONDS for w in taigi.wavs)
 
 
 @pytest.mark.asyncio
-async def test_silent_taiwanese_audio_returns_no_content_text(tmp_path):
-    out, webhook = await _process_as("nan-TW", "audio", FakeTaigiClient(text=""), tmp_path)
+async def test_silent_audio_returns_no_content_text(tmp_path):
+    """兩邊都聽不到人聲：回哨兵字串，讓使用者知道是沒聽到，不是服務壞了。"""
+    out, webhook = await _process_as(
+        "nan-TW",
+        "audio",
+        FakeTaigiClient(text=""),
+        tmp_path,
+        transcriber=FakeTranscriber(text=""),
+    )
 
     assert out == NO_CONTENT_TEXT
     webhook.assert_not_called()
@@ -330,13 +375,16 @@ async def test_missing_taigi_key_falls_back_without_calling_taigi(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_non_taiwanese_audio_skips_taigi(tmp_path):
+@pytest.mark.parametrize("lang", ["en", "vi", "ja"])
+async def test_foreign_language_audio_skips_taigi(tmp_path, lang):
+    """外語使用者講的不會是台語，不必多送一次台語 STT。"""
     taigi = FakeTaigiClient()
 
-    out, _ = await _process_as("zh-TW", "audio", taigi, tmp_path)
+    out, _ = await _process_as(lang, "audio", taigi, tmp_path)
 
     assert out == "gemini 結果"
     assert taigi.wavs == []
+    assert get_detected_speech_language() is None
 
 
 @pytest.mark.asyncio
@@ -360,7 +408,10 @@ async def test_images_skip_speech_recognition(tmp_path):
 async def test_audio_goes_to_gemini_with_user_language(tmp_path, lang):
     gemini = FakeTranscriber()
 
-    out, webhook = await _process_as(lang, "audio", FakeTaigiClient(), tmp_path, transcriber=gemini)
+    # 台語那路聽到的跟 Gemini 一樣，表示使用者講的是華語。
+    out, webhook = await _process_as(
+        lang, "audio", FakeTaigiClient(text="gemini 結果"), tmp_path, transcriber=gemini
+    )
 
     assert out == "gemini 結果"
     assert gemini.languages == [lang]
@@ -382,7 +433,9 @@ async def test_gemini_failure_falls_back_to_webhook(tmp_path, exc):
 async def test_gemini_hearing_nothing_returns_no_content_text(tmp_path):
     gemini = FakeTranscriber(text="")
 
-    out, webhook = await _process_as("zh-TW", "audio", FakeTaigiClient(), tmp_path, transcriber=gemini)
+    out, webhook = await _process_as(
+        "zh-TW", "audio", FakeTaigiClient(text=TAIGI_GIBBERISH), tmp_path, transcriber=gemini
+    )
 
     assert out == NO_CONTENT_TEXT
     webhook.assert_not_called()
@@ -392,8 +445,11 @@ async def test_gemini_hearing_nothing_returns_no_content_text(tmp_path):
 async def test_missing_gemini_key_falls_back_to_webhook(tmp_path):
     gemini = FakeTranscriber(available=False)
 
-    out, webhook = await _process_as("zh-TW", "audio", FakeTaigiClient(), tmp_path, transcriber=gemini)
+    out, webhook = await _process_as(
+        "zh-TW", "audio", FakeTaigiClient(text=TAIGI_GIBBERISH), tmp_path, transcriber=gemini
+    )
 
+    # 台語那份沒有台語用字，就是上面那種亂字，不能拿來當逐字稿。
     assert out == "whisper 結果"
     assert gemini.languages == []
     webhook.assert_called_once()
@@ -510,3 +566,26 @@ async def test_process_media_wraps_unexpected_errors_as_service_unavailable(svc,
             await svc.process_media("mid", "image", user_id="U1")
     assert isinstance(exc_info.value, MediaProcessingError)
     assert isinstance(exc_info.value.__cause__, OSError)
+
+
+@pytest.mark.asyncio
+async def test_slow_taigi_does_not_hold_up_the_reply(tmp_path):
+    """台語那路拖過預算就放掉：兩條路是一起等的，慢的那條決定使用者等多久。"""
+    import time as _time
+
+    class SlowTaigiClient(FakeTaigiClient):
+        def transcribe_wav(self, wav: bytes) -> str:
+            _time.sleep(0.5)
+            return "阿公你食飽未"
+
+    gemini = FakeTranscriber(text="爺爺你吃飽了嗎")
+    with patch(
+        "app.services.media.mutimedia_processor.TAIGI_PARALLEL_BUDGET_SECONDS", 0.05
+    ):
+        out, webhook = await _process_as(
+            "zh-TW", "audio", SlowTaigiClient(), tmp_path, transcriber=gemini
+        )
+
+    assert out == "爺爺你吃飽了嗎"
+    assert get_detected_speech_language() == "zh-TW"
+    webhook.assert_not_called()

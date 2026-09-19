@@ -7,20 +7,23 @@
 找新聞與查核**並行**：兩者互不依賴，串起來等於把搜尋的 1～2 秒直接加在長輩
 的等待上。找不到就不附連結，查核卡照送（見 `tv_news_lookup` 的兩道條件）。
 
-### 找不到而且台標也沒認出來時，回問一句
+### 台標沒認出來時，先問是哪一台，問到了才查
 
 台別是比對的關鍵（`tv_news_lookup` 的兩道條件之一），認不出來時門檻要拉高、
-命中率跟著掉。與其讓長輩不知道為什麼沒有連結，不如直接問他是哪一台——他抬頭
-看一眼電視就知道，比叫他重拍一張準。快速回覆的按鈕優先放他常看的台。
+命中率跟著掉。2026-09-19 James 拍板：**認不出台別就先不要回答**，先問是哪一
+台，等他回答再查核並找原報導——一次給完整的答案，而不是先給一張沒有連結的
+判定卡、再補一則連結。
 
-**只在真的沒找到時才問**：找到了還問，等於把一個已經解決的問題丟回給他。
+代價講清楚：長輩若沒有回答，那則謠言就完全沒有被查核。所以問句裡要附上我們
+讀到的標題（他順便能看出字有沒有讀錯），按鈕要好按、優先放他常看的台。
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
-from typing import Any, Optional, Sequence
+from typing import Any, Sequence
 
 from langchain_core.tools import tool
 
@@ -31,6 +34,7 @@ from app.services.media.tv_news_lookup import (
     TvNewsArticleFinder,
 )
 from app.tools.claim_tools import claim_verification_service, render_verification
+from resources.flex_messages import theme
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +46,12 @@ _channel_memory: Any = None
 _FALLBACK_CHANNELS = ("TVBS", "三立", "東森", "民視", "中天")
 _QUICK_REPLY_MAX = 5
 
-_ASK_CHANNEL_TEXT = "另外，這則新聞是哪一台播的？告訴我，我就能幫你找到原始報導。"
+_ASK_CHANNEL_HEADER = "這是哪一台的新聞？"
+_ASK_CHANNEL_BODY = (
+    "我看不出畫面上是哪一台，點下面的電視台，我就幫你查這則新聞是真的假的，"
+    "也順便找原始報導。"
+)
+_ASK_CHANNEL_SEEN = "我讀到的新聞標題是："
 
 
 def configure_tv_news_tool(
@@ -92,16 +101,73 @@ async def _find_article(
         return None
 
 
-def _ask_channel_payload(preferred: Sequence[str]) -> dict:
-    """回問台別的快速回覆。按鈕送出的字要讓 nodes 的後續路由認得出台名。"""
+def _ask_channel_channels(preferred: Sequence[str]) -> list[str]:
+    """按鈕要列哪幾台：常看的排前面，不足的用常見台別補到五個。"""
     channels: list[str] = []
     for channel in list(preferred) + list(_FALLBACK_CHANNELS):
         if channel in CHANNEL_DOMAINS and channel not in channels:
             channels.append(channel)
         if len(channels) >= _QUICK_REPLY_MAX:
             break
-    return {
-        "followUpText": _ASK_CHANNEL_TEXT,
+    return channels
+
+
+def _ask_channel_flex(headline: str, preferred: Sequence[str]) -> str:
+    """問「這是哪一台」的卡片。
+
+    自己組 Flex 而不是回純文字：quickReply 只能掛在 Flex／文字訊息的頂層鍵上，
+    而回純文字就沒有那排按鈕，長輩得自己打字。版面沿用判定卡的 header／body。
+    """
+    ft = theme.resolve_theme()
+    bubble = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": theme.BRAND,
+            "paddingAll": "lg",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": _ASK_CHANNEL_HEADER,
+                    "size": ft.heading,
+                    "color": theme.TEXT_ON_BRAND,
+                    "weight": "bold",
+                    "wrap": True,
+                }
+            ],
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "paddingAll": "xl",
+            "backgroundColor": theme.SURFACE,
+            "spacing": "md",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": _ASK_CHANNEL_BODY,
+                    "size": ft.body,
+                    "color": theme.TEXT,
+                    "wrap": True,
+                },
+                # 把讀到的標題念回去：罕見字讀錯（實測「嘸效」被讀成「奏效」）
+                # 只有長輩自己看得出來，而這張卡正好是他必須回應的一則。
+                {
+                    "type": "text",
+                    "text": f"{_ASK_CHANNEL_SEEN}{headline}",
+                    "size": ft.caption,
+                    "color": theme.TEXT_MUTED,
+                    "wrap": True,
+                },
+            ],
+        },
+    }
+    payload = {
+        "type": "flex",
+        "altText": f"{_ASK_CHANNEL_HEADER}{headline}",
+        "contents": bubble,
+        "speechText": _ASK_CHANNEL_HEADER,
         "quickReply": {
             "items": [
                 {
@@ -112,10 +178,22 @@ def _ask_channel_payload(preferred: Sequence[str]) -> dict:
                         "text": f"這則新聞是{channel}",
                     },
                 }
-                for channel in channels
+                for channel in _ask_channel_channels(preferred)
             ]
         },
     }
+    return json.dumps(payload, ensure_ascii=False)
+
+
+@tool
+async def ask_tv_news_channel(headline: str) -> str:
+    """電視新聞畫面認不出是哪一台時呼叫，先問使用者是哪一台，**先不要查核**。
+
+    `headline` 填畫面上的主標題原文。使用者回答之後，由 `verify_tv_news`
+    帶著台別查核並找原始報導。
+    """
+    logger.info("stage=tv_news_ask_channel")
+    return _ask_channel_flex(headline, await _preferred_channels())
 
 
 @tool
@@ -142,39 +220,10 @@ async def verify_tv_news(headline: str, channel: str = "") -> str:
 
     await _remember_channel(channel)
 
-    extra: Optional[dict] = None
-    if article is None and channel not in CHANNEL_DOMAINS:
-        extra = _ask_channel_payload(preferred)
-
     logger.info(
-        "stage=tv_news_verify channel=%s matched=%s article=%s ask_channel=%s",
+        "stage=tv_news_verify channel=%s matched=%s article=%s",
         channel or "-",
         result.matched,
         bool(article),
-        bool(extra),
     )
-    rendered = render_verification(result, article, extra)
-    # 退回純文字時頂層鍵沒地方放，該問的話要寫進文字裡（見 render_verification）。
-    if extra is not None and not rendered.lstrip().startswith("{"):
-        rendered = f"{rendered}\n\n{_ASK_CHANNEL_TEXT}"
-    return rendered
-
-
-@tool
-async def find_tv_news_article(headline: str, channel: str) -> str:
-    """使用者回答電視新聞是哪一台之後呼叫，找出那則新聞的原始報導。
-
-    `headline` 填先前那張電視畫面的新聞標題原文，`channel` 填使用者說的
-    電視台名稱。這支只找連結、不重做查核——查核結果上一則訊息已經給過了。
-    """
-    await _remember_channel(channel)
-    article = await _find_article(headline, channel, await _preferred_channels())
-    logger.info(
-        "stage=tv_news_article_followup channel=%s found=%s", channel or "-", bool(article)
-    )
-    if article is None:
-        # 說清楚是「找不到」而不是「不能給」：多數情況是電視台根本沒把這則
-        # 放上網（實測 35 則裡有 20 則），長輩再拍一次也不會出現。
-        return f"我找不到{channel}這則新聞的網路版，可能電視台沒有把它放上網站。"
-    kind = "影片" if article.is_video else "報導"
-    return f"找到了，這是{channel}的原始{kind}：\n{article.title}\n{article.url}"
+    return render_verification(result, article)

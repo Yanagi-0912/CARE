@@ -154,47 +154,6 @@ def _quick_reply_texts(payload: dict) -> list[str]:
 
 
 @pytest.mark.asyncio
-async def test_找不到又認不出台別時回問是哪一台_常看的排前面():
-    claim_tools.configure_claim_tool(_Service())
-    tv_news_tools.configure_tv_news_tool(_Finder(None), _Memory(["民視", "公視"]))
-
-    payload = json.loads(await tv_news_tools.verify_tv_news.ainvoke({"headline": HEADLINE, "channel": ""}))
-    texts = _quick_reply_texts(payload)
-    assert texts[:2] == ["這則新聞是民視", "這則新聞是公視"]
-    assert len(texts) == 5  # 不足的用常見台別補滿，不是整排十三台
-    assert "哪一台" in payload["followUpText"]
-
-
-@pytest.mark.asyncio
-async def test_找到了就不回問():
-    """已經解決的問題不要再丟回去問長輩。"""
-    claim_tools.configure_claim_tool(_Service())
-    tv_news_tools.configure_tv_news_tool(_Finder(ARTICLE), _Memory())
-    payload = json.loads(await tv_news_tools.verify_tv_news.ainvoke({"headline": HEADLINE, "channel": ""}))
-    assert "quickReply" not in payload
-
-
-@pytest.mark.asyncio
-async def test_台別認得出來就不回問_而且記起來():
-    claim_tools.configure_claim_tool(_Service())
-    memory = _Memory()
-    tv_news_tools.configure_tv_news_tool(_Finder(None), memory)
-    payload = json.loads(await tv_news_tools.verify_tv_news.ainvoke({"headline": HEADLINE, "channel": "TVBS"}))
-    assert "quickReply" not in payload
-    assert [ch for _, ch in memory.remembered] == ["TVBS"]
-
-
-@pytest.mark.asyncio
-async def test_猜不出來的台別不記():
-    """記錯一次會一路影響之後每一次比對的門檻。"""
-    claim_tools.configure_claim_tool(_Service())
-    memory = _Memory()
-    tv_news_tools.configure_tv_news_tool(_Finder(None), memory)
-    await tv_news_tools.verify_tv_news.ainvoke({"headline": HEADLINE, "channel": ""})
-    assert memory.remembered == []
-
-
-@pytest.mark.asyncio
 async def test_常看的台別會傳給搜尋():
     claim_tools.configure_claim_tool(_Service())
     finder = _Finder(None)
@@ -204,21 +163,47 @@ async def test_常看的台別會傳給搜尋():
 
 
 @pytest.mark.asyncio
-async def test_使用者回答台別後只找連結不重做查核():
+async def test_認不出台別時的問句卡_常看的排前面且附上讀到的標題():
+    """長輩看得到我們讀到的標題，才發現得了罕見字被讀錯（「嘸效」→「奏效」）。"""
+    claim_tools.configure_claim_tool(_Service())
+    tv_news_tools.configure_tv_news_tool(_Finder(None), _Memory(["民視", "公視"]))
+
+    payload = json.loads(await tv_news_tools.ask_tv_news_channel.ainvoke({"headline": HEADLINE}))
+    texts = _quick_reply_texts(payload)
+    assert texts[:2] == ["這則新聞是民視", "這則新聞是公視"]
+    assert len(texts) == 5  # 不足的用常見台別補滿，不是整排十三台
+    assert HEADLINE in json.dumps(payload, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
+async def test_問台別時不做查核也不搜新聞():
+    """James 拍板：認不出台別就先不要回答，問到了才查。"""
     service = _Service()
     claim_tools.configure_claim_tool(service)
-    memory = _Memory()
-    tv_news_tools.configure_tv_news_tool(_Finder(ARTICLE), memory)
+    finder = _Finder(ARTICLE)
+    tv_news_tools.configure_tv_news_tool(finder, _Memory())
 
-    reply = await tv_news_tools.find_tv_news_article.ainvoke({"headline": HEADLINE, "channel": "TVBS"})
-    assert "https://news.tvbs.com.tw/a/1" in reply
-    assert service.queries == []  # 判定上一則訊息已經給過了
+    await tv_news_tools.ask_tv_news_channel.ainvoke({"headline": HEADLINE})
+    assert service.queries == []
+    assert finder.calls == []
+
+
+@pytest.mark.asyncio
+async def test_台別確定就記起來_猜不出來的不記():
+    """記錯一次會一路影響之後每一次比對的門檻。"""
+    claim_tools.configure_claim_tool(_Service())
+    memory = _Memory()
+    tv_news_tools.configure_tv_news_tool(_Finder(None), memory)
+
+    await tv_news_tools.verify_tv_news.ainvoke({"headline": HEADLINE, "channel": "TVBS"})
+    await tv_news_tools.verify_tv_news.ainvoke({"headline": HEADLINE, "channel": ""})
     assert [ch for _, ch in memory.remembered] == ["TVBS"]
 
 
 @pytest.mark.asyncio
-async def test_回答台別後仍找不到_說清楚是電視台沒放上網():
+async def test_常看的台別會傳給搜尋():
     claim_tools.configure_claim_tool(_Service())
-    tv_news_tools.configure_tv_news_tool(_Finder(None), _Memory())
-    reply = await tv_news_tools.find_tv_news_article.ainvoke({"headline": HEADLINE, "channel": "民視"})
-    assert "找不到" in reply and "沒有把它放上網站" in reply
+    finder = _Finder(None)
+    tv_news_tools.configure_tv_news_tool(finder, _Memory(["三立"]))
+    await tv_news_tools.verify_tv_news.ainvoke({"headline": HEADLINE, "channel": "TVBS"})
+    assert finder.calls == [(HEADLINE, "TVBS", ("三立",))]

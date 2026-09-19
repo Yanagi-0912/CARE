@@ -32,7 +32,7 @@ def _tools_factory(
         "answer_from_uploaded_document",
         "verify_claim",
         "verify_tv_news",
-        "find_tv_news_article",
+        "ask_tv_news_channel",
     ),
 ):
     def _mock_tools(include_rag_tool: bool = False):
@@ -101,11 +101,24 @@ async def test_沒有電視新聞工具時退回一般查核(monkeypatch, llm):
 
 
 @pytest.mark.asyncio
-async def test_認不出台別時台別留空(monkeypatch, llm):
-    """n8n 認不出台別時整行不會出現；留空讓工具只做查核、不找新聞。"""
-    text = f"{MEDIA_PREFIX}\n【電視新聞畫面】\n新聞標題：維他命添色素‧影響智力"
-    result = await _run(monkeypatch, llm, _state(text))
+async def test_認不出台別時先問是哪一台_先不查核(monkeypatch, llm):
+    """James 拍板：問到台別才查得準、也才找得到原始報導，一次給完整答案。"""
+    result = await _run(monkeypatch, llm, _state(TV_NEWS_NO_CHANNEL))
     (call,) = result["messages"][0].tool_calls
+    assert call["name"] == "ask_tv_news_channel"
+    assert call["args"] == {"headline": "維他命添色素‧影響智力"}
+
+
+@pytest.mark.asyncio
+async def test_沒有問台別的工具時退回直接查核(monkeypatch, llm):
+    result = await _run(
+        monkeypatch,
+        llm,
+        _state(TV_NEWS_NO_CHANNEL),
+        tools=_tools_factory(rag_names=("get_rag_answer", "verify_claim", "verify_tv_news")),
+    )
+    (call,) = result["messages"][0].tool_calls
+    assert call["name"] == "verify_tv_news"
     assert call["args"] == {"headline": "維他命添色素‧影響智力", "channel": ""}
 
 
@@ -160,7 +173,7 @@ async def test_一般圖片不受影響(monkeypatch, llm):
 
 
 @pytest.mark.asyncio
-async def test_使用者回答是哪一台就去找那則報導(monkeypatch, llm):
+async def test_使用者回答是哪一台之後才查核(monkeypatch, llm):
     """回問台別之後，長輩只會回兩個字；交給模型判斷它會把台名當成健康問題去查。"""
     state = {
         "messages": [
@@ -173,7 +186,7 @@ async def test_使用者回答是哪一台就去找那則報導(monkeypatch, llm
     }
     result = await _run(monkeypatch, llm, state)
     (call,) = result["messages"][0].tool_calls
-    assert call["name"] == "find_tv_news_article"
+    assert call["name"] == "verify_tv_news"
     assert call["args"] == {"headline": "維他命添色素‧影響智力", "channel": "民視"}
     llm.bind_tools.return_value.ainvoke.assert_not_awaited()
 
@@ -186,7 +199,7 @@ async def test_長輩自己打台名也認得(monkeypatch, llm):
         "user_profile": None,
     }
     (call,) = (await _run(monkeypatch, llm, state))["messages"][0].tool_calls
-    assert call["name"] == "find_tv_news_article"
+    assert call["name"] == "verify_tv_news"
 
 
 @pytest.mark.asyncio
@@ -196,7 +209,7 @@ async def test_沒有前一張電視畫面時不接(monkeypatch, llm):
     result = await _run(monkeypatch, llm, state)
     calls = getattr(result["messages"][0], "tool_calls", None) or []
     # 落回既有行為（模型沒選工具就強制轉知識庫），不會被當成在回答台別
-    assert all(call["name"] != "find_tv_news_article" for call in calls)
+    assert all(call["name"] != "verify_tv_news" for call in calls)
 
 
 @pytest.mark.asyncio
@@ -212,4 +225,4 @@ async def test_帶內容的句子照常走查核而不是當成回答台別(monk
         "user_profile": None,
     }
     (call,) = (await _run(monkeypatch, llm, state))["messages"][0].tool_calls
-    assert call["name"] != "find_tv_news_article"
+    assert call["name"] != "verify_tv_news"

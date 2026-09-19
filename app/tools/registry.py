@@ -12,7 +12,7 @@ from app.tools.rag_tools import get_rag_answer
 from app.tools.share_tools import share_care
 from app.tools.symptom_tools import suggest_department_for_symptom
 from app.tools.tv_news_tools import (
-    find_tv_news_article,
+    ask_tv_news_channel,
     is_tv_news_tool_configured,
     verify_tv_news,
 )
@@ -50,6 +50,6 @@ def get_all_tools(include_rag_tool: bool = True) -> list:
         # 電視新聞畫面專用的查核（判定卡多一顆「看新聞原文」）。與
         # verify_claim 同一道開關，因為它們用的是同一個查核服務。
         if is_tv_news_tool_configured():
-            tools.extend([verify_tv_news, find_tv_news_article])
+            tools.extend([verify_tv_news, ask_tv_news_channel])
 
     return tools

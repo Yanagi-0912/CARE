@@ -723,15 +723,16 @@ def _can_send_original_text_to_rag(state: State, tool_names: list[str], user_tex
 def _tv_news_channel_followup(
     state: State, tool_names: list[str], user_text: str
 ) -> AIMessage | None:
-    """上一張電視新聞畫面認不出台別、這一句在回答是哪一台 → 直接去找原始報導。
+    """上一張電視新聞畫面認不出台別、這一句在回答是哪一台 → 這時才查核。
+
+    認不出台別時我們先問、不查（見 `_tv_news_claim_call`），所以這一步是那則
+    新聞的第一次查核，帶著台別一起做，判定與原始報導連結一次給完。
 
     為什麼要決定性地送：這句話只有兩個字（「民視」），交給模型判斷等於讓它猜
     上下文，而它猜錯的方式是把台名當成一個健康問題送去查知識庫。這裡的條件
     夠窄——上一輪必須真的有電視新聞畫面——所以可以直接接。
-
-    不重做查核：判定上一則訊息已經給過了，使用者現在缺的只有連結。
     """
-    if "find_tv_news_article" not in tool_names:
+    if "verify_tv_news" not in tool_names:
         return None
     if any(isinstance(m, ToolMessage) for m in state["messages"]):
         return None
@@ -746,7 +747,7 @@ def _tv_news_channel_followup(
         content="",
         tool_calls=[
             {
-                "name": "find_tv_news_article",
+                "name": "verify_tv_news",
                 "args": {"headline": headline, "channel": channel},
                 "id": "tv_news_followup_1",
                 "type": "tool_call",
@@ -783,9 +784,25 @@ def _tv_news_claim_call(
         return None
     # verify_tv_news 的判定卡會多一顆「看新聞原文」：長輩拍畫面就是為了那則
     # 新聞，查核報告與衛教文章都回答不了「我看到的那則在哪裡」。
+    channel = _tv_news_channel(user_text)
+    # 認不出台別就先問、先不查（2026-09-19 James 拍板）：問到台別才查得準，
+    # 也才找得到原始報導，一次給完整的答案。代價是長輩不回答就不會有判定。
+    if not channel and "ask_tv_news_channel" in tool_names:
+        log_stage(logger, "tv_news_claim", tool="ask_tv_news_channel")
+        return AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "ask_tv_news_channel",
+                    "args": {"headline": claim},
+                    "id": "tv_news_ask_1",
+                    "type": "tool_call",
+                }
+            ],
+        )
     if "verify_tv_news" in tool_names:
         name, call_id = "verify_tv_news", "tv_news_verify_1"
-        args = {"headline": claim, "channel": _tv_news_channel(user_text)}
+        args = {"headline": claim, "channel": channel}
     elif "verify_claim" in tool_names:
         name, call_id = "verify_claim", "tv_news_claim_1"
         args = {"query": claim}

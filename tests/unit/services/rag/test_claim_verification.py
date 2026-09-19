@@ -10,6 +10,8 @@ from unittest.mock import AsyncMock
 import pytest
 from langchain_core.documents import Document
 
+from app.core.rag_sources import SourceRef
+
 from app.services.rag.claim_verification.matcher import ClaimMatch
 from app.services.rag.claim_verification.service import (
     NOT_ENOUGH_EVIDENCE,
@@ -85,6 +87,7 @@ def _make_service(
     claim: str = _NORMALIZED_CLAIM,
     invoke_reasoning: AsyncMock | None = None,
     related_retriever: object | None = None,
+    related_answer: object | None = None,
     identity_verifier: object | None = None,
 ) -> ClaimVerificationService:
     return ClaimVerificationService(
@@ -92,6 +95,7 @@ def _make_service(
         _StaticMatcher(match),
         invoke_reasoning=invoke_reasoning,
         related_retriever=related_retriever,
+        related_answer=related_answer,
         identity_verifier=identity_verifier,
     )
 
@@ -944,3 +948,54 @@ async def test_rejected_pair_is_available_at_debug_level(caplog):
     assert len(details) == 1
     assert _USER_TEXT in details[0]
     assert match.title in details[0]
+
+
+class _RelatedAnswer:
+    """未命中時產生那段參考資訊的 RAG 路徑替身。"""
+
+    def __init__(self, text: str = "", sources=(), exc: Exception | None = None):
+        self.text, self.sources, self.exc = text, tuple(sources), exc
+        self.calls: list[str] = []
+
+    async def __call__(self, claim: str):
+        self.calls.append(claim)
+        if self.exc:
+            raise self.exc
+        return self.text, self.sources
+
+
+@pytest.mark.asyncio
+async def test_未命中時的參考資訊改用rag生成而不是貼原始片段():
+    """原始片段是知識庫文章本文，裡面本來就有一堆網址，整段貼上就照樣出現。"""
+    docs = [Document(page_content="原始片段 http://example.com/a 還有 http://example.com/b")]
+    answer = _RelatedAnswer(
+        text="咖啡與骨質疏鬆沒有直接因果關係[1]。",
+        sources=(SourceRef(index=1, label="國健署", url="https://hpa.gov.tw/x"),),
+    )
+    service = _make_service(
+        match=None, related_retriever=_StaticRelatedRetriever(docs), related_answer=answer
+    )
+
+    result = await service.verify("網傳喝咖啡會導致骨質疏鬆？")
+
+    assert result.related_info == "咖啡與骨質疏鬆沒有直接因果關係[1]。"
+    assert "http://example.com" not in result.related_info
+    assert [s.label for s in result.related_sources] == ["國健署"]
+    assert answer.calls  # 送去生成的是正規化後的主張
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "answer",
+    [_RelatedAnswer(text="   "), _RelatedAnswer(exc=RuntimeError("RAG 掛了"))],
+)
+async def test_rag生成不出東西時退回原始片段(answer):
+    """有東西可看仍然勝過只有一句「證據不足」。"""
+    docs = [Document(page_content="鈣質攝取與骨密度的關聯衛教資訊。")]
+    service = _make_service(
+        match=None, related_retriever=_StaticRelatedRetriever(docs), related_answer=answer
+    )
+
+    result = await service.verify("網傳喝咖啡會導致骨質疏鬆？")
+
+    assert "鈣質攝取與骨密度" in result.related_info

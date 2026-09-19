@@ -173,6 +173,9 @@ from app.services.medical_news.index_service import DrugNewsIndexService
 from app.services.medical_news.kb_digest_service import KbDigestService
 from app.services.medical_news.share_service import MedicalNewsShareService
 from app.services.users.user_profile_service import UserProfileService
+from app.core.rag_sources import SourceRef, get_request_rag_sources
+from app.i18n.messages import strip_rag_prefix, strip_sources_section
+from app.services.rag.fail_messages import is_rag_fail
 from app.services.media.tv_news_channels import TvNewsChannelMemory
 from app.services.media.tv_news_lookup import TvNewsArticleFinder
 from app.tools.claim_tools import configure_claim_tool
@@ -541,11 +544,29 @@ if settings.CLAIM_VERIFICATION_ENABLED:
     _claim_identity_verifier = GeminiClaimIdentityVerifier(
         gemini_service=_gemini_service
     )
+    async def _claim_related_answer(claim: str) -> tuple[str, tuple[SourceRef, ...]]:
+        """未命中時那段「相關衛教資訊」改由 RAG 生成，而不是貼原始片段。
+
+        2026-09-19 James 指出卡片上「貼了一堆連結」：那是知識庫文章的原文
+        整段貼上（本文本來就含網址），而且沒有經過任何生成——與命中側 LLM
+        潤過的白話理由不是同一個水準。走 RAG 就與一般衛教問答同一條路：
+        生成的答案＋結構化來源，來源以按鈕呈現、不再混在文字裡。
+
+        代價是這張卡要多等一次 RAG（知識庫路徑線上中位數約 8 秒）。查無資料
+        （`is_rag_fail`）就回空字串，讓上游退回原始片段。
+        """
+        answer = await _rag_answer_service.answer(claim)
+        if is_rag_fail(answer):
+            return "", ()
+        text = strip_sources_section(strip_rag_prefix(answer)).strip()
+        return text, get_request_rag_sources()
+
     _claim_verification_service = ClaimVerificationService(
         normalizer=GeminiClaimNormalizer(gemini_service=_gemini_service),
         matcher=_claim_matcher,
         gemini_service=_gemini_service,
         related_retriever=_rag_retriever,
+        related_answer=_claim_related_answer,
         identity_verifier=_claim_identity_verifier,
     )
     configure_claim_tool(_claim_verification_service)

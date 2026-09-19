@@ -45,7 +45,7 @@ NOT_ENOUGH_EVIDENCE_SLUG = "not-enough-evidence"
 # 未命中時的固定理由：只說明「TFC 沒查過」這個事實，不得讀起來像任何判定推論。
 _NO_MATCH_REASONING = (
     "台灣事實查核中心目前沒有針對這則說法的查核報告，因此無法給出判定。"
-    "以下提供資料庫中相關的衛教資訊供參考，其內容並非本次說法的查核依據。"
+    "以下是衛教資料庫查到的相關說明，供你參考，並不是這則說法的查核結論。"
 )
 
 # 理由改寫失敗（例外、空回應）時的中性 fallback。刻意不是報告原文的摘要：
@@ -145,6 +145,7 @@ class ClaimVerificationService:
         *,
         invoke_reasoning: Callable[[str], Awaitable[str]] | None = None,
         related_retriever: RelatedInfoRetriever | None = None,
+        related_answer: "Callable[[str], Awaitable[tuple[str, tuple[SourceRef, ...]]]] | None" = None,
         identity_verifier: ClaimIdentityVerifier | None = None,
     ) -> None:
         self._normalizer = normalizer
@@ -152,6 +153,14 @@ class ClaimVerificationService:
         self._gemini = gemini_service
         self._invoke_reasoning = invoke_reasoning
         self._related_retriever = related_retriever
+        # 未命中時那段「相關衛教資訊」由誰產生。
+        #
+        # 有注入就走它（正式環境接的是 RAG 的答案生成，見 dependencies.py）；
+        # 沒注入才退回 `_fetch_related_info` 的原始片段。2026-09-19 James 指出
+        # 卡片上「貼了一堆連結」——那就是原始片段：知識庫文章本文含網址，整段
+        # 貼上去就照樣出現，而且沒有經過任何生成，與命中側「LLM 潤成白話理由」
+        # 的標準不一致。
+        self._related_answer = related_answer
         # None 時跳過同一性驗證、直接採用比對命中（向後相容既有行為與既有
         # 測試）。正式環境 SHALL NOT 省略這個參數：dependencies.py 必須實際
         # 注入已配置好的驗證器，否則向量誤配（design.md 決策 9 量到的 65%）
@@ -227,7 +236,7 @@ class ClaimVerificationService:
                 else "no_match"
             )
             obs["verdict"] = NOT_ENOUGH_EVIDENCE_SLUG
-            related_info, related_sources = await self._fetch_related_info(claim)
+            related_info, related_sources = await self._related_information(claim)
             obs["related"] = len(related_sources)
             return VerificationResult(
                 user_question=user_text,
@@ -330,6 +339,23 @@ class ClaimVerificationService:
         # str(content) 會把 Python repr 印進理由段，改用與
         # app/services/agent/agent.py 共用的攤平邏輯（次要 finding 1）。
         return content_to_text(result.content)
+
+    async def _related_information(
+        self, claim: str
+    ) -> tuple[str, tuple[SourceRef, ...]]:
+        """未命中時的那段參考資訊：優先用 RAG 生成的答案，退回原始片段。
+
+        RAG 那條路失敗（沒注入、逾時、查無資料）就退回 `_fetch_related_info`，
+        不是留白：有東西可看仍然勝過只有一句「證據不足」。
+        """
+        if self._related_answer is not None:
+            try:
+                text, sources = await self._related_answer(claim)
+                if text.strip():
+                    return text.strip(), tuple(sources)
+            except Exception:  # noqa: BLE001 - 同 _fetch_related_info 的 fail-open
+                logger.warning("相關衛教資訊改用 RAG 生成時失敗，退回原始片段", exc_info=True)
+        return await self._fetch_related_info(claim)
 
     async def _fetch_related_info(
         self, claim: str

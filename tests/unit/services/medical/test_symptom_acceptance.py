@@ -403,7 +403,7 @@ async def test_T18_unknown_or_invalid_age_is_treated_as_adult(table, age):
 
 @pytest.mark.asyncio
 async def test_T18_parent_mentioning_a_child_keeps_pediatrics(table):
-    result = await _suggest(table, "生長發育遲緩", None, text="我兒子發育比較慢要看哪一科")
+    result = await _suggest(table, "生長發育遲緩", None, text="我家寶寶發育比較慢要看哪一科")
     assert result.kind == RESULT_SUGGESTION
     assert [c.canonical for c in result.candidates] == ["兒科"]
 
@@ -442,6 +442,19 @@ async def test_T19_five_candidates_are_all_suggested(tmp_path):
     result = await _suggest(_table_with_candidates(tmp_path, _FIVE), "多科症狀", 40)
     assert result.kind == RESULT_SUGGESTION
     assert [c.canonical for c in result.candidates] == _FIVE
+
+
+@pytest.mark.asyncio
+async def test_T19_headache_no_longer_falls_back(table):
+    """精神科的泛稱頭痛不收後，成人過濾兒科即可得到四個有效候選。"""
+    result = await _suggest(table, "頭痛", 40)
+    assert result.kind == RESULT_SUGGESTION
+    assert [c.canonical for c in result.candidates] == [
+        "神經科",
+        "內科",
+        "中醫一般科",
+        "家醫科",
+    ]
 
 
 @pytest.mark.asyncio
@@ -685,8 +698,8 @@ UNDER_AGE_NOTE = "因為你還未滿 15 歲，另外列出兒科。"
     [
         (8, "要看哪一科", "age"),
         (14, "要看哪一科", "age"),
-        (None, "我兒子全身不舒服要看哪一科", "mentioned_child"),
-        (40, "我女兒全身不舒服要看哪一科", "mentioned_child"),
+        (None, "我家寶寶全身不舒服要看哪一科", "mentioned_child"),
+        (40, "寶寶全身不舒服要看哪一科", "mentioned_child"),
     ],
 )
 async def test_T29_child_fallback_lists_pediatrics_first(table, age, text, reason):
@@ -715,8 +728,8 @@ async def test_T31_child_with_too_many_candidates_gets_pediatrics(tmp_path):
 
 @pytest.mark.asyncio
 async def test_T32_child_asking_about_another_child_is_worded_for_that_child(table):
-    """12 歲使用者問妹妹：要看病的是被提到的孩子，不是使用者本人。"""
-    result = await _suggest(table, None, 12, text="我家妹妹全身不舒服要看哪一科")
+    """12 歲使用者問寶寶：要看病的是被提到的孩子，不是使用者本人。"""
+    result = await _suggest(table, None, 12, text="我家寶寶全身不舒服要看哪一科")
     assert result.pediatric_reason == "mentioned_child"
 
 
@@ -724,7 +737,7 @@ async def test_T32_child_asking_about_another_child_is_worded_for_that_child(tab
 @pytest.mark.parametrize(
     ("age", "text", "expected_note"),
     [
-        (None, "我兒子全身不舒服要看哪一科", CHILD_NOTE),
+        (None, "我家寶寶全身不舒服要看哪一科", CHILD_NOTE),
         (8, "要看哪一科", UNDER_AGE_NOTE),
         (40, "要看哪一科", None),
     ],

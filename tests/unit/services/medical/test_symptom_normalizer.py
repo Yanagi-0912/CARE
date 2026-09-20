@@ -21,20 +21,29 @@ from app.services.medical.symptom_classification.normalizer import mentions_chil
 # --- 孩童指涉偵測 ------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "text",
-    ["小孩發燒", "我兒子肚子痛", "女兒一直咳", "寶寶不吃東西", "孫子發燒", "幼兒腹瀉"],
-)
+@pytest.mark.parametrize("text", ["寶寶不吃東西", "我家寶寶發燒"])
 def test_child_reference_is_detected(text):
     assert mentions_child(text) is True
 
 
 @pytest.mark.parametrize(
     "text",
-    ["我肚子好痛", "頭痛要掛哪一科", "我阿公中風了", "", "發燒"],
+    [
+        "我肚子好痛",
+        "頭痛要掛哪一科",
+        "我阿公中風了",
+        "小孩發燒",
+        "我兒子肚子痛",
+        "女兒一直咳",
+        "孫子發燒",
+        "幼兒腹瀉",
+        "我家妹妹不舒服",
+        "",
+        "發燒",
+    ],
 )
 def test_adult_or_elder_text_is_not_a_child_reference(text):
-    """阿公、阿嬤不是孩童指涉——把長輩誤判成孩童會給出兒科建議。"""
+    """親屬稱謂不代表年齡，不能據此加入兒科建議。"""
     assert mentions_child(text) is False
 
 

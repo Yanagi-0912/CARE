@@ -1,5 +1,5 @@
 {
-  "version": 9,
+  "version": 10,
   "status": "verified",
   "generated_at": "2026-09-20",
   "purpose": "症狀／科別對照的彙整參考。由多家醫院公開的就醫病症對照表整併，科別一律已轉換為 medicalFacilities.departments 實際存在的值，可直接供 find_nearby_facilities_by_department 使用。",
@@ -8151,14 +8151,6 @@
           "kind": "symptom",
           "sources": [
             "AFGH_KH"
-          ]
-        },
-        {
-          "term": "頭痛",
-          "kind": "symptom",
-          "sources": [
-            "AFGH_KH",
-            "AFGH_TY"
           ]
         },
         {

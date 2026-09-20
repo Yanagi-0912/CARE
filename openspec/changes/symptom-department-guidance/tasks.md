@@ -104,3 +104,14 @@
 - [x] 9.14 `FALLBACK_DEPARTMENTS` 改為（家醫科、內科、不分科），見 design 決策 6
 - [x] 9.15 實作前行為快照：全表 392 個條目 × {40 歲, 8 歲} 的輸出存於 `baseline_snapshot.json`，實作後供 acceptance K2 比對（2026-09-11；K2 通過後已刪除）
 - [x] 9.16 `tests/unit/services/medical/test_symptom_acceptance.py`：acceptance H 節的檢核清單。實作前 52 紅、18 綠，紅綠分布與失敗原因皆符合 H 節；實作後 70 個全數通過，K3 突變驗證五項皆轉紅（2026-09-12）
+
+## 10. 看診者解析與個人資料套用（規格先行，尚未實作）
+
+- [ ] 10.1 將用藥模組的 `PersonResolution`／`resolve_person` 抽成共用人物解析服務；既有用藥行為與測試 SHALL 維持不變
+- [ ] 10.2 定義不可變 `PatientContext`，區分 `operator` 與 `patient`，並記錄 age／gender 等資料的來源
+- [ ] 10.3 擴充 `suggest_department_for_symptom` 的結構化參數，保留症狀原文並加入 `person`、`relationship`；伺服器端解析實際看診者
+- [ ] 10.4 已連結家人的 profile 一律經 `FamilyAuthorizationService` 的 `SENSITIVE READ`；`is_care_recipient` 與外部傳入 id 不構成授權
+- [ ] 10.5 兒科判斷改讀 `PatientContext.age`；本輪明示年齡優先，只有「寶寶」可在年齡未知時作為孩童提示，子女稱謂不得推導年齡
+- [ ] 10.6 人物解析為 `ambiguous` 時產生反問，不呼叫症狀對照表；`not_found` 或未授權時只採本輪明示資料
+- [ ] 10.7 加入本人、唯一家人、同關係多人、未連結他人、無權限、明示年齡覆寫及配偶生產情境的單元與端到端測試
+- [ ] 10.8 移除症狀路徑對「發話者年齡」ContextVar 的依賴；不得以新增平行 gender ContextVar 取代 `PatientContext`

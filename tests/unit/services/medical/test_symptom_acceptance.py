@@ -749,3 +749,21 @@ async def test_T33_fallback_card_explains_why_pediatrics_is_listed(
     for note in (CHILD_NOTE, UNDER_AGE_NOTE):
         shown = any(note in text for text in texts)
         assert shown is (note == expected_note), note
+
+
+@pytest.mark.parametrize(
+    ("term", "expected"),
+    [
+        ("背痛", ["家醫科", "復健科", "骨科", "神經外科"]),
+        ("腰痛", ["家醫科", "復健科", "骨科", "神經外科"]),
+    ],
+)
+def test_T34_context_free_back_pain_does_not_force_specialty(table, term, expected):
+    assert [candidate.canonical for candidate in table.lookup(term).candidates] == expected
+
+
+def test_T35_gum_bleeding_does_not_force_hematology(table):
+    assert table.lookup("牙齦出血") is None
+    assert [
+        candidate.canonical for candidate in table.lookup("刷牙出血").candidates
+    ] == ["牙科"]

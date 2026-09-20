@@ -16,6 +16,7 @@
 - **新增 Agent tool `suggest_department_for_symptom`**：與 `get_rag_answer` 並列，處理「症狀 + 問科別」的問句。純症狀敘述（「我肚子好痛」）不含掛號意圖者行為不變，仍走 `get_rag_answer`。
 - **新增 `UrgencyClassifier`**：語意急迫度判斷，判準為「所述狀況是否正在發生、且是否需要立即處置」。**掛在 graph 上 `agent` 之前**，判定為緊急時短路整條流程，不進 agent、不跑 RAG、不呼叫任何工具。與掛號意圖、症狀描述、工具呼叫皆無關（design 決策 1、2）。
 - **新增 `SymptomDepartmentService`**：三段流程——症狀詞正規化 → 對照表比對 → 產生候選科別建議。本服務不做急迫度判斷（design 決策 3）。
+- **區分發話者與看診者**：科別建議 SHALL 先辨識症狀屬於本人、已連結家人或未連結的他人，再決定可使用哪一份年齡與健康資料。未指明對象時預設本人；對象不明或同一關係對到多人時反問，不猜測。跨使用者資料沿用家庭授權，`is_care_recipient` 不構成授權（design 決策 16）。
 - **新增人工審定的症狀對照表**：`resources/symptom_department_table/`。原料是來源醫院公開對照表的原文備份（`raw/*.md`），人工整併成 `symptom_department_reference.json`；repo 中沒有爬蟲腳本。表中只收來源所載的對應，不含本專案補列或人工排序（design 決策 14）；審定狀態以整張表的 `status` 表示。
 - **對照表的科別欄位一律先過 `resolve_department()` 轉成部定專科**，載入時驗證，對不上即失敗。否則會產生「系統說查過了但附近沒有」——`llm_term_resolver.py` 模組註解指出這比「系統看不懂」更糟。
 - **輸出一律為多候選 + 保底 + 免責**，並可直接銜接既有的 `find_nearby_facilities_by_department`。

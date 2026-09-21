@@ -174,6 +174,61 @@ async def test_other_setters_do_not_touch_migration_state():
         assert "rbac_migration_state" not in inspect.getsource(method)
 
 
+@pytest.mark.asyncio
+async def test_set_relationship_only_updates_the_owners_named_member():
+    collection = make_collection()
+
+    await FamilyTreeRepository.set_relationship(
+        OWNER,
+        MEMBER,
+        "parent",
+        collection=collection,
+    )
+
+    query, update = collection.update_one.await_args.args
+    assert query == {"user_id": OWNER, "family_members.user_id": MEMBER}
+    assert update["$set"]["family_members.$.relationship_type"] == "parent"
+    assert set(update["$set"]) == {
+        "family_members.$.relationship_type",
+        "updated_at",
+    }
+
+
+@pytest.mark.asyncio
+async def test_set_relationship_can_clear_without_changing_permissions():
+    collection = make_collection(
+        doc={
+            "user_id": OWNER,
+            "family_members": [
+                {
+                    "user_id": MEMBER,
+                    "relationship_type": None,
+                    "family_role": "GUARDIAN",
+                    "is_care_recipient": True,
+                }
+            ],
+            "rbac_migration_state": "enforced",
+            "created_at": NOW,
+            "updated_at": NOW,
+        }
+    )
+
+    tree = await FamilyTreeRepository.set_relationship(
+        OWNER,
+        MEMBER,
+        None,
+        collection=collection,
+    )
+
+    assert tree is not None
+    assert tree.family_members[0].relationship_type is None
+    assert tree.family_members[0].family_role == "GUARDIAN"
+    assert tree.family_members[0].is_care_recipient is True
+    assert tree.rbac_migration_state == "enforced"
+    _, update = collection.update_one.await_args.args
+    assert update["$set"]["family_members.$.relationship_type"] is None
+
+
 # ── 既有文件的相容性（tasks 4.6）────────────────────────────────────
 
 

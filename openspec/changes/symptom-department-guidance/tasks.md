@@ -118,6 +118,7 @@
 - [x] 10.3 **補齊解析契約**：新增 `display_label`／資料來源，實作姓名與關係衝突時回報不一致、外部 id 不構成命中、未連結他人與多人歧義的明確結果；不得在此 task 接入科別或緊急流程（2026-09-21；共用解析、用藥服務與六語文案 613 項全綠）
 - [x] 10.4 **建立資料模型**：定義不可變 `PatientContext` 與值來源 enum，包含 operator、patient kind/id、display label、relationship、age、gender；以純單元測試驗證訊息值高於 profile、profile 高於 unknown（2026-09-21；相關範圍 628 項全綠）
 - [x] 10.5 **授權式 context builder**：唯一家庭成員只有在 `FamilyAuthorizationService` 通過 `SENSITIVE READ` 後才可把 profile 寫入 context；未授權時只保留本輪明示資料，`is_care_recipient` 與外部 id 不得放行（2026-09-21；相關範圍 639 項全綠）
+- [x] 10.5a **稱謂契約收斂**：稱謂是登入者視角下的單向個人標籤；任何已登入使用者皆可設定自己家庭名單中的成員，不自動覆寫反向關係、不接受本人或非成員為目標，且稱謂不得參與健康資料授權；支援以 `null` 清除稱謂（2026-09-21；家庭、路由、repository 與相關用藥範圍 907 項全綠）
 
 ### 10.B 科別推薦接入
 

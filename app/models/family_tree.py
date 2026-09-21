@@ -10,16 +10,17 @@ from app.models.family_authorization import (
     MigrationState,
 )
 
-# 關係類型的反向對照表 User A 設定 → User B 自動取得的反向關係
-REVERSE_RELATIONSHIP: Dict[str, str] = {
-    "parent": "child",
-    "child": "parent",
-    "spouse": "spouse",
-    "sibling": "sibling",
-    "grandparent": "grandchild",
-    "grandchild": "grandparent",
-    "other": "other",
-}
+# 稱謂是「這份族譜的擁有者如何描述該成員」的單向個人標籤，不是兩人共享的
+# 全域關係，也不參與任何授權判定。順序同前端選單，錯誤訊息因此保持穩定。
+FAMILY_RELATIONSHIP_TYPES: tuple[str, ...] = (
+    "parent",
+    "child",
+    "spouse",
+    "sibling",
+    "grandparent",
+    "grandchild",
+    "other",
+)
 
 
 class FamilyMember(BaseModel):
@@ -210,7 +211,8 @@ class AcceptInviteResponse(BaseModel):
 
 class SetRelationshipRequest(BaseModel):
     member_id: str  # 要設定關係的成員的 LINE userId
-    relationship_type: str  # "parent" | "child" | "spouse" | "sibling" | "other"
+    # None 表示清除自己替這位成員設定的稱謂；不會改動對方的族譜。
+    relationship_type: Optional[str]
 
 
 class SetCareRecipientRequest(BaseModel):

@@ -202,7 +202,7 @@ async def test_get_family_tree(service):
 
 
 @pytest.mark.asyncio
-async def test_set_relationship_unidirectional(service):
+async def test_set_relationship_updates_only_the_operators_view(service):
     user_id = "U_ME"
     member_id = "U_INVITER"
     relationship_type = "parent"
@@ -221,6 +221,87 @@ async def test_set_relationship_unidirectional(service):
         
         assert result == mock_tree
         mock_set.assert_called_once_with(user_id, member_id, "parent")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "relationship_type",
+    [
+        "parent",
+        "child",
+        "spouse",
+        "sibling",
+        "grandparent",
+        "grandchild",
+        "other",
+    ],
+)
+async def test_set_relationship_accepts_every_supported_label(
+    service, relationship_type
+):
+    tree = _tree_with("U_ME", ["U_MEMBER"])
+    with patch(
+        "app.repositories.family_tree_repository.FamilyTreeRepository.set_relationship",
+        new_callable=AsyncMock,
+        return_value=tree,
+    ) as mock_set:
+        await service.set_relationship("U_ME", "U_MEMBER", relationship_type)
+
+    mock_set.assert_awaited_once_with("U_ME", "U_MEMBER", relationship_type)
+
+
+@pytest.mark.asyncio
+async def test_set_relationship_accepts_none_to_clear_the_label(service):
+    tree = _tree_with("U_ME", ["U_MEMBER"])
+    with patch(
+        "app.repositories.family_tree_repository.FamilyTreeRepository.set_relationship",
+        new_callable=AsyncMock,
+        return_value=tree,
+    ) as mock_set:
+        result = await service.set_relationship("U_ME", "U_MEMBER", None)
+
+    assert result == tree
+    mock_set.assert_awaited_once_with("U_ME", "U_MEMBER", None)
+
+
+@pytest.mark.asyncio
+async def test_set_relationship_rejects_self_as_the_target(service):
+    with patch(
+        "app.repositories.family_tree_repository.FamilyTreeRepository.set_relationship",
+        new_callable=AsyncMock,
+    ) as mock_set:
+        with pytest.raises(HTTPException) as excinfo:
+            await service.set_relationship("U_ME", "U_ME", "parent")
+
+    assert excinfo.value.status_code == 400
+    mock_set.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_set_relationship_rejects_an_unknown_label(service):
+    with patch(
+        "app.repositories.family_tree_repository.FamilyTreeRepository.set_relationship",
+        new_callable=AsyncMock,
+    ) as mock_set:
+        with pytest.raises(HTTPException) as excinfo:
+            await service.set_relationship("U_ME", "U_MEMBER", "friend")
+
+    assert excinfo.value.status_code == 400
+    mock_set.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_set_relationship_returns_not_found_for_an_unlinked_target(service):
+    with patch(
+        "app.repositories.family_tree_repository.FamilyTreeRepository.set_relationship",
+        new_callable=AsyncMock,
+        return_value=None,
+    ) as mock_set:
+        with pytest.raises(HTTPException) as excinfo:
+            await service.set_relationship("U_ME", "U_STRANGER", "parent")
+
+    assert excinfo.value.status_code == 404
+    mock_set.assert_awaited_once_with("U_ME", "U_STRANGER", "parent")
 
 
 def _tree_with(owner_id: str, member_ids: list[str]) -> FamilyTree:

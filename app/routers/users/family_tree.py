@@ -231,7 +231,11 @@ async def revoke_invite(
     "/relationship",
     response_model=FamilyTree,
     summary="設定成員關係",
-    description="設定目前使用者與其族譜內特定成員之間的關係。",
+    description=(
+        "設定目前使用者視角下，族譜內特定成員與自己的稱謂關係。"
+        "只更新目前使用者自己的族譜，不改動對方資料或任何健康資料權限；"
+        "relationship_type 傳 null 可清除稱謂。"
+    ),
 )
 async def set_relationship(
     req: SetRelationshipRequest,

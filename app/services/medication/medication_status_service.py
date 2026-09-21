@@ -28,6 +28,7 @@ from app.models.medication import (
     ensure_aware_utc,
     to_taipei_hm,
 )
+from app.services.family.person_resolution import PersonResolution, resolve_person
 
 logger = logging.getLogger(__name__)
 
@@ -38,73 +39,6 @@ MAX_DAYS = 7
 
 CONFIRMED_MARK = "✓"
 UNCONFIRMED_MARK = "•"
-
-# 問自己時 prompt 要模型留空；這些是模型仍把第一人稱原樣填進來時的保底。
-_SELF_WORDS = frozenset({"我", "自己", "我自己", "本人", "me", "myself", "i"})
-
-# relationship 由模型填，族譜裡能拿來對人的只有這六種（`other` 對不出是誰）。
-# 英文親屬詞是模型偶爾不照 prompt、直接寫出來的說法。
-_RELATIONSHIP_ALIASES: dict[str, str] = {
-    "parent": "parent", "mother": "parent", "father": "parent", "mom": "parent", "dad": "parent",
-    "child": "child", "son": "child", "daughter": "child",
-    "spouse": "spouse", "husband": "spouse", "wife": "spouse",
-    "sibling": "sibling", "brother": "sibling", "sister": "sibling",
-    "grandparent": "grandparent", "grandmother": "grandparent", "grandfather": "grandparent",
-    "grandma": "grandparent", "grandpa": "grandparent",
-    "grandchild": "grandchild", "grandson": "grandchild", "granddaughter": "grandchild",
-}
-
-
-@dataclass(frozen=True)
-class PersonResolution:
-    kind: Literal["self", "member", "ambiguous", "not_found"]
-    member: Optional[FamilyMember] = None
-    candidates: tuple[FamilyMember, ...] = ()
-
-
-def _normalize(text: Optional[str]) -> str:
-    return "".join((text or "").split()).casefold()
-
-
-def resolve_person(
-    members: Sequence[FamilyMember], *, person: str, relationship: str
-) -> PersonResolution:
-    """把使用者的說法對到名單裡的一位家人：先比名字、再比關係，對到多位就反問。
-
-    名字比對是雙向包含（「美玲」對得到「王美玲」）。關係只到「父／母」這一層，
-    爸媽都在名單裡時分不出來——這時回 ambiguous 讓使用者選，不猜：猜錯就是把
-    另一位家人的用藥講給他聽。
-    """
-    wanted = _normalize(person)
-    relation = _RELATIONSHIP_ALIASES.get(_normalize(relationship))
-    if wanted in _SELF_WORDS or (not wanted and relation is None):
-        return PersonResolution(kind="self")
-
-    if wanted:
-        by_name = [m for m in members if _name_matches(m, wanted)]
-        if by_name:
-            return _pick(by_name, relation)
-    if relation is not None:
-        by_relation = [m for m in members if m.relationship_type == relation]
-        if by_relation:
-            return _pick(by_relation, None)
-    return PersonResolution(kind="not_found")
-
-
-def _name_matches(member: FamilyMember, wanted: str) -> bool:
-    name = _normalize(member.display_name)
-    return bool(name) and (wanted in name or name in wanted)
-
-
-def _pick(candidates: list[FamilyMember], relation: Optional[str]) -> PersonResolution:
-    if len(candidates) > 1 and relation is not None:
-        narrowed = [m for m in candidates if m.relationship_type == relation]
-        if len(narrowed) == 1:
-            candidates = narrowed
-    if len(candidates) == 1:
-        return PersonResolution(kind="member", member=candidates[0])
-    return PersonResolution(kind="ambiguous", candidates=tuple(candidates))
-
 
 # ── 組資料 ──────────────────────────────────────────────────────────
 
@@ -197,6 +131,10 @@ class MedicationStatusService:
             if not members:
                 return t("medstatus.no_family", language)
             resolution = resolve_person(members, person=person, relationship=relationship)
+            if resolution.kind == "conflict":
+                return t("medstatus.conflict", language).format(
+                    query=(person or relationship).strip()
+                )
             if resolution.kind == "ambiguous":
                 return t("medstatus.ambiguous", language).format(
                     names=_names(resolution.candidates, language)

@@ -2398,6 +2398,14 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "มีคนในครอบครัวที่ตรงกันหลายคน: {names} หมายถึงคนไหน",
         "ja": "該当するご家族が複数います：{names}。どなたのことですか？",
     },
+    "medstatus.conflict": {
+        "zh-TW": "「{query}」與您指定的親屬關係不一致。請確認姓名或關係後再問一次。",
+        "en": "“{query}” doesn't match the family relationship you specified. Please check the name or relationship and ask again.",
+        "id": "“{query}” tidak sesuai dengan hubungan keluarga yang Anda sebutkan. Periksa nama atau hubungannya, lalu tanyakan lagi.",
+        "vi": "“{query}” không khớp với quan hệ gia đình bạn đã nêu. Hãy kiểm tra tên hoặc quan hệ rồi hỏi lại.",
+        "th": "“{query}” ไม่ตรงกับความสัมพันธ์ในครอบครัวที่ระบุ โปรดตรวจสอบชื่อหรือความสัมพันธ์แล้วถามอีกครั้ง",
+        "ja": "「{query}」は指定された家族関係と一致しません。名前または関係を確認して、もう一度お尋ねください。",
+    },
     "medstatus.not_found": {
         "zh-TW": "在您的家人名單裡找不到「{query}」。名單上有：{names}。可以直接說名字。",
         "en": "I couldn't find “{query}” in your family list. Your list has: {names}. "

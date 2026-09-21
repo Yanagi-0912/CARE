@@ -105,7 +105,7 @@
 - [x] 9.15 實作前行為快照：全表 392 個條目 × {40 歲, 8 歲} 的輸出存於 `baseline_snapshot.json`，實作後供 acceptance K2 比對（2026-09-11；K2 通過後已刪除）
 - [x] 9.16 `tests/unit/services/medical/test_symptom_acceptance.py`：acceptance H 節的檢核清單。實作前 52 紅、18 綠，紅綠分布與失敗原因皆符合 H 節；實作後 70 個全數通過，K3 突變驗證五項皆轉紅（2026-09-12）
 
-## 10. 看診者解析與個人資料套用（規格先行，尚未實作）
+## 10. 看診者解析與個人資料套用（依相依順序逐步實作）
 
 本節依相依順序逐項實作。每一項 SHALL 是可獨立驗證、可獨立 commit 的變更；前一項測試未
 通過前不得開始下一項。commit 訊息一律使用繁體中文。除明列的整合 task 外，不得順手改變
@@ -113,11 +113,11 @@
 
 ### 10.A 共用人物核心
 
-- [ ] 10.1 **鎖定既有行為**：補齊用藥 `resolve_person` 的特徵測試，涵蓋本人別名、姓名唯一命中、姓名加關係縮小範圍、關係唯一命中、同關係多人、找不到與空白姓名；本 task 只加測試，不搬程式、不改行為
-- [ ] 10.2 **無行為重構**：將 `PersonResolution`、關係別名與 `resolve_person` 搬到共用人物解析模組，用藥服務改為匯入共用實作；10.1 與既有用藥測試結果 SHALL 完全不變
-- [ ] 10.3 **補齊解析契約**：新增 `display_label`／資料來源，實作姓名與關係衝突時回報不一致、外部 id 不構成命中、未連結他人與多人歧義的明確結果；不得在此 task 接入科別或緊急流程
-- [ ] 10.4 **建立資料模型**：定義不可變 `PatientContext` 與值來源 enum，包含 operator、patient kind/id、display label、relationship、age、gender；以純單元測試驗證訊息值高於 profile、profile 高於 unknown
-- [ ] 10.5 **授權式 context builder**：唯一家庭成員只有在 `FamilyAuthorizationService` 通過 `SENSITIVE READ` 後才可把 profile 寫入 context；未授權時只保留本輪明示資料，`is_care_recipient` 與外部 id 不得放行
+- [x] 10.1 **鎖定既有行為**：補齊用藥 `resolve_person` 的特徵測試，涵蓋本人別名、姓名唯一命中、姓名加關係縮小範圍、關係唯一命中、同關係多人、找不到與空白姓名；本 task 只加測試，不搬程式、不改行為（2026-09-21；人物解析 39 項、相關用藥範圍 584 項全綠）
+- [x] 10.2 **無行為重構**：將 `PersonResolution`、關係別名與 `resolve_person` 搬到共用人物解析模組，用藥服務改為匯入共用實作；10.1 與既有用藥測試結果 SHALL 完全不變（2026-09-21；相關用藥範圍 584 項全綠）
+- [x] 10.3 **補齊解析契約**：新增 `display_label`／資料來源，實作姓名與關係衝突時回報不一致、外部 id 不構成命中、未連結他人與多人歧義的明確結果；不得在此 task 接入科別或緊急流程（2026-09-21；共用解析、用藥服務與六語文案 613 項全綠）
+- [x] 10.4 **建立資料模型**：定義不可變 `PatientContext` 與值來源 enum，包含 operator、patient kind/id、display label、relationship、age、gender；以純單元測試驗證訊息值高於 profile、profile 高於 unknown（2026-09-21；相關範圍 628 項全綠）
+- [x] 10.5 **授權式 context builder**：唯一家庭成員只有在 `FamilyAuthorizationService` 通過 `SENSITIVE READ` 後才可把 profile 寫入 context；未授權時只保留本輪明示資料，`is_care_recipient` 與外部 id 不得放行（2026-09-21；相關範圍 639 項全綠）
 
 ### 10.B 科別推薦接入
 

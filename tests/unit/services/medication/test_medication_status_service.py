@@ -382,6 +382,13 @@ async def test_ambiguous_person_is_asked_back_with_names():
     assert text == "您的家人裡有好幾位符合：王美玲、王大明。請問是哪一位？"
 
 
+async def test_conflicting_name_and_relationship_are_asked_back():
+    service, authz = _service(trees={"U_CHILD": _tree("U_CHILD", [MOM])})
+    text = await _ask(service, asker="U_CHILD", person="美玲", relationship="child")
+    assert text == "「美玲」與您指定的親屬關係不一致。請確認姓名或關係後再問一次。"
+    assert authz.calls == []
+
+
 async def test_unknown_person_lists_who_is_in_the_family():
     service, _ = _service(trees={"U_CHILD": _tree("U_CHILD", [MOM, DAD])})
     text = await _ask(service, asker="U_CHILD", person="阿嬤", relationship="grandparent")

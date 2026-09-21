@@ -15,8 +15,13 @@ logger = logging.getLogger(__name__)
 class FamilyDirectoryService:
     """只使用並呈現家庭名單中的姓名與稱謂，不碰健康或授權欄位。"""
 
-    def __init__(self, family_tree_repository: Any) -> None:
+    def __init__(
+        self,
+        family_tree_repository: Any,
+        user_profile_repository: Any | None = None,
+    ) -> None:
         self._trees = family_tree_repository
+        self._profiles = user_profile_repository
 
     async def describe(
         self,
@@ -33,23 +38,34 @@ class FamilyDirectoryService:
             return t("family.directory.error", language)
 
         members = tuple(tree.family_members) if tree is not None else ()
-        if not members:
-            return t("family.directory.empty", language)
-
         relation = relationship.strip().casefold()
         if relation and relation not in FAMILY_RELATIONSHIP_TYPES:
             return t("family.directory.unsupported_relationship", language)
 
         if person.strip():
+            operator_name = await self._get_operator_name(operator_id)
             return self._describe_person(
                 members,
                 person=person,
                 relationship=relation,
+                operator_name=operator_name,
                 language=language,
             )
+        if not members:
+            return t("family.directory.empty", language)
         if relation:
             return self._describe_relationship(members, relation, language)
         return self._describe_all(members, language)
+
+    async def _get_operator_name(self, operator_id: str) -> str:
+        if self._profiles is None:
+            return ""
+        try:
+            return (await self._profiles.get_display_name(operator_id) or "").strip()
+        except Exception as exc:
+            # 本人姓名只是改善查詢語意；讀取失敗時仍可照常查家庭名單。
+            logger.warning("登入者姓名查詢失敗：%s", exc)
+            return ""
 
     def _describe_person(
         self,
@@ -57,6 +73,7 @@ class FamilyDirectoryService:
         *,
         person: str,
         relationship: str,
+        operator_name: str,
         language: str | None,
     ) -> str:
         resolution = resolve_person(
@@ -64,6 +81,21 @@ class FamilyDirectoryService:
             person=person,
             relationship=relationship,
         )
+        if resolution.kind == "self":
+            return self._describe_self(operator_name, language)
+
+        if not relationship and self._same_name(person, operator_name):
+            family_matches = [
+                member
+                for member in members
+                if self._same_name(person, member.display_name or "")
+            ]
+            if family_matches:
+                return t("family.directory.self_ambiguous", language).format(
+                    name=operator_name
+                )
+            return self._describe_self(operator_name, language)
+
         if resolution.kind == "member" and resolution.member is not None:
             name = self._name(resolution.member, language)
             relation = resolution.member.relationship_type
@@ -85,6 +117,20 @@ class FamilyDirectoryService:
                 query=person.strip()
             )
         return t("family.directory.not_found", language).format(query=person.strip())
+
+    @staticmethod
+    def _describe_self(name: str, language: str | None) -> str:
+        if name:
+            return t("family.directory.self", language).format(name=name)
+        return t("family.directory.self_unnamed", language)
+
+    @staticmethod
+    def _same_name(left: str, right: str) -> bool:
+        def normalize(value: str) -> str:
+            return "".join(value.split()).casefold()
+
+        normalized_left = normalize(left)
+        return bool(normalized_left) and normalized_left == normalize(right)
 
     def _describe_relationship(
         self,

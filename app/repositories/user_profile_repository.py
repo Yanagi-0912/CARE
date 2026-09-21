@@ -13,6 +13,22 @@ logger = logging.getLogger(__name__)
 
 class UserProfileRepository:
     @staticmethod
+    async def get_display_name(
+        line_id: str, collection: Optional[Any] = None
+    ) -> Optional[str]:
+        """只讀取使用者姓名，供不需要健康 profile 的身分辨識流程使用。"""
+        if collection is None:
+            collection = MongoDBManager.get_users_collection()
+
+        profile = await collection.find_one(
+            {"line_id": line_id},
+            {"name": 1},
+            sort=[("created_at", 1), ("_id", 1)],
+        )
+        name = (profile or {}).get("name")
+        return name.strip() if isinstance(name, str) and name.strip() else None
+
+    @staticmethod
     async def ensure_indexes(collection: Optional[Any] = None) -> None:
         """`line_id` 的唯一索引。
 

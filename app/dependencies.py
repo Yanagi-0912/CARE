@@ -749,7 +749,10 @@ _medication_status_service = MedicationStatusService(
 )
 configure_medication_status_tool(_medication_status_service)
 
-_family_directory_service = FamilyDirectoryService(FamilyTreeRepository)
+_family_directory_service = FamilyDirectoryService(
+    FamilyTreeRepository,
+    _user_profile_repository,
+)
 configure_family_directory_tool(_family_directory_service)
 
 _safety_alert_service = SafetyAlertService(

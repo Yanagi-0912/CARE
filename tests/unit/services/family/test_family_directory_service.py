@@ -32,6 +32,19 @@ class FakeTrees:
         return self.tree
 
 
+class FakeProfiles:
+    def __init__(self, name=None, error: Exception | None = None):
+        self.name = name
+        self.error = error
+        self.calls = []
+
+    async def get_display_name(self, user_id):
+        self.calls.append(user_id)
+        if self.error:
+            raise self.error
+        return self.name
+
+
 @pytest.mark.asyncio
 async def test_lists_all_members_with_relationships_and_unset_labels():
     trees = FakeTrees(
@@ -84,6 +97,77 @@ async def test_name_query_returns_the_saved_relationship():
     )
 
     text = await FamilyDirectoryService(trees).describe(
+        "U_ME", person="王美玲", language="zh-TW"
+    )
+
+    assert text == "您將王美玲設定為配偶。"
+
+
+@pytest.mark.asyncio
+async def test_own_full_name_is_reported_as_self_instead_of_not_found():
+    trees = FakeTrees(_tree(FamilyMember(user_id="U_MOM", display_name="王美玲")))
+    profiles = FakeProfiles(" 王小明 ")
+
+    text = await FamilyDirectoryService(trees, profiles).describe(
+        "U_ME", person="王 小明", language="zh-TW"
+    )
+
+    assert text == "王小明就是您本人。"
+    assert profiles.calls == ["U_ME"]
+
+
+@pytest.mark.asyncio
+async def test_first_person_alias_is_reported_as_self_even_without_a_profile_name():
+    text = await FamilyDirectoryService(FakeTrees(), FakeProfiles()).describe(
+        "U_ME", person="我自己", language="zh-TW"
+    )
+
+    assert text == "這是您本人，不是家庭名單中的另一位成員。"
+
+
+@pytest.mark.asyncio
+async def test_partial_own_name_is_not_assumed_to_be_self():
+    trees = FakeTrees(_tree(FamilyMember(user_id="U_MOM", display_name="王美玲")))
+
+    text = await FamilyDirectoryService(trees, FakeProfiles("王小明")).describe(
+        "U_ME", person="小明", language="zh-TW"
+    )
+
+    assert text == "您的家庭名單中找不到「小明」。"
+
+
+@pytest.mark.asyncio
+async def test_same_name_as_a_family_member_is_reported_as_ambiguous():
+    trees = FakeTrees(
+        _tree(
+            FamilyMember(
+                user_id="U_DAD", display_name="王小明", relationship_type="parent"
+            )
+        )
+    )
+
+    text = await FamilyDirectoryService(trees, FakeProfiles("王小明")).describe(
+        "U_ME", person="王小明", language="zh-TW"
+    )
+
+    assert text == (
+        "「王小明」同時符合您本人與家庭名單中的成員。"
+        "請改用稱謂或其他可辨識方式。"
+    )
+
+
+@pytest.mark.asyncio
+async def test_profile_name_failure_does_not_break_family_member_lookup():
+    trees = FakeTrees(
+        _tree(
+            FamilyMember(
+                user_id="U_SPOUSE", display_name="王美玲", relationship_type="spouse"
+            )
+        )
+    )
+    profiles = FakeProfiles(error=RuntimeError("profile unavailable"))
+
+    text = await FamilyDirectoryService(trees, profiles).describe(
         "U_ME", person="王美玲", language="zh-TW"
     )
 

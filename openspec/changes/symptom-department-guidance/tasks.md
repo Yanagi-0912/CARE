@@ -119,6 +119,7 @@
 - [x] 10.4 **建立資料模型**：定義不可變 `PatientContext` 與值來源 enum，包含 operator、patient kind/id、display label、relationship、age、gender；以純單元測試驗證訊息值高於 profile、profile 高於 unknown（2026-09-21；相關範圍 628 項全綠）
 - [x] 10.5 **授權式 context builder**：唯一家庭成員只有在 `FamilyAuthorizationService` 通過 `SENSITIVE READ` 後才可把 profile 寫入 context；未授權時只保留本輪明示資料，`is_care_recipient` 與外部 id 不得放行（2026-09-21；相關範圍 639 項全綠）
 - [x] 10.5a **稱謂契約收斂**：稱謂是登入者視角下的單向個人標籤；任何已登入使用者皆可設定自己家庭名單中的成員，不自動覆寫反向關係、不接受本人或非成員為目標，且稱謂不得參與健康資料授權；支援以 `null` 清除稱謂（2026-09-21；家庭、路由、repository 與相關用藥範圍 907 項全綠）
+- [x] 10.5b **家庭名單查詢工具**：提供只讀登入者自己家庭名單的 Agent 工具，支援列出全部、依稱謂列出成員及依姓名查稱謂；固定六語回覆直接送出，只使用姓名與稱謂，不呈現或判斷角色、權限、外部 id 或健康資料（2026-09-21；家庭 service、Agent、工具、registry 與六語範圍 1,329 項全綠）
 
 ### 10.B 科別推薦接入
 

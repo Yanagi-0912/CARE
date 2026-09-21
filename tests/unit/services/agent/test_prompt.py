@@ -74,6 +74,15 @@ def test_system_prompt_routes_medication_status_questions_to_the_status_tool():
     assert "漏吃降血壓藥要補吃嗎" in SYSTEM_PROMPT
 
 
+def test_system_prompt_routes_family_directory_questions_to_the_directory_tool():
+    assert "get_family_directory" in SYSTEM_PROMPT
+    assert "我的父母是誰" in SYSTEM_PROMPT
+    assert "我有哪些家人" in SYSTEM_PROMPT
+    assert "王美玲是我的誰" in SYSTEM_PROMPT
+    assert "relationship=parent" in SYSTEM_PROMPT
+    assert "禁止把「父母」填進 `person`" in SYSTEM_PROMPT
+
+
 def test_system_prompt_declines_requests_unrelated_to_health():
     """guardrail 不放行只是不給 RAG 工具，回答照樣會產生。2026-09-14 正式環境
     「推導高等微積分」拿到一整篇數學推導，當時 (a)–(j) 沒有任何一條處理

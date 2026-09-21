@@ -173,12 +173,14 @@ from app.services.medical_news.index_service import DrugNewsIndexService
 from app.services.medical_news.kb_digest_service import KbDigestService
 from app.services.medical_news.share_service import MedicalNewsShareService
 from app.services.users.user_profile_service import UserProfileService
+from app.services.family.family_directory_service import FamilyDirectoryService
 from app.core.rag_sources import SourceRef, get_request_rag_sources
 from app.i18n.messages import strip_rag_prefix, strip_sources_section
 from app.services.rag.fail_messages import is_rag_fail
 from app.services.media.tv_news_channels import TvNewsChannelMemory
 from app.services.media.tv_news_lookup import TvNewsArticleFinder
 from app.tools.claim_tools import configure_claim_tool
+from app.tools.family_directory_tools import configure_family_directory_tool
 from app.tools.tv_news_tools import configure_tv_news_tool
 from app.tools.knowledge_report_tools import configure_knowledge_report_tool
 from app.tools.medication_status_tools import configure_medication_status_tool
@@ -746,6 +748,9 @@ _medication_status_service = MedicationStatusService(
     log_repository=MedicationLogRepository,
 )
 configure_medication_status_tool(_medication_status_service)
+
+_family_directory_service = FamilyDirectoryService(FamilyTreeRepository)
+configure_family_directory_tool(_family_directory_service)
 
 _safety_alert_service = SafetyAlertService(
     extractor=_drug_mention_extractor,

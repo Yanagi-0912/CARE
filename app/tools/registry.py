@@ -1,4 +1,5 @@
 from app.tools.claim_tools import is_claim_tool_configured, verify_claim
+from app.tools.family_directory_tools import get_family_directory
 from app.tools.knowledge_report_tools import submit_knowledge_report
 from app.tools.medical_tools import (
     find_nearby_facilities_by_department,
@@ -37,6 +38,8 @@ def get_all_tools(include_rag_tool: bool = True) -> list:
         # 查本人或家人的服藥狀況。查的是資料庫裡的紀錄、不是知識庫，同樣不隨
         # include_rag_tool 開關——guardrail 放不放行 RAG 與這件事無關。
         get_medication_status,
+        # 只查登入者自己的家庭名單與稱謂，不讀健康資料，也不隨 RAG 開關。
+        get_family_directory,
     ]
     if include_rag_tool:
         tools.extend([get_rag_answer, answer_from_uploaded_document])

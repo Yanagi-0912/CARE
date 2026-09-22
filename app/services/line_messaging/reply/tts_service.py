@@ -25,7 +25,11 @@ from app.services.speech.taigi_client import (
     VOICE_LABEL_BY_GENDER as TAIGI_VOICE_LABEL_BY_GENDER,
     TaigiClient,
 )
-from app.services.speech.taigi_text import TAIGI_TEXT_THINKING_LEVEL, TaigiTextConverter
+from app.services.speech.taigi_text import (
+    TAIGI_TEXT_MODEL,
+    TAIGI_TEXT_THINKING_LEVEL,
+    TaigiTextConverter,
+)
 
 try:
     import edge_tts
@@ -388,15 +392,15 @@ def build_local_tts_service() -> TTSService:
     """在本行程合成的 TTSService。
 
     backend（沒設 TTS_SERVICE_URL 時）與 care-tts（app/tts_main.py）共用這一份組裝，兩邊
-    的台語設定才不會分岔。語言選台語的使用者：語音回覆先改寫成台語漢字（低 thinking，
-    理由見 taigi_text.TAIGI_TEXT_THINKING_LEVEL），再用 Taigi 台語 TTS 念。
+    的台語設定才不會分岔。語言選台語的使用者：語音回覆先改寫成台語漢字（flash-lite、低 thinking，
+    理由見 taigi_text.TAIGI_TEXT_MODEL／TAIGI_TEXT_THINKING_LEVEL），再用 Taigi 台語 TTS 念。
     """
     return TTSService(
         taigi_client=TaigiClient(),
         taigi_text_converter=TaigiTextConverter(
             GeminiService(
                 api_key=settings.GEMINI_API_KEY,
-                model_name=settings.MODEL_NAME,
+                model_name=TAIGI_TEXT_MODEL,
                 thinking_level=TAIGI_TEXT_THINKING_LEVEL,
             )
         ),

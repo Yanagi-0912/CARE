@@ -25,6 +25,12 @@ logger = logging.getLogger(__name__)
 # 延遲敏感、推理需求低，理由同 query_rewriter.REWRITE_THINKING_LEVEL。
 TAIGI_TEXT_THINKING_LEVEL = "low"
 
+# 不跟 MODEL_NAME（gemini-3.8-flash）走。這一步串在台語語音前面，使用者要等它跑完
+# 才收得到回覆：2026-09-15～09-22 正式環境 85 次，3.8-flash 中位數 1.8 秒、p90 3.9 秒，
+# 後面 Taigi TTS 再等 4.1 秒。2026-09-22 James 決定改 flash-lite 換速度；改寫品質
+# （台語用字、藥名劑量有沒有被動到）還沒有拿同一批回答比對過。
+TAIGI_TEXT_MODEL = "gemini-3.5-flash-lite"
+
 # 改寫是在送出任何 LINE 訊息之前被 await 的（見 tts_service），模型卡住時整則回覆
 # 都得陪著等。2026-09-14 實測 15 次 1.2～9.0 秒、正式環境一次 2.7 秒；超過就改念國語。
 TAIGI_TEXT_TIMEOUT_SECONDS = 10.0

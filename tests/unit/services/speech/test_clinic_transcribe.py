@@ -89,6 +89,78 @@ def test_解析不到詞級註釋要拋錯而不是回空字串():
         _extract_words({"candidates": [{"content": {"parts": [{"text": "嗨"}]}}]})
 
 
-def test_詞級註釋在巢狀欄位裡也找得到():
-    words = _extract_words({"transcription": {"words": [_w("找到了", "a")]}})
-    assert words == [_w("找到了", "a")]
+def _part(speaker: str | None, *words: tuple[str, str]) -> dict:
+    """2026-09-22 真實 API 回應的形狀：講者標在 part 上，詞的欄位叫 `word`。"""
+    transcription: dict = {
+        "text": "".join(w for w, _ in words),
+        "words": [
+            {"word": w, "start_offset": start, "end_offset": start} for w, start in words
+        ],
+    }
+    if speaker is not None:
+        transcription["speaker_label"] = speaker
+    return {"text": transcription["text"], "audio_transcription": transcription}
+
+
+def _response(*parts: dict) -> dict:
+    return {"candidates": [{"content": {"parts": list(parts)}}]}
+
+
+def test_照真實回應形狀抽出詞與講者():
+    words = _extract_words(_response(_part("spk:0", ("你好", "1.200s"))))
+    assert words == [{"text": "你好", "speaker": "spk:0", "start_offset": "1.200s"}]
+
+
+def test_part_沒照時間排也要排回來():
+    """真實回應：台語那份第一個 part 從 1012 秒開始、第二個從 27 秒。"""
+    transcript = group_words_into_segments(
+        _extract_words(
+            _response(
+                _part("spk:0", ("後來", "1012.2s")),
+                _part("spk:1", ("一開始", "27.1s")),
+            )
+        )
+    )
+    assert [s.text for s in transcript.segments] == ["一開始", "後來"]
+
+
+def test_兩人搶話時不會把詞交錯拆碎():
+    """時間重疊的兩段各自保持完整，不逐詞排序。"""
+    transcript = group_words_into_segments(
+        _extract_words(
+            _response(
+                _part("spk:0", ("藥", "10.0s"), ("先", "10.4s"), ("停", "10.8s")),
+                _part("spk:1", ("好", "10.2s"), ("喔", "10.6s")),
+            )
+        )
+    )
+    assert [s.text for s in transcript.segments] == ["藥先停", "好喔"]
+
+
+def test_一個人講完全程時沒有標籤也只有一段():
+    """真實回應：單人獨白整份一個 part、沒有 speaker_label。"""
+    transcript = group_words_into_segments(
+        _extract_words(_response(_part(None, ("今天", "0.1s"), ("看診", "0.5s"))))
+    )
+    assert [s.text for s in transcript.segments] == ["今天看診"]
+    assert transcript.speaker_count == 0
+
+
+def test_簡體轉成台灣正體():
+    """指定 zh-TW 仍回簡體（實測）。發／髮一對多，要整段轉才靠得到前後文。"""
+    transcript = group_words_into_segments(
+        [_w("医生说", "a"), _w("头发", "a"), _w("掉", "a"), _w("跟", "a"), _w("发烧", "a")]
+    )
+    assert transcript.segments[0].text == "醫生說頭髮掉跟發燒"
+
+
+def test_已經是正體的逐字稿不再轉():
+    """台語實測回正體；再丟進 s2tw 會把「干擾」變「幹擾」、「了解」變「瞭解」。"""
+    transcript = group_words_into_segments([_w("會干擾", "a"), _w("我了解啦", "b")])
+    assert [s.text for s in transcript.segments] == ["會干擾", "我了解啦"]
+
+
+def test_只換字形不換用語():
+    """逐字稿是原話，不能把「软件」改寫成「軟體」。"""
+    transcript = group_words_into_segments([_w("软件", "a")])
+    assert transcript.segments[0].text == "軟件"

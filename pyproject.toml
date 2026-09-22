@@ -84,6 +84,10 @@ dependencies = [
     # 跳過 agent 選工具那次呼叫（中位數 3.2 秒）。詳見 text_encoder 模組註解。
     "onnxruntime==1.30.0",
     "tokenizers==0.23.2",
+
+    # 看診錄音的轉錄模型指定 zh-TW 仍回簡體（2026-09-22 實測），逐字稿要轉正體。
+    # 用 s2tw 只換字形不換用語，見 app/services/speech/clinic_transcribe.py。
+    "opencc==1.4.2",
 ]
 
 # 測試相關（pytest-asyncio 0.25 僅支援 pytest<9）。

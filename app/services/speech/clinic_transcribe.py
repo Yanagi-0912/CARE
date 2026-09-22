@@ -38,6 +38,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -63,8 +64,8 @@ MAX_AUDIO_SECONDS = 30 * 60
 # 摘要有沒有寫歪，被模型整理過就失去核對的意義。
 TRANSCRIBE_MODE = "VERBATIM"
 
-# 還沒量過。門診十分鐘的音檔要跑多久沒有實測數字，這個值只是「不要無限等」的閘門，
-# 不是根據任何量測訂的。第一次真的跑過之後要回來改成有依據的值。
+# 2026-09-22 實測整檔 30 分鐘（上限）：華語 96 秒（兩次）、台語 110 秒。
+# 300 秒約留三倍餘裕給 API 忽快忽慢。
 TRANSCRIBE_TIMEOUT_SECONDS = 300.0
 
 _MIME_BY_SUFFIX = {
@@ -109,8 +110,8 @@ class ClinicTranscript:
 def _parse_offset_seconds(raw: Any) -> float | None:
     """把 `"0.100s"` 這種 protobuf Duration 的字面值轉成秒。
 
-    SDK 會不會先幫忙轉成數字沒驗證過，所以兩種都收；看不懂就回 None，
-    時間軸只用來顯示，缺了不影響逐字稿本身。
+    2026-09-22 實測 SDK 給的是字串（`WordInfo.start_offset: str`），數字也照收；
+    看不懂就回 None，時間軸只用來顯示，缺了不影響逐字稿本身。
     """
     if raw is None:
         return None
@@ -136,6 +137,39 @@ class _Missing:
 
 
 _MISSING = _Missing()
+
+
+@functools.lru_cache(maxsize=1)
+def _converters() -> tuple[Any, Any, Any]:
+    # 延後 import，理由同 `_get_client`。
+    import opencc
+
+    return opencc.OpenCC("s2tw"), opencc.OpenCC("s2t"), opencc.OpenCC("t2s")
+
+
+def _looks_simplified(text: str) -> bool:
+    """整份逐字稿是不是簡體。
+
+    轉錄模型指定了 zh-TW，華語仍回簡體、台語卻回正體（2026-09-22 實測）。正體字
+    不能再丟進 s2tw：「干擾」會變「幹擾」、「了解」變「瞭解」。所以要先判斷。
+
+    數「轉正體會變的字」對「轉簡體會變的字」。台、周、了這類簡繁共用字會被算進
+    前者，所以不能逐段判斷——「台北周末」四個字就會誤判。整份一起數差距很大：
+    實測華語 2,379 對 0、台語 25 對 2,148。
+    """
+    _, s2t, t2s = _converters()
+    simplified = sum(1 for c in text if s2t.convert(c) != c and t2s.convert(c) == c)
+    traditional = sum(1 for c in text if t2s.convert(c) != c)
+    return simplified > traditional
+
+
+def _to_traditional(text: str) -> str:
+    """簡體轉台灣正體。
+
+    用 s2tw 而不是 s2twp：只換字形（头发→頭髮），不換用語（软件→軟體）。
+    逐字稿是給家人核對摘要的原文，用語被改寫就不是原話了。
+    """
+    return _converters()[0].convert(text)
 
 
 def _join(parts: list[str]) -> str:
@@ -188,30 +222,60 @@ def group_words_into_segments(words: Iterable[Any]) -> ClinicTranscript:
         current_words.append(text)
 
     flush()
+    if _looks_simplified("".join(segment.text for segment in segments)):
+        # 逐段轉而不是逐詞轉：简繁一對多（发→發／髮）要靠前後文決定。
+        segments = [
+            Segment(text=_to_traditional(segment.text), start_seconds=segment.start_seconds)
+            for segment in segments
+        ]
     return ClinicTranscript(segments=tuple(segments), speaker_count=len(speakers))
 
 
-def _extract_words(response: Any) -> list[Any]:
-    """從回應裡挖出詞級註釋。
+def _extract_words(response: Any) -> list[dict[str, Any]]:
+    """從回應裡挖出詞級註釋，整理成 `group_words_into_segments` 吃的
+    `text` / `speaker` / `start_offset`，並照時間排好。
 
-    回應形狀還沒用真的 API 驗證過（要花錢，等 James 同意跑一次）。目前照文件寫的
-    `text` / `speaker` / `start_offset` 三個欄位找，且把幾種可能的巢狀位置都試過，
+    2026-09-22 用真的 API 跑 30 分鐘華語與台語 podcast 核對過形狀：
+
+    - 詞在 `candidates[].content.parts[].audio_transcription.words`，欄位是
+      `word` / `start_offset`（`"1.200s"` 字串）/ `end_offset`。
+    - 講者標在 part 上（`audio_transcription.speaker_label`，如 `"spk:0"`），不在詞上；
+      一個 part 是一段連續同一人講的話。只有一個人講時整份一個 part、沒有標籤。
+    - **part 不照時間排**：台語那份第一個 part 從 1012 秒開始、第二個從 27 秒。
+      不排序的話逐字稿前後顛倒。
+
     找不到就拋錯而不是靜靜回空字串——靜靜回空的話，使用者會看到「這次沒錄到」，
     但真正的原因是我們解析錯了，那是最難查的一種失敗。
     """
-    candidates = ("words", "word_annotations", "transcription_words")
-    for name in candidates:
-        words = _field(response, name)
-        if words:
-            return list(words)
-    for attr in ("transcription", "result"):
-        nested = _field(response, attr)
-        if nested is None:
-            continue
-        for name in candidates:
-            words = _field(nested, name)
-            if words:
-                return list(words)
+    turns: list[list[dict[str, Any]]] = []
+    for candidate in _field(response, "candidates") or []:
+        content = _field(candidate, "content")
+        parts = _field(content, "parts") if content is not None else None
+        for part in parts or []:
+            transcription = _field(part, "audio_transcription")
+            if transcription is None:
+                continue
+            speaker = _field(transcription, "speaker_label")
+            turn = [
+                {
+                    "text": _field(word, "word"),
+                    "speaker": speaker,
+                    "start_offset": _field(word, "start_offset"),
+                }
+                for word in _field(transcription, "words") or []
+            ]
+            if turn:
+                turns.append(turn)
+    if turns:
+        # 以 part 為單位照開頭時間排，不拆開逐詞排：兩人搶話時時間會重疊，
+        # 逐詞排會把兩個人的詞交錯插在一起，切出一堆一兩個字的段。
+        # 看不懂的時間戳排最後；sort 是穩定的，同一時間保持原本順序。
+        def turn_start(turn: list[dict[str, Any]]) -> float:
+            offset = _parse_offset_seconds(turn[0]["start_offset"])
+            return float("inf") if offset is None else offset
+
+        turns.sort(key=turn_start)
+        return [word for turn in turns for word in turn]
     raise ClinicTranscribeError(
         "轉錄回應裡找不到詞級註釋；欄位名稱可能跟文件不同，需要用一次真實請求核對"
     )
@@ -265,10 +329,15 @@ class ClinicTranscriber:
             ) from exc
 
         transcript = group_words_into_segments(_extract_words(response))
+        # MAX_TOKENS 代表輸出被截斷、後段沒轉（2026-09-22 台語 30 分鐘整檔送實測），
+        # 逐字稿看起來完整但其實少一截，只有這個欄位看得出來。
+        candidates = _field(response, "candidates") or []
+        finish_reason = _field(candidates[0], "finish_reason") if candidates else None
         logger.info(
-            "stage=clinic_transcribe segments=%d speakers=%d chars=%d",
+            "stage=clinic_transcribe segments=%d speakers=%d chars=%d finish=%s",
             len(transcript.segments),
             transcript.speaker_count,
             len(transcript.text),
+            getattr(finish_reason, "value", finish_reason),
         )
         return transcript

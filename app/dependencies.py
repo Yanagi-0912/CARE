@@ -95,6 +95,7 @@ from app.services.gemini import GeminiService
 from app.services.guardrail import (
     CascadeGuardrailService,
     GuardrailService,
+    JevGuardrailService,
     LocalGuardrailClassifier,
 )
 from app.services.history.history_service import (
@@ -202,7 +203,14 @@ _llm_guardrail_service = GuardrailService(
     async_text_to_bool=_gemini_service.invoke_boolean_structured_output,
 )
 
-# 串接式 guardrail：本地分類器有把握時直接判，中間地帶才問 Gemini。
+# 本地模型沒把握時先問 Jev（中位數 0.26 秒），Jev 失敗才問 Gemini（約 2 秒）。
+# 數字與為什麼只換 guardrail、不換急迫度，見 services/guardrail/jev.py。
+_escalation_guardrail_service = JevGuardrailService(
+    api_key=settings.TYPESAFE_API_KEY,
+    fallback=_llm_guardrail_service,
+)
+
+# 串接式 guardrail：本地分類器有把握時直接判，中間地帶才問 LLM（上面的 Jev）。
 #
 # 為什麼值得：guardrail 跑在每一則訊息的關鍵路徑上（graph 是
 # START → guardrail → agent，沒有並行），線上實測 p50 2,036ms、最快也要
@@ -214,12 +222,12 @@ _llm_guardrail_service = GuardrailService(
 try:
     _guardrail_service = CascadeGuardrailService(
         local=LocalGuardrailClassifier.load(),
-        fallback=_llm_guardrail_service,
+        fallback=_escalation_guardrail_service,
     )
     logger.info("Guardrail cascade enabled (local classifier + LLM fallback)")
 except Exception:
     logger.exception("本地 guardrail 模型載入失敗，退回純 LLM 判斷")
-    _guardrail_service = _llm_guardrail_service
+    _guardrail_service = _escalation_guardrail_service
 
 _query_embeddings_kwargs: dict = {
     "model": settings.EMBEDDING_MODEL,

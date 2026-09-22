@@ -132,6 +132,9 @@ class Settings:
 
     # Cohere Rerank（未設定 API key 時降級為向量 score top-n）
     COHERE_API_KEY: str = os.getenv("COHERE_API_KEY", "")
+    # TypeSafe Jev：guardrail 升級那一步的分類（services/guardrail/jev.py）。
+    # 沒設就直接問 Gemini，行為與導入前相同。
+    TYPESAFE_API_KEY: str = os.getenv("TYPESAFE_API_KEY", "")
     COHERE_RERANK_MODEL: str = os.getenv("COHERE_RERANK_MODEL", "rerank-v4.0-pro")
     RAG_RETRIEVE_CANDIDATES: int = int(os.getenv("RAG_RETRIEVE_CANDIDATES", "40"))
     RAG_RERANK_TOP_N: int = int(os.getenv("RAG_RERANK_TOP_N", "5"))

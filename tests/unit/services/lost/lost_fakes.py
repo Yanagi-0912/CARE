@@ -70,13 +70,32 @@ class FakeLostRepository:
         doc["trail"] = doc["trail"][-TRAIL_MAX_POINTS:]
         return copy.deepcopy(doc)
 
+    async def record_presence(self, owner_id, member_id, now, *, coming, point=None):
+        doc = self._active(owner_id)
+        if doc is None:
+            return None
+        member = doc.setdefault("family", {}).setdefault(member_id, {})
+        member.update(seen_at=now, coming=coming)
+        if not coming:
+            member["location"] = None
+        elif point is not None:
+            member["location"] = dict(point)
+        return copy.deepcopy(doc)
+
     async def claim_notice(self, session_id, field, now, extra_filter=None):
+        # 欄位可以是點號路徑（family.<id>.coming_notified_at），同 Mongo：缺席等同 None。
+        *parents, leaf = field.split(".")
         for doc in self.docs:
-            if doc["session_id"] != session_id or doc.get(field) is not None:
+            if doc["session_id"] != session_id:
+                continue
+            target = doc
+            for key in parents:
+                target = target.setdefault(key, {})
+            if target.get(leaf) is not None:
                 continue
             if extra_filter and any(doc.get(k) != v for k, v in extra_filter.items()):
                 return False
-            doc[field] = now
+            target[leaf] = now
             return True
         return False
 

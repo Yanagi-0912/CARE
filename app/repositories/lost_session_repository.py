@@ -140,6 +140,36 @@ class LostSessionRepository:
         )
 
     @staticmethod
+    async def record_presence(
+        owner_id: str,
+        member_id: str,
+        now: datetime,
+        *,
+        coming: bool,
+        point: Optional[dict[str, Any]] = None,
+        collection: Optional[Any] = None,
+    ) -> Optional[dict[str, Any]]:
+        """記下家人此刻開著地圖頁、是否正在過去找人。沒有進行中的求救時回傳 None。
+
+        家人的狀態放在同一份求救文件的 `family.<家人 id>` 底下，與求救一起被
+        TTL 刪除。`coming` 為 False 時清掉位置：家人按了「先不去了」，他的位置
+        就不該再留著給長輩看。`coming` 為 True 但這一輪還沒拿到定位時不動位置，
+        保留上一個點。LINE user id 只含英數字，可以直接當欄位名稱。
+        """
+        collection = LostSessionRepository._collection(collection)
+        prefix = f"family.{member_id}"
+        fields: dict[str, Any] = {f"{prefix}.seen_at": now, f"{prefix}.coming": coming}
+        if not coming:
+            fields[f"{prefix}.location"] = None
+        elif point is not None:
+            fields[f"{prefix}.location"] = point
+        return await collection.find_one_and_update(
+            {"user_id": owner_id, "status": ACTIVE},
+            {"$set": fields},
+            return_document=ReturnDocument.AFTER,
+        )
+
+    @staticmethod
     async def claim_notice(
         session_id: str,
         field: str,

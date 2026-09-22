@@ -175,3 +175,97 @@ async def test_family_sees_stale_after_three_minutes(lost):
 def test_requires_login():
     app.dependency_overrides.clear()
     assert client.get("/api/lost/me").status_code == 401
+
+
+async def test_elder_sees_family_who_is_coming(lost):
+    service, replier, clock, act_as = lost
+    await _start(service)
+    client.post("/api/lost/me/location", json={"latitude": 25.0478, "longitude": 121.5170})
+
+    act_as(DAUGHTER)
+    response = client.post(
+        f"/api/lost/{ELDER}/presence",
+        json={"coming": True, "latitude": 25.0478, "longitude": 121.5249},
+    )
+    assert response.status_code == 200
+    assert response.json() == {"recorded": True}
+    act_as(SON)
+    client.post(f"/api/lost/{ELDER}/presence", json={"coming": False})
+
+    act_as(ELDER)
+    body = client.post(
+        "/api/lost/me/location", json={"latitude": 25.0478, "longitude": 121.5170}
+    ).json()
+
+    [daughter, son] = body["family"]
+    assert daughter["name"] == "美玲"
+    assert daughter["coming"] is True
+    assert daughter["online"] is True
+    assert 780 < daughter["distance_m"] < 810
+    assert daughter["latitude"] == 25.0478
+    assert son == {
+        "name": "John",
+        "online": True,
+        "coming": False,
+        "latitude": None,
+        "longitude": None,
+        "location_at": None,
+        "distance_m": None,
+    }
+    assert client.get("/api/lost/me").json()["family"][0]["name"] == "美玲"
+    assert replier.texts_to(ELDER) == ["美玲正在過來找你，請待在原地。"]
+
+
+async def test_presence_from_stranger_is_forbidden(lost):
+    service, _, _, act_as = lost
+    await _start(service)
+
+    act_as("U_STRANGER")
+    response = client.post(f"/api/lost/{ELDER}/presence", json={"coming": True})
+
+    assert response.status_code == 403
+    assert "family" not in (await service.active(ELDER))
+
+
+async def test_elder_opening_own_map_is_not_presence(lost):
+    service, _, _, _ = lost
+    await _start(service)
+
+    response = client.post(f"/api/lost/{ELDER}/presence", json={"coming": True})
+
+    assert response.json() == {"recorded": False}
+    assert "family" not in (await service.active(ELDER))
+
+
+async def test_presence_needs_both_coordinates(lost):
+    service, _, _, act_as = lost
+    await _start(service)
+
+    act_as(DAUGHTER)
+    response = client.post(
+        f"/api/lost/{ELDER}/presence", json={"coming": True, "latitude": 25.0}
+    )
+
+    assert response.status_code == 422
+
+
+async def test_presence_without_session_is_not_recorded(lost):
+    _, _, _, act_as = lost
+
+    act_as(DAUGHTER)
+    response = client.post(f"/api/lost/{ELDER}/presence", json={"coming": True})
+
+    assert response.json() == {"recorded": False}
+
+
+async def test_family_view_remembers_viewer_is_coming(lost):
+    service, _, _, act_as = lost
+    await _start(service)
+
+    act_as(DAUGHTER)
+    assert client.get(f"/api/lost/{ELDER}").json()["viewer_coming"] is False
+    client.post(f"/api/lost/{ELDER}/presence", json={"coming": True})
+    assert client.get(f"/api/lost/{ELDER}").json()["viewer_coming"] is True
+
+    act_as(SON)
+    assert client.get(f"/api/lost/{ELDER}").json()["viewer_coming"] is False

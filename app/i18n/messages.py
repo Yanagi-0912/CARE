@@ -3690,6 +3690,15 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "การแชร์ตำแหน่งหยุดโดยอัตโนมัติแล้ว ถ้ายังต้องการความช่วยเหลือ ให้บอกว่า \"ฉันหลงทาง\" อีกครั้ง หรือโทร 110",
         "ja": "位置の共有は自動的に終了しました。まだ助けが必要なら、もう一度「迷子になった」と送るか、110番に電話してください。",
     },
+    # 家人在地圖頁按了「我去找他」，推給長輩一次（見 LostLocationService.notify_elder_family_coming）。
+    "lost.elder.family_coming": {
+        "zh-TW": "{name}正在過來找你，請待在原地。",
+        "en": "{name} is on the way to find you. Please stay where you are.",
+        "id": "{name} sedang menuju ke tempat Anda. Tetaplah di tempat.",
+        "vi": "{name} đang đến tìm bạn. Hãy ở yên tại chỗ.",
+        "th": "{name} กำลังมาหาคุณ กรุณารออยู่ที่เดิม",
+        "ja": "{name}さんが迎えに向かっています。その場で待っていてください。",
+    },
     # 走失分類器沒把握時，回覆下方的快速回覆（見 app/services/lost/lost_classifier.py）。
     # 按鈕文字上限 20 字元（LINE quick reply label）。
     "lost.help.quick_reply": {

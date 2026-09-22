@@ -1,7 +1,7 @@
 """走失求救即時位置分享 API（LIFF）。
 
 長輩端（/me）：定位頁上傳位置、查自己是否還在分享、按「我已經安全了」。
-家人端（/{user_id}）：地圖頁輪詢位置、按「已找到」。
+家人端（/{user_id}）：地圖頁輪詢位置、回報自己在看／正在過去（presence）、按「已找到」。
 
 家人端的授權不走 `authorize`（資料分類矩陣），而是「是不是這位長輩走失通報的
 收件人」——見 lost_location_service 的模組說明。位置不是健康資料，看得到
@@ -25,8 +25,11 @@ from app.dependencies import (
 )
 from app.models.lost_location import (
     LostEndResult,
+    LostFamilyMember,
     LostLocationPoint,
     LostLocationUpload,
+    LostPresenceResult,
+    LostPresenceUpload,
     LostSelfStatus,
     LostSessionView,
     LostTrailPoint,
@@ -40,14 +43,29 @@ FORBIDDEN_DETAIL = "您沒有權限查看這位家人的位置。"
 NOT_FOUND_DETAIL = "目前沒有位置分享。"
 
 
-def _self_status(session: Optional[dict[str, Any]]) -> LostSelfStatus:
+async def _self_status(
+    service: LostLocationService, session: Optional[dict[str, Any]]
+) -> LostSelfStatus:
     if session is None:
         return LostSelfStatus(active=False)
+    family = [
+        LostFamilyMember(
+            name=member["name"],
+            online=member["online"],
+            coming=member["coming"],
+            latitude=(member["location"] or {}).get("lat"),
+            longitude=(member["location"] or {}).get("lng"),
+            location_at=as_utc((member["location"] or {}).get("received_at")),
+            distance_m=member["distance_m"],
+        )
+        for member in await service.family_status(session)
+    ]
     return LostSelfStatus(
         active=session.get("status") == "active",
         status=session.get("status"),
         started_at=as_utc(session.get("started_at")),
         ended_at=as_utc(session.get("ended_at")),
+        family=family,
     )
 
 
@@ -56,7 +74,7 @@ async def my_status(
     current_user: CurrentUser = Depends(get_current_user),
     service: LostLocationService = Depends(get_lost_location_service),
 ) -> LostSelfStatus:
-    return _self_status(await service.latest(current_user.line_user_id))
+    return await _self_status(service, await service.latest(current_user.line_user_id))
 
 
 @router.post(
@@ -81,11 +99,11 @@ async def upload_location(
         source="liff",
     )
     if session is None:
-        return _self_status(await service.latest(user_id))
+        return await _self_status(service, await service.latest(user_id))
     if service.needs_location_started_notice(session):
         # 推給每位家人要各打一次 LINE API，不讓長輩的上傳請求等它們。
         background_tasks.add_task(service.notify_location_started, session)
-    return _self_status(session)
+    return await _self_status(service, session)
 
 
 @router.post("/me/end", response_model=LostEndResult, summary="長輩表示已經安全")
@@ -128,6 +146,7 @@ async def view_session(
         ended_by_name = await service.display_name(ended_by) or None
 
     location = session.get("last_location")
+    viewer = (session.get("family") or {}).get(current_user.line_user_id) or {}
     return LostSessionView(
         session_id=session["session_id"],
         status=session["status"],
@@ -156,8 +175,42 @@ async def view_session(
             LostTrailPoint(latitude=p["lat"], longitude=p["lng"], at=as_utc(p["at"]))
             for p in session.get("trail") or []
         ],
+        viewer_coming=session.get("status") == "active" and bool(viewer.get("coming")),
         server_time=datetime.now(timezone.utc),
     )
+
+
+@router.post(
+    "/{user_id}/presence",
+    response_model=LostPresenceResult,
+    summary="家人回報正在看地圖／正在過去",
+    description="地圖頁每次輪詢時送一次。只有進行中的求救會記錄；長輩自己開地圖不算。",
+    dependencies=[Depends(lost_location_rate_limit)],
+)
+async def report_presence(
+    user_id: str,
+    body: LostPresenceUpload,
+    background_tasks: BackgroundTasks,
+    current_user: CurrentUser = Depends(get_current_user),
+    service: LostLocationService = Depends(get_lost_location_service),
+) -> LostPresenceResult:
+    operator_id = current_user.line_user_id
+    await _authorize_viewer(service, operator_id, user_id)
+    if operator_id == user_id:
+        return LostPresenceResult(recorded=False)
+    session = await service.record_presence(
+        user_id,
+        operator_id,
+        coming=body.coming,
+        lat=body.latitude,
+        lng=body.longitude,
+        accuracy=body.accuracy,
+    )
+    if session is None:
+        return LostPresenceResult(recorded=False)
+    if service.needs_coming_notice(session, operator_id):
+        background_tasks.add_task(service.notify_elder_family_coming, session, operator_id)
+    return LostPresenceResult(recorded=True)
 
 
 @router.post("/{user_id}/found", response_model=LostEndResult, summary="家人表示已找到")

@@ -15,6 +15,13 @@
 5. 家人按「已找到」（`end_by_family`）或長輩按「我已經安全了」
    （`end_by_elder`）結束，通知其他人。
 
+長輩也看得到家人：家人的地圖頁每次輪詢都回報一次（`record_presence`），長輩
+的定位頁從上傳位置的回應拿到 `family_status`——誰正開著地圖、誰按了「我去找他」、
+離他多遠。家人的位置只在他按了「我去找他」之後才上傳：人在上班、沒要出門的家人
+不該被當成正在趕過去，也不該沒問過就把他的位置送出去。第一次按「我去找他」時推
+一則給長輩（`notify_elder_family_coming`）：長輩常把定位頁關掉，這一則是他最需要
+收到的。「正在看地圖」不推，否則家人每打開一次地圖長輩就收到一則。
+
 誰收得到、誰看得到地圖、誰按得了「已找到」都是同一份名單：
 `notification_recipients(長輩, "elder_lost")`。收到通報卻打不開地圖，或打得開
 地圖卻沒收到通報，都說不通。
@@ -26,6 +33,7 @@ API pod 與 scheduler pod、或滾動更新時並存的兩個 scheduler 才不�
 from __future__ import annotations
 
 import logging
+import math
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -66,6 +74,11 @@ STALE_AFTER = timedelta(minutes=3)
 # 結束通知會叫家人撥 110；長輩要繼續分享，再說一次「我走丟了」就好。
 AUTO_END_AFTER = timedelta(hours=2)
 
+# 家人多久沒輪詢算離開了地圖頁。地圖頁每 15 秒輪詢一次（CARE-LIFF
+# src/pages/Lost/WatchPage.tsx 的 POLL_INTERVAL_MS），45 秒是連漏 3 次：網路
+# 偶爾慢一輪不會讓長輩看到家人忽上忽下。
+FAMILY_ONLINE_WITHIN = timedelta(seconds=45)
+
 # 結束之後資料還留多久，見 lost_session_repository 的模組說明。
 PURGE_AFTER = timedelta(hours=24)
 
@@ -94,6 +107,20 @@ class _Prefs:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def distance_meters(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """兩點的大圓距離（haversine，地球半徑取平均 6,371 公里）。
+
+    長輩看的是「離你約 800 公尺」，只需要到百公尺的精度；走路實際要繞的距離
+    一定比這長，畫面上寫的是「約」。
+    """
+    radius = 6_371_000.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lambda = math.radians(lng2 - lng1)
+    a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
+    return 2 * radius * math.asin(math.sqrt(a))
 
 
 def google_maps_directions_url(lat: float, lng: float) -> str:
@@ -274,6 +301,86 @@ class LostLocationService:
         if session.get("status") != ACTIVE or last_seen is None:
             return False
         return self._clock() - last_seen > STALE_AFTER
+
+    # ── 長輩看家人 ────────────────────────────────────────────────────
+
+    async def record_presence(
+        self,
+        owner_id: str,
+        member_id: str,
+        *,
+        coming: bool,
+        lat: Optional[float] = None,
+        lng: Optional[float] = None,
+        accuracy: Optional[float] = None,
+    ) -> Optional[dict[str, Any]]:
+        """家人的地圖頁回報一次。沒有進行中的求救時回傳 None（什麼都不存）。"""
+        now = self._clock()
+        point = None
+        if coming and lat is not None and lng is not None:
+            point = {"lat": lat, "lng": lng, "accuracy": accuracy, "received_at": now}
+        return await self._repository.record_presence(
+            owner_id, member_id, now, coming=coming, point=point
+        )
+
+    def needs_coming_notice(self, session: dict[str, Any], member_id: str) -> bool:
+        member = (session.get("family") or {}).get(member_id) or {}
+        return bool(member.get("coming")) and member.get("coming_notified_at") is None
+
+    async def notify_elder_family_coming(self, session: dict[str, Any], member_id: str) -> bool:
+        """某位家人第一次按「我去找他」時推一則給長輩。一次求救每位家人最多一則。"""
+        claimed = await self._repository.claim_notice(
+            session["session_id"], f"family.{member_id}.coming_notified_at", self._clock()
+        )
+        if not claimed:
+            return False
+        user_id = session["user_id"]
+        prefs = await self._prefs(user_id)
+        name = await self._patient_name(member_id) or t("lost.family.someone", prefs.language)
+        return await self._safe_push_text(
+            user_id, t("lost.elder.family_coming", prefs.language).format(name=name)
+        )
+
+    async def family_status(self, session: Optional[dict[str, Any]]) -> list[dict[str, Any]]:
+        """長輩定位頁上的家人：開著地圖的、按了「我去找他」的。
+
+        按了「我去找他」的家人即使離開了地圖頁（多半是切去導航）也留在清單上，
+        位置附上時間，由畫面寫「幾分鐘前」。排序：正在過來的在前、近的在前。
+        """
+        if not session or session.get("status") != ACTIVE:
+            return []
+        now = self._clock()
+        elder = session.get("last_location") or {}
+        members: list[dict[str, Any]] = []
+        for member_id, state in (session.get("family") or {}).items():
+            seen_at = as_utc(state.get("seen_at"))
+            online = seen_at is not None and now - seen_at <= FAMILY_ONLINE_WITHIN
+            coming = bool(state.get("coming"))
+            if not (online or coming):
+                continue
+            location = state.get("location") if coming else None
+            distance = None
+            if location and "lat" in elder and "lng" in elder:
+                distance = distance_meters(
+                    elder["lat"], elder["lng"], location["lat"], location["lng"]
+                )
+            members.append(
+                {
+                    "name": await self._patient_name(member_id),
+                    "online": online,
+                    "coming": coming,
+                    "location": location,
+                    "distance_m": distance,
+                }
+            )
+        members.sort(
+            key=lambda m: (
+                not m["coming"],
+                m["distance_m"] is None,
+                m["distance_m"] or 0.0,
+            )
+        )
+        return members
 
     # ── 結束 ──────────────────────────────────────────────────────────
 

@@ -603,3 +603,104 @@ def test_multiple_subgroups_read_as_alternatives_in_the_reason():
     reason = boxes[0]["contents"][1]["text"]
 
     assert "胸腔外科或小兒外科方向" in reason
+
+
+# --- 多語言 ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("language", "department", "subgroup", "alt_text"),
+    [
+        ("zh-TW", "內科", "胃腸肝膽科", "建議的看診方向"),
+        ("en", "Internal Medicine", "Gastroenterology and Hepatology", "Suggested care departments"),
+        ("id", "Penyakit Dalam", "Gastroenterologi dan Hepatologi", "Saran poli untuk berobat"),
+        ("vi", "Nội khoa", "Tiêu hóa và gan mật", "Gợi ý chuyên khoa khám"),
+        ("th", "อายุรกรรม", "ระบบทางเดินอาหารและตับ", "แผนกที่แนะนำให้เข้ารับการตรวจ"),
+        ("ja", "内科", "消化器・肝臓内科", "受診する診療科の目安"),
+    ],
+)
+def test_card_localizes_department_subgroup_and_alt_text(
+    language, department, subgroup, alt_text
+):
+    payload = build_symptom_department_flex(
+        _suggestion((_candidate("內科", "胃腸肝膽科"),)),
+        references=(),
+        language=language,
+    )
+    bubble = payload["contents"]
+    _, boxes, _, _, _ = _body_parts(bubble)
+    title_row = boxes[0]["contents"][0]["contents"]
+
+    assert payload["altText"] == alt_text
+    assert bubble["header"]["contents"][1]["contents"][0]["text"] == department
+    assert title_row[0]["text"] == f"1. {department}"
+    assert title_row[1]["contents"][0]["text"] == subgroup
+
+
+@pytest.mark.parametrize("language", ["en", "id", "vi", "th", "ja"])
+def test_non_chinese_card_does_not_show_the_chinese_matched_term(language):
+    payload = build_symptom_department_flex(
+        _suggestion((_candidate("內科", "胃腸肝膽科"),)),
+        references=(),
+        language=language,
+    )
+    assert "腹痛" not in json.dumps(payload["contents"], ensure_ascii=False)
+
+
+@pytest.mark.parametrize("language", ["zh-TW", "en", "id", "vi", "th", "ja"])
+def test_localized_nearby_button_routes_to_the_canonical_department(language):
+    from app.services.agent.utils.nodes import _is_nearby_department_intent
+    from app.services.medical.department_matcher import extract_department_intents
+
+    payload = build_symptom_department_flex(
+        _suggestion((_candidate("內科"),)), references=(), language=language
+    )
+    text = payload["quickReply"]["items"][0]["action"]["text"]
+
+    assert _is_nearby_department_intent(text) is True
+    assert [match.canonical for match in extract_department_intents(text)] == ["內科"]
+
+
+@pytest.mark.parametrize("language", ["zh-TW", "en", "id", "vi", "th", "ja"])
+def test_localized_fallback_button_routes_to_every_department(language):
+    from app.services.agent.utils.nodes import _is_nearby_department_intent
+    from app.services.medical.department_matcher import extract_department_intents
+
+    payload = build_symptom_department_flex(
+        _fallback(), references=(), language=language
+    )
+    text = payload["quickReply"]["items"][0]["action"]["text"]
+
+    assert _is_nearby_department_intent(text) is True
+    assert [match.canonical for match in extract_department_intents(text)] == list(
+        FALLBACK_DEPARTMENTS
+    )
+
+
+@pytest.mark.parametrize("language", ["en", "id", "vi", "th", "ja"])
+def test_localized_fallback_reason_does_not_leak_chinese(language):
+    payload = build_symptom_department_flex(
+        _fallback(), references=(), language=language
+    )
+    rendered = json.dumps(payload["contents"], ensure_ascii=False)
+    assert "無法對應到已知的症狀條目" not in rendered
+
+
+@pytest.mark.parametrize("language", ["zh-TW", "en", "id", "vi", "th", "ja"])
+@pytest.mark.parametrize("font_size", ["normal", "large", "xlarge"])
+def test_localized_card_and_quick_reply_pass_line_sdk_validation(language, font_size):
+    from app.services.line_messaging.reply.reply import LineReplier
+
+    payload = build_symptom_department_flex(
+        _fallback(_CHILD_FALLBACK, PEDIATRIC_REASON_AGE),
+        references=(),
+        language=language,
+        font_size=font_size,
+    )
+    message, _ = LineReplier._try_parse_flex_message(
+        json.dumps(payload, ensure_ascii=False)
+    )
+
+    assert message is not None
+    assert message.quick_reply is not None
+    assert len(message.quick_reply.items[0].action.label) <= 20

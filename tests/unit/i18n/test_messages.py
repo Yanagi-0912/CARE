@@ -179,6 +179,21 @@ def test_safety_patient_messages_carry_their_placeholders(language):
     assert "{name}" in _MESSAGES["flex.safety.alt.family"][language]
 
 
+_SYMPTOM_FLEX_KEYS = sorted(
+    key
+    for key in _MESSAGES
+    if key.startswith("flex.symptom.") or key.startswith("subgroup.")
+)
+
+
+@pytest.mark.parametrize("key", _SYMPTOM_FLEX_KEYS)
+@pytest.mark.parametrize("language", SUPPORTED_LANGUAGES)
+def test_symptom_flex_messages_have_their_own_translation(key, language):
+    value = _MESSAGES[key].get(language)
+    assert value
+    assert value.strip()
+
+
 _CONSULTATION_CARD_KEYS = sorted(
     key for key in _MESSAGES if key.startswith("consultation_card.")
 )

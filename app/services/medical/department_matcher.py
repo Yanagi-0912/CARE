@@ -18,6 +18,10 @@
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import lru_cache
+
+from app.core.user_language import SUPPORTED_LANGUAGES
+from app.i18n.messages import department_label
 
 # 資料庫實際存在的部定專科（來自 medicalFacilities.departments 的 distinct 值）。
 # 僅列出可作為查詢目標的科別；解剖病理科、臨床病理科等民眾不會直接掛號的科別
@@ -151,6 +155,60 @@ def normalize_department_text(text: str) -> str:
     return normalized.replace("台", "臺")
 
 
+def _normalize_localized_text(text: str) -> str:
+    """Normalize translated labels while preserving letters from every locale."""
+    return re.sub(r"[\W_]+", "", text or "", flags=re.UNICODE).casefold()
+
+
+@lru_cache(maxsize=1)
+def _localized_department_terms() -> tuple[tuple[str, str, str], ...]:
+    """Build translated lookup terms once; this path runs for every LINE message."""
+    terms: list[tuple[str, str, str]] = []
+    for language in SUPPORTED_LANGUAGES:
+        if language == "zh-TW":
+            continue
+        for canonical in CANONICAL_DEPARTMENTS:
+            label = department_label(canonical, language)
+            normalized = _normalize_localized_text(label)
+            if normalized and normalized != _normalize_localized_text(canonical):
+                terms.append((normalized, canonical, label))
+    return tuple(
+        sorted(set(terms), key=lambda item: (-len(item[0]), item[0], item[1]))
+    )
+
+
+def _localized_department_matches(text: str) -> "tuple[DepartmentMatch, ...]":
+    """Find translated department labels in localized quick replies and user text."""
+    cleaned = _normalize_localized_text(text)
+    if not cleaned:
+        return ()
+
+    # Longer labels claim their span first, so "Neurosurgery" is not also
+    # interpreted as "Surgery". Keep output in sentence order afterwards.
+    taken = [False] * len(cleaned)
+    found: list[tuple[int, DepartmentMatch]] = []
+    for term, canonical, label in _localized_department_terms():
+        start = cleaned.find(term)
+        while start != -1:
+            end = start + len(term)
+            short_ascii_is_standalone = (
+                not (term.isascii() and len(term) <= 3)
+                or start == 0
+                or end == len(cleaned)
+            )
+            if short_ascii_is_standalone and not any(taken[start:end]):
+                taken[start:end] = [True] * (end - start)
+                found.append(
+                    (start, DepartmentMatch(canonical=canonical, requested=label))
+                )
+            start = cleaned.find(term, start + 1)
+
+    unique: dict[str, tuple[int, DepartmentMatch]] = {}
+    for start, match in sorted(found, key=lambda item: item[0]):
+        unique.setdefault(match.canonical, (start, match))
+    return tuple(item[1] for item in unique.values())
+
+
 @dataclass(frozen=True)
 class DepartmentMatch:
     """一次科別解析的結果。"""
@@ -201,6 +259,14 @@ def resolve_department(text: str) -> DepartmentMatch | None:
         if alias_target:
             return DepartmentMatch(canonical=alias_target, requested=cleaned)
 
+    localized = _localized_department_matches(text)
+    if (
+        len(localized) == 1
+        and _normalize_localized_text(localized[0].requested)
+        == _normalize_localized_text(text)
+    ):
+        return localized[0]
+
     return None
 
 
@@ -244,6 +310,10 @@ def extract_department_intents(text: str) -> tuple[DepartmentMatch, ...]:
     """
     if not text:
         return ()
+
+    localized = _localized_department_matches(text)
+    if localized:
+        return localized
 
     cleaned = normalize_department_text(text)
     if not cleaned:

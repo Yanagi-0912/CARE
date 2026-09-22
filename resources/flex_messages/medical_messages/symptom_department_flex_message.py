@@ -11,10 +11,9 @@
     文字大小走 theme.resolve_theme()，跟隨 UserSettings.font_size，不寫死。
     模板裡的 size 是 large 這一檔解析出來的結果，不是唯一合法值。
 
-多語言（尚未做）：
-    本卡的 UI 文案與 _reason_for() 仍寫死 zh-TW，科別名稱也還沒走
-    app.i18n.messages.department_label()。緊急卡已完成 i18n，這張還沒——
-    優先序如此是因為緊急卡是急救指示，看不懂的代價高得多。
+多語言：
+    固定文案、主科別與次專科均走 app.i18n.messages；症狀對照表的命中詞維持
+    中文資料來源，但非中文卡不直接顯示它，避免在外語句子中夾入未翻譯症狀。
 
 """
 
@@ -22,7 +21,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.core.user_language import get_request_language, normalize_user_language
 from app.core.user_age import PEDIATRIC_AGE_LIMIT
+from app.i18n.messages import (
+    department_label,
+    subgroup_label,
+    symptom_fallback_reason,
+    t,
+)
 from app.services.medical.symptom_classification.symptom_department_service import (
     PEDIATRIC_REASON_AGE,
     PEDIATRIC_REASON_MENTIONED_CHILD,
@@ -34,8 +40,6 @@ from app.services.medical.symptom_classification.symptom_table import (
     load_source_references,
 )
 from resources.flex_messages import theme
-
-ALT_TEXT_SUGGESTION = "建議的看診方向"
 
 # 卡片頂層的科別標記。對話紀錄存的是整張卡的 JSON，摘要靠這個 key 取得卡片種類與
 # 建議科別，不必從卡片節點反解文字；送往 LINE 時 replier 只取 altText／contents，不會帶出去。
@@ -62,35 +66,12 @@ _CANDIDATE_PALETTE: tuple[tuple[str, str], ...] = (
     ("#FFF8E7", "#F0E4C4"),
 )
 
-_DISCLAIMER = (
-    "免責聲明：本建議僅供參考，不是醫療診斷。"
-    "若症狀持續或惡化，請務必儘速就醫接受專業診斷。"
-)
-
 _NEARBY_PROMPT_COLOR = "#37474F"
 
-# 追問下一步。刻意只是一句話 + 一顆 Quick Reply 按鈕，不主動索取位置（design 決策 13）。
-# 建議卡只問第一順位那一科；保底卡列的是一組不確定時的初診方向，按鈕一次全部搜尋，
-# 所以追問要講明按下去會搜哪幾科——只寫「附近的醫院」會讓人以為是不分科別的搜尋。
-_NEARBY_PROMPT = "是否需要搜尋附近{department}的醫院或診所？"
-_FALLBACK_NEARBY_PROMPT = "是否需要搜尋附近的醫院或診所？下方按鈕會一次搜尋{departments}。"
-_NEARBY_QUICK_REPLY_TEXT = "搜尋附近的{department}"
-_DEPARTMENT_SEPARATOR = "、"
 
-_HEADER_TITLE = "推薦掛號科別"
-_TAG_SUGGESTION = "(建議優先)"
-_TAG_FALLBACK = "(不確定時的方向)"
-_SOURCE_LABEL = "參考來源"
-
-# 孩童的保底多列了兒科，卡片要說明為什麼。提到孩童是家長在問，年齡未滿界線則是
-# 孩童本人在問——同一句話對另一種讀者都說不通。
-_PEDIATRIC_NOTES = {
-    PEDIATRIC_REASON_MENTIONED_CHILD: "因為是幫孩子詢問，另外列出兒科。",
-    PEDIATRIC_REASON_AGE: f"因為你還未滿 {PEDIATRIC_AGE_LIMIT} 歲，另外列出兒科。",
-}
-
-
-def _header(primary: str, tag: str, ft: theme.FlexTheme) -> dict[str, Any]:
+def _header(
+    primary: str, tag: str, ft: theme.FlexTheme, language: str
+) -> dict[str, Any]:
     return {
         "type": "box",
         "layout": "vertical",
@@ -99,7 +80,7 @@ def _header(primary: str, tag: str, ft: theme.FlexTheme) -> dict[str, Any]:
         "contents": [
             {
                 "type": "text",
-                "text": _HEADER_TITLE,
+                "text": t("flex.symptom.header", language),
                 "color": _TPL_ON_HEADER,
                 "size": ft.body,
                 "weight": "bold",
@@ -191,6 +172,7 @@ def _candidate_box(
     subgroups: tuple[str, ...],
     reason: str,
     ft: theme.FlexTheme,
+    language: str,
 ) -> dict[str, Any]:
     background, border = _CANDIDATE_PALETTE[(index - 1) % len(_CANDIDATE_PALETTE)]
     return {
@@ -206,7 +188,7 @@ def _candidate_box(
             _candidate_title(index, canonical, subgroups, ft),
             {
                 "type": "text",
-                "text": f"理由：{reason}",
+                "text": t("flex.symptom.reason.label", language).format(reason=reason),
                 "size": ft.body,
                 "color": _TPL_CANDIDATE_REASON_COLOR,
                 "wrap": True,
@@ -216,7 +198,7 @@ def _candidate_box(
     }
 
 
-def _source_annotation(candidate, hospital_count: int) -> str:
+def _source_annotation(candidate, hospital_count: int, language: str) -> str:
     """
     候選的來源標註（design 決策 15）。N＝收錄此症狀的醫院數，M＝列在這一科的醫院數。
 
@@ -227,44 +209,59 @@ def _source_annotation(candidate, hospital_count: int) -> str:
     if listed == 0:
         return ""
     if hospital_count == 1:
-        return "（僅 1 家醫院的對照表收錄此症狀，建議先去電確認）"
-    call_ahead = "，建議先去電確認" if listed == 1 else ""
-    return f"（收錄此症狀的 {hospital_count} 家醫院中，有 {listed} 家列在此科{call_ahead}）"
+        return t("flex.symptom.source.single", language)
+    call_ahead = t("flex.symptom.source.call_ahead", language) if listed == 1 else ""
+    return t("flex.symptom.source.multiple", language).format(
+        hospital_count=hospital_count,
+        listed=listed,
+        call_ahead=call_ahead,
+    )
 
 
-def _reason_for(candidate, matched_term: str | None, hospital_count: int) -> str:
+def _reason_for(
+    candidate, matched_term: str | None, hospital_count: int, language: str
+) -> str:
     """
     候選科別的說明文字。刻意描述「這一科處理什麼」，不宣稱使用者得了什麼。
 
     對照表的 note 是維護紀錄，不在這裡出現。
     """
     term = matched_term or "你描述的狀況"
+    department = department_label(candidate.canonical, language)
     if candidate.subgroups:
         # 多個次專科用「或」連接而不是頓號：頓號讀起來像「兩個都要看」，
         # 但那是兩條擇一的路（漏斗胸：成人走胸腔外科、小孩走小兒外科）。
-        directions = "或".join(candidate.subgroups)
-        base = (
-            f"{term}在這類分科中通常由{candidate.canonical}的"
-            f"{directions}方向處理。"
+        directions = t("flex.symptom.alternative_separator", language).join(
+            subgroup_label(value, language) for value in candidate.subgroups
+        )
+        base = t("flex.symptom.reason.subgroup", language).format(
+            term=term,
+            department=department,
+            subgroups=directions,
         )
     else:
-        base = f"{term}常見的看診方向之一是{candidate.canonical}。"
-    return base + _source_annotation(candidate, hospital_count)
+        base = t("flex.symptom.reason.department", language).format(
+            term=term,
+            department=department,
+        )
+    return base + _source_annotation(candidate, hospital_count, language)
 
 
 def _source_item(
-    index: int, reference: SourceReference, ft: theme.FlexTheme
+    index: int, reference: SourceReference, ft: theme.FlexTheme, language: str
 ) -> dict[str, Any]:
     node: dict[str, Any] = {
         "type": "text",
-        "text": f"{index}. {reference.name}「該看哪一科」對照表",
+        "text": t("flex.symptom.source.item", language).format(
+            index=index, name=reference.name
+        ),
         "size": ft.caption,
         "color": _TPL_SOURCE_LINK_COLOR,
         "weight": "bold",
         "wrap": True,
         "action": {
             "type": "uri",
-            "label": f"開啟參考網址{index}",
+            "label": t("flex.symptom.source.open", language).format(index=index),
             "uri": reference.url,
         },
     }
@@ -290,7 +287,7 @@ def _cited_references(
 
 
 def _source_section(
-    references: tuple[SourceReference, ...], ft: theme.FlexTheme
+    references: tuple[SourceReference, ...], ft: theme.FlexTheme, language: str
 ) -> list[dict[str, Any]]:
     """
     參考來源。逐條列出且各自可點，不把醫院擠成一段敘述——來源存在的目的是
@@ -309,13 +306,13 @@ def _source_section(
             "contents": [
                 {
                     "type": "text",
-                    "text": _SOURCE_LABEL,
+                    "text": t("flex.symptom.source.label", language),
                     "size": ft.caption,
                     "color": _TPL_LABEL_COLOR,
                     "weight": "bold",
                 },
                 *(
-                    _source_item(index, reference, ft)
+                    _source_item(index, reference, ft, language)
                     for index, reference in enumerate(references, start=1)
                 ),
             ],
@@ -323,26 +320,43 @@ def _source_section(
     ]
 
 
-def pediatric_note(result: SymptomTriageResult) -> str | None:
+def pediatric_note(
+    result: SymptomTriageResult, language: str | None = None
+) -> str | None:
     """保底多列兒科時的說明；卡片與純文字回覆共用這一份文案。"""
     if result.pediatric_reason is None:
         return None
-    return _PEDIATRIC_NOTES[result.pediatric_reason]
+    lang = normalize_user_language(language or get_request_language())
+    if result.pediatric_reason == PEDIATRIC_REASON_MENTIONED_CHILD:
+        return t("flex.symptom.pediatric.mentioned", lang)
+    return t("flex.symptom.pediatric.age", lang).format(age=PEDIATRIC_AGE_LIMIT)
 
 
-def _nearby_departments(result: SymptomTriageResult) -> str:
+def _nearby_departments(result: SymptomTriageResult) -> tuple[str, ...]:
     """按鈕要搜尋的科別：建議卡是第一順位那一科，保底卡是卡上列出的全部初診方向。"""
     if result.kind == RESULT_FALLBACK:
-        return _DEPARTMENT_SEPARATOR.join(c.canonical for c in result.candidates)
-    return result.primary_department
+        return tuple(c.canonical for c in result.candidates)
+    return (result.primary_department,)
 
 
-def _nearby_prompt(result: SymptomTriageResult, ft: theme.FlexTheme) -> dict[str, Any]:
+def _localized_departments(departments: tuple[str, ...], language: str) -> str:
+    separator = t("consultation_card.list_separator", language)
+    return separator.join(department_label(value, language) for value in departments)
+
+
+def _nearby_prompt(
+    result: SymptomTriageResult, ft: theme.FlexTheme, language: str
+) -> dict[str, Any]:
     """候選之下、來源之上的一句追問。搭配 Quick Reply 按鈕使用。"""
+    departments = _localized_departments(_nearby_departments(result), language)
     if result.kind == RESULT_FALLBACK:
-        text = _FALLBACK_NEARBY_PROMPT.format(departments=_nearby_departments(result))
+        text = t("flex.symptom.nearby.fallback_prompt", language).format(
+            departments=departments
+        )
     else:
-        text = _NEARBY_PROMPT.format(department=_nearby_departments(result))
+        text = t("flex.symptom.nearby.prompt", language).format(
+            department=departments
+        )
     return {
         "type": "text",
         "text": text,
@@ -354,12 +368,15 @@ def _nearby_prompt(result: SymptomTriageResult, ft: theme.FlexTheme) -> dict[str
     }
 
 
-def _nearby_quick_reply(departments: str) -> dict[str, Any]:
+def _nearby_quick_reply(
+    departments: tuple[str, ...], language: str
+) -> dict[str, Any]:
     """
     按鈕送出的是明確語句（「搜尋附近的皮膚科」「搜尋附近的家醫科、內科、不分科」），
     送出後由既有的 `_is_nearby_department_intent()` 接住，列舉的科別會一起帶進搜尋。
     """
-    text = _NEARBY_QUICK_REPLY_TEXT.format(department=departments)
+    localized = _localized_departments(departments, language)
+    text = t("flex.symptom.nearby.button", language).format(departments=localized)
     return {
         "items": [
             {
@@ -370,7 +387,7 @@ def _nearby_quick_reply(departments: str) -> dict[str, Any]:
     }
 
 
-def _footer(ft: theme.FlexTheme) -> dict[str, Any]:
+def _footer(ft: theme.FlexTheme, language: str) -> dict[str, Any]:
     return {
         "type": "box",
         "layout": "vertical",
@@ -379,7 +396,7 @@ def _footer(ft: theme.FlexTheme) -> dict[str, Any]:
         "contents": [
             {
                 "type": "text",
-                "text": _DISCLAIMER,
+                "text": t("flex.symptom.disclaimer", language),
                 "size": ft.caption,
                 "color": _TPL_FOOTER_TEXT_COLOR,
                 "weight": "bold",
@@ -393,22 +410,24 @@ def _build_suggestion_bubble(
     result: SymptomTriageResult,
     references: tuple[SourceReference, ...],
     ft: theme.FlexTheme,
+    language: str,
 ) -> dict[str, Any]:
     is_fallback = result.kind == RESULT_FALLBACK
-    primary = result.primary_department
+    primary = department_label(result.primary_department, language)
 
     if is_fallback:
-        label = (
-            f"系統無法判斷你描述的狀況該掛哪一科（{result.fallback_reason}），"
-            "以下是常見的初診方向"
+        label = t("flex.symptom.body.fallback", language).format(
+            reason=symptom_fallback_reason(result.fallback_reason, language)
         )
-        note = pediatric_note(result)
+        note = pediatric_note(result, language)
         if note is not None:
-            label = f"{label}。{note}"
-        tag = _TAG_FALLBACK
+            label = f"{label}{t('flex.symptom.sentence_separator', language)}{note}"
+        tag = t("flex.symptom.tag.fallback", language)
     else:
-        label = f"依「{result.matched_term}」整理的可能科別與評估原因"
-        tag = _TAG_SUGGESTION
+        label = t("flex.symptom.body.suggestion", language).format(
+            term=result.matched_term or "你描述的狀況"
+        )
+        tag = t("flex.symptom.tag.suggestion", language)
 
     # 標註的分母：收錄這個症狀的醫院數。候選自己的來源一併計入——列在這一科的
     # 醫院必然收錄了這個症狀，呼叫端漏帶 term_sources 時分母才不會小於分子。
@@ -419,7 +438,7 @@ def _build_suggestion_bubble(
     return {
         "type": "bubble",
         "size": "mega",
-        "header": _header(primary, tag, ft),
+        "header": _header(primary, tag, ft, language),
         "body": {
             "type": "box",
             "layout": "vertical",
@@ -441,18 +460,19 @@ def _build_suggestion_bubble(
                 *(
                     _candidate_box(
                         index,
-                        candidate.canonical,
-                        candidate.subgroups,
-                        _reason_for(candidate, result.matched_term, hospital_count),
+                        department_label(candidate.canonical, language),
+                        tuple(subgroup_label(value, language) for value in candidate.subgroups),
+                        _reason_for(candidate, result.matched_term, hospital_count, language),
                         ft,
+                        language,
                     )
                     for index, candidate in enumerate(result.candidates, start=1)
                 ),
-                _nearby_prompt(result, ft),
-                *_source_section(references, ft),
+                _nearby_prompt(result, ft, language),
+                *_source_section(references, ft, language),
             ],
         },
-        "footer": _footer(ft),
+        "footer": _footer(ft, language),
     }
 
 
@@ -461,6 +481,7 @@ def build_symptom_department_flex(
     *,
     references: tuple[SourceReference, ...] | None = None,
     font_size: str | None = None,
+    language: str | None = None,
 ) -> dict[str, Any]:
     """組出可直接送往 LINE 的 Flex Message 外層結構。
 
@@ -472,11 +493,12 @@ def build_symptom_department_flex(
     resolved = load_source_references() if references is None else references
     resolved = _cited_references(result, resolved)
     ft = theme.resolve_theme(font_size)
+    lang = normalize_user_language(language or get_request_language())
     return {
         "type": "flex",
-        "altText": ALT_TEXT_SUGGESTION,
-        "contents": _build_suggestion_bubble(result, resolved, ft),
-        "quickReply": _nearby_quick_reply(_nearby_departments(result)),
+        "altText": t("flex.symptom.alt", lang),
+        "contents": _build_suggestion_bubble(result, resolved, ft, lang),
+        "quickReply": _nearby_quick_reply(_nearby_departments(result), lang),
         SYMPTOM_DEPARTMENT_KEY: {
             "kind": result.kind,
             "departments": [c.canonical for c in result.candidates],

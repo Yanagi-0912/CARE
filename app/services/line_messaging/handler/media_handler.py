@@ -54,6 +54,7 @@ class LineMediaHandler(BaseLineMessageHandler):
         emergency_family_alert_service=None,
         lost_location_service=None,
         urgency_classifier=None,
+        clinic_recording_flow=None,
     ):
         # 語音、圖片、檔案抽出的文字同樣會過急迫度判斷；沒有把通報服務傳下去的話，
         # 當事人收得到紅卡，家人卻收不到通報——而長輩最常用的正是語音。
@@ -69,6 +70,9 @@ class LineMediaHandler(BaseLineMessageHandler):
             urgency_classifier=urgency_classifier,
         )
         self._user_document_ingest_service = user_document_ingest_service
+        # 看診錄音改在聊天室錄（app/services/clinic_transcript/line_flow.py）。
+        # 沒注入時語音一律當問題，跟以前一樣。
+        self._clinic_recording_flow = clinic_recording_flow
 
     async def handle(self, event: MessageEvent) -> None:
         message = event.message
@@ -96,6 +100,8 @@ class LineMediaHandler(BaseLineMessageHandler):
         # ——所有語音都是用預設的 zh-TW 辨識的（2026-09-14 發現，ba9bf1b 的語言
         # 提示因此從沒生效）。
         language_choice = await self._language_choice_for(user_id)
+        if await self._handled_as_clinic_recording(event, user_id, language_choice):
+            return
         lang_token = set_request_language(language_choice)
         # 語音實際聽出來的語言由辨識那邊寫進來（見 mutimedia_processor
         # ._transcribe_zh_or_taiwanese）。先清乾淨，免得讀到別的請求留下的值。
@@ -115,6 +121,37 @@ class LineMediaHandler(BaseLineMessageHandler):
             image_text=image_text,
             speech_language=detected_speech_language,
         )
+
+    async def _handled_as_clinic_recording(
+        self, event: MessageEvent, user_id: str, language_choice: str
+    ) -> bool:
+        """這則語音／音檔是看診錄音就交給看診錄音流程，不進 agent。"""
+        flow = self._clinic_recording_flow
+        message = event.message
+        if flow is None or not user_id:
+            return False
+        if isinstance(message, AudioMessageContent):
+            is_file, file_name = False, None
+        elif isinstance(message, FileMessageContent) and (
+            Path(message.file_name or "").suffix.lower() in AUDIO_FILE_EXTENSIONS
+        ):
+            is_file, file_name = True, message.file_name
+        else:
+            return False
+        try:
+            return await flow.handle_audio(
+                user_id,
+                getattr(event, "reply_token", ""),
+                normalize_user_language(language_choice),
+                message_id=message.id,
+                is_file=is_file,
+                file_name=file_name,
+                duration_ms=getattr(message, "duration", None),
+                file_size=getattr(message, "file_size", None),
+            )
+        except Exception:  # noqa: BLE001 - 看診錄音那條路壞了，至少讓語音照常被回答
+            logger.exception("stage=clinic_chat 判斷是否為看診錄音時出錯，照一般語音處理")
+            return False
 
     async def _language_choice_for(self, user_id: str) -> str:
         """讀使用者設定的語言（含台語）；讀不到就用預設，不擋辨識。"""

@@ -109,6 +109,7 @@ from app.services.liff.jwt_service import AppJwtService
 from app.services.liff.line_id_token_service import LineIdTokenService
 from app.services.liff.line_language_service import LineLanguageService
 from app.services.line_messaging.event_handler import LineEventHandler
+from app.services.clinic_transcript.line_flow import ClinicRecordingFlow
 from app.services.line_messaging.handler.location_handler import LineLocationHandler
 from app.services.line_messaging.handler.media_handler import LineMediaHandler
 from app.services.line_messaging.handler.message_handler import LineMessageHandler
@@ -857,6 +858,13 @@ _lost_location_service = LostLocationService(
     intent_detector=LostIntentDetector.load(),
 )
 
+# 在聊天室錄看診（開始、徵詢同意、收錄音）。服務本身用到才建，見
+# get_clinic_transcript_service。
+_clinic_recording_flow = ClinicRecordingFlow(
+    service_provider=lambda: get_clinic_transcript_service(),
+    replier=_line_replier,
+)
+
 _message_handler = LineMessageHandler(
     agent=_care_agent,
     history_service=_line_history_service,
@@ -868,6 +876,7 @@ _message_handler = LineMessageHandler(
     share_card_service=_share_card_service,
     lost_location_service=_lost_location_service,
     urgency_classifier=_urgency_classifier,
+    clinic_recording_flow=_clinic_recording_flow,
 )
 _media_handler = LineMediaHandler(
     agent=_care_agent,
@@ -880,6 +889,7 @@ _media_handler = LineMediaHandler(
     emergency_family_alert_service=_emergency_family_alert_service,
     lost_location_service=_lost_location_service,
     urgency_classifier=_urgency_classifier,
+    clinic_recording_flow=_clinic_recording_flow,
 )
 _location_handler = LineLocationHandler(
     agent=_care_agent,
@@ -1031,6 +1041,7 @@ _line_event_handler = LineEventHandler(
     appointment_service=_appointment_service,
     line_language_service=_line_language_service,
     liff_url=settings.LIFF_URL,
+    clinic_recording_flow=_clinic_recording_flow,
 )
 
 

@@ -132,35 +132,46 @@ class ClinicTranscriptService:
             names = await self._medication_names(record.user_id)
             found = hints_module.find_hints(text, names)
 
+            segments = [
+                TranscriptSegment(text=segment.text, start_seconds=segment.start_seconds)
+                for segment in transcript.segments
+            ]
+            summary_model = ClinicVisitSummaryModel(
+                main_points=list(summary.main_points),
+                medication_changes=[
+                    {"description": change.description, "quote": change.quote}
+                    for change in summary.medication_changes
+                ],
+                next_visit=summary.next_visit,
+                reminders=list(summary.reminders),
+                unclear=list(summary.unclear),
+                truncated=summary.truncated,
+            )
+            hints = [
+                DrugHintNote(
+                    medication_name=hint.medication_name,
+                    heard=hint.heard,
+                    start=hint.start,
+                    score=hint.score,
+                )
+                for hint in found
+            ]
             await self._repository.mark_ready(
                 record_id,
-                segments=[
-                    TranscriptSegment(
-                        text=segment.text, start_seconds=segment.start_seconds
-                    ).model_dump()
-                    for segment in transcript.segments
-                ],
-                summary=ClinicVisitSummaryModel(
-                    main_points=list(summary.main_points),
-                    medication_changes=[
-                        {"description": change.description, "quote": change.quote}
-                        for change in summary.medication_changes
-                    ],
-                    next_visit=summary.next_visit,
-                    reminders=list(summary.reminders),
-                    unclear=list(summary.unclear),
-                    truncated=summary.truncated,
-                ).model_dump(),
-                drug_hints=[
-                    DrugHintNote(
-                        medication_name=hint.medication_name,
-                        heard=hint.heard,
-                        start=hint.start,
-                        score=hint.score,
-                    ).model_dump()
-                    for hint in found
-                ],
+                segments=[segment.model_dump() for segment in segments],
+                summary=summary_model.model_dump(),
+                drug_hints=[hint.model_dump() for hint in hints],
                 speaker_count=transcript.speaker_count,
+            )
+            # 推播卡片直接放摘要（2026-09-22 起），要交出寫回之後的樣子。
+            record = record.model_copy(
+                update={
+                    "status": "ready",
+                    "segments": segments,
+                    "summary": summary_model,
+                    "drug_hints": hints,
+                    "speaker_count": transcript.speaker_count,
+                }
             )
             logger.info(
                 "stage=clinic_process 完成 record=%s segments=%d hints=%d",

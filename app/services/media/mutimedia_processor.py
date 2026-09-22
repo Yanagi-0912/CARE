@@ -272,6 +272,8 @@ class MediaProcessorService:
         media_message_id: str,
         media_type: str,
         source_file_name: Optional[str] = None,
+        max_bytes: int = MAX_MEDIA_SIZE_BYTES,
+        mime_prefixes: Optional[tuple[str, ...]] = None,
     ) -> Path:
         # 媒體類型白名單過濾，阻擋未知類型。
         normalized_type = media_type.lower().strip()
@@ -323,14 +325,14 @@ class MediaProcessorService:
                     content_length = int(content_length_header)
                 except ValueError as exc:
                     raise ValueError("Invalid Content-Length header") from exc
-                if content_length > MAX_MEDIA_SIZE_BYTES:
-                    raise MediaTooLargeError(content_length)
+                if content_length > max_bytes:
+                    raise MediaTooLargeError(content_length, max_bytes)
 
             # 驗證回應 MIME 與宣稱 media_type 大致一致，降低內容偽裝風險。
             content_type = (
                 response.headers.get("Content-Type", "").split(";")[0].strip().lower()
             )
-            expected_prefixes = EXPECTED_MIME_PREFIXES[normalized_type]
+            expected_prefixes = mime_prefixes or EXPECTED_MIME_PREFIXES[normalized_type]
             if content_type and not any(
                 content_type.startswith(prefix) for prefix in expected_prefixes
             ):
@@ -351,8 +353,8 @@ class MediaProcessorService:
                         continue
                     downloaded_size += len(chunk)
                     # 下載中仍要檢查，防止 Content-Length 缺失或不可信。
-                    if downloaded_size > MAX_MEDIA_SIZE_BYTES:
-                        raise MediaTooLargeError(downloaded_size)
+                    if downloaded_size > max_bytes:
+                        raise MediaTooLargeError(downloaded_size, max_bytes)
                     temp_file.write(chunk)
 
         logger.info(f"Downloaded media content from LINE API to {target}")

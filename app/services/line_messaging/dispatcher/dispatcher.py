@@ -56,6 +56,7 @@ from app.services.line_messaging.handler.message_handler import (
     LineValidationError,
 )
 from app.services.line_messaging.handler.facility_detail_handler import LineFacilityDetailHandler
+from app.services.clinic_transcript import line_flow as clinic_flow
 from app.services.line_messaging.handler.media_handler import LineMediaHandler
 from app.services.line_messaging.handler.location_handler import LineLocationHandler
 from app.services.line_messaging.reply.reply import LineReplier
@@ -63,6 +64,15 @@ from app.services.line_messaging.sticker_reply import sticker_reply_key
 from app.repositories.user_profile_repository import UserProfileRepository
 
 logger = logging.getLogger(__name__)
+
+CLINIC_ACTIONS = frozenset(
+    {
+        clinic_flow.START_ACTION,
+        clinic_flow.CONSENT_ACTION,
+        clinic_flow.CANCEL_ACTION,
+        clinic_flow.NOT_VISIT_ACTION,
+    }
+)
 
 # 追蹤狀態 (line_id, following, at) → 是否有更新到。預設走 repository 的
 # 靜態方法；測試以建構子注入替身。
@@ -110,6 +120,7 @@ class LineEventDispatcher:
         line_language_service=None,
         liff_url: str = "",
         set_following: Optional[SetFollowingFn] = None,
+        clinic_recording_flow=None,
     ):
         self._message_handler = message_handler
         self._media_handler = media_handler
@@ -127,6 +138,8 @@ class LineEventDispatcher:
         self._line_language_service = line_language_service
         self._liff_url = liff_url
         self._set_following = set_following
+        # 在聊天室錄看診的按鈕（開始、徵詢同意、取消）。未設定時只記 log。
+        self._clinic_recording_flow = clinic_recording_flow
         # 同一位使用者的事件要照順序處理：webhook 現在是每個事件各開一個 task
         # （見 routers/line/webhook.py），同一個人連傳兩句會併行，第二句的
         # agent 讀不到第一句的對話紀錄，回覆順序也可能顛倒。不同使用者之間
@@ -480,8 +493,45 @@ class LineEventDispatcher:
                 reply_token=reply_token,
                 user_id=user_id,
             )
+        elif action in CLINIC_ACTIONS:
+            await self._handle_clinic_recording_postback(
+                action, params, reply_token, user_id, user_language
+            )
         else:
             logger.warning("Unknown postback action: %s", action)
+
+    async def _handle_clinic_recording_postback(
+        self,
+        action: str,
+        params: dict,
+        reply_token: str,
+        user_id: str,
+        language: str,
+    ) -> None:
+        flow = self._clinic_recording_flow
+        if flow is None:
+            logger.warning("%s postback but clinic recording flow not configured", action)
+            return
+        if action == clinic_flow.START_ACTION:
+            await flow.start(
+                user_id,
+                reply_token,
+                language,
+                appointment_id=params.get("appointment_id", [""])[0],
+                hospital_name=params.get("hospital_name", [""])[0],
+                department=params.get("department", [""])[0],
+            )
+        elif action == clinic_flow.CONSENT_ACTION:
+            await flow.choose_consent(
+                user_id, reply_token, language, params.get("mode", [""])[0]
+            )
+        else:
+            await flow.cancel(
+                user_id,
+                reply_token,
+                language,
+                not_visit=action == clinic_flow.NOT_VISIT_ACTION,
+            )
 
     async def _handle_appointment_report(
         self,

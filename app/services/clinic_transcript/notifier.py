@@ -29,13 +29,18 @@ from app.core.user_font_size import DEFAULT_USER_FONT_SIZE, normalize_user_font_
 from app.core.user_language import DEFAULT_USER_LANGUAGE, normalize_user_language
 from app.i18n import t
 from app.models.clinic_transcript import ClinicVisitRecord
-from app.services.line_messaging.flex.clinic_visit_flex import build_clinic_visit_flex
+from app.services.line_messaging.flex.clinic_visit_flex import (
+    build_clinic_visit_flex,
+    summary_sections,
+)
 from app.services.line_messaging.rich_menu_layout import liff_uri
 from resources.flex_messages.size_guard import fits
 
 logger = logging.getLogger(__name__)
 
 NOTIFICATION_KIND = "clinic_visit_ready"
+# LINE 文字訊息上限 5,000 字。
+_TEXT_MAX = 5000
 
 
 @dataclass(frozen=True)
@@ -95,6 +100,7 @@ class ClinicVisitNotifier:
                     prefs,
                     header=t("flex.clinic.ready.header", prefs.language),
                     body=body,
+                    ready=True,
                 )
             logger.info(
                 "stage=clinic_notify ready record=%s recipients=%d",
@@ -127,7 +133,10 @@ class ClinicVisitNotifier:
         *,
         header: str,
         body: str,
+        ready: bool = False,
     ) -> None:
+        # 整理好的卡片直接放摘要（2026-09-22 起，見 clinic_visit_flex 的說明）。
+        summary = record.summary if ready else None
         flex = build_clinic_visit_flex(
             header=header,
             body_text=body,
@@ -135,14 +144,22 @@ class ClinicVisitNotifier:
             open_url=self.record_url(record, viewer_id),
             language=prefs.language,
             font_size=prefs.font_size,
+            summary=summary,
+            self_recap=ready and record.consent == "self_recap",
         )
         try:
             if fits(flex.contents.to_dict()) and await self._replier.push_flex(viewer_id, flex):
                 return
         except Exception:  # noqa: BLE001
             logger.warning("stage=clinic_notify Flex 推播失敗，改送純文字", exc_info=True)
+        lines = [header, body]
+        if summary is not None:
+            # Flex 太大送不出去時，摘要照樣要到：純文字版同一份內容。
+            for title, items in summary_sections(summary, prefs.language):
+                lines.append(f"\n【{title}】")
+                lines.extend(f"・{item}" for item in items)
         try:
-            await self._replier.push_text(viewer_id, f"{header}\n{body}")
+            await self._replier.push_text(viewer_id, "\n".join(lines)[:_TEXT_MAX])
         except Exception:  # noqa: BLE001
             logger.warning("stage=clinic_notify 純文字推播也失敗", exc_info=True)
 

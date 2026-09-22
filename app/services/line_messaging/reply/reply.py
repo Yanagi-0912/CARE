@@ -266,6 +266,17 @@ class LineReplier:
             logger.info("Flex Message replied to LINE user %s", user_id)
         return ok
 
+    async def reply_messages(
+        self, reply_token: str, user_id: str, messages: list, *, language: str | None = None
+    ) -> bool:
+        """回覆一組現成的訊息（例如帶 postback 快速回覆的文字）。
+
+        `reply` 會把字串改寫成卡片、附語音；這支原樣送出，失敗時同樣改 push。
+        """
+        if not reply_token or not reply_token.strip():
+            return (await self._send_push(user_id, messages)).ok
+        return await self._reply_or_push(reply_token, user_id, messages, language=language)
+
     async def push_flex(self, user_id: str, flex_message: FlexMessage) -> bool:
         """主動推播 LINE Flex Message"""
         return (await self.push_flex_result(user_id, flex_message)).ok

@@ -27,6 +27,9 @@ from app.core.user_language import (
 )
 from app.i18n.messages import t
 from app.services.line_messaging.reply.reply import LineReplier
+from app.services.line_messaging.clinic_recording_intent import (
+    is_clinic_recording_intent,
+)
 from app.services.line_messaging.share_intent import is_share_intent
 from linebot.v3.messaging import FlexContainer, FlexMessage
 
@@ -63,6 +66,7 @@ class BaseLineMessageHandler:
         share_card_service=None,
         lost_location_service=None,
         urgency_classifier=None,
+        clinic_recording_flow=None,
     ):
         self._agent = agent
         self._history_service = history_service
@@ -80,6 +84,8 @@ class BaseLineMessageHandler:
         # 走失流程不進 agent，也就跳過了 agent 裡的急迫度判斷；這裡補跑同一個判斷器
         # （見 start_lost_flow）。沒注入時不補跑。
         self._urgency_classifier = urgency_classifier
+        # 打「看診錄音」直接進錄音流程。沒注入時照一般訊息進 agent。
+        self._clinic_recording_flow = clinic_recording_flow
         # 併行任務要被持有參考直到完成，否則可能在跑完之前就被 GC 回收。
         self._safety_alert_tasks: set[asyncio.Task] = set()
 
@@ -207,6 +213,15 @@ class BaseLineMessageHandler:
                     language=user_language,
                 )
                 log_stage(logger, "share_card", ok=success)
+                return
+
+            # 看診錄音：整句就是要開始錄，直接回徵詢同意的那一則（理由同分享卡）。
+            if (
+                message_type == "text"
+                and self._clinic_recording_flow is not None
+                and is_clinic_recording_intent(user_text)
+            ):
+                await self._clinic_recording_flow.start(user_id, reply_token, user_language)
                 return
 
             # 每輪開頭建立 holder：上一輪的來源殘留下來，會變成這一輪卡片上

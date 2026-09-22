@@ -14,13 +14,12 @@
 
 from datetime import datetime
 from typing import Any, Literal, Optional
-from urllib.parse import quote, urlencode
 
 from linebot.v3.messaging import FlexContainer, FlexMessage
 
-from app.core.config import settings
 from app.i18n import t
-from app.services.line_messaging.rich_menu_layout import liff_uri
+from app.services.clinic_transcript.line_flow import START_ACTION as CLINIC_START_ACTION
+from app.services.clinic_transcript.line_flow import postback_data as clinic_postback_data
 from app.services.line_messaging.flex.medication_flex import _body, _header, _paragraph
 from resources.flex_messages import theme
 
@@ -132,34 +131,37 @@ def _report_button(
     return ft.secondary_button(label, postback)
 
 
+# postback data 上限 300 字元。醫院名稱 URL 編碼後一個中文字 9 字元，
+# 20 字就是 180，加上 action 與掛號 ID 仍在上限內。
+_RECORD_HOSPITAL_MAX = 20
+
+
 def _record_button(
     ft: theme.FlexTheme,
     reminder_id: str,
     hospital_name: str,
     language: Optional[str],
-) -> Optional[dict[str, Any]]:
-    """「進診間前按這裡」——直接開到錄音頁，不經過選單。
+) -> dict[str, Any]:
+    """「進診間前按這裡」——在聊天室裡開始看診錄音，不經過選單。
 
-    長輩在診間門口能完成的操作只有一兩下。從掛號提醒直接進錄音頁，
-    是整個看診錄音功能唯一可行的入口；要他自己開 LINE、找官方帳號、
-    進 LIFF、再找到功能，實務上不會發生。
+    長輩在診間門口能完成的操作只有一兩下。從掛號提醒直接開始，是整個看診錄音
+    功能最可行的入口；要他自己找到功能，實務上不會發生。
 
-    `LIFF_URL` 沒設就回 None（本機與測試環境）。少一顆按鈕，不是壞掉。
+    2026-09-22 起錄音改在聊天室（app/services/clinic_transcript/line_flow.py），
+    按下去是 postback，回一則徵詢醫師同意的訊息，不再開 LIFF。
     """
-    base = settings.LIFF_URL
-    if not base:
-        return None
-    query = urlencode(
-        {"appointment_id": reminder_id, "hospital_name": hospital_name},
-        quote_via=quote,
-    )
     label = t("flex.appt.button.record", language)
     return ft.secondary_button(
         label,
         {
-            "type": "uri",
+            "type": "postback",
             "label": label[:_POSTBACK_LABEL_MAX],
-            "uri": liff_uri(base, f"/clinic-visits/record?{query}"),
+            "data": clinic_postback_data(
+                CLINIC_START_ACTION,
+                appointment_id=reminder_id,
+                hospital_name=hospital_name[:_RECORD_HOSPITAL_MAX],
+            ),
+            "displayText": label,
         },
     )
 

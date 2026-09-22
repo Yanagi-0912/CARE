@@ -605,3 +605,109 @@ async def test_detected_speech_language_decides_voice_reply(stored, detected, sp
     assert reply_kwargs["speech_language"] == speech
     # 文字回覆一律華語：台語只換語音（見 user_language.TAIWANESE_LANGUAGE）。
     assert reply_kwargs["language"] == "zh-TW"
+
+
+# ---- 看診錄音在聊天室錄（app/services/clinic_transcript/line_flow.py）----
+
+
+def _audio_event(message):
+    event = MagicMock()
+    event.message = message
+    event.source.user_id = "U1"
+    event.reply_token = "tok"
+    return event
+
+
+@pytest.mark.asyncio
+async def test_看診錄音流程接手的語音不進_agent(
+    mock_agent, mock_history_service, mock_user_profile_service
+):
+    from linebot.v3.webhooks import AudioMessageContent
+
+    flow = MagicMock()
+    flow.handle_audio = AsyncMock(return_value=True)
+    handler = LineMediaHandler(
+        agent=mock_agent,
+        history_service=mock_history_service,
+        user_profile_service=mock_user_profile_service,
+        replier=MagicMock(),
+        clinic_recording_flow=flow,
+    )
+    message = AudioMessageContent(id="A1", duration=600_000, contentProvider={"type": "line"})
+
+    await handler.handle(_audio_event(message))
+
+    kwargs = flow.handle_audio.await_args.kwargs
+    assert kwargs["message_id"] == "A1" and kwargs["duration_ms"] == 600_000
+    assert kwargs["is_file"] is False
+    mock_agent.invoke.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_看診錄音流程不接手就照常當問題(
+    mock_agent, mock_history_service, mock_user_profile_service
+):
+    from linebot.v3.webhooks import AudioMessageContent
+
+    flow = MagicMock()
+    flow.handle_audio = AsyncMock(return_value=False)
+    handler = LineMediaHandler(
+        agent=mock_agent,
+        history_service=mock_history_service,
+        user_profile_service=mock_user_profile_service,
+        replier=MagicMock(),
+        clinic_recording_flow=flow,
+    )
+    handler._extract_media_text = AsyncMock(return_value=("血壓多少算高", "audio", ""))
+    handler._process_and_reply = AsyncMock()
+    message = AudioMessageContent(id="A1", duration=8_000, contentProvider={"type": "line"})
+
+    await handler.handle(_audio_event(message))
+
+    handler._process_and_reply.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_看診錄音流程壞掉時語音照常被回答(
+    mock_agent, mock_history_service, mock_user_profile_service
+):
+    from linebot.v3.webhooks import AudioMessageContent
+
+    flow = MagicMock()
+    flow.handle_audio = AsyncMock(side_effect=RuntimeError("mongo down"))
+    handler = LineMediaHandler(
+        agent=mock_agent,
+        history_service=mock_history_service,
+        user_profile_service=mock_user_profile_service,
+        replier=MagicMock(),
+        clinic_recording_flow=flow,
+    )
+    handler._extract_media_text = AsyncMock(return_value=("頭暈", "audio", ""))
+    handler._process_and_reply = AsyncMock()
+    message = AudioMessageContent(id="A1", duration=8_000, contentProvider={"type": "line"})
+
+    await handler.handle(_audio_event(message))
+
+    handler._process_and_reply.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_非音檔的檔案不問看診錄音(
+    mock_agent, mock_history_service, mock_user_profile_service
+):
+    flow = MagicMock()
+    flow.handle_audio = AsyncMock(return_value=True)
+    handler = LineMediaHandler(
+        agent=mock_agent,
+        history_service=mock_history_service,
+        user_profile_service=mock_user_profile_service,
+        replier=MagicMock(),
+        clinic_recording_flow=flow,
+    )
+    handler._extract_media_text = AsyncMock(return_value=("報告", "file", ""))
+    handler._process_and_reply = AsyncMock()
+    message = FileMessageContent(id="F1", fileName="report.pdf", fileSize=5_000_000)
+
+    await handler.handle(_audio_event(message))
+
+    flow.handle_audio.assert_not_called()

@@ -37,6 +37,9 @@ from app.repositories.knowledge_report_repository import KnowledgeReportReposito
 from app.repositories.user_profile_repository import UserProfileRepository
 from app.repositories.medication_repository import MedicationLogRepository
 from app.repositories.prescription_draft_repository import PrescriptionDraftRepository
+from app.repositories.clinic_recording_session_repository import (
+    ClinicRecordingSessionRepository,
+)
 from app.repositories.clinic_transcript_repository import (
     ClinicTranscriptRepository,
 )
@@ -144,6 +147,10 @@ async def lifespan(app: FastAPI):
     # (user_id, recorded_at) 的清單索引。
     await ensure_indexes_or_log(
         "clinic_visit_records", ClinicTranscriptRepository.ensure_indexes
+    )
+    # 聊天室「等看診錄音」的狀態：一人一筆（recorder_id 唯一）、3 小時 TTL。
+    await ensure_indexes_or_log(
+        "clinic_recording_sessions", ClinicRecordingSessionRepository.ensure_indexes
     )
     # 用藥風險通報的節流索引：(user_id, drug_key) 的唯一約束是「同一個藥在
     # 節流視窗內只通報一次」的唯一保證，通報權就是靠它原子取得；expires_at

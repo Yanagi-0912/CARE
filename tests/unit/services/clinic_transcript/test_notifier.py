@@ -161,14 +161,42 @@ async def test_沒設LIFF網址時卡片沒有按鈕但照送():
 
 
 @pytest.mark.asyncio
-async def test_卡片不含任何摘要內容():
-    """LINE 聊天室列表誰都看得到，推播只說好了。"""
+async def test_卡片直接放摘要():
+    """2026-09-22 James 決定：本人與家人都在聊天室直接看摘要，不必開 LIFF。"""
     replier = _Replier()
     record = _record(
-        summary={"main_points": ["血糖偏高要調藥"], "medication_changes": [], "next_visit": "",
-                 "reminders": [], "unclear": [], "truncated": False},
+        summary={"main_points": ["血糖偏高要調藥"],
+                 "medication_changes": [{"description": "降血糖藥加量", "quote": "那個藥改成一天兩顆"}],
+                 "next_visit": "兩週後", "reminders": [], "unclear": [], "truncated": False},
     )
     await ClinicVisitNotifier(
         replier=replier, authorization_service=None, liff_url=LIFF
     ).notify_ready(record)
-    assert "血糖" not in str(replier.flex[0][1].contents.to_dict())
+    card = str(replier.flex[0][1].contents.to_dict())
+    assert "血糖偏高要調藥" in card
+    # 用藥變動一定附原話，讓讀的人當場核對。
+    assert "那個藥改成一天兩顆" in card
+    assert "兩週後" in card
+
+
+@pytest.mark.asyncio
+async def test_自己複述的版本要標明不是醫師原話():
+    replier = _Replier()
+    record = _record(consent="self_recap")
+    await ClinicVisitNotifier(
+        replier=replier, authorization_service=None, liff_url=LIFF
+    ).notify_ready(record)
+    assert "不是醫師的原話" in str(replier.flex[0][1].contents.to_dict())
+
+
+@pytest.mark.asyncio
+async def test_失敗卡不放摘要():
+    replier = _Replier()
+    record = _record(
+        summary={"main_points": ["不該出現"], "medication_changes": [], "next_visit": "",
+                 "reminders": [], "unclear": [], "truncated": False},
+    )
+    await ClinicVisitNotifier(
+        replier=replier, authorization_service=None, liff_url=LIFF
+    ).notify_failed(record)
+    assert "不該出現" not in str(replier.flex[0][1].contents.to_dict())

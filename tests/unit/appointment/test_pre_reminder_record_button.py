@@ -1,52 +1,62 @@
 """出發提醒卡片上的看診錄音入口。
 
-長輩在診間門口能完成的操作只有一兩下，這顆按鈕是整個看診錄音功能唯一可行的入口。
+長輩在診間門口能完成的操作只有一兩下，這顆按鈕是看診錄音最可行的入口。
+2026-09-22 起在聊天室錄，按鈕是 postback，不再開 LIFF。
 """
 
 import json
+from urllib.parse import parse_qs
 
 import pytest
 
-from app.core.config import settings
 from app.services.line_messaging.flex.appointment_flex import build_pre_reminder_flex
 
 
 @pytest.fixture()
-def liff_url(monkeypatch):
-    monkeypatch.setattr(settings, "LIFF_URL", "https://liff.line.me/1234-abcd")
+def liff_url():
+    """舊測試沿用的名字；錄音按鈕已經不看 LIFF_URL。"""
 
 
-def _footer(**kwargs):
+def _footer(hospital_name_override=None, **kwargs):
     message = build_pre_reminder_flex(
-        reminder_id="a1", when_text="今天 10:30", hospital_name="台大醫院", **kwargs
+        reminder_id="a1",
+        when_text="今天 10:30",
+        hospital_name=hospital_name_override or "台大醫院",
+        **kwargs,
     )
     return json.loads(message.contents.json())["footer"]["contents"]
 
 
-def test_本人版有錄音按鈕且直接連到錄音頁(liff_url):
-    actions = [button["action"] for button in _footer()]
-    uris = [action["uri"] for action in actions if action["type"] == "uri"]
-    assert len(uris) == 1
-    assert "/clinic-visits/record" in uris[0]
+def _record_action(**kwargs) -> dict:
+    return next(
+        button["action"]
+        for button in _footer(**kwargs)
+        if "clinic_record_start" in button["action"].get("data", "")
+    )
 
 
-def test_按鈕帶著掛號資訊讓紀錄知道是哪一次門診(liff_url):
-    uri = next(b["action"]["uri"] for b in _footer() if b["action"]["type"] == "uri")
-    assert "appointment_id=a1" in uri
-    # 醫院名稱要 URL 編碼，中文不能直接塞進 query。
-    assert "%E5%8F%B0%E5%A4%A7" in uri
+def test_本人版有錄音按鈕且在聊天室開始():
+    action = _record_action()
+    assert action["type"] == "postback"
+    # .json() 輸出 snake_case。
+    assert action["display_text"] == action["label"]
 
 
-def test_家屬版不放錄音按鈕(liff_url):
+def test_按鈕帶著掛號資訊讓紀錄知道是哪一次門診():
+    params = parse_qs(_record_action()["data"])
+    assert params["appointment_id"] == ["a1"]
+    assert params["hospital_name"] == ["台大醫院"]
+
+
+def test_醫院名稱很長也不會超過_postback_上限():
+    data = _record_action(hospital_name_override="國立臺灣大學醫學院附設醫院" * 3)["data"]
+    assert len(data) <= 300
+
+
+def test_家屬版不放錄音按鈕():
     """家屬版的收件人不一定會陪去，給他一顆按了也沒用的按鈕只會造成誤解。"""
     actions = [button["action"] for button in _footer(patient_name="王媽媽")]
-    assert not [action for action in actions if action["type"] == "uri"]
-
-
-def test_沒設定_LIFF_URL_時少一顆按鈕而不是壞掉(monkeypatch):
-    monkeypatch.setattr(settings, "LIFF_URL", "")
-    actions = [button["action"] for button in _footer()]
-    assert [action["type"] for action in actions] == ["postback"]
+    assert not [a for a in actions if "clinic_record_start" in a.get("data", "")]
 
 
 def test_出發按鈕沒有被擠掉(liff_url):

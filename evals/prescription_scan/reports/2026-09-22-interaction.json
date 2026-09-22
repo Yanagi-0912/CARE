@@ -1,0 +1,1617 @@
+{
+  "model": "gemini-3.8-flash",
+  "repeat": 1,
+  "groups": {
+    "rx_bag": {
+      "n": 2,
+      "accepted": 2,
+      "rejected": {},
+      "errors": 0,
+      "drugs_extracted": 2,
+      "names_verified": 1,
+      "license_pinned": 1,
+      "tcm_formula_hits": 0,
+      "frequency_other": 0,
+      "pinnable": 1,
+      "rule_capable": 1,
+      "rule_capable_partial": 0,
+      "rule_capable_by": {
+        "overlap": 1,
+        "stacking": 1,
+        "bleeding": 0,
+        "tcm": 0
+      },
+      "silent_drugs": [
+        {
+          "image": "rx_nhib_taipei_bag.jpg",
+          "name": "Bisolvon 8mg 氣舒痰錠",
+          "why": "釘不了"
+        }
+      ],
+      "one_tap_upper_bound": 1,
+      "count_labeled": 2,
+      "count_match": 2,
+      "packets_labeled": 0,
+      "split": 0,
+      "split_cases": []
+    },
+    "tcm_bag": {
+      "n": 1,
+      "accepted": 1,
+      "rejected": {},
+      "errors": 0,
+      "drugs_extracted": 1,
+      "names_verified": 0,
+      "license_pinned": 0,
+      "tcm_formula_hits": 0,
+      "frequency_other": 0,
+      "pinnable": 0,
+      "rule_capable": 0,
+      "rule_capable_partial": 0,
+      "rule_capable_by": {
+        "overlap": 0,
+        "stacking": 0,
+        "bleeding": 0,
+        "tcm": 0
+      },
+      "silent_drugs": [
+        {
+          "image": "tcm_udn_ccr_bags.jpg",
+          "name": "中藥",
+          "why": "釘不了"
+        }
+      ],
+      "one_tap_upper_bound": 0,
+      "count_labeled": 0,
+      "count_match": 0,
+      "packets_labeled": 1,
+      "split": 0,
+      "split_cases": []
+    },
+    "tcm_bag（合成）": {
+      "n": 3,
+      "accepted": 3,
+      "rejected": {},
+      "errors": 0,
+      "drugs_extracted": 8,
+      "names_verified": 0,
+      "license_pinned": 0,
+      "tcm_formula_hits": 3,
+      "frequency_other": 3,
+      "pinnable": 3,
+      "rule_capable": 3,
+      "rule_capable_partial": 0,
+      "rule_capable_by": {
+        "overlap": 0,
+        "stacking": 0,
+        "bleeding": 0,
+        "tcm": 3
+      },
+      "silent_drugs": [
+        {
+          "image": "tcm_synth_clinic_mixed.png",
+          "name": "加味道遙散",
+          "why": "釘不了"
+        },
+        {
+          "image": "tcm_synth_clinic_mixed.png",
+          "name": "香附",
+          "why": "釘不了"
+        },
+        {
+          "image": "tcm_synth_clinic_mixed.png",
+          "name": "丹參",
+          "why": "釘不了"
+        },
+        {
+          "image": "tcm_synth_clinic_mixed.png",
+          "name": "酸棗仁湯",
+          "why": "釘不了"
+        },
+        {
+          "image": "tcm_synth_clinic_single.png",
+          "name": "天王補心丹（濃縮顆粒）",
+          "why": "釘不了"
+        }
+      ],
+      "one_tap_upper_bound": 0,
+      "count_labeled": 1,
+      "count_match": 1,
+      "packets_labeled": 3,
+      "split": 2,
+      "split_cases": [
+        {
+          "image": "evals/prescription_scan/samples/tcm_synth_clinic_mixed.png",
+          "run": 0,
+          "extracted": 4,
+          "packets_per_dose": 1
+        },
+        {
+          "image": "evals/prescription_scan/samples/tcm_synth_hospital_daily.png",
+          "run": 0,
+          "extracted": 3,
+          "packets_per_dose": 1
+        }
+      ]
+    },
+    "tcm_package": {
+      "n": 2,
+      "accepted": 0,
+      "rejected": {
+        "not_prescription": 2
+      },
+      "errors": 0,
+      "drugs_extracted": 0,
+      "names_verified": 0,
+      "license_pinned": 0,
+      "tcm_formula_hits": 0,
+      "frequency_other": 0,
+      "pinnable": 0,
+      "rule_capable": 0,
+      "rule_capable_partial": 0,
+      "rule_capable_by": {
+        "overlap": 0,
+        "stacking": 0,
+        "bleeding": 0,
+        "tcm": 0
+      },
+      "silent_drugs": [],
+      "one_tap_upper_bound": 0,
+      "count_labeled": 0,
+      "count_match": 0,
+      "packets_labeled": 0,
+      "split": 0,
+      "split_cases": []
+    },
+    "otc_package": {
+      "n": 8,
+      "accepted": 7,
+      "rejected": {
+        "not_prescription": 1
+      },
+      "errors": 0,
+      "drugs_extracted": 9,
+      "names_verified": 1,
+      "license_pinned": 1,
+      "tcm_formula_hits": 0,
+      "frequency_other": 8,
+      "pinnable": 1,
+      "rule_capable": 1,
+      "rule_capable_partial": 0,
+      "rule_capable_by": {
+        "overlap": 1,
+        "stacking": 0,
+        "bleeding": 0,
+        "tcm": 0
+      },
+      "silent_drugs": [
+        {
+          "image": "otc_panadol_500mg.jpg",
+          "name": "Panadol 500 mg",
+          "why": "釘不了"
+        },
+        {
+          "image": "otc_salonpas_patch.jpg",
+          "name": "SALONPAS PAIN RELIEVING PATCH",
+          "why": "釘不了"
+        },
+        {
+          "image": "otc_white_flower_oil_three.jpg",
+          "name": "和興白花油 二號",
+          "why": "釘不了"
+        },
+        {
+          "image": "otc_white_flower_oil_three.jpg",
+          "name": "萬應白花油",
+          "why": "釘不了"
+        },
+        {
+          "image": "otc_white_flower_oil_hoehin.jpg",
+          "name": "和興白花油 WHITE FLOWER EMBROCATION",
+          "why": "釘不了"
+        },
+        {
+          "image": "otc_nin_jiom.jpg",
+          "name": "Nin Jiom Kruidensiroop",
+          "why": "釘不了"
+        },
+        {
+          "image": "otc_tiger_balm.jpg",
+          "name": "虎標萬金油 TIGER BALM",
+          "why": "釘不了"
+        },
+        {
+          "image": "otc_green_oil_hwj.jpg",
+          "name": "綠油精 GREEN OIL",
+          "why": "釘不了"
+        }
+      ],
+      "one_tap_upper_bound": 0,
+      "count_labeled": 5,
+      "count_match": 5,
+      "packets_labeled": 0,
+      "split": 0,
+      "split_cases": []
+    },
+    "otc_package（合成）": {
+      "n": 8,
+      "accepted": 8,
+      "rejected": {},
+      "errors": 0,
+      "drugs_extracted": 8,
+      "names_verified": 6,
+      "license_pinned": 1,
+      "tcm_formula_hits": 0,
+      "frequency_other": 5,
+      "pinnable": 6,
+      "rule_capable": 6,
+      "rule_capable_partial": 0,
+      "rule_capable_by": {
+        "overlap": 4,
+        "stacking": 4,
+        "bleeding": 3,
+        "tcm": 0
+      },
+      "silent_drugs": [
+        {
+          "image": "otc_synth_panadol_extra.png",
+          "name": "普拿疼加強錠 Panadol Extra",
+          "why": "釘不了"
+        },
+        {
+          "image": "otc_synth_panadol_cold_sinus.png",
+          "name": "普拿疼伏冒鼻炎感冒錠 Panadol Cold & Flu Sinus",
+          "why": "釘不了"
+        }
+      ],
+      "one_tap_upper_bound": 3,
+      "count_labeled": 8,
+      "count_match": 8,
+      "packets_labeled": 0,
+      "split": 0,
+      "split_cases": []
+    }
+  },
+  "rows": [
+    {
+      "image": "evals/prescription_scan/samples/rx_nhib_taipei_bag.jpg",
+      "kind": "rx_bag",
+      "variant": "real",
+      "printed_names": [
+        "Bisolvon 8mg",
+        "氣舒痰錠"
+      ],
+      "expected_drugs": 1,
+      "note": "對照組。英文與中文品名是同一顆藥",
+      "source": "https://commons.wikimedia.org/wiki/File:NHIB_Taipei_Outpatient_Center_oral_medicine_bag_EF1010526A_N2074.jpg",
+      "run": 0,
+      "pred": {
+        "institution": "中央健康保險局臺北聯合門診中心",
+        "patient_name_present": true,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "Bisolvon 8mg 氣舒痰錠",
+            "frequency_code": "TID",
+            "usage_raw": "每日3次,每次  1 粒 ,飯後服用",
+            "timing": "after_meal",
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": null,
+            "pinnable": false,
+            "rule_capable_by_candidate": [],
+            "rules": {
+              "rule_capable": false,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/rx_sijhih_cathay_bag.jpg",
+      "kind": "rx_bag",
+      "variant": "real",
+      "printed_names": [
+        "Secorine syrup",
+        "息咳寧糖漿"
+      ],
+      "expected_drugs": 1,
+      "note": "對照組。英文與中文品名是同一瓶藥",
+      "source": "https://commons.wikimedia.org/wiki/File:Sijhih_Cathay_General_Hospital_medicine_bag_20151013_face.jpg",
+      "run": 0,
+      "pred": {
+        "institution": "汐止國泰綜合醫院",
+        "patient_name_present": false,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "Secorine syrup 息咳寧糖漿",
+            "frequency_code": "TID",
+            "usage_raw": "[液劑]口服 每天3次 飯後使用 每次 2ml",
+            "timing": "after_meal",
+            "verified": true,
+            "license_pinned": true,
+            "n_candidates": 1,
+            "tcm_formula": null,
+            "pinnable": true,
+            "rule_capable_by_candidate": [
+              {
+                "license_number": "衛署藥製字第040833號",
+                "pinned_class": "otc_guided",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [
+                  "CHLORPHENIRAMINE MALEATE",
+                  "DL-METHYLEPHEDRINE HCL"
+                ],
+                "anticholinergic_ingredients": [
+                  "CHLORPHENIRAMINE MALEATE"
+                ],
+                "class_pair_sides": [],
+                "tcm_interaction_listed": false,
+                "rule_capable": true
+              }
+            ],
+            "rules": {
+              "rule_capable": true,
+              "rule_capable_partial": false,
+              "watched_ingredients": [
+                "CHLORPHENIRAMINE MALEATE",
+                "DL-METHYLEPHEDRINE HCL"
+              ],
+              "anticholinergic_ingredients": [
+                "CHLORPHENIRAMINE MALEATE"
+              ],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/tcm_udn_ccr_bags.jpg",
+      "kind": "tcm_bag",
+      "variant": "real",
+      "printed_names": [],
+      "packets_per_dose": 1,
+      "note": "中醫診所藥袋，未印任何藥名，只勾選服用時間；330px 小圖",
+      "source": "https://health.udn.com/health/story/5999/349290",
+      "run": 0,
+      "pred": {
+        "institution": "中醫診所",
+        "patient_name_present": true,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "中藥",
+            "frequency_code": "TID",
+            "usage_raw": "一日 3 次 每次 1 包 7 日份 飯前 1 小時溫服",
+            "timing": "before_meal",
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": null,
+            "pinnable": false,
+            "rule_capable_by_candidate": [],
+            "rules": {
+              "rule_capable": false,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/tcm_cgfull_bag_1.jpg",
+      "kind": "tcm_package",
+      "variant": "real",
+      "printed_names": [],
+      "note": "藥廠濃縮顆粒標籤局部，未拍到品名；衛署藥製字第040014號（藥證庫查無）",
+      "source": "https://cgfull.blogspot.com/2011/03/blog-post_7331.html",
+      "run": 0,
+      "pred": {
+        "rejected": "not_prescription"
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/tcm_cgfull_bag_2.jpg",
+      "kind": "tcm_package",
+      "variant": "real",
+      "printed_names": [],
+      "note": "藥廠濃縮顆粒標籤局部，未拍到品名；衛署藥製字第034052號（藥證庫查無）",
+      "source": "https://cgfull.blogspot.com/2011/03/blog-post_7331.html",
+      "run": 0,
+      "pred": {
+        "rejected": "not_prescription"
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/tcm_synth_clinic_mixed.png",
+      "kind": "tcm_bag",
+      "variant": "synthetic",
+      "printed_names": [
+        "加味逍遙散",
+        "香附",
+        "丹參",
+        "酸棗仁湯"
+      ],
+      "packets_per_dose": 1,
+      "note": "合成：診所，一包混四味，每次一包",
+      "source": "evals/prescription_scan/make_synthetic_tcm.py",
+      "run": 0,
+      "pred": {
+        "institution": "安和中醫診所",
+        "patient_name_present": true,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "加味道遙散",
+            "frequency_code": "TID",
+            "usage_raw": "一日三次，每次一包，飯後服用",
+            "timing": "after_meal",
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": null,
+            "pinnable": false,
+            "rule_capable_by_candidate": [],
+            "rules": {
+              "rule_capable": false,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          },
+          {
+            "name": "香附",
+            "frequency_code": "TID",
+            "usage_raw": "一日三次，每次一包，飯後服用",
+            "timing": "after_meal",
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": null,
+            "pinnable": false,
+            "rule_capable_by_candidate": [],
+            "rules": {
+              "rule_capable": false,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          },
+          {
+            "name": "丹參",
+            "frequency_code": "TID",
+            "usage_raw": "一日三次，每次一包，飯後服用",
+            "timing": "after_meal",
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": null,
+            "pinnable": false,
+            "rule_capable_by_candidate": [],
+            "rules": {
+              "rule_capable": false,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          },
+          {
+            "name": "酸棗仁湯",
+            "frequency_code": "TID",
+            "usage_raw": "一日三次，每次一包，飯後服用",
+            "timing": "after_meal",
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": null,
+            "pinnable": false,
+            "rule_capable_by_candidate": [],
+            "rules": {
+              "rule_capable": false,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/tcm_synth_hospital_daily.png",
+      "kind": "tcm_bag",
+      "variant": "synthetic",
+      "printed_names": [
+        "葛根湯",
+        "川芎茶調散",
+        "辛夷清肺湯"
+      ],
+      "packets_per_dose": 1,
+      "note": "合成：醫院中醫部，列每日總量，明寫已混合分包",
+      "source": "evals/prescription_scan/make_synthetic_tcm.py",
+      "run": 0,
+      "pred": {
+        "institution": "康寧醫院 中醫部",
+        "patient_name_present": true,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "葛根湯",
+            "frequency_code": "OTHER",
+            "usage_raw": null,
+            "timing": null,
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": "葛根湯",
+            "pinnable": true,
+            "rule_capable_by_candidate": [
+              {
+                "license_number": null,
+                "pinned_class": "",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [],
+                "anticholinergic_ingredients": [],
+                "class_pair_sides": [],
+                "tcm_interaction_listed": true,
+                "rule_capable": true
+              }
+            ],
+            "rules": {
+              "rule_capable": true,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": true
+            }
+          },
+          {
+            "name": "川芎茶調散",
+            "frequency_code": "OTHER",
+            "usage_raw": null,
+            "timing": null,
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": "川芎茶調散《散》",
+            "pinnable": true,
+            "rule_capable_by_candidate": [
+              {
+                "license_number": null,
+                "pinned_class": "",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [],
+                "anticholinergic_ingredients": [],
+                "class_pair_sides": [],
+                "tcm_interaction_listed": true,
+                "rule_capable": true
+              }
+            ],
+            "rules": {
+              "rule_capable": true,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": true
+            }
+          },
+          {
+            "name": "辛夷清肺湯",
+            "frequency_code": "OTHER",
+            "usage_raw": null,
+            "timing": null,
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": "辛夷清肺湯",
+            "pinnable": true,
+            "rule_capable_by_candidate": [
+              {
+                "license_number": null,
+                "pinned_class": "",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [],
+                "anticholinergic_ingredients": [],
+                "class_pair_sides": [],
+                "tcm_interaction_listed": true,
+                "rule_capable": true
+              }
+            ],
+            "rules": {
+              "rule_capable": true,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/tcm_synth_clinic_single.png",
+      "kind": "tcm_bag",
+      "variant": "synthetic",
+      "printed_names": [
+        "天王補心丹"
+      ],
+      "packets_per_dose": 1,
+      "expected_drugs": 1,
+      "note": "合成：單一方、睡前一次；天王補心丹不在 200 基準方",
+      "source": "evals/prescription_scan/make_synthetic_tcm.py",
+      "run": 0,
+      "pred": {
+        "institution": "德生中醫診所",
+        "patient_name_present": true,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "天王補心丹（濃縮顆粒）",
+            "frequency_code": "HS",
+            "usage_raw": "每次 4 公克，睡前服用",
+            "timing": "bedtime",
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": null,
+            "pinnable": false,
+            "rule_capable_by_candidate": [],
+            "rules": {
+              "rule_capable": false,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/otc_panadol_500mg.jpg",
+      "kind": "otc_package",
+      "variant": "real",
+      "printed_names": [
+        "Panadol 500 mg"
+      ],
+      "expected_drugs": 1,
+      "note": "芬蘭包裝外盒",
+      "source": "https://commons.wikimedia.org/wiki/File:Panadol_500_mg.jpg",
+      "run": 0,
+      "pred": {
+        "institution": null,
+        "patient_name_present": false,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "Panadol 500 mg",
+            "frequency_code": "OTHER",
+            "usage_raw": null,
+            "timing": null,
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": null,
+            "pinnable": false,
+            "rule_capable_by_candidate": [],
+            "rules": {
+              "rule_capable": false,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/otc_salonpas_patch.jpg",
+      "kind": "otc_package",
+      "variant": "real",
+      "printed_names": [
+        "Salonpas"
+      ],
+      "expected_drugs": 1,
+      "note": "美國包裝，外用貼布",
+      "source": "https://commons.wikimedia.org/wiki/File:Salonpas_Pain_Relieving_Patch.jpg",
+      "run": 0,
+      "pred": {
+        "institution": null,
+        "patient_name_present": false,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "SALONPAS PAIN RELIEVING PATCH",
+            "frequency_code": "OTHER",
+            "usage_raw": null,
+            "timing": null,
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": null,
+            "pinnable": false,
+            "rule_capable_by_candidate": [],
+            "rules": {
+              "rule_capable": false,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/otc_white_flower_oil_three.jpg",
+      "kind": "otc_package",
+      "variant": "real",
+      "printed_names": [
+        "和興白花油",
+        "和興白花油",
+        "萬應白花油"
+      ],
+      "note": "三盒並排（兩個版本的和興＋萬應），香港包裝，外用",
+      "source": "https://commons.wikimedia.org/wiki/File:White_Flower_Oil_(Pak_Fah_Yeow)_three_versions-20190908.jpg",
+      "run": 0,
+      "pred": {
+        "institution": null,
+        "patient_name_present": false,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "和興白花油",
+            "frequency_code": "OTHER",
+            "usage_raw": null,
+            "timing": null,
+            "verified": true,
+            "license_pinned": true,
+            "n_candidates": 1,
+            "tcm_formula": null,
+            "pinnable": true,
+            "rule_capable_by_candidate": [
+              {
+                "license_number": "衛署成製字第009349號",
+                "pinned_class": "otc",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [
+                  "METHYL SALICYLATE"
+                ],
+                "anticholinergic_ingredients": [],
+                "class_pair_sides": [],
+                "tcm_interaction_listed": false,
+                "rule_capable": true
+              }
+            ],
+            "rules": {
+              "rule_capable": true,
+              "rule_capable_partial": false,
+              "watched_ingredients": [
+                "METHYL SALICYLATE"
+              ],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          },
+          {
+            "name": "和興白花油 二號",
+            "frequency_code": "OTHER",
+            "usage_raw": "外用塗搽患處 每日三至四次",
+            "timing": null,
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": null,
+            "pinnable": false,
+            "rule_capable_by_candidate": [],
+            "rules": {
+              "rule_capable": false,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          },
+          {
+            "name": "萬應白花油",
+            "frequency_code": "OTHER",
+            "usage_raw": null,
+            "timing": null,
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": null,
+            "pinnable": false,
+            "rule_capable_by_candidate": [],
+            "rules": {
+              "rule_capable": false,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/otc_white_flower_oil_hoehin.jpg",
+      "kind": "otc_package",
+      "variant": "real",
+      "printed_names": [
+        "和興白花油"
+      ],
+      "expected_drugs": 1,
+      "note": "瓶身＋攤開的外盒，成分英文",
+      "source": "https://commons.wikimedia.org/wiki/File:Hoe_Hin_White_Flower_Oil2.jpg",
+      "run": 0,
+      "pred": {
+        "institution": null,
+        "patient_name_present": false,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "和興白花油 WHITE FLOWER EMBROCATION",
+            "frequency_code": "OTHER",
+            "usage_raw": null,
+            "timing": null,
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": null,
+            "pinnable": false,
+            "rule_capable_by_candidate": [],
+            "rules": {
+              "rule_capable": false,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/otc_nin_jiom.jpg",
+      "kind": "otc_package",
+      "variant": "real",
+      "printed_names": [
+        "Nin Jiom Kruidensiroop（念慈菴）"
+      ],
+      "expected_drugs": 1,
+      "note": "荷蘭文標籤，中文品名只露一角",
+      "source": "https://commons.wikimedia.org/wiki/File:Confezione_di_Nin_Jiom_Pei_Pa_Koa.jpg",
+      "run": 0,
+      "pred": {
+        "institution": null,
+        "patient_name_present": false,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "Nin Jiom Kruidensiroop",
+            "frequency_code": "TID",
+            "usage_raw": "Volwassenen en kinderen ouder dan 12 jaar: Neem driemaal daags 1 eetlepel (15ml). Kinderen 7-12 jaar: neem driemaal daags 2/3 eetlepel (10ml). Kinderen 3-6 jaar: neem driemaal daags 1/3 eetlepel (5ml). In de mond stoppen en langzaam doorslikken of verdunnen met warm water.",
+            "timing": null,
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": null,
+            "pinnable": false,
+            "rule_capable_by_candidate": [],
+            "rules": {
+              "rule_capable": false,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/otc_tiger_balm.jpg",
+      "kind": "otc_package",
+      "variant": "real",
+      "printed_names": [
+        "Tiger Balm 虎標萬金油"
+      ],
+      "note": "白、紅兩罐",
+      "source": "https://commons.wikimedia.org/wiki/File:Tigerbalm.jpg",
+      "run": 0,
+      "pred": {
+        "institution": null,
+        "patient_name_present": false,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "虎標萬金油 TIGER BALM",
+            "frequency_code": "OTHER",
+            "usage_raw": null,
+            "timing": null,
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": null,
+            "pinnable": false,
+            "rule_capable_by_candidate": [],
+            "rules": {
+              "rule_capable": false,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/otc_watsons_cold_shelf.jpg",
+      "kind": "otc_package",
+      "variant": "real",
+      "printed_names": [
+        "普拿疼止痛加強錠",
+        "普拿疼伏冒熱飲",
+        "伏冒加強錠",
+        "龍角散",
+        "念慈菴川貝枇杷膏"
+      ],
+      "note": "金門屈臣氏貨架，多種台灣成藥",
+      "source": "https://commons.wikimedia.org/wiki/File:Cold_drugs_at_Watsons_at_Jincheng,_Kinmen-20191216.jpg",
+      "run": 0,
+      "pred": {
+        "rejected": "not_prescription"
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/otc_green_oil_hwj.jpg",
+      "kind": "otc_package",
+      "variant": "real",
+      "printed_names": [
+        "綠油精"
+      ],
+      "expected_drugs": 1,
+      "note": "台灣成藥",
+      "source": "https://commons.wikimedia.org/wiki/File:HWJ_Green_Oil_5Gm_20170809.jpg",
+      "run": 0,
+      "pred": {
+        "institution": null,
+        "patient_name_present": false,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "綠油精 GREEN OIL",
+            "frequency_code": "OTHER",
+            "usage_raw": "外用",
+            "timing": null,
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": null,
+            "pinnable": false,
+            "rule_capable_by_candidate": [],
+            "rules": {
+              "rule_capable": false,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/otc_synth_panadol_extra.png",
+      "kind": "otc_package",
+      "variant": "synthetic",
+      "printed_names": [
+        "普拿疼加強錠"
+      ],
+      "expected_drugs": 1,
+      "note": "合成：外盒正面，含乙醯胺酚＋咖啡因；成分重複規則的典型觸發側",
+      "source": "evals/prescription_scan/make_synthetic_otc.py",
+      "run": 0,
+      "pred": {
+        "institution": null,
+        "patient_name_present": false,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "普拿疼加強錠 Panadol Extra",
+            "frequency_code": "OTHER",
+            "usage_raw": "成人每次 1～2 錠，每 4～6 小時一次，一日不超過 8 錠",
+            "timing": null,
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": null,
+            "pinnable": false,
+            "rule_capable_by_candidate": [],
+            "rules": {
+              "rule_capable": false,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/otc_synth_panadol_cold_sinus.png",
+      "kind": "otc_package",
+      "variant": "synthetic",
+      "printed_names": [
+        "普拿疼伏冒鼻炎感冒錠"
+      ],
+      "expected_drugs": 1,
+      "note": "合成：含乙醯胺酚＋CHLORPHENIRAMINE；重複與抗膽鹼疊加都有資格",
+      "source": "evals/prescription_scan/make_synthetic_otc.py",
+      "run": 0,
+      "pred": {
+        "institution": null,
+        "patient_name_present": false,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "普拿疼伏冒鼻炎感冒錠 Panadol Cold & Flu Sinus",
+            "frequency_code": "OTHER",
+            "usage_raw": "成人每次 1 錠，每 4~6 小時一次",
+            "timing": null,
+            "verified": false,
+            "license_pinned": false,
+            "n_candidates": 0,
+            "tcm_formula": null,
+            "pinnable": false,
+            "rule_capable_by_candidate": [],
+            "rules": {
+              "rule_capable": false,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/otc_synth_susu_cold.png",
+      "kind": "otc_package",
+      "variant": "synthetic",
+      "printed_names": [
+        "斯斯感冒膠囊"
+      ],
+      "expected_drugs": 1,
+      "note": "合成：六成分感冒膠囊；ETHENZAMIDE 為 N02BA07，落在出血配對的水楊酸側",
+      "source": "evals/prescription_scan/make_synthetic_otc.py",
+      "run": 0,
+      "pred": {
+        "institution": "○○製藥",
+        "patient_name_present": false,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "斯斯感冒膠囊",
+            "frequency_code": "TID",
+            "usage_raw": "成人每次 1 粒，一日 3 次，飯後服用",
+            "timing": "after_meal",
+            "verified": true,
+            "license_pinned": false,
+            "n_candidates": 1,
+            "tcm_formula": null,
+            "pinnable": true,
+            "rule_capable_by_candidate": [
+              {
+                "license_number": "衛署藥製字第032026號",
+                "pinned_class": "otc_guided",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [
+                  "ACETAMINOPHEN",
+                  "CAFFEINE ANHYDROUS",
+                  "CHLORPHENIRAMINE MALEATE",
+                  "DL-METHYLEPHEDRINE HCL",
+                  "ETHENZAMIDE"
+                ],
+                "anticholinergic_ingredients": [
+                  "CHLORPHENIRAMINE MALEATE"
+                ],
+                "class_pair_sides": [
+                  "nsaid_x_antithrombotic:消炎止痛藥"
+                ],
+                "tcm_interaction_listed": false,
+                "rule_capable": true
+              }
+            ],
+            "rules": {
+              "rule_capable": true,
+              "rule_capable_partial": false,
+              "watched_ingredients": [
+                "ACETAMINOPHEN",
+                "CAFFEINE ANHYDROUS",
+                "CHLORPHENIRAMINE MALEATE",
+                "DL-METHYLEPHEDRINE HCL",
+                "ETHENZAMIDE"
+              ],
+              "anticholinergic_ingredients": [
+                "CHLORPHENIRAMINE MALEATE"
+              ],
+              "class_pair_sides": [
+                "nsaid_x_antithrombotic:消炎止痛藥"
+              ],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/otc_synth_wufenzhu_powder.png",
+      "kind": "otc_package",
+      "variant": "synthetic",
+      "printed_names": [
+        "五分珠散"
+      ],
+      "expected_drugs": 1,
+      "note": "合成：含 ASPIRIN（N02BA01）；出血配對觸發側",
+      "source": "evals/prescription_scan/make_synthetic_otc.py",
+      "run": 0,
+      "pred": {
+        "institution": "○○製藥",
+        "patient_name_present": false,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "五分珠散",
+            "frequency_code": "TID",
+            "usage_raw": "成人每次 1 包，一日 3 次，飯後溫開水送服",
+            "timing": "after_meal",
+            "verified": true,
+            "license_pinned": false,
+            "n_candidates": 2,
+            "tcm_formula": null,
+            "pinnable": true,
+            "rule_capable_by_candidate": [
+              {
+                "license_number": "衛署藥製字第028569號",
+                "pinned_class": "otc_guided",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [
+                  "ACETAMINOPHEN",
+                  "CAFFEINE ANHYDROUS"
+                ],
+                "anticholinergic_ingredients": [],
+                "class_pair_sides": [
+                  "nsaid_x_antithrombotic:消炎止痛藥"
+                ],
+                "tcm_interaction_listed": false,
+                "rule_capable": true
+              },
+              {
+                "license_number": "衛署藥製字第028568號",
+                "pinned_class": "otc_guided",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [
+                  "ACETAMINOPHEN",
+                  "CAFFEINE ANHYDROUS",
+                  "ETHENZAMIDE"
+                ],
+                "anticholinergic_ingredients": [],
+                "class_pair_sides": [
+                  "nsaid_x_antithrombotic:消炎止痛藥"
+                ],
+                "tcm_interaction_listed": false,
+                "rule_capable": true
+              }
+            ],
+            "rules": {
+              "rule_capable": true,
+              "rule_capable_partial": false,
+              "watched_ingredients": [
+                "ACETAMINOPHEN",
+                "CAFFEINE ANHYDROUS",
+                "ETHENZAMIDE"
+              ],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [
+                "nsaid_x_antithrombotic:消炎止痛藥"
+              ],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/otc_synth_ibuprofen_200.png",
+      "kind": "otc_package",
+      "variant": "synthetic",
+      "printed_names": [
+        "普拿克必理痛膜衣錠２００公絲（異布洛芬）"
+      ],
+      "expected_drugs": 1,
+      "note": "合成：IBUPROFEN M01AE01，出血配對觸發側；品名帶全形數字與括號",
+      "source": "evals/prescription_scan/make_synthetic_otc.py",
+      "run": 0,
+      "pred": {
+        "institution": null,
+        "patient_name_present": false,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "普拿克必理痛膜衣錠２００公絲（異布洛芬）",
+            "frequency_code": "OTHER",
+            "usage_raw": "成人每次 1~2 錠，每 4~6 小時一次，一日不超過 6 錠",
+            "timing": null,
+            "verified": true,
+            "license_pinned": false,
+            "n_candidates": 1,
+            "tcm_formula": null,
+            "pinnable": true,
+            "rule_capable_by_candidate": [
+              {
+                "license_number": "衛署藥製字第040828號",
+                "pinned_class": "otc_guided",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [],
+                "anticholinergic_ingredients": [],
+                "class_pair_sides": [
+                  "nsaid_x_antithrombotic:消炎止痛藥",
+                  "nsaid_x_nsaid:消炎止痛藥"
+                ],
+                "tcm_interaction_listed": false,
+                "rule_capable": true
+              }
+            ],
+            "rules": {
+              "rule_capable": true,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [],
+              "class_pair_sides": [
+                "nsaid_x_antithrombotic:消炎止痛藥",
+                "nsaid_x_nsaid:消炎止痛藥"
+              ],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/otc_synth_motion_sickness_liquid.png",
+      "kind": "otc_package",
+      "variant": "synthetic",
+      "printed_names": [
+        "\"風熱友\" 暈車船液（氯茶/二苯安明）"
+      ],
+      "expected_drugs": 1,
+      "note": "合成：DIMENHYDRINATE 抗膽鹼疊加；品名帶引號與括號",
+      "source": "evals/prescription_scan/make_synthetic_otc.py",
+      "run": 0,
+      "pred": {
+        "institution": null,
+        "patient_name_present": false,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "\"風熱友\" 暈車船液（氯茶/二苯安明）",
+            "frequency_code": "OTHER",
+            "usage_raw": "成人搭乘前 30 分鐘服用 1 瓶",
+            "timing": null,
+            "verified": true,
+            "license_pinned": false,
+            "n_candidates": 1,
+            "tcm_formula": null,
+            "pinnable": true,
+            "rule_capable_by_candidate": [
+              {
+                "license_number": "衛署藥製字第036452號",
+                "pinned_class": "otc_guided",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [],
+                "anticholinergic_ingredients": [
+                  "DIMENHYDRINATE"
+                ],
+                "class_pair_sides": [],
+                "tcm_interaction_listed": false,
+                "rule_capable": true
+              }
+            ],
+            "rules": {
+              "rule_capable": true,
+              "rule_capable_partial": false,
+              "watched_ingredients": [],
+              "anticholinergic_ingredients": [
+                "DIMENHYDRINATE"
+              ],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/otc_synth_ulan_liquid.png",
+      "kind": "otc_package",
+      "variant": "synthetic",
+      "printed_names": [
+        "\"大裕\" 三支雨傘標友露安液"
+      ],
+      "expected_drugs": 1,
+      "note": "合成：內服液劑，含乙醯胺酚與 CHLORPHENIRAMINE",
+      "source": "evals/prescription_scan/make_synthetic_otc.py",
+      "run": 0,
+      "pred": {
+        "institution": null,
+        "patient_name_present": false,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "\"大裕\" 三支雨傘標友露安液",
+            "frequency_code": "TID",
+            "usage_raw": "成人每次 20mL，一日３次",
+            "timing": null,
+            "verified": true,
+            "license_pinned": true,
+            "n_candidates": 1,
+            "tcm_formula": null,
+            "pinnable": true,
+            "rule_capable_by_candidate": [
+              {
+                "license_number": "衛署藥製字第045350號",
+                "pinned_class": "otc_guided",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [
+                  "ACETAMINOPHEN",
+                  "CAFFEINE ANHYDROUS",
+                  "CHLORPHENIRAMINE MALEATE",
+                  "DL-METHYLEPHEDRINE HCL"
+                ],
+                "anticholinergic_ingredients": [
+                  "CHLORPHENIRAMINE MALEATE"
+                ],
+                "class_pair_sides": [],
+                "tcm_interaction_listed": false,
+                "rule_capable": true
+              }
+            ],
+            "rules": {
+              "rule_capable": true,
+              "rule_capable_partial": false,
+              "watched_ingredients": [
+                "ACETAMINOPHEN",
+                "CAFFEINE ANHYDROUS",
+                "CHLORPHENIRAMINE MALEATE",
+                "DL-METHYLEPHEDRINE HCL"
+              ],
+              "anticholinergic_ingredients": [
+                "CHLORPHENIRAMINE MALEATE"
+              ],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "image": "evals/prescription_scan/samples/otc_synth_salonpas_patch.png",
+      "kind": "otc_package",
+      "variant": "synthetic",
+      "printed_names": [
+        "撒隆巴斯"
+      ],
+      "expected_drugs": 1,
+      "note": "合成：貼片劑，含 DIPHENHYDRAMINE；品名是多張藥證的子字串，看會不會釘不上",
+      "source": "evals/prescription_scan/make_synthetic_otc.py",
+      "run": 0,
+      "pred": {
+        "institution": null,
+        "patient_name_present": false,
+        "multiple_bags_suspected": false,
+        "drugs": [
+          {
+            "name": "撒隆巴斯",
+            "frequency_code": "OTHER",
+            "usage_raw": "一日 1~2 次，貼於患部",
+            "timing": null,
+            "verified": true,
+            "license_pinned": false,
+            "n_candidates": 9,
+            "tcm_formula": null,
+            "pinnable": true,
+            "rule_capable_by_candidate": [
+              {
+                "license_number": "衛署藥輸字第023644號",
+                "pinned_class": "otc_guided",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [
+                  "METHYL SALICYLATE"
+                ],
+                "anticholinergic_ingredients": [],
+                "class_pair_sides": [],
+                "tcm_interaction_listed": false,
+                "rule_capable": true
+              },
+              {
+                "license_number": "衛署藥輸字第024820號",
+                "pinned_class": "otc_guided",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [
+                  "METHYL SALICYLATE"
+                ],
+                "anticholinergic_ingredients": [],
+                "class_pair_sides": [],
+                "tcm_interaction_listed": false,
+                "rule_capable": true
+              },
+              {
+                "license_number": "衛署藥輸字第025157號",
+                "pinned_class": "otc_guided",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [
+                  "METHYL SALICYLATE"
+                ],
+                "anticholinergic_ingredients": [],
+                "class_pair_sides": [],
+                "tcm_interaction_listed": false,
+                "rule_capable": true
+              },
+              {
+                "license_number": "內衛成製字第000061號",
+                "pinned_class": "otc",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [
+                  "METHYL SALICYLATE"
+                ],
+                "anticholinergic_ingredients": [
+                  "DIPHENHYDRAMINE"
+                ],
+                "class_pair_sides": [],
+                "tcm_interaction_listed": false,
+                "rule_capable": true
+              },
+              {
+                "license_number": "衛署藥輸字第024683號",
+                "pinned_class": "otc_guided",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [
+                  "METHYL SALICYLATE"
+                ],
+                "anticholinergic_ingredients": [],
+                "class_pair_sides": [],
+                "tcm_interaction_listed": false,
+                "rule_capable": true
+              },
+              {
+                "license_number": "衛署成製字第000086號",
+                "pinned_class": "otc",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [],
+                "anticholinergic_ingredients": [
+                  "CHLORPHENIRAMINE"
+                ],
+                "class_pair_sides": [],
+                "tcm_interaction_listed": false,
+                "rule_capable": true
+              },
+              {
+                "license_number": "衛署藥製字第000529號",
+                "pinned_class": "otc_guided",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [
+                  "METHYL SALICYLATE"
+                ],
+                "anticholinergic_ingredients": [
+                  "DIPHENHYDRAMINE"
+                ],
+                "class_pair_sides": [],
+                "tcm_interaction_listed": false,
+                "rule_capable": true
+              },
+              {
+                "license_number": "衛部藥輸字第028249號",
+                "pinned_class": "otc_guided",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [
+                  "METHYL SALICYLATE"
+                ],
+                "anticholinergic_ingredients": [],
+                "class_pair_sides": [],
+                "tcm_interaction_listed": false,
+                "rule_capable": true
+              },
+              {
+                "license_number": "衛署藥製字第008962號",
+                "pinned_class": "otc_guided",
+                "trigger_side": true,
+                "local_action_form": false,
+                "watched_ingredients": [
+                  "METHYL SALICYLATE"
+                ],
+                "anticholinergic_ingredients": [],
+                "class_pair_sides": [],
+                "tcm_interaction_listed": false,
+                "rule_capable": true
+              }
+            ],
+            "rules": {
+              "rule_capable": true,
+              "rule_capable_partial": false,
+              "watched_ingredients": [
+                "METHYL SALICYLATE"
+              ],
+              "anticholinergic_ingredients": [
+                "CHLORPHENIRAMINE",
+                "DIPHENHYDRAMINE"
+              ],
+              "class_pair_sides": [],
+              "tcm_interaction_listed": false
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

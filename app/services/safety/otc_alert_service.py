@@ -13,7 +13,7 @@
 
 同一次掃描裡的兩盒成藥都含乙醯胺酚，是這個功能最典型的情境（「感冒藥」和
 「止痛藥」被當成兩種不同的東西一起買回家）。因此比對的另一邊不只是既有用藥，
-也包含這次提交裡先前處理過的藥。
+也包含這次提交裡先前處理過的藥；同一次提交裡的處方藥則直接算現有用藥。
 
 ## 對主流程 fail-open
 
@@ -110,7 +110,6 @@ class OtcAlertService:
         self,
         catalog_service: Any,
         medication_repository: Any,
-        reminder_repository: Any,
         replier: _Replier,
         watchlist: IngredientWatchlist,
         anticholinergics: IngredientClass = IngredientClass(()),
@@ -124,7 +123,6 @@ class OtcAlertService:
     ) -> None:
         self._catalog_service = catalog_service
         self._medication_repository = medication_repository
-        self._reminder_repository = reminder_repository
         self._replier = replier
         self._watchlist = watchlist
         self._anticholinergics = anticholinergics
@@ -159,6 +157,11 @@ class OtcAlertService:
             return
 
         existing = await self._existing_views(patient_user_id, set(added_medication_ids))
+        # 同一次提交裡**不是**觸發側的藥（處方藥）也要當現有用藥：醫院中醫部的
+        # 藥袋常同時有西藥處方與中藥方，兩者只差一次提交就從此互不相見——
+        # 「現有用藥」排掉本次 id 是為了不讓新藥和自己比，不是要排掉同袋的處方藥。
+        # 觸發側的藥彼此之間怎麼比由各條規則的 pool 累加負責，這裡不重複放。
+        existing.extend(v for v in added if v not in new_otc)
         # 出血排最前面：它是四條規則裡唯一可能致命的，而其餘三條的後果
         # （過量、頭暈跌倒、併用影響）雖然嚴重但層級不同。優先序即嚴重度。
         bleeding = self._first_class_pair(new_otc, existing)
@@ -353,24 +356,25 @@ class OtcAlertService:
     ) -> list[_DrugView]:
         """當事人目前仍有效的其他用藥。
 
-        走「提醒規則 → 藥品 id → 當日仍有效」而不是直接掃 medications：已停用
-        或療程已結束的藥不該再參與比對，否則三個月前那盒感冒藥會永遠讓新藥
-        觸發警報，而使用者無從讓它停下來。
+        直接查該使用者「啟用中且當日在效期內」的藥品，**不繞提醒規則**。
+        之前是「提醒規則 → 藥品 id → 當日仍有效」，而 PRN（需要時）的藥從來
+        不會掛在任何提醒上（見 `PrescriptionScanService._link_reminders`），
+        於是「痛的時候才吃」的那盒止痛藥——成藥最典型的用法——在之後每一次
+        比對裡都是隱形的；布洛芬配抗凝血劑這一組正好就漏在這裡。
+
+        「仍有效」的判定沿用同一套日期窗：已停用或療程已結束的藥不該再參與
+        比對，否則三個月前那盒感冒藥會永遠讓新藥觸發警報，而使用者無從讓它
+        停下來。
         """
-        reminders = await self._reminder_repository.list_reminders_by_user(patient_user_id)
-        ids = sorted(
-            {
-                mid
-                for reminder in reminders or []
-                for mid in (getattr(reminder, "medication_ids", None) or [])
-                if mid not in exclude_ids
-            }
-        )
-        if not ids:
-            return []
         date_str = datetime.now(TAIPEI_TZ).strftime("%Y-%m-%d")
-        medications = await self._medication_repository.find_active_by_ids(ids, date_str)
-        return [self._to_view(m) for m in medications or []]
+        medications = await self._medication_repository.list_active_by_user(
+            patient_user_id, date_str
+        )
+        return [
+            self._to_view(m)
+            for m in medications or []
+            if str(getattr(m, "id", "") or "") not in exclude_ids
+        ]
 
     def _to_view(self, medication: Any) -> _DrugView:
         """把 `Medication` 補上藥證庫的分級、成分與劑型。

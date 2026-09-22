@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Callable, List, Optional
@@ -91,6 +92,8 @@ class MedicationService:
         indication_service=None,
         misfire_grace_minutes: int = DEFAULT_MISFIRE_GRACE_MINUTES,
         clock: Callable[[], datetime] = _now_taipei,
+        catalog_service=None,
+        otc_alert_service=None,
     ) -> None:
         # 其餘方法沿用既有慣例，直接呼叫 repository 的 staticmethod；
         # 這裡額外開可注入的參數，給 get_user_reminders_with_medications 與
@@ -110,6 +113,11 @@ class MedicationService:
         self._clock = clock
         # 選填：未注入時仿單欄位一律 None，前端只顯示藥袋讀到的適應症。
         self._indication_service = indication_service
+        # 選填：手動新增時拿藥名去藥證庫比對（唯一命中才釘證號），以及
+        # 新增後的相衝偵測。兩者都是旁路——未注入時手動新增照舊只存藥名。
+        self._catalog_service = catalog_service
+        self._otc_alert_service = otc_alert_service
+        self._otc_alert_tasks: set[asyncio.Task] = set()
 
     async def create_reminders(
         self, creator_user_id: str, request: CreateMedicationReminderRequest
@@ -824,18 +832,63 @@ class MedicationService:
         self, creator_user_id: str, request: CreateMedicationRequest
     ) -> Medication:
         """以藥名手動新增藥品（`POST /medications`，見 spec「藥品的列出與手動
-        新增」）。手動新增沒有藥證與外觀資料來源，`frequency_code` 一律歸類
-        `OTHER`——臆測頻次會直接變成錯誤的服藥時間（見
-        `MedicationFrequencyCode` 的欄位註解），外觀欄位維持模型預設的空字串。
+        新增」）。手動新增沒有外觀資料來源，`frequency_code` 一律歸類 `OTHER`
+        ——臆測頻次會直接變成錯誤的服藥時間（見 `MedicationFrequencyCode` 的
+        欄位註解），外觀欄位維持模型預設的空字串。
+
+        藥證字號走與藥袋掃描同一條規則（`_verify_against_catalog`）：藥名在
+        藥證庫**唯一**命中才釘上，多張候選一律留空——挑一張就是編造，而使用者
+        在這條路徑上沒有候選清單可挑。釘上證號的意義不是外觀照片（手動新增
+        沒有候選可對），是讓相衝偵測拿得到成分與 ATC：之前手動新增的藥永遠
+        沒有證號，於是長輩自己輸入的「普拿疼」在任何規則裡都是隱形的。
         """
+        name = request.name.strip()
         medication = Medication(
             user_id=request.user_id,
             created_by_user_id=creator_user_id,
-            name=request.name.strip(),
+            name=name,
+            license_number=self._unique_license_for(name),
             source="manual",
             frequency_code="OTHER",
         )
-        return await self._medication_repository.create_one(medication)
+        created = await self._medication_repository.create_one(medication)
+        self._schedule_otc_alert(request.user_id, created.id)
+        return created
+
+    def _unique_license_for(self, name: str) -> Optional[str]:
+        """藥名在藥證庫唯一命中時的證號；查無、多張候選或未注入藥證庫都是 None。
+
+        比對本身不會拋錯（純字典查詢），這裡仍然包起來：手動新增是使用者正在
+        等的同步路徑，藥證庫任何意外都不該讓「存一個藥名」失敗。
+        """
+        if self._catalog_service is None or not name:
+            return None
+        try:
+            match = self._catalog_service.match(name)
+        except Exception:  # noqa: BLE001 - 旁路，不影響新增
+            logger.warning("[MedicationService] 手動新增時藥證庫比對失敗，證號留空")
+            return None
+        return match.license_number if match is not None else None
+
+    def _schedule_otc_alert(self, patient_user_id: str, medication_id: Optional[str]) -> None:
+        """把相衝偵測丟到背景，比照 `PrescriptionScanService._schedule_otc_alert`。
+
+        使用者正在等新增回應，偵測要查藥證庫、查現有用藥、推播家人，串進同步
+        路徑只會讓畫面變慢，而且對「新增成功了嗎」沒有貢獻。例外留在任務內，
+        log 不帶藥名（用藥組合是病史線索）。
+        """
+        if self._otc_alert_service is None or not patient_user_id or not medication_id:
+            return
+
+        async def _run() -> None:
+            try:
+                await self._otc_alert_service.check(patient_user_id, [medication_id])
+            except Exception:  # noqa: BLE001 - 背景旁路，例外不得逸散
+                logger.warning("[MedicationService] 手動新增後的相衝偵測任務失敗")
+
+        task = asyncio.create_task(_run())
+        self._otc_alert_tasks.add(task)
+        task.add_done_callback(self._otc_alert_tasks.discard)
 
     async def list_medication_names_for_log(self, log: MedicationLog) -> List[str]:
         """取得某筆用藥日誌「當次」的藥名清單，供推播／回覆的卡片顯示。

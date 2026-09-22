@@ -5,6 +5,7 @@
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Optional
 
 import pytest
@@ -15,6 +16,7 @@ from app.services.medication.tcm_catalog_service import TcmCatalogEntry, TcmCata
 from app.services.safety.atc_interaction import ClassPairTable
 from app.services.safety.otc_alert_service import OtcAlertService
 from app.services.safety.tcm_interaction import TcmInteractionTable
+from app.models.medication import TAIPEI_TZ
 
 WATCHLIST = IngredientWatchlist(["ACETAMINOPHEN", "CHLORPHENIRAMINE MALEATE"])
 # 抗膽鹼疊加清單。CHLORPHENIRAMINE 同時在兩份清單上是刻意的——真實資料就是
@@ -59,11 +61,6 @@ class _Med:
     spc_indication_summary: Optional[str] = None
 
 
-@dataclass
-class _Reminder:
-    medication_ids: list
-
-
 class _Catalog:
     def __init__(self, by_licence: dict) -> None:
         self._by_licence = by_licence
@@ -73,22 +70,24 @@ class _Catalog:
 
 
 class _MedRepo:
-    def __init__(self, meds: dict) -> None:
+    """藥品庫的假物件。
+
+    `existing_ids` 是「該使用者目前啟用且在效期內」的藥——服務端現在直接查
+    這個，不再從提醒規則反推。這裡刻意沒有任何提醒的概念：一顆藥有沒有掛
+    提醒（PRN 就沒有）與它該不該進比對池無關。
+    """
+
+    def __init__(self, meds: dict, existing_ids: list) -> None:
         self._meds = meds
+        self._existing_ids = list(existing_ids)
+        self.active_queries: list[tuple[str, str]] = []
 
     async def find_by_ids(self, ids):
         return [self._meds[i] for i in ids if i in self._meds]
 
-    async def find_active_by_ids(self, ids, date_str):
-        return [self._meds[i] for i in ids if i in self._meds]
-
-
-class _ReminderRepo:
-    def __init__(self, reminders: list) -> None:
-        self._reminders = reminders
-
-    async def list_reminders_by_user(self, user_id):
-        return self._reminders
+    async def list_active_by_user(self, user_id, date_str):
+        self.active_queries.append((user_id, date_str))
+        return [self._meds[i] for i in self._existing_ids if i in self._meds]
 
 
 class _Replier:
@@ -127,7 +126,7 @@ def _build(
     *,
     meds: dict,
     catalog: dict,
-    reminders: list,
+    existing: list,
     recipients=("family-1",),
     auth_raises: bool = False,
     local_forms=frozenset(),
@@ -142,8 +141,7 @@ def _build(
     auth = _Auth(recipients, raises=auth_raises)
     service = OtcAlertService(
         catalog_service=_Catalog(catalog),
-        medication_repository=_MedRepo(meds),
-        reminder_repository=_ReminderRepo(reminders),
+        medication_repository=_MedRepo(meds, existing),
         replier=replier,
         watchlist=WATCHLIST,
         anticholinergics=(
@@ -176,7 +174,7 @@ async def test_prescription_drug_notifies_nobody():
     service, replier, auth = _build(
         meds={"new": _Med(id="new", name="降血壓藥", license_number="L-RX")},
         catalog={"L-RX": _Entry("prescription", ("AMLODIPINE",))},
-        reminders=[],
+        existing=[],
     )
 
     await service.check("patient", ["new"])
@@ -199,7 +197,7 @@ async def test_otc_without_overlap_notifies_family_only():
             "L-A": _Entry("otc", ("DEXTROMETHORPHAN",)),
             "L-B": _Entry("otc", ("MAGNESIUM OXIDE",)),
         },
-        reminders=[_Reminder(medication_ids=["old"])],
+        existing=["old"],
     )
 
     await service.check("patient", ["new"])
@@ -220,7 +218,7 @@ async def test_otc_with_overlap_notifies_both_parties():
             "L-A": _Entry("otc", ("ACETAMINOPHEN",)),
             "L-B": _Entry("otc_guided", ("ACETAMINOPHEN", "CAFFEINE")),
         },
-        reminders=[_Reminder(medication_ids=["old"])],
+        existing=["old"],
     )
 
     await service.check("patient", ["new"])
@@ -249,7 +247,6 @@ async def test_detection_failure_stays_silent():
     service = OtcAlertService(
         catalog_service=_Catalog({}),
         medication_repository=_Exploding(),
-        reminder_repository=_ReminderRepo([]),
         replier=replier,
         watchlist=WATCHLIST,
         authorization_service=_Auth(("family-1",)),
@@ -259,6 +256,124 @@ async def test_detection_failure_stays_silent():
 
     assert replier.texts == []
     assert replier.flexes == []
+
+
+# --- 現有用藥池 -----------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_prn_drug_without_any_reminder_is_still_compared():
+    """需要時（PRN）的藥沒掛在任何提醒上，仍然要進比對池。
+
+    成藥止痛藥最典型的用法就是「痛的時候才吃」，而 PRN 一律不掛提醒
+    （`PrescriptionScanService._link_reminders`）。之前現有用藥是從提醒規則
+    反推的，那盒止痛藥因此在之後每一次比對裡都是隱形的——布洛芬配抗凝血劑
+    這一組正好漏在這裡。
+    """
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="感冒熱飲", license_number="L-NEW"),
+            "prn": _Med(id="prn", name="普拿疼", license_number="L-PRN"),
+        },
+        catalog={
+            "L-NEW": _Entry("otc", ("ACETAMINOPHEN", "CHLORPHENIRAMINE MALEATE")),
+            "L-PRN": _Entry("otc", ("ACETAMINOPHEN",)),
+        },
+        # 只有藥品本身「啟用且在效期內」，沒有任何提醒的關聯
+        existing=["prn"],
+    )
+
+    await service.check("patient", ["new"])
+
+    (recipient, text), = replier.texts
+    assert recipient == "patient"
+    assert "感冒熱飲" in text and "普拿疼" in text and "ACETAMINOPHEN" in text
+    assert "用藥重複提醒" in replier.flexes[0][1].alt_text
+
+
+@pytest.mark.asyncio
+async def test_existing_pool_is_the_patients_active_medications_today():
+    """現有用藥直接查「該使用者、今天仍有效」，不繞提醒規則。
+
+    查的對象是服藥的人（家屬代掃時是長輩），日期是台北時間的今天——
+    療程已結束的藥由 repository 的日期窗濾掉，這裡只確認問的是對的問題。
+    """
+    service, _, _ = _build(
+        meds={"new": _Med(id="new", name="止咳糖漿", license_number="L-A")},
+        catalog={"L-A": _Entry("otc", ("DEXTROMETHORPHAN",))},
+        existing=[],
+    )
+
+    await service.check("elder-7", ["new"])
+
+    repo = service._medication_repository
+    assert repo.active_queries == [("elder-7", datetime.now(TAIPEI_TZ).strftime("%Y-%m-%d"))]
+
+
+@pytest.mark.asyncio
+async def test_added_drugs_are_not_double_counted_as_existing():
+    """剛加入的藥也會被「當日有效」查出來，但它不能同時算作現有用藥——
+    否則每一盒新成藥都會和自己重複。"""
+    service, replier, _ = _build(
+        meds={"new": _Med(id="new", name="普拿疼", license_number="L-A")},
+        catalog={"L-A": _Entry("otc", ("ACETAMINOPHEN",))},
+        existing=["new"],
+    )
+
+    await service.check("patient", ["new"])
+
+    assert replier.texts == [], "不得和自己比出重複"
+    assert "新增了用藥提醒" in replier.flexes[0][1].alt_text
+
+
+@pytest.mark.asyncio
+async def test_prescription_drug_in_the_same_submission_is_compared_against():
+    """同一張藥袋裡的處方藥要當現有用藥，和同袋的成藥／中藥比。
+
+    之前「現有用藥」排掉本次全部 id、觸發側又只留成藥與中藥，於是同袋的
+    處方藥兩邊都不在——只差一次提交，布洛芬配可邁丁就從此互不相見。
+    """
+    service, replier, _ = _build(
+        meds={
+            "rx": _Med(id="rx", name="可邁丁錠", license_number="L-RX"),
+            "otc": _Med(id="otc", name="布洛芬錠", license_number="L-OTC"),
+        },
+        catalog={
+            "L-RX": _Entry("prescription", ("WARFARIN SODIUM",), atc_codes=("B01AA03",)),
+            "L-OTC": _Entry("otc_guided", ("IBUPROFEN",), atc_codes=("M01AE01",)),
+        },
+        existing=[],
+        class_pairs=CLASS_PAIRS,
+    )
+
+    await service.check("patient", ["rx", "otc"])
+
+    (recipient, text), = replier.texts
+    assert recipient == "patient"
+    assert "布洛芬錠" in text and "可邁丁錠" in text
+    assert "出血" in replier.flexes[0][1].alt_text
+
+
+@pytest.mark.asyncio
+async def test_same_submission_prescription_alone_still_notifies_nobody():
+    """兩顆都是處方藥時仍然整條不啟動——上面那條只是把處方藥放進比對池，
+    不是把它變成觸發側。"""
+    service, replier, auth = _build(
+        meds={
+            "rx1": _Med(id="rx1", name="可邁丁錠", license_number="L-RX1"),
+            "rx2": _Med(id="rx2", name="希樂葆", license_number="L-RX2"),
+        },
+        catalog={
+            "L-RX1": _Entry("prescription", ("WARFARIN SODIUM",), atc_codes=("B01AA03",)),
+            "L-RX2": _Entry("prescription", ("CELECOXIB",), atc_codes=("M01AH01",)),
+        },
+        existing=[],
+        class_pairs=CLASS_PAIRS,
+    )
+
+    await service.check("patient", ["rx1", "rx2"])
+
+    assert replier.texts == [] and replier.flexes == [] and auth.kinds == []
 
 
 # --- 邊界 -----------------------------------------------------------------
@@ -276,7 +391,7 @@ async def test_patient_told_family_will_help_only_when_family_notified():
             "L-A": _Entry("otc", ("ACETAMINOPHEN",)),
             "L-B": _Entry("otc", ("ACETAMINOPHEN",)),
         },
-        reminders=[_Reminder(medication_ids=["old"])],
+        existing=["old"],
         recipients=(),
     )
 
@@ -303,7 +418,7 @@ async def test_recipient_lookup_failure_still_warns_the_patient():
             "L-A": _Entry("otc", ("ACETAMINOPHEN",)),
             "L-B": _Entry("otc", ("ACETAMINOPHEN",)),
         },
-        reminders=[_Reminder(medication_ids=["old"])],
+        existing=["old"],
         auth_raises=True,
     )
 
@@ -319,7 +434,7 @@ async def test_patient_never_receives_the_family_card():
     service, replier, _ = _build(
         meds={"new": _Med(id="new", name="止咳糖漿", license_number="L-A")},
         catalog={"L-A": _Entry("otc", ("DEXTROMETHORPHAN",))},
-        reminders=[],
+        existing=[],
         recipients=("patient", "family-1"),
     )
 
@@ -340,7 +455,7 @@ async def test_two_new_drugs_in_one_scan_are_compared_against_each_other():
             "L-A": _Entry("otc", ("ACETAMINOPHEN", "VITAMIN C")),
             "L-B": _Entry("otc", ("ACETAMINOPHEN",)),
         },
-        reminders=[],
+        existing=[],
     )
 
     await service.check("patient", ["a", "b"])
@@ -361,7 +476,7 @@ async def test_local_action_form_is_excluded_from_comparison_but_still_announced
             "L-EYE": _Entry("otc", ("CHLORPHENIRAMINE MALEATE",), dosage_form="眼用液劑"),
             "L-SYRUP": _Entry("otc", ("CHLORPHENIRAMINE MALEATE",), dosage_form="糖漿劑"),
         },
-        reminders=[_Reminder(medication_ids=["old"])],
+        existing=["old"],
         local_forms=frozenset({"眼用液劑"}),
     )
 
@@ -380,7 +495,7 @@ async def test_unknown_drug_class_is_not_treated_as_otc():
     service, replier, auth = _build(
         meds={"new": _Med(id="new", name="來路不明的藥", license_number="L-?")},
         catalog={"L-?": _Entry("", ("ACETAMINOPHEN",))},
-        reminders=[],
+        existing=[],
     )
 
     await service.check("patient", ["new"])
@@ -399,7 +514,7 @@ async def test_legacy_catalog_without_new_fields_does_not_raise():
     service, replier, _ = _build(
         meds={"new": _Med(id="new", name="某藥", license_number="L-OLD")},
         catalog={"L-OLD": _Legacy()},
-        reminders=[],
+        existing=[],
     )
 
     await service.check("patient", ["new"])
@@ -419,7 +534,7 @@ async def test_family_card_uses_each_recipients_own_language():
     service, replier, _ = _build(
         meds={"new": _Med(id="new", name="止咳糖漿", license_number="L-A")},
         catalog={"L-A": _Entry("otc", ("DEXTROMETHORPHAN",))},
-        reminders=[],
+        existing=[],
         recipients=("family-1", "family-2"),
         profiles=_MixedProfiles(),
     )
@@ -447,7 +562,7 @@ async def test_indication_reaches_the_card_but_never_the_alt_text():
             )
         },
         catalog={"L-A": _Entry("otc", ("ACETAMINOPHEN",))},
-        reminders=[],
+        existing=[],
     )
 
     await service.check("patient", ["new"])
@@ -477,7 +592,7 @@ async def test_stacking_notifies_family_and_patient():
             "L-NEW": _Entry("otc", ("CHLORPHENIRAMINE MALEATE",)),
             "L-OLD": _Entry("otc", ("DIMENHYDRINATE",)),
         },
-        reminders=[_Reminder(medication_ids=["old"])],
+        existing=["old"],
     )
 
     await service.check("patient-1", ["new"])
@@ -510,7 +625,7 @@ async def test_overlap_takes_precedence_over_stacking():
             "L-NEW": _Entry("otc", ("CHLORPHENIRAMINE MALEATE", "DIPHENHYDRAMINE HCL")),
             "L-OLD": _Entry("otc", ("CHLORPHENIRAMINE MALEATE",)),
         },
-        reminders=[_Reminder(medication_ids=["old"])],
+        existing=["old"],
     )
 
     await service.check("patient-1", ["new"])
@@ -531,7 +646,7 @@ async def test_stacking_within_one_submission():
             "L-A": _Entry("otc", ("CHLORPHENIRAMINE MALEATE",)),
             "L-B": _Entry("otc", ("DIMENHYDRINATE",)),
         },
-        reminders=[],
+        existing=[],
     )
 
     await service.check("patient-1", ["a", "b"])
@@ -554,7 +669,7 @@ async def test_local_action_form_is_excluded_from_stacking():
             "L-NEW": _Entry("otc", ("CHLORPHENIRAMINE MALEATE",), dosage_form="點眼液劑"),
             "L-OLD": _Entry("otc", ("DIMENHYDRINATE",)),
         },
-        reminders=[_Reminder(medication_ids=["old"])],
+        existing=["old"],
         local_forms=frozenset({"點眼液劑"}),
     )
 
@@ -576,7 +691,7 @@ async def test_empty_anticholinergic_list_disables_stacking_only():
             "L-NEW": _Entry("otc", ("CHLORPHENIRAMINE MALEATE",)),
             "L-OLD": _Entry("otc", ("DIMENHYDRINATE",)),
         },
-        reminders=[_Reminder(medication_ids=["old"])],
+        existing=["old"],
         anticholinergics=IngredientClass(()),
     )
 
@@ -598,7 +713,7 @@ async def test_stacking_with_no_family_uses_solo_wording():
             "L-NEW": _Entry("otc", ("CHLORPHENIRAMINE MALEATE",)),
             "L-OLD": _Entry("otc", ("DIMENHYDRINATE",)),
         },
-        reminders=[_Reminder(medication_ids=["old"])],
+        existing=["old"],
         recipients=(),
     )
 
@@ -634,7 +749,7 @@ async def test_new_tcm_against_existing_western_notifies():
             "old": _Med(id="old", name="阿斯匹靈腸溶錠", license_number="L-OLD"),
         },
         catalog={"L-OLD": _Entry("prescription", ("ASPIRIN",))},
-        reminders=[_Reminder(medication_ids=["old"])],
+        existing=["old"],
         tcm_catalog=TCM_CATALOG,
         tcm_interactions=TCM_PAIRS,
     )
@@ -659,7 +774,7 @@ async def test_new_otc_against_existing_tcm_notifies():
             "old": _Med(id="old", name="葛根湯"),
         },
         catalog={"L-NEW": _Entry("otc", ("ASPIRIN",))},
-        reminders=[_Reminder(medication_ids=["old"])],
+        existing=["old"],
         tcm_catalog=TCM_CATALOG,
         tcm_interactions=TCM_PAIRS,
     )
@@ -676,7 +791,7 @@ async def test_tcm_alone_triggers_no_interaction_message():
     service, replier, _ = _build(
         meds={"new": _Med(id="new", name="葛根湯")},
         catalog={},
-        reminders=[],
+        existing=[],
         tcm_catalog=TCM_CATALOG,
         tcm_interactions=TCM_PAIRS,
     )
@@ -700,7 +815,7 @@ async def test_overlap_takes_precedence_over_tcm():
             "L-NEW": _Entry("otc", ("ASPIRIN", "ACETAMINOPHEN")),
             "L-OLD": _Entry("otc", ("ACETAMINOPHEN",)),
         },
-        reminders=[_Reminder(medication_ids=["old1", "old2"])],
+        existing=["old1", "old2"],
         tcm_catalog=TCM_CATALOG,
         tcm_interactions=TCM_PAIRS,
     )
@@ -720,7 +835,7 @@ async def test_empty_tcm_table_disables_only_that_rule():
             "old": _Med(id="old", name="阿斯匹靈腸溶錠", license_number="L-OLD"),
         },
         catalog={"L-OLD": _Entry("prescription", ("ASPIRIN",))},
-        reminders=[_Reminder(medication_ids=["old"])],
+        existing=["old"],
         tcm_catalog=TCM_CATALOG,
         tcm_interactions=TcmInteractionTable(()),
     )
@@ -737,7 +852,7 @@ async def test_without_tcm_catalog_nothing_is_identified_as_tcm():
     service, replier, _ = _build(
         meds={"new": _Med(id="new", name="葛根湯")},
         catalog={},
-        reminders=[],
+        existing=[],
         tcm_catalog=None,
     )
 
@@ -766,7 +881,7 @@ async def test_otc_nsaid_against_prescribed_anticoagulant():
             "L-NEW": _Entry("otc_guided", ("IBUPROFEN",), atc_codes=("M01AE01",)),
             "L-OLD": _Entry("prescription", ("WARFARIN SODIUM",), atc_codes=("B01AA03",)),
         },
-        reminders=[_Reminder(medication_ids=["old"])],
+        existing=["old"],
         class_pairs=CLASS_PAIRS,
     )
 
@@ -795,7 +910,7 @@ async def test_bleeding_outranks_the_other_rules():
                 "prescription", ("WARFARIN SODIUM", "ACETAMINOPHEN"), atc_codes=("B01AA03",)
             ),
         },
-        reminders=[_Reminder(medication_ids=["old"])],
+        existing=["old"],
         class_pairs=CLASS_PAIRS,
     )
 
@@ -817,7 +932,7 @@ async def test_two_tcm_formulas_sharing_a_watched_herb():
             "old": _Med(id="old", name="芍藥甘草湯"),
         },
         catalog={},
-        reminders=[_Reminder(medication_ids=["old"])],
+        existing=["old"],
         tcm_catalog=TcmCatalogService([ge_gen, shao_yao]),
         tcm_watch_herbs=TCM_HERBS,
     )
@@ -837,7 +952,7 @@ async def test_common_herbs_outside_the_watchlist_are_not_reported():
     service, replier, _ = _build(
         meds={"new": _Med(id="new", name="甲方"), "old": _Med(id="old", name="乙方")},
         catalog={},
-        reminders=[_Reminder(medication_ids=["old"])],
+        existing=["old"],
         tcm_catalog=TcmCatalogService([a, b]),
         tcm_watch_herbs=TCM_HERBS,
     )
@@ -859,7 +974,7 @@ async def test_missing_atc_codes_disable_only_the_bleeding_rule():
             "L-NEW": _Entry("otc_guided", ("IBUPROFEN",)),
             "L-OLD": _Entry("prescription", ("WARFARIN SODIUM",)),
         },
-        reminders=[_Reminder(medication_ids=["old"])],
+        existing=["old"],
         class_pairs=CLASS_PAIRS,
     )
 

@@ -821,7 +821,6 @@ _otc_local_action_forms = load_local_action_forms()
 _otc_alert_service = OtcAlertService(
     catalog_service=_drug_catalog_service,
     medication_repository=MedicationRepository,
-    reminder_repository=MedicationReminderRepository,
     replier=_line_replier,
     watchlist=_otc_watchlist,
     anticholinergics=_anticholinergics,
@@ -912,7 +911,13 @@ _family_delegation_service = FamilyDelegationService(
     audit_repository=FamilyRoleAuditRepository,
     activation_enabled=settings.FAMILY_DELEGATION_ACTIVATION_ENABLED,
 )
-_medication_service = MedicationService(indication_service=_drug_indication_service)
+# 手動新增藥品走同一份藥證庫（唯一命中才釘證號）與同一個相衝偵測服務——
+# 長輩自己輸入的成藥和掃藥袋進來的成藥，該受同一套規則檢查。
+_medication_service = MedicationService(
+    indication_service=_drug_indication_service,
+    catalog_service=_drug_catalog_service,
+    otc_alert_service=_enabled_otc_alert_service,
+)
 
 # 個人健康紀錄（personal-health-tracking）。Task 3 組裝提醒範圍；Task 4 接著
 # 加血壓血糖量測；Task 5 在這裡接著加經期；Task 6 加計步；Task 7 加超出

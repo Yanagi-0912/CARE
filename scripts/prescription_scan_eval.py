@@ -10,6 +10,11 @@
 2. 中醫一包混多味的藥袋，會不會被拆成 N 筆藥——拆了之後每個時段的提醒會列
    N 樣藥，長輩實際上只要吃一包。
 3. 辨識出的藥名有多少通過藥證庫校驗（決定草稿能不能一鍵確認）。
+4. 釘選藥證之後，相衝偵測（`OtcAlertService`）有沒有東西可比——每一筆藥
+   走到藥證庫的成分、劑型、ATC 與中藥庫方名之後，四條規則裡有沒有任何一條
+   的**單側**條件成立。這不是「會不會發警報」（那要看當事人正在吃什麼），
+   而是「這筆藥有沒有資格觸發任何一條」。沒資格的藥，不論長輩家裡還有什麼，
+   相衝偵測都是靜默的；這一欄量的就是那個漏洞有多大。
 
 golden.jsonl 每行一張圖：
   {"image": "相對 CARE 根目錄的路徑",
@@ -52,6 +57,15 @@ from app.services.medication.tcm_catalog_service import (
     DEFAULT_TCM_CATALOG_PATH,
     TcmCatalogService,
 )
+from app.services.safety.atc_interaction import ClassPairTable
+from app.services.safety.ingredient_overlap import (
+    IngredientClass,
+    IngredientWatchlist,
+    is_local_action,
+    load_local_action_forms,
+    should_check,
+)
+from app.services.safety.tcm_interaction import TcmInteractionTable, normalize_tcm_name
 from scripts.handwriting_eval import _mime_for
 
 DEFAULT_GOLDEN = _PROJECT_ROOT / "evals" / "prescription_scan" / "golden.jsonl"
@@ -62,7 +76,7 @@ _REASON_LABEL = {
     "service_unavailable": "服務失敗",
 }
 
-_GROUP_ORDER = ["rx_bag", "tcm_bag", "tcm_bag（合成）", "tcm_package", "otc_package"]
+_GROUP_ORDER = ["rx_bag", "tcm_bag", "tcm_bag（合成）", "tcm_package", "otc_package", "otc_package（合成）"]
 
 
 def _resolve(path: str) -> Path:
@@ -82,7 +96,79 @@ def load_cases(golden: Path) -> list[dict[str, Any]]:
     ]
 
 
-def _annotate(result, drugs: DrugCatalogService, tcm: TcmCatalogService) -> dict[str, Any]:
+class _Rules:
+    """相衝偵測讀的四份資料表，與正式服務同一組檔案（`app/dependencies.py`）。"""
+
+    def __init__(self) -> None:
+        self.watchlist = IngredientWatchlist.load_from_path()
+        self.anticholinergics = IngredientClass.load_from_path()
+        self.class_pairs = ClassPairTable.load_from_path()
+        self.tcm_interactions = TcmInteractionTable.load_from_path()
+        self.local_forms = load_local_action_forms()
+
+
+def _pinnable_entries(match, drugs: DrugCatalogService) -> list:
+    """釘選後可能落地的藥證。
+
+    唯一命中時掃描已經自動釘好，只有那一張。多張候選時使用者會在核對畫面
+    挑一張——**哪一張都可能**，所以全部列出、逐張算，而不是挑一張代表
+    （挑了就是 `DrugCatalogMatch` 文件裡說的「編造」）。查無回空。
+    """
+    if match is None:
+        return []
+    if match.license_number:
+        entry = drugs.entry_by_license_number(match.license_number)
+        return [entry] if entry is not None else []
+    return list(match.candidates)
+
+
+def _rule_capability(entry, tcm_entry, rules: _Rules) -> dict[str, Any]:
+    """這筆藥釘選之後，四條規則各自的單側條件成立嗎。
+
+    對應 `OtcAlertService`：觸發側要是成藥或中藥（`should_check` / 中藥庫命中），
+    局部作用劑型不進比對，然後——
+      成分重複   ：成分有落在白名單上的
+      抗膽鹼疊加 ：成分有落在抗膽鹼清單上的
+      出血       ：ATC 碼命中任一組類別配對的任一側
+      中西藥     ：中藥庫方名（含組成藥材）在交互作用表裡有登錄
+    """
+    ingredients = tuple(getattr(entry, "ingredients", ()) or ())
+    atc_codes = tuple(getattr(entry, "atc_codes", ()) or ())
+    dosage_form = getattr(entry, "dosage_form", "") or ""
+    drug_class = getattr(entry, "drug_class", "") or ""
+    tcm_keys = tcm_entry.interaction_keys if tcm_entry is not None else ()
+
+    watched = sorted(i for i in ingredients if i in rules.watchlist)
+    anticholinergic = sorted(i for i in ingredients if i in rules.anticholinergics)
+    class_sides = []
+    for pair in rules.class_pairs._pairs:
+        if pair.a.matches(atc_codes):
+            class_sides.append(f"{pair.pair_id}:{pair.a.label_zh}")
+        if not pair.is_self_pair and pair.b.matches(atc_codes):
+            class_sides.append(f"{pair.pair_id}:{pair.b.label_zh}")
+    tcm_listed = any(
+        rules.tcm_interactions._by_tcm.get(normalize_tcm_name(k)) for k in tcm_keys
+    )
+    is_trigger_side = should_check(drug_class) or bool(tcm_keys)
+    local = is_local_action(dosage_form, rules.local_forms)
+    capable = is_trigger_side and not local and bool(
+        watched or anticholinergic or class_sides or tcm_listed
+    )
+    return {
+        "pinned_class": drug_class,
+        "trigger_side": is_trigger_side,
+        "local_action_form": local,
+        "watched_ingredients": watched,
+        "anticholinergic_ingredients": anticholinergic,
+        "class_pair_sides": class_sides,
+        "tcm_interaction_listed": tcm_listed,
+        "rule_capable": capable,
+    }
+
+
+def _annotate(
+    result, drugs: DrugCatalogService, tcm: TcmCatalogService, rules: _Rules
+) -> dict[str, Any]:
     """把辨識結果換成報告的形狀，並補上掃描實際會做的藥名校驗。
 
     病患姓名只記有沒有、不記內容——樣本即使取自公開來源，報告也不該變成一份
@@ -92,6 +178,15 @@ def _annotate(result, drugs: DrugCatalogService, tcm: TcmCatalogService) -> dict
     for drug in result.drugs:
         match = drugs.match(drug.name)
         tcm_entry = tcm.match(drug.name)
+        # 與 `OtcAlertService._to_view` 同一個規則：西藥藥證庫查得到成分就不
+        # 再問中藥庫。多張候選逐張算：使用者挑哪一張都要能比，這筆藥才算
+        # 「釘了就有規則可比」；只有部分候選可比的另外標出來。
+        entries = _pinnable_entries(match, drugs)
+        per_candidate = [
+            _rule_capability(e, tcm_entry if not getattr(e, "ingredients", None) else None, rules)
+            for e in entries
+        ] or ([_rule_capability(None, tcm_entry, rules)] if tcm_entry is not None else [])
+        capable_flags = [c["rule_capable"] for c in per_candidate]
         rows.append(
             {
                 "name": drug.name,
@@ -102,6 +197,21 @@ def _annotate(result, drugs: DrugCatalogService, tcm: TcmCatalogService) -> dict
                 "license_pinned": bool(match and match.license_number),
                 "n_candidates": len(match.candidates) if match else 0,
                 "tcm_formula": tcm_entry.name_zh if tcm_entry else None,
+                # 釘選後有藥證（或中藥方）可落地；空＝查無，釘不了
+                "pinnable": bool(per_candidate),
+                # 逐張候選的規則資格；rules 取「每一張都可比」的合取
+                "rule_capable_by_candidate": [
+                    {"license_number": getattr(e, "license_number", None), **c}
+                    for e, c in zip(entries or [None], per_candidate)
+                ],
+                "rules": {
+                    "rule_capable": bool(capable_flags) and all(capable_flags),
+                    "rule_capable_partial": any(capable_flags) and not all(capable_flags),
+                    "watched_ingredients": sorted({i for c in per_candidate for i in c["watched_ingredients"]}),
+                    "anticholinergic_ingredients": sorted({i for c in per_candidate for i in c["anticholinergic_ingredients"]}),
+                    "class_pair_sides": sorted({i for c in per_candidate for i in c["class_pair_sides"]}),
+                    "tcm_interaction_listed": any(c["tcm_interaction_listed"] for c in per_candidate),
+                },
             }
         )
     return {
@@ -120,6 +230,7 @@ async def run(cases, repeat: int, model_name: str, concurrency: int, timeout: in
         threshold=settings.DRUG_CATALOG_MATCH_THRESHOLD,
     )
     tcm = TcmCatalogService.load_from_path(str(_resolve(DEFAULT_TCM_CATALOG_PATH)))
+    rules = _Rules()
     semaphore = asyncio.Semaphore(concurrency)
 
     async def one(case, run_index):
@@ -127,7 +238,7 @@ async def run(cases, repeat: int, model_name: str, concurrency: int, timeout: in
         async with semaphore:
             try:
                 result = await ocr.recognize(path.read_bytes(), _mime_for(path))
-                pred = _annotate(result, drugs, tcm)
+                pred = _annotate(result, drugs, tcm, rules)
             except PrescriptionScanError as exc:
                 pred = {"rejected": exc.reason}
             except Exception as exc:  # noqa: BLE001 - 單張失敗不該中斷整批
@@ -148,7 +259,16 @@ def _one_line(pred: dict[str, Any]) -> str:
     for d in pred["drugs"]:
         mark = "✓" if d["verified"] else "✗"
         tcm = f" 方:{d['tcm_formula']}" if d["tcm_formula"] else ""
-        parts.append(f"{d['name']}({d['frequency_code']} {mark}{tcm})")
+        rules = d.get("rules") or {}
+        if rules.get("rule_capable"):
+            clash = " 相衝:可比"
+        elif rules.get("rule_capable_partial"):
+            clash = " 相衝:看挑哪張候選"
+        elif d.get("pinnable"):
+            clash = " 相衝:釘了也沒規則"
+        else:
+            clash = " 相衝:釘不了"
+        parts.append(f"{d['name']}({d['frequency_code']} {mark}{tcm}{clash})")
     return f"{len(pred['drugs'])} 筆：" + "、".join(parts)
 
 
@@ -179,6 +299,25 @@ def summarize(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "license_pinned": sum(d["license_pinned"] for d in drugs),
         "tcm_formula_hits": sum(1 for d in drugs if d["tcm_formula"]),
         "frequency_other": sum(1 for d in drugs if d["frequency_code"] == "OTHER"),
+        # 相衝偵測的漏斗：抽出 → 釘得上藥證 → 釘上後有規則可比。差額就是
+        # 「不論長輩家裡還有什麼，相衝偵測都靜默」的那些藥。
+        "pinnable": sum(1 for d in drugs if d.get("pinnable")),
+        "rule_capable": sum(1 for d in drugs if (d.get("rules") or {}).get("rule_capable")),
+        "rule_capable_partial": sum(1 for d in drugs if (d.get("rules") or {}).get("rule_capable_partial")),
+        "rule_capable_by": {
+            "overlap": sum(1 for d in drugs if (d.get("rules") or {}).get("watched_ingredients")),
+            "stacking": sum(1 for d in drugs if (d.get("rules") or {}).get("anticholinergic_ingredients")),
+            "bleeding": sum(1 for d in drugs if (d.get("rules") or {}).get("class_pair_sides")),
+            "tcm": sum(1 for d in drugs if (d.get("rules") or {}).get("tcm_interaction_listed")),
+        },
+        "silent_drugs": [
+            {"image": r["image"].split("/")[-1], "name": d["name"],
+             "why": ("釘不了" if not d.get("pinnable")
+                     else ("看挑哪張候選" if (d.get("rules") or {}).get("rule_capable_partial")
+                           else "釘了也沒規則"))}
+            for r in accepted for d in r["pred"]["drugs"]
+            if not (d.get("rules") or {}).get("rule_capable")
+        ],
         "one_tap_upper_bound": len(one_tap),
         "count_labeled": len(with_expected),
         "count_match": len(count_match),
@@ -203,6 +342,14 @@ def print_report(group: str, s: dict[str, Any]) -> None:
             f"｜頻次 OTHER {s['frequency_other']}"
         )
         print(f"可一鍵確認（上限）{s['one_tap_upper_bound']} / {s['accepted']}")
+        by = s["rule_capable_by"]
+        print(
+            f"相衝偵測漏斗：抽出 {s['drugs_extracted']} → 釘得上 {s['pinnable']}"
+            f" → 有規則可比 {s['rule_capable']}（另 {s['rule_capable_partial']} 筆看挑哪張候選）"
+            f"（重複 {by['overlap']}｜疊加 {by['stacking']}｜出血 {by['bleeding']}｜中西藥 {by['tcm']}）"
+        )
+        for d in s["silent_drugs"]:
+            print(f"  靜默：{d['image']}／{d['name']}（{d['why']}）")
     if s["count_labeled"]:
         print(f"藥品筆數對得上 {s['count_match']} / {s['count_labeled']}")
     if s["packets_labeled"]:

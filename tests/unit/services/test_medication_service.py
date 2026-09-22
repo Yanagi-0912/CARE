@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
 import pytest
@@ -1796,6 +1797,106 @@ async def test_create_manual_medication_sets_manual_source_and_other_frequency()
     assert created.source == "manual"
     assert created.frequency_code == "OTHER"
     assert created.created_by_user_id == "U_CARE"
+    assert fake_medications.created_medications == [created]
+
+
+class _FakeCatalog:
+    """藥證庫替身：藥名 → 比對結果（唯一命中帶證號、多候選證號為 None、查無 None）。"""
+
+    class _Match:
+        def __init__(self, license_number):
+            self.license_number = license_number
+
+    def __init__(self, by_name: dict):
+        self._by_name = by_name
+
+    def match(self, name: str):
+        return self._by_name.get(name)
+
+
+class _RecordingOtcAlert:
+    def __init__(self):
+        self.calls: list[tuple[str, list[str]]] = []
+
+    async def check(self, patient_user_id: str, medication_ids):
+        self.calls.append((patient_user_id, list(medication_ids)))
+
+
+@pytest.mark.asyncio
+async def test_create_manual_medication_pins_unique_catalog_hit_and_runs_interaction_check():
+    """手動新增的藥要能被相衝偵測看見：唯一命中釘證號，新增後排一次偵測。
+
+    之前手動新增永遠沒有證號，OtcAlertService 拿不到成分與 ATC，長輩自己
+    輸入的「普拿疼」在四條規則裡都是隱形的，也沒有任何地方觸發偵測。
+    """
+    fake_medications = FakeMedicationRepository()
+    alert = _RecordingOtcAlert()
+    service = MedicationService(
+        medication_repository=fake_medications,
+        catalog_service=_FakeCatalog({"普拿疼加強錠": _FakeCatalog._Match("衛署藥輸字第023623號")}),
+        otc_alert_service=alert,
+    )
+
+    created = await service.create_manual_medication(
+        "U_CARE", CreateMedicationRequest(user_id="U_ELDER", name="普拿疼加強錠")
+    )
+    await asyncio.gather(*service._otc_alert_tasks)
+
+    assert created.license_number == "衛署藥輸字第023623號"
+    assert created.source == "manual"
+    # 偵測對象是服藥的人（家屬代為新增時是長輩），不是新增者
+    assert alert.calls == [("U_ELDER", [created.id])]
+
+
+@pytest.mark.asyncio
+async def test_create_manual_medication_leaves_license_empty_on_ambiguous_or_missing_name():
+    """多張候選或查無都不釘證號——挑一張就是編造，與藥袋掃描同一條規則。
+    偵測照樣排一次：中藥走的是方名比對，不需要證號。"""
+    fake_medications = FakeMedicationRepository()
+    alert = _RecordingOtcAlert()
+    service = MedicationService(
+        medication_repository=fake_medications,
+        catalog_service=_FakeCatalog({"感冒液": _FakeCatalog._Match(None)}),
+        otc_alert_service=alert,
+    )
+
+    ambiguous = await service.create_manual_medication(
+        "U_SELF", CreateMedicationRequest(user_id="U_SELF", name="感冒液")
+    )
+    unknown = await service.create_manual_medication(
+        "U_SELF", CreateMedicationRequest(user_id="U_SELF", name="阿嬤的藥")
+    )
+    await asyncio.gather(*service._otc_alert_tasks)
+
+    assert ambiguous.license_number is None
+    assert unknown.license_number is None
+    assert [ids for _, ids in alert.calls] == [[ambiguous.id], [unknown.id]]
+
+
+@pytest.mark.asyncio
+async def test_create_manual_medication_survives_catalog_and_alert_failures():
+    """藥證庫或偵測服務出錯都不能讓「存一個藥名」失敗。"""
+
+    class _Exploding:
+        def match(self, name):
+            raise RuntimeError("catalog down")
+
+        async def check(self, patient_user_id, medication_ids):
+            raise RuntimeError("alert down")
+
+    fake_medications = FakeMedicationRepository()
+    service = MedicationService(
+        medication_repository=fake_medications,
+        catalog_service=_Exploding(),
+        otc_alert_service=_Exploding(),
+    )
+
+    created = await service.create_manual_medication(
+        "U_SELF", CreateMedicationRequest(user_id="U_SELF", name="普拿疼")
+    )
+    await asyncio.gather(*service._otc_alert_tasks)  # 不得拋出
+
+    assert created.license_number is None
     assert fake_medications.created_medications == [created]
 
 

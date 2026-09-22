@@ -281,3 +281,8 @@ def test_symptoms_still_never_resolve_to_a_department(symptom):
     """
     assert resolve_department(symptom) is None
     assert extract_department_intents(symptom) == ()
+
+
+def test_short_english_department_label_does_not_match_inside_another_word():
+    """ENT is a valid label, but it must not match the end of 'department'."""
+    assert extract_department_intents("Which department should I choose?") == ()

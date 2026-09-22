@@ -12,6 +12,13 @@ import logging
 
 from langchain_core.tools import tool
 
+from app.core.user_language import get_request_language, normalize_user_language
+from app.i18n.messages import (
+    department_label,
+    subgroup_label,
+    symptom_fallback_reason,
+    t,
+)
 from app.services.medical.symptom_classification.symptom_department_service import (
     RESULT_FALLBACK,
     SymptomTriageResult,
@@ -34,32 +41,42 @@ def configure_symptom_tool(symptom_department_service) -> None:
     _symptom_department_service = symptom_department_service
 
 
-def _format_plain_reply(result: SymptomTriageResult) -> str:
+def _format_plain_reply(
+    result: SymptomTriageResult, language: str | None = None
+) -> str:
     """
     Flex 組裝失敗時的純文字 fallback，仍須符合 line-reply-rules 的不得輸出
     Markdown。呈現層出錯不該讓使用者拿到空白回覆。
     """
+    lang = normalize_user_language(language or get_request_language())
     if result.kind == RESULT_FALLBACK:
-        header = f"系統無法判斷你描述的狀況該掛哪一科（{result.fallback_reason}）。"
-        intro = "不確定時常見的初診方向："
+        header = t("flex.symptom.plain.fallback_header", lang).format(
+            reason=symptom_fallback_reason(result.fallback_reason, lang)
+        )
+        intro = t("flex.symptom.plain.fallback_intro", lang)
     else:
-        header = f"依「{result.matched_term}」整理的看診方向："
-        intro = "常見的看診方向："
+        header = t("flex.symptom.plain.suggestion_header", lang).format(
+            term=result.matched_term or "你描述的狀況"
+        )
+        intro = t("flex.symptom.plain.suggestion_intro", lang)
 
     lines = [header]
-    note = pediatric_note(result)
+    note = pediatric_note(result, lang)
     if note is not None:
         lines.append(note)
     lines.append(intro)
     for index, candidate in enumerate(result.candidates, start=1):
-        suffix = (
-            f"（{'或'.join(candidate.subgroups)}方向）" if candidate.subgroups else ""
-        )
-        lines.append(f"{index}. {candidate.canonical}{suffix}")
+        suffix = ""
+        if candidate.subgroups:
+            alternatives = t("flex.symptom.alternative_separator", lang).join(
+                subgroup_label(value, lang) for value in candidate.subgroups
+            )
+            suffix = t("flex.symptom.plain.subgroup", lang).format(
+                subgroups=alternatives
+            )
+        lines.append(f"{index}. {department_label(candidate.canonical, lang)}{suffix}")
     lines.append("")
-    lines.append(
-        "以上僅供選擇科別時參考，不是醫療診斷。症狀持續、變化或加劇時請儘速就醫。"
-    )
+    lines.append(t("flex.symptom.disclaimer", lang))
     return "\n".join(lines)
 
 
@@ -77,7 +94,7 @@ async def suggest_department_for_symptom(symptom: str) -> str:
     若使用者要找附近的院所，請改用位置與科別搜尋工具。
     """
     if _symptom_department_service is None:
-        return "科別建議服務未初始化，請稍後再試。"
+        return t("flex.symptom.unavailable")
 
     result = await _symptom_department_service.suggest(symptom)
     logger.info(

@@ -2034,6 +2034,216 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "zh-TW": "日", "en": "Su", "id": "Mg",
         "vi": "CN", "th": "อา", "ja": "日",
     },
+    # --- Flex：症狀對應建議科別 ---
+    "flex.symptom.alt": {
+        "zh-TW": "建議的看診方向",
+        "en": "Suggested care departments",
+        "id": "Saran poli untuk berobat",
+        "vi": "Gợi ý chuyên khoa khám",
+        "th": "แผนกที่แนะนำให้เข้ารับการตรวจ",
+        "ja": "受診する診療科の目安",
+    },
+    "flex.symptom.header": {
+        "zh-TW": "推薦掛號科別",
+        "en": "Suggested Department",
+        "id": "Poli yang Disarankan",
+        "vi": "Chuyên Khoa Gợi Ý",
+        "th": "แผนกที่แนะนำ",
+        "ja": "おすすめの診療科",
+    },
+    "flex.symptom.tag.suggestion": {
+        "zh-TW": "(建議優先)", "en": "(Start here)", "id": "(Prioritas)",
+        "vi": "(Ưu tiên)", "th": "(แนะนำเป็นอันดับแรก)", "ja": "（優先候補）",
+    },
+    "flex.symptom.tag.fallback": {
+        "zh-TW": "(不確定時的方向)", "en": "(When unsure)",
+        "id": "(Jika belum yakin)", "vi": "(Khi chưa chắc chắn)",
+        "th": "(เมื่อยังไม่แน่ใจ)", "ja": "（判断が難しい場合）",
+    },
+    "flex.symptom.body.suggestion": {
+        "zh-TW": "依「{term}」整理的可能科別與評估原因",
+        "en": "Possible departments based on the symptoms you described",
+        "id": "Pilihan poli berdasarkan gejala yang Anda sampaikan",
+        "vi": "Các chuyên khoa phù hợp dựa trên triệu chứng bạn mô tả",
+        "th": "แผนกที่อาจเหมาะสมจากอาการที่คุณบอก",
+        "ja": "お伝えいただいた症状から考えられる診療科",
+    },
+    "flex.symptom.body.fallback": {
+        "zh-TW": "系統無法判斷你描述的狀況該掛哪一科（{reason}），以下是常見的初診方向",
+        "en": "The system could not determine a specific department ({reason}). These are common places to start",
+        "id": "Sistem belum dapat menentukan poli tertentu ({reason}). Berikut pilihan umum untuk kunjungan pertama",
+        "vi": "Hệ thống chưa xác định được chuyên khoa cụ thể ({reason}). Bạn có thể bắt đầu với các khoa sau",
+        "th": "ระบบยังระบุแผนกที่แน่ชัดไม่ได้ ({reason}) ต่อไปนี้คือแผนกทั่วไปสำหรับการตรวจครั้งแรก",
+        "ja": "受診科を特定できませんでした（{reason}）。初診の一般的な候補はこちらです",
+    },
+    "flex.symptom.reason.label": {
+        "zh-TW": "理由：{reason}", "en": "Why: {reason}",
+        "id": "Alasan: {reason}", "vi": "Lý do: {reason}",
+        "th": "เหตุผล: {reason}", "ja": "理由：{reason}",
+    },
+    "flex.symptom.reason.department": {
+        "zh-TW": "{term}常見的看診方向之一是{department}。",
+        "en": "{department} is one possible department for the symptoms you described.",
+        "id": "{department} adalah salah satu poli yang mungkin sesuai untuk gejala Anda.",
+        "vi": "{department} là một chuyên khoa có thể phù hợp với triệu chứng bạn mô tả.",
+        "th": "{department} เป็นหนึ่งในแผนกที่อาจเหมาะกับอาการที่คุณบอก",
+        "ja": "お伝えいただいた症状では、{department}が受診先の候補になります。",
+    },
+    "flex.symptom.reason.subgroup": {
+        "zh-TW": "{term}在這類分科中通常由{department}的{subgroups}方向處理。",
+        "en": "Within {department}, the relevant area is usually {subgroups}.",
+        "id": "Di {department}, bidang yang biasanya terkait adalah {subgroups}.",
+        "vi": "Trong {department}, lĩnh vực thường phù hợp là {subgroups}.",
+        "th": "ภายใน{department} สาขาที่มักเกี่ยวข้องคือ{subgroups}",
+        "ja": "{department}のうち、通常は{subgroups}の領域が対応します。",
+    },
+    "flex.symptom.alternative_separator": {
+        "zh-TW": "或", "en": " or ", "id": " atau ",
+        "vi": " hoặc ", "th": " หรือ ", "ja": "または",
+    },
+    "flex.symptom.source.label": {
+        "zh-TW": "參考來源", "en": "References", "id": "Referensi",
+        "vi": "Nguồn tham khảo", "th": "แหล่งอ้างอิง", "ja": "参考資料",
+    },
+    "flex.symptom.source.item": {
+        "zh-TW": "{index}. {name}「該看哪一科」對照表",
+        "en": "{index}. {name} department guide",
+        "id": "{index}. Panduan poli dari {name}",
+        "vi": "{index}. Hướng dẫn chọn chuyên khoa của {name}",
+        "th": "{index}. คู่มือเลือกแผนกจาก {name}",
+        "ja": "{index}. {name}の診療科案内",
+    },
+    "flex.symptom.source.open": {
+        "zh-TW": "開啟參考網址{index}", "en": "Open reference {index}",
+        "id": "Buka referensi {index}", "vi": "Mở nguồn {index}",
+        "th": "เปิดแหล่งอ้างอิง {index}", "ja": "参考資料{index}を開く",
+    },
+    "flex.symptom.source.single": {
+        "zh-TW": "（僅 1 家醫院的對照表收錄此症狀，建議先去電確認）",
+        "en": " (Only one hospital guide lists this symptom; please call ahead to confirm.)",
+        "id": " (Gejala ini hanya tercantum dalam panduan satu rumah sakit; sebaiknya telepon lebih dulu.)",
+        "vi": " (Chỉ một bệnh viện liệt kê triệu chứng này; bạn nên gọi xác nhận trước.)",
+        "th": " (มีคู่มือของโรงพยาบาลเพียงแห่งเดียวที่ระบุอาการนี้ แนะนำให้โทรยืนยันก่อน)",
+        "ja": "（この症状を掲載している病院の案内は1件のみです。事前に電話でご確認ください）",
+    },
+    "flex.symptom.source.multiple": {
+        "zh-TW": "（收錄此症狀的 {hospital_count} 家醫院中，有 {listed} 家列在此科{call_ahead}）",
+        "en": " ({listed} of {hospital_count} hospital guides list this department{call_ahead})",
+        "id": " ({listed} dari {hospital_count} panduan rumah sakit mencantumkan poli ini{call_ahead})",
+        "vi": " ({listed} trong {hospital_count} bệnh viện liệt kê chuyên khoa này{call_ahead})",
+        "th": " (คู่มือโรงพยาบาล {listed} จาก {hospital_count} แห่งระบุแผนกนี้{call_ahead})",
+        "ja": "（{hospital_count}病院の案内のうち{listed}件がこの診療科を掲載{call_ahead}）",
+    },
+    "flex.symptom.source.call_ahead": {
+        "zh-TW": "，建議先去電確認", "en": "; please call ahead to confirm",
+        "id": "; sebaiknya telepon lebih dulu", "vi": "; bạn nên gọi xác nhận trước",
+        "th": " แนะนำให้โทรยืนยันก่อน", "ja": "。事前の電話確認をおすすめします",
+    },
+    "flex.symptom.pediatric.mentioned": {
+        "zh-TW": "因為是幫孩子詢問，另外列出兒科。",
+        "en": "Because you are asking for a child, Pediatrics is also listed.",
+        "id": "Karena pertanyaan ini untuk anak, Poli Anak juga dicantumkan.",
+        "vi": "Vì bạn đang hỏi cho trẻ em, Nhi khoa cũng được liệt kê.",
+        "th": "เนื่องจากสอบถามให้เด็ก จึงเพิ่มแผนกกุมารเวชกรรมไว้ด้วย",
+        "ja": "お子さまについてのご相談のため、小児科も候補に含めています。",
+    },
+    "flex.symptom.pediatric.age": {
+        "zh-TW": "因為你還未滿 {age} 歲，另外列出兒科。",
+        "en": "Because you are under {age}, Pediatrics is also listed.",
+        "id": "Karena usia Anda belum {age} tahun, Poli Anak juga dicantumkan.",
+        "vi": "Vì bạn chưa đủ {age} tuổi, Nhi khoa cũng được liệt kê.",
+        "th": "เนื่องจากคุณอายุต่ำกว่า {age} ปี จึงเพิ่มแผนกกุมารเวชกรรมไว้ด้วย",
+        "ja": "{age}歳未満のため、小児科も候補に含めています。",
+    },
+    "flex.symptom.nearby.prompt": {
+        "zh-TW": "是否需要搜尋附近{department}的醫院或診所？",
+        "en": "Would you like to find nearby facilities with {department}?",
+        "id": "Ingin mencari fasilitas {department} di sekitar Anda?",
+        "vi": "Bạn có muốn tìm cơ sở {department} gần đây không?",
+        "th": "ต้องการค้นหาสถานพยาบาล{department}ใกล้เคียงหรือไม่",
+        "ja": "近くの{department}がある医療機関を検索しますか？",
+    },
+    "flex.symptom.nearby.fallback_prompt": {
+        "zh-TW": "是否需要搜尋附近的醫院或診所？下方按鈕會一次搜尋{departments}。",
+        "en": "Find nearby facilities? The button searches {departments} together.",
+        "id": "Cari fasilitas terdekat? Tombol ini mencari {departments} sekaligus.",
+        "vi": "Tìm cơ sở gần đây? Nút bên dưới sẽ tìm đồng thời {departments}.",
+        "th": "ต้องการค้นหาสถานพยาบาลใกล้เคียงหรือไม่ ปุ่มด้านล่างจะค้นหา{departments}พร้อมกัน",
+        "ja": "近くの医療機関を検索しますか？下のボタンで{departments}をまとめて検索します。",
+    },
+    "flex.symptom.nearby.button": {
+        "zh-TW": "搜尋附近的{departments}", "en": "Find nearby {departments}",
+        "id": "Cari {departments} terdekat", "vi": "Tìm {departments} gần đây",
+        "th": "ค้นหา{departments}ใกล้เคียง", "ja": "近くの{departments}を検索",
+    },
+    "flex.symptom.disclaimer": {
+        "zh-TW": "免責聲明：本建議僅供參考，不是醫療診斷。若症狀持續或惡化，請務必儘速就醫接受專業診斷。",
+        "en": "Disclaimer: This guidance is for reference only and is not a medical diagnosis. Seek professional care promptly if symptoms persist or worsen.",
+        "id": "Penafian: Saran ini hanya sebagai referensi dan bukan diagnosis medis. Segera cari pertolongan profesional jika gejala menetap atau memburuk.",
+        "vi": "Lưu ý: Gợi ý này chỉ để tham khảo, không phải chẩn đoán y khoa. Hãy đi khám sớm nếu triệu chứng kéo dài hoặc nặng hơn.",
+        "th": "ข้อสงวนสิทธิ์: คำแนะนำนี้ใช้เป็นข้อมูลอ้างอิงเท่านั้น ไม่ใช่การวินิจฉัย หากอาการไม่หายหรือรุนแรงขึ้น โปรดพบแพทย์โดยเร็ว",
+        "ja": "免責事項：この案内は参考情報であり、医療診断ではありません。症状が続く、または悪化する場合は、早めに医療機関を受診してください。",
+    },
+    "flex.symptom.fallback_reason.unknown": {
+        "zh-TW": "無法對應到已知的症狀條目", "en": "the symptom did not match a known entry",
+        "id": "gejala tidak cocok dengan entri yang dikenal", "vi": "triệu chứng không khớp với mục đã biết",
+        "th": "อาการไม่ตรงกับรายการที่ระบบรู้จัก", "ja": "既知の症状項目に一致しませんでした",
+    },
+    "flex.symptom.fallback_reason.broad": {
+        "zh-TW": "這個症狀可能牽涉多個科別", "en": "the symptom may involve several departments",
+        "id": "gejala mungkin melibatkan beberapa poli", "vi": "triệu chứng có thể liên quan đến nhiều chuyên khoa",
+        "th": "อาการนี้อาจเกี่ยวข้องกับหลายแผนก", "ja": "複数の診療科に関係する可能性があります",
+    },
+    "flex.symptom.fallback_reason.pediatric_only": {
+        "zh-TW": "這個症狀在對照表中只列了兒科", "en": "the guide lists this symptom only under Pediatrics",
+        "id": "panduan hanya mencantumkan gejala ini di Poli Anak", "vi": "hướng dẫn chỉ liệt kê triệu chứng này ở Nhi khoa",
+        "th": "คู่มือระบุอาการนี้ไว้เฉพาะกุมารเวชกรรม", "ja": "案内ではこの症状が小児科にのみ掲載されています",
+    },
+    "flex.symptom.fallback_reason.generic": {
+        "zh-TW": "資訊不足", "en": "there was not enough information",
+        "id": "informasi belum cukup", "vi": "chưa có đủ thông tin",
+        "th": "ข้อมูลยังไม่เพียงพอ", "ja": "情報が不足しています",
+    },
+    "flex.symptom.plain.suggestion_header": {
+        "zh-TW": "依「{term}」整理的看診方向：", "en": "Suggested departments based on your symptoms:",
+        "id": "Poli yang disarankan berdasarkan gejala Anda:", "vi": "Chuyên khoa gợi ý dựa trên triệu chứng của bạn:",
+        "th": "แผนกที่แนะนำจากอาการของคุณ:", "ja": "症状から考えられる診療科：",
+    },
+    "flex.symptom.plain.fallback_header": {
+        "zh-TW": "系統無法判斷你描述的狀況該掛哪一科（{reason}）。",
+        "en": "The system could not determine a specific department ({reason}).",
+        "id": "Sistem belum dapat menentukan poli tertentu ({reason}).",
+        "vi": "Hệ thống chưa xác định được chuyên khoa cụ thể ({reason}).",
+        "th": "ระบบยังระบุแผนกที่แน่ชัดไม่ได้ ({reason})",
+        "ja": "受診科を特定できませんでした（{reason}）。",
+    },
+    "flex.symptom.plain.suggestion_intro": {
+        "zh-TW": "常見的看診方向：", "en": "Possible departments:",
+        "id": "Pilihan poli:", "vi": "Các chuyên khoa có thể phù hợp:",
+        "th": "แผนกที่อาจเหมาะสม:", "ja": "受診先の候補：",
+    },
+    "flex.symptom.plain.fallback_intro": {
+        "zh-TW": "不確定時常見的初診方向：", "en": "Common places to start when unsure:",
+        "id": "Pilihan umum untuk kunjungan pertama:", "vi": "Các khoa thường phù hợp cho lần khám đầu:",
+        "th": "แผนกทั่วไปสำหรับการตรวจครั้งแรก:", "ja": "判断が難しい場合の一般的な初診先：",
+    },
+    "flex.symptom.plain.subgroup": {
+        "zh-TW": "（{subgroups}方向）", "en": " ({subgroups})", "id": " ({subgroups})",
+        "vi": " ({subgroups})", "th": " ({subgroups})", "ja": "（{subgroups}領域）",
+    },
+    "flex.symptom.unavailable": {
+        "zh-TW": "科別建議服務未初始化，請稍後再試。",
+        "en": "The department suggestion service is unavailable. Please try again later.",
+        "id": "Layanan saran poli belum tersedia. Silakan coba lagi nanti.",
+        "vi": "Dịch vụ gợi ý chuyên khoa hiện chưa khả dụng. Vui lòng thử lại sau.",
+        "th": "บริการแนะนำแผนกยังไม่พร้อมใช้งาน โปรดลองอีกครั้งภายหลัง",
+        "ja": "診療科案内サービスを利用できません。しばらくしてからもう一度お試しください。",
+    },
+    "flex.symptom.sentence_separator": {
+        "zh-TW": "。", "en": ". ", "id": ". ",
+        "vi": ". ", "th": ". ", "ja": "。",
+    },
+
     # --- 診療科別 ---
     # key 直接用資料庫的中文原文（medicalFacilities.departments 的 distinct 值），
     # 因為那本來就是唯一穩定的識別字；另外造一組英文 slug 只會多一層對照表要維護。
@@ -2214,6 +2424,131 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "id": "Kedokteran Gigi Kebutuhan Khusus", "vi": "Nha khoa nhu cầu đặc biệt",
         "th": "ทันตกรรมผู้มีความต้องการพิเศษ", "ja": "障害者歯科",
     },
+    # 症狀分科卡使用的次專科。這些是掛號時要指名的方向，不是資料庫搜尋條件。
+    "subgroup.一般內科": {
+        "zh-TW": "一般內科", "en": "General Internal Medicine", "id": "Penyakit Dalam Umum",
+        "vi": "Nội tổng quát", "th": "อายุรกรรมทั่วไป", "ja": "一般内科",
+    },
+    "subgroup.一般外科": {
+        "zh-TW": "一般外科", "en": "General Surgery", "id": "Bedah Umum",
+        "vi": "Ngoại tổng quát", "th": "ศัลยกรรมทั่วไป", "ja": "一般外科",
+    },
+    "subgroup.大腸直腸外科": {
+        "zh-TW": "大腸直腸外科", "en": "Colorectal Surgery", "id": "Bedah Kolorektal",
+        "vi": "Ngoại đại trực tràng", "th": "ศัลยกรรมลำไส้ใหญ่และทวารหนัก", "ja": "大腸・直腸外科",
+    },
+    "subgroup.小兒外科": {
+        "zh-TW": "小兒外科", "en": "Pediatric Surgery", "id": "Bedah Anak",
+        "vi": "Ngoại nhi", "th": "ศัลยกรรมเด็ก", "ja": "小児外科",
+    },
+    "subgroup.心臟內科": {
+        "zh-TW": "心臟內科", "en": "Cardiology", "id": "Kardiologi",
+        "vi": "Tim mạch", "th": "อายุรศาสตร์โรคหัวใจ", "ja": "循環器内科",
+    },
+    "subgroup.心臟外科": {
+        "zh-TW": "心臟外科", "en": "Cardiac Surgery", "id": "Bedah Jantung",
+        "vi": "Phẫu thuật tim", "th": "ศัลยกรรมหัวใจ", "ja": "心臓外科",
+    },
+    "subgroup.生殖醫學科": {
+        "zh-TW": "生殖醫學科", "en": "Reproductive Medicine", "id": "Kedokteran Reproduksi",
+        "vi": "Y học sinh sản", "th": "เวชศาสตร์การเจริญพันธุ์", "ja": "生殖医療科",
+    },
+    "subgroup.安寧緩和科": {
+        "zh-TW": "安寧緩和科", "en": "Palliative Care", "id": "Perawatan Paliatif",
+        "vi": "Chăm sóc giảm nhẹ", "th": "การดูแลแบบประคับประคอง", "ja": "緩和ケア科",
+    },
+    "subgroup.血液科": {
+        "zh-TW": "血液科", "en": "Hematology", "id": "Hematologi",
+        "vi": "Huyết học", "th": "โลหิตวิทยา", "ja": "血液内科",
+    },
+    "subgroup.血液腫瘤科": {
+        "zh-TW": "血液腫瘤科", "en": "Hematology-Oncology", "id": "Hematologi-Onkologi",
+        "vi": "Huyết học ung bướu", "th": "โลหิตวิทยาและมะเร็งวิทยา", "ja": "血液腫瘍内科",
+    },
+    "subgroup.免疫風濕科": {
+        "zh-TW": "免疫風濕科", "en": "Rheumatology and Immunology", "id": "Reumatologi dan Imunologi",
+        "vi": "Miễn dịch và thấp khớp", "th": "ภูมิคุ้มกันและโรคข้อ", "ja": "リウマチ・免疫内科",
+    },
+    "subgroup.乳房外科": {
+        "zh-TW": "乳房外科", "en": "Breast Surgery", "id": "Bedah Payudara",
+        "vi": "Ngoại tuyến vú", "th": "ศัลยกรรมเต้านม", "ja": "乳腺外科",
+    },
+    "subgroup.兒童牙科": {
+        "zh-TW": "兒童牙科", "en": "Pediatric Dentistry", "id": "Kedokteran Gigi Anak",
+        "vi": "Nha khoa trẻ em", "th": "ทันตกรรมสำหรับเด็ก", "ja": "小児歯科",
+    },
+    "subgroup.兒童青少年精神科": {
+        "zh-TW": "兒童青少年精神科", "en": "Child and Adolescent Psychiatry", "id": "Psikiatri Anak dan Remaja",
+        "vi": "Tâm thần trẻ em và vị thành niên", "th": "จิตเวชเด็กและวัยรุ่น", "ja": "児童・思春期精神科",
+    },
+    "subgroup.泌尿科": {
+        "zh-TW": "泌尿科", "en": "Urology", "id": "Urologi",
+        "vi": "Tiết niệu", "th": "ระบบทางเดินปัสสาวะ", "ja": "泌尿器科",
+    },
+    "subgroup.胃腸肝膽科": {
+        "zh-TW": "胃腸肝膽科", "en": "Gastroenterology and Hepatology", "id": "Gastroenterologi dan Hepatologi",
+        "vi": "Tiêu hóa và gan mật", "th": "ระบบทางเดินอาหารและตับ", "ja": "消化器・肝臓内科",
+    },
+    "subgroup.消化外科": {
+        "zh-TW": "消化外科", "en": "Gastrointestinal Surgery", "id": "Bedah Pencernaan",
+        "vi": "Ngoại tiêu hóa", "th": "ศัลยกรรมทางเดินอาหาร", "ja": "消化器外科",
+    },
+    "subgroup.特殊需求者牙科": {
+        "zh-TW": "特殊需求者牙科", "en": "Special Care Dentistry", "id": "Kedokteran Gigi Kebutuhan Khusus",
+        "vi": "Nha khoa nhu cầu đặc biệt", "th": "ทันตกรรมสำหรับผู้มีความต้องการพิเศษ", "ja": "スペシャルニーズ歯科",
+    },
+    "subgroup.疼痛科": {
+        "zh-TW": "疼痛科", "en": "Pain Medicine", "id": "Kedokteran Nyeri",
+        "vi": "Điều trị đau", "th": "เวชศาสตร์ความปวด", "ja": "ペインクリニック",
+    },
+    "subgroup.神經內科": {
+        "zh-TW": "神經內科", "en": "Neurology", "id": "Neurologi",
+        "vi": "Thần kinh", "th": "ประสาทวิทยา", "ja": "神経内科",
+    },
+    "subgroup.胸腔內科": {
+        "zh-TW": "胸腔內科", "en": "Pulmonology", "id": "Pulmonologi",
+        "vi": "Hô hấp", "th": "อายุรศาสตร์โรคปอด", "ja": "呼吸器内科",
+    },
+    "subgroup.胸腔外科": {
+        "zh-TW": "胸腔外科", "en": "Thoracic Surgery", "id": "Bedah Toraks",
+        "vi": "Ngoại lồng ngực", "th": "ศัลยกรรมทรวงอก", "ja": "呼吸器外科",
+    },
+    "subgroup.高齡醫學科": {
+        "zh-TW": "高齡醫學科", "en": "Geriatric Medicine", "id": "Geriatri",
+        "vi": "Lão khoa", "th": "เวชศาสตร์ผู้สูงอายุ", "ja": "老年医学科",
+    },
+    "subgroup.婦科": {
+        "zh-TW": "婦科", "en": "Gynecology", "id": "Ginekologi",
+        "vi": "Phụ khoa", "th": "นรีเวช", "ja": "婦人科",
+    },
+    "subgroup.婦產科": {
+        "zh-TW": "婦產科", "en": "Obstetrics and Gynecology", "id": "Obstetri dan Ginekologi",
+        "vi": "Sản phụ khoa", "th": "สูติศาสตร์และนรีเวชวิทยา", "ja": "産婦人科",
+    },
+    "subgroup.產科": {
+        "zh-TW": "產科", "en": "Obstetrics", "id": "Obstetri",
+        "vi": "Sản khoa", "th": "สูติศาสตร์", "ja": "産科",
+    },
+    "subgroup.腎臟內科": {
+        "zh-TW": "腎臟內科", "en": "Nephrology", "id": "Nefrologi",
+        "vi": "Thận học", "th": "อายุรศาสตร์โรคไต", "ja": "腎臓内科",
+    },
+    "subgroup.感染科": {
+        "zh-TW": "感染科", "en": "Infectious Diseases", "id": "Penyakit Infeksi",
+        "vi": "Bệnh truyền nhiễm", "th": "โรคติดเชื้อ", "ja": "感染症内科",
+    },
+    "subgroup.新陳代謝及內分泌科": {
+        "zh-TW": "新陳代謝及內分泌科", "en": "Endocrinology and Metabolism", "id": "Endokrinologi dan Metabolisme",
+        "vi": "Nội tiết và chuyển hóa", "th": "ต่อมไร้ท่อและเมแทบอลิซึม", "ja": "内分泌・代謝内科",
+    },
+    "subgroup.腫瘤內科": {
+        "zh-TW": "腫瘤內科", "en": "Medical Oncology", "id": "Onkologi Medik",
+        "vi": "Ung bướu nội khoa", "th": "มะเร็งวิทยาอายุรกรรม", "ja": "腫瘍内科",
+    },
+    "subgroup.臨床毒物科": {
+        "zh-TW": "臨床毒物科", "en": "Clinical Toxicology", "id": "Toksikologi Klinis",
+        "vi": "Độc chất học lâm sàng", "th": "พิษวิทยาคลินิก", "ja": "臨床中毒科",
+    },
     # --- 用藥時段 ---
     "slot.morning": {
         "zh-TW": "早", "en": "Morning", "id": "Pagi",
@@ -2319,6 +2654,162 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "id": "Tidak dikonfirmasi tepat waktu", "vi": "Quá giờ chưa xác nhận",
         "th": "ไม่ได้ยืนยันภายในเวลา", "ja": "時間内に確認なし",
     },
+    # --- 家庭名單與稱謂查詢 ---
+    "family.directory.relationship.parent": {
+        "zh-TW": "父／母", "en": "parent", "id": "orang tua",
+        "vi": "cha/mẹ", "th": "พ่อ/แม่", "ja": "親",
+    },
+    "family.directory.relationship.child": {
+        "zh-TW": "子／女", "en": "child", "id": "anak",
+        "vi": "con", "th": "ลูก", "ja": "子",
+    },
+    "family.directory.relationship.spouse": {
+        "zh-TW": "配偶", "en": "spouse", "id": "pasangan",
+        "vi": "vợ/chồng", "th": "คู่สมรส", "ja": "配偶者",
+    },
+    "family.directory.relationship.sibling": {
+        "zh-TW": "兄弟姊妹", "en": "sibling", "id": "saudara kandung",
+        "vi": "anh chị em", "th": "พี่น้อง", "ja": "兄弟姉妹",
+    },
+    "family.directory.relationship.grandparent": {
+        "zh-TW": "祖父母", "en": "grandparent", "id": "kakek/nenek",
+        "vi": "ông/bà", "th": "ปู่ย่าตายาย", "ja": "祖父母",
+    },
+    "family.directory.relationship.grandchild": {
+        "zh-TW": "孫子女", "en": "grandchild", "id": "cucu",
+        "vi": "cháu", "th": "หลาน", "ja": "孫",
+    },
+    "family.directory.relationship.other": {
+        "zh-TW": "其他", "en": "other", "id": "lainnya",
+        "vi": "khác", "th": "อื่น ๆ", "ja": "その他",
+    },
+    "family.directory.relationship.unset": {
+        "zh-TW": "尚未設定稱謂", "en": "relationship not set",
+        "id": "hubungan belum diatur", "vi": "chưa đặt quan hệ",
+        "th": "ยังไม่ได้ตั้งความสัมพันธ์", "ja": "続柄未設定",
+    },
+    "family.directory.error": {
+        "zh-TW": "暫時查不到家庭名單，請稍後再試。",
+        "en": "I can't look up your family list right now. Please try again later.",
+        "id": "Daftar keluarga belum dapat dilihat. Silakan coba lagi nanti.",
+        "vi": "Hiện chưa tra được danh sách gia đình. Vui lòng thử lại sau.",
+        "th": "ตอนนี้ยังดูรายชื่อครอบครัวไม่ได้ กรุณาลองใหม่ภายหลัง",
+        "ja": "現在ご家族の一覧を確認できません。しばらくしてからもう一度お試しください。",
+    },
+    "family.directory.empty": {
+        "zh-TW": "您的家庭名單目前是空的。",
+        "en": "Your family list is currently empty.",
+        "id": "Daftar keluarga Anda masih kosong.",
+        "vi": "Danh sách gia đình của bạn hiện đang trống.",
+        "th": "รายชื่อครอบครัวของคุณยังว่างอยู่",
+        "ja": "ご家族の一覧は現在空です。",
+    },
+    "family.directory.unsupported_relationship": {
+        "zh-TW": "這個稱謂目前不在可查詢的家庭關係中。",
+        "en": "That relationship isn't available in the family list.",
+        "id": "Hubungan tersebut tidak tersedia dalam daftar keluarga.",
+        "vi": "Quan hệ đó chưa có trong danh sách gia đình.",
+        "th": "ยังไม่มีความสัมพันธ์นี้ในรายชื่อครอบครัว",
+        "ja": "その続柄はご家族の一覧で利用できません。",
+    },
+    "family.directory.person": {
+        "zh-TW": "您將{name}設定為{relationship}。",
+        "en": "You have {name} listed as your {relationship}.",
+        "id": "Anda mencatat {name} sebagai {relationship} Anda.",
+        "vi": "Bạn đã đặt {name} là {relationship} của mình.",
+        "th": "คุณตั้ง {name} เป็น{relationship}ของคุณ",
+        "ja": "{name}さんはあなたの{relationship}として設定されています。",
+    },
+    "family.directory.person_unset": {
+        "zh-TW": "{name}在您的家庭名單中，但尚未設定稱謂。",
+        "en": "{name} is in your family list, but their relationship is not set.",
+        "id": "{name} ada di daftar keluarga Anda, tetapi hubungannya belum diatur.",
+        "vi": "{name} có trong danh sách gia đình, nhưng chưa đặt quan hệ.",
+        "th": "{name} อยู่ในรายชื่อครอบครัว แต่ยังไม่ได้ตั้งความสัมพันธ์",
+        "ja": "{name}さんはご家族の一覧にいますが、続柄は未設定です。",
+    },
+    "family.directory.self": {
+        "zh-TW": "{name}就是您本人。",
+        "en": "{name} is you.",
+        "id": "{name} adalah Anda sendiri.",
+        "vi": "{name} chính là bạn.",
+        "th": "{name} คือคุณเอง",
+        "ja": "{name}さんはあなたご本人です。",
+    },
+    "family.directory.self_unnamed": {
+        "zh-TW": "這是您本人，不是家庭名單中的另一位成員。",
+        "en": "That's you, not another member of your family list.",
+        "id": "Itu adalah Anda sendiri, bukan anggota lain dalam daftar keluarga.",
+        "vi": "Đó là chính bạn, không phải một thành viên khác trong danh sách gia đình.",
+        "th": "นั่นคือคุณเอง ไม่ใช่สมาชิกคนอื่นในรายชื่อครอบครัว",
+        "ja": "それはご本人で、ご家族の一覧にいる別の方ではありません。",
+    },
+    "family.directory.self_ambiguous": {
+        "zh-TW": "「{name}」同時符合您本人與家庭名單中的成員。請改用稱謂或其他可辨識方式。",
+        "en": "“{name}” matches both you and a member of your family list. Please use a relationship or another distinguishing detail.",
+        "id": "“{name}” cocok dengan Anda dan anggota dalam daftar keluarga. Gunakan hubungan atau keterangan pembeda lain.",
+        "vi": "“{name}” khớp với cả bạn và một thành viên trong danh sách gia đình. Hãy dùng quan hệ hoặc thông tin phân biệt khác.",
+        "th": "“{name}” ตรงกับทั้งคุณและสมาชิกในรายชื่อครอบครัว โปรดใช้ความสัมพันธ์หรือข้อมูลอื่นเพื่อแยกบุคคล",
+        "ja": "「{name}」はご本人とご家族の一覧のメンバーの両方に一致します。続柄など別の識別情報をお使いください。",
+    },
+    "family.directory.ambiguous": {
+        "zh-TW": "找到多位名稱相近的家人：{names}。請說完整姓名。",
+        "en": "More than one family member has a similar name: {names}. Please give the full name.",
+        "id": "Ada beberapa nama keluarga yang mirip: {names}. Sebutkan nama lengkap.",
+        "vi": "Có nhiều người thân có tên gần giống: {names}. Vui lòng nói đầy đủ họ tên.",
+        "th": "พบชื่อคนในครอบครัวที่คล้ายกันหลายคน: {names} โปรดบอกชื่อเต็ม",
+        "ja": "似たお名前のご家族が複数います：{names}。フルネームを教えてください。",
+    },
+    "family.directory.conflict": {
+        "zh-TW": "「{query}」與指定的稱謂不一致，請確認姓名或稱謂。",
+        "en": "“{query}” doesn't match the specified relationship. Please check the name or relationship.",
+        "id": "“{query}” tidak sesuai dengan hubungan yang disebutkan. Periksa nama atau hubungannya.",
+        "vi": "“{query}” không khớp với quan hệ đã nêu. Hãy kiểm tra tên hoặc quan hệ.",
+        "th": "“{query}” ไม่ตรงกับความสัมพันธ์ที่ระบุ โปรดตรวจสอบชื่อหรือความสัมพันธ์",
+        "ja": "「{query}」は指定された続柄と一致しません。名前または続柄をご確認ください。",
+    },
+    "family.directory.not_found": {
+        "zh-TW": "您的家庭名單中找不到「{query}」。",
+        "en": "I couldn't find “{query}” in your family list.",
+        "id": "“{query}” tidak ditemukan di daftar keluarga Anda.",
+        "vi": "Không tìm thấy “{query}” trong danh sách gia đình của bạn.",
+        "th": "ไม่พบ “{query}” ในรายชื่อครอบครัวของคุณ",
+        "ja": "ご家族の一覧に「{query}」が見つかりません。",
+    },
+    "family.directory.no_relationship": {
+        "zh-TW": "您的家庭名單中，沒有設定為{relationship}的成員。",
+        "en": "No one in your family list is set as your {relationship}.",
+        "id": "Tidak ada anggota yang ditetapkan sebagai {relationship} Anda.",
+        "vi": "Không có ai được đặt là {relationship} của bạn.",
+        "th": "ไม่มีใครในรายชื่อที่ตั้งเป็น{relationship}ของคุณ",
+        "ja": "ご家族の一覧に{relationship}として設定された方はいません。",
+    },
+    "family.directory.relationship": {
+        "zh-TW": "您設定為{relationship}的家人：{names}。",
+        "en": "Listed as your {relationship}: {names}.",
+        "id": "Tercatat sebagai {relationship} Anda: {names}.",
+        "vi": "Được đặt là {relationship} của bạn: {names}.",
+        "th": "คนที่ตั้งเป็น{relationship}ของคุณ: {names}",
+        "ja": "{relationship}として設定されているご家族：{names}。",
+    },
+    "family.directory.list_header": {
+        "zh-TW": "您的家庭名單：", "en": "Your family list:",
+        "id": "Daftar keluarga Anda:", "vi": "Danh sách gia đình của bạn:",
+        "th": "รายชื่อครอบครัวของคุณ:", "ja": "ご家族の一覧：",
+    },
+    "family.directory.list_item": {
+        "zh-TW": "{name}：{relationship}", "en": "{name}: {relationship}",
+        "id": "{name}: {relationship}", "vi": "{name}: {relationship}",
+        "th": "{name}: {relationship}", "ja": "{name}：{relationship}",
+    },
+    "family.directory.list_sep": {
+        "zh-TW": "、", "en": ", ", "id": ", ", "vi": ", ", "th": ", ", "ja": "、",
+    },
+    "family.directory.unnamed": {
+        "zh-TW": "未設定名字的家人", "en": "an unnamed family member",
+        "id": "anggota keluarga tanpa nama", "vi": "người thân chưa có tên",
+        "th": "คนในครอบครัวที่ยังไม่มีชื่อ", "ja": "名前未設定のご家族",
+    },
     "medstatus.state.upcoming": {
         "zh-TW": "還沒到", "en": "Coming up", "id": "Belum waktunya",
         "vi": "Chưa đến giờ", "th": "ยังไม่ถึงเวลา", "ja": "まだ時間前",
@@ -2397,6 +2888,14 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "vi": "Có nhiều người thân phù hợp: {names}. Bạn muốn hỏi ai?",
         "th": "มีคนในครอบครัวที่ตรงกันหลายคน: {names} หมายถึงคนไหน",
         "ja": "該当するご家族が複数います：{names}。どなたのことですか？",
+    },
+    "medstatus.conflict": {
+        "zh-TW": "「{query}」與您指定的親屬關係不一致。請確認姓名或關係後再問一次。",
+        "en": "“{query}” doesn't match the family relationship you specified. Please check the name or relationship and ask again.",
+        "id": "“{query}” tidak sesuai dengan hubungan keluarga yang Anda sebutkan. Periksa nama atau hubungannya, lalu tanyakan lagi.",
+        "vi": "“{query}” không khớp với quan hệ gia đình bạn đã nêu. Hãy kiểm tra tên hoặc quan hệ rồi hỏi lại.",
+        "th": "“{query}” ไม่ตรงกับความสัมพันธ์ในครอบครัวที่ระบุ โปรดตรวจสอบชื่อหรือความสัมพันธ์แล้วถามอีกครั้ง",
+        "ja": "「{query}」は指定された家族関係と一致しません。名前または関係を確認して、もう一度お尋ねください。",
     },
     "medstatus.not_found": {
         "zh-TW": "在您的家人名單裡找不到「{query}」。名單上有：{names}。可以直接說名字。",
@@ -4129,6 +4628,33 @@ def department_label(department: str, language: str | None = None) -> str:
         return department
     lang = get_request_language() if language is None else normalize_user_language(language)
     return translations.get(lang) or department
+
+
+def subgroup_label(subgroup: str, language: str | None = None) -> str:
+    """Translate a symptom-card subspecialty, falling back to the source label."""
+    translations = _MESSAGES.get(f"subgroup.{subgroup}")
+    if not translations:
+        return department_label(subgroup, language)
+    lang = get_request_language() if language is None else normalize_user_language(language)
+    return translations.get(lang) or subgroup
+
+
+_SYMPTOM_FALLBACK_REASON_KEYS = {
+    "無法對應到已知的症狀條目": "flex.symptom.fallback_reason.unknown",
+    "這個症狀可能牽涉多個科別": "flex.symptom.fallback_reason.broad",
+    "這個症狀在對照表中只列了兒科": "flex.symptom.fallback_reason.pediatric_only",
+}
+
+
+def symptom_fallback_reason(reason: str | None, language: str | None = None) -> str:
+    """Localize the finite service reasons without exposing unknown Chinese text."""
+    lang = get_request_language() if language is None else normalize_user_language(language)
+    if lang == DEFAULT_USER_LANGUAGE and reason:
+        return reason
+    key = _SYMPTOM_FALLBACK_REASON_KEYS.get(
+        reason or "", "flex.symptom.fallback_reason.generic"
+    )
+    return t(key, lang)
 
 
 def all_sources_headings() -> frozenset[str]:

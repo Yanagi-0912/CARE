@@ -163,6 +163,33 @@ def test_set_relationship_success(client, override_family_service, override_curr
     )
 
 
+def test_clear_relationship_passes_null_to_the_service(
+    client, override_family_service, override_current_user
+):
+    from datetime import datetime, timezone
+
+    from app.models.family_tree import FamilyMember, FamilyTree
+
+    override_current_user("U_ME")
+    override_family_service.set_relationship.return_value = FamilyTree(
+        user_id="U_ME",
+        family_members=[FamilyMember(user_id="U_OTHER", relationship_type=None)],
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+
+    response = client.post(
+        "/api/family/relationship",
+        json={"member_id": "U_OTHER", "relationship_type": None},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["family_members"][0]["relationship_type"] is None
+    override_family_service.set_relationship.assert_awaited_once_with(
+        user_id="U_ME", member_id="U_OTHER", relationship_type=None
+    )
+
+
 # ── 邀請回應中的 QR 網址 ──────────────────────────────────────────────────
 
 

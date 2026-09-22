@@ -80,7 +80,7 @@ def _pediatric_reason(text: str) -> str | None:
     """
     這次是不是為孩童詢問；是的話回傳原因（PEDIATRIC_REASON_*），否則 None。
 
-    訊息提到孩童優先於年齡：12 歲使用者問妹妹時，要看病的是被提到的孩子，
+    訊息提到寶寶優先於年齡：12 歲使用者問寶寶時，要看病的是被提到的孩子，
     卡片要用「幫孩子詢問」的說法，而不是「你還未滿 15 歲」。
     """
     if mentions_child(text):

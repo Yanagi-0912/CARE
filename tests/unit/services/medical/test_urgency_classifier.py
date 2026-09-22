@@ -223,6 +223,30 @@ def test_prompt_warns_against_figurative_uses():
     assert "紀錄片" in prompt
 
 
+def test_prompt_requires_an_explicit_medical_emergency():
+    """
+    危險或暴力詞彙不等於有人正在發生醫療急症。判斷必須立足於完整語意，不能
+    維護一份永遠列不完的武器或事件關鍵字清單。
+    """
+    from app.services.medical.symptom_classification import urgency
+
+    prompt = urgency._PROMPT_TEMPLATE
+    assert "某人目前正面臨醫療急症" in prompt
+    assert "依完整語意確認受影響的對象" in prompt
+    assert "單一詞語聽起來危險、暴力或像症狀" in prompt
+    assert "沒有明確提到人體傷害、嚴重生理症狀或真實自傷風險" in prompt
+
+
+def test_prompt_disambiguates_emotional_and_physical_heart_pain():
+    """單獨的「心痛」可能是情緒表達，不能自行補成胸痛並發出紅卡。"""
+    from app.services.medical.symptom_classification import urgency
+
+    prompt = urgency._PROMPT_TEMPLATE
+    assert "有些身體詞彙也會用來表達情緒或比喻" in prompt
+    assert "「我心痛」→ happening_now=true, needs_immediate_care=false" in prompt
+    assert "「我胸口劇烈疼痛，喘不過氣」→ happening_now=true, needs_immediate_care=true" in prompt
+
+
 def test_prompt_forbids_quoting_the_user_in_display():
     """display 會出現在通報給家人的卡片上，是唯一會離開當事人視線的欄位。"""
     from app.services.medical.symptom_classification import urgency

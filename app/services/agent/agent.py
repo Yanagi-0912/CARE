@@ -32,6 +32,7 @@ from app.services.rag.fail_messages import (
     rag_fail_user_text,
 )
 from app.tools.user_document_tools import is_document_answer_unavailable
+from app.tools.family_directory_tools import FAMILY_DIRECTORY_TOOL_NAME
 from app.tools.medication_status_tools import MEDICATION_STATUS_TOOL_NAME
 from app.tools.registry import get_all_tools
 
@@ -89,14 +90,16 @@ def _route_after_tools(state: State) -> str:
       以前交回模型，期待它照 prompt 第 10 條「簡短說暫無相符資料」；
       2026-09-17 一則辨識不通順的台語語音查無資料，模型花 10.8 秒寫了
       「以下為 RAG 回應：」加一段沒人問的情緒支持與 1925 專線。
-    - `get_medication_status` 同理直通（見 `_medication_direct_reply_node`），條件
-      一樣收緊：這一輪只有它一個工具、而且沒有出錯。
+    - `get_medication_status` 與 `get_family_directory` 同理直通（見各自的 direct
+      reply node），條件一樣收緊：這一輪只有它一個工具、而且沒有出錯。
     - 其餘工具（附近院所、查核卡）本來就有自己的直通路徑，不經過這裡。
 
     已知取捨：多輪追問（「那芒果呢」）時，模型那一步看得到完整對話歷史，
     直通看不到——送出的是 RAG 工具針對單一 query 寫的答案。
     """
     tool_messages = _trailing_tool_messages(state.get("messages") or [])
+    if _is_lone_success(tool_messages, FAMILY_DIRECTORY_TOOL_NAME):
+        return "family_directory_direct"
     # 查服藥狀況不隨 RAG 開關提供，所以排在 allow_rag 之前判斷。
     if _is_lone_success(tool_messages, MEDICATION_STATUS_TOOL_NAME):
         return "medication_direct"
@@ -226,6 +229,14 @@ def _medication_direct_reply_node(state: State) -> dict:
     tool_messages = _trailing_tool_messages(state.get("messages") or [])
     answer = content_to_text(tool_messages[-1].content).strip()
     log_stage(logger, "medication_direct_reply", chars=len(answer))
+    return {"messages": [AIMessage(content=answer)]}
+
+
+def _family_directory_direct_reply_node(state: State) -> dict:
+    """家庭姓名與稱謂由資料庫組好，原樣送出以避免模型猜測或改名。"""
+    tool_messages = _trailing_tool_messages(state.get("messages") or [])
+    answer = content_to_text(tool_messages[-1].content).strip()
+    log_stage(logger, "family_directory_direct_reply", chars=len(answer))
     return {"messages": [AIMessage(content=answer)]}
 
 
@@ -462,6 +473,7 @@ class Agent:
         builder.add_node("rag_direct", _rag_direct_reply_node)
         builder.add_node("rag_fail_direct", _rag_fail_direct_reply_node)
         builder.add_node("medication_direct", _medication_direct_reply_node)
+        builder.add_node("family_directory_direct", _family_directory_direct_reply_node)
 
         builder.add_edge(START, "guardrail")
         # 急迫度短路：判定為緊急時直接產生卡片，不進 agent。安全檢查不能是 agent
@@ -485,12 +497,14 @@ class Agent:
                 "rag_direct": "rag_direct",
                 "rag_fail_direct": "rag_fail_direct",
                 "medication_direct": "medication_direct",
+                "family_directory_direct": "family_directory_direct",
                 "agent": "agent",
             },
         )
         builder.add_edge("rag_direct", END)
         builder.add_edge("rag_fail_direct", END)
         builder.add_edge("medication_direct", END)
+        builder.add_edge("family_directory_direct", END)
 
         return builder.compile()
 

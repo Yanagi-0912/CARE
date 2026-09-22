@@ -7,9 +7,9 @@ from fastapi import HTTPException
 
 from app.core.config import settings
 from app.models.family_tree import (
+    FAMILY_RELATIONSHIP_TYPES,
     FamilyMember,
     FamilyTree,
-    REVERSE_RELATIONSHIP,
     PendingInvitation,
 )
 from app.models.family_authorization import ASSIGNABLE_FAMILY_ROLES
@@ -298,22 +298,21 @@ class FamilyTreeService:
         return revoked
 
     async def set_relationship(
-        self, user_id: str, member_id: str, relationship_type: str
+        self, user_id: str, member_id: str, relationship_type: Optional[str]
     ) -> FamilyTree:
-        """
-        更新 user_id 族譜中 member_id 的 relationship_type，
-        同時嘗試更新 member_id 族譜中 user_id 的反向關係。
-        若 member_id 未將 user_id 加入族譜，則反向更新略過（log）。
-        """
-        # 驗證 relationship_type 是否合法
-        if relationship_type not in REVERSE_RELATIONSHIP:
+        """設定登入者視角下的稱謂；不改對方資料，也不授予任何權限。"""
+        if member_id == user_id:
+            raise HTTPException(status_code=400, detail="不能將自己設為家庭成員稱謂目標")
+        if (
+            relationship_type is not None
+            and relationship_type not in FAMILY_RELATIONSHIP_TYPES
+        ):
             raise HTTPException(
                 status_code=400,
                 detail=f"不支援的關係類型：{relationship_type}。"
-                f"可用值：{list(REVERSE_RELATIONSHIP.keys())}",
+                f"可用值：{list(FAMILY_RELATIONSHIP_TYPES)}",
             )
 
-        # 更新自身族譜
         updated_tree = await self._repo.set_relationship(
             user_id, member_id, relationship_type
         )

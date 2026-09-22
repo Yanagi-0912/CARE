@@ -86,6 +86,25 @@ async def test_passes_symptom_through_untouched():
 
 
 @pytest.mark.asyncio
+async def test_request_language_context_localizes_the_flex_card():
+    from app.core.user_language import reset_request_language, set_request_language
+
+    configure_symptom_tool(StubService(_suggestion("內科")))
+    token = set_request_language("en")
+    try:
+        payload = json.loads(
+            await suggest_department_for_symptom.ainvoke({"symptom": "肚子好痛"})
+        )
+    finally:
+        reset_request_language(token)
+
+    assert payload["altText"] == "Suggested care departments"
+    assert payload["contents"]["header"]["contents"][1]["contents"][0]["text"] == (
+        "Internal Medicine"
+    )
+
+
+@pytest.mark.asyncio
 async def test_uninitialized_service_returns_message_not_exception():
     configure_symptom_tool(None)
     reply = await suggest_department_for_symptom.ainvoke({"symptom": "肚子痛"})
@@ -177,3 +196,30 @@ def test_plain_reply_explains_pediatrics_in_child_fallback(pediatric_reason, not
 def test_plain_reply_for_adult_fallback_has_no_pediatric_note():
     text = symptom_tools._format_plain_reply(_fallback("家醫科", "內科", "不分科"))
     assert "另外列出兒科" not in text
+
+
+@pytest.mark.parametrize(
+    ("language", "department", "subgroup"),
+    [
+        ("en", "Internal Medicine", "Gastroenterology and Hepatology"),
+        ("id", "Penyakit Dalam", "Gastroenterologi dan Hepatologi"),
+        ("vi", "Nội khoa", "Tiêu hóa và gan mật"),
+        ("th", "อายุรกรรม", "ระบบทางเดินอาหารและตับ"),
+        ("ja", "内科", "消化器・肝臓内科"),
+    ],
+)
+def test_plain_reply_is_localized(language, department, subgroup):
+    result = SymptomTriageResult(
+        kind=RESULT_SUGGESTION,
+        user_input="x",
+        matched_term="腹痛",
+        candidates=(
+            DepartmentCandidate("內科", "胃腸肝膽科", 100, ("V", "N")),
+        ),
+    )
+
+    text = symptom_tools._format_plain_reply(result, language)
+
+    assert department in text
+    assert subgroup in text
+    assert "腹痛" not in text

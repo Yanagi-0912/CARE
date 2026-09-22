@@ -14,6 +14,29 @@ def _collection(docs=None) -> MagicMock:
 
 
 @pytest.mark.asyncio
+async def test_get_display_name_projects_only_name():
+    collection = MagicMock()
+    collection.find_one = AsyncMock(return_value={"_id": "secret", "name": " 王小明 "})
+
+    name = await UserProfileRepository.get_display_name("U1", collection=collection)
+
+    assert name == "王小明"
+    collection.find_one.assert_awaited_once_with(
+        {"line_id": "U1"},
+        {"name": 1},
+        sort=[("created_at", 1), ("_id", 1)],
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_display_name_returns_none_for_a_missing_or_blank_name():
+    collection = MagicMock()
+    collection.find_one = AsyncMock(return_value={"name": "  "})
+
+    assert await UserProfileRepository.get_display_name("U1", collection=collection) is None
+
+
+@pytest.mark.asyncio
 async def test_list_all_line_ids_returns_every_user():
     """每日消息卡的收件人是全體使用者，不是「有用藥的那批」。
 

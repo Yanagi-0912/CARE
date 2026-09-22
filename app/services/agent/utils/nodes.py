@@ -520,7 +520,11 @@ def _tv_news_channel(text: str) -> str:
 # 那種情況使用者多半想問衛教，不該直接跳出要位置的按鈕。
 _PROXIMITY_RE = re.compile(
     r"附近|最近|周邊|週邊|周圍|鄰近|哪裡有|哪裡可以|哪一家|哪家|推薦|"
-    r"nearby|near\s*me|closest|around",
+    r"nearby|near\s*me|closest|around|"
+    r"terdekat|di\s*sekitar|"
+    r"gần\s*đây|gần\s*tôi|"
+    r"ใกล้เคียง|ใกล้ฉัน|"
+    r"近く|最寄り",
     re.IGNORECASE,
 )
 

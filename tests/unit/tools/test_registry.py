@@ -58,6 +58,11 @@ def test_medication_status_tool_is_offered_whether_or_not_rag_is_allowed():
     assert "get_medication_status" in _tool_names(get_all_tools(include_rag_tool=False))
 
 
+def test_family_directory_tool_is_offered_whether_or_not_rag_is_allowed():
+    assert "get_family_directory" in _tool_names(get_all_tools(include_rag_tool=True))
+    assert "get_family_directory" in _tool_names(get_all_tools(include_rag_tool=False))
+
+
 def test_get_all_tools_excludes_claim_tool_when_not_configured():
     # 未呼叫 configure_claim_tool（或被設回 None）等同 dependencies.py 在
     # CLAIM_VERIFICATION_ENABLED=false 時「不建立服務也不 configure tool」

@@ -130,10 +130,17 @@ class FamilyTreeRepository:
 
     @staticmethod
     async def set_relationship(
-        user_id: str, member_id: str, relationship_type: str
+        user_id: str,
+        member_id: str,
+        relationship_type: Optional[str],
+        collection: Optional[Any] = None,
     ) -> Optional[FamilyTree]:
-        """更新族譜中特定成員的 relationship_type。"""
-        col = MongoDBManager.get_family_tree_collection()
+        """更新擁有者視角下的稱謂；None 會保留明確的「未設定」狀態。"""
+        col = (
+            MongoDBManager.get_family_tree_collection()
+            if collection is None
+            else collection
+        )
         now = datetime.now(tz=timezone.utc)
 
         result = await col.update_one(

@@ -161,6 +161,7 @@ from app.services.rag.query_rewriter import (
     REWRITE_THINKING_LEVEL,
     GeminiQueryRewriter,
 )
+from app.services.rag.jev_grader import JevRetrievalGrader
 from app.services.rag.retrieval_grader import (
     GRADE_THINKING_LEVEL,
     GeminiRetrievalGrader,
@@ -322,12 +323,17 @@ _rag_rewriter = None
 if settings.RAG_CRAG_ENABLED:
     # 分級也用獨立的低 thinking 實例（數字見 retrieval_grader.GRADE_THINKING_LEVEL）。
     # 不改共用的 _gemini_service：guardrail、問診等也在用它，沒一起量過。
-    _rag_grader = GeminiRetrievalGrader(
-        gemini_service=GeminiService(
-            api_key=settings.GEMINI_API_KEY,
-            model_name=settings.MODEL_NAME,
-            thinking_level=GRADE_THINKING_LEVEL,
-        )
+    # 先問 Jev（中位數 0.26 秒），Jev 失敗才問 Gemini（中位數約 1.3 秒）。
+    # 門檻與一致率見 services/rag/jev_grader.py。
+    _rag_grader = JevRetrievalGrader(
+        api_key=settings.TYPESAFE_API_KEY,
+        fallback=GeminiRetrievalGrader(
+            gemini_service=GeminiService(
+                api_key=settings.GEMINI_API_KEY,
+                model_name=settings.MODEL_NAME,
+                thinking_level=GRADE_THINKING_LEVEL,
+            )
+        ),
     )
     # 改寫用獨立的低 thinking 實例：它與 CRAG 分級同時起跑，要比分級先跑完
     # 才不會讓使用者多等（數字見 query_rewriter.REWRITE_THINKING_LEVEL）。

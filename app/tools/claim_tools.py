@@ -2,8 +2,9 @@
 
 import json
 import logging
+from typing import Annotated
 
-from langchain_core.tools import tool
+from langchain_core.tools import InjectedToolCallId, tool
 
 from app.services.line_messaging.flex.verdict_flex import (
     CLAIM_VERDICT_KEY,
@@ -18,6 +19,15 @@ logger = logging.getLogger(__name__)
 _claim_verification_service = None
 
 _TFC_SOURCE_LABEL = "台灣事實查核中心"
+
+# 圖卡主張查核資料庫沒收錄時 `verify_claim` 的回傳值。這不是給使用者看的：
+# nodes.py 看到它就改送知識庫，agent.py 選最終回覆時也要跳過它。
+CARD_CLAIM_NOT_FOUND = "查核資料庫沒有收錄這個說法。"
+
+# nodes.py 圖卡捷徑送出的 tool_call id。`verify_claim` 靠它認出「這是圖卡主張」：
+# 模型看不到也填不了這個值（id 由模型服務產生），而 langgraph 的 ToolNode 會把
+# 呼叫端自己塞的 InjectedToolArg 參數剝掉，沒辦法用隱藏參數傳。
+HEALTH_CARD_CLAIM_CALL_ID = "health_card_claim_1"
 
 
 def configure_claim_tool(claim_verification_service) -> None:
@@ -201,7 +211,10 @@ def render_verification(
 
 
 @tool
-async def verify_claim(query: str) -> str:
+async def verify_claim(
+    query: str,
+    tool_call_id: Annotated[str, InjectedToolCallId] = "",
+) -> str:
     """當使用者要查證某個特定說法是真是假時呼叫。典型句型是「網傳⋯是真的
     嗎」「聽說⋯真的假的」「我朋友說⋯」。回傳台灣事實查核中心既有的查核
     結論，不做即時真假判斷；查核中心沒查過的說法會回「證據不足」。
@@ -209,8 +222,18 @@ async def verify_claim(query: str) -> str:
     若問題問的是衛教知識本身而非查證特定說法（例如「⋯有哪些症狀」
     「⋯多久做一次」「⋯可以吃嗎」），請改用 get_rag_answer。
     """
+    # 圖卡可能是謠言也可能是正確的衛教海報，n8n 分不出來，所以一律先查：
+    # 查核資料庫收錄過就回判定卡（「正確」也有卡）；沒收錄就不能回「證據不足」
+    # ——國健署的海報被標成證據不足是誤導——改由 nodes.py 接著送知識庫。
     if _claim_verification_service is None:
         return "查核判定服務未初始化，請稍後再試。"
+    if tool_call_id == HEALTH_CARD_CLAIM_CALL_ID:
+        result = await _claim_verification_service.verify(
+            query, related_on_miss=False
+        )
+        if not result.matched:
+            return CARD_CLAIM_NOT_FOUND
+        return render_verification(result)
     result = await _claim_verification_service.verify(query)
     return render_verification(result)
 

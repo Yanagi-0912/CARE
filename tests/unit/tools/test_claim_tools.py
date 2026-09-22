@@ -21,6 +21,15 @@ def reset_tool_state():
     configure_claim_tool(None)
 
 
+async def _ask(query: str) -> str:
+    """照 ToolNode 的呼叫形狀：`verify_claim` 讀得到自己的 tool_call id，
+    不帶完整 ToolCall 的呼叫會被 langchain 拒絕。"""
+    message = await verify_claim.ainvoke(
+        {"name": "verify_claim", "args": {"query": query}, "id": "call_1", "type": "tool_call"}
+    )
+    return message.content
+
+
 def _fake_service(result: VerificationResult) -> MagicMock:
     service = MagicMock()
     service.verify = AsyncMock(return_value=result)
@@ -59,9 +68,7 @@ async def test_verify_claim_matched_returns_flex_json_with_verdict_question_reas
     service = _fake_service(result)
     configure_claim_tool(service)
 
-    output = await verify_claim.ainvoke(
-        {"query": "網傳吃鳳梨心可以溶解血栓，是真的嗎？"}
-    )
+    output = await _ask("網傳吃鳳梨心可以溶解血栓，是真的嗎？")
 
     payload = json.loads(output)
     assert payload["type"] == "flex"
@@ -91,7 +98,7 @@ async def test_verify_claim_unmatched_without_sources_has_no_source_action():
     )
     configure_claim_tool(_fake_service(result))
 
-    output = await verify_claim.ainvoke({"query": "網傳喝檸檬水可以排毒？"})
+    output = await _ask("網傳喝檸檬水可以排毒？")
 
     payload = json.loads(output)
     rendered = str(payload["contents"])
@@ -112,7 +119,7 @@ async def test_verify_claim_unmatched_without_sources_has_no_source_action():
 @pytest.mark.asyncio
 async def test_verify_claim_without_service_returns_readable_message():
     # reset_tool_state 已把 _claim_verification_service 設回 None
-    output = await verify_claim.ainvoke({"query": "隨便問一句"})
+    output = await _ask("隨便問一句")
     assert "未初始化" in output
     # 這條路徑沒有查核結果可組 Flex，仍是既有的純文字訊息，不是 JSON
     with pytest.raises(json.JSONDecodeError):
@@ -142,7 +149,7 @@ async def test_verify_claim_falls_back_to_plain_text_when_flex_assembly_fails():
     )
     configure_claim_tool(_fake_service(result))
 
-    output = await verify_claim.ainvoke({"query": "網傳喝薑茶可以退燒？"})
+    output = await _ask("網傳喝薑茶可以退燒？")
 
     assert "判定：12345" in output
     assert "你問的：網傳喝薑茶可以退燒？" in output
@@ -163,7 +170,7 @@ async def test_verify_claim_output_contains_no_markdown_symbols():
     )
     configure_claim_tool(_fake_service(result))
 
-    output = await verify_claim.ainvoke({"query": "網傳每天喝一杯醋可以降血脂？"})
+    output = await _ask("網傳每天喝一杯醋可以降血脂？")
 
     assert "**" not in output
     assert "##" not in output
@@ -201,7 +208,7 @@ async def test_oversized_verdict_card_falls_back_to_text():
     """
     configure_claim_tool(_fake_service(_unmatched_result("衛" * 3000)))
 
-    output = await verify_claim.ainvoke({"query": "網傳蜂蜜可以抗癌"})
+    output = await _ask("網傳蜂蜜可以抗癌")
 
     assert not output.strip().startswith("{")
     assert "判定：證據不足" in output
@@ -215,7 +222,7 @@ async def test_normal_verdict_card_stays_flex():
         _fake_service(_unmatched_result("蜂蜜不需要放冰箱，室溫避光即可。"))
     )
 
-    output = await verify_claim.ainvoke({"query": "網傳蜂蜜可以抗癌"})
+    output = await _ask("網傳蜂蜜可以抗癌")
 
     payload = json.loads(output)
     assert payload["type"] == "flex"
@@ -240,7 +247,7 @@ async def test_verify_claim_unmatched_with_sources_renders_them():
     )
     configure_claim_tool(_fake_service(result))
 
-    output = await verify_claim.ainvoke({"query": "網傳喝檸檬水可以排毒？"})
+    output = await _ask("網傳喝檸檬水可以排毒？")
 
     payload = json.loads(output)
     rendered = str(payload["contents"])
@@ -299,7 +306,7 @@ async def test_matched_payload_carries_speech_text_without_urls():
     configure_claim_tool(_fake_service(result))
 
     payload = json.loads(
-        await verify_claim.ainvoke({"query": "網傳吃鳳梨心可以溶解血栓，是真的嗎？"})
+        await _ask("網傳吃鳳梨心可以溶解血栓，是真的嗎？")
     )
 
     speech = payload["speechText"]
@@ -334,7 +341,7 @@ async def test_unmatched_speech_text_includes_related_info():
     )
     configure_claim_tool(_fake_service(result))
 
-    payload = json.loads(await verify_claim.ainvoke({"query": "網傳喝檸檬水可以排毒？"}))
+    payload = json.loads(await _ask("網傳喝檸檬水可以排毒？"))
 
     speech = payload["speechText"]
     assert "判定：證據不足" in speech
@@ -360,7 +367,7 @@ async def test_speech_text_is_outside_the_flex_size_budget():
     )
     configure_claim_tool(_fake_service(result))
 
-    payload = json.loads(await verify_claim.ainvoke({"query": "網傳喝檸檬水可以排毒？"}))
+    payload = json.loads(await _ask("網傳喝檸檬水可以排毒？"))
 
     assert "speechText" in payload
     assert "speechText" not in str(payload["contents"])
@@ -383,7 +390,7 @@ async def test_payload_carries_claim_verdict_outside_contents(verdict, matched):
     )
     configure_claim_tool(_fake_service(result))
 
-    payload = json.loads(await verify_claim.ainvoke({"query": "網傳喝檸檬水可以排毒？"}))
+    payload = json.loads(await _ask("網傳喝檸檬水可以排毒？"))
 
     assert CLAIM_VERDICT_KEY == "claimVerdict"
     assert payload[CLAIM_VERDICT_KEY] == {"verdict": verdict}

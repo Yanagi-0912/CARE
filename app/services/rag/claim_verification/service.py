@@ -205,8 +205,14 @@ class ClaimVerificationService:
         # 純粹是接線紀律的問題。
         self._identity_verifier = identity_verifier
 
-    async def verify(self, user_text: str) -> VerificationResult:
+    async def verify(
+        self, user_text: str, *, related_on_miss: bool = True
+    ) -> VerificationResult:
         """一次查核的入口。實作在 `_verify`，這裡只負責觀測。
+
+        `related_on_miss=False` 時未命中不產生「相關衛教資訊」：呼叫端自己會改走
+        知識庫（圖卡主張，見 `claim_tools.verify_claim`），這段 RAG 生成做了也
+        沒人看，只是多等幾秒。
 
         `stage=claim_verify` 記的是三選一的結果：`hit`、`no_match`
         （比對就沒中）、`identity_rejected`（比對中了但同一性驗證否決）。
@@ -224,10 +230,10 @@ class ClaimVerificationService:
             logger, "claim_verify", user_len=len(user_text or "")
         ) as obs:
             obs["outcome"] = "error"
-            return await self._verify(user_text, obs)
+            return await self._verify(user_text, obs, related_on_miss)
 
     async def _verify(
-        self, user_text: str, obs: dict[str, Any]
+        self, user_text: str, obs: dict[str, Any], related_on_miss: bool = True
     ) -> VerificationResult:
         claim = await self._normalizer.normalize(user_text)
         match = await self._matcher.match(claim)
@@ -273,7 +279,10 @@ class ClaimVerificationService:
                 else "no_match"
             )
             obs["verdict"] = NOT_ENOUGH_EVIDENCE_SLUG
-            related_info, related_sources = await self._related_information(claim)
+            if related_on_miss:
+                related_info, related_sources = await self._related_information(claim)
+            else:
+                related_info, related_sources = "", ()
             obs["related"] = len(related_sources)
             return VerificationResult(
                 user_question=user_text,

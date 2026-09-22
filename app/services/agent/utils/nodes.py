@@ -28,6 +28,7 @@ from app.services.medical.symptom_classification.urgency import (
     URGENCY_EMERGENCY,
     UrgencyVerdict,
 )
+from app.tools.claim_tools import CARD_CLAIM_NOT_FOUND, HEALTH_CARD_CLAIM_CALL_ID
 from app.tools.registry import get_all_tools
 from resources.flex_messages.medical_messages.emergency_condition_flex_message import (
     build_emergency_condition_flex,
@@ -824,6 +825,96 @@ def _tv_news_claim_call(
     )
 
 
+# 謠言長輩圖、衛教海報這類「一張圖講一件健康的事」的圖卡。n8n 的影像節點抽得出
+# 那句主張時，在 `text` 最前面加上這兩行（CARE-n8n `mutimedia process.json`）：
+#
+#     以下為使用者傳送的image媒體內容：
+#     【健康圖卡】
+#     圖卡主張：甜柿和螃蟹一起吃會中毒
+#
+#     （圖上的原文）
+#
+# n8n 不判斷真假——同一句「柿子配螃蟹」可能是謠言圖，也可能是闢謠的衛教圖。
+_HEALTH_CARD_MARKER = "【健康圖卡】"
+_HEALTH_CARD_CLAIM_RE = re.compile(r"^圖卡主張：(.+)$", re.MULTILINE)
+
+
+def _health_card_claim(text: str) -> str | None:
+    if not _is_media_extracted_content(text) or _HEALTH_CARD_MARKER not in text:
+        return None
+    match = _HEALTH_CARD_CLAIM_RE.search(text)
+    if not match:
+        return None
+    return match.group(1).strip() or None
+
+
+def _health_card_claim_call(
+    state: State, tool_names: list[str], user_text: str
+) -> AIMessage | None:
+    """長輩傳了健康圖卡時，直接拿圖上的主張去查，不問模型。
+
+    2026-09-21 使用者傳了「甜柿＆螃蟹一起吃會中毒？」的圖，模型照規則 (e) 自己
+    回答，沒有出處；一分鐘後打字問同一句，查核資料庫命中食藥署的闢謠、回了
+    判定卡。圖卡和電視新聞標題一樣是一句待查證的話（見 `_tv_news_claim_call`）。
+
+    先查核資料庫、沒收錄再送知識庫（見 `_health_card_rag_followup`），所以
+    謠言與正確的衛教圖都拿得到有出處的答案，不必先分辨是哪一種。
+    """
+    if not state.get("allow_rag"):
+        return None
+    if any(isinstance(m, ToolMessage) for m in state["messages"]):
+        return None
+    claim = _health_card_claim(user_text)
+    if not claim:
+        return None
+    if "verify_claim" in tool_names:
+        name, call_id = "verify_claim", HEALTH_CARD_CLAIM_CALL_ID
+        args = {"query": claim}
+    elif "get_rag_answer" in tool_names:
+        name, call_id = "get_rag_answer", "health_card_rag_1"
+        args = {"query": claim}
+    else:
+        return None
+    log_stage(logger, "health_card_claim", tool=name)
+    return AIMessage(
+        content="",
+        tool_calls=[{"name": name, "args": args, "id": call_id, "type": "tool_call"}],
+    )
+
+
+def _health_card_rag_followup(
+    state: State, tool_names: list[str], user_text: str
+) -> AIMessage | None:
+    """圖卡主張查核資料庫沒收錄 → 同一句送知識庫，回一般的衛教答案。
+
+    不回「證據不足」判定卡：衛教海報多半是對的，只是查核中心沒查過，標成證據
+    不足會讓長輩以為那張海報有問題。
+    """
+    messages = state["messages"]
+    last = messages[-1] if messages else None
+    if not (
+        isinstance(last, ToolMessage)
+        and last.tool_call_id == HEALTH_CARD_CLAIM_CALL_ID
+        and last.content == CARD_CLAIM_NOT_FOUND
+    ):
+        return None
+    claim = _health_card_claim(user_text)
+    if not claim or "get_rag_answer" not in tool_names or _already_ran_rag(messages):
+        return None
+    log_stage(logger, "health_card_claim", tool="get_rag_answer", reason="not_in_claims")
+    return AIMessage(
+        content="",
+        tool_calls=[
+            {
+                "name": "get_rag_answer",
+                "args": {"query": claim},
+                "id": "health_card_rag_1",
+                "type": "tool_call",
+            }
+        ],
+    )
+
+
 def _original_text_rag_call(user_text: str, call_id: str) -> AIMessage:
     return AIMessage(
         content="",
@@ -1021,6 +1112,12 @@ class AgentNodes:
         tv_news_call = _tv_news_claim_call(state, tool_names, user_text)
         if tv_news_call is not None:
             return {"messages": [tv_news_call]}
+
+        card_call = _health_card_claim_call(
+            state, tool_names, user_text
+        ) or _health_card_rag_followup(state, tool_names, user_text)
+        if card_call is not None:
+            return {"messages": [card_call]}
 
         if self._local_rag_shortcut(state, tool_names, user_text):
             return {"messages": [_original_text_rag_call(user_text, "shortcut_rag_1")]}

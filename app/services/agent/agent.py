@@ -31,6 +31,7 @@ from app.services.rag.fail_messages import (
     parse_rag_fail_code,
     rag_fail_user_text,
 )
+from app.tools.claim_tools import CARD_CLAIM_NOT_FOUND
 from app.tools.user_document_tools import is_document_answer_unavailable
 from app.tools.family_directory_tools import FAMILY_DIRECTORY_TOOL_NAME
 from app.tools.medication_status_tools import MEDICATION_STATUS_TOOL_NAME
@@ -577,6 +578,9 @@ class Agent:
             if (
                 isinstance(msg, ToolMessage)
                 and getattr(msg, "name", None) in medical_tool_names
+                # 圖卡主張沒收錄時的內部訊息，後面接著的知識庫答案才是回覆
+                # （見 nodes.py `_health_card_rag_followup`）。
+                and msg.content != CARD_CLAIM_NOT_FOUND
             ):
                 used_tool_names.append(getattr(msg, "name", ""))
                 tool_response = msg.content

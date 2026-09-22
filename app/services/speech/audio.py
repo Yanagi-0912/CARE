@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import array
 import io
+import math
 import sys
 import wave
 from pathlib import Path
@@ -105,10 +106,7 @@ def split_on_pauses(
     停頓＝搜尋範圍內平均振幅最小的視窗。只用標準函式庫：正式映像沒有 numpy
     （見 pyproject.toml dev 群組的說明）。
     """
-    samples = array.array("h")
-    samples.frombytes(pcm[: len(pcm) - len(pcm) % _BYTES_PER_SAMPLE])
-    if sys.byteorder == "big":  # PCM 是 little-endian；只影響振幅計算
-        samples.byteswap()
+    samples = _samples(pcm)
 
     max_len = int(max_seconds * sample_rate)
     if len(samples) <= max_len:
@@ -130,6 +128,60 @@ def split_on_pauses(
         start = cut
     chunks.append(pcm[start * _BYTES_PER_SAMPLE :])
     return chunks
+
+
+def _samples(pcm: bytes) -> array.array:
+    samples = array.array("h")
+    samples.frombytes(pcm[: len(pcm) - len(pcm) % _BYTES_PER_SAMPLE])
+    if sys.byteorder == "big":  # PCM 是 little-endian；只影響振幅計算
+        samples.byteswap()
+    return samples
+
+
+# 有聲的門檻：比底噪（第 20 百分位的視窗音量）高 10 dB，但最多到 -35 dBFS。
+# 只用底噪：壓縮過的錄音（podcast）幾乎沒有安靜的時候，2026-09-22 實測底噪
+# -19 dBFS，門檻變成 -9 dBFS，30 分鐘說話只剩 1 秒被判有聲。-35 是上面
+# PAUSE_WINDOW_SECONDS 那段實測的句間停頓音量。寧可多判有聲：多判的代價是
+# 多送幾段給台語 STT，少判則是那段話從逐字稿消失。
+VOICE_ABOVE_FLOOR_DB = 10.0
+VOICE_MAX_THRESHOLD_DBFS = -35.0
+# 兩段有聲之間的縫短於這個就併起來：換氣、字與字之間的停頓不算「沒在講話」。
+VOICE_JOIN_SECONDS = 0.3
+
+
+def voiced_spans(
+    pcm: bytes, sample_rate: int, *, window_seconds: float = PAUSE_WINDOW_SECONDS
+) -> list[tuple[float, float]]:
+    """回傳有人在出聲的時段（秒）。只看音量，分不出說話和音樂。"""
+    samples = _samples(pcm)
+    window = max(1, int(window_seconds * sample_rate))
+    levels: list[float] = []
+    for i in range(0, len(samples) - window + 1, window):
+        chunk = samples[i : i + window]
+        rms = math.sqrt(sum(x * x for x in chunk) / window)
+        levels.append(20 * math.log10(max(rms, 1.0) / 32768))
+    if not levels:
+        return []
+    floor = sorted(levels)[len(levels) // 5]
+    threshold = min(floor + VOICE_ABOVE_FLOOR_DB, VOICE_MAX_THRESHOLD_DBFS)
+
+    spans: list[list[float]] = []
+    for k, level in enumerate(levels):
+        if level <= threshold:
+            continue
+        start, end = k * window_seconds, (k + 1) * window_seconds
+        if spans and start - spans[-1][1] < VOICE_JOIN_SECONDS:
+            spans[-1][1] = end
+        else:
+            spans.append([start, end])
+    return [(start, end) for start, end in spans]
+
+
+def slice_pcm(pcm: bytes, sample_rate: int, start: float, end: float) -> bytes:
+    """取 [start, end) 秒那一段。"""
+    lo = int(start * sample_rate) * _BYTES_PER_SAMPLE
+    hi = int(end * sample_rate) * _BYTES_PER_SAMPLE
+    return pcm[max(0, lo) : max(0, hi)]
 
 
 def encode_mp3(

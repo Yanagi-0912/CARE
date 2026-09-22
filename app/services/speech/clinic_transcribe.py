@@ -1,4 +1,4 @@
-"""看診錄音的逐字稿：整檔送 Gemini 轉錄，用語者分離切段，但**不標是誰在講**。
+"""看診錄音的逐字稿：華語走 Gemini、台語走台語 STT，用語者分離切段，但**不標是誰在講**。
 
 這支跟 `gemini_stt.py` 是兩回事，不要混用：
 
@@ -7,12 +7,24 @@
 - 這支處理一整段門診，十分鐘上下、三到五個講者（醫師、長輩、陪的家屬或看護、
   跟診護理師，教學醫院還有實習醫師），目標是正確與可讀，慢一點沒關係。
 
-### 為什麼不沿用 `audio.split_on_pauses()`
+### 流程（2026-09-22 用 30 分鐘華語、台語 podcast 各一實測後定的）
 
-那支把音檔切成 15～25 秒（`MAX_STT_CHUNK_SECONDS`，因為 flash-lite 吃 37 秒的音檔
-後段會變成重複亂句）。但語者標籤只在**單一次請求內**有意義：第一段的 spk_1 和第二段
-的 spk_1 不保證是同一個人，切了就對不起來。所以這裡整檔送，改用專門做轉錄的
-`gemini-3.5-transcribe`，它本來就吃得下長音檔。
+1. 切 5 分鐘一段，平行送 `gemini-3.5-transcribe`（開語者分離與詞級時間戳）。
+   華語 30 分鐘 19 秒轉完；整檔送要 96 秒。
+2. 找「有聲音、但 Gemini 一個詞都沒轉出來」的時段。這個模型碰到台語幾乎不出字
+   （台語那份 30 分鐘只出 327 字），所以這些空白多半就是台語。
+3. 空白併成 25 秒以內的段落，排隊送台語 STT（每 10 秒一段，理由見 `TaigiPacer`）。
+   台語那份補回 8,574 字；整檔送 Gemini 只轉出 6,576 字，還被截掉最後 5 分鐘。
+4. 兩邊照時間排回一份。
+
+所以不用先判斷整份是華語還是台語，醫師講華語、長輩回台語也各走各的路。
+實測 30 分鐘：華語 25 秒（沒送台語 STT）；全台語 19 分鐘、送了九十多段，其中
+三、四分鐘是節流算錯（見 `TaigiPacer.run`），修正後推估 16 分鐘上下。門診多半
+5～10 分鐘，全台語推估 3～6 分鐘。
+
+語者標籤只在**單一次請求內**有意義：第一段的 spk:0 和第二段的 spk:0 不保證是同一個
+人，所以標籤前面加段號，跨段一定換段——反正不顯示講者，多一個換行而已。台語 STT
+沒有語者分離，它的每一段自成一段落。
 
 ### 為什麼放棄熱詞
 
@@ -38,13 +50,17 @@
 from __future__ import annotations
 
 import asyncio
+import bisect
 import functools
 import logging
+import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Awaitable, Callable, Iterable
 
 from app.core.config import settings
+from app.services.speech import audio
 
 logger = logging.getLogger(__name__)
 
@@ -55,29 +71,59 @@ CLINIC_TRANSCRIBE_MODEL = "gemini-3.5-transcribe"
 # 台灣華語為主；醫師講藥名、檢查名稱時常夾英文。
 LANGUAGE_CODES = ("zh-TW", "en-US")
 
-# 官方：一般請求吃得下 1 小時，但開了語者分離或詞級時間戳就降到 30 分鐘（同上）。
-# 這裡是硬上限，超過就不送——先擋在前面，比讓 API 回錯誤好解釋。
+# 只整理前 30 分鐘，超過的在逐字稿最後註明。不是 API 限制（切段後每段只有 5 分鐘），
+# 是記憶體與等待時間：30 分鐘的 16 kHz PCM 約 58 MB，要在 backend pod 裡整份解碼；
+# 全程台語的 30 分鐘要等 16 分鐘上下（見模組說明）。門診很少超過。
 MAX_AUDIO_SECONDS = 30 * 60
+TRUNCATED_NOTE = "（錄音超過 30 分鐘，之後的內容沒有整理。）"
+
+# Gemini 那頭送 mp3：同樣 5 分鐘，WAV 9.6 MB、64 kbps mp3 2.4 MB。2026-09-22 改送
+# WAV 後 Gemini 從 18.5 秒變 31 秒，多出來的是上傳。
+GEMINI_MP3_BIT_RATE = 64_000
+
+# 5 分鐘一段平行送。2026-09-22 實測 30 分鐘華語：整檔送 96 秒（兩次），切 6 段平行
+# 18.5～19 秒、字數相同（8,690 對 8,584）。台語整檔送會 MAX_TOKENS 截斷，切段則
+# 幾乎不出字——正好讓沒轉到的時段交給台語 STT。
+CHUNK_SECONDS = 300.0
+# 在每段結尾前這麼長的範圍內找最安靜處下刀，同 audio.PAUSE_SEARCH_SECONDS 的理由。
+CHUNK_PAUSE_SEARCH_SECONDS = 10.0
+
+# 詞的時間戳前後各放寬這麼多才算「已轉到」：時間戳只到 0.1 秒，字尾的殘響不是新的話。
+COVERED_PAD_SECONDS = 0.4
+# 沒轉到的有聲時段短於這個就不理：咳嗽、椅子聲、一聲「嗯」。
+GAP_MIN_SECONDS = 0.3
+# 相隔不到這麼久的 Gemini 詞算同一串。
+WORD_CLUSTER_JOIN_SECONDS = 1.0
+# 一串至少這麼多個詞才算真的轉到華語；更零星的詞多半是 Gemini 聽台語時硬猜出來的
+# （台語那份 30 分鐘裡散落 327 個詞），連同那段時間一起交給台語 STT 重轉。離線用
+# 同一批回應重算：門檻 3 時華語只丟 2 個詞、送台語 0 段；台語從 119 段降到 95 段。
+WORD_CLUSTER_MIN_WORDS = 3
+# 兩段空白相隔（且中間沒有 Gemini 的詞）短於這個就併成一段送台語 STT。台語原型
+# 用 1.5 秒切出 123 段、送了 20 分鐘（每 10 秒一段）；段數就是等待時間，能併就併。
+TAIGI_JOIN_SECONDS = 4.0
+# 併完仍短於這個的就不送。2026-09-22 華語那份用 1 秒送了 13 段，回來全是「啊」「嗯」
+# 「哈哈哈哈」與一句憑空的「我遮遮濟相思」（Gemini 句子中間的短停頓）；離線重算
+# 3 秒時是 0 段。代價是台語一兩秒的短回答（「有啦」）收不到。
+TAIGI_PIECE_MIN_SECONDS = 3.0
+# 見 TaigiPacer。
+TAIGI_INTERVAL_SECONDS = 10.0
+# 429 之後等多久再試一次。速率窗口是分鐘級的（taigi_client 的實測）。
+TAIGI_RATE_LIMIT_WAIT_SECONDS = 60.0
+# 每秒至少幾個字才算在講話。台語原型：片頭音樂 23 秒回 2 個字（0.09），
+# 真的在講話的片段每秒 2～5 字。
+TAIGI_MIN_CHARS_PER_SECOND = 0.3
+
+_PUNCTUATION = re.compile(r"[\s，。？！、,.?!;:；：~～「」『』（）()]+")
 
 # 逐字模式。SMART 會刪掉「嗯」「那個」、自動修正、還會把內容重排成條列，
 # 對邊講邊看的即時字幕是優點，對看診原文是缺點：原文的用途就是讓家人核對
 # 摘要有沒有寫歪，被模型整理過就失去核對的意義。
 TRANSCRIBE_MODE = "VERBATIM"
 
-# 2026-09-22 實測整檔 30 分鐘（上限）：華語 96 秒（兩次）、台語 110 秒。
-# 300 秒約留三倍餘裕給 API 忽快忽慢。
-TRANSCRIBE_TIMEOUT_SECONDS = 300.0
+# 單段（5 分鐘）的逾時。2026-09-22 實測每段 16.5～19 秒；整檔 30 分鐘也才 96～110 秒，
+# 一段超過 120 秒一定是卡住了，放掉這段交給台語 STT 補。
+TRANSCRIBE_TIMEOUT_SECONDS = 120.0
 
-_MIME_BY_SUFFIX = {
-    ".m4a": "audio/m4a",
-    ".mp4": "audio/m4a",
-    ".aac": "audio/aac",
-    ".mp3": "audio/mpeg",
-    ".wav": "audio/wav",
-    ".ogg": "audio/ogg",
-    ".webm": "audio/webm",
-}
-_DEFAULT_MIME = "audio/m4a"
 
 
 class ClinicTranscribeError(RuntimeError):
@@ -261,6 +307,7 @@ def _extract_words(response: Any) -> list[dict[str, Any]]:
                     "text": _field(word, "word"),
                     "speaker": speaker,
                     "start_offset": _field(word, "start_offset"),
+                    "end_offset": _field(word, "end_offset"),
                 }
                 for word in _field(transcription, "words") or []
             ]
@@ -281,10 +328,163 @@ def _extract_words(response: Any) -> list[dict[str, Any]]:
     )
 
 
+@dataclass(frozen=True)
+class _GeminiChunk:
+    """一段 5 分鐘音檔的 Gemini 結果。時間已換成整份錄音的絕對秒數。"""
+
+    words: list[dict[str, Any]]
+    speaker_count: int
+    failed: bool = False
+
+
+def drop_sparse_words(
+    words: list[dict[str, Any]],
+    *,
+    join_seconds: float = WORD_CLUSTER_JOIN_SECONDS,
+    min_words: int = WORD_CLUSTER_MIN_WORDS,
+) -> list[dict[str, Any]]:
+    """丟掉零星的 Gemini 詞（理由見 WORD_CLUSTER_MIN_WORDS）。詞要照時間排好。"""
+    kept: list[dict[str, Any]] = []
+    cluster: list[dict[str, Any]] = []
+    last_end: float | None = None
+    for word in words:
+        start = word["start"]
+        if start is None:
+            kept.append(word)
+            continue
+        if cluster and last_end is not None and start - last_end >= join_seconds:
+            if len(cluster) >= min_words:
+                kept.extend(cluster)
+            cluster = []
+        cluster.append(word)
+        end = start if word["end"] is None else word["end"]
+        last_end = end if len(cluster) == 1 or last_end is None else max(last_end, end)
+    if len(cluster) >= min_words:
+        kept.extend(cluster)
+    return kept
+
+
+def uncovered_voiced_spans(
+    voiced: list[tuple[float, float]],
+    covered: list[tuple[float, float]],
+    *,
+    pad: float = COVERED_PAD_SECONDS,
+    min_seconds: float = GAP_MIN_SECONDS,
+) -> list[tuple[float, float]]:
+    """有聲、但 Gemini 沒轉出任何詞的時段。
+
+    `covered` 是每個詞的 (開始, 結束)，前後各放寬 `pad` 秒：詞級時間戳只到 0.1 秒，
+    邊界一點點的殘響不該被當成一段沒轉到的話。
+    """
+    cover = sorted((start - pad, end + pad) for start, end in covered)
+    gaps: list[tuple[float, float]] = []
+    k = 0
+    for start, end in voiced:
+        cursor = start
+        while k < len(cover) and cover[k][1] <= cursor:
+            k += 1
+        j = k
+        while j < len(cover) and cover[j][0] < end:
+            if cover[j][0] > cursor:
+                gaps.append((cursor, cover[j][0]))
+            cursor = max(cursor, cover[j][1])
+            j += 1
+        if cursor < end:
+            gaps.append((cursor, end))
+    return [(a, b) for a, b in gaps if b - a >= min_seconds]
+
+
+def group_gaps_for_taigi(
+    gaps: list[tuple[float, float]],
+    covered_starts: list[float],
+    *,
+    max_seconds: float = audio.MAX_STT_CHUNK_SECONDS,
+    join_seconds: float = TAIGI_JOIN_SECONDS,
+    min_seconds: float = TAIGI_PIECE_MIN_SECONDS,
+) -> list[tuple[float, float]]:
+    """把相近的空白併成一段送台語 STT；併起來不超過 `max_seconds`。
+
+    只在兩段之間沒有 Gemini 的詞時才併：中間夾著已經轉好的華語，併進來會讓
+    那句華語被台語模型再寫一次，逐字稿出現兩份。
+    """
+    starts = sorted(covered_starts)
+
+    def words_between(lo: float, hi: float) -> bool:
+        return bisect.bisect_left(starts, hi) > bisect.bisect_right(starts, lo)
+
+    pieces: list[list[float]] = []
+    for start, end in gaps:
+        if pieces:
+            prev_start, prev_end = pieces[-1]
+            if (
+                start - prev_end < join_seconds
+                and end - prev_start <= max_seconds
+                and not words_between(prev_end, start)
+            ):
+                pieces[-1][1] = end
+                continue
+        # 單一空白就超過上限的，留給送出前在停頓處切（見 _fill_with_taigi）。
+        pieces.append([start, end])
+    return [(a, b) for a, b in pieces if b - a >= min_seconds]
+
+
+def plausible_taigi_text(text: str, seconds: float) -> bool:
+    """台語 STT 對音樂、雜音也會吐字（實測 23 秒的片頭音樂回「臺灣」兩個字）。
+
+    講話每秒至少一兩個字，每秒不到 `TAIGI_MIN_CHARS_PER_SECOND` 就當成沒在講話。
+    """
+    visible = _PUNCTUATION.sub("", text)
+    return bool(visible) and len(visible) / max(seconds, 1.0) >= TAIGI_MIN_CHARS_PER_SECOND
+
+
+class TaigiPacer:
+    """台語 STT 的節流：兩次呼叫至少相隔 `interval` 秒，同一時間只送一段。
+
+    金鑰與 LINE 語音訊息共用，速率上限每分鐘 10 次（taigi_client 的 429 實測）。
+    看診錄音一次要送幾十段，照每 10 秒一段送就是每分鐘 6 次，留 4 次給聊天室的
+    語音訊息——那邊撞到 429 會直接放掉台語、改用華語逐字稿回答（見 taigi_client）。
+    同時送也沒有比較快：2026-09-22 實測 10 段同時送全部逾時，廠商伺服器一次只處理一個。
+    """
+
+    def __init__(
+        self,
+        interval: float = TAIGI_INTERVAL_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    ) -> None:
+        self._interval = interval
+        self._clock = clock
+        self._sleep = sleep
+        self._lock: asyncio.Lock | None = None
+        self._last: float | None = None
+
+    async def run(self, fn: Callable[[], Awaitable[Any]]) -> Any:
+        # 用到才建：asyncio.Lock 綁在第一次使用它的 event loop 上。
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        async with self._lock:
+            if self._last is not None:
+                wait = self._interval - (self._clock() - self._last)
+                if wait > 0:
+                    await self._sleep(wait)
+            # 從送出那一刻算：速率上限數的是每分鐘送出幾次。2026-09-22 原本從回應回來
+            # 才算，每段實際間隔變成 10 秒加上辨識的 2～4 秒，30 分鐘台語多等了好幾分鐘。
+            self._last = self._clock()
+            return await fn()
+
+
 class ClinicTranscriber:
-    def __init__(self, client: Any | None = None) -> None:
+    def __init__(
+        self,
+        client: Any | None = None,
+        taigi_client: Any | None = None,
+        pacer: TaigiPacer | None = None,
+    ) -> None:
         # 第一次用到才建：測試與沒設金鑰的環境不必建立 client。
         self._client = client
+        self._taigi = taigi_client
+        # 全 app 共用一個：兩段錄音同時在轉，也要一起排隊，速率上限是跟著金鑰走的。
+        self._pacer = pacer or TaigiPacer()
 
     def available(self) -> bool:
         return self._client is not None or bool(settings.GEMINI_API_KEY)
@@ -298,18 +498,104 @@ class ClinicTranscriber:
             self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
         return self._client
 
+    def _get_taigi(self) -> Any | None:
+        if self._taigi is None:
+            from app.services.speech.taigi_client import TaigiClient
+
+            client = TaigiClient()
+            if not client.available():
+                return None
+            self._taigi = client
+        return self._taigi
+
     async def transcribe(self, file_path: Path) -> ClinicTranscript:
+        started = time.monotonic()
+        pcm, rate = await asyncio.to_thread(
+            audio.decode_to_pcm16_mono, file_path, audio.STT_SAMPLE_RATE
+        )
+        duration = len(pcm) / 2 / rate
+        truncated = duration > MAX_AUDIO_SECONDS
+        if truncated:
+            pcm = audio.slice_pcm(pcm, rate, 0, MAX_AUDIO_SECONDS)
+
+        # 5 分鐘一段，在停頓處下刀，免得切在字中間。
+        chunks = await asyncio.to_thread(
+            audio.split_on_pauses,
+            pcm,
+            rate,
+            max_seconds=CHUNK_SECONDS,
+            search_seconds=CHUNK_PAUSE_SEARCH_SECONDS,
+        )
+        offsets: list[float] = []
+        cursor = 0.0
+        for chunk in chunks:
+            offsets.append(cursor)
+            cursor += len(chunk) / 2 / rate
+
+        results = await asyncio.gather(
+            *(
+                self._transcribe_chunk(chunk, rate, offset, index)
+                for index, (chunk, offset) in enumerate(zip(chunks, offsets))
+            )
+        )
+        if all(result.failed for result in results):
+            raise ClinicTranscribeError("每一段 Gemini 轉錄都失敗")
+        gemini_done = time.monotonic()
+
+        words = drop_sparse_words(
+            sorted(
+                (word for result in results for word in result.words),
+                key=lambda w: float("inf") if w["start"] is None else w["start"],
+            )
+        )
+        voiced = await asyncio.to_thread(audio.voiced_spans, pcm, rate)
+        covered = [
+            (word["start"], word["end"]) for word in words if word["start"] is not None
+        ]
+        gaps = uncovered_voiced_spans(voiced, covered)
+        pieces = group_gaps_for_taigi(gaps, [start for start, _ in covered])
+        taigi_segments = await self._fill_with_taigi(pcm, rate, pieces)
+
+        # Gemini 的詞才需要判斷簡繁（台語 STT 本來就寫正體），所以先單獨成段再併。
+        transcript = group_words_into_segments(words)
+        segments = sorted(
+            [*transcript.segments, *taigi_segments],
+            key=lambda seg: float("inf") if seg.start_seconds is None else seg.start_seconds,
+        )
+        if truncated:
+            segments.append(Segment(text=TRUNCATED_NOTE, start_seconds=None))
+
+        logger.info(
+            "stage=clinic_transcribe seconds=%.0f chunks=%d chunk_failed=%d "
+            "gemini_sec=%.1f taigi_pieces=%d taigi_kept=%d total_sec=%.1f truncated=%s",
+            duration,
+            len(chunks),
+            sum(result.failed for result in results),
+            gemini_done - started,
+            len(pieces),
+            len(taigi_segments),
+            time.monotonic() - started,
+            truncated,
+        )
+        return ClinicTranscript(
+            segments=tuple(segments),
+            # 講者標籤只在同一段請求內有意義，所以取各段的最大值而不是加總。
+            speaker_count=max((result.speaker_count for result in results), default=0),
+        )
+
+    async def _transcribe_chunk(
+        self, pcm: bytes, rate: int, offset: float, index: int
+    ) -> _GeminiChunk:
+        """一段失敗不拖垮整份：那段的時間全算「沒轉到」，交給台語 STT 補。"""
         from google.genai import types
 
-        audio = file_path.read_bytes()
-        mime_type = _MIME_BY_SUFFIX.get(file_path.suffix.lower(), _DEFAULT_MIME)
         config = types.GenerateContentConfig(
             audio_transcription_config=types.AudioTranscriptionConfig(
                 language_codes=list(LANGUAGE_CODES),
                 diarization=True,
                 # 詞級時間戳是白拿的：它和語者分離一樣、都只跟 custom_vocabulary 衝突，
                 # 而熱詞已經為了語者分離放棄了，所以開它不再多付任何代價。
-                # 用途是讓家人知道某句話在第幾分鐘，音檔本身轉完就刪。
+                # 用途是找出沒轉到的時段，以及讓家人知道某句話在第幾分鐘。
                 word_timestamp=True,
                 mode=TRANSCRIBE_MODE,
             )
@@ -318,26 +604,90 @@ class ClinicTranscriber:
             response = await asyncio.wait_for(
                 self._get_client().aio.models.generate_content(
                     model=CLINIC_TRANSCRIBE_MODEL,
-                    contents=[types.Part.from_bytes(data=audio, mime_type=mime_type)],
+                    contents=[
+                        types.Part.from_bytes(
+                            data=await asyncio.to_thread(
+                                audio.encode_mp3, pcm, rate, bit_rate=GEMINI_MP3_BIT_RATE
+                            ),
+                            mime_type="audio/mpeg",
+                        )
+                    ],
                     config=config,
                 ),
                 timeout=TRANSCRIBE_TIMEOUT_SECONDS,
             )
-        except asyncio.TimeoutError as exc:
-            raise ClinicTranscribeError(
-                f"轉錄超過 {TRANSCRIBE_TIMEOUT_SECONDS:.0f} 秒"
-            ) from exc
+            raw_words = _extract_words(response)
+        except ClinicTranscribeError:
+            # 沒有詞級註釋＝這段一個字都沒轉出來（整段台語時就是這樣），不是錯誤。
+            return _GeminiChunk(words=[], speaker_count=0)
+        except Exception as exc:  # noqa: BLE001 - 單段失敗改由台語 STT 補
+            logger.warning(
+                "stage=clinic_transcribe 第 %d 段 Gemini 失敗：%s", index, type(exc).__name__
+            )
+            return _GeminiChunk(words=[], speaker_count=0, failed=True)
 
-        transcript = group_words_into_segments(_extract_words(response))
-        # MAX_TOKENS 代表輸出被截斷、後段沒轉（2026-09-22 台語 30 分鐘整檔送實測），
-        # 逐字稿看起來完整但其實少一截，只有這個欄位看得出來。
         candidates = _field(response, "candidates") or []
         finish_reason = _field(candidates[0], "finish_reason") if candidates else None
-        logger.info(
-            "stage=clinic_transcribe segments=%d speakers=%d chars=%d finish=%s",
-            len(transcript.segments),
-            transcript.speaker_count,
-            len(transcript.text),
-            getattr(finish_reason, "value", finish_reason),
-        )
-        return transcript
+        finish = getattr(finish_reason, "value", finish_reason)
+        if finish not in (None, "STOP"):
+            # MAX_TOKENS 代表輸出被截斷、後段沒轉（2026-09-22 台語 30 分鐘整檔送實測）。
+            # 沒轉到的部分會被當成空白交給台語 STT，所以這裡只記下來。
+            logger.warning("stage=clinic_transcribe 第 %d 段 finish=%s", index, finish)
+
+        words: list[dict[str, Any]] = []
+        speakers: set[str] = set()
+        for word in raw_words:
+            start = _parse_offset_seconds(word["start_offset"])
+            end = _parse_offset_seconds(word["end_offset"])
+            if word["speaker"]:
+                speakers.add(str(word["speaker"]))
+            words.append(
+                {
+                    "text": word["text"],
+                    # 講者標籤只在同一段請求內有意義：第一段的 spk:0 和第二段的
+                    # spk:0 不保證是同一人，所以加上段號，跨段一定換段。
+                    "speaker": f"{index}:{word['speaker']}",
+                    "start": None if start is None else offset + start,
+                    "end": None if end is None else offset + max(end, start or end),
+                    "start_offset": None if start is None else offset + start,
+                }
+            )
+        return _GeminiChunk(words=words, speaker_count=len(speakers))
+
+    async def _fill_with_taigi(
+        self, pcm: bytes, rate: int, pieces: list[tuple[float, float]]
+    ) -> list[Segment]:
+        """沒轉到的時段送台語 STT。任何一段失敗都只是那段沒有字，不影響其他。"""
+        if not pieces:
+            return []
+        client = self._get_taigi()
+        if client is None:
+            logger.warning("stage=clinic_transcribe 沒有台語 STT 金鑰，%d 段沒補", len(pieces))
+            return []
+
+        segments: list[Segment] = []
+        for start, end in pieces:
+            # 超過台語 STT 上限的在最安靜處切開（同聊天室語音，audio.split_on_pauses）。
+            cursor = start
+            for part in audio.split_on_pauses(audio.slice_pcm(pcm, rate, start, end), rate):
+                seconds = len(part) / 2 / rate
+                text = await self._taigi_once(client, audio.pcm16_to_wav(part, rate))
+                if text and plausible_taigi_text(text, seconds):
+                    segments.append(Segment(text=text, start_seconds=cursor))
+                cursor += seconds
+        return segments
+
+    async def _taigi_once(self, client: Any, wav: bytes) -> str:
+        """撞到 429 就等窗口過去再試一次；聊天室那邊不等，這裡是背景工作等得起。"""
+        for attempt in range(2):
+            try:
+                return await self._pacer.run(
+                    lambda: asyncio.to_thread(client.transcribe_wav, wav)
+                )
+            except Exception as exc:  # noqa: BLE001 - 單段失敗只少那一段
+                if attempt == 0 and "429" in str(exc):
+                    await asyncio.sleep(TAIGI_RATE_LIMIT_WAIT_SECONDS)
+                    continue
+                logger.warning("stage=clinic_transcribe 台語 STT 失敗：%s", type(exc).__name__)
+                return ""
+        return ""

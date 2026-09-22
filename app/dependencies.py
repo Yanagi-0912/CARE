@@ -146,6 +146,7 @@ from app.services.rag import (
     RagAnswerService,
 )
 from app.services.rag.claim_verification.identity import GeminiClaimIdentityVerifier
+from app.services.rag.claim_verification.identity_jev import JevClaimIdentityVerifier
 from app.services.rag.claim_verification.matcher import PgVectorClaimMatcher
 from app.services.rag.claim_verification.normalizer import GeminiClaimNormalizer
 from app.services.rag.claim_verification.service import ClaimVerificationService
@@ -559,8 +560,11 @@ if settings.CLAIM_VERIFICATION_ENABLED:
         content_field=settings.MONGODB_TEXT_FIELD,
         min_score=settings.CLAIM_MATCH_MIN_SCORE,
     )
-    _claim_identity_verifier = GeminiClaimIdentityVerifier(
-        gemini_service=_gemini_service
+    # 先問 Jev（中位數 0.27 秒），Jev 失敗才問 Gemini（中位數 2.1 秒）；Gemini 版
+    # 仍要接 gemini_service，理由同上。評測數字與門檻見 identity_jev.py。
+    _claim_identity_verifier = JevClaimIdentityVerifier(
+        api_key=settings.TYPESAFE_API_KEY,
+        fallback=GeminiClaimIdentityVerifier(gemini_service=_gemini_service),
     )
     async def _claim_related_answer(claim: str) -> tuple[str, tuple[SourceRef, ...]]:
         """未命中時那段「相關衛教資訊」改由 RAG 生成，而不是貼原始片段。

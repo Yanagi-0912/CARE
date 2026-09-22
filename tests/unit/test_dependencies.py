@@ -127,6 +127,10 @@ def test_claim_verification_service_is_wired_with_identity_verifier():
     assert service is not None
     assert service._identity_verifier is dependencies._claim_identity_verifier
     assert service._identity_verifier is not None
+    # Jev 失敗時退回的 Gemini 版也要真的接上 gemini_service，否則 Jev 一掛
+    # 就是每次都 raise（見 identity.py「唯一的例外」）。
+    fallback = service._identity_verifier._fallback
+    assert fallback._gemini is dependencies._gemini_service
 
 
 def test_claim_matcher_is_wired_with_content_field_from_settings():

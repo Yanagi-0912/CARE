@@ -203,6 +203,14 @@ _gemini_service = GeminiService(
     model_name=settings.MODEL_NAME,
 )
 
+
+def _gemini_for(model_name: str) -> GeminiService:
+    """主流程各段的模型（見 config.AGENT_MODEL_NAME 等）；與 MODEL_NAME 相同就共用那一份。"""
+    if model_name == settings.MODEL_NAME:
+        return _gemini_service
+    return GeminiService(api_key=settings.GEMINI_API_KEY, model_name=model_name)
+
+
 _llm_guardrail_service = GuardrailService(
     async_text_to_bool=_gemini_service.invoke_boolean_structured_output,
 )
@@ -408,7 +416,7 @@ _web_search_service = WebSearchService(
     # _gemini_service：知識庫生成、guardrail、問診都在用它，沒一起量過。
     gemini_service=GeminiService(
         api_key=settings.GEMINI_API_KEY,
-        model_name=settings.MODEL_NAME,
+        model_name=settings.WEB_GENERATE_MODEL_NAME,
         thinking_level=WEB_GENERATE_THINKING_LEVEL,
     ),
     web_client=_firecrawl_client,
@@ -418,7 +426,7 @@ _web_search_service = WebSearchService(
 )
 
 _rag_answer_service = RagAnswerService(
-    gemini_service=_gemini_service,
+    gemini_service=_gemini_for(settings.RAG_GENERATE_MODEL_NAME),
     retriever=_rag_retriever,
     reranker=_rag_reranker,
     rerank_top_n=settings.RAG_RERANK_TOP_N,
@@ -666,7 +674,7 @@ except Exception:
     _rag_router = None
 
 _care_agent = Agent(
-    llm=_gemini_service.chat_model,
+    llm=_gemini_for(settings.AGENT_MODEL_NAME).chat_model,
     guardrail_service=_guardrail_service,
     urgency_classifier=_urgency_classifier,
     rag_router=_rag_router,

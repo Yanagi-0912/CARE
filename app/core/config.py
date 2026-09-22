@@ -38,6 +38,12 @@ class Settings:
     # Gemini API 配置
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY")
     MODEL_NAME: str = os.getenv("MODEL_NAME", "gemini-3.8-flash")
+    # 主流程三段可以各自換模型，沒填（或 ConfigMap 給空字串）就沿用 MODEL_NAME。
+    # 只開這三段：急迫度、藥袋辨識、用藥風險、陪診摘要錯了會直接傷到人，
+    # 一律留在 MODEL_NAME，不跟著換。
+    AGENT_MODEL_NAME: str = os.getenv("AGENT_MODEL_NAME") or MODEL_NAME
+    RAG_GENERATE_MODEL_NAME: str = os.getenv("RAG_GENERATE_MODEL_NAME") or MODEL_NAME
+    WEB_GENERATE_MODEL_NAME: str = os.getenv("WEB_GENERATE_MODEL_NAME") or MODEL_NAME
 
     # Line Messaging API 配置
     LINE_CHANNEL_ID: str = os.getenv("LINE_CHANNEL_ID")

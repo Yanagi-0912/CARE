@@ -183,7 +183,10 @@ class LineEventDispatcher:
         # 語言在進 handler 之前就決定好：以前是在 except 裡才查，處理失敗時
         # 再查一次 Mongo——如果失敗的原因正是 Mongo 掛了，這一查會在 except
         # 裡再炸一次，使用者連「發生錯誤」都收不到。
-        user_language = await self._resolve_user_language_safely(user_id)
+        # 讀一次檔案給整條路徑用：以前這裡讀一次決定語言，handler 進去再讀一次
+        # 拿字級、語音設定，媒體訊息辨識前又讀一次——同一筆資料一則訊息查三次。
+        user_profile = await self._load_user_profile_safely(user_id)
+        user_language = self._language_from_profile(user_profile)
 
         try:
             log_start(
@@ -192,7 +195,7 @@ class LineEventDispatcher:
                 user=user_id[:10],
             )
             async with self._user_lock(user_id):
-                await handler(event)
+                await handler(event, user_profile=user_profile)
         except LineValidationError as e:
             status = "validation_error"
             await self._reply_error_safely(reply_token, user_id, str(e), user_language)
@@ -222,12 +225,15 @@ class LineEventDispatcher:
             if entry[1] <= 0 and self._user_locks.get(user_id) is entry:
                 del self._user_locks[user_id]
 
-    async def _resolve_user_language_safely(self, user_id: str) -> str:
+    async def _load_user_profile_safely(self, user_id: str) -> dict | None:
+        """讀不到就回 None：語言用預設，下游 handler 會自己再試一次。"""
+        if not self._user_profile_service:
+            return None
         try:
-            return await self._resolve_user_language(user_id)
+            return await self._user_profile_service.get_user_profile(user_id)
         except Exception:
-            logger.warning("讀取使用者語言失敗，以預設語言回覆", exc_info=True)
-            return DEFAULT_USER_LANGUAGE
+            logger.warning("讀取使用者檔案失敗，以預設語言回覆", exc_info=True)
+            return None
 
     async def _reply_error_safely(
         self, reply_token: str, user_id: str, text: str, language: str
@@ -244,11 +250,13 @@ class LineEventDispatcher:
         except Exception:
             logger.exception("錯誤說明也送不出去 user_id=%s", user_id[:10])
 
-    async def _handle_MessageEvent(self, event: MessageEvent) -> None:
+    async def _handle_MessageEvent(
+        self, event: MessageEvent, *, user_profile: dict | None = None
+    ) -> None:
         message = event.message
 
         if isinstance(message, TextMessageContent):
-            await self._message_handler.handle(event)
+            await self._message_handler.handle(event, user_profile=user_profile)
         elif isinstance(message, LocationMessageContent):
             await self._location_handler.handle(event)
         elif isinstance(
@@ -260,14 +268,18 @@ class LineEventDispatcher:
                 FileMessageContent,
             ),
         ):
-            await self._media_handler.handle(event)
+            await self._media_handler.handle(event, user_profile=user_profile)
         elif isinstance(message, StickerMessageContent):
-            await self._reply_to_sticker(event, message)
+            await self._reply_to_sticker(event, message, user_profile=user_profile)
         else:
             logger.warning("Unsupported message content type: %s", type(message).__name__)
 
     async def _reply_to_sticker(
-        self, event: MessageEvent, message: StickerMessageContent
+        self,
+        event: MessageEvent,
+        message: StickerMessageContent,
+        *,
+        user_profile: dict | None = None,
     ) -> None:
         """貼圖回一句固定的話，不進 agent（理由見 sticker_reply 模組說明）。
 
@@ -285,7 +297,11 @@ class LineEventDispatcher:
             keywords=len(message.keywords or []),
             has_text=bool(message.text),
         )
-        language = await self._resolve_user_language(user_id)
+        language = (
+            self._language_from_profile(user_profile)
+            if user_profile is not None
+            else await self._resolve_user_language(user_id)
+        )
         await self._replier.reply(
             reply_token=event.reply_token,
             message_text=t(key, language=language),
@@ -294,10 +310,11 @@ class LineEventDispatcher:
             language=language,
         )
 
-    async def _handle_PostbackEvent(self, event: PostbackEvent) -> None:
+    async def _handle_PostbackEvent(
+        self, event: PostbackEvent, *, user_profile: dict | None = None
+    ) -> None:
         user_id = getattr(event.source, "user_id", "")
-        user_profile = None
-        if self._user_profile_service:
+        if user_profile is None and self._user_profile_service:
             user_profile = await self._user_profile_service.get_user_profile(user_id)
 
         # 下游 handler 只拿得到 user_id，語言與字級改由 ContextVar 傳遞
@@ -607,7 +624,9 @@ class LineEventDispatcher:
             user_id=user_id,
         )
 
-    async def _handle_FollowEvent(self, event: FollowEvent) -> None:
+    async def _handle_FollowEvent(
+        self, event: FollowEvent, *, user_profile: dict | None = None
+    ) -> None:
         """加好友（含解除封鎖後加回）時回一張歡迎卡。
 
         任何失敗都只記 log、不往外拋：外層 handle() 的例外處理會回「處理訊息時
@@ -629,7 +648,9 @@ class LineEventDispatcher:
         except Exception:
             logger.exception("Failed to send welcome card")
 
-    async def _handle_UnfollowEvent(self, event: UnfollowEvent) -> None:
+    async def _handle_UnfollowEvent(
+        self, event: UnfollowEvent, *, user_profile: dict | None = None
+    ) -> None:
         """封鎖或刪除好友：只把 profile 標成不再追蹤，不回覆（也沒有 reply token）。
 
         不刪資料：LINE 的封鎖是可逆的，解除封鎖會再收到 FollowEvent；而且家人
@@ -675,7 +696,7 @@ class LineEventDispatcher:
             )
         return normalize_user_language(line_language), normalize_user_font_size(None)
 
-    async def _handle_unsupported_event(self, event) -> None:
+    async def _handle_unsupported_event(self, event, *, user_profile=None) -> None:
         logger.warning("Unsupported LINE event type: %s", type(event).__name__)
 
     async def _resolve_user_language(self, user_id: str) -> str:

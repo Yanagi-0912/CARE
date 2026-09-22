@@ -1,3 +1,4 @@
+import asyncio
 """媒體辨識失敗要分開講：太大／不支援／服務失敗／真的沒內容；讀取動畫先開。"""
 
 from datetime import datetime
@@ -146,11 +147,14 @@ async def test_loading_animation_starts_before_extraction():
     handler = _handler(loading=loading)
 
     async def _process(**_k):
+        # 動畫是背景任務，在辨識第一次讓出事件迴圈時就會跑；辨識本身是
+        # 下載＋n8n／STT，一定會讓出。這裡用 sleep(0) 模擬那一次讓出。
+        await asyncio.sleep(0)
         order.append(("extract", None))
         return "辨識結果"
 
     with patch(PROCESS, new_callable=AsyncMock, side_effect=_process):
         await handler.handle(_event(_image()))
 
-    assert order[0] == ("loading", "U12345")
+    assert order[0] == ("loading", "U12345"), "動畫不等辨識，辨識也不等動畫"
     assert ("extract", None) in order

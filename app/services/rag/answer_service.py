@@ -187,9 +187,10 @@ class RagAnswerService:
 
         speculative = self._start_speculative_generate(user_text, candidates)
         rewrite = self._start_speculative_rewrite(user_text, candidates)
+        link_prefetch = self._start_link_prefetch(candidates)
         try:
             return await self._answer_from(
-                user_text, candidates, speculative, rewrite, timing
+                user_text, candidates, speculative, rewrite, link_prefetch, timing
             )
         finally:
             # 冪等：正常路徑上任務已被 await，這裡不做事；提早 return 或例外
@@ -197,6 +198,10 @@ class RagAnswerService:
             # （改寫現在只給網搜用），也是在這裡被取消。
             _abandon_task(speculative)
             _abandon_task(rewrite)
+            # 死鏈預查不取消、讓它自己跑完（有總預算兜著）：取消會讓
+            # `_check_many` 在子任務還在跑時關掉 httpx client，噴一堆與這題
+            # 無關的例外；跑完的結果還會進快取，下一題引用同一來源時省一輪。
+            _let_finish(link_prefetch)
 
     async def _answer_from(
         self,
@@ -204,6 +209,7 @@ class RagAnswerService:
         candidates: list[Document],
         speculative: "asyncio.Task[str] | None",
         rewrite: "asyncio.Task[RewrittenQuery] | None",
+        link_prefetch: "asyncio.Task[frozenset[str]] | None",
         timing: dict[str, Any],
     ) -> str:
         approved: list[Document] | None = candidates
@@ -267,7 +273,7 @@ class RagAnswerService:
                 return await self._web_or_no_hits(user_text, rewrite)
             return rag_fail(RagFailCode.MODEL_REFUSE)
 
-        dead = await self._dead_source_urls(kb_answer, ranked, timing)
+        dead = await self._dead_source_urls(kb_answer, ranked, timing, link_prefetch)
         return self._append_sources(kb_answer, ranked, dead)
 
     @staticmethod
@@ -554,8 +560,9 @@ class RagAnswerService:
     def _cited_urls(answer_text: str, docs: list[Document]) -> list[str]:
         """只取答案真的引用到的那幾筆的網址，依引用順序、去重。
 
-        不查全部 `ranked`：沒被引用的 doc 不會出現在來源清單裡，為它們付
-        HTTP 往返是純粹的延遲，也會用不相干的網址稀釋 LRU 快取。
+        來源清單只列被引用的 doc，所以只有這幾筆的存活狀態會影響輸出。
+        預查（`_start_link_prefetch`）雖然把全部候選都查過，最後仍只拿這
+        幾筆的結果。
         """
         urls: list[str] = []
         seen: set[str] = set()
@@ -569,17 +576,65 @@ class RagAnswerService:
             urls.append(url)
         return urls
 
+    def _start_link_prefetch(
+        self, candidates: list[Document]
+    ) -> "asyncio.Task[frozenset[str]] | None":
+        """在分級／生成還在跑的時候就先查候選來源的網址活不活。
+
+        以前是生成完、知道引用了哪幾筆才查，於是整段檢查（線上 14 天 p50
+        0.87 秒、p90 2.6 秒、最差 6.5 秒）直接加在生成之後。候選是誰在檢索
+        精排完就定了，生成只會從裡面挑；先把全部候選查起來，生成完只剩讀結果。
+
+        代價是多查沒被引用的那幾筆——候選最多 `rerank_top_n`（預設 5）筆，
+        多出的 HTTP 往返與被它們佔掉的快取位置都很小。
+        """
+        if self.link_checker is None:
+            return None
+        urls: list[str] = []
+        seen: set[str] = set()
+        for doc in candidates:
+            url = self._doc_url(doc)
+            if url and url not in seen:
+                seen.add(url)
+                urls.append(url)
+        if not urls:
+            return None
+        return asyncio.create_task(dead_urls(self.link_checker, urls))
+
     async def _dead_source_urls(
-        self, answer_text: str, docs: list[Document], timing: dict[str, Any]
+        self,
+        answer_text: str,
+        docs: list[Document],
+        timing: dict[str, Any],
+        link_prefetch: "asyncio.Task[frozenset[str]] | None" = None,
     ) -> frozenset[str]:
-        """判定哪些被引用的網址現在打不開。關閉或失敗時回空集合。"""
+        """判定哪些被引用的網址現在打不開。關閉或失敗時回空集合。
+
+        有預查任務時取它的結果再篩出被引用的；`checked` 仍記被引用的筆數，
+        `prefetched` 標出這一筆的等待時間是「預查剩下的尾巴」而不是整段檢查。
+        """
         if self.link_checker is None:
             return frozenset()
         urls = self._cited_urls(answer_text, docs)
         if not urls:
             return frozenset()
-        with stage_timer(logger, "rag_link_check", checked=len(urls)) as lc_timing:
-            dead = await dead_urls(self.link_checker, urls)
+        with stage_timer(
+            logger,
+            "rag_link_check",
+            checked=len(urls),
+            prefetched=True if link_prefetch is not None else None,
+        ) as lc_timing:
+            if link_prefetch is not None:
+                try:
+                    dead_all = await link_prefetch
+                except Exception:
+                    # `dead_urls` 自己就會把例外吃掉回空集合；走到這裡是任務
+                    # 層級的故障（例如被取消），同樣退回「全部照常顯示」。
+                    logger.exception("link_prefetch_failed; showing all sources unchecked")
+                    dead_all = frozenset()
+                dead = frozenset(url for url in urls if url in dead_all)
+            else:
+                dead = await dead_urls(self.link_checker, urls)
             lc_timing["dead"] = len(dead)
         if dead:
             # 記下實際被降級的網址：這是 link rot 的唯一可觀測訊號，也是
@@ -720,6 +775,23 @@ def _abandon_task(task: "asyncio.Task[str] | None") -> None:
         task.cancel()
         return
     task.exception()
+
+
+def _let_finish(task: "asyncio.Task | None") -> None:
+    """放掉一個不再需要結果、但也不值得取消的任務。
+
+    只掛一個取例外的 callback：任務自己跑完，失敗也不會變成
+    "Task exception was never retrieved" 的噪音。
+    """
+    if task is None or task.done():
+        _abandon_task(task)
+        return
+    task.add_done_callback(_consume_task_exception)
+
+
+def _consume_task_exception(task: "asyncio.Task") -> None:
+    if not task.cancelled():
+        task.exception()
 
 
 def dedup_ranked_docs(

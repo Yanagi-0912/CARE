@@ -63,6 +63,18 @@ async def _send_reply(replier: LineReplier, **kwargs):
     return ok, messaging_api
 
 
+def _pushed_audio(messaging_api):
+    """語音是文字送出後另外 push 的那一則；沒有 push 就回 None。"""
+    if not messaging_api.push_message.call_args_list:
+        return None
+    pushes = [
+        call.args[0].messages
+        for call in messaging_api.push_message.call_args_list
+    ]
+    audio = [m for msgs in pushes for m in msgs if hasattr(m, "original_content_url")]
+    return audio[-1] if audio else None
+
+
 def _tool_flex_json(**extra) -> str:
     import json
 
@@ -174,10 +186,12 @@ async def test_reply_passes_language_and_voice_rate_to_tts():
         }
     ]
 
+    # 文字先用 reply token 送、語音合成完另外 push：開語音的人看到答案不必等合成。
     reply_req = messaging_api.reply_message.call_args[0][0]
-    assert len(reply_req.messages) == 2
-    assert reply_req.messages[1].original_content_url == "https://example.com/audio.mp3"
-    assert reply_req.messages[1].duration == 1500
+    assert len(reply_req.messages) == 1
+    audio = _pushed_audio(messaging_api)
+    assert audio.original_content_url == "https://example.com/audio.mp3"
+    assert audio.duration == 1500
 
 
 # 台語使用者的文字是 zh-TW、語音是 nan-TW：文字（Quick Reply 標籤）照 language，
@@ -203,6 +217,9 @@ async def test_reply_speech_language_goes_to_tts_while_text_keeps_language():
     reply_req = messaging_api.reply_message.call_args[0][0]
     qr_label = reply_req.messages[-1].quick_reply.items[0].action.label
     assert qr_label == t("location.share_qr_label", "zh-TW")
+    # LINE 只顯示聊天室最後一則的 quickReply：後到的語音要掛同一組，按鈕才不會消失。
+    audio_qr = _pushed_audio(messaging_api).quick_reply
+    assert audio_qr.items[0].action.label == qr_label
 
 
 @pytest.mark.asyncio
@@ -408,6 +425,60 @@ async def test_reply_tts_failure_still_sends_text_without_raising():
     reply_req = messaging_api.reply_message.call_args[0][0]
     assert len(reply_req.messages) == 1
     assert reply_req.messages[0].text == "hello"
+    assert _pushed_audio(messaging_api) is None
+
+
+@pytest.mark.asyncio
+async def test_text_is_sent_before_tts_finishes():
+    """語音合成不能擋在文字前面：reply_message 要在 synthesize 回來之前就被呼叫。"""
+    order: list[str] = []
+
+    class SlowTTS(FakeTTSService):
+        async def synthesize(self, *args, **kwargs):
+            order.append("tts")
+            return await super().synthesize(*args, **kwargs)
+
+    replier = LineReplier(token_manager=fake_line_token_manager("token"), tts_service=SlowTTS())
+    with patch("app.services.line_messaging.reply.reply.Configuration"), patch(
+        "app.services.line_messaging.reply.reply.ApiClient"
+    ), patch("app.services.line_messaging.reply.reply.MessagingApi") as mock_api:
+        messaging_api = MagicMock()
+        messaging_api.reply_message.side_effect = lambda *a, **k: order.append("reply")
+        messaging_api.push_message.side_effect = lambda *a, **k: order.append("push")
+        mock_api.return_value = messaging_api
+        ok = await replier.reply(
+            reply_token="rt", message_text="hello", user_id="U1", voice_reply_enabled=True
+        )
+
+    assert ok is True
+    assert order == ["reply", "tts", "push"]
+
+
+@pytest.mark.asyncio
+async def test_tts_audio_is_not_pushed_when_text_never_reached_user():
+    """文字 reply 與 push 都失敗、只剩錯誤說明送出時，不再追加念答案的語音。"""
+    from app.services.line_messaging.send_result import SendResult, SendOutcome
+
+    fake_tts = FakeTTSService()
+    replier = LineReplier(token_manager=fake_line_token_manager("token"), tts_service=fake_tts)
+    failed = SendResult(outcome=SendOutcome.REJECTED, status=400)
+    sent_ok = SendResult(outcome=SendOutcome.OK, status=200)
+    pushes: list[list] = []
+
+    async def fake_push(user_id, messages):
+        pushes.append(messages)
+        return failed if len(pushes) == 1 else sent_ok
+
+    replier._send_reply = AsyncMock(return_value=failed)
+    replier._send_push = fake_push
+
+    ok = await replier.reply(
+        reply_token="rt", message_text="hello", user_id="U1", voice_reply_enabled=True
+    )
+
+    assert ok is True, "錯誤說明送出去了"
+    assert fake_tts.calls == []
+    assert len(pushes) == 2
 
 
 @pytest.mark.asyncio
@@ -586,9 +657,9 @@ async def test_flex_branch_appends_audio_when_voice_enabled():
 
     assert ok is True
     sent = messaging_api.reply_message.call_args[0][0].messages
-    assert len(sent) == 2
+    assert len(sent) == 1
     assert isinstance(sent[0], FlexMessage)
-    assert sent[1].original_content_url == "https://example.com/audio.mp3"
+    assert _pushed_audio(messaging_api).original_content_url == "https://example.com/audio.mp3"
     assert fake_tts.calls[0]["text"] == "蜂蜜放室溫即可。", "朗讀的是組卡前的純文字，且不含前綴"
 
 
@@ -664,9 +735,9 @@ async def test_tool_flex_with_speech_text_appends_audio():
 
     assert ok is True
     sent = messaging_api.reply_message.call_args[0][0].messages
-    assert len(sent) == 2
+    assert len(sent) == 1
     assert isinstance(sent[0], FlexMessage)
-    assert sent[1].original_content_url == "https://example.com/audio.mp3"
+    assert _pushed_audio(messaging_api).original_content_url == "https://example.com/audio.mp3"
     assert fake_tts.calls == [
         {
             "text": "判定：錯誤\n蜂蜜不會讓一歲以上的孩子中毒。",
@@ -902,10 +973,10 @@ async def test_table_card_is_not_read_aloud():
 
     assert ok is True
     sent = messaging_api.reply_message.call_args[0][0].messages
-    assert len(sent) == 3
+    assert len(sent) == 2
     assert isinstance(sent[0], FlexMessage)
     assert sent[1].text == ANSWER
-    assert sent[2].original_content_url == "https://example.com/audio.mp3"
+    assert _pushed_audio(messaging_api).original_content_url == "https://example.com/audio.mp3"
     assert [call["text"] for call in fake_tts.calls] == [ANSWER]
 
 

@@ -7,7 +7,7 @@
 
 介面與 TTSService.synthesize 相同，LineReplier 分不出是哪一種：回傳的第二個值是公開
 網址，reply._resolve_audio_url 原樣使用。呼叫失敗就拋例外，由
-reply._append_tts_audio_message 接住、改成只回文字，跟本地合成失敗一樣。
+reply._push_tts_audio 接住、放棄語音（文字已經送出），跟本地合成失敗一樣。
 """
 
 from __future__ import annotations

@@ -55,21 +55,27 @@ def _agent(llm) -> Agent:
     return Agent(llm=llm, guardrail_service=_FakeGuardrail())
 
 
+# guardrail 節點會先用全套工具問一次模型（投機，見 nodes._start_speculative_decision）；
+# 這個劇本的第一次呼叫選了 get_rag_answer 而 guardrail 沒放行，所以那一次被丟掉、
+# agent 節點再問一次。往返次數的計算要扣掉這一次。
+SPECULATIVE_MISS = 1
+
+
 @pytest.mark.asyncio
 async def test_longest_legitimate_path_completes():
     """最長合法路徑（MAX_TOOL_ROUNDS 次往返後回話）必須能正常結束。"""
-    llm = _ScriptedLLM(tool_rounds=MAX_TOOL_ROUNDS)
+    llm = _ScriptedLLM(tool_rounds=MAX_TOOL_ROUNDS + SPECULATIVE_MISS)
 
     result = await _agent(llm).invoke(user_input="你好")
 
     assert result["response"] == "最終回覆"
-    assert llm.invocations == MAX_TOOL_ROUNDS + 1
+    assert llm.invocations == MAX_TOOL_ROUNDS + 1 + SPECULATIVE_MISS
 
 
 @pytest.mark.asyncio
 async def test_one_round_over_the_limit_is_stopped():
     """上限是緊的：多一次往返就中止，不是靠很大的預設值剛好沒撞到。"""
-    llm = _ScriptedLLM(tool_rounds=MAX_TOOL_ROUNDS + 1)
+    llm = _ScriptedLLM(tool_rounds=MAX_TOOL_ROUNDS + 1 + SPECULATIVE_MISS)
 
     with pytest.raises(GraphRecursionError):
         await _agent(llm).invoke(user_input="你好")
@@ -83,4 +89,4 @@ async def test_model_that_never_stops_calling_tools_is_bounded():
     with pytest.raises(GraphRecursionError):
         await _agent(llm).invoke(user_input="你好")
 
-    assert llm.invocations == MAX_TOOL_ROUNDS + 1
+    assert llm.invocations == MAX_TOOL_ROUNDS + 1 + SPECULATIVE_MISS

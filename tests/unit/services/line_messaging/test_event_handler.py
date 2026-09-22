@@ -188,11 +188,14 @@ async def test_handle_text_message_success_adds_tts_audio(
     reply_req = mock_line_api.reply_message.call_args[0][0]
     assert reply_req.reply_token == "dummy_token"
     assert reply_req.messages[0].text == "AI 回覆"
-    assert reply_req.messages[1].type == "audio"
-    assert reply_req.messages[1].original_content_url == (
+    assert len(reply_req.messages) == 1, "文字先送，不等語音合成"
+    # 語音合成完另外 push 一則
+    push_req = mock_line_api.push_message.call_args[0][0]
+    assert push_req.messages[0].type == "audio"
+    assert push_req.messages[0].original_content_url == (
         "https://cdn.example/tts/test.mp3"
     )
-    assert reply_req.messages[1].duration == 1234
+    assert push_req.messages[0].duration == 1234
     mock_history_service.save_turn.assert_called_once()
 
 
@@ -356,11 +359,11 @@ async def test_local_tts_file_uses_public_base_url(
     message = TextMessageContent(id="M1", text="你好", quoteToken="dummy")
     await handler.handle(_message_event(message))
 
-    reply_req = mock_line_api.reply_message.call_args[0][0]
-    assert reply_req.messages[1].original_content_url == (
+    push_req = mock_line_api.push_message.call_args[0][0]
+    assert push_req.messages[0].original_content_url == (
         "https://example.com/tts/tts_test.mp3"
     )
-    assert reply_req.messages[1].duration == 2345
+    assert push_req.messages[0].duration == 2345
     audio_file.unlink(missing_ok=True)
 
 

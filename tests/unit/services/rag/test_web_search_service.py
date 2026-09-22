@@ -1,4 +1,5 @@
 import asyncio
+import asyncio
 import sys
 import time
 import types
@@ -377,11 +378,63 @@ async def test_answer_success_calls_create_from_web_fallback():
         reset_line_user_id(token)
 
     assert WEB_ANSWER_PREFIX in result
+    # 知識回報在背景做，使用者不等它；ContextVar 在 create_task 時已複製，
+    # 即使 handler 之後 reset 了 line_user_id，任務裡讀到的仍是這一則的。
+    await svc.wait_for_background_tasks()
     on_success.assert_awaited_once_with(
         question="高血壓要注意什麼",
         urls=["https://www.hpa.gov.tw/htn"],
         line_user_id="U_LINE",
     )
+
+
+@pytest.mark.asyncio
+async def test_answer_returns_before_knowledge_report_finishes():
+    web = FakeWebClient(
+        hits=[WebSearchHit(title="國健署", url="https://www.hpa.gov.tw/htn", description="控制血壓要規律量測與低鈉飲食。")],
+    )
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow_report(**_kwargs):
+        started.set()
+        await release.wait()
+
+    svc, _ = _make_service(
+        answer_content="請規律量測血壓。", web_client=web, on_web_fallback_success=slow_report
+    )
+    token = set_line_user_id("U_LINE")
+    try:
+        result = await asyncio.wait_for(svc.answer("高血壓要注意什麼"), timeout=2)
+    finally:
+        reset_line_user_id(token)
+
+    assert WEB_ANSWER_PREFIX in result
+    await asyncio.wait_for(started.wait(), timeout=2)
+    release.set()
+    await svc.wait_for_background_tasks()
+
+
+@pytest.mark.asyncio
+async def test_link_check_runs_while_generating():
+    """死鏈檢查與生成並行：generate 回來之前 checker 就已經被叫過。"""
+    url = "https://www.hpa.gov.tw/htn"
+    web = FakeWebClient(hits=[WebSearchHit(title="國健署", url=url, description="控制血壓要規律量測與低鈉飲食。")])
+    checker = FakeLinkChecker()
+    svc, gemini = _make_service(web_client=web, link_checker=checker)
+    seen_before_generate: list[str] = []
+
+    async def generate(_messages):
+        await asyncio.sleep(0)
+        seen_before_generate.extend(checker.checked)
+        return AIMessage(content="請規律量測血壓。")
+
+    gemini.chat_model.ainvoke = AsyncMock(side_effect=generate)
+
+    result = await svc.answer("高血壓要注意什麼")
+
+    assert seen_before_generate == [url]
+    assert url in result
 
 
 @pytest.mark.asyncio
@@ -511,6 +564,7 @@ async def test_answer_create_failure_still_returns_answer():
 
     assert WEB_ANSWER_PREFIX in result
     assert "https://www.hpa.gov.tw/htn" in result
+    await svc.wait_for_background_tasks()
     on_success.assert_awaited_once()
 
 
@@ -635,6 +689,7 @@ async def test_dead_url_never_reaches_knowledge_report():
     finally:
         reset_line_user_id(token)
 
+    await svc.wait_for_background_tasks()
     reported.assert_awaited_once()
     assert reported.await_args.kwargs["urls"] == [alive]
 
@@ -743,6 +798,7 @@ async def test_generation_and_report_use_original_question():
 
     prompt = gemini.chat_model.ainvoke.await_args.args[0][0].content
     assert "PGAD 是什麼病" in prompt
+    await svc.wait_for_background_tasks()
     assert on_success.await_args.kwargs["question"] == "PGAD 是什麼病"
 
 

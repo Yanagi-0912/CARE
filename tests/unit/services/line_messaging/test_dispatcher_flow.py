@@ -157,7 +157,7 @@ async def test_same_user_events_run_in_order_while_other_users_run_in_parallel()
     order = []
     gate = asyncio.Event()
 
-    async def _handle(event):
+    async def _handle(event, **_kwargs):
         order.append(("start", event.source.user_id, event.message.text))
         if event.message.text == "slow":
             await gate.wait()

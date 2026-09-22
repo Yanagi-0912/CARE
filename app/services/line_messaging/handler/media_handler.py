@@ -10,7 +10,6 @@ from linebot.v3.webhooks import (
 )
 from app.core.request_logging import log_stage
 from app.core.user_language import (
-    DEFAULT_USER_LANGUAGE,
     get_detected_speech_language,
     normalize_user_language,
     reset_detected_speech_language,
@@ -74,7 +73,9 @@ class LineMediaHandler(BaseLineMessageHandler):
         # 沒注入時語音一律當問題，跟以前一樣。
         self._clinic_recording_flow = clinic_recording_flow
 
-    async def handle(self, event: MessageEvent) -> None:
+    async def handle(
+        self, event: MessageEvent, *, user_profile: dict | None = None
+    ) -> None:
         message = event.message
         if not isinstance(
             message,
@@ -92,14 +93,16 @@ class LineMediaHandler(BaseLineMessageHandler):
         # 完、進 _process_and_reply 才開，使用者這段時間看到的是已讀不回。
         # _process_and_reply 會再開一次，那一次順便把 60 秒的窗口從 agent 開始
         # 重新算，所以這裡不用擔心辨識太久動畫先消失。
-        if self._loading_animation_service is not None:
-            await self._loading_animation_service.start(user_id)
+        # 背景開，不等它（見 _schedule_loading_animation）。
+        self._schedule_loading_animation(user_id)
         # 辨識語音之前就要知道使用者的語言：說中文的人同時送台語 STT 與 Gemini
         # 再選一份，其他語言只送 Gemini（備援 faster-whisper）並把語言當提示。
         # 語言原本要到 _process_and_reply 讀了 profile 才設定，那時辨識早就做完了
         # ——所有語音都是用預設的 zh-TW 辨識的（2026-09-14 發現，ba9bf1b 的語言
         # 提示因此從沒生效）。
-        language_choice = await self._language_choice_for(user_id)
+        if user_profile is None:
+            user_profile = await self._load_profile_or_none(user_id)
+        language_choice = self._language_choice_from_profile(user_profile)
         if await self._handled_as_clinic_recording(event, user_id, language_choice):
             return
         lang_token = set_request_language(language_choice)
@@ -120,6 +123,7 @@ class LineMediaHandler(BaseLineMessageHandler):
             message_type,
             image_text=image_text,
             speech_language=detected_speech_language,
+            user_profile=user_profile,
         )
 
     async def _handled_as_clinic_recording(
@@ -153,16 +157,19 @@ class LineMediaHandler(BaseLineMessageHandler):
             logger.exception("stage=clinic_chat 判斷是否為看診錄音時出錯，照一般語音處理")
             return False
 
-    async def _language_choice_for(self, user_id: str) -> str:
-        """讀使用者設定的語言（含台語）；讀不到就用預設，不擋辨識。"""
+    async def _load_profile_or_none(self, user_id: str) -> dict | None:
+        """dispatcher 沒把檔案帶下來時自己讀；讀不到回 None（語言用預設），不擋辨識。
+
+        回 None 時 _process_and_reply 會再讀一次——那是「Mongo 剛剛壞掉」的
+        邊緣情況，多一次讀取換來與以前相同的失敗行為（那邊讀不到就回錯誤）。
+        """
         if not self._user_profile_service or not user_id:
-            return DEFAULT_USER_LANGUAGE
+            return None
         try:
-            profile = await self._user_profile_service.get_user_profile(user_id)
+            return await self._user_profile_service.get_user_profile(user_id)
         except Exception:
             logger.warning("辨識前讀取使用者語言失敗，以預設語言辨識", exc_info=True)
-            return DEFAULT_USER_LANGUAGE
-        return self._language_choice_from_profile(profile)
+            return None
 
     async def _extract_media_text(
         self, message, user_id: str, language: str | None = None

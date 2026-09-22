@@ -90,6 +90,12 @@ class LineReplier:
         這段 postback data（走失分類器沒把握時用，見 app/services/lost/lost_classifier.py）。
         """
         tts_language = speech_language or language
+        # 文字先送、語音後推：合成要 5 秒起跳（線上 14 天 p50 5.3 秒、p90 11.5
+        # 秒、最差 30 秒），以前在 reply_message 之前 await 它，開語音的使用者
+        # （173/319 則）看到答案的時間就是 agent 之後再加這一整段。現在文字卡
+        # 用 reply token 立刻送出，音檔合成完再用 push 補一則。代價是每則語音
+        # 回覆多吃一則 push 額度（2026-09-22 James 決定接受）。
+        tts_text: str | None = None
         try:
             if not reply_token or not reply_token.strip():
                 raise ValueError("LINE 事件缺少 reply_token")
@@ -118,14 +124,7 @@ class LineReplier:
                 if follow_up_text:
                     messages.append(TextMessage(text=follow_up_text))
                 if tool_speech_text:
-                    await self._append_tts_audio_message(
-                        messages,
-                        tool_speech_text,
-                        voice_reply_enabled=voice_reply_enabled,
-                        language=tts_language,
-                        voice_rate=voice_rate,
-                        voice_gender=voice_gender,
-                    )
+                    tts_text = tool_speech_text
             else:
                 answer_card, card_text = self._build_answer_card(
                     message_text, answer_kind, user_question
@@ -136,31 +135,17 @@ class LineReplier:
                         answer_kind,
                     )
                     messages = [answer_card]
-                    # 卡片路徑同樣附加語音：只有純文字分支有語音的話，開了語音
+                    # 卡片路徑同樣有語音：只有純文字分支有語音的話，開了語音
                     # 回覆的使用者會在 RAG 回覆上靜默失去這個功能。合成用的是
                     # 組卡前的純文字，不是卡片 JSON。
-                    await self._append_tts_audio_message(
-                        messages,
-                        card_text,
-                        voice_reply_enabled=voice_reply_enabled,
-                        language=tts_language,
-                        voice_rate=voice_rate,
-                        voice_gender=voice_gender,
-                    )
+                    tts_text = card_text
                 else:
                     logger.info(
                         f"{LOGGER_HEADER_TEXT} 未組成卡片，將以純文字回覆"
                     )
                     text_message = TextMessage(text=message_text)
                     messages = [text_message]
-                    await self._append_tts_audio_message(
-                        messages,
-                        message_text,
-                        voice_reply_enabled=voice_reply_enabled,
-                        language=tts_language,
-                        voice_rate=voice_rate,
-                        voice_gender=voice_gender,
-                    )
+                    tts_text = message_text
 
             # 表格卡排在回答前面：回答是照這份辨識結果寫的，長輩要先看到機器讀到
             # 什麼，才核對得出讀錯的地方。插在最前面，下面的 quickReply 就照舊掛在
@@ -170,8 +155,9 @@ class LineReplier:
                 logger.info(f"{LOGGER_HEADER_TEXT} 圖片辨識出表格，回答前附上表格卡")
                 messages.insert(0, table_card)
 
-            # quickReply 只會顯示在陣列最後一則訊息上，因此統一在此處掛到最後一則，
-            # 避免 TTS 語音訊息排在文字訊息之後時，導致 Quick Reply 被 LINE 忽略。
+            # quickReply 只會顯示在陣列最後一則訊息上，因此統一在此處掛到最後一則。
+            # 語音那則之後另外 push，會再掛同一組（見 _push_tts_audio）——LINE 只
+            # 顯示聊天室最後一則的 quickReply，音檔到了按鈕不能跟著消失。
             quick_items = []
             if request_location:
                 qr_label = t("location.share_qr_label", language=language)
@@ -197,13 +183,26 @@ class LineReplier:
                 messages[0].quick_reply = None
 
         except Exception:
-            # 組訊息就失敗（TTS、卡片、token）：使用者不能什麼都收不到。
+            # 組訊息就失敗（卡片、token）：使用者不能什麼都收不到。
             logger.exception("Failed to build LINE reply for user %s", user_id)
             messages = [TextMessage(text=t("line.fallback_process_error", language=language))]
+            tts_text = None
 
-        return await self._reply_or_push(
+        ok, delivered = await self._reply_or_push_result(
             reply_token, user_id, messages, language=language
         )
+        # 只有原本那組訊息真的送到了才補語音；退到「發生錯誤」那句時念答案
+        # 只會讓人更糊塗。
+        if delivered and tts_text and voice_reply_enabled and self._tts_service is not None:
+            await self._push_tts_audio(
+                user_id,
+                tts_text,
+                language=tts_language,
+                voice_rate=voice_rate,
+                voice_gender=voice_gender,
+                quick_reply=getattr(messages[-1], "quick_reply", None) if messages else None,
+            )
+        return ok
 
     async def _reply_or_push(
         self,
@@ -213,7 +212,23 @@ class LineReplier:
         *,
         language: str | None,
     ) -> bool:
+        ok, _ = await self._reply_or_push_result(
+            reply_token, user_id, messages, language=language
+        )
+        return ok
+
+    async def _reply_or_push_result(
+        self,
+        reply_token: str,
+        user_id: str,
+        messages: list,
+        *,
+        language: str | None,
+    ) -> tuple[bool, bool]:
         """先用 reply token 回；回不了就改 push，最後至少推一句錯誤說明。
+
+        回 (有沒有送出任何東西, 原本那組訊息有沒有送到)。兩者只在最後退到
+        錯誤說明那一步時不同。
 
         reply token 一分鐘內有效且只能用一次；agent 跑久、LINE 重送、或前面
         某一步已經消耗掉 token，reply 都會被 LINE 以 400 拒絕。以前這裡只記
@@ -226,7 +241,7 @@ class LineReplier:
         result = await self._send_reply(reply_token, messages)
         if result.ok:
             logger.debug("Message sent to LINE for user %s", user_id)
-            return True
+            return True, True
 
         logger.warning(
             f"{LOGGER_HEADER_TEXT} reply 失敗（%s, status=%s），改用 push 補送 user_id=%s",
@@ -236,13 +251,13 @@ class LineReplier:
         )
         if result.outcome is SendOutcome.QUOTA_EXCEEDED:
             # reply 不計額度，429 只會是短時間打太快；push 會吃額度，不值得補。
-            return False
+            return False, False
 
         pushed = await self._send_push(user_id, messages)
         if pushed.ok:
-            return True
+            return True, True
         if pushed.outcome in (SendOutcome.QUOTA_EXCEEDED, SendOutcome.UNAUTHORIZED):
-            return False
+            return False, False
 
         # 同一組訊息 push 也被拒，多半是內容不合法（Flex 太大、欄位錯）。
         # 至少讓使用者知道這一輪沒有回覆，而不是無聲無息。
@@ -250,7 +265,7 @@ class LineReplier:
             user_id,
             [TextMessage(text=t("line.fallback_process_error", language=language))],
         )
-        return fallback.ok
+        return fallback.ok, False
 
     async def reply_flex(
         self, reply_token: str, flex_message: FlexMessage, user_id: str
@@ -542,23 +557,25 @@ class LineReplier:
         return str(message_text)
 
 
-    async def _append_tts_audio_message(
+    async def _push_tts_audio(
         self,
-        messages: list,
+        user_id: str,
         message_text: str,
         *,
-        voice_reply_enabled: bool,
         language: str | None = None,
         voice_rate: str = "normal",
         voice_gender: str = "female",
-    ) -> None:
-        if not voice_reply_enabled or self._tts_service is None:
-            return
+        quick_reply: QuickReply | None = None,
+    ) -> bool:
+        """文字送出之後才合成語音、用 push 補一則。
 
-        # 合成是在 reply_message 之前被 await 的，所以這段時間**直接加在**
-        # agent＋RAG 之後。實測 4/5 使用者開了語音回覆，這是常態路徑而非
-        # 邊緣，但整條路上只有這一段沒被量過。ok 欄位要分開記：失敗會轉
-        # gTTS 備援或退回純文字，兩者的耗時意義不同。
+        失敗只記 log：文字已經送到，語音是附加的。ok 欄位分開記：失敗會轉
+        gTTS 備援或整個放棄，兩者的耗時意義不同。`quick_reply` 是文字那則掛
+        的同一組按鈕——LINE 只顯示聊天室最後一則的 quickReply，音檔一到，
+        「分享位置」「我迷路了」就會從畫面上消失，所以要再掛一次。
+        """
+        if not message_text or self._tts_service is None:
+            return False
         try:
             with stage_timer(
                 logger, "reply_tts", chars=len(message_text or ""), ok="False"
@@ -572,16 +589,27 @@ class LineReplier:
                 t_tts["ok"] = "True"
             audio_url = self._resolve_audio_url(output)
         except Exception:
-            logger.exception("TTS generation failed; falling back to text reply.")
-            return
+            logger.exception("TTS generation failed; text reply already sent.")
+            return False
+        if not audio_url:
+            return False
 
-        if audio_url:
-            messages.append(
-                AudioMessage(
-                    original_content_url=audio_url,
-                    duration=int(duration_ms or DEFAULT_AUDIO_DURATION_MS),
-                )
+        audio = AudioMessage(
+            original_content_url=audio_url,
+            duration=int(duration_ms or DEFAULT_AUDIO_DURATION_MS),
+            quick_reply=quick_reply,
+        )
+        with stage_timer(logger, "reply_tts_push", ok="False") as t_push:
+            result = await self._send_push(user_id, [audio])
+            t_push["ok"] = str(result.ok)
+        if not result.ok:
+            logger.warning(
+                f"{LOGGER_HEADER_TEXT} 語音補送失敗（%s, status=%s）user_id=%s",
+                result.outcome.value,
+                result.status,
+                user_id[:10],
             )
+        return result.ok
 
     @staticmethod
     def _resolve_audio_url(output: str) -> Optional[str]:

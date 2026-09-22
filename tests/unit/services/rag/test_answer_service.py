@@ -1077,17 +1077,42 @@ async def test_answer_keeps_live_citation_end_to_end():
     assert LIVE_URL in await svc.answer("腳痛怎麼辦")
 
 
-async def test_only_cited_urls_are_checked():
-    """沒被引用的 doc 不會出現在來源清單，為它們付 HTTP 往返是純粹的延遲。"""
-    checker = FakeLinkChecker()
+async def test_candidate_urls_are_checked_while_generating():
+    """死鏈檢查在生成期間就先查全部候選（線上 p50 0.87 秒、最差 6.5 秒那段
+    以前整個排在生成之後）；生成完只拿被引用那幾筆的結果。"""
+    checker = FakeLinkChecker(dead=[DEAD_URL])
+    docs = [_doc(source="國健署", url=LIVE_URL), _doc(source="衛福部", url=DEAD_URL)]
+    svc, gemini, _ = _make_service(
+        docs=docs, answer_content="請規律運動 [1]。", link_checker=checker
+    )
+    checked_before_generate: list[str] = []
+
+    async def generate(_messages):
+        await asyncio.sleep(0)  # 讓預查任務先跑
+        checked_before_generate.extend(checker.checked)
+        return AIMessage(content="請規律運動 [1]。")
+
+    gemini.chat_model.ainvoke = AsyncMock(side_effect=generate)
+
+    result = await svc.answer("腳痛怎麼辦")
+
+    assert sorted(checked_before_generate) == sorted([LIVE_URL, DEAD_URL])
+    assert LIVE_URL in result
+    assert DEAD_URL not in result
+
+
+async def test_dead_candidate_only_hidden_when_cited():
+    """預查查到沒被引用的死鏈不影響輸出：來源清單只列被引用的。"""
+    checker = FakeLinkChecker(dead=[DEAD_URL])
     docs = [_doc(source="國健署", url=LIVE_URL), _doc(source="衛福部", url=DEAD_URL)]
     svc, _, _ = _make_service(
         docs=docs, answer_content="請規律運動 [1]。", link_checker=checker
     )
 
-    await svc.answer("腳痛怎麼辦")
+    result = await svc.answer("腳痛怎麼辦")
 
-    assert checker.checked == [LIVE_URL]
+    assert LIVE_URL in result
+    assert "衛福部" not in result
 
 
 async def test_answer_shows_all_sources_when_checker_raises():

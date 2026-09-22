@@ -689,6 +689,11 @@ def format_user_profile_prompt(user_profile: dict | None) -> str:
     )
 
 
+def _consume_task_exception(task: "asyncio.Task") -> None:
+    if not task.cancelled():
+        task.exception()
+
+
 def _abandon_task(task: "asyncio.Task | None") -> None:
     """收掉不再需要的任務。冪等，可安全重複呼叫。
 
@@ -1044,21 +1049,33 @@ class AgentNodes:
             if answering_tv_news
             else asyncio.create_task(self._guardrail_service.allow_rag_tool(user_input))
         )
+        # 選工具的那次 LLM 呼叫也在這裡起跑（理由見 _start_speculative_decision）。
+        # 急迫度仍然先判、判緊急就整個丟掉：安全檢查還是排在 agent 前面，
+        # 只是模型不用等它。
+        predecided, speculative = self._start_speculative_decision(state)
         try:
             verdict = await self._classify_urgency(user_input, language)
         except BaseException:
             _abandon_task(guardrail_task)
+            _abandon_task(speculative)
             raise
 
         if verdict.is_emergency:
             # 緊急短路：guardrail 還在跑就取消，跑完了也不看。allow_rag 給 False
             # 只是讓 state 有值——emergency_node 根本不掛工具。
             _abandon_task(guardrail_task)
+            _abandon_task(speculative)
+            speculative = None
+            predecided = None
             allow_rag = False
         elif guardrail_task is None:
             allow_rag = True
         else:
-            allow_rag = await guardrail_task
+            try:
+                allow_rag = await guardrail_task
+            except BaseException:
+                _abandon_task(speculative)
+                raise
 
         log_stage(
             logger,
@@ -1075,7 +1092,74 @@ class AgentNodes:
             "allow_rag": allow_rag,
             "urgency": verdict.level,
             "urgency_display": verdict.display,
+            "speculative_decision": speculative,
+            "predecided": predecided,
         }
+
+    def _pre_llm_decision(
+        self, state: State, tool_names: list[str], user_text: str
+    ) -> AIMessage | None:
+        """agent 節點問模型之前的幾條決定性捷徑；有一條成立就不必問模型。"""
+        followup_call = _tv_news_channel_followup(state, tool_names, user_text)
+        if followup_call is not None:
+            return followup_call
+        tv_news_call = _tv_news_claim_call(state, tool_names, user_text)
+        if tv_news_call is not None:
+            return tv_news_call
+        card_call = _health_card_claim_call(
+            state, tool_names, user_text
+        ) or _health_card_rag_followup(state, tool_names, user_text)
+        if card_call is not None:
+            return card_call
+        if self._local_rag_shortcut(state, tool_names, user_text):
+            return _original_text_rag_call(user_text, "shortcut_rag_1")
+        return None
+
+    def _start_speculative_decision(
+        self, state: State
+    ) -> tuple[AIMessage | None, "asyncio.Task | None"]:
+        """在 guardrail 節點還在等判斷的時候，先把「選工具」的 LLM 呼叫排進去。
+
+        線上 14 天（2026-09-08～22，319 則）guardrail 節點 p50 2.6 秒、選工具
+        p50 2.7 秒，兩段串起來每則都要等。兩者其實沒有資料依賴：模型選工具只
+        看對話，guardrail 決定的是「RAG 這個工具給不給掛」。所以先假設會給
+        （掛全部工具）問模型，等 guardrail 回來再對答案：
+
+        - 放行 → 直接用，省下 min(guardrail, 選工具) 的時間。
+        - 不放行、且模型沒選到被收掉的工具 → 仍可用：那個決定在縮小的工具集
+          裡同樣合法。
+        - 不放行、模型偏偏選了 RAG → 丟掉、照舊再問一次（agent_node 處理）。
+          代價是一次白問；線上 36% 的訊息被擋，其中又只有一部分會選 RAG。
+        - 判緊急 → 丟掉（guardrail_node 處理）。線上 5%。
+
+        回 (predecided, task)：捷徑（電視新聞、圖卡、本地 RAG 分流）在這裡就
+        判得出來時回 predecided、不起任務——本地分流會把過半的健康問題直接送
+        RAG，那些訊息問模型是純浪費。
+        """
+        if any(isinstance(m, ToolMessage) for m in state["messages"]):
+            return None, None
+        # 捷徑與模型呼叫都假設 RAG 會放行；agent_node 拿到實際的 allow_rag
+        # 之後再決定能不能沿用（見 agent_node）。
+        assumed = {**state, "allow_rag": True}
+        tools = get_all_tools(include_rag_tool=True)
+        tool_names = [t.name for t in tools]
+        user_text = _latest_human_text(state["messages"])
+        predecided = self._pre_llm_decision(assumed, tool_names, user_text)
+        if predecided is not None:
+            return predecided, None
+        task = asyncio.create_task(self._invoke_llm(assumed, tools))
+        # 起了就一定要有人取例外：agent 被總逾時取消時這個任務可能沒人 await。
+        task.add_done_callback(_consume_task_exception)
+        return None, task
+
+    async def _invoke_llm(self, state: State, tools: list) -> AIMessage:
+        llm_with_tools = self._llm.bind_tools(tools)
+        user_profile_text = format_user_profile_prompt(state.get("user_profile"))
+        language = self._resolve_user_language(state.get("user_profile"))
+        # 日期接在固定規則之後：模型要把「昨天」「禮拜一」換成查服藥狀況的 days_ago。
+        full_prompt = build_system_prompt(language) + build_date_context() + user_profile_text
+        messages = [SystemMessage(content=full_prompt)] + state["messages"]
+        return await llm_with_tools.ainvoke(messages)
 
     async def _classify_urgency(self, user_input: str, language: str) -> UrgencyVerdict:
         if self._urgency_classifier is None:
@@ -1104,33 +1188,32 @@ class AgentNodes:
         tools = get_all_tools(include_rag_tool=state.get("allow_rag", False))
         tool_names = [t.name for t in tools]
         user_text = _latest_human_text(state["messages"])
+        # guardrail 節點先起跑的決定，只在這一輪的第一步用得到；取出後一律清掉。
+        predecided = state.get("predecided")
+        speculative = state.get("speculative_decision")
+        consumed = {"predecided": None, "speculative_decision": None}
 
-        followup_call = _tv_news_channel_followup(state, tool_names, user_text)
-        if followup_call is not None:
-            return {"messages": [followup_call]}
+        # 放行時工具集與 guardrail 節點假設的相同：那邊判過的捷徑結論不變，
+        # 不必（也不該）再判一次——再判會把 rag_route_local 多記一行。
+        already_checked = bool(state.get("allow_rag")) and (
+            predecided is not None or speculative is not None
+        )
+        if predecided is not None and already_checked:
+            return {"messages": [predecided], **consumed}
 
-        tv_news_call = _tv_news_claim_call(state, tool_names, user_text)
-        if tv_news_call is not None:
-            return {"messages": [tv_news_call]}
-
-        card_call = _health_card_claim_call(
-            state, tool_names, user_text
-        ) or _health_card_rag_followup(state, tool_names, user_text)
-        if card_call is not None:
-            return {"messages": [card_call]}
-
-        if self._local_rag_shortcut(state, tool_names, user_text):
-            return {"messages": [_original_text_rag_call(user_text, "shortcut_rag_1")]}
-
-        llm_with_tools = self._llm.bind_tools(tools)
-        user_profile_text = format_user_profile_prompt(state.get("user_profile"))
-        language = self._resolve_user_language(state.get("user_profile"))
-        # 日期接在固定規則之後：模型要把「昨天」「禮拜一」換成查服藥狀況的 days_ago。
-        full_prompt = build_system_prompt(language) + build_date_context() + user_profile_text
-        messages = [SystemMessage(content=full_prompt)] + state["messages"]
+        pre = None if already_checked else self._pre_llm_decision(state, tool_names, user_text)
+        if pre is not None:
+            _abandon_task(speculative)
+            return {"messages": [pre], **consumed}
 
         t0 = time.perf_counter()
-        response = await llm_with_tools.ainvoke(messages)
+        response = None
+        speculation = None
+        if speculative is not None:
+            response = await self._take_speculative_decision(speculative, tool_names)
+            speculation = "hit" if response is not None else "miss"
+        if response is None:
+            response = await self._invoke_llm(state, tools)
         tool_calls = getattr(response, "tool_calls", None) or []
         force_rag = False
         force_upload = False
@@ -1263,7 +1346,32 @@ class AgentNodes:
             force_location=force_location or None,
             force_nearby=force_nearby or None,
             force_official_site=force_official_site or None,
+            # hit＝用了 guardrail 期間先問好的答案；miss＝先問的選到被收掉的
+            # 工具或失敗、重問了一次；沒有這個欄位＝這一步沒有投機（工具後的
+            # 組回覆那一步一定沒有）。
+            speculation=speculation,
             ms=int((time.perf_counter() - t0) * 1000),
         )
 
-        return {"messages": [response]}
+        return {"messages": [response], **consumed}
+
+    async def _take_speculative_decision(
+        self, task: "asyncio.Task", tool_names: list[str]
+    ) -> AIMessage | None:
+        """拿先問好的答案；用不了就回 None 讓呼叫端照舊再問。
+
+        用不了的情況：模型選了這一輪沒提供的工具（guardrail 沒放行 RAG，模型
+        卻選了 get_rag_answer）——沿用會讓 _execute_offered_tools 攔下它、模型
+        再繞一圈；直接重問比較快也比較乾淨。任務失敗也一樣重問，讓正常路徑
+        的錯誤處理接手。
+        """
+        try:
+            response = await task
+        except Exception:
+            logger.warning("speculative_decision_failed; asking again", exc_info=True)
+            return None
+        offered = set(tool_names)
+        for call in getattr(response, "tool_calls", None) or []:
+            if isinstance(call, dict) and call.get("name") not in offered:
+                return None
+        return response

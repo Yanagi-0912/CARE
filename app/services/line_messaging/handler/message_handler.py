@@ -88,6 +88,27 @@ class BaseLineMessageHandler:
         self._clinic_recording_flow = clinic_recording_flow
         # 併行任務要被持有參考直到完成，否則可能在跑完之前就被 GC 回收。
         self._safety_alert_tasks: set[asyncio.Task] = set()
+        self._loading_animation_tasks: set[asyncio.Task] = set()
+
+    def _schedule_loading_animation(self, user_id: str) -> None:
+        """讀取動畫丟到背景開，不擋主流程。
+
+        它是一次 LINE API 呼叫（換 token＋HTTP 往返），以前 await 在 agent 之前，
+        文字訊息等一次、媒體訊息等兩次。動畫只是附加效果，開不開成功都不該讓
+        使用者多等；失敗只記 log（start 自己就會吃掉例外）。
+        """
+        if self._loading_animation_service is None or not user_id:
+            return
+
+        async def _run() -> None:
+            try:
+                await self._loading_animation_service.start(user_id)
+            except Exception:  # noqa: BLE001 - 背景旁路，例外不得逸散
+                logger.warning("讀取動畫啟動失敗", exc_info=True)
+
+        task = asyncio.create_task(_run())
+        self._loading_animation_tasks.add(task)
+        task.add_done_callback(self._loading_animation_tasks.discard)
 
     async def _process_and_reply(
         self,
@@ -97,10 +118,14 @@ class BaseLineMessageHandler:
         *,
         image_text: str = "",
         speech_language: str | None = None,
+        user_profile: dict | None = None,
     ) -> None:
         """`speech_language` 是這一則語音實際聽出來的語言（台語或華語），語音訊息
         才有。有值時它蓋過使用者設定的語言，決定回覆要用哪一種念：講台語就用台語
         念回去，不必先到設定頁切語言。文字訊息沒有音訊可判，仍照設定。
+
+        `user_profile` 是 dispatcher 決定語言時已經讀過的那份；有給就不再查一次
+        Mongo。沒給（或讀不到、或新使用者）才在這裡查，並與歷史載入併行。
         """
         user_id = getattr(event.source, "user_id", "")
         reply_token = getattr(event, "reply_token", "")
@@ -127,23 +152,24 @@ class BaseLineMessageHandler:
             self._schedule_safety_alert_check(user_id, user_text)
 
             t0 = time.perf_counter()
-            chat_history = await self._history_service.load_history(
+            history_coro = self._history_service.load_history(
                 user_id=user_id,
                 current_input=user_text,
                 message_type=message_type,
             )
+            if user_profile is None and self._user_profile_service:
+                # 兩筆互不相干的讀取（Redis 歷史、Mongo 檔案）一起等。
+                chat_history, user_profile = await asyncio.gather(
+                    history_coro, self._user_profile_service.get_user_profile(user_id)
+                )
+            else:
+                chat_history = await history_coro
             log_stage(
                 logger,
                 "history_loaded",
                 turns=len(chat_history or []),
                 ms=int((time.perf_counter() - t0) * 1000),
             )
-
-            user_profile = None
-            if self._user_profile_service:
-                user_profile = await self._user_profile_service.get_user_profile(
-                    user_id
-                )
 
             # 文字與語音可能不同：選台語的使用者文字是 zh-TW、語音是 nan-TW。
             # ContextVar 存使用者的選擇，get_request_language() 取出來的是文字語言。
@@ -229,8 +255,7 @@ class BaseLineMessageHandler:
             # tool 才改得到同一個物件（見 app/core/rag_sources.py）。
             rag_sources_token = begin_request_rag_sources()
 
-            if self._loading_animation_service is not None:
-                await self._loading_animation_service.start(user_id)
+            self._schedule_loading_animation(user_id)
 
             t1 = time.perf_counter()
             line_user_token = set_line_user_id(user_id)
@@ -545,8 +570,12 @@ class BaseLineMessageHandler:
 class LineMessageHandler(BaseLineMessageHandler):
     """處理文字訊息事件。"""
 
-    async def handle(self, event: MessageEvent) -> None:
+    async def handle(
+        self, event: MessageEvent, *, user_profile: dict | None = None
+    ) -> None:
         message = event.message
         if not isinstance(message, TextMessageContent):
             raise ValueError("Expected TextMessageContent")
-        await self._process_and_reply(event, message.text, "text")
+        await self._process_and_reply(
+            event, message.text, "text", user_profile=user_profile
+        )

@@ -84,6 +84,20 @@ def _interleave(doc_lists: Sequence[list[Document]], *, limit: int) -> list[Docu
     return merged
 
 
+def _let_finish(task: "asyncio.Task | None") -> None:
+    """放掉不再需要結果的任務：不取消（取消會讓檢查器在子任務還在跑時關掉
+    httpx client），只掛一個取例外的 callback 免得留下噪音。"""
+    if task is None:
+        return
+    if task.done():
+        if not task.cancelled():
+            task.exception()
+        return
+    task.add_done_callback(
+        lambda t: (t.exception() if not t.cancelled() else None)
+    )
+
+
 class WebSearchService:
     def __init__(
         self,
@@ -102,6 +116,8 @@ class WebSearchService:
         self._en_search_domains = tuple(
             domain.strip() for domain in en_search_domains if domain.strip()
         )
+        # 背景的知識回報任務要被持有參考直到完成（asyncio 只持弱參考）。
+        self._background_tasks: set[asyncio.Task] = set()
 
     async def answer(
         self, query: str, *, search_queries: RewrittenQuery | None = None
@@ -125,8 +141,16 @@ class WebSearchService:
             logger.info("rag_fail code=%s", RagFailCode.WEB_EMPTY)
             return rag_fail(RagFailCode.WEB_EMPTY)
 
-        web_answer = await self._generate_answer(query, web_docs)
+        # 死鏈檢查與生成並行：要查的網址在搜完就定了，不必等生成完才開始。
+        # 拒答那條路用不到結果，任務讓它自己跑完（結果會進快取）。
+        link_check = asyncio.create_task(self._dead_source_urls(web_docs))
+        try:
+            web_answer = await self._generate_answer(query, web_docs)
+        except BaseException:
+            _let_finish(link_check)
+            raise
         if self._is_cannot_answer(web_answer):
+            _let_finish(link_check)
             marker = matched_cannot_answer_marker(web_answer, CANNOT_ANSWER_MARKERS)
             preview = answer_preview(web_answer)
             logger.info(
@@ -138,10 +162,34 @@ class WebSearchService:
             return rag_fail(RagFailCode.MODEL_REFUSE)
 
         annotated = f"{web_answer_prefix()}\n\n{web_answer}"
-        dead = await self._dead_source_urls(web_docs)
+        dead = await link_check
         result = self._append_sources(annotated, web_docs, dead)
-        await self._maybe_create_knowledge_report(query, web_docs, dead)
+        # 知識回報是給審核佇列的，使用者不在等它：主題把關要打一次模型、再寫
+        # 兩次 Mongo，串在回答前面只是讓每一則網搜答案多等這幾百毫秒。
+        self._schedule_knowledge_report(query, web_docs, dead)
         return result
+
+    def _schedule_knowledge_report(
+        self, query: str, web_docs: list[Document], dead: frozenset[str]
+    ) -> None:
+        """把知識回報丟到背景。
+
+        `get_line_user_id()` 是 ContextVar：create_task 在建立當下複製 context，
+        所以就算 handler 之後 reset 了它，任務裡讀到的仍是這一則的使用者。
+        例外全部留在 `_maybe_create_knowledge_report` 裡（它本來就 fail-open）。
+        """
+        if self._on_web_fallback_success is None:
+            return
+        task = asyncio.create_task(
+            self._maybe_create_knowledge_report(query, web_docs, dead)
+        )
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
+    async def wait_for_background_tasks(self) -> None:
+        """等背景任務跑完（測試用；正式流程不呼叫）。"""
+        if self._background_tasks:
+            await asyncio.gather(*list(self._background_tasks), return_exceptions=True)
 
     async def _dead_source_urls(self, docs: list[Document]) -> frozenset[str]:
         """判定哪些來源網址現在打不開。關閉或失敗時回空集合。

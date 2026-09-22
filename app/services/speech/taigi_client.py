@@ -37,8 +37,8 @@ DEFAULT_VOICE_LABEL = VOICE_LABEL_BY_GENDER["female"]
 SPEED_BY_RATE = {"slow": 0.9, "normal": 1.2, "fast": 1.5}
 DEFAULT_SPEED = SPEED_BY_RATE["normal"]
 
-# TTS 是在送出任何 LINE 訊息之前被 await 的（reply._append_tts_audio_message），
-# 逾時就改念國語。實測 110 字 5.4 秒；比照 N8N_TTS_TIMEOUT_SECONDS 的 20 秒。
+# TTS 在文字送出之後才合成、再 push 音檔（reply._push_tts_audio），逾時就改念
+# 國語。實測 110 字 5.4 秒；比照 N8N_TTS_TIMEOUT_SECONDS 的 20 秒。
 TTS_TIMEOUT_SECONDS = 20
 # 每段最長 25 秒（audio.MAX_STT_CHUNK_SECONDS），實測 24 秒一段 3.0 秒，給 5 倍。
 # 逾時改走 faster-whisper，那邊自己還有 120 秒的 webhook 預算。

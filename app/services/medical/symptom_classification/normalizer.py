@@ -49,17 +49,6 @@ class SymptomResolver(Protocol):
     async def resolve(self, text: str) -> str | None: ...
 
 
-class CandidateChooser(Protocol):
-    """中間帶決選的替代實作（jev.JevSymptomChooser）。失敗時自行呼叫 fallback。"""
-
-    async def choose(
-        self,
-        text: str,
-        candidates: Sequence[str],
-        fallback: Callable[[str, Sequence[str]], Awaitable[str | None]],
-    ) -> str | None: ...
-
-
 class SymptomNormalizer:
     """
     口語症狀 → 對照表條目。
@@ -82,7 +71,6 @@ class SymptomNormalizer:
         auto_accept_score: float = AUTO_ACCEPT_SCORE,
         min_match_score: float = MIN_MATCH_SCORE,
         top_k: int = TOP_K,
-        chooser: CandidateChooser | None = None,
     ) -> None:
         self._terms = tuple(table_terms)
         self._index = vector_index
@@ -94,7 +82,6 @@ class SymptomNormalizer:
         self._auto_accept_score = auto_accept_score
         self._min_match_score = min_match_score
         self._top_k = top_k
-        self._chooser = chooser
         self._cache: dict[str, str | None] = {}
         if vector_index is None or embed_query is None:
             logger.warning(
@@ -167,10 +154,6 @@ class SymptomNormalizer:
             top.score,
             "、".join(candidates),
         )
-        if self._chooser is not None:
-            # 先問 Jev（中位數 0.26 秒），它失敗才走下面的 Gemini（中位數 2.7 秒）。
-            # 數字與門檻見 symptom_classification/jev.py。
-            return await self._chooser.choose(text, candidates, self._classify)
         return await self._classify(text, candidates)
 
     async def _vector_matches(self, text: str) -> tuple[Match, ...]:

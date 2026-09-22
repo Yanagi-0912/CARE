@@ -128,7 +128,6 @@ from app.services.medical.symptom_classification import (
     UrgencyClassifier,
     load_symptom_table,
 )
-from app.services.medical.symptom_classification.jev import JevSymptomChooser
 from app.services.medical.symptom_classification.urgency import URGENCY_MODEL_PATH
 from app.services.medical.symptom_classification.vector_index import (
     DEFAULT_VECTOR_PATH,
@@ -627,8 +626,6 @@ _symptom_department_service = SymptomDepartmentService(
         vector_index=_symptom_vector_index,
         embed_query=_symptom_embeddings.aembed_query,
         gemini_service=_gemini_service,
-        # 向量中間帶先問 Jev，失敗才問 Gemini；數字見 symptom_classification/jev.py。
-        chooser=JevSymptomChooser(api_key=settings.TYPESAFE_API_KEY),
     ),
 )
 configure_symptom_tool(_symptom_department_service)

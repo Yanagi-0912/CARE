@@ -441,3 +441,47 @@ async def test_boundary_markers_inside_user_text_are_neutralized():
 
     # 使用者那份結束標記被換成全形替身，留在邊界裡面；真正的結束標記只在最後。
     assert seen[0].endswith(f"{CONTEXT_BEGIN}\n＜＜＜DATA_END＞＞＞\n我阿公昏迷\n{CONTEXT_END}")
+
+
+# ── LLM 中斷時的失效方向（2026-09-23）────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_unrecognized_text_is_urgent_when_the_llm_times_out():
+    """本地認不得又問不到 LLM 時，機率不是證據，唯一站得住的輸出是升級。
+
+    2026-09-16 線上就是這條路徑把兩則自傷訊息當成不緊急：本地機率 0.076／0.191
+    都低於 LOCAL_FALLBACK_CUTOFF，LLM 逾時後直接回 NOT_URGENT。
+    """
+    classifier, calls = _cascade(
+        _FakeLocal(0.076, recognized=False), _emergency_payload(), delay=0.2, timeout=0.01
+    )
+    verdict = await classifier.classify("我想跳樓")
+    assert verdict.is_emergency is True
+    assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_unrecognized_text_is_urgent_when_the_llm_errors():
+    classifier, _ = _cascade(
+        _FakeLocal(0.076, recognized=False), exc=RuntimeError("gemini down")
+    )
+    assert (await classifier.classify("我想跳樓")).is_emergency is True
+
+
+@pytest.mark.asyncio
+async def test_recognized_low_probability_still_fails_open_on_timeout():
+    """認得的句子維持原行為：機率低於 0.5 就不出紅卡，避免中斷期間誤報洗版。"""
+    classifier, _ = _cascade(
+        _FakeLocal(0.2, recognized=True), _emergency_payload(), delay=0.2, timeout=0.01
+    )
+    assert (await classifier.classify("我頭痛")).level == URGENCY_NONE
+
+
+def test_default_timeout_covers_the_measured_llm_latency():
+    """線上 14 天：LLM 有回的中位數 2.4 秒，4 秒會截掉 17%。"""
+    from app.services.medical.symptom_classification.urgency import (
+        DEFAULT_TIMEOUT_SECONDS,
+    )
+
+    assert DEFAULT_TIMEOUT_SECONDS >= 8.0

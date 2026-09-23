@@ -63,6 +63,11 @@
     同一份 holdout 上模擬中斷：急症 93.8% 仍出紅卡（純 LLM 版是 0%），非急症
     1.2% 會誤出紅卡並通報家人——這是只在 LLM 中斷期間才付的代價。
 
+    例外（2026-09-23 補）：本地**認不得**這句話時不看機率，一律視為緊急。
+    升級那一側的理由是「認得的片段太少，低機率不代表不緊急，只代表沒看懂」，
+    同一個機率不能在中斷時反過來被當成「不緊急」的證據。線上 14 天只有 2 則
+    落在這一格（都是台語）。
+
     本地模型載入失敗時（dependencies 退回純 LLM），行為與前一版相同：fail-open。
 """
 
@@ -95,7 +100,16 @@ URGENCY_NONE = "none"
 
 # LLM 判斷的逾時。只有本地模型沒把握的訊息才會走到 LLM；沒有在這個時間內回來
 # 時改以本地機率決定，理由見模組註解「失效方向」。
-DEFAULT_TIMEOUT_SECONDS = 4.0
+#
+# 2026-09-23 以線上 14 天（09-09～09-23，357 次判斷）重新訂：LLM 有回的 195 次
+# 中位數 2.4 秒，但**有 61 次（17%）撞到原本的 4 秒上限**，其中 54 次因此落回
+# 「視為不緊急」——包括 09-16 兩則「我想跳樓」「我走掉了」。那兩則的判準本來
+# 就在 prompt 的自傷段落裡，只要 LLM 有回就會出紅卡，是逾時把它們丟掉的。
+# 8 秒是拿掉那個截斷：這一段與 guardrail、選工具那次 LLM 呼叫並行（兩者線上
+# p50 各約 2.6／2.7 秒），所以多出來的等待只發生在「急迫度慢到超過 4 秒、而且
+# 比並行那兩段都慢」的訊息上，14 天裡是 61 則（17%），每則最多多等 4 秒。
+# 拿這個代價換掉「安全判斷沒回來就當成不緊急」，值得。
+DEFAULT_TIMEOUT_SECONDS = 8.0
 
 # LLM 無法判斷時，本地機率達到這個值就視為緊急。0.5 是邏輯回歸本身的決策邊界，
 # 不另外調：這條路徑只在 LLM 中斷時才走，沒有真實流量可以校準它。
@@ -265,9 +279,11 @@ class UrgencyClassifier:
         # 本地模型只放行「明顯不緊急」，不直接判定緊急——模型檔裡的 high 門檻刻意
         # 不用。理由見模組註解。
         probability = self._local_probability(cleaned)
+        recognized = True
         if probability is not None:
             if not self._local_recognizes(cleaned):
                 # 認得的片段太少，低機率不代表不緊急，只代表沒看懂。
+                recognized = False
                 log_stage(
                     logger, "urgency_local", outcome="escalate", reason="unrecognized",
                     p=round(probability, 4),
@@ -291,10 +307,10 @@ class UrgencyClassifier:
             raw = await asyncio.wait_for(self._call(prompt), timeout=self._timeout)
         except asyncio.TimeoutError:
             logger.warning(f"{LOGGER_HEADER_TEXT} 判斷逾時（%.1fs）", self._timeout)
-            return self._when_llm_unavailable(probability)
+            return self._when_llm_unavailable(probability, recognized)
         except Exception:  # noqa: BLE001
             logger.error(f"{LOGGER_HEADER_TEXT} 判斷失敗", exc_info=True)
-            return self._when_llm_unavailable(probability)
+            return self._when_llm_unavailable(probability, recognized)
 
         return self._to_verdict(raw)
 
@@ -315,8 +331,21 @@ class UrgencyClassifier:
             logger.exception(f"{LOGGER_HEADER_TEXT} 本地推論失敗，改問 LLM")
             return False
 
-    def _when_llm_unavailable(self, probability: float | None) -> UrgencyVerdict:
-        """LLM 逾時或失敗時的判定。理由見模組註解「失效方向」。"""
+    def _when_llm_unavailable(
+        self, probability: float | None, recognized: bool = True
+    ) -> UrgencyVerdict:
+        """LLM 逾時或失敗時的判定。理由見模組註解「失效方向」。
+
+        `recognized` 為 False 時不看機率。升級那一側的理由是「認得的片段太少，
+        低機率不代表不緊急，只代表沒看懂」——同一個機率不能在這裡反過來當成
+        「不緊急」的證據。沒有任何證據又不能問 LLM 時，這個判斷器唯一站得住的
+        輸出是升級。線上 14 天只有 2 則落在這一格（都是台語且本地認不得）。
+        """
+        if not recognized:
+            logger.warning(
+                f"{LOGGER_HEADER_TEXT} LLM 無法判斷，且本地認不得這句話，視為緊急"
+            )
+            return UrgencyVerdict(level=URGENCY_EMERGENCY)
         if probability is not None and probability >= LOCAL_FALLBACK_CUTOFF:
             logger.warning(
                 f"{LOGGER_HEADER_TEXT} LLM 無法判斷，依本地機率 %.3f 視為緊急", probability

@@ -3,9 +3,8 @@
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from app.i18n.messages import t
+from app.i18n.messages import insert_before_sources, t
 from app.services.agent.agent import (
-    _insert_before_sources,
     _rag_direct_reply_node,
     _rag_fail_direct_reply_node,
     _route_after_tools,
@@ -169,7 +168,7 @@ def test_direct_node_flattens_gemini_list_content():
 
 
 def test_insert_before_sources_is_idempotent_on_plain_text():
-    assert _insert_before_sources("純文字", "提醒") == "純文字\n\n提醒"
+    assert insert_before_sources("純文字", "提醒") == "純文字\n\n提醒"
 
 
 # ── 前綴 ────────────────────────────────────────────────────────────

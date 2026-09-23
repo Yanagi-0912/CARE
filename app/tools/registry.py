@@ -7,6 +7,8 @@ from app.tools.medical_tools import (
     lookup_medical_facility,
     request_location_quick_reply,
 )
+from app.tools.medication_question_tools import ask_about_my_medications
+from app.tools.medication_report_tools import record_medication_taken
 from app.tools.medication_status_tools import get_medication_status
 from app.tools.official_site_tools import open_official_site
 from app.tools.rag_tools import get_rag_answer
@@ -40,9 +42,17 @@ def get_all_tools(include_rag_tool: bool = True) -> list:
         get_medication_status,
         # 只查登入者自己的家庭名單與稱謂，不讀健康資料，也不隨 RAG 開關。
         get_family_directory,
+        # 在聊天裡回報「我吃過了」。寫的是自己的服藥紀錄、不碰知識庫，
+        # 同樣不隨 include_rag_tool 開關。
+        record_medication_taken,
     ]
     if include_rag_tool:
-        tools.extend([get_rag_answer, answer_from_uploaded_document])
+        # `ask_about_my_medications` 內部就是跑 RAG（只是把藥名附在問題後面），
+        # 所以跟著 include_rag_tool 開關——guardrail 沒放行知識庫時，它也不該
+        # 成為繞過去的第二個入口。
+        tools.extend(
+            [get_rag_answer, answer_from_uploaded_document, ask_about_my_medications]
+        )
         # verify_claim 與 get_rag_answer 同屬「guardrail 放行後才提供」的知識庫
         # 工具，因此跟著 include_rag_tool 一起開關；是否配置服務（即
         # CLAIM_VERIFICATION_ENABLED 這道獨立開關的結果，見

@@ -15,12 +15,9 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
-from typing import Literal, Optional, Sequence
-
-from fastapi import HTTPException
+from typing import Literal, Optional
 
 from app.i18n.messages import t
-from app.models.family_tree import FamilyMember
 from app.models.medication import (
     TAIPEI_TZ,
     MedicationLog,
@@ -28,7 +25,7 @@ from app.models.medication import (
     ensure_aware_utc,
     to_taipei_hm,
 )
-from app.services.family.person_resolution import PersonResolution, resolve_person
+from app.services.medication.target_resolution import resolve_medication_target
 
 logger = logging.getLogger(__name__)
 
@@ -122,38 +119,17 @@ class MedicationStatusService:
         now: datetime,
         language: Optional[str],
     ) -> str:
-        target_id, target_name = asker_id, None
-        if resolve_person((), person=person, relationship=relationship).kind != "self":
-            tree = await self._trees.get_by_user_id(asker_id)
-            members = [
-                m for m in (tree.family_members if tree else []) if m.user_id != asker_id
-            ]
-            if not members:
-                return t("medstatus.no_family", language)
-            resolution = resolve_person(members, person=person, relationship=relationship)
-            if resolution.kind == "conflict":
-                return t("medstatus.conflict", language).format(
-                    query=(person or relationship).strip()
-                )
-            if resolution.kind == "ambiguous":
-                return t("medstatus.ambiguous", language).format(
-                    names=_names(resolution.candidates, language)
-                )
-            if resolution.kind == "not_found":
-                return t("medstatus.not_found", language).format(
-                    query=(person or relationship).strip(), names=_names(members, language)
-                )
-            target_id = resolution.member.user_id
-            target_name = _display_name(resolution.member, language)
-            try:
-                # 「吃了沒」與藥名、服藥時段同屬 GENERAL：回答的都是「這一餐的藥
-                # 處理了沒」，不揭露為什麼吃。這條路徑導入 RBAC 前不存在，照
-                # has_legacy_equivalent=False 一律以矩陣判定，不受影子模式放寬。
-                await self._authz.authorize(
-                    asker_id, target_id, "GENERAL", "READ", has_legacy_equivalent=False
-                )
-            except HTTPException:
-                return t("medstatus.no_permission", language).format(name=target_name)
+        target = await resolve_medication_target(
+            asker_id=asker_id,
+            person=person,
+            relationship=relationship,
+            trees=self._trees,
+            authz=self._authz,
+            language=language,
+        )
+        if not target.ok:
+            return target.error
+        target_id, target_name = target.user_id, target.display_name
 
         reminders = await self._reminders.list_reminders_by_user(target_id)
         if not reminders:
@@ -352,14 +328,6 @@ def _day_bounds(first: date, last: date) -> tuple[datetime, datetime]:
 
 def _taipei_date(moment: datetime) -> date:
     return ensure_aware_utc(moment).astimezone(TAIPEI_TZ).date()
-
-
-def _display_name(member: FamilyMember, language: Optional[str]) -> str:
-    return member.display_name or t("medstatus.unnamed", language)
-
-
-def _names(members: Sequence[FamilyMember], language: Optional[str]) -> str:
-    return t("medstatus.list_sep", language).join(_display_name(m, language) for m in members)
 
 
 def _date_text(day: date, language: Optional[str]) -> str:

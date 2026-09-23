@@ -626,9 +626,19 @@ class MedicationService:
         return deleted
 
     async def confirm_medication(
-        self, log_id: str, user_id: str, medication_id: Optional[str] = None
+        self,
+        log_id: str,
+        user_id: str,
+        medication_id: Optional[str] = None,
+        taken_at: Optional[datetime] = None,
     ) -> MedicationLog:
         """確認用藥完成（spec「逐藥確認」「服藥確認」）。
+
+        `taken_at`：算在哪一刻服藥，不給就是現在。只有在聊天裡回報
+        （`MedicationReportService`）會給值——使用者說「我 12 點吃了」時，
+        12:00 才是事實，而按下按鈕的現在只是他想起來的時刻。照實存下去也表示
+        拖了四小時那一頓不會被拉霸算成準時（`reminder_variants.outcome_of` 用
+        `taken_at <= timeout_at` 判定），這正是我們要的。
 
         不帶 `medication_id`：整批確認（【全部已服用】），行為與本變更前相同
         ——直接轉 `taken`，並把當下有效的藥品全部寫進 `taken_medication_ids`，
@@ -667,7 +677,7 @@ class MedicationService:
                 )
                 expected = []
             updated_log = await self._log_repository.mark_as_taken(
-                log_id, taken_medication_ids=expected
+                log_id, taken_at=taken_at, taken_medication_ids=expected
             )
             if not updated_log:
                 raise HTTPException(status_code=400, detail="更新用藥狀態失敗或該紀錄已完成")
@@ -679,7 +689,7 @@ class MedicationService:
 
         expected = await self._expected_medication_ids(log)
         if set(expected) <= set(updated_log.taken_medication_ids):
-            completed = await self._log_repository.mark_as_taken(log_id)
+            completed = await self._log_repository.mark_as_taken(log_id, taken_at=taken_at)
             if completed:
                 return completed
         return updated_log

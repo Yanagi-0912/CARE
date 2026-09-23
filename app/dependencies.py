@@ -73,6 +73,8 @@ from app.services.medication.drug_appearance_image_service import (
 from app.services.medication.drug_catalog_service import DrugCatalogService
 from app.services.medication.drug_indication_service import DrugIndicationService
 from app.services.medication.medication_service import MedicationService
+from app.services.medication.medication_question_service import MedicationQuestionService
+from app.services.medication.medication_report_service import MedicationReportService
 from app.services.medication.medication_status_service import MedicationStatusService
 from app.services.medication.medication_scheduler import start_medication_scheduler
 from app.services.medication.prescription_ocr_service import PrescriptionOcrService
@@ -187,6 +189,8 @@ from app.tools.claim_tools import configure_claim_tool
 from app.tools.family_directory_tools import configure_family_directory_tool
 from app.tools.tv_news_tools import configure_tv_news_tool
 from app.tools.knowledge_report_tools import configure_knowledge_report_tool
+from app.tools.medication_question_tools import configure_medication_question_tool
+from app.tools.medication_report_tools import configure_medication_report_tool
 from app.tools.medication_status_tools import configure_medication_status_tool
 from app.tools.medical_tools import configure_medical_tools
 from app.tools.official_site_tools import configure_official_site_tool
@@ -776,6 +780,18 @@ _medication_status_service = MedicationStatusService(
 )
 configure_medication_status_tool(_medication_status_service)
 
+# 拿自己的藥單問問題（「我這樣吃可以嗎」）。藥名走與查詢同一組 repository 與
+# 同一個授權決策點，藥理那段交給既有的 RAG 管線——這個服務本身不生成文字。
+_medication_question_service = MedicationQuestionService(
+    family_tree_repository=FamilyTreeRepository,
+    authorization_service=_family_authorization_service,
+    reminder_repository=MedicationReminderRepository,
+    medication_repository=MedicationRepository,
+    log_repository=MedicationLogRepository,
+    rag_answer_service=_rag_answer_service,
+)
+configure_medication_question_tool(_medication_question_service)
+
 _family_directory_service = FamilyDirectoryService(
     FamilyTreeRepository,
     _user_profile_repository,
@@ -918,6 +934,15 @@ _medication_service = MedicationService(
     catalog_service=_drug_catalog_service,
     otc_alert_service=_enabled_otc_alert_service,
 )
+
+# 在聊天裡回報「我吃過了」。確認本身仍走 MedicationService.confirm_medication，
+# 與推播卡片上的按鈕同一條路徑（含「只有本人能確認」那道 403）——這個服務只負責
+# 挑出是哪一頓。
+_medication_report_service = MedicationReportService(
+    medication_service=_medication_service,
+    log_repository=MedicationLogRepository,
+)
+configure_medication_report_tool(_medication_report_service)
 
 # 個人健康紀錄（personal-health-tracking）。Task 3 組裝提醒範圍；Task 4 接著
 # 加血壓血糖量測；Task 5 在這裡接著加經期；Task 6 加計步；Task 7 加超出

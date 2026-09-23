@@ -47,6 +47,7 @@ _INFORMAL_CITY_NAMES: tuple[str, ...] = (
 FACILITY_ALIASES = {
     "成大": "成功大學",
     "臺大": "臺灣大學",
+    "中國醫": "中國醫藥大學",
     "高醫": "高雄醫學大學",
     "榮總": "榮民總醫院",
     "三總": "三軍總醫院",
@@ -57,6 +58,32 @@ FACILITY_ALIASES = {
     "連江醫院": "連江縣立醫院",
     "澎湖醫院": "衛生福利部澎湖醫院"
 }
+
+_FACILITY_BRANCH_SUFFIXES = ("分院", "院區", "醫院")
+
+
+def _split_composite_facility_alias(keyword: str) -> tuple[str, str] | None:
+    """將「臺大醫院金山分院」拆成（「臺灣大學」，「金山」）。"""
+    unified = re.sub(r"\s+", "", keyword or "")
+    unified = re.sub(
+        r"[，,。．.？?！!：:；;「」『』()（）\[\]【】]", "", unified
+    ).replace("台", "臺")
+    for alias in sorted(FACILITY_ALIASES, key=len, reverse=True):
+        if not unified.startswith(alias) or len(unified) == len(alias):
+            continue
+
+        remainder = unified[len(alias):]
+        if remainder.startswith("醫院"):
+            remainder = remainder[len("醫院"):]
+        for suffix in _FACILITY_BRANCH_SUFFIXES:
+            if remainder.endswith(suffix):
+                remainder = remainder[: -len(suffix)]
+                break
+
+        if remainder:
+            return FACILITY_ALIASES[alias], remainder
+    return None
+
 
 def normalize_facility_name(text: str) -> str:
     normalized = re.sub(r"\s+", "", text or "")
@@ -197,6 +224,8 @@ def build_facility_query(keyword: str) -> tuple[dict[str, Any], str]:
 
     normalized_keyword = normalize_facility_name(keyword_for_normalize)
 
+    composite_alias = _split_composite_facility_alias(keyword_for_normalize)
+
     # 常用醫院名稱(台大、馬偕、三總...)對照表判定邏輯
     if keyword_for_normalize in FACILITY_ALIASES:
         query_keyword = FACILITY_ALIASES[keyword_for_normalize]
@@ -214,8 +243,25 @@ def build_facility_query(keyword: str) -> tuple[dict[str, Any], str]:
 
     query: dict[str, Any] = {}
 
+    if composite_alias:
+        alias_keyword, branch_keyword = composite_alias
+        query_keyword_unified = alias_keyword.replace("台", "臺")
+        query["$and"] = [
+            {
+                "name": {
+                    "$regex": re.escape(query_keyword_unified),
+                    "$options": "i",
+                }
+            },
+            {
+                "name": {
+                    "$regex": re.escape(branch_keyword),
+                    "$options": "i",
+                }
+            },
+        ]
     # 只有在 query_keyword 有值時，才注入 name 條件
-    if query_keyword:
+    elif query_keyword:
         query_keyword_unified = query_keyword.replace("台", "臺")
         escaped = re.escape(query_keyword_unified)
         query["name"] = {"$regex": escaped, "$options": "i"}

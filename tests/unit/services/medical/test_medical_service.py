@@ -128,10 +128,66 @@ class FakeMedicalFacilityRepository:
         ("衛生所", {"name": {"$regex": "衛生所", "$options": "i"}}),
         ("成大", {"name": {"$regex": "成功大學", "$options": "i"}}),
         ("臺大", {"name": {"$regex": "臺灣大學", "$options": "i"}}),
+        ("中國醫", {"name": {"$regex": "中國醫藥大學", "$options": "i"}}),
         ("高醫", {"name": {"$regex": "高雄醫學大學", "$options": "i"}}),
         ("三總", {"name": {"$regex": "三軍總醫院", "$options": "i"}}),
         ("長庚", {"name": {"$regex": "長庚醫療", "$options": "i"}}),
         ("慈濟", {"name": {"$regex": "慈濟醫療", "$options": "i"}}),
+        (
+            "台大金山分院",
+            {
+                "$and": [
+                    {"name": {"$regex": "臺灣大學", "$options": "i"}},
+                    {"name": {"$regex": "金山", "$options": "i"}},
+                ]
+            },
+        ),
+        (
+            "台大醫院金山分院",
+            {
+                "$and": [
+                    {"name": {"$regex": "臺灣大學", "$options": "i"}},
+                    {"name": {"$regex": "金山", "$options": "i"}},
+                ],
+                "type": {"$regex": "醫院", "$options": "i"},
+            },
+        ),
+        (
+            "馬偕淡水分院",
+            {
+                "$and": [
+                    {"name": {"$regex": "馬偕紀念醫院", "$options": "i"}},
+                    {"name": {"$regex": "淡水", "$options": "i"}},
+                ]
+            },
+        ),
+        (
+            "長庚林口院區",
+            {
+                "$and": [
+                    {"name": {"$regex": "長庚醫療", "$options": "i"}},
+                    {"name": {"$regex": "林口", "$options": "i"}},
+                ]
+            },
+        ),
+        (
+            "成大斗六分院",
+            {
+                "$and": [
+                    {"name": {"$regex": "成功大學", "$options": "i"}},
+                    {"name": {"$regex": "斗六", "$options": "i"}},
+                ]
+            },
+        ),
+        (
+            "榮總桃園分院",
+            {
+                "$and": [
+                    {"name": {"$regex": "榮民總醫院", "$options": "i"}},
+                    {"name": {"$regex": "桃園", "$options": "i"}},
+                ]
+            },
+        ),
     ],
 )
 async def test_find_facility_by_name_builds_expected_query(

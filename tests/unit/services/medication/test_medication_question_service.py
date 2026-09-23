@@ -92,6 +92,11 @@ def _service(*, logs, rag=None, meds=ALL_MEDS, reminders=(MORNING, EVENING), tre
     )
 
 
+def _taken_at_noon():
+    """截圖那一題的處境：早上那頓拖到 12:00 才確認。"""
+    return _log(MORNING, "taken", taken_at=datetime(2026, 9, 23, 12, 0, tzinfo=TAIPEI_TZ))
+
+
 async def _ask(service, question="我 11 點喝了牛奶、12 點吃藥，等等要吃午餐，這樣可以嗎", **kw):
     return await service.answer("U1", question, now=NOW, language="zh-TW", **kw)
 
@@ -230,3 +235,72 @@ async def test_asking_about_a_family_member_goes_through_authorization():
     )
     assert text == t("medstatus.no_permission", "zh-TW").format(name="王美玲")
     assert authz.calls  # 授權確實被問過，而不是「查不到就算了」
+
+
+# ── 結構化的登記資料交給呈現層 ──────────────────────────────────────
+
+
+async def test_facts_are_published_as_lines_for_the_card():
+    """卡片要把它們做成獨立的一塊；從最終文字反解是另一個坑。"""
+    from app.core.medication_facts import (
+        begin_request_medication_facts,
+        get_request_medication_facts,
+        reset_request_medication_facts,
+    )
+
+    logs = [_taken_at_noon()]
+    token = begin_request_medication_facts()
+    try:
+        text = await _ask(_service(logs=logs))
+        facts = get_request_medication_facts()
+    finally:
+        reset_request_medication_facts(token)
+
+    assert facts is not None
+    assert facts.target_name is None
+    assert any("比排定時間晚 4 小時" in line for line in facts.lines)
+    # block 是同一份內容在答案文字裡的樣子，呈現層靠它整段移除。
+    assert facts.block in text
+
+
+async def test_facts_for_a_family_member_carry_their_name():
+    from app.core.medication_facts import (
+        begin_request_medication_facts,
+        get_request_medication_facts,
+        reset_request_medication_facts,
+    )
+
+    tree = FamilyTree(
+        user_id="U1",
+        family_members=[
+            FamilyMember(user_id="U1", display_name="我"),
+            FamilyMember(user_id="U_MOM", display_name="王美玲", relationship_type="parent"),
+        ],
+        created_at=NOW,
+        updated_at=NOW,
+    )
+    mom_reminder = MedicationReminder(
+        _id="r_mom", creator_user_id="U1", user_id="U_MOM", slot_type="morning",
+        start_date="2026-09-20",
+        entries=[{"meal_timing": "after_meal", "scheduled_time": "08:00",
+                  "medication_ids": ALL_IDS}],
+    )
+    service = MedicationQuestionService(
+        family_tree_repository=FakeTrees({"U1": tree}),
+        authorization_service=FakeAuthz(),
+        reminder_repository=FakeReminders([mom_reminder]),
+        medication_repository=FakeMedications(ALL_MEDS),
+        log_repository=FakeLogs([]),
+        rag_answer_service=FakeRag(),
+    )
+    token = begin_request_medication_facts()
+    try:
+        await service.answer(
+            "U1", "媽媽的藥可以配牛奶嗎", person="媽媽", relationship="parent",
+            now=NOW, language="zh-TW",
+        )
+        facts = get_request_medication_facts()
+    finally:
+        reset_request_medication_facts(token)
+
+    assert facts.target_name == "王美玲"

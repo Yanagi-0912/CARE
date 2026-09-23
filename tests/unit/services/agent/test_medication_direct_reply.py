@@ -273,8 +273,8 @@ async def test_follow_up_question_costs_one_more_model_call_and_answers_it():
     assert llm.bind_tools.return_value.ainvoke.await_count == 2
 
 
-async def test_medication_question_answer_becomes_a_card_like_a_rag_answer():
-    """答案是 RAG 生成的，就該有來源按鈕、也該剝掉前綴——跟 RAG 答案同一套。"""
+async def test_medication_question_answer_becomes_its_own_card():
+    """藥單問答有自己的卡：header 要讓使用者看出這張在講他自己的藥。"""
     from app.tools import medication_question_tools
     from app.tools.medication_question_tools import configure_medication_question_tool
 
@@ -310,7 +310,7 @@ async def test_medication_question_answer_becomes_a_card_like_a_rag_answer():
         reset_line_user_id(token)
         configure_medication_question_tool(previous)
 
-    assert result["answer_kind"] == "rag"
+    assert result["answer_kind"] == "medication"
     assert llm.bind_tools.return_value.ainvoke.await_count == 1
 
 

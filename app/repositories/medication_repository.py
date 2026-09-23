@@ -861,6 +861,56 @@ class MedicationLogRepository:
         return MedicationLog(**doc)
 
     @staticmethod
+    async def revert_taken(
+        log_id: str,
+        user_id: str,
+        collection: Optional[Any] = None,
+    ) -> Optional[MedicationLog]:
+        """把已確認的紀錄改回未確認——聊天回報服藥的「記錯了」。
+
+        **為什麼需要反向寫入**：`record_medication_taken` 是模型判讀出來的。它
+        把「我吃了沒」讀成「我吃了」時，那一頓會被標成 `taken`，而三階推播的
+        待推播查詢一律限定 `status="pending"`——T+20 催促與 T+30 家屬逾時警報
+        就此靜音，使用者看得到記錯了卻改不回來。這是本方法存在的唯一理由，
+        不是一般用途的狀態編輯。
+
+        **只還原成 `pending`，不還原成 `missed`**：最晚服藥時刻早就過了的那一頓
+        看似該直接回 `missed`，但 T+30 家屬警報的查詢條件正是 `pending` ＋ 逾時
+        ——寫成 `missed` 等於還原了狀態卻永久吞掉那通警報。寫回 `pending` 之後
+        由排程器照常判定，它本來就會把逾時的 pending 轉成 missed，走的是與
+        「使用者從頭就沒按」完全相同的路徑。已送出的旗標（`*_sent`）刻意不清，
+        所以已經送過的那幾階不會再送一次。
+
+        `user_id` 進查詢條件而不是先讀出來比對：兩段式檢查中間隔著一次
+        round-trip，而這是寫入。條件不符（不是本人、或狀態已經不是 `taken`）
+        時回 None，呼叫端據此回固定文案。
+
+        只還原聊天回報得到的 `taken`：能按到這顆按鈕的只有那張卡片。`cancelled`
+        不在可還原之列——`MedicationReportService` 挑候選時用的
+        `list_logs_by_user_between` 本來就濾掉了 cancelled，所以聊天回報永遠
+        不會把 cancelled 轉成 taken，這裡也就沒有把它還原回去的義務。
+        """
+        if collection is None:
+            collection = MongoDBManager.get_medication_logs_collection()
+        result = await collection.update_one(
+            {"_id": log_id, "user_id": user_id, "status": "taken"},
+            {
+                "$set": {"status": "pending"},
+                # 三個欄位一起清掉：留著 `taken_at` 會讓服藥狀況顯示一個
+                # 「未確認卻有服用時刻」的矛盾狀態，也會讓拉霸的成效判定
+                # （`reminder_variants.outcome_of`）把這一頓算成吃過。
+                "$unset": {"taken_at": "", "confirmed_at": "", "taken_medication_ids": ""},
+            },
+        )
+        if result.matched_count == 0:
+            return None
+        doc = await collection.find_one({"_id": log_id})
+        if not doc:
+            return None
+        doc["_id"] = str(doc["_id"])
+        return MedicationLog(**doc)
+
+    @staticmethod
     async def add_taken_medication(
         log_id: str,
         medication_id: str,

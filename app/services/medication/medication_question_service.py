@@ -41,6 +41,7 @@ import logging
 from datetime import date, datetime, time, timedelta
 from typing import Optional
 
+from app.core.medication_facts import set_request_medication_facts
 from app.i18n.messages import insert_before_sources, t
 from app.models.medication import (
     TAIPEI_TZ,
@@ -57,6 +58,10 @@ logger = logging.getLogger(__name__)
 # 附在 RAG query 後面的藥名上限。查詢是拿去做向量檢索與精排的，把十幾個藥名
 # 全串上去會稀釋掉問題本身；8 個已經涵蓋實際藥袋的規模（掃描實測最多 7 種）。
 MAX_QUERY_DRUGS = 8
+
+# 事實一句一行。這段是拿來對時間的，擠成一整段會讓「只隔 6 小時」那一句被淹掉
+# （同用藥提醒改成逐藥卡片的理由）。不是 i18n 訊息：換行在每種語言都一樣。
+FACT_SEPARATOR = "\n"
 
 # 時間差距要到多少才值得講。見模組說明「不講判斷，只講數字」。
 MIN_NOTABLE_GAP = timedelta(hours=1)
@@ -186,9 +191,15 @@ class MedicationQuestionService:
         parts.extend(_timing_notes(logs, slot_times, language))
         parts.append(t("medq.ask_pharmacist", language))
 
-        body = t("medq.sentence_sep", language).join(parts)
+        body = FACT_SEPARATOR.join(parts)
         key = "medq.facts_self" if target_name is None else "medq.facts_other"
-        return t(key, language).format(name=target_name or "", body=body)
+        block = t(key, language).format(name=target_name or "", body=body)
+
+        # 呈現層要把這幾行做成卡片上獨立的一塊，所以除了回傳文字，也把原始清單
+        # 與組好的整段交給本輪的 holder（理由見 app/core/medication_facts.py）。
+        # 文字那份不能省：純文字退路與語音朗讀都只拿得到它。
+        set_request_medication_facts(parts, block, target_name)
+        return block
 
 
 # ── 小工具 ──────────────────────────────────────────────────────────

@@ -642,6 +642,10 @@ class Agent:
             # 紅旗卡刻意不含任何門診科別，讓模型重寫有可能把「請立即就醫」稀釋
             # 成「可以考慮掛某某科」，那正是本功能要避免的失效模式。
             "suggest_department_for_symptom",
+            # 聊天回報服藥的「已記錄」卡（含「記錯了」按鈕）與「是哪一頓」卡。
+            # 卡片組不出來時服務層回的是純文字，這條路照樣原樣送出，
+            # `_try_parse_flex_message` 解析不成就走純文字分支。
+            MEDICATION_REPORT_TOOL_NAME,
         }
         used_tool_names: list[str] = []
         for msg in reversed(result.get("messages", [])):
@@ -729,12 +733,15 @@ class Agent:
                 if name == "get_rag_answer":
                     answer_kind = None if is_rag_fail(content) else "rag"
                 elif name == MEDICATION_QUESTION_TOOL_NAME:
-                    # 藥單問答的答案是 RAG 生成的，該跟 RAG 答案一樣做成卡片
-                    # （來源按鈕、剝掉前綴）。判斷用「有沒有來源段落」而不是
-                    # `is_rag_fail`：這個工具永遠回完整文字、不回錯誤代碼，而
-                    # 內部 RAG 沒答出來時它回的是登記資料加「請問藥師」，那沒有
-                    # 來源可掛，做成卡片只會是一張空殼。
-                    answer_kind = "rag" if text_contains_sources_heading(content) else None
+                    # 藥單問答有自己的卡：header 要讓使用者一眼看出這張在講他
+                    # 自己的藥，而登記資料要與答案本文分開（見
+                    # `rag_answer_flex._facts_block`）。判斷用「有沒有來源段落」
+                    # 而不是 `is_rag_fail`：這個工具永遠回完整文字、不回錯誤
+                    # 代碼，而內部 RAG 沒答出來時它回的是登記資料加「請問藥師」，
+                    # 那沒有來源可掛，做成卡片只會是一張空殼。
+                    answer_kind = (
+                        "medication" if text_contains_sources_heading(content) else None
+                    )
                 else:
                     answer_kind = (
                         None if is_document_answer_unavailable(content) else "document"

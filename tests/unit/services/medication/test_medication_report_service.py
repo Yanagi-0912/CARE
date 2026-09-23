@@ -208,3 +208,133 @@ async def test_reply_names_the_slot_and_the_medicines():
     assert "早 08:00" in text
     assert "✓ Amoxicillin 500mg 永信" in text
     assert "✓ Nexium 40mg 耐適恩錠" in text
+
+
+# ── 回的是卡片 ──────────────────────────────────────────────────────
+
+
+def _payload(text):
+    """服務回的是 Flex payload 的 JSON（見 reply.py `_try_parse_flex_message`）。"""
+    import json
+
+    assert text.startswith("{") and text.endswith("}")
+    return json.loads(text)
+
+
+def _actions(node):
+    found = []
+    if isinstance(node, dict):
+        if isinstance(node.get("action"), dict):
+            found.append(node["action"])
+        for value in node.values():
+            found.extend(_actions(value))
+    elif isinstance(node, list):
+        for item in node:
+            found.extend(_actions(item))
+    return found
+
+
+async def test_success_reply_is_a_card_with_an_undo_button():
+    meds = FakeMedicationService()
+    text = await _report(_service([_log(MORNING)], meds), taken_time="12:00")
+
+    payload = _payload(text)
+    assert payload["type"] == "flex"
+    (action,) = [a for a in _actions(payload["contents"]) if a.get("type") == "postback"]
+    assert action["data"] == "action=undo_medication_report&log_id=log-r_morning"
+
+
+async def test_success_card_carries_the_plain_text_for_tts():
+    """朗讀的內容要與卡片一致；卡片路徑沒有別的地方拿得到文字。"""
+    meds = FakeMedicationService()
+    payload = _payload(await _report(_service([_log(MORNING)], meds), taken_time="12:00"))
+    speech = payload["speechText"]
+    assert "早 08:00" in speech and "12:00" in speech
+    assert "✓ Amoxicillin 500mg 永信" in speech
+
+
+async def test_which_slot_reply_is_a_card_with_one_button_per_candidate():
+    """使用者不必再打一次字，系統也不必再判讀一次「他說的是哪一頓」。"""
+    early = datetime(2026, 9, 23, 6, 0, tzinfo=TAIPEI_TZ)
+    service = MedicationReportService(
+        medication_service=FakeMedicationService(),
+        log_repository=FakeLogs([_log(MORNING), _log(EVENING)]),
+    )
+    payload = _payload(await service.record_taken("U1", now=early, language="zh-TW"))
+
+    actions = [a for a in _actions(payload["contents"]) if a.get("type") == "postback"]
+    assert [a["label"] for a in actions] == ["早 08:00", "晚 18:00"]
+    assert actions[0]["data"].endswith("&at=06:00")
+
+
+async def test_plain_text_replies_stay_plain_text():
+    """沒有按鈕可按的幾則做成卡片只是噪音。"""
+    meds = FakeMedicationService()
+    assert not (await _report(_service([_log(MORNING, "taken")], meds))).startswith("{")
+    assert not (
+        await _report(_service([_log(MORNING)], meds), person="媽媽", relationship="parent")
+    ).startswith("{")
+
+
+async def test_falls_back_to_plain_text_when_the_card_is_too_big():
+    """卡片超過 LINE 上限會被 400 拒收，使用者什麼都收不到。"""
+    meds = FakeMedicationService(names=tuple(f"藥名{i}" * 40 for i in range(200)))
+    text = await _report(_service([_log(MORNING)], meds), taken_time="12:00")
+    assert not text.startswith("{")
+    assert "早 08:00" in text
+
+
+# ── 記錯了 ──────────────────────────────────────────────────────────
+
+
+async def test_undo_reverts_the_confirmation_and_returns_a_cancelled_card():
+    class Reverting(FakeMedicationService):
+        def __init__(self):
+            super().__init__()
+            self.reverted = []
+
+        async def revert_confirmation(self, log_id, user_id):
+            self.reverted.append((log_id, user_id))
+            scheduled = datetime(2026, 9, 23, 8, 0, tzinfo=TAIPEI_TZ)
+            return MedicationLog(
+                _id=log_id, reminder_id="r", user_id=user_id,
+                alert_notify_user_id=user_id, slot_type="morning",
+                scheduled_at=scheduled, timeout_at=scheduled + timedelta(minutes=30),
+                status="pending",
+            )
+
+    meds = Reverting()
+    service = MedicationReportService(medication_service=meds, log_repository=FakeLogs([]))
+    bubble, text = await service.undo("U1", "log-r_morning", language="zh-TW")
+
+    assert meds.reverted == [("log-r_morning", "U1")]
+    assert bubble is not None
+    assert [a for a in _actions(bubble) if a.get("type") == "postback"] == []
+    assert "早 08:00" in text
+
+
+async def test_pressing_undo_twice_says_so_instead_of_erroring():
+    """第二次按下去看到錯誤訊息，使用者會以為第一次也沒生效。"""
+    class NothingToRevert(FakeMedicationService):
+        async def revert_confirmation(self, log_id, user_id):
+            return None
+
+    service = MedicationReportService(
+        medication_service=NothingToRevert(), log_repository=FakeLogs([])
+    )
+    bubble, text = await service.undo("U1", "log-x", language="zh-TW")
+    assert bubble is None
+    assert text == t("medreport.undo_failed", "zh-TW")
+
+
+async def test_undo_never_leaks_an_exception():
+    class Broken(FakeMedicationService):
+        async def revert_confirmation(self, log_id, user_id):
+            raise RuntimeError("db down")
+
+    service = MedicationReportService(
+        medication_service=Broken(), log_repository=FakeLogs([])
+    )
+    bubble, text = await service.undo("U1", "log-x", language="zh-TW")
+    assert bubble is None
+    assert text == t("medreport.undo_failed", "zh-TW")

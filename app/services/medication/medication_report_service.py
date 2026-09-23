@@ -22,6 +22,7 @@ user_id` 回 403）。家人替他按下「吃過了」是替另一個人的病�
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import date, datetime, time, timedelta
@@ -37,6 +38,14 @@ from app.models.medication import (
     to_taipei_hm,
 )
 from app.services.family.person_resolution import resolve_person
+from app.services.line_messaging.flex.medication_flex import get_slot_display_name
+from app.services.line_messaging.flex.medication_report_flex import (
+    SlotChoice,
+    as_payload,
+    build_report_bubble,
+    build_slot_choice_bubble,
+)
+from resources.flex_messages.theme import resolve_theme
 
 logger = logging.getLogger(__name__)
 
@@ -114,26 +123,114 @@ class MedicationReportService:
         moment = _parse_time(taken_time, now)
         chosen = _pick(candidates, moment)
         if chosen is None:
-            return t("medreport.which_slot", language).format(
-                slots=t("medstatus.list_sep", language).join(
-                    _slot_label(log, language) for log in candidates
-                )
-            )
+            return self._ask_which_slot(candidates, moment, language)
+        return await self.confirm_slot(asker_id, chosen.id, moment, language=language)
 
+    async def confirm_slot(
+        self,
+        asker_id: str,
+        log_id: str,
+        moment: datetime,
+        *,
+        language: Optional[str] = None,
+    ) -> str:
+        """確認指定的那一筆並組出回覆。
+
+        反問卡上的按鈕（postback）與聊天直接挑中的那條路共用這裡：兩邊確認完
+        要顯示的是同一張卡，分開寫遲早會分岔。
+        """
         updated = await self._medications.confirm_medication(
-            chosen.id, asker_id, taken_at=moment
+            log_id, asker_id, taken_at=moment
         )
         names = await self._medications.list_medication_names_for_log(updated)
         logger.info(
             "[MedicationReport] 已由聊天回報確認 log=%s slot=%s", updated.id, updated.slot_type
         )
-        body = t("medreport.done", language).format(
-            slot=_slot_label(updated, language),
-            time=to_taipei_hm(updated.taken_at, default=moment.strftime("%H:%M")),
+        slot_name = get_slot_display_name(updated.slot_type, language)
+        scheduled = to_taipei_hm(updated.scheduled_at)
+        taken = to_taipei_hm(updated.taken_at, default=moment.strftime("%H:%M"))
+        text = t("medreport.done", language).format(
+            slot=f"{slot_name} {scheduled}", time=taken
         )
         if names:
-            body += "\n" + "\n".join(f"✓ {name}" for name in names)
-        return body
+            text += "\n" + "\n".join(f"✓ {name}" for name in names)
+
+        bubble = build_report_bubble(
+            log_id=updated.id,
+            slot_type=updated.slot_type,
+            scheduled_time=scheduled,
+            taken_time=taken,
+            medication_names=names,
+            ft=resolve_theme(),
+            language=language,
+        )
+        payload = as_payload(
+            bubble,
+            t("flex.medreport.alt.done", language).format(slot=f"{slot_name} {scheduled}"),
+            speech_text=text,
+        )
+        # 卡片組不出來就退回純文字：這則回覆是使用者用來核對「記到對的那一頓」
+        # 的依據，不能因為排版而整個消失。
+        return json.dumps(payload, ensure_ascii=False) if payload else text
+
+    async def undo(
+        self,
+        asker_id: str,
+        log_id: str,
+        *,
+        language: Optional[str] = None,
+    ) -> tuple[Optional[dict], str]:
+        """撤銷一次聊天回報（卡片上的「記錯了」）。
+
+        回 `(bubble, 文字)`：bubble 為 None 時呼叫端只送文字。撤銷不了（不是
+        本人、已經被撤銷過、或狀態已經不是 taken）一律回固定文案，不丟例外
+        ——第二次按下去看到錯誤訊息，使用者會以為第一次也沒生效。
+        """
+        try:
+            reverted = await self._medications.revert_confirmation(log_id, asker_id)
+        except Exception:
+            logger.exception("[MedicationReport] 撤銷失敗 asker=%s", asker_id)
+            return None, t("medreport.undo_failed", language)
+        if reverted is None:
+            return None, t("medreport.undo_failed", language)
+
+        slot_name = get_slot_display_name(reverted.slot_type, language)
+        scheduled = to_taipei_hm(reverted.scheduled_at)
+        bubble = build_report_bubble(
+            log_id=log_id,
+            slot_type=reverted.slot_type,
+            scheduled_time=scheduled,
+            taken_time="",
+            medication_names=(),
+            ft=resolve_theme(),
+            language=language,
+            reverted=True,
+        )
+        text = t("flex.medreport.alt.reverted", language).format(
+            slot=f"{slot_name} {scheduled}"
+        )
+        return bubble, text
+
+    def _ask_which_slot(
+        self, candidates: list[MedicationLog], moment: datetime, language: Optional[str]
+    ) -> str:
+        """反問是哪一頓。候選做成按鈕，使用者不必再打一次字、系統也不必再判讀一次。"""
+        text = t("medreport.which_slot", language).format(
+            slots=t("medstatus.list_sep", language).join(
+                _slot_label(log, language) for log in candidates
+            )
+        )
+        bubble = build_slot_choice_bubble(
+            choices=[
+                SlotChoice(log.id, log.slot_type, to_taipei_hm(log.scheduled_at))
+                for log in candidates
+            ],
+            taken_time=moment.strftime("%H:%M"),
+            ft=resolve_theme(),
+            language=language,
+        )
+        payload = as_payload(bubble, t("flex.medreport.header.which", language), speech_text=text)
+        return json.dumps(payload, ensure_ascii=False) if payload else text
 
 
 # ── 小工具 ──────────────────────────────────────────────────────────

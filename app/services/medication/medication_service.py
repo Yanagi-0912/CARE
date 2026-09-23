@@ -694,6 +694,23 @@ class MedicationService:
                 return completed
         return updated_log
 
+    async def revert_confirmation(self, log_id: str, user_id: str) -> Optional[MedicationLog]:
+        """撤銷一次服藥確認（聊天回報卡上的「記錯了」）。
+
+        回 None 代表沒有可撤銷的紀錄——不是本人、找不到、或狀態已經不是
+        `taken`（例如同一顆按鈕被按了兩次）。呼叫端據此回固定文案，不丟例外：
+        第二次按下去看到錯誤訊息，使用者會以為第一次也沒生效。
+
+        撤銷的後果與為什麼只回 `pending`，見
+        `MedicationLogRepository.revert_taken`。
+        """
+        reverted = await self._log_repository.revert_taken(log_id, user_id)
+        if reverted is None:
+            logger.info("[MedicationService] 沒有可撤銷的確認 log_id=%s", log_id)
+            return None
+        logger.info("[MedicationService] 已撤銷服藥確認 log_id=%s", reverted.id)
+        return reverted
+
     async def _active_medications_for_log(self, log: MedicationLog) -> List[Medication]:
         """該筆用藥日誌對應規則、於 log 台北日期仍有效的藥品，依
         `reminder.medication_ids` 的順序回傳。

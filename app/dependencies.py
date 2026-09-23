@@ -1067,6 +1067,7 @@ _line_event_handler = LineEventHandler(
     facility_detail_handler=_facility_detail_handler,
     replier=_line_replier,
     medication_service=_medication_service,
+    medication_report_service=_medication_report_service,
     medical_news_share_service=_medical_news_share_service,
     appointment_service=_appointment_service,
     line_language_service=_line_language_service,

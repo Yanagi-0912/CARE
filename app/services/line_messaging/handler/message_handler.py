@@ -8,6 +8,10 @@ from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
 from app.core.config import settings
 from app.core.request_logging import log_stage
+from app.core.medication_facts import (
+    begin_request_medication_facts,
+    reset_request_medication_facts,
+)
 from app.core.rag_sources import begin_request_rag_sources, reset_request_rag_sources
 from app.core.user_font_size import (
     normalize_user_font_size,
@@ -136,6 +140,7 @@ class BaseLineMessageHandler:
         font_token = None
         age_token = None
         rag_sources_token = None
+        medication_facts_token = None
 
         try:
             log_stage(
@@ -254,6 +259,8 @@ class BaseLineMessageHandler:
             # 不屬於這個問題的來源按鈕。必須在 agent 執行之前、於這一層建立，
             # tool 才改得到同一個物件（見 app/core/rag_sources.py）。
             rag_sources_token = begin_request_rag_sources()
+            # 藥單問答的登記資料同理（見 app/core/medication_facts.py）。
+            medication_facts_token = begin_request_medication_facts()
 
             self._schedule_loading_animation(user_id)
 
@@ -383,6 +390,8 @@ class BaseLineMessageHandler:
                 reset_request_age(age_token)
             if rag_sources_token is not None:
                 reset_request_rag_sources(rag_sources_token)
+            if medication_facts_token is not None:
+                reset_request_medication_facts(medication_facts_token)
 
     async def start_lost_flow(
         self,

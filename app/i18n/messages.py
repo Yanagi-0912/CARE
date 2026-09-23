@@ -3138,10 +3138,6 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "จากข้อมูลของ {name} ใน CARE:\n{body}",
         "ja": "CARE に登録されている{name}さんの情報：\n{body}",
     },
-    # 一句一行。這段是拿來對時間的，擠成一整段會讓「只隔 6 小時」那一句被淹掉。
-    "medq.sentence_sep": {
-        "zh-TW": "\n", "en": "\n", "id": "\n", "vi": "\n", "th": "\n", "ja": "\n",
-    },
     "medq.meds": {
         "zh-TW": "目前登記 {n} 種藥：{names}",
         "en": "{n} medicines on record: {names}",
@@ -3295,6 +3291,88 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "vi": "Lần này chưa ghi nhận được. Bạn hãy xác nhận trên tin nhắn nhắc uống thuốc nhé.",
         "th": "ครั้งนี้บันทึกไม่สำเร็จ กรุณากดยืนยันที่ข้อความเตือนกินยาแทน",
         "ja": "今回は記録できませんでした。お薬のリマインダーから確認してください。",
+    },
+    # --- Flex：聊天裡回報服藥（medication_report_flex）---
+    "flex.medreport.header.done": {
+        "zh-TW": "已記錄服藥", "en": "Dose recorded", "id": "Obat tercatat",
+        "vi": "Đã ghi nhận", "th": "บันทึกการกินยาแล้ว", "ja": "服薬を記録しました",
+    },
+    "flex.medreport.header.reverted": {
+        "zh-TW": "已取消這筆記錄", "en": "Record cancelled", "id": "Catatan dibatalkan",
+        "vi": "Đã huỷ ghi nhận", "th": "ยกเลิกการบันทึกแล้ว", "ja": "記録を取り消しました",
+    },
+    "flex.medreport.header.which": {
+        "zh-TW": "請問是哪一頓？", "en": "Which dose?", "id": "Dosis yang mana?",
+        "vi": "Là liều nào?", "th": "ยามื้อไหน?", "ja": "どの分でしょうか",
+    },
+    "flex.medreport.taken_at": {
+        "zh-TW": "{time} 服用", "en": "Taken at {time}", "id": "Diminum pukul {time}",
+        "vi": "Uống lúc {time}", "th": "กินตอน {time}", "ja": "{time} に服用",
+    },
+    "flex.medreport.back_to_unconfirmed": {
+        "zh-TW": "已改回未確認",
+        "en": "Back to unconfirmed",
+        "id": "Kembali ke belum dikonfirmasi",
+        "vi": "Trở lại trạng thái chưa xác nhận",
+        "th": "กลับเป็นยังไม่ยืนยัน",
+        "ja": "未確認に戻しました",
+    },
+    "flex.medreport.hint.done": {
+        "zh-TW": "記錯了可以按下面取消。",
+        "en": "If this is wrong, cancel it below.",
+        "id": "Jika salah, batalkan di bawah.",
+        "vi": "Nếu sai, hãy huỷ ở bên dưới.",
+        "th": "ถ้าไม่ถูกต้อง กดยกเลิกด้านล่างได้",
+        "ja": "間違いなら下から取り消せます。",
+    },
+    "flex.medreport.hint.reverted": {
+        "zh-TW": "這一頓回到未確認，用藥提醒會照常提醒您。",
+        "en": "This dose is unconfirmed again; reminders will continue as usual.",
+        "id": "Dosis ini kembali belum dikonfirmasi; pengingat akan berjalan seperti biasa.",
+        "vi": "Liều này trở lại chưa xác nhận, nhắc nhở sẽ tiếp tục như thường.",
+        "th": "ยามื้อนี้กลับเป็นยังไม่ยืนยัน ระบบจะเตือนตามปกติ",
+        "ja": "この分は未確認に戻り、リマインダーは通常どおり届きます。",
+    },
+    "flex.medreport.button.undo": {
+        "zh-TW": "記錯了，取消這筆", "en": "That is wrong, cancel it",
+        "id": "Salah, batalkan", "vi": "Ghi sai, huỷ đi",
+        "th": "บันทึกผิด ยกเลิก", "ja": "間違いなので取り消す",
+    },
+    "flex.medreport.display.undo": {
+        "zh-TW": "記錯了，取消這筆", "en": "That is wrong, cancel it",
+        "id": "Salah, batalkan", "vi": "Ghi sai, huỷ đi",
+        "th": "บันทึกผิด ยกเลิก", "ja": "間違いなので取り消す",
+    },
+    "flex.medreport.display.slot": {
+        "zh-TW": "我吃的是{slot}這一頓", "en": "It was the {slot} dose",
+        "id": "Itu dosis {slot}", "vi": "Đó là liều {slot}",
+        "th": "เป็นยามื้อ {slot}", "ja": "{slot} の分です",
+    },
+    "flex.medreport.which_slot": {
+        "zh-TW": "今天還沒確認的有這幾頓，請按您剛才吃的那一頓。",
+        "en": "These doses are still unconfirmed today. Tap the one you took.",
+        "id": "Dosis berikut belum dikonfirmasi hari ini. Ketuk yang Anda minum.",
+        "vi": "Hôm nay còn những liều sau chưa xác nhận. Hãy chọn liều bạn đã uống.",
+        "th": "วันนี้ยังไม่ยืนยันมื้อเหล่านี้ กดเลือกมื้อที่คุณกินไป",
+        "ja": "今日まだ未確認の分です。飲んだものをタップしてください。",
+    },
+    "flex.medreport.alt.done": {
+        "zh-TW": "已記錄{slot}的服藥", "en": "Recorded the {slot} dose",
+        "id": "Dosis {slot} tercatat", "vi": "Đã ghi nhận liều {slot}",
+        "th": "บันทึกยามื้อ {slot} แล้ว", "ja": "{slot} の服薬を記録しました",
+    },
+    "flex.medreport.alt.reverted": {
+        "zh-TW": "已取消{slot}的服藥記錄", "en": "Cancelled the {slot} record",
+        "id": "Catatan dosis {slot} dibatalkan", "vi": "Đã huỷ ghi nhận liều {slot}",
+        "th": "ยกเลิกบันทึกยามื้อ {slot} แล้ว", "ja": "{slot} の記録を取り消しました",
+    },
+    "medreport.undo_failed": {
+        "zh-TW": "這筆已經沒辦法取消了，請在用藥提醒訊息上重新確認。",
+        "en": "This record can no longer be cancelled. Please confirm again on the reminder message.",
+        "id": "Catatan ini tidak bisa dibatalkan lagi. Silakan konfirmasi ulang lewat pesan pengingat.",
+        "vi": "Ghi nhận này không huỷ được nữa. Bạn hãy xác nhận lại trên tin nhắn nhắc uống thuốc.",
+        "th": "รายการนี้ยกเลิกไม่ได้แล้ว กรุณายืนยันใหม่ที่ข้อความเตือนกินยา",
+        "ja": "この記録はもう取り消せません。リマインダーから再度確認してください。",
     },
     # --- Flex：用藥提醒 ---
     "flex.med.alt.reminder": {

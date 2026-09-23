@@ -23,6 +23,29 @@ from app.services.medical.symptom_classification.urgency import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _isolated_rag_tool():
+    """把 get_rag_answer 的模組全域固定成假服務。
+
+    模型沒選任何工具時 agent 會強制轉 RAG（nodes._can_send_original_text_to_rag），
+    所以這個檔案的測試會真的執行 get_rag_answer 這支工具。那支工具讀的是
+    app.tools.rag_tools 的模組全域 `_rag_answer_service`：本機沒人設過它，是 None，
+    工具回一句「未初始化」就結束；CI 上卻會被先跑的測試留下的真實服務污染，於是
+    測試真的去連 pgvector，報 Missing PGVECTOR_DSN（2026-09-23 的 CI 紅燈）。
+    這裡固定成假服務，兩邊行為一致，斷言的是流程而不是環境。
+    """
+    import app.tools.rag_tools as rag_tools
+
+    class _FakeRagService:
+        async def answer(self, query: str) -> str:
+            return "知識庫回覆"
+
+    previous = rag_tools._rag_answer_service
+    rag_tools.configure_rag_tool(_FakeRagService())
+    yield
+    rag_tools.configure_rag_tool(previous)
+
+
 class _FakeLLM:
     """記錄自己有沒有被呼叫過——短路是否真的生效就看這個。"""
 

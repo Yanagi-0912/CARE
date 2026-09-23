@@ -14,6 +14,7 @@ from app.models.knowledge_report import ContentPreview, ContentPreviewItem
 from app.repositories.knowledge_report_preview_repository import (
     KnowledgeReportPreviewRepository,
 )
+from app.services.rag.web_client import resolve_page_title
 from app.services.rag.whitelist import UrlNotAllowedError, UrlPolicy, default_url_policy
 
 logger = logging.getLogger(__name__)
@@ -214,7 +215,8 @@ class ContentPreviewService:
             return ContentPreviewItem(url=url, status="error", message=str(exc))
 
         text = page.text or ""
-        title = (page.title or "").strip()
+        # PDF 的 metadata 標題常是舊檔留下的，改由內文認（resolve_page_title）
+        title = resolve_page_title(page)
         if len(text.encode()) > MAX_CONTENT_BYTES:
             return ContentPreviewItem(
                 url=url,

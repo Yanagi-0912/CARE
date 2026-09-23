@@ -206,6 +206,7 @@ class FirecrawlClient:
         metadata = data.get("metadata")
         final_url: str | None = None
         title = ""
+        content_type = ""
         if isinstance(metadata, dict):
             raw_final_url = metadata.get("url") or metadata.get("sourceURL")
             if raw_final_url:
@@ -214,8 +215,15 @@ class FirecrawlClient:
             raw_title = metadata.get("title") or metadata.get("ogTitle")
             if raw_title:
                 title = str(raw_title).strip()
+            # PDF 的標題要靠內文認（見 web_client.resolve_page_title），這裡
+            # 只負責把抓取端說的 MIME type 帶出去。
+            raw_content_type = metadata.get("contentType")
+            if raw_content_type:
+                content_type = str(raw_content_type).strip()
 
-        return ScrapedPage(text=text, final_url=final_url, title=title)
+        return ScrapedPage(
+            text=text, final_url=final_url, title=title, content_type=content_type
+        )
 
     async def scrape(self, url: str) -> str:
         return (await self.scrape_page(url)).text

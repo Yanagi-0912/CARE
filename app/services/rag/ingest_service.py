@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal
 
+from app.services.rag.web_client import resolve_page_title
 from app.services.rag.chunking import KB_CHUNKER_VERSION, split_kb_chunks
 from app.services.rag.whitelist import UrlPolicy, default_url_policy
 
@@ -116,7 +117,7 @@ class IngestService:
             normalized=normalized,
             final_norm=final_norm,
             text=text,
-            title=page.title,
+            title=resolve_page_title(page),
             source_name=source_name,
             default_source_name=default_source_name,
         )

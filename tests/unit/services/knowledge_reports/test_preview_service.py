@@ -483,3 +483,30 @@ async def test_error_marker_only_matches_page_head():
     service = _service(repository=repository, web_client=web_client)
     await service.run(report_id=REPORT_ID, preview_id="PV-1", urls=[URL_A])
     assert repository.finish.await_args.args[0].items[0].status == "ok"
+
+
+@pytest.mark.asyncio
+async def test_pdf_title_comes_from_content_not_metadata():
+    """PDF 的 metadata 標題常是舊檔留下的；快照要記內文認出來的那個。
+
+    實例（2026-09-23）：疾管署「伊波拉病毒感染 Q＆A」的 metadata Title 是
+    「中東呼吸症候群冠狀病毒感染症 Q＆A」。標題會成為 original_title 與向量化
+    輸入的主題，錯了等於整篇被標成另一種疾病。
+    """
+    text = "# 伊波拉病毒感染 Q＆A\n\n疾病管制署 103 年 10 月 6 日修訂。" + "伊波拉病毒感染說明。" * 30
+    web_client = _web_client(
+        {
+            URL_A: ScrapedPage(
+                text=text,
+                final_url=URL_A,
+                title="中東呼吸症候群冠狀病毒感染症 Q＆A",
+                content_type="application/pdf",
+            )
+        }
+    )
+    repository = _repository()
+    service = _service(repository=repository, web_client=web_client)
+    await service.run(report_id=REPORT_ID, preview_id="PV-1", urls=[URL_A])
+    item = repository.finish.await_args.args[0].items[0]
+    assert item.status == "ok"
+    assert item.title == "伊波拉病毒感染 Q＆A"

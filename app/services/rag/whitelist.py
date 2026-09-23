@@ -244,6 +244,12 @@ class UrlPolicy:
     """允許清單策略。用建構子注入 allowed_suffixes，測試不必碰 settings。"""
 
     allowed_suffixes: tuple[str, ...]
+    # 後綴通過但整站不收的例外。**這不是模組開頭講的那種黑名單**：Decision 1
+    # 反對的是「列舉會造成解析歧異的字元」，因為那份清單由下游解析器定義、
+    # 永遠補不完，漏掉的預設放行。這裡列舉的是主機名，而主機名在 normalize
+    # 之後已經是唯一字串（不動點檢查保證），比對不存在歧異；漏列一個站的
+    # 後果也只是收到品質差的衛教內容，不是繞過信任邊界。
+    blocked_hosts: tuple[str, ...] = ()
 
     def normalize(self, raw: str) -> str | None:
         return _normalize_url(raw)
@@ -253,6 +259,10 @@ class UrlPolicy:
         if normalized is None:
             return False
         host = urlsplit(normalized).hostname or ""
+        for blocked in self.blocked_hosts:
+            # 與下面同一套標籤邊界比對：擋掉整個主機與它的子網域。
+            if host == blocked or host.endswith("." + blocked):
+                return False
         for suffix in self.allowed_suffixes:
             # 標籤邊界比對：host == suffix 或 host.endswith("." + suffix)。
             # 不可用裸 endswith，否則 "evilgov.tw" 會被 "gov.tw" 誤判通過。
@@ -307,11 +317,22 @@ def parse_allowed_suffixes(raw: str) -> tuple[str, ...]:
     return _collapse_redundant(cleaned)
 
 
+def parse_blocked_hosts(raw: str) -> tuple[str, ...]:
+    """解析 RAG_BLOCKED_HOSTS。空字串代表不擋任何主機。
+
+    沿用 _clean_suffix_list 的清洗規則（trim、小寫、去前導 '.' 與 '*.'、去重），
+    但**不做冗餘收斂**：擋 a.gov.tw 與擋 gov.tw 是兩回事，後者會把整個白名單
+    清空，不能因為前者被後者涵蓋就悄悄丟掉其中一個。
+    """
+    return tuple(_clean_suffix_list(raw))
+
+
 @lru_cache(maxsize=1)
 def default_url_policy() -> UrlPolicy:
-    """production 用的單例：讀 settings.RAG_ALLOWED_DOMAIN_SUFFIXES，模組層快取。"""
+    """production 用的單例：讀 settings 的白名單與例外主機，模組層快取。"""
     raw = settings.RAG_ALLOWED_DOMAIN_SUFFIXES
     suffixes = parse_allowed_suffixes(raw)
+    blocked = parse_blocked_hosts(settings.RAG_BLOCKED_HOSTS)
     if raw and raw.strip():
         cleaned = _clean_suffix_list(raw)
         dropped = [s for s in cleaned if s not in suffixes]
@@ -322,7 +343,9 @@ def default_url_policy() -> UrlPolicy:
                 "RAG_ALLOWED_DOMAIN_SUFFIXES 已收斂，以下後綴被其他後綴涵蓋而略過：%s",
                 ", ".join(dropped),
             )
-    return UrlPolicy(allowed_suffixes=suffixes)
+    if blocked:
+        logger.info("RAG_BLOCKED_HOSTS 生效，以下主機不收錄：%s", ", ".join(blocked))
+    return UrlPolicy(allowed_suffixes=suffixes, blocked_hosts=blocked)
 
 
 def normalize_url(raw: str) -> str | None:

@@ -15,7 +15,8 @@ REPORT_ID = "KR-20260816-AB12"
 URL_A = "https://www.hpa.gov.tw/Pages/Detail.aspx?nodeid=1"
 URL_B = "https://www.cdc.gov.tw/Category/Page/abc"
 BAD_URL = "https://evil.example.com/page"
-CONTENT_A = "高血壓的成因與預防方式。"
+CONTENT_A = "高血壓的成因與預防方式。" * 20  # 超過 MIN_USEFUL_CHARS，不被錯誤頁規則擋下
+CONTENT_B = "糖尿病衛教內容。" * 30
 HASH_A = hashlib.sha256(CONTENT_A.encode()).hexdigest()
 
 
@@ -31,7 +32,7 @@ def _repository() -> MagicMock:
 def _web_client(pages: dict[str, ScrapedPage] | None = None) -> MagicMock:
     resolved = pages or {
         URL_A: ScrapedPage(text=CONTENT_A, final_url=URL_A, title="高血壓防治"),
-        URL_B: ScrapedPage(text="糖尿病衛教內容。", final_url=URL_B, title="糖尿病"),
+        URL_B: ScrapedPage(text=CONTENT_B, final_url=URL_B, title="糖尿病"),
     }
     client = MagicMock()
     client.scrape_page = AsyncMock(side_effect=lambda url: resolved[url])
@@ -253,7 +254,7 @@ async def test_run_continues_remaining_urls_after_one_fails():
     def _scrape(url: str) -> ScrapedPage:
         if url == URL_A:
             raise RuntimeError("boom")
-        return ScrapedPage(text="糖尿病衛教內容。", final_url=URL_B, title="糖尿病")
+        return ScrapedPage(text=CONTENT_B, final_url=URL_B, title="糖尿病")
 
     web_client = MagicMock()
     web_client.scrape_page = AsyncMock(side_effect=_scrape)
@@ -410,3 +411,75 @@ async def test_run_keeps_the_url_list_on_the_finished_preview():
 
     finished = repository.finish.await_args.args[0]
     assert finished.urls == [URL_A]
+
+
+# ── 錯誤頁／阻擋頁不得記成 ok（approve 只收 ok，擋在這裡等於擋掉收錄）──
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "title,text,expected_marker",
+    [
+        # 2026-09-23 實測：三個 mohw 分院網址各回這一份 112 字快照
+        ("403 Forbidden", "## 403 Forbidden\n\n## Transaction ID: 5ecc9fbd", "403 forbidden"),
+        # Cloudflare 攔截頁有 770 字，長度規則抓不到，只能靠特徵字串
+        (
+            "Attention Required! | Cloudflare",
+            "Please enable cookies. Sorry, you have been blocked. " + "x" * 800,
+            "attention required!",
+        ),
+        ("Checking your browser - reCAPTCHA", "Checking your browser before access.", "checking your browser"),
+    ],
+)
+async def test_scrape_marks_error_pages_as_error(title, text, expected_marker):
+    web_client = _web_client(
+        {URL_A: ScrapedPage(text=text, final_url=URL_A, title=title)}
+    )
+    repository = _repository()
+    service = _service(repository=repository, web_client=web_client)
+    await service.run(report_id=REPORT_ID, preview_id="PV-1", urls=[URL_A])
+    item = repository.finish.await_args.args[0].items[0]
+    assert item.status == "error"
+    assert expected_marker in item.message
+    assert item.content == ""  # 不留內容：核准要綁 content_hash，錯誤頁不該有
+
+
+@pytest.mark.asyncio
+async def test_scrape_marks_too_short_content_as_error():
+    """抓不到特徵字串的未知錯誤頁靠長度下限擋。"""
+    web_client = _web_client(
+        {URL_A: ScrapedPage(text="內容遺失。", final_url=URL_A, title="衛教")}
+    )
+    repository = _repository()
+    service = _service(repository=repository, web_client=web_client)
+    await service.run(report_id=REPORT_ID, preview_id="PV-1", urls=[URL_A])
+    item = repository.finish.await_args.args[0].items[0]
+    assert item.status == "error"
+    assert "下限 200 字" in item.message
+
+
+@pytest.mark.asyncio
+async def test_scrape_keeps_short_but_real_page_above_floor():
+    """最短的合法政府頁面（中藥許可證查詢）實測 411 字，不能被誤擋。"""
+    text = "中文品名 強力鐵牛運功散 許可證字號 衛署成製012167 發證日期 2014/10/22 " * 8
+    assert len(text) > 200
+    web_client = _web_client(
+        {URL_A: ScrapedPage(text=text, final_url=URL_A, title="中藥許可證查詢")}
+    )
+    repository = _repository()
+    service = _service(repository=repository, web_client=web_client)
+    await service.run(report_id=REPORT_ID, preview_id="PV-1", urls=[URL_A])
+    assert repository.finish.await_args.args[0].items[0].status == "ok"
+
+
+@pytest.mark.asyncio
+async def test_error_marker_only_matches_page_head():
+    """衛教內文提到「404」不該被誤判——比對限定開頭 400 字與標題。"""
+    text = "頭痛的照護方式如下。" * 40 + "參考資料編號 404 not found 於附錄。"
+    web_client = _web_client(
+        {URL_A: ScrapedPage(text=text, final_url=URL_A, title="頭痛之照護")}
+    )
+    repository = _repository()
+    service = _service(repository=repository, web_client=web_client)
+    await service.run(report_id=REPORT_ID, preview_id="PV-1", urls=[URL_A])
+    assert repository.finish.await_args.args[0].items[0].status == "ok"

@@ -2,6 +2,8 @@
 
 工具只把發問者與模型抽出的參數交給 MedicationStatusService；回覆由 agent.py 的
 medication_direct 原樣送出，不再經過模型。
+
+`follow_up_question` 是那條直通路徑的守門員，見該參數的說明。
 """
 
 from langchain_core.tools import tool
@@ -26,6 +28,7 @@ async def get_medication_status(
     relationship: str = "",
     days_ago: int = 0,
     last_n_days: int = 0,
+    follow_up_question: str = "",
 ) -> str:
     """查使用者本人或家人的用藥安排與服藥紀錄：今天要吃哪些藥、有沒有按下已服用、最近幾天有沒有沒確認的時段。
 
@@ -34,12 +37,18 @@ async def get_medication_status(
     sibling（兄弟姊妹）、grandparent（祖父母）、grandchild（孫子女）其中之一；是名字或問自己時留空。
     days_ago：只問某一天時填幾天前，今天 0、昨天 1、前天 2。
     last_n_days：問一段期間時填天數，例如「這禮拜」「最近幾天」填 7；只問某一天時留 0。
+    follow_up_question：使用者在同一則訊息裡除了查清單之外「還問了什麼」，填他的原話；
+    整則訊息就只是查清單時留空。例如「根據我現在吃的藥，我 11 點喝了牛奶、12 點吃藥，
+    等等要吃午餐，這樣可以嗎」→ 填「我 11 點喝了牛奶、12 點吃藥，等等要吃午餐，這樣可以嗎」。
     """
     if _medication_status_service is None:
         return t("medstatus.error")
     asker_id = get_line_user_id()
     if not asker_id:
         return t("medstatus.error")
+    # `follow_up_question` 不往下傳：清單的內容不因為使用者多問了一句而改變。
+    # 它的用途在 agent.py 的 `_route_after_tools`——有值就不直通，讓模型拿著
+    # 清單去回答那一句。
     return await _medication_status_service.describe(
         asker_id,
         person=person,

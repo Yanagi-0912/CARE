@@ -296,3 +296,40 @@ async def test_injected_http_client_still_wins():
     injected = AsyncMock()
     client = FirecrawlClient(api_key="fc-test", http_client=injected)
     assert client._client() is injected
+
+
+@pytest.mark.asyncio
+async def test_scrape_page_reports_content_type():
+    """PDF 的標題要靠 contentType 才知道該不該從內文認（resolve_page_title）。"""
+    http_client = AsyncMock()
+    http_client.post = AsyncMock(
+        return_value=_mock_response(
+            {
+                "data": {
+                    "markdown": "# 伊波拉病毒感染 Q＆A",
+                    "metadata": {
+                        "url": "https://www.cdc.gov.tw/uploads/files/x.pdf",
+                        "title": "中東呼吸症候群冠狀病毒感染症 Q＆A",
+                        "contentType": "application/pdf",
+                    },
+                }
+            }
+        )
+    )
+    client = FirecrawlClient(api_key="fc-test", http_client=http_client)
+    page = await client.scrape_page("https://www.cdc.gov.tw/uploads/files/x.pdf")
+    assert page.content_type == "application/pdf"
+    assert page.title == "中東呼吸症候群冠狀病毒感染症 Q＆A"
+
+
+@pytest.mark.asyncio
+async def test_scrape_page_content_type_defaults_to_empty():
+    """metadata 沒帶 contentType 時維持原行為。"""
+    http_client = AsyncMock()
+    http_client.post = AsyncMock(
+        return_value=_mock_response(
+            {"data": {"markdown": "內容", "metadata": {"url": "https://www.hpa.gov.tw/a"}}}
+        )
+    )
+    client = FirecrawlClient(api_key="fc-test", http_client=http_client)
+    assert (await client.scrape_page("https://www.hpa.gov.tw/a")).content_type == ""

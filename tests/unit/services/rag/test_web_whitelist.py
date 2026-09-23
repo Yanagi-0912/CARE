@@ -10,6 +10,7 @@ from app.services.rag.whitelist import (
     is_allowed_url,
     normalize_url,
     parse_allowed_suffixes,
+    parse_blocked_hosts,
     with_whitelist_site_filter,
 )
 
@@ -195,3 +196,45 @@ def test_assert_allowed_urls_returns_normalized():
     policy = UrlPolicy(allowed_suffixes=("gov.tw",))
     result = policy.assert_allowed(["www.hpa.gov.tw/x?utm_source=line&nodeid=1"])
     assert result == ["https://www.hpa.gov.tw/x?nodeid=1"]
+
+
+# ── 後綴通過但整站不收的例外（RAG_BLOCKED_HOSTS）─────────────────
+
+
+def test_blocked_host_is_rejected_even_though_suffix_matches():
+    """台灣ｅ院屬 gov.tw，但整站不收（問答區＋索引雜訊，見 config 註解）。"""
+    policy = UrlPolicy(
+        allowed_suffixes=("gov.tw",), blocked_hosts=("sp1.hso.mohw.gov.tw",)
+    )
+    assert policy.is_allowed("https://www.mohw.gov.tw/cp-16-1.html") is True
+    assert (
+        policy.is_allowed(
+            "https://sp1.hso.mohw.gov.tw/doctor/Often_question/type_detail.php?q_type=x"
+        )
+        is False
+    )
+
+
+def test_blocked_host_matches_on_label_boundary():
+    """比對走標籤邊界：子網域要擋，同尾字串的別站不能被誤擋。"""
+    policy = UrlPolicy(allowed_suffixes=("gov.tw",), blocked_hosts=("hso.mohw.gov.tw",))
+    assert policy.is_allowed("https://sp1.hso.mohw.gov.tw/x") is False
+    assert policy.is_allowed("https://hso.mohw.gov.tw/x") is False
+    assert policy.is_allowed("https://notahso.mohw.gov.tw/x") is True
+
+
+def test_blocked_hosts_default_is_empty_tuple():
+    """建構子不帶 blocked_hosts 時行為與本次變更前完全相同。"""
+    assert UrlPolicy(allowed_suffixes=("gov.tw",)).blocked_hosts == ()
+    assert UrlPolicy(allowed_suffixes=("gov.tw",)).is_allowed("https://x.gov.tw/") is True
+
+
+def test_parse_blocked_hosts_cleans_and_keeps_overlaps():
+    """清洗同 _clean_suffix_list，但不做冗餘收斂（擋子網域 ≠ 擋整個 gov.tw）。"""
+    assert parse_blocked_hosts("") == ()
+    assert parse_blocked_hosts("   ") == ()
+    assert parse_blocked_hosts(" SP1.hso.mohw.gov.tw , *.example.gov.tw ,, ") == (
+        "sp1.hso.mohw.gov.tw",
+        "example.gov.tw",
+    )
+    assert parse_blocked_hosts("a.gov.tw,gov.tw") == ("a.gov.tw", "gov.tw")

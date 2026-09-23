@@ -14,6 +14,7 @@ from app.models.knowledge_report import ContentPreview, ContentPreviewItem
 from app.repositories.knowledge_report_preview_repository import (
     KnowledgeReportPreviewRepository,
 )
+from app.services.rag.web_client import resolve_page_title
 from app.services.rag.whitelist import UrlNotAllowedError, UrlPolicy, default_url_policy
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,54 @@ logger = logging.getLogger(__name__)
 # URL，所以逐頁抓在遠低於它的位置；超過的頁面記為 error 而不是讓整份快照
 # 寫入失敗（design.md 決策 3）。
 MAX_CONTENT_BYTES = 8 * 1024 * 1024
+
+# 抓回來的是錯誤頁／阻擋頁時，HTTP 狀態碼已經被抓取端吃掉（Firecrawl 回 200
+# 並把錯誤畫面當成頁面內容），所以只能從內容本身認。不認就會發生 2026-09-23
+# 盤點時看到的情況：三個 mohw 分院網址各回一份「## 403 Forbidden」的 112 字
+# 快照，狀態卻是 ok，照核准就會把錯誤頁收進知識庫。
+#
+# 兩條規則互補，都只在這一層擋（預覽），因為 approve 只收 status == "ok" 的
+# 項目，擋在這裡等於同時擋掉核准與收錄：
+#
+# 1. 特徵字串：實測遇過的三種形態——原站的錯誤頁（「403 Forbidden」）、
+#    Cloudflare 的攔截頁（「Attention Required!」，770 字，長度規則抓不到）、
+#    reCAPTCHA 的過場頁（「Checking your browser」，165 字）。比對限定在開頭
+#    400 字與標題：衛教內文本身也可能提到「404」這種數字，整篇搜尋會誤判。
+# 2. 長度下限：抓不到特徵字串的未知錯誤頁靠這條。200 字的依據是同一批實測
+#    資料——錯誤頁是 112 與 165 字，而最短的合法政府頁面（中藥許可證查詢）
+#    是 411 字，門檻取在兩者之間、偏向寬鬆那側。低於這個長度的頁面即使是真
+#    內容，也答不了一個健康問題。
+MIN_USEFUL_CHARS = 200
+
+_ERROR_PAGE_HEAD_CHARS = 400
+
+_ERROR_PAGE_MARKERS: tuple[str, ...] = (
+    "403 forbidden",
+    "404 not found",
+    "500 internal server error",
+    "502 bad gateway",
+    "503 service unavailable",
+    "access denied",
+    "attention required!",
+    "you have been blocked",
+    "checking your browser",
+    "just a moment...",
+    "enable javascript and cookies to continue",
+)
+
+
+def _error_page_reason(title: str, text: str) -> str | None:
+    """認得出這是錯誤／阻擋頁就回傳給 admin 看的原因，否則回 None。"""
+    head = f"{title}\n{text[:_ERROR_PAGE_HEAD_CHARS]}".lower()
+    for marker in _ERROR_PAGE_MARKERS:
+        if marker in head:
+            return f"抓到的是錯誤或阻擋頁面（{marker}），不是頁面內容"
+    if len(text.strip()) < MIN_USEFUL_CHARS:
+        return (
+            f"抓到的內容只有 {len(text.strip())} 字（下限 {MIN_USEFUL_CHARS} 字），"
+            "不足以作為衛教來源，多半是錯誤頁或抓取失敗"
+        )
+    return None
 
 
 @dataclass(frozen=True)
@@ -166,7 +215,8 @@ class ContentPreviewService:
             return ContentPreviewItem(url=url, status="error", message=str(exc))
 
         text = page.text or ""
-        title = (page.title or "").strip()
+        # PDF 的 metadata 標題常是舊檔留下的，改由內文認（resolve_page_title）
+        title = resolve_page_title(page)
         if len(text.encode()) > MAX_CONTENT_BYTES:
             return ContentPreviewItem(
                 url=url,
@@ -185,6 +235,17 @@ class ContentPreviewService:
                 status="empty",
                 title=title,
                 message="抓取結果為空內容",
+            )
+
+        reason = _error_page_reason(title, text)
+        if reason is not None:
+            logger.info("預覽判定為錯誤頁 url=%s reason=%s", url, reason)
+            return ContentPreviewItem(
+                url=url,
+                status="error",
+                title=title,
+                char_count=len(text),
+                message=reason,
             )
 
         return ContentPreviewItem(

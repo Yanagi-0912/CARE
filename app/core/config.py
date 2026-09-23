@@ -365,6 +365,16 @@ class Settings:
         "RAG_ALLOWED_DOMAIN_SUFFIXES",
         "gov.tw,nhri.edu.tw,who.int,cdc.gov,nih.gov,medlineplus.gov",
     )
+    # 後綴通過、但整個主機都不收的例外（逗號分隔的主機名）。判準與白名單
+    # 同一套（design.md Decision 4），差別只在這條擋的是「機構權威、但該站
+    # 的內容形態不適合當衛教來源」：
+    # sp1.hso.mohw.gov.tw（衛福部台灣ｅ院）是民眾發問、個別醫師針對個案回覆
+    # 的問答區，且每頁都嵌著數百條問題索引，切塊後絕大多數是索引雜訊。
+    # 2026-09-23 盤點 29 筆待審知識回報時，85 個候選網址有 19 個出自這個站。
+    RAG_BLOCKED_HOSTS: str = os.getenv(
+        "RAG_BLOCKED_HOSTS",
+        "sp1.hso.mohw.gov.tw",
+    )
     # 網搜（Firecrawl）用的 site: 篩選字串，與上方入庫白名單各自獨立設定
     # （design.md Decision 5）：網搜只是收窄召回，真正把關的是入庫白名單。
     RAG_WEB_SEARCH_SITE_FILTER: str = os.getenv(

@@ -40,7 +40,7 @@ from app.core.user_language import (
 from app.core.request_logging import log_done, log_stage, log_start
 from app.i18n.messages import t
 from resources.flex_messages.lost_location_flex_message import LOST_CONFIRM_ACTION
-from app.models.medication import to_taipei_hm
+from app.models.medication import TAIPEI_TZ, to_taipei_hm
 from app.services.appointment.appointment_service import AppointmentError
 from app.services.line_messaging.flex.appointment_flex import (
     ATTEND_ACTION,
@@ -50,6 +50,11 @@ from app.services.line_messaging.flex.appointment_flex import (
     format_when,
 )
 from app.services.line_messaging.flex.medication_flex import build_patient_medication_flex
+from app.services.line_messaging.flex.medication_report_flex import (
+    REPORT_SLOT_ACTION,
+    UNDO_REPORT_ACTION,
+    as_flex_message,
+)
 from app.services.line_messaging.flex.welcome_flex import build_welcome_flex
 from app.services.line_messaging.handler.message_handler import (
     LineMessageHandler,
@@ -104,6 +109,24 @@ def _event_label(event) -> str:
     return type(event).__name__
 
 
+def _report_moment(taken_time: str, now: Optional[datetime] = None) -> datetime:
+    """反問卡的按鈕帶回來的服藥時刻（HH:MM）換成今天的台北時間。
+
+    帶不回來或格式怪異時用現在：按鈕上的值是系統自己寫進去的，走到這裡代表
+    postback 被改過或版本不一致，退回現在比整個拒絕處理好——使用者按了，就該
+    有東西被記下來。
+    """
+    now = (now or datetime.now(TAIPEI_TZ)).astimezone(TAIPEI_TZ)
+    parts = (taken_time or "").split(":")
+    if len(parts) != 2 or not all(part.isdigit() for part in parts):
+        return now
+    hour, minute = int(parts[0]), int(parts[1])
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return now
+    stated = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    return now if stated > now else stated
+
+
 class LineEventDispatcher:
     """事件分發器，負責接收 Webhook 解析的事件，並分發至對應處理器。"""
 
@@ -115,6 +138,7 @@ class LineEventDispatcher:
         facility_detail_handler: LineFacilityDetailHandler,
         replier: LineReplier,
         medication_service=None,
+        medication_report_service=None,
         medical_news_share_service=None,
         appointment_service=None,
         line_language_service=None,
@@ -128,6 +152,8 @@ class LineEventDispatcher:
         self._facility_detail_handler = facility_detail_handler
         self._replier = replier
         self._medication_service = medication_service
+        # 聊天回報服藥的卡片按鈕（「記錯了」、反問時挑哪一頓）。未設定時同樣只記 log。
+        self._medication_report_service = medication_report_service
         # 未設定時該 postback 分支只記 log，與 _medication_service 為 None 時的
         # 既有處理一致——功能沒開不該讓事件處理拋錯。
         self._medical_news_share_service = medical_news_share_service
@@ -433,6 +459,26 @@ class LineEventDispatcher:
                     voice_reply_enabled=False,
                     language=user_language,
                 )
+        elif action == UNDO_REPORT_ACTION:
+            # 聊天回報是模型判讀出來的，它把「我吃了沒」讀成「我吃了」時，那一頓
+            # 會被標成 taken，T+20 催促與 T+30 家屬警報就此靜音。這顆按鈕是使用者
+            # 自己按的，不再經過模型一次。
+            await self._handle_medication_report_undo(
+                log_id=params.get("log_id", [""])[0],
+                reply_token=reply_token,
+                user_id=user_id,
+                language=user_language,
+            )
+        elif action == REPORT_SLOT_ACTION:
+            # 反問「是哪一頓」之後，使用者按了其中一顆。服藥時刻跟著按鈕帶回來
+            # ——他在反問之前就講了「12 點吃的」，按下按鈕的現在不是那個事實。
+            await self._handle_medication_report_slot(
+                log_id=params.get("log_id", [""])[0],
+                taken_time=params.get("at", [""])[0],
+                reply_token=reply_token,
+                user_id=user_id,
+                language=user_language,
+            )
         elif action in (DEPART_ACTION, ATTEND_ACTION):
             await self._handle_appointment_report(
                 action=action,
@@ -549,6 +595,78 @@ class LineEventDispatcher:
                 language,
                 not_visit=action == clinic_flow.NOT_VISIT_ACTION,
             )
+
+    async def _handle_medication_report_undo(
+        self,
+        *,
+        log_id: str,
+        reply_token: str,
+        user_id: str,
+        language: str,
+    ) -> None:
+        """聊天回報卡上的「記錯了」。
+
+        LINE 不能修改已送出的訊息，原卡上的按鈕之後仍按得下去。所以回覆的是一張
+        新的「已取消」卡片；再按一次時服務層找不到可撤銷的紀錄，回固定文案。
+        """
+        if not log_id:
+            logger.warning("%s postback missing log_id", UNDO_REPORT_ACTION)
+            return
+        if self._medication_report_service is None:
+            logger.warning("%s postback but report service not configured", UNDO_REPORT_ACTION)
+            return
+
+        bubble, text = await self._medication_report_service.undo(
+            user_id, log_id, language=language
+        )
+        if bubble is None:
+            await self._replier.reply(
+                reply_token=reply_token,
+                message_text=text,
+                user_id=user_id,
+                voice_reply_enabled=False,
+                language=language,
+            )
+            return
+        await self._replier.reply_flex(
+            reply_token=reply_token,
+            flex_message=as_flex_message(bubble, text),
+            user_id=user_id,
+        )
+
+    async def _handle_medication_report_slot(
+        self,
+        *,
+        log_id: str,
+        taken_time: str,
+        reply_token: str,
+        user_id: str,
+        language: str,
+    ) -> None:
+        """反問「是哪一頓」之後按下的那一顆。
+
+        服務層回的是與聊天那條路完全相同的東西（Flex JSON 或純文字），所以這裡
+        走 replier 既有的解析：工具產的 Flex 與這裡產的 Flex 是同一張卡，不該
+        因為來源不同而長得不一樣。
+        """
+        if not log_id:
+            logger.warning("%s postback missing log_id", REPORT_SLOT_ACTION)
+            return
+        if self._medication_report_service is None:
+            logger.warning("%s postback but report service not configured", REPORT_SLOT_ACTION)
+            return
+
+        moment = _report_moment(taken_time)
+        reply_text = await self._medication_report_service.confirm_slot(
+            user_id, log_id, moment, language=language
+        )
+        await self._replier.reply(
+            reply_token=reply_token,
+            message_text=reply_text,
+            user_id=user_id,
+            voice_reply_enabled=False,
+            language=language,
+        )
 
     async def _handle_appointment_report(
         self,

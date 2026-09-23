@@ -11,7 +11,7 @@
 import pytest
 
 from app.models.family_tree import FamilyMember
-from app.services.medication.medication_status_service import resolve_person
+from app.services.family.person_resolution import resolve_person
 
 
 def _member(user_id, name=None, relationship=None):

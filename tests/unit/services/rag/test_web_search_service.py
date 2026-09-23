@@ -640,7 +640,7 @@ async def test_web_answer_without_usable_url_clears_sources(rag_sources_holder):
 async def test_dead_url_is_dropped_from_web_sources():
     """網搜路徑判死的來源整筆不顯示：拿掉連結後只剩搜尋結果標題，
     對使用者驗證沒有價值（知識庫路徑的機構名才值得單獨保留）。"""
-    dead = "https://sp1.hso.mohw.gov.tw/doctor/Often_question/type_detail.php"
+    dead = "https://www.tnhosp.mohw.gov.tw/doctor/Often_question/type_detail.php"
     web = FakeWebClient(
         hits=[
             WebSearchHit(title="衛福部腳痛", url=dead, description="腳痛的常見原因說明。"),
@@ -667,7 +667,7 @@ async def test_dead_url_is_dropped_from_web_sources():
 async def test_dead_url_never_reaches_knowledge_report():
     """死鏈一旦經回報核准就會 ingest 進庫，成為之後每次引用的死連結。
     擋在入庫前，比事後在出口層一直降級它便宜。"""
-    dead = "https://sp1.hso.mohw.gov.tw/gone"
+    dead = "https://www.tnhosp.mohw.gov.tw/gone"
     alive = "https://www.hpa.gov.tw/foot"
     web = FakeWebClient(
         hits=[
@@ -697,7 +697,7 @@ async def test_dead_url_never_reaches_knowledge_report():
 @pytest.mark.asyncio
 async def test_sources_unchanged_when_link_checker_absent():
     """未注入 checker 時行為與導入這個功能之前完全相同。"""
-    url = "https://sp1.hso.mohw.gov.tw/gone"
+    url = "https://www.tnhosp.mohw.gov.tw/gone"
     web = FakeWebClient(
         hits=[WebSearchHit(title="衛福部", url=url, description="腳痛的常見原因說明。")]
     )
@@ -741,8 +741,8 @@ async def test_legs_are_interleaved_so_en_results_are_not_crowded_out():
     """罕見病：中文那路全是不相關內容時，英文那路的正解仍要擠進前 CITE_TOP_K。"""
     zh_hits = [
         _hit("多發性硬化症性功能障礙", "https://www.ntuh.gov.tw/a"),
-        _hit("泌尿科常見問題", "https://sp1.hso.mohw.gov.tw/b"),
-        _hit("精神科常見問題", "https://sp1.hso.mohw.gov.tw/c"),
+        _hit("泌尿科常見問題", "https://www.tnhosp.mohw.gov.tw/b"),
+        _hit("精神科常見問題", "https://www.tnhosp.mohw.gov.tw/c"),
     ]
     en_hits = [
         _hit("Persistent Genital Arousal Disorder", "https://pmc.ncbi.nlm.nih.gov/articles/PMC1/"),
@@ -768,7 +768,7 @@ async def test_legs_are_interleaved_so_en_results_are_not_crowded_out():
         "[2] 網路：Persistent Genital Arousal Disorder："
         "https://pmc.ncbi.nlm.nih.gov/articles/PMC1" in result
     )
-    assert "[3] 網路：泌尿科常見問題：https://sp1.hso.mohw.gov.tw/b" in result
+    assert "[3] 網路：泌尿科常見問題：https://www.tnhosp.mohw.gov.tw/b" in result
     # 名額維持 CITE_TOP_K，不是兩路相加
     assert "pubmed.ncbi.nlm.nih.gov" not in result
 

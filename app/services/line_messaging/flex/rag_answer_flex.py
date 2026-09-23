@@ -23,8 +23,10 @@ from resources.flex_messages import theme
 
 _HEADER_RAG = "衛教資訊"
 _HEADER_DOCUMENT = "文件內容問答"
+_HEADER_MEDICATION = "您的用藥"
 _QUESTION_LABEL = "你問的"
 _SOURCES_LABEL = "參考資料來源"
+_FACTS_LABEL = "CARE 裡登記的資料"
 
 # LINE altText 官方上限 400 字元，超過會讓整則訊息在送出時被拒絕。
 _ALT_TEXT_MAX_LEN = 400
@@ -118,17 +120,60 @@ def _alt_text(header: str, body: str) -> str:
     return text[:_ALT_TEXT_MAX_LEN]
 
 
+def _facts_block(lines: Sequence[str], ft: theme.FlexTheme) -> dict[str, Any]:
+    """藥單問答的登記資料：一行一項，整塊用淺底框起來。
+
+    與答案本文分開的理由不是美觀：這幾行是程式從資料庫算出來的事實（哪幾種藥、
+    今天排幾點、這一頓晚了多久、離下一頓剩多久），答案本文則是模型依知識庫寫
+    的。混成同一段落，使用者分不出哪一句是「系統知道的他自己的資料」、哪一句
+    是「一般的衛教說法」——而他要拿去問藥師的正是前者。
+    """
+    contents: list[dict[str, Any]] = [
+        {
+            "type": "text",
+            "text": _FACTS_LABEL,
+            "size": ft.caption,
+            "color": theme.TEXT_FAINT,
+            "wrap": True,
+        }
+    ]
+    contents.extend(
+        {
+            "type": "text",
+            "text": line,
+            "size": ft.body,
+            "color": theme.TEXT,
+            "wrap": True,
+        }
+        for line in lines
+        if line.strip()
+    )
+    return {
+        "type": "box",
+        "layout": "vertical",
+        "backgroundColor": theme.BRAND_TINT,
+        "cornerRadius": "md",
+        "paddingAll": "lg",
+        "spacing": "xs",
+        "margin": "lg",
+        "contents": contents,
+    }
+
+
 def _bubble(
     header_title: str,
     question: str,
     body: str,
     buttons: list[dict[str, Any]],
     ft: theme.FlexTheme,
+    facts: Sequence[str] = (),
 ) -> dict[str, Any]:
     contents: list[dict[str, Any]] = [
         _question_block(question, ft),
         _body_text(body, ft),
     ]
+    if facts:
+        contents.append(_facts_block(facts, ft))
     if buttons:
         contents.append({"type": "separator", "margin": "lg", "color": theme.BORDER})
         section = ft.section_title(_SOURCES_LABEL)
@@ -168,6 +213,27 @@ def build_rag_answer_flex(
     bubble = _bubble(_HEADER_RAG, question, body, buttons, ft)
     return FlexMessage(
         altText=_alt_text(_HEADER_RAG, body),
+        contents=FlexContainer.from_dict(bubble),
+    )
+
+
+def build_medication_answer_flex(
+    question: str,
+    body: str,
+    facts: Sequence[str],
+    sources: Sequence[SourceRef],
+    ft: theme.FlexTheme,
+) -> FlexMessage:
+    """藥單問答卡（ask_about_my_medications）。
+
+    與衛教卡的差別只有兩處：header 換掉（使用者要一眼看出這張是在講他自己的
+    藥，不是一般衛教），以及多一塊登記資料。來源按鈕照舊——答案本文仍是知識庫
+    生成的，來源不能因為多了藥單就消失。
+    """
+    buttons = _source_buttons(sources, ft)
+    bubble = _bubble(_HEADER_MEDICATION, question, body, buttons, ft, facts=facts)
+    return FlexMessage(
+        altText=_alt_text(_HEADER_MEDICATION, body),
         contents=FlexContainer.from_dict(bubble),
     )
 

@@ -1845,3 +1845,68 @@ async def test_list_active_by_user_parses_documents():
 
     assert len(result) == 1
     assert result[0].name == "普拿疼"
+
+
+# ── 撤銷一次服藥確認（聊天回報卡上的「記錯了」）──────────────────────
+
+
+def _reverted_doc(now):
+    return {
+        "_id": "L123",
+        "reminder_id": "R123",
+        "user_id": "U_PATIENT",
+        "alert_notify_user_id": "U_CARE",
+        "slot_type": "morning",
+        "scheduled_at": now,
+        "timeout_at": now,
+        "status": "pending",
+    }
+
+
+@pytest.mark.asyncio
+async def test_revert_taken_clears_the_confirmation_fields(override_medication_logs_col):
+    """留著 taken_at 會變成「未確認卻有服用時刻」，也會讓拉霸把這頓算成吃過。"""
+    col = MagicMock()
+    now = datetime.now(tz=timezone.utc)
+    col.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
+    col.find_one = AsyncMock(return_value=_reverted_doc(now))
+    override_medication_logs_col(col)
+
+    log = await MedicationLogRepository.revert_taken("L123", "U_PATIENT")
+
+    assert log is not None and log.status == "pending"
+    filter_arg, update_arg = col.update_one.await_args[0]
+    assert update_arg["$set"] == {"status": "pending"}
+    assert set(update_arg["$unset"]) == {"taken_at", "confirmed_at", "taken_medication_ids"}
+
+
+@pytest.mark.asyncio
+async def test_revert_taken_goes_back_to_pending_not_missed(override_medication_logs_col):
+    """
+    T+30 家屬逾時警報的查詢條件是 pending ＋ 逾時。寫成 missed 等於還原了狀態
+    卻永久吞掉那通警報——使用者其實沒吃，家人就該照常被通知。
+    """
+    col = MagicMock()
+    now = datetime.now(tz=timezone.utc)
+    col.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
+    col.find_one = AsyncMock(return_value=_reverted_doc(now))
+    override_medication_logs_col(col)
+
+    await MedicationLogRepository.revert_taken("L123", "U_PATIENT")
+
+    _, update_arg = col.update_one.await_args[0]
+    assert update_arg["$set"]["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_revert_taken_only_touches_this_users_taken_record(override_medication_logs_col):
+    """條件進查詢而不是先讀出來比對：兩段式檢查中間隔著一次 round-trip，而這是寫入。"""
+    col = MagicMock()
+    col.update_one = AsyncMock(return_value=MagicMock(matched_count=0))
+    col.find_one = AsyncMock(return_value=None)
+    override_medication_logs_col(col)
+
+    assert await MedicationLogRepository.revert_taken("L123", "U_OTHER") is None
+
+    filter_arg, _ = col.update_one.await_args[0]
+    assert filter_arg == {"_id": "L123", "user_id": "U_OTHER", "status": "taken"}

@@ -33,10 +33,12 @@ from linebot.v3.messaging import (
 )
 
 from app.core.config import settings
+from app.core.medication_facts import get_request_medication_facts
 from app.core.rag_sources import get_request_rag_sources
 from app.i18n.messages import strip_rag_prefix, strip_sources_section, t
 from app.services.line_messaging.flex.rag_answer_flex import (
     build_document_answer_flex,
+    build_medication_answer_flex,
     build_rag_answer_flex,
 )
 from app.services.line_messaging.flex.table_flex import build_table_flex_from_text
@@ -53,6 +55,20 @@ logger = logging.getLogger(__name__)
 
 LOGGER_HEADER_TEXT = "[LineReplier]"
 DEFAULT_AUDIO_DURATION_MS = 60_000
+
+
+def _strip_medication_facts(card_text: str, block: str) -> str:
+    """把登記資料那一整段從卡片本文裡拿掉——它在卡片上有自己的一塊。
+
+    比對的是 `MedicationQuestionService` 組出來的原字串，不是逐行刪：那一段由
+    一句引言加上幾行事實組成，逐行刪會留下一句沒有內容的「以下是 CARE 裡登記
+    的資料：」。
+
+    找不到就原樣回傳：卡片多出一段重複的文字，比為了排版丟掉答案本文好。
+    """
+    if not block:
+        return card_text
+    return card_text.replace(block, "").strip()
 
 
 class LineReplier:
@@ -395,7 +411,7 @@ class LineReplier:
         任何失敗都退回純文字而非拋出：呈現層是最後一步，使用者寧可拿到樸素
         的文字，也不能拿到空白回覆。
         """
-        if answer_kind not in ("rag", "document"):
+        if answer_kind not in ("rag", "document", "medication"):
             return None, message_text
 
         # 前綴由卡片 header 取代；來源清單移到按鈕，留在內文會重複一次。
@@ -406,6 +422,16 @@ class LineReplier:
             if answer_kind == "rag":
                 card = build_rag_answer_flex(
                     user_question, card_text, get_request_rag_sources(), ft
+                )
+            elif answer_kind == "medication":
+                facts = get_request_medication_facts()
+                # 登記資料在卡片上有自己的一塊，留在本文會整段重複一次。
+                card = build_medication_answer_flex(
+                    user_question,
+                    _strip_medication_facts(card_text, facts.block if facts else ""),
+                    list(facts.lines) if facts else [],
+                    get_request_rag_sources(),
+                    ft,
                 )
             else:
                 card = build_document_answer_flex(user_question, card_text, ft)

@@ -3119,6 +3119,261 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "id": "anggota keluarga tanpa nama", "vi": "người thân chưa đặt tên",
         "th": "คนในครอบครัวที่ยังไม่ได้ตั้งชื่อ", "ja": "名前未設定のご家族",
     },
+    # --- 拿自己的藥單問問題（MedicationQuestionService）---
+    # 時間那幾句是程式從資料庫算出來的事實，只陳述數字、不下判斷——隔多久算
+    # 安全是醫囑，不是我們算得出來的。
+    "medq.facts_self": {
+        "zh-TW": "以下是 CARE 裡登記的資料：\n{body}",
+        "en": "From your CARE records:\n{body}",
+        "id": "Dari catatan CARE Anda:\n{body}",
+        "vi": "Theo dữ liệu đã lưu trong CARE:\n{body}",
+        "th": "จากข้อมูลที่บันทึกไว้ใน CARE:\n{body}",
+        "ja": "CARE に登録されている情報：\n{body}",
+    },
+    "medq.facts_other": {
+        "zh-TW": "以下是 CARE 裡登記的{name}的資料：\n{body}",
+        "en": "From {name}'s CARE records:\n{body}",
+        "id": "Dari catatan CARE {name}:\n{body}",
+        "vi": "Theo dữ liệu của {name} trong CARE:\n{body}",
+        "th": "จากข้อมูลของ {name} ใน CARE:\n{body}",
+        "ja": "CARE に登録されている{name}さんの情報：\n{body}",
+    },
+    "medq.meds": {
+        "zh-TW": "目前登記 {n} 種藥：{names}",
+        "en": "{n} medicines on record: {names}",
+        "id": "{n} obat tercatat: {names}",
+        "vi": "có {n} thuốc được ghi nhận: {names}",
+        "th": "มียาที่บันทึกไว้ {n} รายการ: {names}",
+        "ja": "登録されているお薬は {n} 種類：{names}",
+    },
+    "medq.slots_today": {
+        "zh-TW": "今天排定{slots}",
+        "en": "today's times are {slots}",
+        "id": "jadwal hari ini {slots}",
+        "vi": "hôm nay theo lịch {slots}",
+        "th": "วันนี้ตามกำหนด {slots}",
+        "ja": "今日の予定は{slots}",
+    },
+    "medq.late": {
+        "zh-TW": "{slot} 那一頓在 {actual} 才確認，比排定時間晚 {delay}",
+        "en": "the {slot} dose was confirmed at {actual}, {delay} later than scheduled",
+        "id": "dosis {slot} baru dikonfirmasi pukul {actual}, {delay} lebih lambat dari jadwal",
+        "vi": "liều {slot} đến {actual} mới xác nhận, muộn hơn lịch {delay}",
+        "th": "ยามื้อ {slot} ยืนยันตอน {actual} ช้ากว่ากำหนด {delay}",
+        "ja": "{slot} の分は {actual} に確認され、予定より {delay} 遅い",
+    },
+    "medq.gap": {
+        "zh-TW": "{actual} 到下一頓{next_slot} 只隔 {actual_gap}，排定的間隔是 {planned_gap}",
+        "en": (
+            "from {actual} to the next dose at {next_slot} is {actual_gap}, "
+            "while the scheduled interval is {planned_gap}"
+        ),
+        "id": (
+            "dari {actual} ke dosis berikutnya {next_slot} hanya {actual_gap}, "
+            "sedangkan jarak terjadwal {planned_gap}"
+        ),
+        "vi": (
+            "từ {actual} đến liều kế tiếp {next_slot} chỉ cách {actual_gap}, "
+            "trong khi lịch đặt là {planned_gap}"
+        ),
+        "th": (
+            "จาก {actual} ถึงมื้อถัดไป {next_slot} ห่างกันเพียง {actual_gap} "
+            "ขณะที่ตามกำหนดห่าง {planned_gap}"
+        ),
+        "ja": (
+            "{actual} から次の {next_slot} までは {actual_gap}、"
+            "予定の間隔は {planned_gap}"
+        ),
+    },
+    "medq.duration_h": {
+        "zh-TW": "{h} 小時", "en": "{h} hours", "id": "{h} jam",
+        "vi": "{h} giờ", "th": "{h} ชั่วโมง", "ja": "{h} 時間",
+    },
+    "medq.duration_hm": {
+        "zh-TW": "{h} 小時 {m} 分", "en": "{h} hours {m} minutes",
+        "id": "{h} jam {m} menit", "vi": "{h} giờ {m} phút",
+        "th": "{h} ชั่วโมง {m} นาที", "ja": "{h} 時間 {m} 分",
+    },
+    "medq.ask_pharmacist": {
+        "zh-TW": "服藥時間或劑量要不要調整，請先問藥師或醫師",
+        "en": "ask a pharmacist or doctor before changing any dose or timing",
+        "id": "tanyakan ke apoteker atau dokter sebelum mengubah dosis atau waktu minum",
+        "vi": "hãy hỏi dược sĩ hoặc bác sĩ trước khi đổi liều hay giờ uống",
+        "th": "ควรถามเภสัชกรหรือแพทย์ก่อนปรับขนาดยาหรือเวลากินยา",
+        "ja": "服用時間や量を変える前に、薬剤師か医師に相談してください",
+    },
+    "medq.no_answer": {
+        "zh-TW": "這個問題我查不到可靠的資料，請直接問藥師或醫師；藥師看得到完整處方，判斷會比較準。",
+        "en": (
+            "I could not find reliable information for this question. "
+            "Please ask a pharmacist or doctor, who can see the full prescription."
+        ),
+        "id": (
+            "Saya tidak menemukan informasi yang dapat diandalkan untuk pertanyaan ini. "
+            "Silakan tanya apoteker atau dokter yang bisa melihat resep lengkap."
+        ),
+        "vi": (
+            "Tôi không tìm được thông tin đáng tin cậy cho câu hỏi này. "
+            "Hãy hỏi dược sĩ hoặc bác sĩ, họ xem được toàn bộ đơn thuốc."
+        ),
+        "th": (
+            "ฉันหาข้อมูลที่เชื่อถือได้สำหรับคำถามนี้ไม่พบ "
+            "กรุณาถามเภสัชกรหรือแพทย์ซึ่งเห็นใบสั่งยาทั้งหมด"
+        ),
+        "ja": (
+            "この質問に確かな情報が見つかりませんでした。"
+            "処方の全体を見られる薬剤師か医師に直接ご相談ください。"
+        ),
+    },
+    # --- 在聊天裡回報吃過藥了（MedicationReportService）---
+    "medreport.done": {
+        "zh-TW": "好，已記錄您在 {time} 服用{slot} 這一頓：",
+        "en": "Done. Recorded that you took the {slot} dose at {time}:",
+        "id": "Sudah dicatat: Anda minum dosis {slot} pukul {time}:",
+        "vi": "Đã ghi nhận bạn uống liều {slot} lúc {time}:",
+        "th": "บันทึกแล้วว่าคุณกินยามื้อ {slot} ตอน {time}:",
+        "ja": "{time} に{slot}の分を服用したと記録しました：",
+    },
+    "medreport.which_slot": {
+        "zh-TW": "請問是哪一頓？今天還沒確認的有：{slots}",
+        "en": "Which dose was it? Still unconfirmed today: {slots}",
+        "id": "Dosis yang mana? Yang belum dikonfirmasi hari ini: {slots}",
+        "vi": "Là liều nào vậy? Hôm nay chưa xác nhận: {slots}",
+        "th": "เป็นยามื้อไหนคะ วันนี้ที่ยังไม่ยืนยัน: {slots}",
+        "ja": "どの分でしょうか。今日まだ未確認なのは：{slots}",
+    },
+    "medreport.nothing_open": {
+        "zh-TW": "今天沒有待確認的時段，可能已經都確認過了。",
+        "en": "There is no dose waiting for confirmation today; they may all be confirmed already.",
+        "id": "Tidak ada dosis yang menunggu konfirmasi hari ini; mungkin semua sudah dikonfirmasi.",
+        "vi": "Hôm nay không còn liều nào chờ xác nhận, có thể đã xác nhận hết rồi.",
+        "th": "วันนี้ไม่มีมื้อที่รอการยืนยัน อาจยืนยันครบแล้ว",
+        "ja": "今日は確認待ちの分がありません。すでにすべて確認済みかもしれません。",
+    },
+    "medreport.slot_not_open": {
+        "zh-TW": "{slot}那一頓今天沒有待確認的紀錄，可能已經確認過、或今天沒有排。",
+        "en": (
+            "There is no unconfirmed {slot} dose today — it may already be confirmed, "
+            "or not scheduled today."
+        ),
+        "id": (
+            "Tidak ada dosis {slot} yang belum dikonfirmasi hari ini — mungkin sudah "
+            "dikonfirmasi atau memang tidak dijadwalkan."
+        ),
+        "vi": (
+            "Hôm nay không có liều {slot} nào chưa xác nhận — có thể đã xác nhận "
+            "hoặc hôm nay không có lịch."
+        ),
+        "th": "วันนี้ไม่มียามื้อ{slot}ที่รอการยืนยัน อาจยืนยันแล้วหรือไม่ได้ตั้งไว้",
+        "ja": "今日は{slot}の未確認の分がありません。確認済みか、今日は予定がないようです。",
+    },
+    "medreport.self_only": {
+        "zh-TW": "服藥確認只能由本人回報，請家人自己在 CARE 裡按下確認。",
+        "en": (
+            "Only the person taking the medicine can confirm a dose. "
+            "Please ask them to confirm it in CARE themselves."
+        ),
+        "id": (
+            "Konfirmasi minum obat hanya bisa dilakukan oleh yang bersangkutan. "
+            "Mintalah dia mengonfirmasi sendiri di CARE."
+        ),
+        "vi": (
+            "Chỉ người uống thuốc mới xác nhận được. "
+            "Hãy nhờ người đó tự xác nhận trong CARE."
+        ),
+        "th": "การยืนยันการกินยาต้องทำโดยเจ้าตัวเท่านั้น กรุณาให้เขายืนยันใน CARE เอง",
+        "ja": "服薬の確認はご本人だけができます。ご本人に CARE で確認してもらってください。",
+    },
+    "medreport.error": {
+        "zh-TW": "這次沒有記錄成功，請直接在用藥提醒訊息上按下確認。",
+        "en": "That did not get recorded. Please confirm on the medication reminder message instead.",
+        "id": "Belum tercatat. Silakan konfirmasi lewat pesan pengingat obat.",
+        "vi": "Lần này chưa ghi nhận được. Bạn hãy xác nhận trên tin nhắn nhắc uống thuốc nhé.",
+        "th": "ครั้งนี้บันทึกไม่สำเร็จ กรุณากดยืนยันที่ข้อความเตือนกินยาแทน",
+        "ja": "今回は記録できませんでした。お薬のリマインダーから確認してください。",
+    },
+    # --- Flex：聊天裡回報服藥（medication_report_flex）---
+    "flex.medreport.header.done": {
+        "zh-TW": "已記錄服藥", "en": "Dose recorded", "id": "Obat tercatat",
+        "vi": "Đã ghi nhận", "th": "บันทึกการกินยาแล้ว", "ja": "服薬を記録しました",
+    },
+    "flex.medreport.header.reverted": {
+        "zh-TW": "已取消這筆記錄", "en": "Record cancelled", "id": "Catatan dibatalkan",
+        "vi": "Đã huỷ ghi nhận", "th": "ยกเลิกการบันทึกแล้ว", "ja": "記録を取り消しました",
+    },
+    "flex.medreport.header.which": {
+        "zh-TW": "請問是哪一頓？", "en": "Which dose?", "id": "Dosis yang mana?",
+        "vi": "Là liều nào?", "th": "ยามื้อไหน?", "ja": "どの分でしょうか",
+    },
+    "flex.medreport.taken_at": {
+        "zh-TW": "{time} 服用", "en": "Taken at {time}", "id": "Diminum pukul {time}",
+        "vi": "Uống lúc {time}", "th": "กินตอน {time}", "ja": "{time} に服用",
+    },
+    "flex.medreport.back_to_unconfirmed": {
+        "zh-TW": "已改回未確認",
+        "en": "Back to unconfirmed",
+        "id": "Kembali ke belum dikonfirmasi",
+        "vi": "Trở lại trạng thái chưa xác nhận",
+        "th": "กลับเป็นยังไม่ยืนยัน",
+        "ja": "未確認に戻しました",
+    },
+    "flex.medreport.hint.done": {
+        "zh-TW": "記錯了可以按下面取消。",
+        "en": "If this is wrong, cancel it below.",
+        "id": "Jika salah, batalkan di bawah.",
+        "vi": "Nếu sai, hãy huỷ ở bên dưới.",
+        "th": "ถ้าไม่ถูกต้อง กดยกเลิกด้านล่างได้",
+        "ja": "間違いなら下から取り消せます。",
+    },
+    "flex.medreport.hint.reverted": {
+        "zh-TW": "這一頓回到未確認，用藥提醒會照常提醒您。",
+        "en": "This dose is unconfirmed again; reminders will continue as usual.",
+        "id": "Dosis ini kembali belum dikonfirmasi; pengingat akan berjalan seperti biasa.",
+        "vi": "Liều này trở lại chưa xác nhận, nhắc nhở sẽ tiếp tục như thường.",
+        "th": "ยามื้อนี้กลับเป็นยังไม่ยืนยัน ระบบจะเตือนตามปกติ",
+        "ja": "この分は未確認に戻り、リマインダーは通常どおり届きます。",
+    },
+    "flex.medreport.button.undo": {
+        "zh-TW": "記錯了，取消這筆", "en": "That is wrong, cancel it",
+        "id": "Salah, batalkan", "vi": "Ghi sai, huỷ đi",
+        "th": "บันทึกผิด ยกเลิก", "ja": "間違いなので取り消す",
+    },
+    "flex.medreport.display.undo": {
+        "zh-TW": "記錯了，取消這筆", "en": "That is wrong, cancel it",
+        "id": "Salah, batalkan", "vi": "Ghi sai, huỷ đi",
+        "th": "บันทึกผิด ยกเลิก", "ja": "間違いなので取り消す",
+    },
+    "flex.medreport.display.slot": {
+        "zh-TW": "我吃的是{slot}這一頓", "en": "It was the {slot} dose",
+        "id": "Itu dosis {slot}", "vi": "Đó là liều {slot}",
+        "th": "เป็นยามื้อ {slot}", "ja": "{slot} の分です",
+    },
+    "flex.medreport.which_slot": {
+        "zh-TW": "今天還沒確認的有這幾頓，請按您剛才吃的那一頓。",
+        "en": "These doses are still unconfirmed today. Tap the one you took.",
+        "id": "Dosis berikut belum dikonfirmasi hari ini. Ketuk yang Anda minum.",
+        "vi": "Hôm nay còn những liều sau chưa xác nhận. Hãy chọn liều bạn đã uống.",
+        "th": "วันนี้ยังไม่ยืนยันมื้อเหล่านี้ กดเลือกมื้อที่คุณกินไป",
+        "ja": "今日まだ未確認の分です。飲んだものをタップしてください。",
+    },
+    "flex.medreport.alt.done": {
+        "zh-TW": "已記錄{slot}的服藥", "en": "Recorded the {slot} dose",
+        "id": "Dosis {slot} tercatat", "vi": "Đã ghi nhận liều {slot}",
+        "th": "บันทึกยามื้อ {slot} แล้ว", "ja": "{slot} の服薬を記録しました",
+    },
+    "flex.medreport.alt.reverted": {
+        "zh-TW": "已取消{slot}的服藥記錄", "en": "Cancelled the {slot} record",
+        "id": "Catatan dosis {slot} dibatalkan", "vi": "Đã huỷ ghi nhận liều {slot}",
+        "th": "ยกเลิกบันทึกยามื้อ {slot} แล้ว", "ja": "{slot} の記録を取り消しました",
+    },
+    "medreport.undo_failed": {
+        "zh-TW": "這筆已經沒辦法取消了，請在用藥提醒訊息上重新確認。",
+        "en": "This record can no longer be cancelled. Please confirm again on the reminder message.",
+        "id": "Catatan ini tidak bisa dibatalkan lagi. Silakan konfirmasi ulang lewat pesan pengingat.",
+        "vi": "Ghi nhận này không huỷ được nữa. Bạn hãy xác nhận lại trên tin nhắn nhắc uống thuốc.",
+        "th": "รายการนี้ยกเลิกไม่ได้แล้ว กรุณายืนยันใหม่ที่ข้อความเตือนกินยา",
+        "ja": "この記録はもう取り消せません。リマインダーから再度確認してください。",
+    },
     # --- Flex：用藥提醒 ---
     "flex.med.alt.reminder": {
         "zh-TW": "CARE 用藥提醒：{slot} 服藥時間到了",
@@ -4873,6 +5128,27 @@ def split_at_sources_heading(text: str) -> tuple[str, str] | None:
             _, after = text.split(heading, 1)
             return heading, after
     return None
+
+
+def insert_before_sources(text: str, notice: str) -> str:
+    """把一段提醒插在「參考資料來源」標題之前，沒有來源段落時直接接在最後。
+
+    位置是關鍵而不是美觀問題：`reply.py._build_answer_card` 組卡片時會呼叫
+    `strip_sources_section`，而它回傳的是**來源標題之前**的全部內容。提醒
+    若接在整段最後面，純文字回覆看得到，卡片卻永遠看不到——而卡片才是絕大
+    多數使用者實際看到的東西。
+
+    住在這裡而不是 agent.py：`MedicationQuestionService` 也要把它算出來的
+    服藥時間事實插在同一個位置，而那是在工具裡、不是在圖節點裡。
+    """
+    if not notice:
+        return text
+    split = split_at_sources_heading(text)
+    if split is None:
+        return f"{text}\n\n{notice}"
+    heading, sources_body = split
+    before, _ = text.split(heading, 1)
+    return f"{before.rstrip()}\n\n{notice}\n\n{heading}{sources_body}"
 
 
 def strip_sources_section(text: str) -> str:

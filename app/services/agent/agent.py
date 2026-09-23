@@ -13,6 +13,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 from app.core.request_logging import log_stage, stage_timer
 from app.i18n.messages import (
+    insert_before_sources,
     split_at_sources_heading,
     t,
     strip_sources_section,
@@ -34,6 +35,8 @@ from app.services.rag.fail_messages import (
 from app.tools.claim_tools import CARD_CLAIM_NOT_FOUND
 from app.tools.user_document_tools import is_document_answer_unavailable
 from app.tools.family_directory_tools import FAMILY_DIRECTORY_TOOL_NAME
+from app.tools.medication_question_tools import MEDICATION_QUESTION_TOOL_NAME
+from app.tools.medication_report_tools import MEDICATION_REPORT_TOOL_NAME
 from app.tools.medication_status_tools import MEDICATION_STATUS_TOOL_NAME
 from app.tools.registry import get_all_tools
 
@@ -67,6 +70,41 @@ def _is_lone_success(tool_messages: list[ToolMessage], name: str) -> bool:
     )
 
 
+def _tool_call_args(messages: list[AnyMessage], tool_call_id: str) -> dict:
+    """發出這個 ToolMessage 的那一次呼叫所帶的參數。
+
+    ToolMessage 只有結果，沒有參數；參數在它前面那則 AIMessage 的 `tool_calls`
+    裡。用 `tool_call_id` 對應而不是取最後一則 AIMessage 的第一個呼叫——同一輪
+    可能有多個呼叫，對錯了就是拿另一個工具的參數來做判斷。
+    """
+    for msg in reversed(messages or []):
+        for call in getattr(msg, "tool_calls", None) or []:
+            got = call.get("id") if isinstance(call, dict) else getattr(call, "id", None)
+            if got != tool_call_id:
+                continue
+            args = call.get("args") if isinstance(call, dict) else getattr(call, "args", None)
+            return args if isinstance(args, dict) else {}
+    return {}
+
+
+def _asked_more_than_the_list(state: State, tool_messages: list[ToolMessage]) -> bool:
+    """這一則訊息除了查清單之外，還問了別的問題嗎。
+
+    2026-09-23 線上的那一則是這個判斷不存在的後果：使用者問「根據我現在吃的藥，
+    我 11 點喝了牛奶、12 點吃藥，等等要吃午餐，這樣可以嗎」，agent 只挑了
+    `get_medication_status`，直通把今天的用藥清單原樣送出——清單本來只是那個
+    問題的前提，卻變成了整則回覆，後半句沒有人回答。
+
+    判斷交給模型在原本那一次呼叫裡順手填的 `follow_up_question`，不另外做一次
+    分類：它此刻正拿著整則訊息，而且這個呼叫本來就要發出去，等於零成本；另外
+    問一次（不論是關鍵詞表還是再一次模型呼叫）只是拿更差的資訊重做一次它已經
+    做過的閱讀。填錯的代價也不對稱——多回模型一次是多等幾秒，漏掉是答非所問。
+    """
+    messages = state.get("messages") or []
+    args = _tool_call_args(messages, getattr(tool_messages[0], "tool_call_id", ""))
+    return bool(str(args.get("follow_up_question") or "").strip())
+
+
 def _route_after_tools(state: State) -> str:
     """工具跑完後：直通，還是回去讓模型組裝回覆。
 
@@ -93,6 +131,10 @@ def _route_after_tools(state: State) -> str:
       「以下為 RAG 回應：」加一段沒人問的情緒支持與 1925 專線。
     - `get_medication_status` 與 `get_family_directory` 同理直通（見各自的 direct
       reply node），條件一樣收緊：這一輪只有它一個工具、而且沒有出錯。
+      `get_medication_status` 還多一道：模型填了 `follow_up_question`（清單
+      只是問題的前提）就不直通，見 `_asked_more_than_the_list`。
+    - `ask_about_my_medications` 與 `record_medication_taken` 回的同樣是成品
+      （前者已經過 RAG 生成、時間那段是程式算的；後者是資料庫的確認結果）。
     - 其餘工具（附近院所、查核卡）本來就有自己的直通路徑，不經過這裡。
 
     已知取捨：多輪追問（「那芒果呢」）時，模型那一步看得到完整對話歷史，
@@ -101,9 +143,16 @@ def _route_after_tools(state: State) -> str:
     tool_messages = _trailing_tool_messages(state.get("messages") or [])
     if _is_lone_success(tool_messages, FAMILY_DIRECTORY_TOOL_NAME):
         return "family_directory_direct"
-    # 查服藥狀況不隨 RAG 開關提供，所以排在 allow_rag 之前判斷。
+    # 查服藥狀況與聊天回報吃過藥都不隨 RAG 開關提供，所以排在 allow_rag 之前判斷。
     if _is_lone_success(tool_messages, MEDICATION_STATUS_TOOL_NAME):
+        if _asked_more_than_the_list(state, tool_messages):
+            return "agent"
         return "medication_direct"
+    if _is_lone_success(tool_messages, MEDICATION_REPORT_TOOL_NAME):
+        return "medication_report_direct"
+    # 藥單問答的答案已經過 RAG 生成、時間那段是程式算的，交回模型只是重寫成品。
+    if _is_lone_success(tool_messages, MEDICATION_QUESTION_TOOL_NAME):
+        return "medication_question_direct"
     # 本輪沒提供 RAG 就不可能有合法的 RAG 結果可直通；會走到這裡的只剩被
     # `_execute_offered_tools` 攔下的呼叫。
     if not state.get("allow_rag"):
@@ -120,22 +169,6 @@ def _route_after_tools(state: State) -> str:
     if is_rag_fail(content_to_text(only.content)):
         return "rag_fail_direct"
     return "rag_direct"
-
-
-def _insert_before_sources(answer: str, notice: str) -> str:
-    """把提醒插在「參考資料來源」標題之前，沒有來源段落時直接接在最後。
-
-    位置是關鍵而不是美觀問題：`reply.py._build_answer_card` 組卡片時會呼叫
-    `strip_sources_section`，而它回傳的是**來源標題之前**的全部內容。提醒
-    若接在整段最後面，純文字回覆看得到，卡片卻永遠看不到——而卡片才是絕大
-    多數使用者實際看到的東西。
-    """
-    split = split_at_sources_heading(answer)
-    if split is None:
-        return f"{answer}\n\n{notice}"
-    heading, sources_body = split
-    before, _ = answer.split(heading, 1)
-    return f"{before.rstrip()}\n\n{notice}\n\n{heading}{sources_body}"
 
 
 def _rag_direct_reply_node(state: State) -> dict:
@@ -155,7 +188,7 @@ def _rag_direct_reply_node(state: State) -> dict:
 
     notice = t("rag.professional_advice_notice")
     if notice and notice not in answer:
-        answer = _insert_before_sources(answer, notice)
+        answer = insert_before_sources(answer, notice)
 
     # 前綴由程式附加，而不是像不直通時那樣要求模型寫（prompt.py 規則）。
     # 兩個理由：
@@ -230,6 +263,35 @@ def _medication_direct_reply_node(state: State) -> dict:
     tool_messages = _trailing_tool_messages(state.get("messages") or [])
     answer = content_to_text(tool_messages[-1].content).strip()
     log_stage(logger, "medication_direct_reply", chars=len(answer))
+    return {"messages": [AIMessage(content=answer)]}
+
+
+def _medication_question_direct_reply_node(state: State) -> dict:
+    """藥單問答的答案原樣送出，只補上醫療提醒。
+
+    RAG 前綴與登記資料那一段已經由 `MedicationQuestionService` 放好（它自己才
+    知道這一輪 RAG 有沒有真的答出東西）。這裡只做 `rag_direct` 那條路同樣要做
+    的事：把固定的醫療提醒插在來源清單之前（位置的理由見 `insert_before_sources`）。
+    """
+    tool_messages = _trailing_tool_messages(state.get("messages") or [])
+    answer = content_to_text(tool_messages[-1].content).strip()
+    notice = t("rag.professional_advice_notice")
+    if notice and notice not in answer:
+        answer = insert_before_sources(answer, notice)
+    log_stage(logger, "medication_question_direct_reply", chars=len(answer))
+    return {"messages": [AIMessage(content=answer)]}
+
+
+def _medication_report_direct_reply_node(state: State) -> dict:
+    """聊天回報服藥的結果原樣送出。
+
+    內容是「哪一頓、幾點、哪幾種藥」，全部由資料庫決定；交回模型重寫只會多一次
+    把時段或藥名寫錯的機會，而這則回覆正是使用者用來核對「有沒有記到對的那一頓」
+    的依據。
+    """
+    tool_messages = _trailing_tool_messages(state.get("messages") or [])
+    answer = content_to_text(tool_messages[-1].content).strip()
+    log_stage(logger, "medication_report_direct_reply", chars=len(answer))
     return {"messages": [AIMessage(content=answer)]}
 
 
@@ -475,6 +537,10 @@ class Agent:
         builder.add_node("rag_fail_direct", _rag_fail_direct_reply_node)
         builder.add_node("medication_direct", _medication_direct_reply_node)
         builder.add_node("family_directory_direct", _family_directory_direct_reply_node)
+        builder.add_node(
+            "medication_question_direct", _medication_question_direct_reply_node
+        )
+        builder.add_node("medication_report_direct", _medication_report_direct_reply_node)
 
         builder.add_edge(START, "guardrail")
         # 急迫度短路：判定為緊急時直接產生卡片，不進 agent。安全檢查不能是 agent
@@ -499,6 +565,8 @@ class Agent:
                 "rag_fail_direct": "rag_fail_direct",
                 "medication_direct": "medication_direct",
                 "family_directory_direct": "family_directory_direct",
+                "medication_question_direct": "medication_question_direct",
+                "medication_report_direct": "medication_report_direct",
                 "agent": "agent",
             },
         )
@@ -506,6 +574,8 @@ class Agent:
         builder.add_edge("rag_fail_direct", END)
         builder.add_edge("medication_direct", END)
         builder.add_edge("family_directory_direct", END)
+        builder.add_edge("medication_question_direct", END)
+        builder.add_edge("medication_report_direct", END)
 
         return builder.compile()
 
@@ -572,6 +642,10 @@ class Agent:
             # 紅旗卡刻意不含任何門診科別，讓模型重寫有可能把「請立即就醫」稀釋
             # 成「可以考慮掛某某科」，那正是本功能要避免的失效模式。
             "suggest_department_for_symptom",
+            # 聊天回報服藥的「已記錄」卡（含「記錯了」按鈕）與「是哪一頓」卡。
+            # 卡片組不出來時服務層回的是純文字，這條路照樣原樣送出，
+            # `_try_parse_flex_message` 解析不成就走純文字分支。
+            MEDICATION_REPORT_TOOL_NAME,
         }
         used_tool_names: list[str] = []
         for msg in reversed(result.get("messages", [])):
@@ -647,13 +721,27 @@ class Agent:
             # 理由）。緊急卡同理。
             for msg in reversed(result.get("messages", [])):
                 name = getattr(msg, "name", None)
-                if name not in ("get_rag_answer", "answer_from_uploaded_document"):
+                if name not in (
+                    "get_rag_answer",
+                    "answer_from_uploaded_document",
+                    MEDICATION_QUESTION_TOOL_NAME,
+                ):
                     continue
                 content = (
                     msg.content if isinstance(msg.content, str) else str(msg.content)
                 )
                 if name == "get_rag_answer":
                     answer_kind = None if is_rag_fail(content) else "rag"
+                elif name == MEDICATION_QUESTION_TOOL_NAME:
+                    # 藥單問答有自己的卡：header 要讓使用者一眼看出這張在講他
+                    # 自己的藥，而登記資料要與答案本文分開（見
+                    # `rag_answer_flex._facts_block`）。判斷用「有沒有來源段落」
+                    # 而不是 `is_rag_fail`：這個工具永遠回完整文字、不回錯誤
+                    # 代碼，而內部 RAG 沒答出來時它回的是登記資料加「請問藥師」，
+                    # 那沒有來源可掛，做成卡片只會是一張空殼。
+                    answer_kind = (
+                        "medication" if text_contains_sources_heading(content) else None
+                    )
                 else:
                     answer_kind = (
                         None if is_document_answer_unavailable(content) else "document"

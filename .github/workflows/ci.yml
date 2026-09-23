@@ -47,6 +47,23 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
+      # 本地分類器（guardrail、急迫度、走失、RAG 路由）自 2026-09-19 起改用
+      # 句向量，模型檔 129MB 不進 repo（.gitignore 的 models/），正式映像是
+      # Dockerfile 在 build 時下載。CI 少了這一步，載得到模型的測試從 09-19
+      # 起全數 FileNotFoundError——CI 因此紅了四天，紅的不是程式。
+      #
+      # 快取鍵綁 fetch_text_encoder.py 的內容：那支腳本把模型的 commit 釘死
+      # 在裡面，腳本沒變就代表要抓的是同一份檔案，改了就自動換一份快取。
+      - name: Cache sentence encoder
+        uses: actions/cache@v4
+        with:
+          path: models/multilingual-e5-small
+          key: text-encoder-${{ hashFiles('scripts/fetch_text_encoder.py') }}
+
+      # 快取命中時腳本自己會略過（檔案已存在），不會重抓。
+      - name: Fetch sentence encoder
+        run: uv run python scripts/fetch_text_encoder.py
+
       - name: Run tests with pytest
         env:
           MONGODB_URI: ${{ secrets.MONGODB_URI }}

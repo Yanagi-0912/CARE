@@ -3,7 +3,11 @@ import json
 import pytest
 
 from app.core.request_context import reset_line_user_id, set_line_user_id
-from app.services.family.patient_context import PatientContext, ValueSource
+from app.services.family.patient_context import (
+    PatientCandidate,
+    PatientContext,
+    ValueSource,
+)
 from app.services.medical.symptom_classification.symptom_department_service import (
     PEDIATRIC_REASON_AGE,
     PEDIATRIC_REASON_MENTIONED_CHILD,
@@ -154,6 +158,124 @@ async def test_builds_patient_context_from_structured_tool_arguments():
     ]
     assert departments.calls == ["一直嘔吐"]
     assert departments.contexts == [context]
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_patient_asks_for_full_name_without_querying_symptom_table():
+    context = PatientContext(
+        operator_id="U_OPERATOR",
+        patient_kind="ambiguous",
+        display_label="parent",
+        relationship="parent",
+        candidates=(
+            PatientCandidate("U_FATHER", "王大明", "parent"),
+            PatientCandidate("U_MOTHER", "林美玲", "parent"),
+        ),
+    )
+    contexts = StubPatientContextService(context)
+    departments = StubService(_suggestion("內科"))
+    _configure(departments, contexts)
+
+    reply = await suggest_department_for_symptom.ainvoke(
+        {"symptom": "頭痛", "relationship": "parent"}
+    )
+
+    assert reply == (
+        "找到多位符合的家人：王大明、林美玲。"
+        "請說完整姓名後，再問一次要看哪一科。"
+    )
+    assert departments.calls == []
+
+
+@pytest.mark.asyncio
+async def test_conflicting_name_and_relationship_asks_for_correction_without_lookup():
+    context = PatientContext(
+        operator_id="U_OPERATOR",
+        patient_kind="conflict",
+        display_label="王美玲",
+        relationship="parent",
+        candidates=(PatientCandidate("U_SPOUSE", "王美玲", "spouse"),),
+    )
+    departments = StubService(_suggestion("內科"))
+    _configure(departments, StubPatientContextService(context))
+
+    reply = await suggest_department_for_symptom.ainvoke(
+        {
+            "symptom": "頭痛",
+            "person": "王美玲",
+            "relationship": "parent",
+        }
+    )
+
+    assert reply == (
+        "「王美玲」與指定的稱謂不一致。"
+        "請確認姓名或稱謂後，再問一次要看哪一科。"
+    )
+    assert departments.calls == []
+
+
+@pytest.mark.asyncio
+async def test_unlinked_patient_still_gets_general_advice_from_message_values():
+    context = PatientContext(
+        operator_id="U_OPERATOR",
+        patient_kind="not_found",
+        display_label="隔壁阿伯",
+        age=70,
+        age_source=ValueSource.MESSAGE,
+        gender="male",
+        gender_source=ValueSource.MESSAGE,
+    )
+    departments = StubService(_suggestion("神經內科"))
+    _configure(departments, StubPatientContextService(context))
+
+    payload = json.loads(
+        await suggest_department_for_symptom.ainvoke(
+            {
+                "symptom": "頭痛",
+                "person": "隔壁阿伯",
+                "age": 70,
+                "gender": "male",
+            }
+        )
+    )
+
+    assert payload["type"] == "flex"
+    assert departments.calls == ["頭痛"]
+    assert departments.contexts == [context]
+
+
+@pytest.mark.parametrize(
+    ("language", "expected"),
+    [
+        ("en", "More than one family member matches: A, B."),
+        ("id", "Ada beberapa anggota keluarga yang cocok: A, B."),
+        ("vi", "Có nhiều người thân phù hợp: A, B."),
+        ("th", "พบสมาชิกครอบครัวที่ตรงกันหลายคน: A, B"),
+        ("ja", "該当するご家族が複数います：A、B。"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_ambiguous_patient_reply_uses_request_language(language, expected):
+    from app.core.user_language import reset_request_language, set_request_language
+
+    context = PatientContext(
+        operator_id="U_OPERATOR",
+        patient_kind="ambiguous",
+        candidates=(
+            PatientCandidate("U_A", "A", "parent"),
+            PatientCandidate("U_B", "B", "parent"),
+        ),
+    )
+    departments = StubService(_suggestion("內科"))
+    _configure(departments, StubPatientContextService(context))
+    token = set_request_language(language)
+    try:
+        reply = await suggest_department_for_symptom.ainvoke({"symptom": "頭痛"})
+    finally:
+        reset_request_language(token)
+
+    assert expected in reply
+    assert departments.calls == []
 
 
 def test_tool_schema_exposes_only_structured_patient_clues():

@@ -2421,6 +2421,22 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "บริการแนะนำแผนกยังไม่พร้อมใช้งาน โปรดลองอีกครั้งภายหลัง",
         "ja": "診療科案内サービスを利用できません。しばらくしてからもう一度お試しください。",
     },
+    "flex.symptom.patient.ambiguous": {
+        "zh-TW": "找到多位符合的家人：{names}。請說完整姓名後，再問一次要看哪一科。",
+        "en": "More than one family member matches: {names}. Please give the full name, then ask again which department to visit.",
+        "id": "Ada beberapa anggota keluarga yang cocok: {names}. Sebutkan nama lengkap, lalu tanyakan lagi poli yang sesuai.",
+        "vi": "Có nhiều người thân phù hợp: {names}. Vui lòng cho biết họ tên đầy đủ, rồi hỏi lại nên khám chuyên khoa nào.",
+        "th": "พบสมาชิกครอบครัวที่ตรงกันหลายคน: {names} โปรดบอกชื่อเต็ม แล้วถามอีกครั้งว่าควรไปแผนกใด",
+        "ja": "該当するご家族が複数います：{names}。フルネームを伝えてから、受診科をもう一度お尋ねください。",
+    },
+    "flex.symptom.patient.conflict": {
+        "zh-TW": "「{query}」與指定的稱謂不一致。請確認姓名或稱謂後，再問一次要看哪一科。",
+        "en": "“{query}” does not match the specified relationship. Please check the name or relationship, then ask again which department to visit.",
+        "id": "“{query}” tidak sesuai dengan hubungan yang disebutkan. Periksa nama atau hubungannya, lalu tanyakan lagi poli yang sesuai.",
+        "vi": "“{query}” không khớp với quan hệ đã nêu. Hãy kiểm tra tên hoặc quan hệ, rồi hỏi lại nên khám chuyên khoa nào.",
+        "th": "“{query}” ไม่ตรงกับความสัมพันธ์ที่ระบุ โปรดตรวจสอบชื่อหรือความสัมพันธ์ แล้วถามอีกครั้งว่าควรไปแผนกใด",
+        "ja": "「{query}」は指定された続柄と一致しません。名前または続柄を確認してから、受診科をもう一度お尋ねください。",
+    },
     "flex.symptom.sentence_separator": {
         "zh-TW": "。", "en": ". ", "id": ". ",
         "vi": ". ", "th": ". ", "ja": "。",

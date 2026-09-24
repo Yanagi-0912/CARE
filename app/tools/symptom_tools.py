@@ -21,6 +21,7 @@ from app.i18n.messages import (
     symptom_fallback_reason,
     t,
 )
+from app.services.family.patient_context import PatientContext
 from app.services.medical.symptom_classification.symptom_department_service import (
     RESULT_FALLBACK,
     SymptomTriageResult,
@@ -94,6 +95,24 @@ def _format_plain_reply(
     return "\n".join(lines)
 
 
+def _patient_resolution_reply(
+    context: PatientContext,
+    language: str | None = None,
+) -> str | None:
+    """人物不唯一時先釐清；找不到的人仍可取得不讀 profile 的一般建議。"""
+    if context.patient_kind == "ambiguous":
+        names = t("family.directory.list_sep", language).join(
+            candidate.display_label or t("family.directory.unnamed", language)
+            for candidate in context.candidates
+        )
+        return t("flex.symptom.patient.ambiguous", language).format(names=names)
+    if context.patient_kind == "conflict":
+        return t("flex.symptom.patient.conflict", language).format(
+            query=context.display_label
+        )
+    return None
+
+
 @tool
 async def suggest_department_for_symptom(
     symptom: str,
@@ -130,6 +149,10 @@ async def suggest_department_for_symptom(
         message_age=age,
         message_gender=gender,
     )
+    resolution_reply = _patient_resolution_reply(patient_context)
+    if resolution_reply is not None:
+        return resolution_reply
+
     result = await _symptom_department_service.suggest(
         symptom,
         patient_context=patient_context,

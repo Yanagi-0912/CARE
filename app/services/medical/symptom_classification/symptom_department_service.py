@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 
 from app.core.user_age import is_pediatric_age
 from app.services.family.patient_context import PatientContext
+from app.services.medical.department_matcher import resolve_department
 from app.services.medical.symptom_classification.normalizer import (
     SymptomResolver,
     mentions_child,
@@ -58,6 +59,25 @@ FALLBACK_DEPARTMENTS: tuple[str, ...] = ("家醫科", "內科", "不分科")
 
 # 兒科的 canonical 值。過濾用，不寫死在方法裡以免與對照表脫鉤。
 PEDIATRIC_DEPARTMENT = "兒科"
+OBSTETRICS_GYNECOLOGY_DEPARTMENT = "婦產科"
+
+# 本輪明確語意高於 profile 性別。只處理懷孕、生產、月經與生殖脈絡，不把
+# 「腹痛」「性病」等跨性別的一般症狀算進來。外語詞讓六語工具契約不必先翻中文；
+# matched_term 也一起檢查，避免正規化後的專屬症狀失去語意。
+_REPRODUCTIVE_CONTEXT_TERMS = (
+    "懷孕", "妊娠", "孕婦", "孕期", "生產", "生小孩", "臨盆", "待產", "分娩",
+    "宮縮", "羊水", "胎兒", "胎動", "產前", "產後", "流產", "月經", "經期",
+    "經痛", "生理期", "停經", "生殖", "不孕", "避孕", "子宮", "卵巢", "陰道", "婦科",
+    "pregnant", "pregnancy", "childbirth", "giving birth", "in labor", "menstrual",
+    "menstruation", "reproductive", "infertility", "contraception", "uterus", "ovary", "vaginal",
+    "hamil", "kehamilan", "melahirkan", "menstruasi", "haid", "reproduksi", "rahim",
+    "ovarium", "vagina", "kontrasepsi", "infertil",
+    "mang thai", "thai kỳ", "sinh con", "kinh nguyệt", "hành kinh", "sinh sản", "tử cung",
+    "buồng trứng", "âm đạo", "tránh thai", "vô sinh",
+    "ตั้งครรภ์", "คลอด", "ประจำเดือน", "สืบพันธุ์", "มดลูก", "รังไข่", "ช่องคลอด",
+    "คุมกำเนิด", "มีบุตรยาก",
+    "妊娠", "出産", "月経", "生理", "不妊", "避妊", "生殖", "子宮", "卵巣", "膣",
+)
 
 # 保底多列兒科的原因。卡片依原因用不同說法：提到孩童是家長在問，年齡未滿界線則是
 # 孩童本人在問。
@@ -98,6 +118,26 @@ def _pediatric_reason(
     ):
         return PEDIATRIC_REASON_AGE
     return None
+
+
+def _has_reproductive_context(text: str, matched_term: str) -> bool:
+    normalized = f"{text} {matched_term}".casefold()
+    return any(term.casefold() in normalized for term in _REPRODUCTIVE_CONTEXT_TERMS)
+
+
+def _explicitly_requests_obstetrics(requested_department: str) -> bool:
+    match = resolve_department(requested_department)
+    return bool(match and match.canonical == OBSTETRICS_GYNECOLOGY_DEPARTMENT)
+
+
+def _should_include_obstetrics(
+    text: str,
+    matched_term: str | None,
+    requested_department: str,
+) -> bool:
+    return _has_reproductive_context(text, matched_term or "") or (
+        _explicitly_requests_obstetrics(requested_department)
+    )
 
 
 @dataclass(frozen=True)
@@ -145,6 +185,7 @@ class SymptomDepartmentService:
         text: str,
         *,
         patient_context: PatientContext | None = None,
+        requested_department: str = "",
     ) -> SymptomTriageResult:
         term = await self._normalizer.resolve(text)
         if term is None:
@@ -152,6 +193,7 @@ class SymptomDepartmentService:
                 text,
                 "無法對應到已知的症狀條目",
                 patient_context=patient_context,
+                requested_department=requested_department,
             )
 
         entry = self._table.lookup(term)
@@ -164,6 +206,7 @@ class SymptomDepartmentService:
                 text,
                 "無法對應到已知的症狀條目",
                 patient_context=patient_context,
+                requested_department=requested_department,
             )
 
         if entry.is_too_broad:
@@ -179,10 +222,27 @@ class SymptomDepartmentService:
                 "這個症狀可能牽涉多個科別",
                 matched_term=term,
                 patient_context=patient_context,
+                requested_department=requested_department,
+            )
+
+        candidates = self._filter_gender_applicability(
+            entry.candidates,
+            text=text,
+            matched_term=term,
+            patient_context=patient_context,
+            requested_department=requested_department,
+        )
+        if not candidates:
+            return self._fallback(
+                text,
+                "依看診者資料，沒有適合預設顯示的特定科別",
+                matched_term=term,
+                patient_context=patient_context,
+                requested_department=requested_department,
             )
 
         candidates = self._filter_pediatric(
-            entry.candidates,
+            candidates,
             text,
             patient_context,
         )
@@ -192,6 +252,7 @@ class SymptomDepartmentService:
                 "這個症狀在對照表中只列了兒科",
                 matched_term=term,
                 patient_context=patient_context,
+                requested_department=requested_department,
             )
         return SymptomTriageResult(
             kind=RESULT_SUGGESTION,
@@ -200,6 +261,26 @@ class SymptomDepartmentService:
             matched_term=term,
             candidates=candidates[:MAX_CANDIDATES],
             term_sources=_term_sources(entry),
+        )
+
+    @staticmethod
+    def _filter_gender_applicability(
+        candidates: tuple[DepartmentCandidate, ...],
+        *,
+        text: str,
+        matched_term: str,
+        patient_context: PatientContext | None,
+        requested_department: str,
+    ) -> tuple[DepartmentCandidate, ...]:
+        """男性的一般症狀不預設顯示婦產科；明確語意與指定科別優先。"""
+        if patient_context is None or patient_context.gender != "male":
+            return candidates
+        if _should_include_obstetrics(text, matched_term, requested_department):
+            return candidates
+        return tuple(
+            candidate
+            for candidate in candidates
+            if candidate.canonical != OBSTETRICS_GYNECOLOGY_DEPARTMENT
         )
 
     def _filter_pediatric(
@@ -230,14 +311,16 @@ class SymptomDepartmentService:
         *,
         matched_term: str | None = None,
         patient_context: PatientContext | None = None,
+        requested_department: str = "",
     ) -> SymptomTriageResult:
-        # 孩童的初診方向以兒科為首，其後照舊；非孩童的保底不含兒科。
+        # 明確生殖情境／指定婦產科與孩童提示可在一般初診方向前補上對應科別。
         pediatric_reason = _pediatric_reason(text, patient_context)
-        names = (
-            (PEDIATRIC_DEPARTMENT, *FALLBACK_DEPARTMENTS)
-            if pediatric_reason is not None
-            else FALLBACK_DEPARTMENTS
-        )
+        prefixes: list[str] = []
+        if _should_include_obstetrics(text, matched_term, requested_department):
+            prefixes.append(OBSTETRICS_GYNECOLOGY_DEPARTMENT)
+        if pediatric_reason is not None:
+            prefixes.append(PEDIATRIC_DEPARTMENT)
+        names = tuple(dict.fromkeys((*prefixes, *FALLBACK_DEPARTMENTS)))
         candidates = tuple(
             DepartmentCandidate(
                 canonical=name,

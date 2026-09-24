@@ -99,15 +99,28 @@ class FixedResolver:
         return self._term
 
 
-async def _suggest(table, term, age, text="要看哪一科"):
+async def _suggest(
+    table,
+    term,
+    age,
+    text="要看哪一科",
+    *,
+    gender="unknown",
+    requested_department="",
+):
     service = SymptomDepartmentService(table=table, normalizer=FixedResolver(term))
     context = PatientContext(
         operator_id="U_OPERATOR",
         patient_kind="self",
         patient_id="U_OPERATOR",
         age=age,
+        gender=gender,
     )
-    return await service.suggest(text, patient_context=context)
+    return await service.suggest(
+        text,
+        patient_context=context,
+        requested_department=requested_department,
+    )
 
 
 @pytest.mark.asyncio
@@ -480,6 +493,140 @@ async def test_T18_child_relationship_does_not_imply_pediatric_age(table):
     assert result.kind == RESULT_FALLBACK
     assert [c.canonical for c in result.candidates] == EXPECTED_FALLBACK
     assert result.pediatric_reason is None
+
+
+# ---------------------------------------------------------------- 看診者性別適用性（task 10.9）
+
+
+@pytest.mark.asyncio
+async def test_task_10_9_male_patient_general_abdominal_pain_hides_obstetrics(table):
+    result = await _suggest(table, "腹痛", 40, text="我肚子痛要看哪科", gender="male")
+
+    assert result.kind == RESULT_SUGGESTION
+    assert [candidate.canonical for candidate in result.candidates] == [
+        "內科",
+        "外科",
+        "家醫科",
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("gender", ["female", "unknown"])
+async def test_task_10_9_female_or_unknown_gender_keeps_obstetrics(table, gender):
+    result = await _suggest(table, "腹痛", 40, gender=gender)
+
+    assert result.kind == RESULT_SUGGESTION
+    assert [candidate.canonical for candidate in result.candidates] == [
+        "內科",
+        "婦產科",
+        "外科",
+        "家醫科",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_task_10_9_spouse_does_not_inherit_male_speakers_gender(table):
+    service = SymptomDepartmentService(
+        table=table,
+        normalizer=FixedResolver("腹痛"),
+    )
+    spouse = PatientContext(
+        operator_id="U_MALE_OPERATOR",
+        patient_kind="member",
+        patient_id="U_SPOUSE",
+        display_label="王美玲",
+        relationship="spouse",
+        gender="unknown",
+    )
+
+    result = await service.suggest(
+        "我老婆肚子痛要看哪科",
+        patient_context=spouse,
+    )
+
+    assert "婦產科" in [candidate.canonical for candidate in result.candidates]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "text",
+    [
+        "我懷孕了而且肚子痛要看哪科",
+        "我月經期間肚子痛要看哪科",
+        "I am pregnant and have abdominal pain. Which department?",
+    ],
+)
+async def test_task_10_9_explicit_reproductive_context_overrides_male_profile(
+    table, text
+):
+    result = await _suggest(table, "腹痛", 40, text=text, gender="male")
+
+    assert "婦產科" in [candidate.canonical for candidate in result.candidates]
+
+
+@pytest.mark.asyncio
+async def test_task_10_9_explicit_obstetrics_request_overrides_male_profile(table):
+    result = await _suggest(
+        table,
+        "腹痛",
+        40,
+        text="我肚子痛可以看婦產科嗎",
+        gender="male",
+        requested_department="婦產科",
+    )
+
+    assert "婦產科" in [candidate.canonical for candidate in result.candidates]
+
+
+@pytest.mark.asyncio
+async def test_task_10_9_childbirth_context_adds_obstetrics_to_fallback(table):
+    result = await _suggest(
+        table,
+        None,
+        35,
+        text="我老婆要生小孩了要看哪科",
+        gender="unknown",
+    )
+
+    assert result.kind == RESULT_FALLBACK
+    assert [candidate.canonical for candidate in result.candidates] == [
+        "婦產科",
+        *EXPECTED_FALLBACK,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_task_10_9_explicit_obstetrics_request_adds_it_to_unknown_fallback(table):
+    result = await _suggest(
+        table,
+        None,
+        40,
+        text="我可以看婦產科嗎",
+        gender="male",
+        requested_department="Obstetrics & Gynecology",
+    )
+
+    assert result.kind == RESULT_FALLBACK
+    assert [candidate.canonical for candidate in result.candidates] == [
+        "婦產科",
+        *EXPECTED_FALLBACK,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_task_10_9_reproductive_matched_term_overrides_male_profile(table):
+    result = await _suggest(table, "月經失調", 40, gender="male")
+
+    assert [candidate.canonical for candidate in result.candidates] == ["婦產科"]
+
+
+@pytest.mark.asyncio
+async def test_task_10_9_male_general_obstetrics_only_match_uses_neutral_fallback(table):
+    result = await _suggest(table, "下腹痛", 40, gender="male")
+
+    assert result.kind == RESULT_FALLBACK
+    assert [candidate.canonical for candidate in result.candidates] == EXPECTED_FALLBACK
+    assert result.fallback_reason == "依看診者資料，沒有適合預設顯示的特定科別"
 
 
 # ---------------------------------------------------------------- 候選數上限

@@ -90,6 +90,8 @@ def test_system_prompt_structures_the_department_patient_without_guessing():
     assert "age=5" in SYSTEM_PROMPT
     assert "gender" in SYSTEM_PROMPT
     assert "person=王大明" in SYSTEM_PROMPT
+    assert "symptom=懷孕了而且肚子痛" in SYSTEM_PROMPT
+    assert "requested_department=婦產科" in SYSTEM_PROMPT
     assert "同一句同時明確提供姓名與稱謂時兩者都填" in SYSTEM_PROMPT
     assert "禁止從兒子、女兒、老婆等稱謂推測年齡或性別" in SYSTEM_PROMPT
 

@@ -2381,6 +2381,14 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "id": "panduan hanya mencantumkan gejala ini di Poli Anak", "vi": "hướng dẫn chỉ liệt kê triệu chứng này ở Nhi khoa",
         "th": "คู่มือระบุอาการนี้ไว้เฉพาะกุมารเวชกรรม", "ja": "案内ではこの症状が小児科にのみ掲載されています",
     },
+    "flex.symptom.fallback_reason.patient_context": {
+        "zh-TW": "依看診者資料，沒有適合預設顯示的特定科別",
+        "en": "the patient details do not support a specific department by default",
+        "id": "berdasarkan data pasien, tidak ada poli tertentu yang sesuai untuk ditampilkan secara otomatis",
+        "vi": "dựa trên thông tin người bệnh, không có chuyên khoa cụ thể phù hợp để hiển thị mặc định",
+        "th": "จากข้อมูลผู้ป่วย ไม่มีแผนกเฉพาะที่เหมาะจะแสดงเป็นค่าเริ่มต้น",
+        "ja": "受診者の情報から、初期表示に適した特定の診療科を示せません",
+    },
     "flex.symptom.fallback_reason.generic": {
         "zh-TW": "資訊不足", "en": "there was not enough information",
         "id": "informasi belum cukup", "vi": "chưa có đủ thông tin",
@@ -5096,6 +5104,7 @@ _SYMPTOM_FALLBACK_REASON_KEYS = {
     "無法對應到已知的症狀條目": "flex.symptom.fallback_reason.unknown",
     "這個症狀可能牽涉多個科別": "flex.symptom.fallback_reason.broad",
     "這個症狀在對照表中只列了兒科": "flex.symptom.fallback_reason.pediatric_only",
+    "依看診者資料，沒有適合預設顯示的特定科別": "flex.symptom.fallback_reason.patient_context",
 }
 
 

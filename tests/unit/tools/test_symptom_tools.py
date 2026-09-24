@@ -29,10 +29,12 @@ class StubService:
         self._result = result
         self.calls: list[str] = []
         self.contexts: list[PatientContext] = []
+        self.requested_departments: list[str] = []
 
-    async def suggest(self, text, *, patient_context):
+    async def suggest(self, text, *, patient_context, requested_department=""):
         self.calls.append(text)
         self.contexts.append(patient_context)
+        self.requested_departments.append(requested_department)
         return self._result
 
 
@@ -158,6 +160,23 @@ async def test_builds_patient_context_from_structured_tool_arguments():
     ]
     assert departments.calls == ["一直嘔吐"]
     assert departments.contexts == [context]
+    assert departments.requested_departments == [""]
+
+
+@pytest.mark.asyncio
+async def test_explicit_department_is_forwarded_separately_from_symptom_text():
+    departments = StubService(_suggestion("婦產科"))
+    _configure(departments)
+
+    await suggest_department_for_symptom.ainvoke(
+        {
+            "symptom": "肚子痛",
+            "requested_department": "婦產科",
+        }
+    )
+
+    assert departments.calls == ["肚子痛"]
+    assert departments.requested_departments == ["婦產科"]
 
 
 @pytest.mark.asyncio
@@ -287,6 +306,7 @@ def test_tool_schema_exposes_only_structured_patient_clues():
         "relationship",
         "age",
         "gender",
+        "requested_department",
     }
     assert schema["required"] == ["symptom"]
     assert set(schema["properties"]["relationship"]["enum"]) == {

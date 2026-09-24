@@ -120,16 +120,19 @@ async def suggest_department_for_symptom(
     relationship: FamilyRelationship = "",
     age: int | None = None,
     gender: Literal["male", "female"] | None = None,
+    requested_department: str = "",
 ) -> str:
     """當使用者描述身體不適「並且詢問該掛哪一科」時呼叫。典型句型是「我肚子痛
     要掛哪一科」「這樣該看什麼科」「頭暈要看哪一科」。回傳依公開就醫病症對照
     資料整理的建議科別方向，不做診斷。
 
-    symptom：使用者描述的症狀原文（例如「肚子好痛」），不得改寫成醫學名詞。
+    symptom：使用者描述的症狀原文（例如「肚子好痛」）；懷孕、生產、月經或生殖
+    情境是原文的一部分，必須保留，不得只剩一般症狀或改寫成醫學名詞。
     person：明確姓名；未提供姓名或問本人時留空。
     relationship：只填 parent、child、spouse、sibling、grandparent、grandchild
     其中之一；沒有明確家人關係時留空。
     age／gender：只填本輪訊息明確屬於看診者的年齡與性別；不得從稱謂猜測。
+    requested_department：使用者明確點名的科別，轉成部定專科名稱；未點名時留空。
 
     若使用者只是描述症狀、詢問衛教知識而沒有問科別（例如「肚子痛怎麼辦」
     「肚子痛要吃什麼」），請改用 get_rag_answer。
@@ -156,6 +159,7 @@ async def suggest_department_for_symptom(
     result = await _symptom_department_service.suggest(
         symptom,
         patient_context=patient_context,
+        requested_department=requested_department,
     )
     logger.info(
         f"{LOGGER_HEADER_TEXT} kind=%s term=%r patient_kind=%s age_source=%s "

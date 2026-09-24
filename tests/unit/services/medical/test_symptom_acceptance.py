@@ -445,13 +445,7 @@ async def test_T18_parent_mentioning_a_child_keeps_pediatrics(table):
 
 @pytest.mark.asyncio
 async def test_T18_speaker_age_does_not_override_adult_patient_context(table):
-    from app.core.user_age import reset_request_age, set_request_age
-
-    token = set_request_age(8)
-    try:
-        result = await _suggest(table, "生長發育遲緩", 40)
-    finally:
-        reset_request_age(token)
+    result = await _suggest(table, "生長發育遲緩", 40)
 
     assert result.kind == RESULT_FALLBACK
     assert [c.canonical for c in result.candidates] == EXPECTED_FALLBACK
@@ -459,13 +453,7 @@ async def test_T18_speaker_age_does_not_override_adult_patient_context(table):
 
 @pytest.mark.asyncio
 async def test_T18_patient_age_is_used_even_when_speaker_age_is_adult(table):
-    from app.core.user_age import reset_request_age, set_request_age
-
-    token = set_request_age(40)
-    try:
-        result = await _suggest(table, "生長發育遲緩", 5)
-    finally:
-        reset_request_age(token)
+    result = await _suggest(table, "生長發育遲緩", 5)
 
     assert result.kind == RESULT_SUGGESTION
     assert [c.canonical for c in result.candidates] == ["兒科"]
@@ -988,3 +976,11 @@ def test_T35_gum_bleeding_does_not_force_hematology(table):
     assert [
         candidate.canonical for candidate in table.lookup("刷牙出血").candidates
     ] == ["牙科"]
+
+
+def test_T18_there_is_no_speaker_age_side_channel():
+    """發話者年齡的 ContextVar 已刪除（10.20）：看診者年齡只能經 PatientContext 傳入。"""
+    import app.core.user_age as user_age
+
+    for name in ("get_request_age", "set_request_age", "reset_request_age"):
+        assert not hasattr(user_age, name), name

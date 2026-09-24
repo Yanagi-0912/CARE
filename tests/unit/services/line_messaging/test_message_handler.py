@@ -407,45 +407,21 @@ class _AgentCapturingContext:
         self.seen = {}
 
     async def invoke(self, **kwargs):
-        from app.core.user_age import get_request_age
         from app.core.user_font_size import get_request_font_size
         from app.core.user_language import get_request_language
 
         self.seen = {
-            "age": get_request_age(),
             "font_size": get_request_font_size(),
             "language": get_request_language(),
         }
         return {"response": "主回覆內容"}
 
 
-@pytest.mark.parametrize("age", [8, 40, 70])
-async def test_user_age_reaches_the_agent(age):
-    agent = _AgentCapturingContext()
-    handler = _profile_handler(
-        {"age": age, "settings": {"language": "zh-TW", "font_size": "large"}}, agent
-    )
-
-    await handler.handle(_text_event())
-
-    assert agent.seen["age"] == age
-
-
-async def test_missing_age_is_none_not_a_default_number():
-    """
-    拿不到年齡時要表現為「不知道」，由呼叫端決定保守或寬鬆。給一個假的預設值
-    會讓兒科過濾以為自己知道使用者幾歲。
-    """
-    agent = _AgentCapturingContext()
-    handler = _profile_handler({"settings": {"language": "zh-TW"}}, agent)
-
-    await handler.handle(_text_event())
-
-    assert agent.seen["age"] is None
-
-
 async def test_language_and_font_size_reach_the_agent_too():
-    """三個 ContextVar 是同一套機制，一起釘住，少接一個就會失敗。"""
+    """語言與字級是同一套機制，一起釘住，少接一個就會失敗。
+
+    刻意沒有發話者年齡：年齡屬於看診者，不屬於發話者（design 決策 16）。
+    """
     agent = _AgentCapturingContext()
     handler = _profile_handler(
         {"age": 30, "settings": {"language": "en", "font_size": "xlarge"}}, agent
@@ -455,19 +431,6 @@ async def test_language_and_font_size_reach_the_agent_too():
 
     assert agent.seen["language"] == "en"
     assert agent.seen["font_size"] == "xlarge"
-
-
-async def test_age_is_reset_after_the_turn():
-    """不還原會讓下一位使用者沿用上一位的年齡。"""
-    from app.core.user_age import get_request_age
-
-    agent = _AgentCapturingContext()
-    handler = _profile_handler({"age": 8, "settings": {}}, agent)
-
-    await handler.handle(_text_event())
-
-    assert agent.seen["age"] == 8
-    assert get_request_age() is None
 
 
 # --- 緊急狀況家人通報的排程 ---------------------------------------------------

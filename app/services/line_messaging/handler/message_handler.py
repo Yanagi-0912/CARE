@@ -18,7 +18,6 @@ from app.core.user_font_size import (
     reset_request_font_size,
     set_request_font_size,
 )
-from app.core.user_age import reset_request_age, set_request_age
 from app.services.medical.symptom_classification.urgency import (
     URGENCY_EMERGENCY,
     AffectedPerson,
@@ -150,7 +149,6 @@ class BaseLineMessageHandler:
         user_language = DEFAULT_USER_LANGUAGE
         lang_token = None
         font_token = None
-        age_token = None
         rag_sources_token = None
         medication_facts_token = None
 
@@ -200,9 +198,6 @@ class BaseLineMessageHandler:
             font_token = set_request_font_size(
                 self._font_size_from_profile(user_profile)
             )
-            # 年齡同理：症狀科別建議要靠它決定該不該給兒科，而那段程式在
-            # LangChain tool 底下，拿不到 user_profile。
-            age_token = set_request_age((user_profile or {}).get("age"))
 
             # 走失求救：「我走丟了」「傳位置給家人」直接回定位卡並通知家人、不進
             # agent（理由見 lost_intent）。語音也要攔：慌張的長輩最可能用講的。
@@ -398,8 +393,6 @@ class BaseLineMessageHandler:
                 reset_request_language(lang_token)
             if font_token is not None:
                 reset_request_font_size(font_token)
-            if age_token is not None:
-                reset_request_age(age_token)
             if rag_sources_token is not None:
                 reset_request_rag_sources(rag_sources_token)
             if medication_facts_token is not None:

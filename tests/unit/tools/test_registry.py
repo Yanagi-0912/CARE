@@ -10,6 +10,20 @@ def _tool_names(tools: list) -> set[str]:
     return {getattr(t, "name", str(t)) for t in tools}
 
 
+def _empty_enum_paths(value, path="") -> list[str]:
+    if isinstance(value, dict):
+        found = [path] if "" in value.get("enum", ()) else []
+        for key, child in value.items():
+            found.extend(_empty_enum_paths(child, f"{path}.{key}"))
+        return found
+    if isinstance(value, list):
+        found = []
+        for index, child in enumerate(value):
+            found.extend(_empty_enum_paths(child, f"{path}[{index}]"))
+        return found
+    return []
+
+
 @pytest.fixture(autouse=True)
 def reset_claim_tool_state():
     """verify_claim 是否出現在工具清單取決於 claim_tools 是否已被
@@ -71,3 +85,17 @@ def test_get_all_tools_excludes_claim_tool_when_not_configured():
     names = _tool_names(tools)
     assert "verify_claim" not in names
     assert "get_rag_answer" in names
+
+
+@pytest.mark.parametrize("include_rag_tool", [True, False])
+def test_registered_tool_schemas_never_publish_empty_enum_values(include_rag_tool):
+    """Gemini 會拒絕整包工具宣告；任一巢狀 enum 含空字串會讓所有對話失效。"""
+    configure_claim_tool(object())
+    invalid: dict[str, list[str]] = {}
+    for registered_tool in get_all_tools(include_rag_tool=include_rag_tool):
+        schema = registered_tool.args_schema.model_json_schema()
+        paths = _empty_enum_paths(schema)
+        if paths:
+            invalid[registered_tool.name] = paths
+
+    assert invalid == {}

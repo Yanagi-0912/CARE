@@ -2445,6 +2445,22 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "“{query}” ไม่ตรงกับความสัมพันธ์ที่ระบุ โปรดตรวจสอบชื่อหรือความสัมพันธ์ แล้วถามอีกครั้งว่าควรไปแผนกใด",
         "ja": "「{query}」は指定された続柄と一致しません。名前または続柄を確認してから、受診科をもう一度お尋ねください。",
     },
+    "flex.symptom.patient.multiple": {
+        "zh-TW": "這則訊息提到多位需要看診的人。請先告訴我想先處理哪一位，以及他的症狀。",
+        "en": "This message mentions more than one person who needs care. Please tell me whom to help first and that person's symptoms.",
+        "id": "Pesan ini menyebut lebih dari satu orang yang perlu berobat. Beri tahu saya siapa yang ingin dibantu lebih dahulu dan gejalanya.",
+        "vi": "Tin nhắn này đề cập nhiều người cần đi khám. Vui lòng cho tôi biết muốn hỗ trợ ai trước và triệu chứng của người đó.",
+        "th": "ข้อความนี้กล่าวถึงผู้ที่ต้องเข้ารับการตรวจมากกว่าหนึ่งคน โปรดบอกว่าต้องการให้ช่วยใครก่อนและอาการของคนนั้น",
+        "ja": "このメッセージには受診が必要な方が複数います。まず誰について相談したいか、その方の症状とともに教えてください。",
+    },
+    "flex.symptom.patient.missing": {
+        "zh-TW": "請告訴我是哪一位需要看診，以及他的症狀。",
+        "en": "Please tell me who needs care and that person's symptoms.",
+        "id": "Beri tahu saya siapa yang perlu berobat dan gejalanya.",
+        "vi": "Vui lòng cho tôi biết ai cần đi khám và triệu chứng của người đó.",
+        "th": "โปรดบอกว่าใครต้องเข้ารับการตรวจและมีอาการอะไร",
+        "ja": "受診が必要なのは誰か、その方の症状とともに教えてください。",
+    },
     "flex.symptom.sentence_separator": {
         "zh-TW": "。", "en": ". ", "id": ". ",
         "vi": ". ", "th": ". ", "ja": "。",

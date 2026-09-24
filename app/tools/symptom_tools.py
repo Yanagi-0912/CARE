@@ -12,6 +12,7 @@ import logging
 from typing import Literal
 
 from langchain_core.tools import tool
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.request_context import get_line_user_id
 from app.core.user_language import get_request_language, normalize_user_language
@@ -36,7 +37,6 @@ logger = logging.getLogger(__name__)
 LOGGER_HEADER_TEXT = "[Tool:suggest_department_for_symptom]"
 
 FamilyRelationship = Literal[
-    "",
     "parent",
     "child",
     "spouse",
@@ -44,6 +44,36 @@ FamilyRelationship = Literal[
     "grandparent",
     "grandchild",
 ]
+
+
+class SymptomPatientCase(BaseModel):
+    """同一則訊息中，一位看診者與其症狀的結構化配對。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    symptom: str = Field(
+        description="這位看診者的症狀原文；不得混入另一位人物的症狀"
+    )
+    person: str = Field(
+        default="",
+        description="明確姓名或未連結人物的稱呼；問本人時留空",
+    )
+    relationship: FamilyRelationship | None = Field(
+        default=None,
+        description="明確家人關係；沒有時省略",
+    )
+    age: int | None = Field(
+        default=None,
+        description="本輪明確屬於這位看診者的年齡",
+    )
+    gender: Literal["male", "female"] | None = Field(
+        default=None,
+        description="本輪明確屬於這位看診者的性別",
+    )
+    requested_department: str = Field(
+        default="",
+        description="使用者針對這位看診者明確點名的部定專科",
+    )
 
 _symptom_department_service = None
 _patient_context_service = None
@@ -115,24 +145,15 @@ def _patient_resolution_reply(
 
 @tool
 async def suggest_department_for_symptom(
-    symptom: str,
-    person: str = "",
-    relationship: FamilyRelationship = "",
-    age: int | None = None,
-    gender: Literal["male", "female"] | None = None,
-    requested_department: str = "",
+    cases: list[SymptomPatientCase],
 ) -> str:
     """當使用者描述身體不適「並且詢問該掛哪一科」時呼叫。典型句型是「我肚子痛
     要掛哪一科」「這樣該看什麼科」「頭暈要看哪一科」。回傳依公開就醫病症對照
     資料整理的建議科別方向，不做診斷。
 
-    symptom：使用者描述的症狀原文（例如「肚子好痛」）；懷孕、生產、月經或生殖
-    情境是原文的一部分，必須保留，不得只剩一般症狀或改寫成醫學名詞。
-    person：明確姓名；未提供姓名或問本人時留空。
-    relationship：只填 parent、child、spouse、sibling、grandparent、grandchild
-    其中之一；沒有明確家人關係時留空。
-    age／gender：只填本輪訊息明確屬於看診者的年齡與性別；不得從稱謂猜測。
-    requested_department：使用者明確點名的科別，轉成部定專科名稱；未點名時留空。
+    cases：每一位看診者各一筆，症狀、人物、年齡、性別及指定科別都必須綁在同一筆。
+    一位看診者也必須使用只有一筆的陣列；同句有多位看診者時，完整列出多筆，本工具
+    會先請使用者選擇要處理的人，不會共用其中任何人的資料。
 
     若使用者只是描述症狀、詢問衛教知識而沒有問科別（例如「肚子痛怎麼辦」
     「肚子痛要吃什麼」），請改用 get_rag_answer。
@@ -141,25 +162,31 @@ async def suggest_department_for_symptom(
     if _symptom_department_service is None or _patient_context_service is None:
         return t("flex.symptom.unavailable")
 
+    if len(cases) != 1:
+        if len(cases) > 1:
+            return t("flex.symptom.patient.multiple")
+        return t("flex.symptom.patient.missing")
+
     operator_id = get_line_user_id()
     if not operator_id:
         return t("flex.symptom.unavailable")
 
+    case = cases[0]
     patient_context = await _patient_context_service.resolve(
         operator_id,
-        person=person,
-        relationship=relationship,
-        message_age=age,
-        message_gender=gender,
+        person=case.person,
+        relationship=case.relationship or "",
+        message_age=case.age,
+        message_gender=case.gender,
     )
     resolution_reply = _patient_resolution_reply(patient_context)
     if resolution_reply is not None:
         return resolution_reply
 
     result = await _symptom_department_service.suggest(
-        symptom,
+        case.symptom,
         patient_context=patient_context,
-        requested_department=requested_department,
+        requested_department=case.requested_department,
     )
     logger.info(
         f"{LOGGER_HEADER_TEXT} kind=%s term=%r patient_kind=%s age_source=%s "

@@ -13,9 +13,9 @@
     對照表有多條症狀同時掛在兒科與成人科別（腹痛、發燒、咳嗽…），因為那些
     症狀大人小孩都會有。不過濾時，成人問「我肚子好痛要掛哪一科」會拿到
     「內科、兒科」——兒科那一項對他沒有意義，卻佔掉一個候選名額。
-    判斷依據是使用者填的年齡，加上訊息裡有沒有孩童指涉（家長幫小孩問時，
-    年齡欄位是家長的）。兩者都不成立才濾掉；濾掉後沒有剩下任何候選時走保底，
-    理由見 _filter_pediatric。
+    判斷依據是 PatientContext 中實際看診者的年齡，加上訊息裡是否明確提到「寶寶」。
+    兩者都不成立才濾掉；「兒子／女兒／child」只代表關係，不代表未成年。濾掉後
+    沒有剩下任何候選時走保底，理由見 _filter_pediatric。
 
 本服務不做急迫度判斷：
     急迫度是「要不要現在就去急診」，科別建議是「門診該掛哪一科」，兩者正交。
@@ -32,7 +32,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-from app.core.user_age import get_request_age, is_pediatric_age
+from app.core.user_age import is_pediatric_age
 from app.services.family.patient_context import PatientContext
 from app.services.medical.symptom_classification.normalizer import (
     SymptomResolver,
@@ -77,16 +77,25 @@ def _term_sources(entry: SymptomEntry) -> tuple[str, ...]:
     return tuple(codes)
 
 
-def _pediatric_reason(text: str) -> str | None:
+def _pediatric_reason(
+    text: str,
+    patient_context: PatientContext | None,
+) -> str | None:
     """
     這次是不是為孩童詢問；是的話回傳原因（PEDIATRIC_REASON_*），否則 None。
 
-    訊息提到寶寶優先於年齡：12 歲使用者問寶寶時，要看病的是被提到的孩子，
-    卡片要用「幫孩子詢問」的說法，而不是「你還未滿 15 歲」。
+    訊息提到寶寶優先於年齡，卡片要用「幫孩子詢問」的說法。除此之外只讀
+    PatientContext.age；發話者的 request ContextVar 與家人稱謂都不得影響結果。
     """
     if mentions_child(text):
         return PEDIATRIC_REASON_MENTIONED_CHILD
-    if is_pediatric_age(get_request_age()):
+    age = patient_context.age if patient_context is not None else None
+    if (
+        isinstance(age, int)
+        and not isinstance(age, bool)
+        and 0 <= age <= 130
+        and is_pediatric_age(age)
+    ):
         return PEDIATRIC_REASON_AGE
     return None
 
@@ -172,7 +181,11 @@ class SymptomDepartmentService:
                 patient_context=patient_context,
             )
 
-        candidates = self._filter_pediatric(entry.candidates, text)
+        candidates = self._filter_pediatric(
+            entry.candidates,
+            text,
+            patient_context,
+        )
         if not candidates:
             return self._fallback(
                 text,
@@ -190,10 +203,13 @@ class SymptomDepartmentService:
         )
 
     def _filter_pediatric(
-        self, candidates: tuple[DepartmentCandidate, ...], text: str
+        self,
+        candidates: tuple[DepartmentCandidate, ...],
+        text: str,
+        patient_context: PatientContext | None,
     ) -> tuple[DepartmentCandidate, ...]:
         """成人的提問不給兒科。濾光時回傳空序列，由呼叫端走保底。"""
-        if _pediatric_reason(text) is not None:
+        if _pediatric_reason(text, patient_context) is not None:
             return candidates
         without = tuple(c for c in candidates if c.canonical != PEDIATRIC_DEPARTMENT)
         if without:
@@ -216,7 +232,7 @@ class SymptomDepartmentService:
         patient_context: PatientContext | None = None,
     ) -> SymptomTriageResult:
         # 孩童的初診方向以兒科為首，其後照舊；非孩童的保底不含兒科。
-        pediatric_reason = _pediatric_reason(text)
+        pediatric_reason = _pediatric_reason(text, patient_context)
         names = (
             (PEDIATRIC_DEPARTMENT, *FALLBACK_DEPARTMENTS)
             if pediatric_reason is not None

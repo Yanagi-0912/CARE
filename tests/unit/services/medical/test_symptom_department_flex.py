@@ -432,7 +432,7 @@ def test_child_fallback_header_leads_with_pediatrics():
 def test_under_age_note_follows_the_age_limit():
     """說明裡的歲數取自年齡界線，界線改了文案跟著改，不會一邊 15 一邊 18。"""
     label, _, _, _, _ = _body_parts(_bubble(_fallback(_CHILD_FALLBACK, PEDIATRIC_REASON_AGE)))
-    assert f"你還未滿 {PEDIATRIC_AGE_LIMIT} 歲" in label["text"]
+    assert f"看診者未滿 {PEDIATRIC_AGE_LIMIT} 歲" in label["text"]
 
 
 def test_pediatric_note_never_appears_on_a_suggestion_card():

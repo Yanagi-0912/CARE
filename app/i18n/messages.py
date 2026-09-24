@@ -2330,12 +2330,12 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "ja": "お子さまについてのご相談のため、小児科も候補に含めています。",
     },
     "flex.symptom.pediatric.age": {
-        "zh-TW": "因為你還未滿 {age} 歲，另外列出兒科。",
-        "en": "Because you are under {age}, Pediatrics is also listed.",
-        "id": "Karena usia Anda belum {age} tahun, Poli Anak juga dicantumkan.",
-        "vi": "Vì bạn chưa đủ {age} tuổi, Nhi khoa cũng được liệt kê.",
-        "th": "เนื่องจากคุณอายุต่ำกว่า {age} ปี จึงเพิ่มแผนกกุมารเวชกรรมไว้ด้วย",
-        "ja": "{age}歳未満のため、小児科も候補に含めています。",
+        "zh-TW": "因為看診者未滿 {age} 歲，另外列出兒科。",
+        "en": "Because the patient is under {age}, Pediatrics is also listed.",
+        "id": "Karena pasien berusia di bawah {age} tahun, Poli Anak juga dicantumkan.",
+        "vi": "Vì người bệnh chưa đủ {age} tuổi, Nhi khoa cũng được liệt kê.",
+        "th": "เนื่องจากผู้ป่วยอายุต่ำกว่า {age} ปี จึงเพิ่มแผนกกุมารเวชกรรมไว้ด้วย",
+        "ja": "受診する方が{age}歳未満のため、小児科も候補に含めています。",
     },
     "flex.symptom.nearby.prompt": {
         "zh-TW": "是否需要搜尋附近{department}的醫院或診所？",

@@ -19,7 +19,6 @@ import re
 import pytest
 from linebot.v3.messaging import FlexContainer
 
-from app.core.user_age import reset_request_age, set_request_age
 from app.services.family.patient_context import PatientContext
 from app.services.medical.department_matcher import CANONICAL_DEPARTMENTS
 from app.services.medical.symptom_classification.symptom_department_service import (
@@ -101,12 +100,14 @@ class FixedResolver:
 
 
 async def _suggest(table, term, age, text="要看哪一科"):
-    token = set_request_age(age)
-    try:
-        service = SymptomDepartmentService(table=table, normalizer=FixedResolver(term))
-        return await service.suggest(text)
-    finally:
-        reset_request_age(token)
+    service = SymptomDepartmentService(table=table, normalizer=FixedResolver(term))
+    context = PatientContext(
+        operator_id="U_OPERATOR",
+        patient_kind="self",
+        patient_id="U_OPERATOR",
+        age=age,
+    )
+    return await service.suggest(text, patient_context=context)
 
 
 @pytest.mark.asyncio
@@ -429,6 +430,58 @@ async def test_T18_parent_mentioning_a_child_keeps_pediatrics(table):
     assert [c.canonical for c in result.candidates] == ["兒科"]
 
 
+@pytest.mark.asyncio
+async def test_T18_speaker_age_does_not_override_adult_patient_context(table):
+    from app.core.user_age import reset_request_age, set_request_age
+
+    token = set_request_age(8)
+    try:
+        result = await _suggest(table, "生長發育遲緩", 40)
+    finally:
+        reset_request_age(token)
+
+    assert result.kind == RESULT_FALLBACK
+    assert [c.canonical for c in result.candidates] == EXPECTED_FALLBACK
+
+
+@pytest.mark.asyncio
+async def test_T18_patient_age_is_used_even_when_speaker_age_is_adult(table):
+    from app.core.user_age import reset_request_age, set_request_age
+
+    token = set_request_age(40)
+    try:
+        result = await _suggest(table, "生長發育遲緩", 5)
+    finally:
+        reset_request_age(token)
+
+    assert result.kind == RESULT_SUGGESTION
+    assert [c.canonical for c in result.candidates] == ["兒科"]
+
+
+@pytest.mark.asyncio
+async def test_T18_child_relationship_does_not_imply_pediatric_age(table):
+    service = SymptomDepartmentService(
+        table=table,
+        normalizer=FixedResolver("生長發育遲緩"),
+    )
+    context = PatientContext(
+        operator_id="U_OPERATOR",
+        patient_kind="member",
+        patient_id="U_CHILD",
+        display_label="王大明",
+        relationship="child",
+    )
+
+    result = await service.suggest(
+        "我兒子發育比較慢要看哪一科",
+        patient_context=context,
+    )
+
+    assert result.kind == RESULT_FALLBACK
+    assert [c.canonical for c in result.candidates] == EXPECTED_FALLBACK
+    assert result.pediatric_reason is None
+
+
 # ---------------------------------------------------------------- 候選數上限
 
 _FIVE = ["內科", "外科", "婦產科", "泌尿科", "皮膚科"]
@@ -710,7 +763,7 @@ async def test_T28_acceptance_D14_bedwetting_adult_gets_urology(table):
 EXPECTED_PEDIATRIC_FALLBACK = ["兒科", "家醫科", "內科", "不分科"]
 
 CHILD_NOTE = "因為是幫孩子詢問，另外列出兒科。"
-UNDER_AGE_NOTE = "因為你還未滿 15 歲，另外列出兒科。"
+UNDER_AGE_NOTE = "因為看診者未滿 15 歲，另外列出兒科。"
 
 
 @pytest.mark.asyncio

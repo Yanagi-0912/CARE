@@ -421,7 +421,7 @@ def _fallback(*names, pediatric_reason=None):
     ("pediatric_reason", "note"),
     [
         (PEDIATRIC_REASON_MENTIONED_CHILD, "因為是幫孩子詢問，另外列出兒科。"),
-        (PEDIATRIC_REASON_AGE, "因為你還未滿 15 歲，另外列出兒科。"),
+        (PEDIATRIC_REASON_AGE, "因為看診者未滿 15 歲，另外列出兒科。"),
     ],
 )
 def test_plain_reply_explains_pediatrics_in_child_fallback(pediatric_reason, note):

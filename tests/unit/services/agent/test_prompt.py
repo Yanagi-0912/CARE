@@ -83,6 +83,15 @@ def test_system_prompt_routes_family_directory_questions_to_the_directory_tool()
     assert "禁止把「父母」填進 `person`" in SYSTEM_PROMPT
 
 
+def test_system_prompt_structures_the_department_patient_without_guessing():
+    assert "relationship=child" in SYSTEM_PROMPT
+    assert "relationship=spouse" in SYSTEM_PROMPT
+    assert "person=王美玲" in SYSTEM_PROMPT
+    assert "age=5" in SYSTEM_PROMPT
+    assert "gender" in SYSTEM_PROMPT
+    assert "禁止從兒子、女兒、老婆等稱謂推測年齡或性別" in SYSTEM_PROMPT
+
+
 def test_system_prompt_declines_requests_unrelated_to_health():
     """guardrail 不放行只是不給 RAG 工具，回答照樣會產生。2026-09-14 正式環境
     「推導高等微積分」拿到一整篇數學推導，當時 (a)–(j) 沒有任何一條處理

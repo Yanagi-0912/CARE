@@ -60,6 +60,7 @@ from app.services.family.family_delegation_service import (
 )
 from app.services.family.family_role_service import FamilyRoleService
 from app.services.family.family_tree_service import FamilyTreeService
+from app.services.family.patient_context_service import PatientContextService
 from app.services.health.health_alert_service import HealthAlertService
 from app.services.health.health_alert_threshold_service import (
     HealthAlertThresholdService,
@@ -651,7 +652,6 @@ _symptom_department_service = SymptomDepartmentService(
         gemini_service=_gemini_service,
     ),
 )
-configure_symptom_tool(_symptom_department_service)
 
 # 急迫度判斷。刻意與科別建議分開建構：它擋在整個 agent 之前，不屬於任何工具，
 # 也不依賴對照表——對照表壞掉時科別建議可以不上線，安全檢查不行。
@@ -768,6 +768,13 @@ _family_authorization_service = FamilyAuthorizationService(
     # 的原始資料來源；寫入失敗一律吞掉，不影響授權。
     metrics_repository=FamilyRbacMetricsRepository,
 )
+
+_patient_context_service = PatientContextService(
+    family_tree_repository=FamilyTreeRepository,
+    authorization_service=_family_authorization_service,
+    user_profile_service=_user_profile_service,
+)
+configure_symptom_tool(_symptom_department_service, _patient_context_service)
 
 # 查服藥狀況（LINE 裡問「我今天要吃什麼藥」「媽媽吃藥了沒」）。查家人時經過同一個
 # 授權決策點；repository 同樣直接傳類別本身。

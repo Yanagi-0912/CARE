@@ -33,6 +33,7 @@ import logging
 from dataclasses import dataclass, field
 
 from app.core.user_age import get_request_age, is_pediatric_age
+from app.services.family.patient_context import PatientContext
 from app.services.medical.symptom_classification.normalizer import (
     SymptomResolver,
     mentions_child,
@@ -89,12 +90,15 @@ def _pediatric_reason(text: str) -> str | None:
         return PEDIATRIC_REASON_AGE
     return None
 
+
 @dataclass(frozen=True)
 class SymptomTriageResult:
     kind: str
     """RESULT_SUGGESTION / RESULT_FALLBACK"""
 
     user_input: str
+    patient_context: PatientContext | None = None
+    """本次症狀所屬的看診者；10.7 起由流程依解析結果決定後續處置。"""
 
     # --- 建議 ---
     matched_term: str | None = None
@@ -127,10 +131,19 @@ class SymptomDepartmentService:
         self._table = table
         self._normalizer = normalizer
 
-    async def suggest(self, text: str) -> SymptomTriageResult:
+    async def suggest(
+        self,
+        text: str,
+        *,
+        patient_context: PatientContext | None = None,
+    ) -> SymptomTriageResult:
         term = await self._normalizer.resolve(text)
         if term is None:
-            return self._fallback(text, "無法對應到已知的症狀條目")
+            return self._fallback(
+                text,
+                "無法對應到已知的症狀條目",
+                patient_context=patient_context,
+            )
 
         entry = self._table.lookup(term)
         if entry is None:
@@ -138,7 +151,11 @@ class SymptomDepartmentService:
             logger.warning(
                 f"{LOGGER_HEADER_TEXT} 正規化回傳表中不存在的條目 %r", term
             )
-            return self._fallback(text, "無法對應到已知的症狀條目")
+            return self._fallback(
+                text,
+                "無法對應到已知的症狀條目",
+                patient_context=patient_context,
+            )
 
         if entry.is_too_broad:
             # 候選過多代表這個症狀本來就跨科（腹痛可以是內、外、婦、泌尿…），
@@ -148,16 +165,25 @@ class SymptomDepartmentService:
                 term,
                 len(entry.candidates),
             )
-            return self._fallback(text, "這個症狀可能牽涉多個科別", matched_term=term)
+            return self._fallback(
+                text,
+                "這個症狀可能牽涉多個科別",
+                matched_term=term,
+                patient_context=patient_context,
+            )
 
         candidates = self._filter_pediatric(entry.candidates, text)
         if not candidates:
             return self._fallback(
-                text, "這個症狀在對照表中只列了兒科", matched_term=term
+                text,
+                "這個症狀在對照表中只列了兒科",
+                matched_term=term,
+                patient_context=patient_context,
             )
         return SymptomTriageResult(
             kind=RESULT_SUGGESTION,
             user_input=text,
+            patient_context=patient_context,
             matched_term=term,
             candidates=candidates[:MAX_CANDIDATES],
             term_sources=_term_sources(entry),
@@ -182,7 +208,12 @@ class SymptomDepartmentService:
         return ()
 
     def _fallback(
-        self, text: str, reason: str, *, matched_term: str | None = None
+        self,
+        text: str,
+        reason: str,
+        *,
+        matched_term: str | None = None,
+        patient_context: PatientContext | None = None,
     ) -> SymptomTriageResult:
         # 孩童的初診方向以兒科為首，其後照舊；非孩童的保底不含兒科。
         pediatric_reason = _pediatric_reason(text)
@@ -203,6 +234,7 @@ class SymptomDepartmentService:
         return SymptomTriageResult(
             kind=RESULT_FALLBACK,
             user_input=text,
+            patient_context=patient_context,
             matched_term=matched_term,
             candidates=candidates,
             fallback_reason=reason,

@@ -124,7 +124,7 @@
 
 ### 10.B 科別推薦接入
 
-- [ ] 10.6 **單一看診者工具參數**：擴充 `suggest_department_for_symptom`，保留症狀原文並加入結構化 `person`、`relationship` 與本輪明示的年齡／性別線索；伺服器端建立 `PatientContext`
+- [x] 10.6 **單一看診者工具參數**：擴充 `suggest_department_for_symptom`，保留症狀原文並加入結構化 `person`、`relationship` 與本輪明示的年齡／性別線索；伺服器端建立 `PatientContext`（2026-09-24；聚焦範圍 161 項、工具註冊／家庭授權／Agent／科別卡片／依賴組裝與 LINE handler 擴大範圍 1,000 項全綠）
 - [ ] 10.7 **解析失敗的可見回覆**：`ambiguous` 與姓名／關係衝突時反問且不查症狀表；`not_found` 仍可依本輪資料給一般建議，但不得讀任一家人 profile
 - [ ] 10.8 **兒科改讀病人資料**：兒科判斷改讀 `PatientContext.age` 與「寶寶」提示；移除症狀路徑對發話者年齡 ContextVar 的依賴；子女稱謂不得推導年齡
 - [ ] 10.9 **性別適用性**：男性本人一般腹痛抑制婦產科、男性替老婆詢問保留婦產科、性別未知不猜測；懷孕／生產／月經／生殖語意及明確指定科別高於 profile

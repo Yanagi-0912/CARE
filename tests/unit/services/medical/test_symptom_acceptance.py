@@ -20,6 +20,7 @@ import pytest
 from linebot.v3.messaging import FlexContainer
 
 from app.core.user_age import reset_request_age, set_request_age
+from app.services.family.patient_context import PatientContext
 from app.services.medical.department_matcher import CANONICAL_DEPARTMENTS
 from app.services.medical.symptom_classification.symptom_department_service import (
     RESULT_FALLBACK,
@@ -106,6 +107,26 @@ async def _suggest(table, term, age, text="要看哪一科"):
         return await service.suggest(text)
     finally:
         reset_request_age(token)
+
+
+@pytest.mark.asyncio
+async def test_patient_context_stays_bound_to_the_triage_result(table):
+    context = PatientContext(
+        operator_id="U_OPERATOR",
+        patient_kind="member",
+        patient_id="U_MEMBER",
+        display_label="王美玲",
+        relationship="spouse",
+    )
+    service = SymptomDepartmentService(
+        table=table,
+        normalizer=FixedResolver("頭痛"),
+    )
+
+    result = await service.suggest("頭痛", patient_context=context)
+
+    assert result.user_input == "頭痛"
+    assert result.patient_context is context
 
 
 _REFERENCES = tuple(

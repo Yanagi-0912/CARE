@@ -57,20 +57,78 @@ class EmergencyFamilyAlertService:
         self._authorization_service = authorization_service
         self._user_profile_service = user_profile_service
 
+    async def patients_to_notify(
+        self, reporter_id: str, resolved: tuple[ResolvedAffected, ...]
+    ) -> list[str]:
+        """這次回報該通知誰的家人：只有能唯一確定、且連結經伺服器驗證的病人。
+
+        - 本人急症：病人就是回報者。
+        - 家人急症：必須在回報者的名單中唯一解析，**而且**回報者也在病人自己的
+          族譜裡（`resolve_role` 不為 None，任何角色皆可回報）。只在我的名單裡
+          單方面列了對方不算——那是自助式連結。
+        - 同稱謂多人、名單查不到、朋友、路人、不明對象：不通知任何家庭。猜錯
+          就是去驚動另一個家庭。
+        - 本身沒有急症的人（同句的輕微不適）不通知。
+
+        這一步只確認連結，不做 SENSITIVE READ 授權、不讀病人 profile：回報緊急
+        事件不等於取得病人健康資料的讀取權。
+        """
+        patients: list[str] = []
+        for item in resolved:
+            if not item.person.urgent:
+                continue
+            if item.person.kind == "self":
+                candidate = reporter_id
+            elif item.is_resolved_member and item.resolution.member is not None:
+                candidate = item.resolution.member.user_id
+                if not await self._linked(reporter_id, candidate):
+                    continue
+            else:
+                continue
+            if candidate and candidate not in patients:
+                patients.append(candidate)
+        return patients
+
+    async def _linked(self, reporter_id: str, patient_user_id: str) -> bool:
+        if self._authorization_service is None or not reporter_id:
+            return False
+        try:
+            role = await self._authorization_service.resolve_role(
+                reporter_id, patient_user_id
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"{LOGGER_HEADER_TEXT} 家庭連結驗證失敗，本次不通報該病人：%s",
+                type(exc).__name__,
+            )
+            return False
+        return role is not None
+
     async def notify(
-        self, patient_user_id: str, reason: str, patient_words: str = ""
+        self,
+        patient_user_id: str,
+        reason: str,
+        patient_words: str = "",
+        *,
+        reporter_id: str = "",
     ) -> bool:
         """對外的唯一入口。回傳是否真的送出給任何人；任何失敗都吞在這裡。
 
+        `patient_user_id` 是**解析後的病人**，不是發話者：孫子回報阿公跌倒時
+        通知的是阿公的照顧者（見 `patients_to_notify`）。
         `reason` 是急迫度判斷產生的白話說明（系統為什麼判定為緊急）；
         `patient_words` 是當事人的原話，逐字轉發不改寫——「喝了 3 瓶農藥」與
         「可能需要協助」對家屬是完全不同的兩件事，而劑量正是急救要問的第一個
-        問題（見卡片模組註解）。
+        問題（見卡片模組註解）。只有病人本人發話時才可傳入，別人代為回報的
+        原文不是病人說的話。
+        `reporter_id` 是回報者；他已經知道這件事，不在收件人之列。
         """
         if not patient_user_id:
             return False
         try:
-            return await self._notify(patient_user_id, reason, patient_words)
+            return await self._notify(
+                patient_user_id, reason, patient_words, reporter_id=reporter_id
+            )
         except Exception:  # noqa: BLE001
             logger.error(
                 f"{LOGGER_HEADER_TEXT} 家人通報失敗，當事人的回覆不受影響",
@@ -79,9 +137,16 @@ class EmergencyFamilyAlertService:
             return False
 
     async def _notify(
-        self, patient_user_id: str, reason: str, patient_words: str = ""
+        self,
+        patient_user_id: str,
+        reason: str,
+        patient_words: str = "",
+        *,
+        reporter_id: str = "",
     ) -> bool:
-        recipients = await self._recipients(patient_user_id)
+        recipients = [
+            uid for uid in await self._recipients(patient_user_id) if uid != reporter_id
+        ]
         if not recipients:
             logger.info(f"{LOGGER_HEADER_TEXT} 沒有合格收件人，本次不通報")
             return False
@@ -213,9 +278,10 @@ async def resolve_affected(
     operator_id: str,
     patient_context_service: Any,
     *,
-    timeout_seconds: float = RESOLVE_TIMEOUT_SECONDS,
+    timeout_seconds: Optional[float] = None,
 ) -> tuple[ResolvedAffected, ...]:
     """逐一把「家人」對到名單；任何失敗都退回未解析，不拋例外。"""
+    timeout_seconds = timeout_seconds or RESOLVE_TIMEOUT_SECONDS
     return tuple(
         await asyncio.gather(
             *(

@@ -3,6 +3,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from linebot.v3.webhooks import FileMessageContent
 
+from app.services.medical.symptom_classification.urgency import AffectedPerson
+from app.services.safety.emergency_alert_service import EmergencyFamilyAlertService
 from app.services.medical.symptom_classification.urgency import (
     URGENCY_EMERGENCY,
     UrgencyVerdict,
@@ -183,13 +185,25 @@ async def test_ocr_text_reaches_the_safety_check(
     assert "合利他命強効錠 EX PLUS" in safety.calls[0][1]
 
 
-class FakeEmergencyFamilyAlertService:
+class FakeEmergencyFamilyAlertService(EmergencyFamilyAlertService):
+    """選病人用正式邏輯（patients_to_notify），只把推播換成記錄。"""
+
     def __init__(self):
+        super().__init__(replier=None)
         self.calls = []
 
-    async def notify(self, user_id, reason, patient_words=""):
+    async def notify(self, user_id, reason, patient_words="", *, reporter_id=""):
         self.calls.append((user_id, reason, patient_words))
         return False
+
+
+class _SelfIdentifier:
+    """紅卡之後的人物辨識替身：把事件歸給發話者本人。"""
+
+    async def identify_affected(self, verdict, text, *, language):
+        from dataclasses import replace
+
+        return replace(verdict, affected=(AffectedPerson(kind="self", event="胸痛"),))
 
 
 @pytest.mark.asyncio
@@ -228,6 +242,7 @@ async def test_an_emergency_described_in_a_voice_message_notifies_the_family(
         user_profile_service=mock_user_profile_service,
         replier=replier,
         emergency_family_alert_service=emergency,
+        urgency_classifier=_SelfIdentifier(),
     )
     event = MessageEvent(
         timestamp=int(datetime.now().timestamp() * 1000),
@@ -246,7 +261,7 @@ async def test_an_emergency_described_in_a_voice_message_notifies_the_family(
     with patch(
         "app.services.media.mutimedia_processor.media_processor_service.process_media",
         new_callable=AsyncMock,
-        return_value="阿公叫不醒",
+        return_value="我胸口好痛喘不過氣",
     ):
         await handler.handle(event)
     await _drain(handler)
@@ -255,7 +270,7 @@ async def test_an_emergency_described_in_a_voice_message_notifies_the_family(
     user_id, reason, words = emergency.calls[0]
     assert user_id == "U12345"
     assert reason == "你提到有人叫不醒"
-    assert "阿公叫不醒" in words
+    assert "我胸口好痛喘不過氣" in words
 
 
 @pytest.mark.asyncio

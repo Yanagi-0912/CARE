@@ -24,6 +24,7 @@ from app.core.user_language import SUPPORTED_LANGUAGES
 from app.i18n.messages import _MESSAGES
 from app.services.line_messaging.dispatcher.dispatcher import LineEventDispatcher
 from app.services.line_messaging.handler.message_handler import LineMessageHandler
+from app.services.safety.emergency_alert_service import EmergencyFamilyAlertService
 from app.services.lost.lost_classifier import LostIntentDetector
 from app.services.lost.lost_location_service import LostLocationService
 from resources.flex_messages.lost_location_flex_message import (
@@ -174,15 +175,23 @@ class FakeUrgency:
         return NOT_URGENT
 
     async def identify_affected(self, verdict, text, *, language="zh-TW"):
-        # 紅卡之後的人物辨識；走失是長輩自己回報，這裡不補人物。
-        return verdict
+        # 紅卡之後的人物辨識。這裡測的是走失流程仍會補紅卡與通報，人物一律
+        # 歸給長輩本人；「是誰出事」的解析另有測試（test_message_handler）。
+        from dataclasses import replace
+
+        from app.services.medical.symptom_classification.urgency import AffectedPerson
+
+        return replace(verdict, affected=(AffectedPerson(kind="self", event="叫不醒"),))
 
 
-class FakeEmergencyAlert:
+class FakeEmergencyAlert(EmergencyFamilyAlertService):
+    """選病人用正式邏輯（patients_to_notify），只把推播換成記錄。"""
+
     def __init__(self):
+        super().__init__(replier=None)
         self.calls = []
 
-    async def notify(self, user_id, reason, patient_words=""):
+    async def notify(self, user_id, reason, patient_words="", *, reporter_id=""):
         self.calls.append((user_id, reason, patient_words))
         return True
 

@@ -24,6 +24,7 @@ from app.services.medical.symptom_classification.urgency import (
     UrgencyVerdict,
 )
 from app.services.safety.emergency_alert_service import (
+    ResolvedAffected,
     followup_texts,
     notify_patient_family_was_told,
     resolve_affected,
@@ -515,31 +516,40 @@ class BaseLineMessageHandler:
         verdict: Optional[UrgencyVerdict],
         language: str,
     ) -> None:
-        """紅卡送出之後的背景工作：辨識受影響者並補稱謂提示，同時通報家人。
+        """紅卡送出之後的背景工作：辨識是誰出事、補稱謂提示、通知病人的照顧者。
 
-        呼叫端必須在紅卡送出之後才呼叫（行動先到）。兩件事並行、互不等待，
-        任何一邊慢了或失敗都不影響另一邊，更不影響已經送出的紅卡。
+        呼叫端必須在紅卡送出之後才呼叫（行動先到）。這裡的任何一步慢了或失敗，
+        都不影響已經送出的紅卡。
 
         失敗一律留在任務內部，理由同 _schedule_safety_alert_check。
         """
         if not user_id:
             return
         verdict = verdict or UrgencyVerdict(level=URGENCY_EMERGENCY)
-        for work in (
-            self._address_affected(user_id, user_text, verdict, language),
-            self._alert_family(user_id, user_text, verdict, language),
-        ):
-            task = asyncio.create_task(work)
-            self._safety_alert_tasks.add(task)
-            task.add_done_callback(self._safety_alert_tasks.discard)
+        task = asyncio.create_task(
+            self._emergency_followup(user_id, user_text, verdict, language)
+        )
+        self._safety_alert_tasks.add(task)
+        task.add_done_callback(self._safety_alert_tasks.discard)
 
-    async def _address_affected(
+    async def _emergency_followup(
         self, user_id: str, user_text: str, verdict: UrgencyVerdict, language: str
     ) -> None:
-        """補一則稱謂正確的行動提示：阿公用「阿公」，認不出是誰就用「對方」。
+        """先解析人物，再依結果補稱謂提示與通知。
 
-        推測出的人物只活在這個任務裡，不寫回 state 或資料庫。
+        通知必須等解析：要通知的是**病人**的照顧者，而孫子回報阿公跌倒時，
+        病人是阿公不是孫子。推測出的人物只活在這個任務裡，不寫回 state 或資料庫。
         """
+        resolved = await self._resolve_emergency_people(
+            user_id, user_text, verdict, language
+        )
+        await self._address_affected(user_id, resolved, language)
+        await self._alert_patients_family(user_id, user_text, verdict, resolved, language)
+
+    async def _resolve_emergency_people(
+        self, user_id: str, user_text: str, verdict: UrgencyVerdict, language: str
+    ) -> tuple[ResolvedAffected, ...]:
+        """辨識受影響者並對到發話者的家庭名單；失敗時回空（＝不知道是誰）。"""
         try:
             if self._urgency_classifier is not None:
                 verdict = await self._urgency_classifier.identify_affected(
@@ -548,35 +558,62 @@ class BaseLineMessageHandler:
             resolved = await resolve_affected(
                 verdict.affected, user_id, self._patient_context_service
             )
-            texts = followup_texts(resolved, language)
-            log_stage(
-                logger,
-                "emergency_followup",
-                kinds=[r.person.kind for r in resolved] or None,
-                resolved=[r.resolution.kind for r in resolved if r.resolution] or None,
-                sent=bool(texts),
-            )
-            if texts:
-                await self._replier.push_text(user_id, "\n".join(texts))
         except Exception:  # noqa: BLE001 - 背景旁路，例外不得逸散
-            logger.exception("緊急狀況稱謂提示任務失敗")
+            logger.exception("緊急狀況人物解析失敗，改以不知道是誰處理")
+            return ()
+        log_stage(
+            logger,
+            "emergency_people",
+            kinds=[r.person.kind for r in resolved] or None,
+            resolved=[r.resolution.kind for r in resolved if r.resolution] or None,
+        )
+        return resolved
 
-    async def _alert_family(
-        self, user_id: str, user_text: str, verdict: UrgencyVerdict, language: str
+    async def _address_affected(
+        self, user_id: str, resolved: tuple[ResolvedAffected, ...], language: str
     ) -> None:
-        """通報家人，成功後才告訴當事人「家人已經知道了」。
-
-        紅卡在通報之前就送出去了，組卡當下還不知道通報會不會成功，與其在卡上
-        寫一句可能不成立的話，不如事後補一則（見 emergency_alert_service 的模組註解）。
-        """
-        if self._emergency_family_alert_service is None:
+        """補一則稱謂正確的行動提示：阿公用「阿公」，認不出是誰就用「對方」。"""
+        texts = followup_texts(resolved, language)
+        if not texts:
             return
         try:
-            sent = await self._emergency_family_alert_service.notify(
-                user_id, verdict.display, user_text
-            )
-            if sent:
-                await notify_patient_family_was_told(self._replier, user_id, language)
+            await self._replier.push_text(user_id, "\n".join(texts))
+        except Exception:  # noqa: BLE001 - 背景旁路，例外不得逸散
+            logger.exception("緊急狀況稱謂提示推播失敗")
+
+    async def _alert_patients_family(
+        self,
+        user_id: str,
+        user_text: str,
+        verdict: UrgencyVerdict,
+        resolved: tuple[ResolvedAffected, ...],
+        language: str,
+    ) -> None:
+        """通知每一位能確定的病人的照顧者；認不出是誰就不通知任何家庭。
+
+        本人急症時原話照舊轉給家人，成功後才告訴發話者「家人已經知道了」——
+        紅卡在通報之前就送出去了，組卡當下還不知道通報會不會成功。
+        別人代為回報時不轉原話（那不是病人說的），也不送那句「你的家人」：
+        它是對病人本人說的話。
+        """
+        service = self._emergency_family_alert_service
+        if service is None:
+            return
+        try:
+            patients = await service.patients_to_notify(user_id, resolved)
+            for patient_id in patients:
+                self_report = patient_id == user_id
+                sent = await service.notify(
+                    patient_id,
+                    verdict.display,
+                    user_text if self_report else "",
+                    reporter_id=user_id,
+                )
+                log_stage(
+                    logger, "emergency_alert", self_report=self_report, sent=sent
+                )
+                if sent and self_report:
+                    await notify_patient_family_was_told(self._replier, user_id, language)
         except Exception:  # noqa: BLE001 - 背景旁路，例外不得逸散
             logger.exception("緊急狀況家人通報任務失敗")
 

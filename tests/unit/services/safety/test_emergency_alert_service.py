@@ -598,3 +598,220 @@ def test_followup_texts_exist_in_every_language(language):
     ):
         assert t(key, language) != key
     assert "{name}" in t("text.emergency.stay_with_named", language)
+
+
+# --- 通知正確病人的照顧者（10.15）----------------------------------------------
+#
+# 通知主體是解析後的病人，不是發話者；收件人照病人的 emergency_detected 政策選；
+# 回報只驗證家庭連結，不做 SENSITIVE READ，也不讀病人健康資料給回報者。
+
+from app.services.family.person_resolution import PersonResolution  # noqa: E402
+from app.services.safety.emergency_alert_service import ResolvedAffected  # noqa: E402
+
+GRANDPA_ID = "U_GRANDPA"
+GUARDIAN = "U_AUNT"
+
+
+class PolicyAuthorization:
+    """貼齊 FamilyAuthorizationService 在這條路徑用到的兩支：連結與收件人。"""
+
+    def __init__(self, *, links=(), recipients=None, link_error=None):
+        self.links = set(links)
+        self.recipients = recipients or {}
+        self.link_error = link_error
+        self.role_calls = []
+        self.recipient_calls = []
+
+    async def resolve_role(self, operator_id, target_owner_id, now=None):
+        self.role_calls.append((operator_id, target_owner_id))
+        if self.link_error:
+            raise self.link_error
+        return "MEMBER" if (operator_id, target_owner_id) in self.links else None
+
+    async def notification_recipients(self, owner_id, kind):
+        self.recipient_calls.append((owner_id, kind))
+        return list(self.recipients.get(owner_id, ()))
+
+    async def authorize(self, *args, **kwargs):
+        raise AssertionError("緊急回報不得走 SENSITIVE READ 授權")
+
+
+class RecordingProfiles(FakeProfiles):
+    def __init__(self, profiles=None):
+        super().__init__(profiles)
+        self.calls = []
+
+    async def get_user_profile(self, user_id):
+        self.calls.append(user_id)
+        return await super().get_user_profile(user_id)
+
+
+def _member_resolution(user_id=GRANDPA_ID):
+    member = FamilyMember(
+        user_id=user_id, display_name="王大明", relationship_type="grandparent"
+    )
+    return PersonResolution(
+        kind="member",
+        member=member,
+        display_label="王大明",
+        relationship="grandparent",
+        matched_by="relationship",
+    )
+
+
+def _resolved_grandpa():
+    return ResolvedAffected(GRANDPA, _member_resolution())
+
+
+def _policy_service(auth, replier=None, profiles=None):
+    return EmergencyFamilyAlertService(
+        replier=replier or FakeReplier(),
+        authorization_service=auth,
+        user_profile_service=profiles or RecordingProfiles(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_self_report_notifies_the_reporters_own_family():
+    service = _policy_service(PolicyAuthorization())
+    patients = await service.patients_to_notify(OPERATOR, (ResolvedAffected(SELF),))
+    assert patients == [OPERATOR]
+
+
+@pytest.mark.asyncio
+async def test_linked_grandpa_is_the_patient_not_the_reporter():
+    auth = PolicyAuthorization(links={(OPERATOR, GRANDPA_ID)})
+    patients = await _policy_service(auth).patients_to_notify(
+        OPERATOR, (_resolved_grandpa(),)
+    )
+    assert patients == [GRANDPA_ID]
+    assert auth.role_calls == [(OPERATOR, GRANDPA_ID)]
+
+
+@pytest.mark.asyncio
+async def test_grandpa_only_in_the_reporters_list_is_not_notified():
+    """我在自己的名單裡列了對方，但對方的族譜裡沒有我：那是單方面的連結。"""
+    patients = await _policy_service(PolicyAuthorization()).patients_to_notify(
+        OPERATOR, (_resolved_grandpa(),)
+    )
+    assert patients == []
+
+
+@pytest.mark.asyncio
+async def test_link_check_failure_notifies_nobody():
+    auth = PolicyAuthorization(
+        links={(OPERATOR, GRANDPA_ID)}, link_error=RuntimeError("down")
+    )
+    patients = await _policy_service(auth).patients_to_notify(
+        OPERATOR, (_resolved_grandpa(),)
+    )
+    assert patients == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "item",
+    [
+        ResolvedAffected(GRANDPA, PersonResolution(kind="ambiguous", display_label="阿公")),
+        ResolvedAffected(GRANDPA, PersonResolution(kind="not_found", display_label="阿公")),
+        ResolvedAffected(GRANDPA),
+        ResolvedAffected(AffectedPerson(kind="third_party", label="路人", event="跌倒")),
+        ResolvedAffected(AffectedPerson(kind="third_party", label="朋友", event="想自殺")),
+        ResolvedAffected(AffectedPerson(kind="unknown", event="昏倒")),
+    ],
+    ids=["two-grandparents", "not-in-list", "lookup-failed", "passer-by", "friend", "unknown"],
+)
+async def test_unresolved_people_never_notify_any_family(item):
+    auth = PolicyAuthorization(links={(OPERATOR, GRANDPA_ID)})
+    assert await _policy_service(auth).patients_to_notify(OPERATOR, (item,)) == []
+    assert auth.role_calls == []
+
+
+@pytest.mark.asyncio
+async def test_unknown_people_notify_nobody():
+    """LLM 中斷時不知道是誰：不猜是發話者本人，也不通知任何家庭。"""
+    service = _policy_service(PolicyAuthorization())
+    assert await service.patients_to_notify(OPERATOR, ()) == []
+
+
+@pytest.mark.asyncio
+async def test_self_and_grandpa_in_one_message_are_two_separate_patients():
+    auth = PolicyAuthorization(links={(OPERATOR, GRANDPA_ID)})
+    patients = await _policy_service(auth).patients_to_notify(
+        OPERATOR, (_resolved_grandpa(), ResolvedAffected(SELF))
+    )
+    assert patients == [GRANDPA_ID, OPERATOR]
+
+
+@pytest.mark.asyncio
+async def test_people_without_an_urgent_condition_are_not_notified():
+    mild_self = AffectedPerson(kind="self", event="有點頭痛", urgent=False)
+    auth = PolicyAuthorization(links={(OPERATOR, GRANDPA_ID)})
+    patients = await _policy_service(auth).patients_to_notify(
+        OPERATOR, (_resolved_grandpa(), ResolvedAffected(mild_self))
+    )
+    assert patients == [GRANDPA_ID]
+
+
+@pytest.mark.asyncio
+async def test_recipients_follow_the_patients_policy_and_skip_the_reporter():
+    """孫子若本身就是阿公的照顧者，他已經知道了，不必再收一張。"""
+    replier = FakeReplier()
+    auth = PolicyAuthorization(recipients={GRANDPA_ID: [GUARDIAN, OPERATOR]})
+    service = _policy_service(auth, replier)
+
+    assert await service.notify(GRANDPA_ID, REASON, reporter_id=OPERATOR) is True
+
+    assert auth.recipient_calls == [(GRANDPA_ID, NOTIFICATION_KIND)]
+    assert [uid for uid, _ in replier.flex] == [GUARDIAN]
+
+
+@pytest.mark.asyncio
+async def test_reporting_never_reads_the_patients_profile_for_the_reporter():
+    """回報緊急事件不等於取得病人健康資料：不授權，回報者也收不到任何東西。
+
+    收件人卡片上需要病人姓名，所以會為收件人讀病人的名字；回報者一則都不收。
+    """
+    replier = FakeReplier()
+    profiles = RecordingProfiles({GRANDPA_ID: {"name": "王大明", "age": 82}})
+    auth = PolicyAuthorization(
+        links={(OPERATOR, GRANDPA_ID)}, recipients={GRANDPA_ID: [GUARDIAN]}
+    )
+    service = _policy_service(auth, replier, profiles)
+
+    patients = await service.patients_to_notify(OPERATOR, (_resolved_grandpa(),))
+    await service.notify(patients[0], REASON, reporter_id=OPERATOR)
+
+    assert OPERATOR not in [uid for uid, _ in replier.flex + replier.texts]
+    assert OPERATOR not in profiles.calls
+
+
+@pytest.mark.asyncio
+async def test_patient_without_recipients_is_not_reported_as_sent():
+    replier = FakeReplier()
+    service = _policy_service(PolicyAuthorization(recipients={GRANDPA_ID: []}), replier)
+    assert await service.notify(GRANDPA_ID, REASON, reporter_id=OPERATOR) is False
+    assert replier.flex == [] and replier.texts == []
+
+
+@pytest.mark.asyncio
+async def test_recipient_who_turned_off_family_alerts_is_skipped():
+    replier = FakeReplier()
+    profiles = RecordingProfiles({GUARDIAN: {"settings": {"notify_family": False}}})
+    service = _policy_service(
+        PolicyAuthorization(recipients={GRANDPA_ID: [GUARDIAN]}), replier, profiles
+    )
+    assert await service.notify(GRANDPA_ID, REASON, reporter_id=OPERATOR) is False
+    assert replier.flex == [] and replier.texts == []
+
+
+@pytest.mark.asyncio
+async def test_push_failure_is_reported_as_not_sent():
+    class _Down(FakeReplier):
+        async def push_text(self, user_id, text):
+            return False
+
+    service = _policy_service(
+        PolicyAuthorization(recipients={GRANDPA_ID: [GUARDIAN]}), _Down(flex_result=False)
+    )
+    assert await service.notify(GRANDPA_ID, REASON, reporter_id=OPERATOR) is False

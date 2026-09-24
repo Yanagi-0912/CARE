@@ -16,6 +16,10 @@ from linebot.v3.webhooks import (
     UserSource,
 )
 
+from app.services.medical.symptom_classification.urgency import (
+    URGENCY_EMERGENCY,
+    UrgencyVerdict,
+)
 from app.core.user_language import SUPPORTED_LANGUAGES
 from app.i18n.messages import _MESSAGES
 from app.services.line_messaging.dispatcher.dispatcher import LineEventDispatcher
@@ -169,6 +173,10 @@ class FakeUrgency:
             return UrgencyVerdict(level=URGENCY_EMERGENCY, display="叫不醒、身體冰冷")
         return NOT_URGENT
 
+    async def identify_affected(self, verdict, text, *, language="zh-TW"):
+        # 紅卡之後的人物辨識；走失是長輩自己回報，這裡不補人物。
+        return verdict
+
 
 class FakeEmergencyAlert:
     def __init__(self):
@@ -280,7 +288,7 @@ async def test_unsure_classifier_still_answers_and_offers_the_lost_button():
 async def test_unsure_message_that_turns_out_to_be_an_emergency_gets_no_lost_button():
     dispatcher, handler, service, agent, replier, _ = _setup(
         FakeClassifier(0.5),
-        agent_response={"response": "{}", "emergency": True, "emergency_reason": "叫不醒"},
+        agent_response={"response": "{}", "emergency": True, "urgency_verdict": UrgencyVerdict(level=URGENCY_EMERGENCY, display="叫不醒")},
     )
 
     await dispatcher.handle(_text("阮後生叫袂醒"))

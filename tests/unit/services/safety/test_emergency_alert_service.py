@@ -432,3 +432,169 @@ def test_card_with_quote_still_passes_sdk_validation(font_size):
         patient_words="我剛剛喝了3瓶農藥，現在肚子很痛，頭也很暈", font_size=font_size
     )
     FlexContainer.from_json(json.dumps(bubble, ensure_ascii=False))
+
+
+# --- 紅卡之後的受影響者解析與稱謂（10.14）--------------------------------------
+#
+# 解析只決定稱謂：唯一命中家人才叫得出名字，其餘一律「對方」。
+
+
+import asyncio  # noqa: E402
+
+from app.models.family_tree import FamilyMember  # noqa: E402
+from app.services.family.person_resolution import resolve_person  # noqa: E402
+from app.services.medical.symptom_classification.urgency import (  # noqa: E402
+    AffectedPerson,
+)
+from app.services.safety.emergency_alert_service import (  # noqa: E402
+    followup_texts,
+    resolve_affected,
+)
+
+OPERATOR = "U_GRANDSON"
+GRANDPA = AffectedPerson(kind="family", label="阿公", relationship="grandparent", event="跌倒")
+SELF = AffectedPerson(kind="self", event="胸口痛")
+
+
+def _grandpa(user_id="U_GRANDPA", name="王大明"):
+    return FamilyMember(user_id=user_id, display_name=name, relationship_type="grandparent")
+
+
+class FakeResolver:
+    """PatientContextService.resolve_person 的替身：只查名單，照真實規則解析。"""
+
+    def __init__(self, members=(), *, error=None, delay=0.0):
+        self.members = list(members)
+        self.error = error
+        self.delay = delay
+        self.calls = []
+
+    async def resolve_person(self, operator_id, *, person, relationship):
+        self.calls.append((operator_id, person, relationship))
+        if self.delay:
+            await asyncio.sleep(self.delay)
+        if self.error:
+            raise self.error
+        return resolve_person(self.members, person=person, relationship=relationship)
+
+
+async def _texts(*people, resolver=None, timeout=5.0, language="zh-TW"):
+    resolved = await resolve_affected(
+        tuple(people), OPERATOR, resolver, timeout_seconds=timeout
+    )
+    return followup_texts(resolved, language)
+
+
+@pytest.mark.asyncio
+async def test_self_only_needs_no_followup():
+    """「我昏倒了」：紅卡就是對發話者說的，不補、也不查名單。"""
+    resolver = FakeResolver([_grandpa()])
+    assert await _texts(AffectedPerson(kind="self", event="昏倒"), resolver=resolver) == []
+    assert resolver.calls == []
+
+
+@pytest.mark.asyncio
+async def test_unknown_people_need_no_followup():
+    """LLM 中斷時判定的緊急沒有人物：不猜是誰，也不多說。"""
+    assert await _texts(resolver=FakeResolver()) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("event", ["跌倒", "昏迷"])
+async def test_uniquely_resolved_grandpa_is_named(event):
+    person = AffectedPerson(kind="family", label="阿公", relationship="grandparent", event=event)
+    texts = await _texts(person, resolver=FakeResolver([_grandpa()]))
+    assert texts == ["請留在阿公身邊，並依紅卡立即尋求協助。"]
+
+
+@pytest.mark.asyncio
+async def test_two_grandparents_use_a_neutral_address():
+    """同稱謂多人：叫錯人比不叫名字更糟。"""
+    resolver = FakeResolver([_grandpa("U_G1", "王大明"), _grandpa("U_G2", "李阿土")])
+    texts = await _texts(GRANDPA, resolver=resolver)
+    assert texts == ["請留在對方身邊，並依紅卡立即尋求協助。"]
+    assert "阿公" not in texts[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "person",
+    [
+        AffectedPerson(kind="third_party", label="路人", event="跌倒"),
+        AffectedPerson(kind="third_party", label="朋友", event="想自殺"),
+        AffectedPerson(kind="unknown", event="昏倒"),
+    ],
+)
+async def test_unlinked_people_are_the_other_person_and_skip_the_family_list(person):
+    resolver = FakeResolver([_grandpa()])
+    texts = await _texts(person, resolver=resolver)
+    assert texts == ["請留在對方身邊，並依紅卡立即尋求協助。"]
+    assert resolver.calls == []
+
+
+@pytest.mark.asyncio
+async def test_relative_not_in_the_family_list_is_the_other_person():
+    texts = await _texts(GRANDPA, resolver=FakeResolver([]))
+    assert texts == ["請留在對方身邊，並依紅卡立即尋求協助。"]
+
+
+@pytest.mark.asyncio
+async def test_grandpa_and_self_in_one_message_stay_separate():
+    urgent_self = AffectedPerson(kind="self", event="胸口痛到喘不過氣")
+    texts = await _texts(GRANDPA, urgent_self, resolver=FakeResolver([_grandpa()]))
+    assert texts == [
+        "請留在阿公身邊，並依紅卡立即尋求協助。",
+        "你自己的狀況也可能需要立即處置，打 119 時請一併說明。",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_self_mentioned_but_not_urgent_is_not_told_to_call_119():
+    mild_self = AffectedPerson(kind="self", event="有點頭痛", urgent=False)
+    texts = await _texts(GRANDPA, mild_self, resolver=FakeResolver([_grandpa()]))
+    assert texts == ["請留在阿公身邊，並依紅卡立即尋求協助。"]
+
+
+@pytest.mark.asyncio
+async def test_several_other_people_are_never_named():
+    texts = await _texts(
+        GRANDPA,
+        AffectedPerson(kind="third_party", label="路人", event="被撞"),
+        resolver=FakeResolver([_grandpa()]),
+    )
+    assert texts == ["請留在對方身邊，並依紅卡立即尋求協助。"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "resolver",
+    [
+        FakeResolver([_grandpa()], error=RuntimeError("mongo down")),
+        FakeResolver([_grandpa()], delay=0.2),
+        None,
+    ],
+    ids=["lookup-fails", "lookup-times-out", "no-service"],
+)
+async def test_family_lookup_problems_fall_back_to_a_neutral_address(resolver):
+    texts = await _texts(GRANDPA, resolver=resolver, timeout=0.01)
+    assert texts == ["請留在對方身邊，並依紅卡立即尋求協助。"]
+
+
+@pytest.mark.asyncio
+async def test_resolution_uses_the_operators_own_family_list():
+    resolver = FakeResolver([_grandpa()])
+    await _texts(GRANDPA, resolver=resolver)
+    assert resolver.calls == [(OPERATOR, "阿公", "grandparent")]
+
+
+@pytest.mark.parametrize("language", SUPPORTED_LANGUAGES)
+def test_followup_texts_exist_in_every_language(language):
+    from app.i18n.messages import t
+
+    for key in (
+        "text.emergency.stay_with_named",
+        "text.emergency.stay_with_other",
+        "text.emergency.self_also_urgent",
+    ):
+        assert t(key, language) != key
+    assert "{name}" in t("text.emergency.stay_with_named", language)

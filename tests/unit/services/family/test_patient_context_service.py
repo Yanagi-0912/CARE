@@ -310,3 +310,61 @@ async def test_family_tree_error_returns_unlinked_context_without_profile_access
     assert (context.age, context.age_source) == (35, ValueSource.MESSAGE)
     assert authorization.calls == []
     assert profiles.calls == []
+
+
+# --- 只解析人物、不讀健康資料（緊急流程用，10.14）-----------------------------
+
+
+@pytest.mark.asyncio
+async def test_resolve_person_reads_only_the_family_list():
+    """緊急流程只拿它決定稱謂：命中家人不得順便授權或讀 profile。"""
+    member = FamilyMember(
+        user_id=MEMBER_ID, display_name="王大明", relationship_type="grandparent"
+    )
+    service, trees, authorization, profiles = _service(member=member)
+
+    resolution = await service.resolve_person(
+        OPERATOR, person="阿公", relationship="grandparent"
+    )
+
+    assert resolution.kind == "member"
+    assert resolution.member.user_id == MEMBER_ID
+    assert trees.calls == [OPERATOR]
+    assert authorization.calls == []
+    assert profiles.calls == []
+
+
+@pytest.mark.asyncio
+async def test_resolve_person_with_two_matches_is_ambiguous():
+    grandpas = [
+        FamilyMember(user_id=f"U_G{i}", display_name=name, relationship_type="grandparent")
+        for i, name in enumerate(("王大明", "李阿土"))
+    ]
+    service = PatientContextService(
+        family_tree_repository=FakeTrees(_tree(*grandpas)),
+        authorization_service=FakeAuthorization(),
+        user_profile_service=FakeProfiles(),
+    )
+
+    resolution = await service.resolve_person(
+        OPERATOR, person="阿公", relationship="grandparent"
+    )
+
+    assert resolution.kind == "ambiguous"
+    assert resolution.member is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_person_when_family_list_fails_never_picks_a_member():
+    service = PatientContextService(
+        family_tree_repository=FakeTrees(error=RuntimeError("mongo down")),
+        authorization_service=FakeAuthorization(),
+        user_profile_service=FakeProfiles(),
+    )
+
+    resolution = await service.resolve_person(
+        OPERATOR, person="阿公", relationship="grandparent"
+    )
+
+    assert resolution.kind == "not_found"
+    assert resolution.member is None

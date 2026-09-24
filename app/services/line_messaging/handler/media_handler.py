@@ -54,6 +54,7 @@ class LineMediaHandler(BaseLineMessageHandler):
         lost_location_service=None,
         urgency_classifier=None,
         clinic_recording_flow=None,
+        patient_context_service=None,
     ):
         # 語音、圖片、檔案抽出的文字同樣會過急迫度判斷；沒有把通報服務傳下去的話，
         # 當事人收得到紅卡，家人卻收不到通報——而長輩最常用的正是語音。
@@ -67,6 +68,7 @@ class LineMediaHandler(BaseLineMessageHandler):
             emergency_family_alert_service,
             lost_location_service=lost_location_service,
             urgency_classifier=urgency_classifier,
+            patient_context_service=patient_context_service,
         )
         self._user_document_ingest_service = user_document_ingest_service
         # 看診錄音改在聊天室錄（app/services/clinic_transcript/line_flow.py）。

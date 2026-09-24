@@ -181,6 +181,35 @@ _MESSAGES: dict[str, dict[str, str]] = {
             "ひとりで抱えなくて大丈夫です。"
         ),
     },
+    # 紅卡送出之後，依辨識出的受影響者補一則稱謂正確的行動提示（10.14）。
+    # 紅卡本身在知道是誰之前就送出，只能用中性說法；這一則才叫得出名字。
+    # {name} 只放使用者自己說的稱呼，且只在唯一解析到家庭成員時使用；
+    # 歧義、未連結的人與不明對象一律用「對方」，不猜是誰。
+    "text.emergency.stay_with_named": {
+        "zh-TW": "請留在{name}身邊，並依紅卡立即尋求協助。",
+        "en": "Please stay with {name} and get help right away as shown on the red card.",
+        "id": "Tetaplah bersama {name} dan segera cari bantuan sesuai kartu merah.",
+        "vi": "Hãy ở bên {name} và tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "โปรดอยู่กับ{name} และขอความช่วยเหลือทันทีตามการ์ดสีแดง",
+        "ja": "{name}のそばにいて、赤いカードの案内に沿ってすぐに助けを求めてください。",
+    },
+    "text.emergency.stay_with_other": {
+        "zh-TW": "請留在對方身邊，並依紅卡立即尋求協助。",
+        "en": "Please stay with the person and get help right away as shown on the red card.",
+        "id": "Tetaplah bersama orang tersebut dan segera cari bantuan sesuai kartu merah.",
+        "vi": "Hãy ở bên người đó và tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "โปรดอยู่กับบุคคลนั้น และขอความช่วยเหลือทันทีตามการ์ดสีแดง",
+        "ja": "その方のそばにいて、赤いカードの案内に沿ってすぐに助けを求めてください。",
+    },
+    # 同一句裡發話者自己也有急症：兩人的狀況分開講，不合併成一句。
+    "text.emergency.self_also_urgent": {
+        "zh-TW": "你自己的狀況也可能需要立即處置，打 119 時請一併說明。",
+        "en": "Your own condition may also need immediate care. Mention it when you call 119.",
+        "id": "Kondisi Anda sendiri mungkin juga perlu segera ditangani. Sebutkan juga saat menelepon 119.",
+        "vi": "Tình trạng của chính bạn cũng có thể cần xử lý ngay. Hãy nói rõ khi gọi 119.",
+        "th": "อาการของคุณเองก็อาจต้องได้รับการดูแลทันที โปรดแจ้งด้วยเมื่อโทร 119",
+        "ja": "あなた自身の状態もすぐに対応が必要かもしれません。119 に電話するときに一緒に伝えてください。",
+    },
     # --- 緊急狀況卡片 ---------------------------------------------------
     #
     # 這張卡是急救指示，SHALL 全部隨使用者語言切換。混語言比全中文更糟：
@@ -244,13 +273,15 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "โปรดไปห้องฉุกเฉินที่ใกล้ที่สุดโดยเร็วที่สุด หรือโทร 119 เพื่อขอความช่วยเหลือ",
         "ja": "できるだけ早く最寄りの救急外来へ行くか、119 に電話して助けを求めてください。",
     },
+    # 紅卡在知道出事的是誰之前就送出（行動先到），這一句不能假設是發話者本人：
+    # 舊版「請讓對方陪同前往」在「我阿公跌倒」時等於叫孫子找人陪他去急診。
     "emergency.body.3": {
-        "zh-TW": "若身邊有人，請讓對方陪同前往。",
-        "en": "If someone is with you, ask them to go with you.",
-        "id": "Jika ada orang di dekat Anda, mintalah mereka menemani Anda.",
-        "vi": "Nếu có người bên cạnh, hãy nhờ họ đi cùng bạn.",
-        "th": "หากมีคนอยู่ด้วย โปรดขอให้เขาไปเป็นเพื่อน",
-        "ja": "そばに誰かいる場合は、付き添ってもらってください。",
+        "zh-TW": "請不要獨自處理，請身邊的人一起協助。",
+        "en": "Don't handle this alone. Ask anyone nearby to help.",
+        "id": "Jangan menanganinya sendirian. Mintalah orang di sekitar untuk membantu.",
+        "vi": "Đừng xử lý một mình. Hãy nhờ người xung quanh cùng giúp.",
+        "th": "อย่าจัดการเพียงลำพัง โปรดขอให้คนที่อยู่ใกล้ช่วยกัน",
+        "ja": "ひとりで対応せず、近くにいる人に手伝ってもらってください。",
     },
     "emergency.hotline_label": {
         "zh-TW": "可以馬上撥打",

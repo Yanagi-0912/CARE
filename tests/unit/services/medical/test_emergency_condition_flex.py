@@ -249,3 +249,26 @@ def test_larger_font_setting_changes_every_text_node():
 
     assert all(a != b for a, b in zip(sizes(small), sizes(large)))
 
+
+
+# --- 紅卡在知道是誰出事之前就送出，用語不得假設是發話者本人（10.14）-------------
+
+
+def test_card_does_not_assume_the_sender_is_the_patient():
+    """舊版「若身邊有人，請讓對方陪同前往」在「我阿公跌倒」時等於叫孫子找人陪他。"""
+    text = json.dumps(_bubble(), ensure_ascii=False)
+    assert "陪同前往" not in text
+    assert t("emergency.body.3", "zh-TW") in text
+
+
+def test_card_ignores_affected_people():
+    """人物是紅卡之後才辨識的；就算判定已帶人物，卡片內容也完全相同。"""
+    from dataclasses import replace
+
+    from app.services.medical.symptom_classification.urgency import AffectedPerson
+
+    verdict = _verdict()
+    with_people = replace(
+        verdict, affected=(AffectedPerson(kind="family", label="阿公"),)
+    )
+    assert _payload(with_people) == _payload(verdict)

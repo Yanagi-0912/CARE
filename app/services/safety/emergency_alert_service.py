@@ -13,12 +13,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from dataclasses import dataclass
 from typing import Any, Optional, Protocol
 
 from app.core.user_font_size import DEFAULT_USER_FONT_SIZE, normalize_user_font_size
 from app.core.user_language import DEFAULT_USER_LANGUAGE, normalize_user_language
 from app.i18n.messages import t
+from app.services.family.person_resolution import PersonResolution
+from app.services.medical.symptom_classification.urgency import AffectedPerson
 from resources.flex_messages.medical_messages.emergency_family_alert_flex_message import (
     alt_text,
     build_emergency_family_flex,
@@ -180,6 +184,99 @@ class EmergencyFamilyAlertService:
             # 欄位缺席時視為開啟——既有使用者的文件沒有這一欄，不需要 backfill。
             bool(settings.get("notify_family", True)),
         )
+
+
+@dataclass(frozen=True)
+class ResolvedAffected:
+    """一位受影響者，加上他在發話者家庭名單中的解析結果。
+
+    `resolution` 只有家人才會有；本人、未連結第三人、不明對象與名單查詢失敗時
+    為 None。解析只比對名單，不讀健康資料、不做授權——命中家人只決定怎麼稱呼，
+    不代表能看他的 profile。結果只活在這一次背景任務裡，不寫回任何狀態。
+    """
+
+    person: AffectedPerson
+    resolution: Optional[PersonResolution] = None
+
+    @property
+    def is_resolved_member(self) -> bool:
+        return self.resolution is not None and self.resolution.kind == "member"
+
+
+# 家庭名單查詢的上限。這一步在紅卡送出之後才跑，慢了不會擋到紅卡，但稱謂提示
+# 晚太久就失去意義；逾時一律當成解析不到，改用中性稱謂。
+RESOLVE_TIMEOUT_SECONDS = 5.0
+
+
+async def resolve_affected(
+    affected: tuple[AffectedPerson, ...],
+    operator_id: str,
+    patient_context_service: Any,
+    *,
+    timeout_seconds: float = RESOLVE_TIMEOUT_SECONDS,
+) -> tuple[ResolvedAffected, ...]:
+    """逐一把「家人」對到名單；任何失敗都退回未解析，不拋例外。"""
+    return tuple(
+        await asyncio.gather(
+            *(
+                _resolve_one(person, operator_id, patient_context_service, timeout_seconds)
+                for person in affected
+            )
+        )
+    )
+
+
+async def _resolve_one(
+    person: AffectedPerson,
+    operator_id: str,
+    patient_context_service: Any,
+    timeout_seconds: float,
+) -> ResolvedAffected:
+    if person.kind != "family" or patient_context_service is None or not operator_id:
+        return ResolvedAffected(person)
+    try:
+        resolution = await asyncio.wait_for(
+            patient_context_service.resolve_person(
+                operator_id,
+                person=person.label,
+                relationship=person.relationship or "",
+            ),
+            timeout=timeout_seconds,
+        )
+    except Exception:  # noqa: BLE001 - 含逾時；解析不到就用中性稱謂
+        logger.warning(
+            f"{LOGGER_HEADER_TEXT} 受影響者解析失敗，改用中性稱謂", exc_info=True
+        )
+        return ResolvedAffected(person)
+    return ResolvedAffected(person, resolution)
+
+
+def followup_texts(
+    resolved: tuple[ResolvedAffected, ...], language: Optional[str] = None
+) -> list[str]:
+    """紅卡之後補給發話者的行動提示，稱謂依解析結果決定。
+
+    - 只有本人（或不知道是誰）：不補。紅卡本來就是對發話者說的，用語也是中性的。
+    - 唯一解析到的家人：用使用者自己的稱呼（「請留在阿公身邊」）。
+    - 其他情況（同稱謂多人、名單查不到、朋友、路人、不明、多位他人）：「對方」。
+      叫錯人比不叫名字更糟。
+    - 同一句發話者自己也有急症時，另起一句提醒，不把兩人的狀況合併。
+    """
+    others = [r for r in resolved if r.person.kind != "self" and r.person.urgent]
+    if not others:
+        return []
+    texts: list[str] = []
+    only = others[0] if len(others) == 1 else None
+    name = ""
+    if only is not None and only.is_resolved_member:
+        name = only.person.label or only.resolution.display_label
+    if name:
+        texts.append(t("text.emergency.stay_with_named", language).format(name=name))
+    else:
+        texts.append(t("text.emergency.stay_with_other", language))
+    if any(r.person.kind == "self" and r.person.urgent for r in resolved):
+        texts.append(t("text.emergency.self_also_urgent", language))
+    return texts
 
 
 async def notify_patient_family_was_told(

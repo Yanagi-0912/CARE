@@ -346,3 +346,51 @@ async def test_user_text_preview_is_logged_at_debug_not_info(caplog):
     assert not any("我有糖尿病和高血壓" in m for m in info_messages)
     assert not any("user_input_preview" in m for m in info_messages)
     assert any("user_input_preview=我有糖尿病和高血壓" in m for m in debug_messages)
+
+
+# --- 判定整個帶出 agent，不拆成字串（10.14）------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_emergency_returns_the_verdict_object_for_the_followup():
+    """紅卡之後的人物辨識與通報要拿到完整判定，拆成字串再組回來只會掉欄位。"""
+    verdict = _emergency("你提到有人跌倒、叫不醒")
+
+    result = await _agent(verdict).invoke(user_input="我阿公跌倒叫不醒")
+
+    assert result["emergency"] is True
+    assert result["urgency_verdict"] is verdict
+
+
+@pytest.mark.asyncio
+async def test_non_emergency_returns_no_verdict():
+    result = await _agent(NOT_URGENT).invoke(user_input="我肚子痛要掛哪一科")
+
+    assert result["emergency"] is False
+    assert result["urgency_verdict"] is None
+
+
+@pytest.mark.asyncio
+async def test_emergency_card_never_waits_for_people():
+    """紅卡只用判定組卡：判斷器的 identify_affected 在 agent 裡一次都不被呼叫。"""
+
+    class _Classifier(_FakeUrgency):
+        def __init__(self, verdict):
+            super().__init__(verdict)
+            self.identify_calls = 0
+
+        async def identify_affected(self, *args, **kwargs):
+            self.identify_calls += 1
+            raise AssertionError("紅卡送出前不得辨識人物")
+
+    classifier = _Classifier(_emergency())
+    agent = Agent(
+        llm=_FakeLLM(),
+        guardrail_service=_FakeGuardrail(),
+        urgency_classifier=classifier,
+    )
+
+    result = await agent.invoke(user_input="我阿公昏迷")
+
+    assert json.loads(result["response"])["type"] == "flex"
+    assert classifier.identify_calls == 0

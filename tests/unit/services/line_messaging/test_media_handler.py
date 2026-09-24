@@ -3,6 +3,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from linebot.v3.webhooks import FileMessageContent
 
+from app.services.medical.symptom_classification.urgency import (
+    URGENCY_EMERGENCY,
+    UrgencyVerdict,
+)
 from app.services.line_messaging.handler.media_handler import LineMediaHandler
 
 
@@ -212,7 +216,7 @@ async def test_an_emergency_described_in_a_voice_message_notifies_the_family(
         return_value={
             "response": "緊急卡",
             "emergency": True,
-            "emergency_reason": "你提到有人叫不醒",
+            "urgency_verdict": UrgencyVerdict(level=URGENCY_EMERGENCY, display="你提到有人叫不醒"),
         }
     )
     emergency = FakeEmergencyFamilyAlertService()
@@ -450,7 +454,7 @@ async def test_emergency_reply_is_not_preceded_by_a_table_card(
         return_value={
             "response": "緊急卡",
             "emergency": True,
-            "emergency_reason": "紀錄上寫胸口痛",
+            "urgency_verdict": UrgencyVerdict(level=URGENCY_EMERGENCY, display="紀錄上寫胸口痛"),
         }
     )
     handler = _handler_with_real_replier(

@@ -899,6 +899,7 @@ _message_handler = LineMessageHandler(
     lost_location_service=_lost_location_service,
     urgency_classifier=_urgency_classifier,
     clinic_recording_flow=_clinic_recording_flow,
+    patient_context_service=_patient_context_service,
 )
 _media_handler = LineMediaHandler(
     agent=_care_agent,
@@ -912,6 +913,7 @@ _media_handler = LineMediaHandler(
     lost_location_service=_lost_location_service,
     urgency_classifier=_urgency_classifier,
     clinic_recording_flow=_clinic_recording_flow,
+    patient_context_service=_patient_context_service,
 )
 _location_handler = LineLocationHandler(
     agent=_care_agent,

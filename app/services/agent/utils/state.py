@@ -1,6 +1,8 @@
 from typing import Any, Optional
 from langgraph.graph import MessagesState
 
+from app.services.medical.symptom_classification.urgency import UrgencyVerdict
+
 
 class State(MessagesState):
     allow_rag: bool
@@ -11,7 +13,8 @@ class State(MessagesState):
     speculative_decision: Optional[Any]
     predecided: Optional[Any]
     # 急迫度判斷的結果。emergency 時整個 agent 被短路，直接回緊急flex message。
-    urgency: str
-    urgency_display: str
+    # 整個判定原樣帶著走，不拆成字串：受影響人物（affected）要一路傳到紅卡送出
+    # 之後的人物解析與通知，拆開再組回來只會掉欄位。
+    urgency: UrgencyVerdict
     call_request_location: bool
     user_profile: Optional[dict]

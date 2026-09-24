@@ -1090,8 +1090,7 @@ class AgentNodes:
         )
         return {
             "allow_rag": allow_rag,
-            "urgency": verdict.level,
-            "urgency_display": verdict.display,
+            "urgency": verdict,
             "speculative_decision": speculative,
             "predecided": predecided,
         }
@@ -1172,11 +1171,13 @@ class AgentNodes:
 
         內容是要原樣送往 LINE 的 Flex JSON，因此 agent.py 的後置處理必須整段
         跳過它——在 Flex JSON 後面接任何文字都會讓它不再是合法 JSON。
+
+        行動先到：這裡只用判定組卡，不辨識人物、不查族譜、不準備通知。那些都在
+        紅卡送出之後由 LINE handler 處理（見 _schedule_emergency_followup），
+        所以卡片用語是中性的，不假設出事的是發話者本人。
         """
-        verdict = UrgencyVerdict(
-            level=state.get("urgency") or URGENCY_EMERGENCY,
-            display=state.get("urgency_display") or "",
-        )
+        # 只有判定為緊急才會走到這裡；判定遺失時仍出卡，不讓紅卡因狀態缺欄位而消失。
+        verdict = state.get("urgency") or UrgencyVerdict(level=URGENCY_EMERGENCY)
         payload = json.dumps(
             build_emergency_condition_flex(verdict), ensure_ascii=False
         )

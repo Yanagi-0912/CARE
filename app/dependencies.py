@@ -21,6 +21,7 @@ from app.repositories.family_delegation_repository import (
 from app.repositories.family_rbac_metrics_repository import (
     FamilyRbacMetricsRepository,
 )
+from app.repositories.emergency_report_repository import EmergencyReportRepository
 from app.repositories.family_role_audit_repository import (
     FamilyRoleAuditRepository,
 )
@@ -868,6 +869,9 @@ _emergency_family_alert_service = EmergencyFamilyAlertService(
     replier=_line_replier,
     authorization_service=_family_authorization_service,
     user_profile_service=_user_profile_service,
+    # 稽核（60 天）兼頻率計數；去重借用健康提醒的節流 collection。
+    report_repository=EmergencyReportRepository,
+    claim_repository=HealthAlertClaimRepository,
 )
 # 走失求救與即時位置分享。收件人同樣走 NOTIFICATION_POLICY（elder_lost）；沒有
 # 開關，理由同緊急通報。LIFF_ID 沒設時卡片不放定位頁按鈕，只剩「傳送一次位置」。

@@ -9,6 +9,8 @@
 血壓血糖是 ``bp_high``／``bp_low``／``glucose_high``／``glucose_low`` 四類，
 30 分鐘節流；經期異常是 ``menstrual:<record_id>``，每筆紀錄最多通知一次。
 兩者的 ``ttl_minutes`` 由呼叫端各自決定，這裡不寫死。
+緊急家人通報也借用同一份節流：``alert_key`` 為 ``emergency_detected``、``user_id``
+是病人，同一位病人 10 分鐘內只通報一次（見 emergency_alert_service）。
 """
 
 import logging
@@ -68,3 +70,12 @@ class HealthAlertClaimRepository:
             # 節流期間內已推播過。這是預期路徑，不是錯誤。
             return False
         return True
+
+    @staticmethod
+    async def release(
+        user_id: str, alert_key: str, collection: Optional[Any] = None
+    ) -> None:
+        """交還推播權：這次其實沒有送到任何人，下一次不該被當成重複而擋下。"""
+        if collection is None:
+            collection = MongoDBManager.get_health_alert_claims_collection()
+        await collection.delete_one({"user_id": user_id, "alert_key": alert_key})

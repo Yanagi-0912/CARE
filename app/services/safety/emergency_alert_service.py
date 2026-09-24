@@ -15,12 +15,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from dataclasses import dataclass
-from typing import Any, Literal, Optional, Protocol
+from datetime import datetime, timedelta, timezone
+from typing import Any, Callable, Literal, Optional, Protocol
 
 from app.core.user_font_size import DEFAULT_USER_FONT_SIZE, normalize_user_font_size
 from app.core.user_language import DEFAULT_USER_LANGUAGE, normalize_user_language
 from app.i18n.messages import t
+from app.models.safety import EmergencyReportEntry
 from app.services.family.person_resolution import PersonResolution
 from app.services.medical.symptom_classification.urgency import AffectedPerson
 from resources.flex_messages.medical_messages.emergency_family_alert_flex_message import (
@@ -41,6 +44,22 @@ NOTIFICATION_KIND = "emergency_detected"
 #   disabled      有收件人，但全都關閉了家人通知
 #   failed        收件人判定失敗、推播失敗、或任何未預期的例外
 NotifyOutcome = Literal["sent", "no_recipient", "disabled", "failed"]
+# 通報前被擋下的兩種結果（10.18）。發話者同樣依它選文案。
+#   duplicate     同一位病人 10 分鐘內已經通報送達過
+#   rate_limited  替別人回報超過頻率上限
+ReportOutcome = Literal[
+    "sent", "no_recipient", "disabled", "failed", "duplicate", "rate_limited"
+]
+
+# 去重：同一位病人 10 分鐘內只通報一次，不論是誰回報、說的是不是同一件事——事件
+# 內容是 LLM 的轉述，每次都不同，無法可靠比對（2026-09-25 決定以病人為準）。
+DEDUPE_MINUTES = 10
+CLAIM_KEY = NOTIFICATION_KIND
+# 頻率限制：只限替別人回報。本人急症只去重、不設上限——長輩真的連續出狀況時，
+# 不該因為次數多就收不到。只數真的送達的通報。
+REPORTER_LIMIT = (5, timedelta(hours=24))
+PATIENT_LIMIT = (3, timedelta(hours=1))
+AUDIT_RETENTION = timedelta(days=60)
 
 
 class _Replier(Protocol):
@@ -59,10 +78,119 @@ class EmergencyFamilyAlertService:
         replier: _Replier,
         authorization_service: Any = None,
         user_profile_service: Any = None,
+        report_repository: Any = None,
+        claim_repository: Any = None,
+        clock: Optional[Callable[[], datetime]] = None,
     ) -> None:
         self._replier = replier
         self._authorization_service = authorization_service
         self._user_profile_service = user_profile_service
+        # 沒注入時不留稽核、不去重、不限流（測試與舊組裝），通報照常。
+        self._reports = report_repository
+        self._claims = claim_repository
+        self._now = clock or (lambda: datetime.now(timezone.utc))
+
+    async def report(
+        self,
+        reporter_id: str,
+        resolved: tuple[ResolvedAffected, ...],
+        reason: str,
+        words: str = "",
+    ) -> dict[str, ReportOutcome]:
+        """一次緊急判定的完整通報：選病人 → 限流 → 去重 → 通知 → 寫稽核。
+
+        回傳每位實際處理過的病人的結果；不在結果裡的人就是沒有通知（第三人、
+        同稱謂多人、連結未確認）。任何一步失敗都不影響其他病人，也不拋出。
+        """
+        outcomes: dict[str, ReportOutcome] = {}
+        try:
+            patients = await self.patients_to_notify(reporter_id, resolved)
+        except Exception:  # noqa: BLE001
+            logger.error(f"{LOGGER_HEADER_TEXT} 通知對象判定失敗", exc_info=True)
+            patients = []
+        for patient_id in patients:
+            outcomes[patient_id] = await self._report_one(
+                patient_id, reporter_id, reason, words
+            )
+        await self._audit(reporter_id, resolved, outcomes, reason)
+        return outcomes
+
+    async def _report_one(
+        self, patient_id: str, reporter_id: str, reason: str, words: str
+    ) -> ReportOutcome:
+        cross_person = patient_id != reporter_id
+        # 先限流再去重：被限流的那次沒有送出，不能佔住去重名額，否則下一次會被
+        # 說成「剛才已通知過」。
+        if cross_person and await self._over_limit(reporter_id, patient_id):
+            logger.warning(f"{LOGGER_HEADER_TEXT} 替別人回報超過頻率上限，本次不通報")
+            return "rate_limited"
+        if not await self._claim(patient_id):
+            logger.info(f"{LOGGER_HEADER_TEXT} 同一位病人 {DEDUPE_MINUTES} 分鐘內已通報")
+            return "duplicate"
+        outcome = await self.notify(patient_id, reason, words, reporter_id=reporter_id)
+        if outcome != "sent":
+            # 沒有送到任何人：交還去重名額，下一次才不會被當成「已通知過」擋下。
+            await self._release(patient_id)
+        return outcome
+
+    async def _over_limit(self, reporter_id: str, patient_id: str) -> bool:
+        """失敗時不限流：寧可多送一次，也不要因為計數查不到而擋掉急症通報。"""
+        if self._reports is None:
+            return False
+        now = self._now()
+        try:
+            by_reporter = await self._reports.count_cross_person_sent(
+                reporter_id=reporter_id, since=now - REPORTER_LIMIT[1]
+            )
+            if by_reporter >= REPORTER_LIMIT[0]:
+                return True
+            by_patient = await self._reports.count_cross_person_sent(
+                patient_id=patient_id, since=now - PATIENT_LIMIT[1]
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning(f"{LOGGER_HEADER_TEXT} 頻率計數失敗，本次不限流", exc_info=True)
+            return False
+        return by_patient >= PATIENT_LIMIT[0]
+
+    async def _claim(self, patient_id: str) -> bool:
+        """取得去重名額。失敗時放行，理由同 _over_limit。"""
+        if self._claims is None:
+            return True
+        try:
+            return await self._claims.try_claim(patient_id, CLAIM_KEY, DEDUPE_MINUTES)
+        except Exception:  # noqa: BLE001
+            logger.warning(f"{LOGGER_HEADER_TEXT} 去重名額取得失敗，本次照常通報", exc_info=True)
+            return True
+
+    async def _release(self, patient_id: str) -> None:
+        if self._claims is None:
+            return
+        try:
+            await self._claims.release(patient_id, CLAIM_KEY)
+        except Exception:  # noqa: BLE001
+            logger.warning(f"{LOGGER_HEADER_TEXT} 去重名額交還失敗", exc_info=True)
+
+    async def _audit(
+        self,
+        reporter_id: str,
+        resolved: tuple[ResolvedAffected, ...],
+        outcomes: dict[str, ReportOutcome],
+        reason: str,
+    ) -> None:
+        """每位急症者寫一筆，含沒有通知的人。寫不進去只記 log，不影響通報。"""
+        if self._reports is None:
+            return
+        now = self._now()
+        report_id = uuid.uuid4().hex
+        entries = [
+            _audit_entry(item, reporter_id, outcomes, reason, report_id, now)
+            for item in resolved
+            if item.person.urgent
+        ]
+        try:
+            await self._reports.append_many(entries)
+        except Exception:  # noqa: BLE001
+            logger.error(f"{LOGGER_HEADER_TEXT} 緊急回報稽核寫入失敗", exc_info=True)
 
     async def patients_to_notify(
         self, reporter_id: str, resolved: tuple[ResolvedAffected, ...]
@@ -299,6 +427,41 @@ class ResolvedAffected:
 RESOLVE_TIMEOUT_SECONDS = 5.0
 
 
+def _audit_entry(
+    item: ResolvedAffected,
+    reporter_id: str,
+    outcomes: dict[str, ReportOutcome],
+    reason: str,
+    report_id: str,
+    now: datetime,
+) -> EmergencyReportEntry:
+    person = item.person
+    resolution_kind = item.resolution.kind if item.resolution is not None else None
+    if person.kind == "self":
+        patient_id: Optional[str] = reporter_id
+        outcome = outcomes.get(reporter_id, "not_notified")
+    elif item.is_resolved_member and item.resolution.member is not None:
+        patient_id = item.resolution.member.user_id
+        outcome = outcomes.get(patient_id, "not_linked")
+    else:
+        patient_id = None
+        outcome = "not_notified"
+    return EmergencyReportEntry(
+        report_id=report_id,
+        reporter_id=reporter_id,
+        patient_id=patient_id,
+        # resolve_affected 已把「不明」轉成本人，這裡只剩三種。
+        person_kind=person.kind if person.kind != "unknown" else "self",
+        label=person.label,
+        resolution_kind=resolution_kind,
+        cross_person=patient_id is not None and patient_id != reporter_id,
+        outcome=outcome,
+        reason=reason,
+        reported_at=now,
+        expires_at=now + AUDIT_RETENTION,
+    )
+
+
 async def resolve_affected(
     affected: tuple[AffectedPerson, ...],
     operator_id: str,
@@ -357,7 +520,7 @@ async def _lookup(
 
 def followup_texts(
     resolved: tuple[ResolvedAffected, ...],
-    outcomes: dict[str, NotifyOutcome],
+    outcomes: dict[str, ReportOutcome],
     reporter_id: str,
     language: Optional[str] = None,
 ) -> list[str]:
@@ -369,7 +532,7 @@ def followup_texts(
       沒有結果（連結未經驗證而沒有通知）時明說沒有自動通知。
     - 其他人（同稱謂多人、名單查不到、朋友、路人）：合成一行「對方」，明說沒有
       自動通知。叫錯人比不叫名字更糟。
-    只有 sent 可以說家人收到了；其餘結果一律不得宣稱已送達。
+    只有 sent 可以說家人收到了；duplicate 說「剛才已通知過」，其餘一律不得宣稱已送達。
     同一句發話者自己也有急症、又有其他急症者時，另起一句提醒他一併告訴 119。
     """
     urgent = [r for r in resolved if r.person.urgent]

@@ -280,6 +280,30 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "ยังไม่ได้แจ้งครอบครัวโดยอัตโนมัติ โปรดโทร 119 ทันทีและอยู่กับบุคคลนั้น",
         "ja": "ご家族には自動で知らせていません。すぐに 119 に電話し、その方のそばにいてください。",
     },
+    "text.emergency.result.self.duplicate": {
+        "zh-TW": "剛才已通知過可以協助你的家人。請依紅卡立即尋求協助，不要獨自處理。",
+        "en": "Your family members who can help were notified a moment ago. Get help right away as shown on the red card, and don't handle this alone.",
+        "id": "Keluarga yang bisa membantu Anda sudah diberi tahu barusan. Segera cari bantuan sesuai kartu merah, jangan menanganinya sendirian.",
+        "vi": "Người thân có thể giúp bạn vừa được báo lúc nãy. Hãy tìm trợ giúp ngay theo thẻ đỏ, đừng tự xử lý một mình.",
+        "th": "เพิ่งแจ้งครอบครัวที่ช่วยคุณได้ไปเมื่อสักครู่ โปรดขอความช่วยเหลือทันทีตามการ์ดสีแดง และอย่าจัดการเพียงลำพัง",
+        "ja": "助けになれるご家族には、先ほど知らせました。赤いカードの案内に沿ってすぐに助けを求め、ひとりで対応しないでください。",
+    },
+    "text.emergency.result.member.duplicate": {
+        "zh-TW": "剛才已通知過可以協助{name}的家人。請留在{name}身邊，並依紅卡立即尋求協助。",
+        "en": "Family members who can help {name} were notified a moment ago. Please stay with {name} and get help right away as shown on the red card.",
+        "id": "Keluarga yang bisa membantu {name} sudah diberi tahu barusan. Tetaplah bersama {name} dan segera cari bantuan sesuai kartu merah.",
+        "vi": "Người thân có thể giúp {name} vừa được báo lúc nãy. Hãy ở bên {name} và tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "เพิ่งแจ้งครอบครัวที่ช่วย{name}ได้ไปเมื่อสักครู่ โปรดอยู่กับ{name} และขอความช่วยเหลือทันทีตามการ์ดสีแดง",
+        "ja": "{name}を助けられるご家族には、先ほど知らせました。{name}のそばにいて、赤いカードの案内に沿ってすぐに助けを求めてください。",
+    },
+    "text.emergency.result.member.rate_limited": {
+        "zh-TW": "這段時間已多次通知{name}的家人，這次沒有再通知。請直接撥打 119，並留在{name}身邊。",
+        "en": "{name}'s family has been notified several times recently, so they were not notified again. Call 119 directly and stay with {name}.",
+        "id": "Keluarga {name} sudah beberapa kali diberi tahu belakangan ini, jadi kali ini tidak diberi tahu lagi. Hubungi 119 langsung dan tetaplah bersama {name}.",
+        "vi": "Người thân của {name} đã được báo nhiều lần gần đây nên lần này không báo nữa. Hãy gọi thẳng 119 và ở bên {name}.",
+        "th": "ช่วงนี้แจ้งครอบครัวของ{name}ไปหลายครั้งแล้ว ครั้งนี้จึงไม่ได้แจ้งอีก โปรดโทร 119 โดยตรงและอยู่กับ{name}",
+        "ja": "最近{name}のご家族には何度も知らせているため、今回は知らせていません。直接 119 に電話し、{name}のそばにいてください。",
+    },
     # 同一句裡發話者自己也有急症：兩人的狀況分開講，不合併成一句。
     "text.emergency.self_also_urgent": {
         "zh-TW": "你自己的狀況也可能需要立即處置，打 119 時請一併說明。",

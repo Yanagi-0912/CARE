@@ -983,3 +983,399 @@ async def test_service_without_a_reporter_is_a_self_report():
 
     (card,) = _flex_text(replier)
     assert "王小明 剛才說的話" in card
+
+
+# --- 稽核、去重與頻率限制（10.18）----------------------------------------------
+#
+# 紅卡不受任何限制；這裡只擋家人通知。去重以病人為準（10 分鐘），頻率限制只限
+# 替別人回報（回報者 24 小時 5 次、病人 1 小時 3 次，只數送達），稽核保存 60 天。
+
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+from app.services.safety.emergency_alert_service import (  # noqa: E402
+    AUDIT_RETENTION,
+    DEDUPE_MINUTES,
+)
+
+T0 = datetime(2026, 9, 25, 12, 0, tzinfo=timezone.utc)
+GRANDSON_WORDS = "我阿公跌倒了叫不醒"
+
+
+class Clock:
+    def __init__(self):
+        self.now = T0
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, **kwargs):
+        self.now += timedelta(**kwargs)
+
+
+class FakeReports:
+    """貼齊 EmergencyReportRepository：只追加，計數照真實查詢條件。"""
+
+    def __init__(self, *, error=None):
+        self.entries = []
+        self.error = error
+
+    async def append_many(self, entries):
+        if self.error:
+            raise self.error
+        self.entries.extend(entries)
+
+    async def count_cross_person_sent(self, *, since, reporter_id=None, patient_id=None):
+        if self.error:
+            raise self.error
+        return sum(
+            1
+            for e in self.entries
+            if e.cross_person
+            and e.outcome == "sent"
+            and e.reported_at >= since
+            and (reporter_id is None or e.reporter_id == reporter_id)
+            and (patient_id is None or e.patient_id == patient_id)
+        )
+
+
+class FakeClaims:
+    """貼齊 HealthAlertClaimRepository 的 try_claim／release，過期看 clock。"""
+
+    def __init__(self, clock, *, error=None):
+        self.clock = clock
+        self.error = error
+        self.held = {}
+
+    async def try_claim(self, user_id, alert_key, ttl_minutes):
+        if self.error:
+            raise self.error
+        key = (user_id, alert_key)
+        expires = self.held.get(key)
+        if expires is not None and expires > self.clock():
+            return False
+        self.held[key] = self.clock() + timedelta(minutes=ttl_minutes)
+        return True
+
+    async def release(self, user_id, alert_key):
+        self.held.pop((user_id, alert_key), None)
+
+
+def _guarded_service(*, recipients=None, reports=None, claims=None, clock=None, replier=None):
+    clock = clock or Clock()
+    return (
+        EmergencyFamilyAlertService(
+            replier=replier or FakeReplier(),
+            authorization_service=PolicyAuthorization(
+                links={(OPERATOR, GRANDPA_ID), (OPERATOR, "U_GRANDMA"), ("U_COUSIN", GRANDPA_ID)},
+                recipients=recipients
+                or {GRANDPA_ID: [GUARDIAN], "U_GRANDMA": [GUARDIAN], OPERATOR: ["U_MOM"],
+                    "U_COUSIN": ["U_MOM"]},
+            ),
+            user_profile_service=RecordingProfiles(),
+            report_repository=reports if reports is not None else FakeReports(),
+            claim_repository=claims if claims is not None else FakeClaims(clock),
+            clock=clock,
+        ),
+        clock,
+    )
+
+
+def _grandpa_resolved(user_id=GRANDPA_ID):
+    return (ResolvedAffected(GRANDPA, _member_resolution(user_id)),)
+
+
+# ---- 稽核紀錄 ----
+
+
+@pytest.mark.asyncio
+async def test_every_urgent_person_gets_an_audit_entry_even_when_not_notified():
+    reports = FakeReports()
+    service, _ = _guarded_service(reports=reports)
+    resolved = (
+        ResolvedAffected(GRANDPA, _member_resolution()),
+        ResolvedAffected(AffectedPerson(kind="third_party", label="路人", event="跌倒")),
+        ResolvedAffected(GRANDPA, PersonResolution(kind="ambiguous", display_label="阿公")),
+        ResolvedAffected(SELF),
+        ResolvedAffected(AffectedPerson(kind="self", event="頭有點痛", urgent=False)),
+    )
+
+    outcomes = await service.report(OPERATOR, resolved, REASON, GRANDSON_WORDS)
+
+    assert outcomes == {GRANDPA_ID: "sent", OPERATOR: "sent"}
+    rows = [
+        (e.person_kind, e.patient_id, e.resolution_kind, e.cross_person, e.outcome)
+        for e in reports.entries
+    ]
+    assert rows == [
+        ("family", GRANDPA_ID, "member", True, "sent"),
+        ("third_party", None, None, False, "not_notified"),
+        ("family", None, "ambiguous", False, "not_notified"),
+        ("self", OPERATOR, None, False, "sent"),
+    ]
+    assert len({e.report_id for e in reports.entries}) == 1
+    assert all(e.reporter_id == OPERATOR for e in reports.entries)
+
+
+@pytest.mark.asyncio
+async def test_audit_keeps_the_summary_not_the_users_words_and_expires_in_60_days():
+    reports = FakeReports()
+    service, clock = _guarded_service(reports=reports)
+
+    await service.report(OPERATOR, _grandpa_resolved(), REASON, GRANDSON_WORDS)
+
+    (entry,) = reports.entries
+    assert entry.reason == REASON
+    assert GRANDSON_WORDS not in entry.model_dump_json()
+    assert entry.reported_at == clock.now
+    assert entry.expires_at == clock.now + timedelta(days=60) == clock.now + AUDIT_RETENTION
+
+
+@pytest.mark.asyncio
+async def test_unlinked_member_is_audited_as_not_linked():
+    reports = FakeReports()
+    service, _ = _guarded_service(reports=reports)
+
+    outcomes = await service.report(OPERATOR, _grandpa_resolved("U_STRANGER"), REASON)
+
+    assert outcomes == {}
+    assert [(e.patient_id, e.outcome) for e in reports.entries] == [("U_STRANGER", "not_linked")]
+
+
+@pytest.mark.asyncio
+async def test_audit_failure_never_changes_the_notification():
+    service, _ = _guarded_service(reports=FakeReports(error=RuntimeError("mongo down")))
+    assert await service.report(OPERATOR, _grandpa_resolved(), REASON) == {GRANDPA_ID: "sent"}
+
+
+# ---- 去重 ----
+
+
+@pytest.mark.asyncio
+async def test_same_patient_within_ten_minutes_is_notified_once():
+    """「阿公跌倒了」30 秒後又「快來，阿公叫不醒」：照顧者只收一張卡。"""
+    replier = FakeReplier()
+    service, clock = _guarded_service(replier=replier)
+
+    first = await service.report(OPERATOR, _grandpa_resolved(), REASON)
+    clock.advance(seconds=30)
+    second = await service.report(OPERATOR, _grandpa_resolved(), REASON)
+
+    assert first == {GRANDPA_ID: "sent"}
+    assert second == {GRANDPA_ID: "duplicate"}
+    assert len(replier.flex) == 1
+
+
+@pytest.mark.asyncio
+async def test_dedupe_is_per_patient_across_reporters():
+    """兩個孫子各自回報阿公跌倒：以病人為準，照顧者只收一張（2026-09-25 決定）。"""
+    replier = FakeReplier()
+    service, _ = _guarded_service(replier=replier)
+
+    await service.report(OPERATOR, _grandpa_resolved(), REASON)
+    second = await service.report("U_COUSIN", _grandpa_resolved(), REASON)
+
+    assert second == {GRANDPA_ID: "duplicate"}
+    assert len(replier.flex) == 1
+
+
+@pytest.mark.asyncio
+async def test_after_the_window_the_same_patient_can_be_notified_again():
+    service, clock = _guarded_service()
+
+    await service.report(OPERATOR, _grandpa_resolved(), REASON)
+    clock.advance(minutes=DEDUPE_MINUTES, seconds=1)
+
+    assert await service.report(OPERATOR, _grandpa_resolved(), REASON) == {GRANDPA_ID: "sent"}
+
+
+@pytest.mark.asyncio
+async def test_an_undelivered_attempt_does_not_block_the_next_one():
+    """沒有送到任何人就交還名額，否則下一次會被說成「剛才已通知過」。"""
+    claims_clock = Clock()
+    claims = FakeClaims(claims_clock)
+    service, _ = _guarded_service(
+        recipients={GRANDPA_ID: []}, claims=claims, clock=claims_clock
+    )
+
+    assert await service.report(OPERATOR, _grandpa_resolved(), REASON) == {
+        GRANDPA_ID: "no_recipient"
+    }
+    assert claims.held == {}
+
+
+@pytest.mark.asyncio
+async def test_self_reports_are_deduplicated_too():
+    service, _ = _guarded_service()
+    me = (ResolvedAffected(SELF),)
+
+    assert await service.report(OPERATOR, me, REASON) == {OPERATOR: "sent"}
+    assert await service.report(OPERATOR, me, REASON) == {OPERATOR: "duplicate"}
+
+
+@pytest.mark.asyncio
+async def test_claim_store_failure_still_notifies():
+    """去重查不到時寧可多送一次，也不要擋掉急症通報。"""
+    clock = Clock()
+    service, _ = _guarded_service(claims=FakeClaims(clock, error=RuntimeError("down")), clock=clock)
+    assert await service.report(OPERATOR, _grandpa_resolved(), REASON) == {GRANDPA_ID: "sent"}
+
+
+# ---- 頻率限制 ----
+
+
+def _patient_resolved(user_id):
+    member = FamilyMember(user_id=user_id, display_name=user_id, relationship_type="grandparent")
+    resolution = PersonResolution(kind="member", member=member, display_label=user_id)
+    return (ResolvedAffected(GRANDPA, resolution),)
+
+
+@pytest.mark.asyncio
+async def test_reporter_is_limited_to_five_delivered_reports_a_day():
+    patients = [f"U_P{i}" for i in range(6)]
+    auth_links = {(OPERATOR, p) for p in patients}
+    reports = FakeReports()
+    clock = Clock()
+    service = EmergencyFamilyAlertService(
+        replier=FakeReplier(),
+        authorization_service=PolicyAuthorization(
+            links=auth_links, recipients={p: [GUARDIAN] for p in patients}
+        ),
+        user_profile_service=RecordingProfiles(),
+        report_repository=reports,
+        claim_repository=FakeClaims(clock),
+        clock=clock,
+    )
+
+    results = []
+    for patient in patients:
+        results.append((await service.report(OPERATOR, _patient_resolved(patient), REASON))[patient])
+        clock.advance(hours=2)
+
+    assert results == ["sent"] * 5 + ["rate_limited"]
+
+
+@pytest.mark.asyncio
+async def test_reporter_limit_resets_after_24_hours():
+    patients = [f"U_P{i}" for i in range(6)]
+    clock = Clock()
+    service = EmergencyFamilyAlertService(
+        replier=FakeReplier(),
+        authorization_service=PolicyAuthorization(
+            links={(OPERATOR, p) for p in patients}, recipients={p: [GUARDIAN] for p in patients}
+        ),
+        user_profile_service=RecordingProfiles(),
+        report_repository=FakeReports(),
+        claim_repository=FakeClaims(clock),
+        clock=clock,
+    )
+    for patient in patients[:5]:
+        await service.report(OPERATOR, _patient_resolved(patient), REASON)
+    clock.advance(hours=24, seconds=1)
+
+    assert await service.report(OPERATOR, _patient_resolved(patients[5]), REASON) == {
+        patients[5]: "sent"
+    }
+
+
+@pytest.mark.asyncio
+async def test_patient_is_limited_to_three_delivered_reports_an_hour():
+    replier = FakeReplier()
+    service, clock = _guarded_service(replier=replier)
+
+    results = []
+    for _ in range(4):
+        results.append((await service.report(OPERATOR, _grandpa_resolved(), REASON))[GRANDPA_ID])
+        clock.advance(minutes=DEDUPE_MINUTES + 1)
+
+    assert results == ["sent", "sent", "sent", "rate_limited"]
+    assert len(replier.flex) == 3
+
+
+@pytest.mark.asyncio
+async def test_rate_limited_attempt_does_not_hold_the_dedupe_slot():
+    """被限流的那次沒有送出：不能讓下一次被說成「剛才已通知過」。"""
+    clock = Clock()
+    claims = FakeClaims(clock)
+    service, _ = _guarded_service(claims=claims, clock=clock)
+    for _ in range(3):
+        await service.report(OPERATOR, _grandpa_resolved(), REASON)
+        clock.advance(minutes=DEDUPE_MINUTES + 1)
+    claims.held.clear()
+
+    assert await service.report(OPERATOR, _grandpa_resolved(), REASON) == {
+        GRANDPA_ID: "rate_limited"
+    }
+    assert claims.held == {}
+
+
+@pytest.mark.asyncio
+async def test_self_reports_are_never_rate_limited():
+    """長輩真的連續出狀況時，不該因為次數多就收不到。"""
+    service, clock = _guarded_service()
+    me = (ResolvedAffected(SELF),)
+
+    results = []
+    for _ in range(8):
+        results.append((await service.report(OPERATOR, me, REASON))[OPERATOR])
+        clock.advance(minutes=DEDUPE_MINUTES + 1)
+
+    assert results == ["sent"] * 8
+
+
+@pytest.mark.asyncio
+async def test_undelivered_reports_do_not_use_up_the_limit():
+    service, clock = _guarded_service(recipients={GRANDPA_ID: []})
+    for _ in range(5):
+        await service.report(OPERATOR, _grandpa_resolved(), REASON)
+        clock.advance(minutes=1)
+    service._authorization_service.recipients = {GRANDPA_ID: [GUARDIAN]}
+
+    assert await service.report(OPERATOR, _grandpa_resolved(), REASON) == {GRANDPA_ID: "sent"}
+
+
+@pytest.mark.asyncio
+async def test_count_failure_does_not_block_the_notification():
+    service, _ = _guarded_service(reports=FakeReports(error=RuntimeError("down")))
+    assert await service.report(OPERATOR, _grandpa_resolved(), REASON) == {GRANDPA_ID: "sent"}
+
+
+# ---- 發話者文案 ----
+
+
+@pytest.mark.asyncio
+async def test_duplicate_says_family_was_already_notified_not_again():
+    texts = await _texts(
+        GRANDPA, resolver=FakeResolver([_grandpa()]), outcomes={"U_GRANDPA": "duplicate"}
+    )
+    assert texts == [
+        "剛才已通知過可以協助阿公的家人。請留在阿公身邊，並依紅卡立即尋求協助。"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_rate_limited_asks_the_reporter_to_call_119():
+    texts = await _texts(
+        GRANDPA, resolver=FakeResolver([_grandpa()]), outcomes={"U_GRANDPA": "rate_limited"}
+    )
+    assert texts == [
+        "這段時間已多次通知阿公的家人，這次沒有再通知。請直接撥打 119，並留在阿公身邊。"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_self_duplicate_text():
+    texts = await _texts(SELF, resolver=FakeResolver(), outcomes={OPERATOR: "duplicate"})
+    assert texts == [_say("text.emergency.result.self.duplicate")]
+
+
+@pytest.mark.parametrize("language", SUPPORTED_LANGUAGES)
+def test_guard_texts_exist_in_every_language(language):
+    from app.i18n.messages import t
+
+    for key in (
+        "text.emergency.result.self.duplicate",
+        "text.emergency.result.member.duplicate",
+        "text.emergency.result.member.rate_limited",
+    ):
+        assert t(key, language) != key
+    assert "{name}" in t("text.emergency.result.member.rate_limited", language)

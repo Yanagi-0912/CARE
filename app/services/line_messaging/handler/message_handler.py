@@ -25,7 +25,7 @@ from app.services.medical.symptom_classification.urgency import (
     UrgencyVerdict,
 )
 from app.services.safety.emergency_alert_service import (
-    NotifyOutcome,
+    ReportOutcome,
     ResolvedAffected,
     followup_texts,
     resolve_affected,
@@ -577,42 +577,28 @@ class BaseLineMessageHandler:
         user_text: str,
         verdict: UrgencyVerdict,
         resolved: tuple[ResolvedAffected, ...],
-    ) -> dict[str, NotifyOutcome]:
-        """通知每一位能確定的病人的照顧者，回傳各病人的通知結果。
+    ) -> dict[str, ReportOutcome]:
+        """通知每一位能確定的病人的照顧者，回傳各病人的處理結果。
 
-        原話一律轉給家人，卡片依回報者是不是病人本人標成「剛才說」或「回報」
-        （見 EmergencyFamilyAlertService.notify）。沒在結果裡的病人就是沒有通知。
+        限流、去重與稽核都在 EmergencyFamilyAlertService.report 裡；原話一律轉給
+        家人，卡片依回報者是不是病人本人標成「剛才說」或「回報」。
         """
         service = self._emergency_family_alert_service
         if service is None:
             return {}
-        outcomes: dict[str, NotifyOutcome] = {}
         try:
-            patients = await service.patients_to_notify(user_id, resolved)
+            outcomes = await service.report(user_id, resolved, verdict.display, user_text)
         except Exception:  # noqa: BLE001 - 背景旁路，例外不得逸散
-            logger.exception("緊急狀況通知對象判定失敗")
+            logger.exception("緊急狀況家人通報任務失敗")
             return {}
-        for patient_id in patients:
-            try:
-                outcomes[patient_id] = await service.notify(
-                    patient_id, verdict.display, user_text, reporter_id=user_id
-                )
-            except Exception:  # noqa: BLE001 - 背景旁路，例外不得逸散
-                logger.exception("緊急狀況家人通報任務失敗")
-                outcomes[patient_id] = "failed"
-            log_stage(
-                logger,
-                "emergency_alert",
-                self_report=patient_id == user_id,
-                outcome=outcomes[patient_id],
-            )
+        log_stage(logger, "emergency_alert", outcomes=sorted(outcomes.values()) or None)
         return outcomes
 
     async def _tell_reporter(
         self,
         user_id: str,
         resolved: tuple[ResolvedAffected, ...],
-        outcomes: dict[str, NotifyOutcome],
+        outcomes: dict[str, ReportOutcome],
         language: str,
     ) -> None:
         """一則訊息：通知結果加上稱謂正確的行動提示（見 followup_texts）。

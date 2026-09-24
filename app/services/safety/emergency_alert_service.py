@@ -108,7 +108,7 @@ class EmergencyFamilyAlertService:
         self,
         patient_user_id: str,
         reason: str,
-        patient_words: str = "",
+        words: str = "",
         *,
         reporter_id: str = "",
     ) -> bool:
@@ -117,17 +117,17 @@ class EmergencyFamilyAlertService:
         `patient_user_id` 是**解析後的病人**，不是發話者：孫子回報阿公跌倒時
         通知的是阿公的照顧者（見 `patients_to_notify`）。
         `reason` 是急迫度判斷產生的白話說明（系統為什麼判定為緊急）；
-        `patient_words` 是當事人的原話，逐字轉發不改寫——「喝了 3 瓶農藥」與
+        `words` 是發話者的原話，逐字轉發不改寫——「喝了 3 瓶農藥」與
         「可能需要協助」對家屬是完全不同的兩件事，而劑量正是急救要問的第一個
-        問題（見卡片模組註解）。只有病人本人發話時才可傳入，別人代為回報的
-        原文不是病人說的話。
-        `reporter_id` 是回報者；他已經知道這件事，不在收件人之列。
+        問題（見卡片模組註解）。
+        `reporter_id` 是發話者。與病人不同時卡片標成「{回報者} 回報」，原話
+        標成回報者說的，不冒充病人發言；他也已經知道這件事，不在收件人之列。
         """
         if not patient_user_id:
             return False
         try:
             return await self._notify(
-                patient_user_id, reason, patient_words, reporter_id=reporter_id
+                patient_user_id, reason, words, reporter_id=reporter_id
             )
         except Exception:  # noqa: BLE001
             logger.error(
@@ -140,7 +140,7 @@ class EmergencyFamilyAlertService:
         self,
         patient_user_id: str,
         reason: str,
-        patient_words: str = "",
+        words: str = "",
         *,
         reporter_id: str = "",
     ) -> bool:
@@ -151,7 +151,15 @@ class EmergencyFamilyAlertService:
             logger.info(f"{LOGGER_HEADER_TEXT} 沒有合格收件人，本次不通報")
             return False
 
-        patient_name = await self._patient_name(patient_user_id)
+        patient_name = await self._display_name(patient_user_id) or t(
+            "emergency_family.fallback_name", DEFAULT_USER_LANGUAGE
+        )
+        # 代為回報：卡片揭示回報者。讀的是回報者自己的名字，不是病人的資料。
+        reporter_name = (
+            await self._display_name(reporter_id)
+            if reporter_id and reporter_id != patient_user_id
+            else None
+        )
         sent = False
         for member_id in recipients:
             language, font_size, notify_family = await self._display_prefs(member_id)
@@ -166,7 +174,8 @@ class EmergencyFamilyAlertService:
                 # 本地模型判定的緊急不帶白話說明，LLM 也可能回空字串；卡片上
                 # 那一格不能空著，改用收件人語言的泛稱。
                 reason=reason or t("emergency_family.default_reason", language),
-                patient_words=patient_words,
+                words=words,
+                reporter_name=reporter_name,
                 language=language,
                 font_size=font_size,
             )
@@ -222,17 +231,17 @@ class EmergencyFamilyAlertService:
             return []
         return [uid for uid in recipients or [] if uid and uid != patient_user_id]
 
-    async def _patient_name(self, user_id: str) -> str:
-        fallback = t("emergency_family.fallback_name", DEFAULT_USER_LANGUAGE)
-        if not self._user_profile_service:
-            return fallback
+    async def _display_name(self, user_id: str) -> str:
+        """只取名字；取不到回空字串，由呼叫端決定泛稱。"""
+        if not self._user_profile_service or not user_id:
+            return ""
         try:
             profile = await self._user_profile_service.get_user_profile(user_id)
         except Exception:  # noqa: BLE001
-            return fallback
+            return ""
         if isinstance(profile, dict) and profile.get("name"):
             return profile["name"]
-        return fallback
+        return ""
 
     async def _display_prefs(self, user_id: str) -> tuple[str, str, bool]:
         """逐一取收件人自己的語言、字級與通知意願。背景推播沒有 request context。"""

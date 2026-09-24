@@ -379,7 +379,7 @@ async def test_verbatim_words_reach_the_card():
 def test_words_are_not_paraphrased_or_reordered():
     """改寫會把「3 瓶」變成「一些」，而劑量正是急救要問的第一個問題。"""
     words = "我剛剛喝了3瓶農藥，現在肚子很痛"
-    payload = json.dumps(_bubble(patient_words=words), ensure_ascii=False)
+    payload = json.dumps(_bubble(words=words), ensure_ascii=False)
     assert words in payload
 
 
@@ -390,7 +390,7 @@ def test_long_words_are_truncated_not_dropped():
     )
 
     words = "農" * (MAX_QUOTED_CHARS + 50)
-    payload = json.dumps(_bubble(patient_words=words), ensure_ascii=False)
+    payload = json.dumps(_bubble(words=words), ensure_ascii=False)
     assert "農" * MAX_QUOTED_CHARS in payload
     assert "…" in payload
     assert words not in payload
@@ -398,14 +398,14 @@ def test_long_words_are_truncated_not_dropped():
 
 def test_quote_block_is_absent_when_there_are_no_words():
     """語音或圖片訊息取不到原話時，不該留一個空引述框。"""
-    payload = json.dumps(_bubble(patient_words=""), ensure_ascii=False)
+    payload = json.dumps(_bubble(words=""), ensure_ascii=False)
     assert "剛才說的話" not in payload
 
 
 def test_quote_comes_before_the_system_judgement():
     """原話是事實，判定是推論。家屬掃過卡片時最先看到的應該是他說了什麼。"""
     payload = json.dumps(
-        _bubble(patient_words="我剛剛喝了3瓶農藥", language="zh-TW"),
+        _bubble(words="我剛剛喝了3瓶農藥", language="zh-TW"),
         ensure_ascii=False,
     )
     assert payload.index("剛才說的話") < payload.index("系統為什麼判定為緊急")
@@ -419,7 +419,7 @@ def test_alt_text_never_leaks_the_words():
     message = build_emergency_family_flex(
         patient_name="王小明",
         reason="提到喝下大量農藥",
-        patient_words="我剛剛喝了3瓶農藥",
+        words="我剛剛喝了3瓶農藥",
         language="zh-TW",
     )
     assert "農藥" not in message.alt_text
@@ -429,7 +429,7 @@ def test_alt_text_never_leaks_the_words():
 @pytest.mark.parametrize("font_size", ["normal", "large", "xlarge"])
 def test_card_with_quote_still_passes_sdk_validation(font_size):
     bubble = _bubble(
-        patient_words="我剛剛喝了3瓶農藥，現在肚子很痛，頭也很暈", font_size=font_size
+        words="我剛剛喝了3瓶農藥，現在肚子很痛，頭也很暈", font_size=font_size
     )
     FlexContainer.from_json(json.dumps(bubble, ensure_ascii=False))
 
@@ -788,7 +788,7 @@ async def test_reporting_never_reads_the_patients_profile_for_the_reporter():
     await service.notify(patients[0], REASON, reporter_id=OPERATOR)
 
     assert OPERATOR not in [uid for uid, _ in replier.flex + replier.texts]
-    assert OPERATOR not in profiles.calls
+    # 回報者的 profile 只讀名字（卡片要揭示回報者），不因回報取得任何病人資料。
 
 
 @pytest.mark.asyncio
@@ -820,3 +820,127 @@ async def test_push_failure_is_reported_as_not_sent():
         PolicyAuthorization(recipients={GRANDPA_ID: [GUARDIAN]}), _Down(flex_result=False)
     )
     assert await service.notify(GRANDPA_ID, REASON, reporter_id=OPERATOR) is False
+
+
+# --- 正確標示回報者（10.16）----------------------------------------------------
+#
+# 病人本人發話才可以寫「剛才說」；別人代為回報時標成「{回報者} 回報」，原話保留
+# 但不冒充病人發言。
+
+REPORTED_WORDS = "我阿公跌倒了叫不醒"
+
+
+def _card_text(**kwargs):
+    kwargs.setdefault("patient_name", "王大明")
+    kwargs.setdefault("reason", REASON)
+    return json.dumps(build_emergency_family_bubble(**kwargs), ensure_ascii=False)
+
+
+def test_self_report_keeps_just_said_wording():
+    text = _card_text(words="我胸口好痛喘不過氣")
+    assert "王大明 剛才說的話" in text
+    assert "王大明 剛才在 CARE 描述的狀況" in text
+    assert "回報" not in text
+
+
+def test_third_party_report_is_labelled_as_the_reporters_words():
+    """「阿公剛才說：我阿公跌倒」會讓家屬以為阿公還能自己打字。"""
+    text = _card_text(words=REPORTED_WORDS, reporter_name="王小明")
+
+    assert "王小明 剛才在 CARE 回報 王大明 的狀況" in text
+    assert "王小明 回報的內容" in text
+    assert REPORTED_WORDS in text
+    assert "剛才說" not in text
+    assert "王大明 剛才在 CARE 描述" not in text
+
+
+def test_third_party_report_first_step_includes_the_reporter():
+    """病人可能正叫不醒、接不了電話；回報者此刻就在旁邊。"""
+    text = _card_text(words=REPORTED_WORDS, reporter_name="王小明")
+    assert "先打電話給 王小明 或 王大明" in text
+
+
+def test_reporter_without_a_name_gets_a_neutral_label():
+    text = _card_text(words=REPORTED_WORDS, reporter_name="")
+    assert "一位家人 回報的內容" in text
+    assert "剛才說" not in text
+
+
+def test_reported_card_without_words_has_no_quote_box():
+    text = _card_text(words="", reporter_name="王小明")
+    assert "回報的內容" not in text
+    assert "王小明 剛才在 CARE 回報 王大明 的狀況" in text
+
+
+@pytest.mark.parametrize("language", SUPPORTED_LANGUAGES)
+def test_reported_card_is_translated_and_passes_line_validation(language):
+    from app.i18n.messages import t
+
+    for key in (
+        "emergency_family.lead_reported",
+        "emergency_family.words_label_reported",
+        "emergency_family.step.1_reported",
+        "emergency_family.fallback_reporter",
+    ):
+        assert t(key, language) != key
+    message = build_emergency_family_flex(
+        patient_name="王大明",
+        reason=REASON,
+        words=REPORTED_WORDS,
+        reporter_name="王小明",
+        language=language,
+    )
+    FlexContainer.from_json(json.dumps(message.contents.to_dict(), ensure_ascii=False))
+    text = json.dumps(message.contents.to_dict(), ensure_ascii=False)
+    assert "王小明" in text and "王大明" in text
+
+
+def _flex_text(replier):
+    return [json.dumps(flex.contents.to_dict(), ensure_ascii=False) for _, flex in replier.flex]
+
+
+@pytest.mark.asyncio
+async def test_service_labels_a_report_about_someone_else():
+    replier = FakeReplier()
+    profiles = RecordingProfiles({GRANDPA_ID: {"name": "王大明"}, OPERATOR: {"name": "王小明"}})
+    service = _policy_service(
+        PolicyAuthorization(recipients={GRANDPA_ID: [GUARDIAN]}), replier, profiles
+    )
+
+    assert await service.notify(GRANDPA_ID, REASON, REPORTED_WORDS, reporter_id=OPERATOR)
+
+    (card,) = _flex_text(replier)
+    assert "王小明 回報的內容" in card
+    assert REPORTED_WORDS in card
+    assert "剛才說" not in card
+
+
+@pytest.mark.asyncio
+async def test_service_keeps_just_said_when_the_patient_is_the_reporter():
+    replier = FakeReplier()
+    profiles = RecordingProfiles({PATIENT: {"name": "王小明"}})
+    service = _policy_service(
+        PolicyAuthorization(recipients={PATIENT: ["U_SON"]}), replier, profiles
+    )
+
+    assert await service.notify(PATIENT, REASON, "我昏倒了", reporter_id=PATIENT)
+
+    (card,) = _flex_text(replier)
+    assert "王小明 剛才說的話" in card
+    assert "回報" not in card
+
+
+@pytest.mark.asyncio
+async def test_service_without_a_reporter_is_a_self_report():
+    """舊呼叫端（走失流程等）沒帶 reporter_id：維持本人發話的寫法。"""
+    replier = FakeReplier()
+    service = _policy_service(
+        PolicyAuthorization(recipients={PATIENT: ["U_SON"]}),
+        replier,
+        RecordingProfiles({PATIENT: {"name": "王小明"}}),
+    )
+
+    assert await service.notify(PATIENT, REASON, "我昏倒了")
+
+    (card,) = _flex_text(replier)
+    assert "王小明 剛才說的話" in card

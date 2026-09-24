@@ -942,8 +942,8 @@ async def test_grandpa_emergency_notifies_grandpas_caregivers_not_the_reporters(
     grandpa = AffectedPerson(kind="family", label="阿公", relationship="grandparent", event=event)
     alert, replier = await _run_emergency(grandpa, members=[_grandpa_member()])
 
-    # 孫子的原話不是阿公說的，不轉；回報者另外記下。
-    assert alert.calls == [("U_GRANDPA", "你提到有人跌倒", "")]
+    # 原話照轉，但帶上回報者：卡片會標成「孫子回報」，不冒充阿公發言（10.16）。
+    assert alert.calls == [("U_GRANDPA", "你提到有人跌倒", USER_TEXT)]
     assert alert.reporters == [USER_ID]
     # 發話者只收到稱謂提示；「我已經讓你的家人知道你現在需要有人陪」是對病人
     # 本人說的話，不送。
@@ -984,9 +984,10 @@ async def test_grandpa_and_self_in_one_message_notify_each_patients_family():
     alert, _ = await _run_emergency(_GRANDPA, urgent_self, members=[_grandpa_member()])
 
     assert alert.calls == [
-        ("U_GRANDPA", "你提到有人跌倒", ""),
+        ("U_GRANDPA", "你提到有人跌倒", USER_TEXT),
         (USER_ID, "你提到有人跌倒", USER_TEXT),
     ]
+    assert alert.reporters == [USER_ID, USER_ID]
 
 
 @pytest.mark.parametrize(

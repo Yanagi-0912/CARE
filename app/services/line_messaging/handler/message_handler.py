@@ -592,10 +592,10 @@ class BaseLineMessageHandler:
     ) -> None:
         """通知每一位能確定的病人的照顧者；認不出是誰就不通知任何家庭。
 
-        本人急症時原話照舊轉給家人，成功後才告訴發話者「家人已經知道了」——
-        紅卡在通報之前就送出去了，組卡當下還不知道通報會不會成功。
-        別人代為回報時不轉原話（那不是病人說的），也不送那句「你的家人」：
-        它是對病人本人說的話。
+        原話一律轉給家人，卡片依回報者是不是病人本人標成「剛才說」或「回報」
+        （見 EmergencyFamilyAlertService.notify）。本人急症通報成功後才告訴發話者
+        「家人已經知道了」——紅卡在通報之前就送出去了，組卡當下還不知道會不會
+        成功。代為回報時不送那一句：它是對病人本人說的話。
         """
         service = self._emergency_family_alert_service
         if service is None:
@@ -605,10 +605,7 @@ class BaseLineMessageHandler:
             for patient_id in patients:
                 self_report = patient_id == user_id
                 sent = await service.notify(
-                    patient_id,
-                    verdict.display,
-                    user_text if self_report else "",
-                    reporter_id=user_id,
+                    patient_id, verdict.display, user_text, reporter_id=user_id
                 )
                 log_stage(
                     logger, "emergency_alert", self_report=self_report, sent=sent

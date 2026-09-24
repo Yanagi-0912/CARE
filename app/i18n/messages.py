@@ -54,6 +54,37 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "สิ่งที่ {name} เพิ่งพูด",
         "ja": "{name} さんが今言ったこと",
     },
+    # 別人代為回報（孫子說「我阿公跌倒」）時的開頭與引述標題（10.16）。原話是
+    # 回報者說的，SHALL NOT 寫成「{病人} 剛才說」——那會讓家屬以為病人還能自己打字。
+    "emergency_family.lead_reported": {
+        "zh-TW": "{reporter} 剛才在 CARE 回報 {name} 的狀況，系統判定可能需要立即處置。",
+        "en": (
+            "{reporter} just reported in CARE that {name} may need immediate care."
+        ),
+        "id": (
+            "{reporter} baru saja melaporkan di CARE bahwa {name} mungkin "
+            "memerlukan penanganan segera."
+        ),
+        "vi": "{reporter} vừa báo trong CARE rằng {name} có thể cần được xử trí ngay.",
+        "th": "{reporter} เพิ่งแจ้งใน CARE ว่า {name} อาจต้องได้รับการดูแลทันที",
+        "ja": "{reporter} さんが CARE で、{name} さんにすぐの対応が必要かもしれないと知らせました。",
+    },
+    "emergency_family.words_label_reported": {
+        "zh-TW": "{reporter} 回報的內容",
+        "en": "What {reporter} reported",
+        "id": "Laporan dari {reporter}",
+        "vi": "Nội dung {reporter} báo",
+        "th": "สิ่งที่ {reporter} แจ้ง",
+        "ja": "{reporter} さんからの報告",
+    },
+    "emergency_family.fallback_reporter": {
+        "zh-TW": "一位家人",
+        "en": "A family member",
+        "id": "Seorang anggota keluarga",
+        "vi": "Một người thân",
+        "th": "สมาชิกในครอบครัวคนหนึ่ง",
+        "ja": "ご家族の方",
+    },
     "emergency_family.reason_label": {
         "zh-TW": "系統為什麼判定為緊急",
         "en": "Why the system flagged this",
@@ -88,6 +119,15 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "vi": "Hãy gọi cho {name} trước để xem hiện giờ họ thế nào.",
         "th": "โทรหา {name} ก่อน เพื่อดูว่าตอนนี้เป็นอย่างไร",
         "ja": "まず {name} さんに電話して、今の様子を確かめてください。",
+    },
+    # 代為回報時病人可能正叫不醒、接不了電話；回報者此刻就在旁邊，先找他。
+    "emergency_family.step.1_reported": {
+        "zh-TW": "先打電話給 {reporter} 或 {name}，確認現在的狀況。",
+        "en": "Call {reporter} or {name} first and check what is happening right now.",
+        "id": "Hubungi {reporter} atau {name} lebih dulu dan pastikan keadaannya sekarang.",
+        "vi": "Hãy gọi cho {reporter} hoặc {name} trước để xem hiện giờ ra sao.",
+        "th": "โทรหา {reporter} หรือ {name} ก่อน เพื่อดูว่าตอนนี้เป็นอย่างไร",
+        "ja": "まず {reporter} さんか {name} さんに電話して、今の様子を確かめてください。",
     },
     "emergency_family.step.2": {
         "zh-TW": "聯絡不上、或情況危急時，直接撥 119 並前往他所在的位置。",

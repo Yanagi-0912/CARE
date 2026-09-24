@@ -66,8 +66,8 @@ class EmergencyFamilyAlertService:
         - 家人急症：必須在回報者的名單中唯一解析，**而且**回報者也在病人自己的
           族譜裡（`resolve_role` 不為 None，任何角色皆可回報）。只在我的名單裡
           單方面列了對方不算——那是自助式連結。
-        - 同稱謂多人、名單查不到、朋友、路人、不明對象：不通知任何家庭。猜錯
-          就是去驚動另一個家庭。
+        - 同稱謂多人、名單查不到、朋友、路人：不通知任何家庭。猜錯就是去驚動
+          另一個家庭。認不出是誰的人在 `resolve_affected` 已當成本人。
         - 本身沒有急症的人（同句的輕微不適）不通知。
 
         這一步只確認連結，不做 SENSITIVE READ 授權、不讀病人 profile：回報緊急
@@ -255,7 +255,7 @@ class EmergencyFamilyAlertService:
 class ResolvedAffected:
     """一位受影響者，加上他在發話者家庭名單中的解析結果。
 
-    `resolution` 只有家人才會有；本人、未連結第三人、不明對象與名單查詢失敗時
+    `resolution` 只有家人才會有；本人、未連結第三人與名單查詢失敗時
     為 None。解析只比對名單，不讀健康資料、不做授權——命中家人只決定怎麼稱呼，
     不代表能看他的 profile。結果只活在這一次背景任務裡，不寫回任何狀態。
     """
@@ -280,26 +280,38 @@ async def resolve_affected(
     *,
     timeout_seconds: Optional[float] = None,
 ) -> tuple[ResolvedAffected, ...]:
-    """逐一把「家人」對到名單；任何失敗都退回未解析，不拋例外。"""
+    """逐一把「家人」對到名單；任何失敗都退回未解析，不拋例外。
+
+    認不出是誰時當成發話者本人：人物辨識失敗（例如 LLM 中斷）或模型回「不明」。
+    絕大多數緊急訊息是長輩講自己，這時不通知任何人，比通知到發話者自己的家人
+    更危險（2026-09-25 產品決定）。同稱謂多人與未連結第三人**不**在此列——那是
+    知道是別人、只是對不到是誰，當成本人就會通知錯的家庭。
+    """
     timeout_seconds = timeout_seconds or RESOLVE_TIMEOUT_SECONDS
+    people = tuple(
+        AffectedPerson(kind="self", event=person.event, urgent=person.urgent)
+        if person.kind == "unknown"
+        else person
+        for person in affected
+    ) or (AffectedPerson(kind="self"),)
+    # 只有家人要查名單；其餘直接定案，不為他們開協程。
+    lookups = {
+        index: _lookup(person, operator_id, patient_context_service, timeout_seconds)
+        for index, person in enumerate(people)
+        if person.kind == "family" and patient_context_service is not None and operator_id
+    }
+    results = dict(zip(lookups, await asyncio.gather(*lookups.values()))) if lookups else {}
     return tuple(
-        await asyncio.gather(
-            *(
-                _resolve_one(person, operator_id, patient_context_service, timeout_seconds)
-                for person in affected
-            )
-        )
+        results.get(index) or ResolvedAffected(person) for index, person in enumerate(people)
     )
 
 
-async def _resolve_one(
+async def _lookup(
     person: AffectedPerson,
     operator_id: str,
     patient_context_service: Any,
     timeout_seconds: float,
 ) -> ResolvedAffected:
-    if person.kind != "family" or patient_context_service is None or not operator_id:
-        return ResolvedAffected(person)
     try:
         resolution = await asyncio.wait_for(
             patient_context_service.resolve_person(
@@ -322,9 +334,9 @@ def followup_texts(
 ) -> list[str]:
     """紅卡之後補給發話者的行動提示，稱謂依解析結果決定。
 
-    - 只有本人（或不知道是誰）：不補。紅卡本來就是對發話者說的，用語也是中性的。
+    - 只有本人（含認不出是誰、已當成本人）：不補。紅卡本來就是對發話者說的。
     - 唯一解析到的家人：用使用者自己的稱呼（「請留在阿公身邊」）。
-    - 其他情況（同稱謂多人、名單查不到、朋友、路人、不明、多位他人）：「對方」。
+    - 其他情況（同稱謂多人、名單查不到、朋友、路人、多位他人）：「對方」。
       叫錯人比不叫名字更糟。
     - 同一句發話者自己也有急症時，另起一句提醒，不把兩人的狀況合併。
     """

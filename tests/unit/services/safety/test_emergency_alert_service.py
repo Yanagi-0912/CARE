@@ -494,9 +494,21 @@ async def test_self_only_needs_no_followup():
 
 
 @pytest.mark.asyncio
-async def test_unknown_people_need_no_followup():
-    """LLM 中斷時判定的緊急沒有人物：不猜是誰，也不多說。"""
-    assert await _texts(resolver=FakeResolver()) == []
+@pytest.mark.parametrize(
+    "people",
+    [(), (AffectedPerson(kind="unknown", event="昏倒"),)],
+    ids=["identification-failed", "model-said-unknown"],
+)
+async def test_unrecognized_people_are_treated_as_the_reporter(people):
+    """認不出是誰就當發話者本人（2026-09-25 產品決定）：不補稱謂、通知他自己的家人。"""
+    resolver = FakeResolver([_grandpa()])
+    resolved = await resolve_affected(people, OPERATOR, resolver)
+
+    assert [r.person.kind for r in resolved] == ["self"]
+    assert followup_texts(resolved, "zh-TW") == []
+    assert resolver.calls == []
+    service = EmergencyFamilyAlertService(replier=FakeReplier())
+    assert await service.patients_to_notify(OPERATOR, resolved) == [OPERATOR]
 
 
 @pytest.mark.asyncio
@@ -522,7 +534,6 @@ async def test_two_grandparents_use_a_neutral_address():
     [
         AffectedPerson(kind="third_party", label="路人", event="跌倒"),
         AffectedPerson(kind="third_party", label="朋友", event="想自殺"),
-        AffectedPerson(kind="unknown", event="昏倒"),
     ],
 )
 async def test_unlinked_people_are_the_other_person_and_skip_the_family_list(person):
@@ -717,9 +728,8 @@ async def test_link_check_failure_notifies_nobody():
         ResolvedAffected(GRANDPA),
         ResolvedAffected(AffectedPerson(kind="third_party", label="路人", event="跌倒")),
         ResolvedAffected(AffectedPerson(kind="third_party", label="朋友", event="想自殺")),
-        ResolvedAffected(AffectedPerson(kind="unknown", event="昏倒")),
     ],
-    ids=["two-grandparents", "not-in-list", "lookup-failed", "passer-by", "friend", "unknown"],
+    ids=["two-grandparents", "not-in-list", "lookup-failed", "passer-by", "friend"],
 )
 async def test_unresolved_people_never_notify_any_family(item):
     auth = PolicyAuthorization(links={(OPERATOR, GRANDPA_ID)})
@@ -727,11 +737,6 @@ async def test_unresolved_people_never_notify_any_family(item):
     assert auth.role_calls == []
 
 
-@pytest.mark.asyncio
-async def test_unknown_people_notify_nobody():
-    """LLM 中斷時不知道是誰：不猜是發話者本人，也不通知任何家庭。"""
-    service = _policy_service(PolicyAuthorization())
-    assert await service.patients_to_notify(OPERATOR, ()) == []
 
 
 @pytest.mark.asyncio

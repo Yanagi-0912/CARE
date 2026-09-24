@@ -177,7 +177,8 @@ class UrgencyVerdict:
     """白話說明「是哪一點讓系統判定需要立即處置」，由判斷器以使用者的語言產生。"""
     affected: tuple[AffectedPerson, ...] = ()
     """訊息中此刻有狀況的人，依訊息順序；由 `identify_affected` 在判定之後補上。
-    空的意思是「不知道是誰」，下游須以中性稱謂處理，不得當成本人。"""
+    空的意思是「不知道是誰」；判斷器不替下游假設，緊急流程把它當成發話者本人
+    （見 emergency_alert_service.resolve_affected）。"""
 
     @property
     def is_emergency(self) -> bool:
@@ -557,7 +558,7 @@ def _affected_people(raw: Any) -> tuple[AffectedPerson, ...]:
                 kind="third_party", label=label, event=event, urgent=urgent
             )
         else:
-            # unknown 與模型自創的值：不知道是誰，就不假設是本人。
+            # unknown 與模型自創的值：判斷器只說「不知道是誰」，當不當本人由下游決定。
             person = AffectedPerson(kind="unknown", label=label, event=event, urgent=urgent)
         people.append(person)
     return tuple(people)

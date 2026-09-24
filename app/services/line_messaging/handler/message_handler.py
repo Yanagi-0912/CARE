@@ -21,6 +21,7 @@ from app.core.user_font_size import (
 from app.core.user_age import reset_request_age, set_request_age
 from app.services.medical.symptom_classification.urgency import (
     URGENCY_EMERGENCY,
+    AffectedPerson,
     UrgencyVerdict,
 )
 from app.services.safety.emergency_alert_service import (
@@ -549,7 +550,7 @@ class BaseLineMessageHandler:
     async def _resolve_emergency_people(
         self, user_id: str, user_text: str, verdict: UrgencyVerdict, language: str
     ) -> tuple[ResolvedAffected, ...]:
-        """辨識受影響者並對到發話者的家庭名單；失敗時回空（＝不知道是誰）。"""
+        """辨識受影響者並對到發話者的家庭名單；失敗時當成發話者本人。"""
         try:
             if self._urgency_classifier is not None:
                 verdict = await self._urgency_classifier.identify_affected(
@@ -559,8 +560,8 @@ class BaseLineMessageHandler:
                 verdict.affected, user_id, self._patient_context_service
             )
         except Exception:  # noqa: BLE001 - 背景旁路，例外不得逸散
-            logger.exception("緊急狀況人物解析失敗，改以不知道是誰處理")
-            return ()
+            logger.exception("緊急狀況人物解析失敗，當成發話者本人")
+            return (ResolvedAffected(AffectedPerson(kind="self")),)
         log_stage(
             logger,
             "emergency_people",

@@ -826,6 +826,7 @@ async def test_family_lookup_failure_still_sends_the_card_and_a_neutral_prompt()
 
 
 async def test_identification_failure_says_nothing_extra_and_keeps_the_card():
+    """辨識失敗當成本人：紅卡本來就是對他說的，不補稱謂提示。"""
     replier = FakeReplier()
     handler = _emergency_handler(
         _emergency_payload(),
@@ -1019,8 +1020,11 @@ async def test_failed_notification_is_not_announced_and_keeps_the_card():
     assert replier.pushed_texts == []
 
 
-async def test_unknown_people_notify_nobody():
-    """人物辨識失敗（例如 LLM 中斷）：不知道是誰，就不通知任何家庭。"""
+async def test_unrecognized_people_are_treated_as_the_reporter():
+    """人物辨識失敗（例如 LLM 中斷）：當成發話者本人，通知他自己的家人。"""
     alert, replier = await _run_emergency()
-    assert alert.calls == []
+    assert alert.calls == [(USER_ID, "你提到有人跌倒", USER_TEXT)]
     assert len(replier.replies) == 1
+    assert [text for _, text in replier.pushed_texts] == [
+        t("text.emergency.family_notified", "zh-TW")
+    ]

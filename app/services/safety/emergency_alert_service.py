@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Any, Optional, Protocol
+from typing import Any, Literal, Optional, Protocol
 
 from app.core.user_font_size import DEFAULT_USER_FONT_SIZE, normalize_user_font_size
 from app.core.user_language import DEFAULT_USER_LANGUAGE, normalize_user_language
@@ -34,6 +34,13 @@ logger = logging.getLogger(__name__)
 LOGGER_HEADER_TEXT = "[Services:EmergencyAlert]"
 
 NOTIFICATION_KIND = "emergency_detected"
+
+# 一次通報的結果。發話者看到的文案依它選（10.17），只有 sent 可以說家人收到了。
+#   sent          至少一位收件人真的收到
+#   no_recipient  病人沒有合格收件人（政策篩完是空的）
+#   disabled      有收件人，但全都關閉了家人通知
+#   failed        收件人判定失敗、推播失敗、或任何未預期的例外
+NotifyOutcome = Literal["sent", "no_recipient", "disabled", "failed"]
 
 
 class _Replier(Protocol):
@@ -111,8 +118,8 @@ class EmergencyFamilyAlertService:
         words: str = "",
         *,
         reporter_id: str = "",
-    ) -> bool:
-        """對外的唯一入口。回傳是否真的送出給任何人；任何失敗都吞在這裡。
+    ) -> NotifyOutcome:
+        """對外的唯一入口。回傳這次通報的結果；任何失敗都吞在這裡，回 failed。
 
         `patient_user_id` 是**解析後的病人**，不是發話者：孫子回報阿公跌倒時
         通知的是阿公的照顧者（見 `patients_to_notify`）。
@@ -124,7 +131,7 @@ class EmergencyFamilyAlertService:
         標成回報者說的，不冒充病人發言；他也已經知道這件事，不在收件人之列。
         """
         if not patient_user_id:
-            return False
+            return "failed"
         try:
             return await self._notify(
                 patient_user_id, reason, words, reporter_id=reporter_id
@@ -134,7 +141,7 @@ class EmergencyFamilyAlertService:
                 f"{LOGGER_HEADER_TEXT} 家人通報失敗，當事人的回覆不受影響",
                 exc_info=True,
             )
-            return False
+            return "failed"
 
     async def _notify(
         self,
@@ -143,13 +150,14 @@ class EmergencyFamilyAlertService:
         words: str = "",
         *,
         reporter_id: str = "",
-    ) -> bool:
-        recipients = [
-            uid for uid in await self._recipients(patient_user_id) if uid != reporter_id
-        ]
+    ) -> NotifyOutcome:
+        eligible = await self._recipients(patient_user_id)
+        if eligible is None:
+            return "failed"
+        recipients = [uid for uid in eligible if uid != reporter_id]
         if not recipients:
             logger.info(f"{LOGGER_HEADER_TEXT} 沒有合格收件人，本次不通報")
-            return False
+            return "no_recipient"
 
         patient_name = await self._display_name(patient_user_id) or t(
             "emergency_family.fallback_name", DEFAULT_USER_LANGUAGE
@@ -161,6 +169,7 @@ class EmergencyFamilyAlertService:
             else None
         )
         sent = False
+        disabled = 0
         for member_id in recipients:
             language, font_size, notify_family = await self._display_prefs(member_id)
             if not notify_family:
@@ -168,6 +177,7 @@ class EmergencyFamilyAlertService:
                 logger.info(
                     f"{LOGGER_HEADER_TEXT} 收件人關閉了家人通知，略過推播"
                 )
+                disabled += 1
                 continue
             flex = build_emergency_family_flex(
                 patient_name=patient_name,
@@ -182,8 +192,11 @@ class EmergencyFamilyAlertService:
             if await self._push(member_id, flex, patient_name, language):
                 sent = True
 
-        logger.info(f"{LOGGER_HEADER_TEXT} 通報完成，sent=%s", sent)
-        return sent
+        outcome: NotifyOutcome = (
+            "sent" if sent else "disabled" if disabled == len(recipients) else "failed"
+        )
+        logger.info(f"{LOGGER_HEADER_TEXT} 通報完成，outcome=%s", outcome)
+        return outcome
 
     async def _push(
         self, member_id: str, flex: Any, patient_name: str, language: str
@@ -215,8 +228,12 @@ class EmergencyFamilyAlertService:
             )
             return False
 
-    async def _recipients(self, patient_user_id: str) -> list[str]:
-        """當事人本人恆不在此清單內——他收到的是自己那張紅卡。"""
+    async def _recipients(self, patient_user_id: str) -> Optional[list[str]]:
+        """當事人本人恆不在此清單內——他收到的是自己那張紅卡。
+
+        判定失敗回 None，與「沒有收件人」分開：前者是系統出錯，不能對發話者說成
+        「沒有設定可接收通知的家人」。
+        """
         if self._authorization_service is None:
             return []
         try:
@@ -228,7 +245,7 @@ class EmergencyFamilyAlertService:
                 f"{LOGGER_HEADER_TEXT} 收件人判定失敗，本次不通報：%s",
                 type(exc).__name__,
             )
-            return []
+            return None
         return [uid for uid in recipients or [] if uid and uid != patient_user_id]
 
     async def _display_name(self, user_id: str) -> str:
@@ -339,49 +356,41 @@ async def _lookup(
 
 
 def followup_texts(
-    resolved: tuple[ResolvedAffected, ...], language: Optional[str] = None
+    resolved: tuple[ResolvedAffected, ...],
+    outcomes: dict[str, NotifyOutcome],
+    reporter_id: str,
+    language: Optional[str] = None,
 ) -> list[str]:
-    """紅卡之後補給發話者的行動提示，稱謂依解析結果決定。
+    """紅卡之後給發話者的一則訊息：通知結果加上稱謂正確的行動提示。
 
-    - 只有本人（含認不出是誰、已當成本人）：不補。紅卡本來就是對發話者說的。
-    - 唯一解析到的家人：用使用者自己的稱呼（「請留在阿公身邊」）。
-    - 其他情況（同稱謂多人、名單查不到、朋友、路人、多位他人）：「對方」。
-      叫錯人比不叫名字更糟。
-    - 同一句發話者自己也有急症時，另起一句提醒，不把兩人的狀況合併。
+    每位急症者一行，文案依「人物種類 × 通知結果」選固定字串：
+    - 本人：依 outcomes[發話者] 說明家人有沒有收到。
+    - 唯一解析的家人：用使用者自己的稱呼（「阿公」），依 outcomes[家人] 說明；
+      沒有結果（連結未經驗證而沒有通知）時明說沒有自動通知。
+    - 其他人（同稱謂多人、名單查不到、朋友、路人）：合成一行「對方」，明說沒有
+      自動通知。叫錯人比不叫名字更糟。
+    只有 sent 可以說家人收到了；其餘結果一律不得宣稱已送達。
+    同一句發話者自己也有急症、又有其他急症者時，另起一句提醒他一併告訴 119。
     """
-    others = [r for r in resolved if r.person.kind != "self" and r.person.urgent]
-    if not others:
-        return []
+    urgent = [r for r in resolved if r.person.urgent]
+    others = [r for r in urgent if r.person.kind != "self"]
     texts: list[str] = []
-    only = others[0] if len(others) == 1 else None
-    name = ""
-    if only is not None and only.is_resolved_member:
-        name = only.person.label or only.resolution.display_label
-    if name:
-        texts.append(t("text.emergency.stay_with_named", language).format(name=name))
-    else:
-        texts.append(t("text.emergency.stay_with_other", language))
-    if any(r.person.kind == "self" and r.person.urgent for r in resolved):
-        texts.append(t("text.emergency.self_also_urgent", language))
-    return texts
-
-
-async def notify_patient_family_was_told(
-    replier: _Replier, patient_user_id: str, language: Optional[str] = None
-) -> None:
-    """告訴當事人「家人已經知道了」。
-
-    為什麼是分開的一則訊息而不是寫在紅卡上：紅卡在通報之前就送出去了（那是
-    刻意的，見服務模組註解），組卡當下還不知道通報會不會成功。與其在卡上寫一句
-    可能不成立的話，不如通報真的送出後再補一則。
-
-    措辭刻意是支持性的而非警告式的。這則訊息的收件人正處於危機中，讀起來必須
-    像有人來陪，不是像被舉報——否則下一次他就不說了，而那是我們最不能承受的
-    後果。
-    """
-    try:
-        await replier.push_text(
-            patient_user_id, t("text.emergency.family_notified", language)
+    neutral = False
+    for item in others:
+        if not (item.is_resolved_member and item.resolution.member is not None):
+            neutral = True
+            continue
+        name = item.person.label or item.resolution.display_label
+        outcome = outcomes.get(item.resolution.member.user_id, "not_notified")
+        texts.append(
+            t(f"text.emergency.result.member.{outcome}", language).format(name=name)
         )
-    except Exception:  # noqa: BLE001
-        logger.warning(f"{LOGGER_HEADER_TEXT} 告知當事人失敗", exc_info=True)
+    if neutral:
+        texts.append(t("text.emergency.result.other.not_notified", language))
+    if any(r.person.kind == "self" for r in urgent):
+        # 通知服務沒接上時（outcomes 裡沒有發話者）照 failed 說：沒有送到就不能說送到。
+        outcome = outcomes.get(reporter_id, "failed")
+        texts.append(t(f"text.emergency.result.self.{outcome}", language))
+        if others:
+            texts.append(t("text.emergency.self_also_urgent", language))
+    return texts

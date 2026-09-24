@@ -194,7 +194,7 @@ class FakeEmergencyFamilyAlertService(EmergencyFamilyAlertService):
 
     async def notify(self, user_id, reason, patient_words="", *, reporter_id=""):
         self.calls.append((user_id, reason, patient_words))
-        return False
+        return "no_recipient"
 
 
 class _SelfIdentifier:

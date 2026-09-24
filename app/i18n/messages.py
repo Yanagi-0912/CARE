@@ -196,50 +196,89 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "สมาชิกในครอบครัวของคุณ",
         "ja": "ご家族",
     },
-    # 通知當事人「家人已經知道了」。措辭刻意是支持性的而非警告式的——
-    # 這則訊息的收件人正處於危機中，讀起來必須像有人來陪，不是像被舉報。
-    "text.emergency.family_notified": {
-        "zh-TW": "我已經讓你的家人知道你現在需要有人陪。你不用一個人撐著。",
-        "en": (
-            "I've let your family know you need someone with you right now. "
-            "You don't have to get through this alone."
-        ),
-        "id": (
-            "Saya sudah memberi tahu keluarga Anda bahwa Anda butuh seseorang "
-            "di dekat Anda sekarang. Anda tidak perlu menghadapinya sendiri."
-        ),
-        "vi": (
-            "Tôi đã báo cho người thân biết rằng bạn đang cần ai đó ở bên. "
-            "Bạn không phải một mình vượt qua chuyện này."
-        ),
-        "th": (
-            "ฉันได้แจ้งครอบครัวของคุณแล้วว่าตอนนี้คุณต้องการใครสักคนอยู่ด้วย "
-            "คุณไม่ต้องผ่านเรื่องนี้คนเดียว"
-        ),
-        "ja": (
-            "今そばに誰かが必要だということを、ご家族に伝えました。"
-            "ひとりで抱えなくて大丈夫です。"
-        ),
+    # 紅卡之後給發話者的那一則（10.17）：依「人物種類 × 通知結果」選固定文案。
+    # 只有 sent 可以說家人收到了；{name} 只放使用者自己說的稱呼，且只在唯一
+    # 解析到家庭成員時使用。措辭是支持性的，不是警告式的——讀起來要像有人來陪，
+    # 不是像被舉報，否則下一次他就不說了。
+    "text.emergency.result.self.sent": {
+        "zh-TW": "我已通知可以協助你的家人。請依紅卡立即尋求協助，不要獨自處理。",
+        "en": "I've notified family members who can help you. Get help right away as shown on the red card, and don't handle this alone.",
+        "id": "Saya sudah memberi tahu keluarga yang bisa membantu Anda. Segera cari bantuan sesuai kartu merah, jangan menanganinya sendirian.",
+        "vi": "Tôi đã báo cho người thân có thể giúp bạn. Hãy tìm trợ giúp ngay theo thẻ đỏ, đừng tự xử lý một mình.",
+        "th": "ฉันแจ้งครอบครัวที่ช่วยคุณได้แล้ว โปรดขอความช่วยเหลือทันทีตามการ์ดสีแดง และอย่าจัดการเพียงลำพัง",
+        "ja": "助けになれるご家族に知らせました。赤いカードの案内に沿ってすぐに助けを求め、ひとりで対応しないでください。",
     },
-    # 紅卡送出之後，依辨識出的受影響者補一則稱謂正確的行動提示（10.14）。
-    # 紅卡本身在知道是誰之前就送出，只能用中性說法；這一則才叫得出名字。
-    # {name} 只放使用者自己說的稱呼，且只在唯一解析到家庭成員時使用；
-    # 歧義、未連結的人與不明對象一律用「對方」，不猜是誰。
-    "text.emergency.stay_with_named": {
-        "zh-TW": "請留在{name}身邊，並依紅卡立即尋求協助。",
-        "en": "Please stay with {name} and get help right away as shown on the red card.",
-        "id": "Tetaplah bersama {name} dan segera cari bantuan sesuai kartu merah.",
-        "vi": "Hãy ở bên {name} và tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
-        "th": "โปรดอยู่กับ{name} และขอความช่วยเหลือทันทีตามการ์ดสีแดง",
-        "ja": "{name}のそばにいて、赤いカードの案内に沿ってすぐに助けを求めてください。",
+    "text.emergency.result.self.no_recipient": {
+        "zh-TW": "目前沒有設定可以接收緊急通知的家人，沒有自動通知任何人。請直接依紅卡尋求協助。",
+        "en": "No family member is set up to receive emergency alerts, so no one was notified. Please get help directly as shown on the red card.",
+        "id": "Belum ada anggota keluarga yang diatur untuk menerima peringatan darurat, jadi tidak ada yang diberi tahu. Silakan langsung cari bantuan sesuai kartu merah.",
+        "vi": "Chưa có người thân nào được thiết lập để nhận cảnh báo khẩn cấp nên chưa ai được báo. Hãy tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "ยังไม่มีสมาชิกในครอบครัวที่ตั้งค่าให้รับการแจ้งเตือนฉุกเฉิน จึงไม่ได้แจ้งใคร โปรดขอความช่วยเหลือโดยตรงตามการ์ดสีแดง",
+        "ja": "緊急通知を受け取るよう設定されたご家族がいないため、誰にも知らせていません。赤いカードの案内に沿って、直接助けを求めてください。",
     },
-    "text.emergency.stay_with_other": {
-        "zh-TW": "請留在對方身邊，並依紅卡立即尋求協助。",
-        "en": "Please stay with the person and get help right away as shown on the red card.",
-        "id": "Tetaplah bersama orang tersebut dan segera cari bantuan sesuai kartu merah.",
-        "vi": "Hãy ở bên người đó và tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
-        "th": "โปรดอยู่กับบุคคลนั้น และขอความช่วยเหลือทันทีตามการ์ดสีแดง",
-        "ja": "その方のそばにいて、赤いカードの案内に沿ってすぐに助けを求めてください。",
+    "text.emergency.result.self.disabled": {
+        "zh-TW": "你的家人目前關閉了通知，這次沒有收到。請直接依紅卡尋求協助。",
+        "en": "Your family members have turned off notifications and did not receive this. Please get help directly as shown on the red card.",
+        "id": "Keluarga Anda menonaktifkan notifikasi dan tidak menerima pesan ini. Silakan langsung cari bantuan sesuai kartu merah.",
+        "vi": "Người thân của bạn đã tắt thông báo nên không nhận được lần này. Hãy tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "ครอบครัวของคุณปิดการแจ้งเตือนไว้ จึงไม่ได้รับครั้งนี้ โปรดขอความช่วยเหลือโดยตรงตามการ์ดสีแดง",
+        "ja": "ご家族は通知をオフにしているため、今回は届いていません。赤いカードの案内に沿って、直接助けを求めてください。",
+    },
+    "text.emergency.result.self.failed": {
+        "zh-TW": "目前沒有成功通知到家人，請直接依紅卡尋求協助。",
+        "en": "I couldn't reach your family just now. Please get help directly as shown on the red card.",
+        "id": "Saat ini keluarga Anda belum berhasil diberi tahu. Silakan langsung cari bantuan sesuai kartu merah.",
+        "vi": "Hiện chưa báo được cho người thân. Hãy tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "ตอนนี้ยังแจ้งครอบครัวไม่สำเร็จ โปรดขอความช่วยเหลือโดยตรงตามการ์ดสีแดง",
+        "ja": "今はご家族に知らせることができませんでした。赤いカードの案内に沿って、直接助けを求めてください。",
+    },
+    "text.emergency.result.member.sent": {
+        "zh-TW": "我已通知可以協助{name}的家人。請留在{name}身邊，並依紅卡立即尋求協助。",
+        "en": "I've notified family members who can help {name}. Please stay with {name} and get help right away as shown on the red card.",
+        "id": "Saya sudah memberi tahu keluarga yang bisa membantu {name}. Tetaplah bersama {name} dan segera cari bantuan sesuai kartu merah.",
+        "vi": "Tôi đã báo cho người thân có thể giúp {name}. Hãy ở bên {name} và tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "ฉันแจ้งครอบครัวที่ช่วย{name}ได้แล้ว โปรดอยู่กับ{name} และขอความช่วยเหลือทันทีตามการ์ดสีแดง",
+        "ja": "{name}を助けられるご家族に知らせました。{name}のそばにいて、赤いカードの案内に沿ってすぐに助けを求めてください。",
+    },
+    "text.emergency.result.member.no_recipient": {
+        "zh-TW": "{name}目前沒有設定可以接收緊急通知的家人，沒有自動通知任何人。請留在{name}身邊，並依紅卡立即尋求協助。",
+        "en": "No one is set up to receive emergency alerts for {name}, so no one was notified. Please stay with {name} and get help right away as shown on the red card.",
+        "id": "Belum ada yang diatur untuk menerima peringatan darurat {name}, jadi tidak ada yang diberi tahu. Tetaplah bersama {name} dan segera cari bantuan sesuai kartu merah.",
+        "vi": "Chưa có ai được thiết lập để nhận cảnh báo khẩn cấp của {name} nên chưa ai được báo. Hãy ở bên {name} và tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "ยังไม่มีผู้ที่ตั้งค่าให้รับการแจ้งเตือนฉุกเฉินของ{name} จึงไม่ได้แจ้งใคร โปรดอยู่กับ{name} และขอความช่วยเหลือทันทีตามการ์ดสีแดง",
+        "ja": "{name}の緊急通知を受け取るよう設定された人がいないため、誰にも知らせていません。{name}のそばにいて、赤いカードの案内に沿ってすぐに助けを求めてください。",
+    },
+    "text.emergency.result.member.disabled": {
+        "zh-TW": "{name}的家人目前關閉了通知，這次沒有收到。請留在{name}身邊，並依紅卡立即尋求協助。",
+        "en": "{name}'s family members have turned off notifications and did not receive this. Please stay with {name} and get help right away as shown on the red card.",
+        "id": "Keluarga {name} menonaktifkan notifikasi dan tidak menerima pesan ini. Tetaplah bersama {name} dan segera cari bantuan sesuai kartu merah.",
+        "vi": "Người thân của {name} đã tắt thông báo nên không nhận được lần này. Hãy ở bên {name} và tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "ครอบครัวของ{name}ปิดการแจ้งเตือนไว้ จึงไม่ได้รับครั้งนี้ โปรดอยู่กับ{name} และขอความช่วยเหลือทันทีตามการ์ดสีแดง",
+        "ja": "{name}のご家族は通知をオフにしているため、今回は届いていません。{name}のそばにいて、赤いカードの案内に沿ってすぐに助けを求めてください。",
+    },
+    "text.emergency.result.member.failed": {
+        "zh-TW": "目前沒有成功通知到{name}的家人。請留在{name}身邊，並依紅卡立即尋求協助。",
+        "en": "I couldn't reach {name}'s family just now. Please stay with {name} and get help right away as shown on the red card.",
+        "id": "Saat ini keluarga {name} belum berhasil diberi tahu. Tetaplah bersama {name} dan segera cari bantuan sesuai kartu merah.",
+        "vi": "Hiện chưa báo được cho người thân của {name}. Hãy ở bên {name} và tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "ตอนนี้ยังแจ้งครอบครัวของ{name}ไม่สำเร็จ โปรดอยู่กับ{name} และขอความช่วยเหลือทันทีตามการ์ดสีแดง",
+        "ja": "今は{name}のご家族に知らせることができませんでした。{name}のそばにいて、赤いカードの案内に沿ってすぐに助けを求めてください。",
+    },
+    "text.emergency.result.member.not_notified": {
+        "zh-TW": "目前沒有自動通知{name}的家人。請留在{name}身邊，並依紅卡立即尋求協助。",
+        "en": "{name}'s family was not notified automatically. Please stay with {name} and get help right away as shown on the red card.",
+        "id": "Keluarga {name} tidak diberi tahu secara otomatis. Tetaplah bersama {name} dan segera cari bantuan sesuai kartu merah.",
+        "vi": "Người thân của {name} chưa được báo tự động. Hãy ở bên {name} và tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "ยังไม่ได้แจ้งครอบครัวของ{name}โดยอัตโนมัติ โปรดอยู่กับ{name} และขอความช่วยเหลือทันทีตามการ์ดสีแดง",
+        "ja": "{name}のご家族には自動で知らせていません。{name}のそばにいて、赤いカードの案内に沿ってすぐに助けを求めてください。",
+    },
+    "text.emergency.result.other.not_notified": {
+        "zh-TW": "目前沒有自動通知家人，請立即撥打 119 並留在對方身邊。",
+        "en": "No family was notified automatically. Call 119 now and stay with the person.",
+        "id": "Tidak ada keluarga yang diberi tahu secara otomatis. Segera hubungi 119 dan tetaplah bersama orang tersebut.",
+        "vi": "Chưa báo tự động cho người thân nào. Hãy gọi 119 ngay và ở bên người đó.",
+        "th": "ยังไม่ได้แจ้งครอบครัวโดยอัตโนมัติ โปรดโทร 119 ทันทีและอยู่กับบุคคลนั้น",
+        "ja": "ご家族には自動で知らせていません。すぐに 119 に電話し、その方のそばにいてください。",
     },
     # 同一句裡發話者自己也有急症：兩人的狀況分開講，不合併成一句。
     "text.emergency.self_also_urgent": {

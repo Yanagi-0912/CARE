@@ -193,7 +193,7 @@ class FakeEmergencyAlert(EmergencyFamilyAlertService):
 
     async def notify(self, user_id, reason, patient_words="", *, reporter_id=""):
         self.calls.append((user_id, reason, patient_words))
-        return True
+        return "sent"
 
 
 def _setup(classifier, *, urgency=None, agent_response=None):

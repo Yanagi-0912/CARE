@@ -498,12 +498,13 @@ class FakeEmergencyAlertService(EmergencyFamilyAlertService):
         super().__init__(replier=None, authorization_service=_Links(links, error=link_error))
         self.calls = []
         self.reporters = []
-        self._sent = sent
+        # True／False 是舊測試的寫法，對到送達／沒有收件人；也可直接給結果字串。
+        self._outcome = {True: "sent", False: "no_recipient"}.get(sent, sent)
 
     async def notify(self, user_id, reason, patient_words="", *, reporter_id=""):
         self.calls.append((user_id, reason, patient_words))
         self.reporters.append(reporter_id)
-        return self._sent
+        return self._outcome
 
 
 class _SelfReport:
@@ -617,7 +618,7 @@ async def test_family_alert_does_not_block_the_reply():
         async def notify(self, user_id, reason, patient_words="", *, reporter_id=""):
             await asyncio.sleep(0.05)
             self.done = True
-            return False
+            return "no_recipient"
 
     service = _SlowService()
     handler = _emergency_handler(
@@ -634,8 +635,8 @@ async def test_family_alert_does_not_block_the_reply():
     assert service.done is True
 
 
-async def test_patient_is_told_only_when_someone_was_actually_notified():
-    """沒有合格收件人時說「我已經讓你的家人知道」是假的。"""
+async def test_patient_is_never_told_family_received_it_when_nobody_did():
+    """沒有合格收件人時說「我已通知你的家人」是假的：改說明沒有設定收件人。"""
     replier = FakeReplier()
     handler = _emergency_handler(
         {"response": "卡片", "emergency": True, "urgency_verdict": UrgencyVerdict(level=URGENCY_EMERGENCY, display="x")},
@@ -646,7 +647,10 @@ async def test_patient_is_told_only_when_someone_was_actually_notified():
     await handler.handle(_text_event())
     await _drain(handler)
 
-    assert replier.pushed_texts == []
+    assert [text for _, text in replier.pushed_texts] == [
+        t("text.emergency.result.self.no_recipient", "zh-TW")
+    ]
+    assert "已通知" not in replier.pushed_texts[0][1]
 
 
 async def test_patient_is_told_when_family_was_notified():
@@ -660,8 +664,7 @@ async def test_patient_is_told_when_family_was_notified():
     await handler.handle(_text_event())
     await _drain(handler)
 
-    assert len(replier.pushed_texts) == 1
-    assert "不用一個人" in replier.pushed_texts[0][1]
+    assert [text for _, text in replier.pushed_texts] == [t("text.emergency.result.self.sent", "zh-TW")]
 
 
 async def test_alert_failure_never_reaches_the_user():
@@ -805,7 +808,10 @@ async def test_slow_family_lookup_does_not_delay_the_red_card():
     assert len(replier.replies) == 1
     assert replier.pushed_texts == []
     await _drain(handler)
-    assert replier.pushed_texts == [(USER_ID, "請留在阿公身邊，並依紅卡立即尋求協助。")]
+    # 沒接通知服務：阿公沒有被通知，照實說並給行動提示。
+    assert replier.pushed_texts == [
+        (USER_ID, "目前沒有自動通知阿公的家人。請留在阿公身邊，並依紅卡立即尋求協助。")
+    ]
 
 
 async def test_family_lookup_failure_still_sends_the_card_and_a_neutral_prompt():
@@ -822,11 +828,11 @@ async def test_family_lookup_failure_still_sends_the_card_and_a_neutral_prompt()
     await _drain(handler)
 
     assert len(replier.replies) == 1
-    assert replier.pushed_texts == [(USER_ID, "請留在對方身邊，並依紅卡立即尋求協助。")]
+    assert replier.pushed_texts == [(USER_ID, "目前沒有自動通知家人，請立即撥打 119 並留在對方身邊。")]
 
 
-async def test_identification_failure_says_nothing_extra_and_keeps_the_card():
-    """辨識失敗當成本人：紅卡本來就是對他說的，不補稱謂提示。"""
+async def test_identification_failure_is_treated_as_self_and_keeps_the_card():
+    """辨識失敗當成本人。這裡沒接通知服務，所以照實說沒有成功通知。"""
     replier = FakeReplier()
     handler = _emergency_handler(
         _emergency_payload(),
@@ -840,7 +846,9 @@ async def test_identification_failure_says_nothing_extra_and_keeps_the_card():
     await _drain(handler)
 
     assert len(replier.replies) == 1
-    assert replier.pushed_texts == []
+    assert [text for _, text in replier.pushed_texts] == [
+        t("text.emergency.result.self.failed", "zh-TW")
+    ]
 
 
 async def test_two_grandparents_are_addressed_neutrally():
@@ -858,10 +866,10 @@ async def test_two_grandparents_are_addressed_neutrally():
     await handler.handle(_text_event())
     await _drain(handler)
 
-    assert replier.pushed_texts == [(USER_ID, "請留在對方身邊，並依紅卡立即尋求協助。")]
+    assert replier.pushed_texts == [(USER_ID, "目前沒有自動通知家人，請立即撥打 119 並留在對方身邊。")]
 
 
-async def test_self_emergency_gets_no_extra_prompt():
+async def test_self_emergency_does_not_look_up_the_family_list():
     replier = FakeReplier()
     family = _FamilyList(_grandpa_member())
     handler = _emergency_handler(
@@ -875,8 +883,10 @@ async def test_self_emergency_gets_no_extra_prompt():
     await handler.handle(_text_event())
     await _drain(handler)
 
-    assert replier.pushed_texts == []
     assert family.calls == []
+    assert [text for _, text in replier.pushed_texts] == [
+        t("text.emergency.result.self.failed", "zh-TW")
+    ]
 
 
 async def test_identification_uses_the_users_text_and_language():
@@ -906,7 +916,7 @@ async def test_emergency_without_a_verdict_object_still_alerts_family():
 
 
 _LINKED = {(USER_ID, "U_GRANDPA")}
-_STAY_WITH_GRANDPA = "請留在阿公身邊，並依紅卡立即尋求協助。"
+_GRANDPA_NOTIFIED = "我已通知可以協助阿公的家人。請留在阿公身邊，並依紅卡立即尋求協助。"
 
 
 async def _run_emergency(*people, members=(), links=_LINKED, sent=True, family=None):
@@ -931,9 +941,7 @@ async def test_self_emergency_notifies_own_family_with_own_words():
     assert alert.calls == [(USER_ID, "你提到有人跌倒", USER_TEXT)]
     assert alert.reporters == [USER_ID]
     assert len(replier.replies) == 1
-    assert [text for _, text in replier.pushed_texts] == [
-        t("text.emergency.family_notified", "zh-TW")
-    ]
+    assert [text for _, text in replier.pushed_texts] == [t("text.emergency.result.self.sent", "zh-TW")]
 
 
 @pytest.mark.parametrize("event", ["跌倒", "昏迷"])
@@ -945,9 +953,8 @@ async def test_grandpa_emergency_notifies_grandpas_caregivers_not_the_reporters(
     # 原話照轉，但帶上回報者：卡片會標成「孫子回報」，不冒充阿公發言（10.16）。
     assert alert.calls == [("U_GRANDPA", "你提到有人跌倒", USER_TEXT)]
     assert alert.reporters == [USER_ID]
-    # 發話者只收到稱謂提示；「我已經讓你的家人知道你現在需要有人陪」是對病人
-    # 本人說的話，不送。
-    assert [text for _, text in replier.pushed_texts] == [_STAY_WITH_GRANDPA]
+    # 發話者收到的是「已通知阿公的家人」；對病人本人說的話（「你不用一個人撐著」）不送。
+    assert [text for _, text in replier.pushed_texts] == [_GRANDPA_NOTIFIED]
 
 
 async def test_two_grandparents_notify_nobody():
@@ -974,9 +981,7 @@ async def test_unlinked_third_parties_notify_nobody(person):
     alert, replier = await _run_emergency(person, members=[_grandpa_member()])
 
     assert alert.calls == []
-    assert [text for _, text in replier.pushed_texts] == [
-        "請留在對方身邊，並依紅卡立即尋求協助。"
-    ]
+    assert [text for _, text in replier.pushed_texts] == ["目前沒有自動通知家人，請立即撥打 119 並留在對方身邊。"]
 
 
 async def test_grandpa_and_self_in_one_message_notify_each_patients_family():
@@ -1011,14 +1016,27 @@ async def test_unlinked_grandpa_is_not_notified():
     assert alert.calls == []
 
 
-async def test_failed_notification_is_not_announced_and_keeps_the_card():
+@pytest.mark.parametrize("outcome", ["no_recipient", "disabled", "failed"])
+async def test_undelivered_notification_is_stated_and_keeps_the_card(outcome):
     alert, replier = await _run_emergency(
-        AffectedPerson(kind="self", event="昏倒"), sent=False
+        AffectedPerson(kind="self", event="昏倒"), sent=outcome
     )
 
     assert len(alert.calls) == 1
     assert len(replier.replies) == 1
-    assert replier.pushed_texts == []
+    assert [text for _, text in replier.pushed_texts] == [
+        t(f"text.emergency.result.self.{outcome}", "zh-TW")
+    ]
+    assert "已通知" not in replier.pushed_texts[0][1]
+
+
+@pytest.mark.parametrize("outcome", ["no_recipient", "disabled", "failed"])
+async def test_undelivered_grandpa_notification_is_stated(outcome):
+    _, replier = await _run_emergency(_GRANDPA, members=[_grandpa_member()], sent=outcome)
+
+    assert [text for _, text in replier.pushed_texts] == [
+        t(f"text.emergency.result.member.{outcome}", "zh-TW").format(name="阿公")
+    ]
 
 
 async def test_unrecognized_people_are_treated_as_the_reporter():
@@ -1026,6 +1044,4 @@ async def test_unrecognized_people_are_treated_as_the_reporter():
     alert, replier = await _run_emergency()
     assert alert.calls == [(USER_ID, "你提到有人跌倒", USER_TEXT)]
     assert len(replier.replies) == 1
-    assert [text for _, text in replier.pushed_texts] == [
-        t("text.emergency.family_notified", "zh-TW")
-    ]
+    assert [text for _, text in replier.pushed_texts] == [t("text.emergency.result.self.sent", "zh-TW")]

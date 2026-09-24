@@ -25,9 +25,9 @@ from app.services.medical.symptom_classification.urgency import (
     UrgencyVerdict,
 )
 from app.services.safety.emergency_alert_service import (
+    NotifyOutcome,
     ResolvedAffected,
     followup_texts,
-    notify_patient_family_was_told,
     resolve_affected,
 )
 from app.core.user_language import (
@@ -419,7 +419,7 @@ class BaseLineMessageHandler:
 
         卡片先回、通知在背景：推給每位家人各要一次 LINE API，長輩不該等它們跑完
         才看到按鈕。「家人已經收到通知」是推播真的送出之後才補的一則，理由同
-        緊急通報（notify_patient_family_was_told）：卡片上不寫可能不成立的話。
+        緊急通報（_tell_reporter）：卡片上不寫可能不成立的話。
         """
         service = self._lost_location_service
         report = await service.report(user_id, user_text, intent)
@@ -536,16 +536,17 @@ class BaseLineMessageHandler:
     async def _emergency_followup(
         self, user_id: str, user_text: str, verdict: UrgencyVerdict, language: str
     ) -> None:
-        """先解析人物，再依結果補稱謂提示與通知。
+        """先解析人物，再通知病人的照顧者，最後依結果告訴發話者一則。
 
         通知必須等解析：要通知的是**病人**的照顧者，而孫子回報阿公跌倒時，
-        病人是阿公不是孫子。推測出的人物只活在這個任務裡，不寫回 state 或資料庫。
+        病人是阿公不是孫子。給發話者的那一則要等通知結果：只有真的送達才能說
+        家人收到了。推測出的人物只活在這個任務裡，不寫回 state 或資料庫。
         """
         resolved = await self._resolve_emergency_people(
             user_id, user_text, verdict, language
         )
-        await self._address_affected(user_id, resolved, language)
-        await self._alert_patients_family(user_id, user_text, verdict, resolved, language)
+        outcomes = await self._alert_patients_family(user_id, user_text, verdict, resolved)
+        await self._tell_reporter(user_id, resolved, outcomes, language)
 
     async def _resolve_emergency_people(
         self, user_id: str, user_text: str, verdict: UrgencyVerdict, language: str
@@ -570,50 +571,62 @@ class BaseLineMessageHandler:
         )
         return resolved
 
-    async def _address_affected(
-        self, user_id: str, resolved: tuple[ResolvedAffected, ...], language: str
-    ) -> None:
-        """補一則稱謂正確的行動提示：阿公用「阿公」，認不出是誰就用「對方」。"""
-        texts = followup_texts(resolved, language)
-        if not texts:
-            return
-        try:
-            await self._replier.push_text(user_id, "\n".join(texts))
-        except Exception:  # noqa: BLE001 - 背景旁路，例外不得逸散
-            logger.exception("緊急狀況稱謂提示推播失敗")
-
     async def _alert_patients_family(
         self,
         user_id: str,
         user_text: str,
         verdict: UrgencyVerdict,
         resolved: tuple[ResolvedAffected, ...],
-        language: str,
-    ) -> None:
-        """通知每一位能確定的病人的照顧者；認不出是誰就不通知任何家庭。
+    ) -> dict[str, NotifyOutcome]:
+        """通知每一位能確定的病人的照顧者，回傳各病人的通知結果。
 
         原話一律轉給家人，卡片依回報者是不是病人本人標成「剛才說」或「回報」
-        （見 EmergencyFamilyAlertService.notify）。本人急症通報成功後才告訴發話者
-        「家人已經知道了」——紅卡在通報之前就送出去了，組卡當下還不知道會不會
-        成功。代為回報時不送那一句：它是對病人本人說的話。
+        （見 EmergencyFamilyAlertService.notify）。沒在結果裡的病人就是沒有通知。
         """
         service = self._emergency_family_alert_service
         if service is None:
-            return
+            return {}
+        outcomes: dict[str, NotifyOutcome] = {}
         try:
             patients = await service.patients_to_notify(user_id, resolved)
-            for patient_id in patients:
-                self_report = patient_id == user_id
-                sent = await service.notify(
+        except Exception:  # noqa: BLE001 - 背景旁路，例外不得逸散
+            logger.exception("緊急狀況通知對象判定失敗")
+            return {}
+        for patient_id in patients:
+            try:
+                outcomes[patient_id] = await service.notify(
                     patient_id, verdict.display, user_text, reporter_id=user_id
                 )
-                log_stage(
-                    logger, "emergency_alert", self_report=self_report, sent=sent
-                )
-                if sent and self_report:
-                    await notify_patient_family_was_told(self._replier, user_id, language)
+            except Exception:  # noqa: BLE001 - 背景旁路，例外不得逸散
+                logger.exception("緊急狀況家人通報任務失敗")
+                outcomes[patient_id] = "failed"
+            log_stage(
+                logger,
+                "emergency_alert",
+                self_report=patient_id == user_id,
+                outcome=outcomes[patient_id],
+            )
+        return outcomes
+
+    async def _tell_reporter(
+        self,
+        user_id: str,
+        resolved: tuple[ResolvedAffected, ...],
+        outcomes: dict[str, NotifyOutcome],
+        language: str,
+    ) -> None:
+        """一則訊息：通知結果加上稱謂正確的行動提示（見 followup_texts）。
+
+        紅卡在通報之前就送出去了，組卡當下還不知道通報會不會成功；與其在卡上
+        寫一句可能不成立的話，不如等結果出來再說。
+        """
+        texts = followup_texts(resolved, outcomes, user_id, language)
+        if not texts:
+            return
+        try:
+            await self._replier.push_text(user_id, "\n".join(texts))
         except Exception:  # noqa: BLE001 - 背景旁路，例外不得逸散
-            logger.exception("緊急狀況家人通報任務失敗")
+            logger.exception("緊急狀況結果告知推播失敗")
 
     @staticmethod
     def _language_from_profile(user_profile: Optional[dict]) -> str:

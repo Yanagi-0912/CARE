@@ -665,3 +665,71 @@ def test_people_schema_relation_enum_has_no_empty_value():
     assert {"self", "grandparent", "other_family", "not_family", "unknown"} <= set(
         relation["enum"]
     )
+
+
+# --- 前文與 someone_else（2026-09-25 整合測試 A1 的修正）-----------------------
+
+
+def _capturing(people=()):
+    prompts = []
+
+    async def invoke(prompt):
+        prompts.append(prompt)
+        return {"affected": list(people)}
+
+    return UrgencyClassifier(invoke=invoke), prompts
+
+
+@pytest.mark.asyncio
+async def test_earlier_messages_reach_the_prompt_before_this_message():
+    classifier, prompts = _capturing()
+
+    await classifier.identify_affected(
+        _EMERGENCY, "他現在叫不醒", earlier=("我阿公剛剛跌倒",)
+    )
+
+    (prompt,) = prompts
+    assert "我阿公剛剛跌倒" in prompt
+    # 這次的訊息是最後一段資料：前文不能被當成這次的事件。
+    last_block = prompt.rsplit("<<<DATA_BEGIN>>>", 1)[1]
+    assert "他現在叫不醒" in last_block and "我阿公剛剛跌倒" not in last_block
+
+
+@pytest.mark.asyncio
+async def test_only_the_last_three_earlier_messages_are_used():
+    classifier, prompts = _capturing()
+
+    await classifier.identify_affected(
+        _EMERGENCY, "他叫不醒", earlier=("第一則", "第二則", "第三則", "第四則", "")
+    )
+
+    (prompt,) = prompts
+    assert "第一則" not in prompt
+    assert all(m in prompt for m in ("第二則", "第三則", "第四則"))
+
+
+@pytest.mark.asyncio
+async def test_no_earlier_messages_is_stated_plainly():
+    classifier, prompts = _capturing()
+    await classifier.identify_affected(_EMERGENCY, "他叫不醒")
+    assert "前文：\n（無）" in prompts[0]
+
+
+@pytest.mark.asyncio
+async def test_prompt_says_earlier_events_are_not_this_event():
+    classifier, prompts = _capturing()
+    await classifier.identify_affected(_EMERGENCY, "他叫不醒", earlier=("我阿公昨天跌倒",))
+    assert "前文裡的事件不是這次的事件" in prompts[0]
+
+
+@pytest.mark.asyncio
+async def test_someone_else_is_not_the_reporter():
+    """確定不是發話者、但對不到是誰：當第三人處理，不通知任何家庭。"""
+    classifier, _ = _capturing([_person("someone_else", "他", "叫不醒")])
+    verdict = await classifier.identify_affected(_EMERGENCY, "他現在叫不醒")
+    assert verdict.affected == (AffectedPerson(kind="third_party", label="他", event="叫不醒"),)
+
+
+def test_schema_offers_someone_else_apart_from_unknown():
+    relation = _AFFECTED_SCHEMA["properties"]["affected"]["items"]["properties"]["relation"]
+    assert {"someone_else", "unknown"} <= set(relation["enum"])

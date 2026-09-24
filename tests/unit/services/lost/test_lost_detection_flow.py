@@ -174,7 +174,7 @@ class FakeUrgency:
             return UrgencyVerdict(level=URGENCY_EMERGENCY, display="叫不醒、身體冰冷")
         return NOT_URGENT
 
-    async def identify_affected(self, verdict, text, *, language="zh-TW"):
+    async def identify_affected(self, verdict, text, *, language="zh-TW", earlier=()):
         # 紅卡之後的人物辨識。這裡測的是走失流程仍會補紅卡與通報，人物一律
         # 歸給長輩本人；「是誰出事」的解析另有測試（test_message_handler）。
         from dataclasses import replace

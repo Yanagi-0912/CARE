@@ -4,6 +4,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
+from langchain_core.messages import HumanMessage
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
 from app.core.config import settings
@@ -56,6 +57,21 @@ from app.core.request_context import reset_line_user_id, set_line_user_id
 logger = logging.getLogger(__name__)
 
 LOGGER_HEADER_TEXT = "[Handler:MessageHandler]"
+
+
+def _earlier_user_messages(chat_history, current_text: str) -> tuple[str, ...]:
+    """對話紀錄裡發話者自己說過的話（舊到新），不含這一則。
+
+    只取使用者的訊息：AI 的回覆可能提到別人，那不是發話者說的事。
+    """
+    texts = [
+        message.content
+        for message in chat_history or []
+        if isinstance(message, HumanMessage) and isinstance(message.content, str)
+    ]
+    if texts and texts[-1] == current_text:
+        texts = texts[:-1]
+    return tuple(texts)
 
 
 class LineValidationError(Exception):
@@ -366,6 +382,7 @@ class BaseLineMessageHandler:
                     user_text,
                     agent_response.get("urgency_verdict"),
                     user_language,
+                    earlier=_earlier_user_messages(chat_history, user_text),
                 )
 
             if success:
@@ -509,8 +526,12 @@ class BaseLineMessageHandler:
         user_text: str,
         verdict: Optional[UrgencyVerdict],
         language: str,
+        *,
+        earlier: tuple[str, ...] = (),
     ) -> None:
         """紅卡送出之後的背景工作：辨識是誰出事、補稱謂提示、通知病人的照顧者。
+
+        `earlier` 是發話者稍早的訊息，讓「他現在叫不醒」對得到前文的阿公。
 
         呼叫端必須在紅卡送出之後才呼叫（行動先到）。這裡的任何一步慢了或失敗，
         都不影響已經送出的紅卡。
@@ -521,13 +542,18 @@ class BaseLineMessageHandler:
             return
         verdict = verdict or UrgencyVerdict(level=URGENCY_EMERGENCY)
         task = asyncio.create_task(
-            self._emergency_followup(user_id, user_text, verdict, language)
+            self._emergency_followup(user_id, user_text, verdict, language, earlier)
         )
         self._safety_alert_tasks.add(task)
         task.add_done_callback(self._safety_alert_tasks.discard)
 
     async def _emergency_followup(
-        self, user_id: str, user_text: str, verdict: UrgencyVerdict, language: str
+        self,
+        user_id: str,
+        user_text: str,
+        verdict: UrgencyVerdict,
+        language: str,
+        earlier: tuple[str, ...] = (),
     ) -> None:
         """先解析人物，再通知病人的照顧者，最後依結果告訴發話者一則。
 
@@ -536,19 +562,24 @@ class BaseLineMessageHandler:
         家人收到了。推測出的人物只活在這個任務裡，不寫回 state 或資料庫。
         """
         resolved = await self._resolve_emergency_people(
-            user_id, user_text, verdict, language
+            user_id, user_text, verdict, language, earlier
         )
         outcomes = await self._alert_patients_family(user_id, user_text, verdict, resolved)
         await self._tell_reporter(user_id, resolved, outcomes, language)
 
     async def _resolve_emergency_people(
-        self, user_id: str, user_text: str, verdict: UrgencyVerdict, language: str
+        self,
+        user_id: str,
+        user_text: str,
+        verdict: UrgencyVerdict,
+        language: str,
+        earlier: tuple[str, ...] = (),
     ) -> tuple[ResolvedAffected, ...]:
         """辨識受影響者並對到發話者的家庭名單；失敗時當成發話者本人。"""
         try:
             if self._urgency_classifier is not None:
                 verdict = await self._urgency_classifier.identify_affected(
-                    verdict, user_text, language=language
+                    verdict, user_text, language=language, earlier=earlier
                 )
             resolved = await resolve_affected(
                 verdict.affected, user_id, self._patient_context_service

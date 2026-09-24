@@ -476,7 +476,7 @@ class _SelfReport:
     def __init__(self):
         self.calls = []
 
-    async def identify_affected(self, verdict, text, *, language):
+    async def identify_affected(self, verdict, text, *, language, earlier=()):
         from dataclasses import replace
 
         self.calls.append(text)
@@ -672,7 +672,7 @@ class _Identifier:
         self.error = error
         self.calls = []
 
-    async def identify_affected(self, verdict, text, *, language):
+    async def identify_affected(self, verdict, text, *, language, earlier=()):
         self.calls.append((text, language))
         if self.delay:
             await asyncio.sleep(self.delay)
@@ -1008,3 +1008,37 @@ async def test_unrecognized_people_are_treated_as_the_reporter():
     assert alert.calls == [(USER_ID, "你提到有人跌倒", USER_TEXT)]
     assert len(replier.replies) == 1
     assert [text for _, text in replier.pushed_texts] == [t("text.emergency.result.self.sent", "zh-TW")]
+
+
+# --- 前文帶進人物辨識（2026-09-25 整合測試 A1 的修正）--------------------------
+
+
+async def test_earlier_user_messages_reach_person_identification():
+    """「他現在叫不醒」要對得到前一則的阿公：辨識時帶入發話者稍早說的話。"""
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    seen = {}
+
+    class _Recording(_Identifier):
+        async def identify_affected(self, verdict, text, *, language, earlier=()):
+            seen["earlier"] = earlier
+            return await super().identify_affected(verdict, text, language=language)
+
+    class _History:
+        async def load_history(self, **kwargs):
+            return [
+                HumanMessage(content="我阿公剛剛跌倒"),
+                AIMessage(content="請確認王大明有沒有意識"),  # AI 的話不是發話者說的
+                HumanMessage(content=USER_TEXT),  # 這一則本身不算前文
+            ]
+
+        async def save_turn(self, **kwargs):
+            pass
+
+    handler = _emergency_handler(_emergency_payload(), None, urgency_classifier=_Recording())
+    handler._history_service = _History()
+
+    await handler.handle(_text_event())
+    await _drain(handler)
+
+    assert seen["earlier"] == ("我阿公剛剛跌倒",)

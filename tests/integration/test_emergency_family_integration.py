@@ -3,7 +3,7 @@
 單元測試與 tests/unit/services/safety/test_emergency_pipeline.py 把授權、資料庫都換成
 假的，它們只會照我們的假設回應。這裡換上真的元件：
 
-- A1：跨輪代名詞。真的 handler／Agent／人物辨識流程，對話紀錄裡有前文。
+- A1：跨輪代名詞。真的 handler／Agent／人物辨識流程，對話紀錄裡有前文（曾測出錯誤，已修正）。
 - A3：真的 FamilyAuthorizationService，看替別人回報時實際的收件人。
 - C1～C3：真的 MongoDB（CARE_e2e 資料庫的 it_emergency_claims／it_emergency_reports），
   驗證原子去重、TTL 索引、時區與共用節流表。
@@ -23,6 +23,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
+from app.i18n.messages import t
 from app.models.family_tree import FamilyMember, FamilyTree
 from app.models.safety import EmergencyReportEntry
 from app.repositories.emergency_report_repository import EmergencyReportRepository
@@ -73,50 +74,89 @@ class NoProfiles:
 
 
 # --- A1：跨輪代名詞 ---------------------------------------------------------------
+#
+# 2026-09-25 這組測試確實測出錯誤：紅卡後的人物辨識只看得到這一則，「他現在叫不醒」
+# 被當成發話者本人，通知了孫子自己的家人，卡片寫成「王小明 剛才說的話」。
+# 修正：辨識時帶入發話者稍早的訊息；對不到是誰時回 someone_else，不當成本人。
+
+PRONOUN_TEXT = "他現在叫不醒"
+EARLIER = "我阿公剛剛跌倒"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "2026-09-25 整合測試確實測出的錯誤：紅卡後的人物辨識看不到前文，「他」被當成本人，"
-        "通知了孫子自己的家人。修好後拿掉這個標記。"
-    ),
-)
-@pytest.mark.asyncio
-async def test_a1_pronoun_in_the_next_turn_does_not_notify_the_reporters_own_family(monkeypatch):
-    """孫子先說「我阿公剛剛跌倒」，下一則說「他現在叫不醒」。
+def _earlier_block(prompt: str) -> str:
+    """prompt 裡「前文：」那一段；prompt 本身的參考例句也含有「我阿公剛剛跌倒」，不能整份比對。"""
+    return prompt.rsplit("前文：", 1)[1].split("這次的訊息：", 1)[0]
 
-    紅卡後的人物辨識只拿到這一則訊息，看不到前文，所以「他」對模型來說是不知道
-    是誰（這裡把辨識結果寫成 unknown，就是模型只看到「他現在叫不醒」時合理的
-    輸出）。依「認不出是誰就當本人」，系統會把事件當成孫子本人的急症，通知孫子
-    自己的家人，卡片還寫「王小明 剛才說的話」。
 
-    正確行為：出事的是阿公，不該通知孫子的家人，更不能寫成孫子本人發言。
+class PronounAwareLLM:
+    """模擬模型看得到前文時的回答；判定與其他句子交給原本寫死的 SCRIPT。
+
+    這是對模型行為的假設，不是實測（刻意不呼叫 Gemini）。測的是我們有沒有把前文
+    交給模型，以及拿到 someone_else 時系統怎麼處置。
     """
-    text = "他現在叫不醒"
-    monkeypatch.setitem(pipeline_module.SCRIPT, text, (True, [_p("unknown", "", "叫不醒")]))
-    monkeypatch.setitem(pipeline_module.SCRIPT_KEYS, text, text)
-    pipeline = Pipeline()
 
-    class HistoryWithGrandpa:
+    def __init__(self, fallback):
+        self.fallback = fallback
+        self.identify_prompts: list[str] = []
+
+    async def __call__(self, prompt: str) -> dict:
+        if "不要重新判斷是否緊急" not in prompt or PRONOUN_TEXT not in prompt:
+            return await self.fallback(prompt)
+        self.identify_prompts.append(prompt)
+        if EARLIER in _earlier_block(prompt):
+            return {"affected": [_p("grandparent", "阿公", "叫不醒")]}
+        return {"affected": [_p("someone_else", "他", "叫不醒")]}
+
+
+def _pronoun_pipeline(monkeypatch, *, history):
+    monkeypatch.setitem(pipeline_module.SCRIPT, PRONOUN_TEXT, (True, []))
+    monkeypatch.setitem(pipeline_module.SCRIPT_KEYS, PRONOUN_TEXT, PRONOUN_TEXT)
+    pipeline = Pipeline()
+    classifier = pipeline.handler._urgency_classifier
+    llm = PronounAwareLLM(classifier._invoke)
+    classifier._invoke = llm
+
+    class History:
         async def load_history(self, **kwargs):
-            return [
-                HumanMessage(content="我阿公剛剛跌倒"),
-                AIMessage(content="請先確認阿公有沒有意識，需要時撥打 119。"),
-            ]
+            return list(history)
 
         async def save_turn(self, **kwargs):
             pass
 
-    pipeline.handler._history_service = HistoryWithGrandpa()
+    pipeline.handler._history_service = History()
+    return pipeline, llm
 
-    await pipeline.say(text)
+
+@pytest.mark.asyncio
+async def test_a1_pronoun_in_the_next_turn_notifies_grandpas_caregiver(monkeypatch):
+    """孫子先說「我阿公剛剛跌倒」，下一則「他現在叫不醒」：通知的是阿公的照顧者。"""
+    pipeline, llm = _pronoun_pipeline(
+        monkeypatch,
+        history=[HumanMessage(content=EARLIER), AIMessage(content="請先確認阿公有沒有意識。")],
+    )
+
+    await pipeline.say(PRONOUN_TEXT)
 
     assert pipeline.red_card_first()
-    # 人物辨識確實只拿到這一則，沒有前文。
-    assert pipeline.llm.identifications == [text]
-    own_family_cards = pipeline.line.to("flex", MOM)
-    assert own_family_cards == [], "把阿公的事件當成孫子本人，通知了孫子自己的家人"
+    assert EARLIER in _earlier_block(llm.identify_prompts[0]), "人物辨識沒拿到前文"
+    assert pipeline.line.to("flex", MOM) == [], "把阿公的事件當成孫子本人，通知了孫子自己的家人"
+    (card,) = pipeline.line.to("flex", AUNT)
+    assert "王小明 回報的內容" in card and "剛才說" not in card
+
+
+@pytest.mark.asyncio
+async def test_a1_pronoun_without_earlier_context_notifies_nobody(monkeypatch):
+    """前文對不到人時不猜：不通知任何家庭，也不當成發話者本人。"""
+    pipeline, _ = _pronoun_pipeline(monkeypatch, history=[])
+
+    await pipeline.say(PRONOUN_TEXT)
+
+    assert pipeline.red_card_first()
+    assert pipeline.line.to("flex", MOM) == []
+    assert pipeline.line.to("flex", AUNT) == []
+    assert pipeline.reporter_texts() == [
+        t("text.emergency.result.other.not_notified", "zh-TW")
+    ]
 
 
 # --- A3：真的授權服務下，替別人回報的收件人 ---------------------------------------

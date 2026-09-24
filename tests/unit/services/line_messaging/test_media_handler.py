@@ -200,7 +200,7 @@ class FakeEmergencyFamilyAlertService(EmergencyFamilyAlertService):
 class _SelfIdentifier:
     """紅卡之後的人物辨識替身：把事件歸給發話者本人。"""
 
-    async def identify_affected(self, verdict, text, *, language):
+    async def identify_affected(self, verdict, text, *, language, earlier=()):
         from dataclasses import replace
 
         return replace(verdict, affected=(AffectedPerson(kind="self", event="胸痛"),))

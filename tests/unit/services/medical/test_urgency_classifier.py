@@ -733,3 +733,17 @@ async def test_someone_else_is_not_the_reporter():
 def test_schema_offers_someone_else_apart_from_unknown():
     relation = _AFFECTED_SCHEMA["properties"]["affected"]["items"]["properties"]["relation"]
     assert {"someone_else", "unknown"} <= set(relation["enum"])
+
+
+@pytest.mark.asyncio
+async def test_no_one_flagged_urgent_still_counts_everyone_as_urgent():
+    """前一步已判定緊急；這步全標不緊急時不能讓家人通報消失（自傷最常見）。"""
+    verdict = await _identify("我不想活了", _person("self", "", "有輕生念頭", urgent=False))
+    assert verdict.affected == (AffectedPerson(kind="self", event="有輕生念頭"),)
+
+
+@pytest.mark.asyncio
+async def test_prompt_marks_self_harm_as_urgent():
+    from app.services.medical.symptom_classification.urgency import _AFFECTED_PROMPT_TEMPLATE
+
+    assert "自傷、輕生念頭一律 urgent=true" in _AFFECTED_PROMPT_TEMPLATE

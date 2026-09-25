@@ -356,6 +356,7 @@ urgent：這個人本身的狀況是否需要立刻叫救護車或前往急診�
   「我阿公昏迷」→ grandparent, label="阿公"
   「路邊有人昏倒了」→ not_family, label="路人"
   「我朋友傳訊息說他想自殺」→ not_family, label="朋友"
+  「我不想活了」→ self, label="", urgent=true（自傷、輕生念頭一律 urgent=true）
   「我阿公跌倒叫不醒，我自己也有點頭痛」→ grandparent, label="阿公", urgent=true；
     self, label="", urgent=false
   前文「我阿公剛剛跌倒」，這次「他現在叫不醒」→ grandparent, label="阿公"
@@ -589,4 +590,9 @@ def _affected_people(raw: Any) -> tuple[AffectedPerson, ...]:
             # unknown 與模型自創的值：判斷器只說「不知道是誰」，當不當本人由下游決定。
             person = AffectedPerson(kind="unknown", label=label, event=event, urgent=urgent)
         people.append(person)
+    if people and not any(p.urgent for p in people):
+        # 前一步已判定緊急，這裡卻沒有任何人需要立即處置：兩次判斷標準不同
+        # （「我不想活了」在這步常被標成不必叫救護車）。這一步只負責「是誰」，
+        # 不能讓家人通報整個消失，所以全員當成需要處置。
+        people = [replace(p, urgent=True) for p in people]
     return tuple(people)

@@ -553,6 +553,35 @@ async def test_task_10_9_explicit_reproductive_context_overrides_male_profile(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "text",
+    [
+        "我在生產線工作肚子痛要看哪科",
+        "生理時計が乱れてお腹が痛い",
+        "I live in Hamilton and have abdominal pain",
+    ],
+)
+async def test_task_10_9_everyday_words_do_not_bring_obstetrics_back_for_men(
+    table, text
+):
+    """「生產線」「生理時計」「Hamilton」只是字面含有生殖詞，不是生殖脈絡。"""
+    result = await _suggest(table, "腹痛", 40, text=text, gender="male")
+
+    assert "婦產科" not in [candidate.canonical for candidate in result.candidates]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "text",
+    ["Saya hamil dan sakit perut", "生理痛でお腹が痛い", "Tôi đang mang thai và đau bụng"],
+)
+async def test_task_10_9_foreign_reproductive_words_still_count(table, text):
+    result = await _suggest(table, "腹痛", 40, text=text, gender="male")
+
+    assert "婦產科" in [candidate.canonical for candidate in result.candidates]
+
+
+@pytest.mark.asyncio
 async def test_task_10_9_explicit_obstetrics_request_overrides_male_profile(table):
     result = await _suggest(
         table,

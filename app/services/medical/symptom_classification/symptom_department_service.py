@@ -30,6 +30,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 
 from app.core.user_age import is_pediatric_age
@@ -64,8 +65,10 @@ OBSTETRICS_GYNECOLOGY_DEPARTMENT = "婦產科"
 # 本輪明確語意高於 profile 性別。只處理懷孕、生產、月經與生殖脈絡，不把
 # 「腹痛」「性病」等跨性別的一般症狀算進來。外語詞讓六語工具契約不必先翻中文；
 # matched_term 也一起檢查，避免正規化後的專屬症狀失去語意。
+# 不收「生產」（生產線）與日文單字「生理」（生理時鐘）：一般用語也會用到，男性
+# 講到就會把婦產科列回來。拉丁字母的詞要整個字相符，見 _REPRODUCTIVE_WORD_PATTERN。
 _REPRODUCTIVE_CONTEXT_TERMS = (
-    "懷孕", "妊娠", "孕婦", "孕期", "生產", "生小孩", "臨盆", "待產", "分娩",
+    "懷孕", "妊娠", "孕婦", "孕期", "生小孩", "臨盆", "待產", "分娩",
     "宮縮", "羊水", "胎兒", "胎動", "產前", "產後", "流產", "月經", "經期",
     "經痛", "生理期", "停經", "生殖", "不孕", "避孕", "子宮", "卵巢", "陰道", "婦科",
     "pregnant", "pregnancy", "childbirth", "giving birth", "in labor", "menstrual",
@@ -76,7 +79,7 @@ _REPRODUCTIVE_CONTEXT_TERMS = (
     "buồng trứng", "âm đạo", "tránh thai", "vô sinh",
     "ตั้งครรภ์", "คลอด", "ประจำเดือน", "สืบพันธุ์", "มดลูก", "รังไข่", "ช่องคลอด",
     "คุมกำเนิด", "มีบุตรยาก",
-    "妊娠", "出産", "月経", "生理", "不妊", "避妊", "生殖", "子宮", "卵巣", "膣",
+    "妊娠", "出産", "月経", "生理痛", "生理中", "生理不順", "不妊", "避妊", "生殖", "子宮", "卵巣", "膣",
 )
 
 # 保底多列兒科的原因。卡片依原因用不同說法：提到孩童是家長在問，年齡未滿界線則是
@@ -120,9 +123,28 @@ def _pediatric_reason(
     return None
 
 
+# 拉丁字母的詞（英文、印尼文、越南文）逐字比對會誤中別的字：hamil 在 Hamilton
+# 裡、haid 在 haida 裡。這些詞只在整個字相符時算數；中日泰文沒有空白分詞，照舊
+# 用包含比對。
+_REPRODUCTIVE_WORD_PATTERN = re.compile(
+    "|".join(
+        rf"\b{re.escape(term.casefold())}\b"
+        for term in _REPRODUCTIVE_CONTEXT_TERMS
+        if term.isascii() or re.search(r"[a-z]", term)
+    )
+)
+_REPRODUCTIVE_SUBSTRING_TERMS = tuple(
+    term.casefold()
+    for term in _REPRODUCTIVE_CONTEXT_TERMS
+    if not (term.isascii() or re.search(r"[a-z]", term))
+)
+
+
 def _has_reproductive_context(text: str, matched_term: str) -> bool:
     normalized = f"{text} {matched_term}".casefold()
-    return any(term.casefold() in normalized for term in _REPRODUCTIVE_CONTEXT_TERMS)
+    return bool(_REPRODUCTIVE_WORD_PATTERN.search(normalized)) or any(
+        term in normalized for term in _REPRODUCTIVE_SUBSTRING_TERMS
+    )
 
 
 def _explicitly_requests_obstetrics(requested_department: str) -> bool:

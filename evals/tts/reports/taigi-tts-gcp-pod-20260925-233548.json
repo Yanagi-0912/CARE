@@ -1,0 +1,500 @@
+{
+  "meta": {
+    "started_at": "2026-09-25T23:35:48+08:00",
+    "env_label": "gcp-pod",
+    "platform": "Linux 7.0.0-1011-gcp x86_64",
+    "python": "3.12.14",
+    "language": "nan-TW",
+    "voice_label": "normal_f2",
+    "speed": 1.2,
+    "timeout_seconds": 20,
+    "mp3_sample_rate": 16000,
+    "mp3_bit_rate": 48000,
+    "mp3_compression_level": 7,
+    "runs": 5,
+    "warmup": 1,
+    "interval_seconds": 6.0,
+    "measures": "API：送出台語漢字到收到完整 WAV；轉檔：WAV 到 mp3；不含 Gemini 改寫、存檔、產生網址與 LINE 推播"
+  },
+  "sentences": [
+    {
+      "label": "10",
+      "chars_with_punctuation": 10,
+      "chars_without_punctuation": 9,
+      "text": "記得照時食藥，加歇睏"
+    },
+    {
+      "label": "25",
+      "chars_with_punctuation": 25,
+      "chars_without_punctuation": 23,
+      "text": "若一直頭疼閣發燒，建議加歇睏，注意看身體有啥物變化"
+    },
+    {
+      "label": "50",
+      "chars_with_punctuation": 50,
+      "chars_without_punctuation": 43,
+      "text": "若是最近一直頭疼、發燒、咧嗽，抑是規身軀攏無力，建議先歇睏予飽、加啉寡水，同時注意看身體有啥物變化。"
+    },
+    {
+      "label": "100",
+      "chars_with_punctuation": 100,
+      "chars_without_punctuation": 87,
+      "text": "若是最近一直頭疼、發燒、咧嗽、嚨喉疼，抑是規身軀攏無力，建議先歇睏予飽、加啉寡水，逐工共體溫佮症狀有啥物變化攏記落來。若是症狀過幾若工攏無較好，抑是喘袂過氣、胸坎疼、頭殼霧霧，就愛趕緊去病院予醫生看。"
+    },
+    {
+      "label": "150",
+      "chars_with_punctuation": 150,
+      "chars_without_punctuation": 131,
+      "text": "若是最近一直頭疼、發燒、咧嗽、嚨喉疼，抑是規身軀無力，建議先歇睏予飽、加啉寡水，逐工共體溫、症狀的變化，佮食藥了後身體的反應記落來。若是本身有慢性病，抑是當咧食別種藥仔，看醫生的時愛家己共醫護人員講。若是症狀過幾若工攏無較好，抑是雄雄喘袂過氣、胸坎疼甲足厲害、一直發懸燒、頭殼霧霧，就愛緊去予醫生看。"
+    }
+  ],
+  "summary": [
+    {
+      "label": "10",
+      "chars_with_punctuation": 10,
+      "chars_without_punctuation": 9,
+      "failures": 0,
+      "timeouts": 0,
+      "api_seconds": {
+        "n": 5,
+        "median": 1.546,
+        "mean": 1.558,
+        "min": 1.522,
+        "max": 1.599
+      },
+      "transcode_seconds": {
+        "n": 5,
+        "median": 0.072,
+        "mean": 0.078,
+        "min": 0.052,
+        "max": 0.107
+      },
+      "total_seconds": {
+        "n": 5,
+        "median": 1.603,
+        "mean": 1.635,
+        "min": 1.576,
+        "max": 1.703
+      },
+      "audio_seconds": 3.87
+    },
+    {
+      "label": "25",
+      "chars_with_punctuation": 25,
+      "chars_without_punctuation": 23,
+      "failures": 0,
+      "timeouts": 0,
+      "api_seconds": {
+        "n": 5,
+        "median": 2.026,
+        "mean": 2.049,
+        "min": 1.952,
+        "max": 2.259
+      },
+      "transcode_seconds": {
+        "n": 5,
+        "median": 0.128,
+        "mean": 0.111,
+        "min": 0.08,
+        "max": 0.134
+      },
+      "total_seconds": {
+        "n": 5,
+        "median": 2.106,
+        "mean": 2.16,
+        "min": 2.08,
+        "max": 2.39
+      },
+      "audio_seconds": 7.62
+    },
+    {
+      "label": "50",
+      "chars_with_punctuation": 50,
+      "chars_without_punctuation": 43,
+      "failures": 0,
+      "timeouts": 0,
+      "api_seconds": {
+        "n": 5,
+        "median": 3.49,
+        "mean": 3.485,
+        "min": 3.459,
+        "max": 3.503
+      },
+      "transcode_seconds": {
+        "n": 5,
+        "median": 0.288,
+        "mean": 0.279,
+        "min": 0.25,
+        "max": 0.31
+      },
+      "total_seconds": {
+        "n": 5,
+        "median": 3.79,
+        "mean": 3.765,
+        "min": 3.709,
+        "max": 3.8
+      },
+      "audio_seconds": 16.19
+    },
+    {
+      "label": "100",
+      "chars_with_punctuation": 100,
+      "chars_without_punctuation": 87,
+      "failures": 0,
+      "timeouts": 0,
+      "api_seconds": {
+        "n": 5,
+        "median": 5.697,
+        "mean": 6.286,
+        "min": 5.638,
+        "max": 8.717
+      },
+      "transcode_seconds": {
+        "n": 5,
+        "median": 0.529,
+        "mean": 0.533,
+        "min": 0.522,
+        "max": 0.545
+      },
+      "total_seconds": {
+        "n": 5,
+        "median": 6.226,
+        "mean": 6.819,
+        "min": 6.165,
+        "max": 9.259
+      },
+      "audio_seconds": 31.51
+    },
+    {
+      "label": "150",
+      "chars_with_punctuation": 150,
+      "chars_without_punctuation": 131,
+      "failures": 0,
+      "timeouts": 0,
+      "api_seconds": {
+        "n": 5,
+        "median": 7.864,
+        "mean": 7.889,
+        "min": 7.847,
+        "max": 7.994
+      },
+      "transcode_seconds": {
+        "n": 5,
+        "median": 0.814,
+        "mean": 0.796,
+        "min": 0.754,
+        "max": 0.837
+      },
+      "total_seconds": {
+        "n": 5,
+        "median": 8.691,
+        "mean": 8.685,
+        "min": 8.601,
+        "max": 8.809
+      },
+      "audio_seconds": 46.7
+    }
+  ],
+  "runs": [
+    {
+      "label": "10",
+      "run": 1,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 1.546,
+      "transcode_seconds": 0.052,
+      "total_seconds": 1.598,
+      "wav_bytes": 170606,
+      "mp3_bytes": 24021,
+      "audio_seconds": 3.87
+    },
+    {
+      "label": "10",
+      "run": 2,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 1.522,
+      "transcode_seconds": 0.054,
+      "total_seconds": 1.576,
+      "wav_bytes": 170606,
+      "mp3_bytes": 24021,
+      "audio_seconds": 3.87
+    },
+    {
+      "label": "10",
+      "run": 3,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 1.591,
+      "transcode_seconds": 0.107,
+      "total_seconds": 1.697,
+      "wav_bytes": 170606,
+      "mp3_bytes": 24021,
+      "audio_seconds": 3.87
+    },
+    {
+      "label": "10",
+      "run": 4,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 1.599,
+      "transcode_seconds": 0.103,
+      "total_seconds": 1.703,
+      "wav_bytes": 170606,
+      "mp3_bytes": 24021,
+      "audio_seconds": 3.87
+    },
+    {
+      "label": "10",
+      "run": 5,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 1.531,
+      "transcode_seconds": 0.072,
+      "total_seconds": 1.603,
+      "wav_bytes": 170606,
+      "mp3_bytes": 24021,
+      "audio_seconds": 3.87
+    },
+    {
+      "label": "25",
+      "run": 1,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 2.026,
+      "transcode_seconds": 0.08,
+      "total_seconds": 2.106,
+      "wav_bytes": 336288,
+      "mp3_bytes": 46485,
+      "audio_seconds": 7.62
+    },
+    {
+      "label": "25",
+      "run": 2,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 2.259,
+      "transcode_seconds": 0.131,
+      "total_seconds": 2.39,
+      "wav_bytes": 336288,
+      "mp3_bytes": 46485,
+      "audio_seconds": 7.62
+    },
+    {
+      "label": "25",
+      "run": 3,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 1.952,
+      "transcode_seconds": 0.128,
+      "total_seconds": 2.08,
+      "wav_bytes": 336288,
+      "mp3_bytes": 46485,
+      "audio_seconds": 7.62
+    },
+    {
+      "label": "25",
+      "run": 4,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 1.968,
+      "transcode_seconds": 0.134,
+      "total_seconds": 2.103,
+      "wav_bytes": 336288,
+      "mp3_bytes": 46485,
+      "audio_seconds": 7.62
+    },
+    {
+      "label": "25",
+      "run": 5,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 2.038,
+      "transcode_seconds": 0.083,
+      "total_seconds": 2.121,
+      "wav_bytes": 336288,
+      "mp3_bytes": 46485,
+      "audio_seconds": 7.62
+    },
+    {
+      "label": "50",
+      "run": 1,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 3.493,
+      "transcode_seconds": 0.297,
+      "total_seconds": 3.79,
+      "wav_bytes": 714054,
+      "mp3_bytes": 97893,
+      "audio_seconds": 16.19
+    },
+    {
+      "label": "50",
+      "run": 2,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 3.49,
+      "transcode_seconds": 0.31,
+      "total_seconds": 3.8,
+      "wav_bytes": 714054,
+      "mp3_bytes": 97893,
+      "audio_seconds": 16.19
+    },
+    {
+      "label": "50",
+      "run": 3,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 3.459,
+      "transcode_seconds": 0.25,
+      "total_seconds": 3.709,
+      "wav_bytes": 714054,
+      "mp3_bytes": 97893,
+      "audio_seconds": 16.19
+    },
+    {
+      "label": "50",
+      "run": 4,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 3.503,
+      "transcode_seconds": 0.288,
+      "total_seconds": 3.791,
+      "wav_bytes": 714054,
+      "mp3_bytes": 97893,
+      "audio_seconds": 16.19
+    },
+    {
+      "label": "50",
+      "run": 5,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 3.482,
+      "transcode_seconds": 0.252,
+      "total_seconds": 3.733,
+      "wav_bytes": 714054,
+      "mp3_bytes": 97893,
+      "audio_seconds": 16.19
+    },
+    {
+      "label": "100",
+      "run": 1,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 5.697,
+      "transcode_seconds": 0.529,
+      "total_seconds": 6.226,
+      "wav_bytes": 1389590,
+      "mp3_bytes": 189909,
+      "audio_seconds": 31.51
+    },
+    {
+      "label": "100",
+      "run": 2,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 5.638,
+      "transcode_seconds": 0.527,
+      "total_seconds": 6.165,
+      "wav_bytes": 1389590,
+      "mp3_bytes": 189909,
+      "audio_seconds": 31.51
+    },
+    {
+      "label": "100",
+      "run": 3,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 5.665,
+      "transcode_seconds": 0.545,
+      "total_seconds": 6.21,
+      "wav_bytes": 1389590,
+      "mp3_bytes": 189909,
+      "audio_seconds": 31.51
+    },
+    {
+      "label": "100",
+      "run": 4,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 5.712,
+      "transcode_seconds": 0.522,
+      "total_seconds": 6.234,
+      "wav_bytes": 1389590,
+      "mp3_bytes": 189909,
+      "audio_seconds": 31.51
+    },
+    {
+      "label": "100",
+      "run": 5,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 8.717,
+      "transcode_seconds": 0.542,
+      "total_seconds": 9.259,
+      "wav_bytes": 1389590,
+      "mp3_bytes": 189909,
+      "audio_seconds": 31.51
+    },
+    {
+      "label": "150",
+      "run": 1,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 7.994,
+      "transcode_seconds": 0.814,
+      "total_seconds": 8.809,
+      "wav_bytes": 2059658,
+      "mp3_bytes": 281061,
+      "audio_seconds": 46.7
+    },
+    {
+      "label": "150",
+      "run": 2,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 7.847,
+      "transcode_seconds": 0.754,
+      "total_seconds": 8.601,
+      "wav_bytes": 2059658,
+      "mp3_bytes": 281061,
+      "audio_seconds": 46.7
+    },
+    {
+      "label": "150",
+      "run": 3,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 7.854,
+      "transcode_seconds": 0.837,
+      "total_seconds": 8.691,
+      "wav_bytes": 2059658,
+      "mp3_bytes": 281061,
+      "audio_seconds": 46.7
+    },
+    {
+      "label": "150",
+      "run": 4,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 7.887,
+      "transcode_seconds": 0.819,
+      "total_seconds": 8.706,
+      "wav_bytes": 2059658,
+      "mp3_bytes": 281061,
+      "audio_seconds": 46.7
+    },
+    {
+      "label": "150",
+      "run": 5,
+      "ok": true,
+      "timeout": false,
+      "api_seconds": 7.864,
+      "transcode_seconds": 0.754,
+      "total_seconds": 8.618,
+      "wav_bytes": 2059658,
+      "mp3_bytes": 281061,
+      "audio_seconds": 46.7
+    }
+  ]
+}

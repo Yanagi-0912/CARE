@@ -1,0 +1,321 @@
+{
+  "meta": {
+    "started_at": "2026-09-25T22:43:00+08:00",
+    "env_label": "gcp-pod",
+    "platform": "Linux 7.0.0-1011-gcp x86_64",
+    "python": "3.12.14",
+    "edge_tts_version": "7.2.8",
+    "language": "zh-TW",
+    "voice": "zh-TW-HsiaoChenNeural",
+    "rate": "+0%",
+    "runs": 5,
+    "warmup": 1,
+    "measures": "送出文字到收到完整 mp3；不含存檔、產生網址與 LINE 推播"
+  },
+  "sentences": [
+    {
+      "label": "10",
+      "chars_with_punctuation": 10,
+      "chars_without_punctuation": 10,
+      "text": "記得按時服藥並多休息"
+    },
+    {
+      "label": "25",
+      "chars_with_punctuation": 25,
+      "chars_without_punctuation": 24,
+      "text": "若持續出現頭痛和發燒症狀，建議多休息並注意身體變化"
+    },
+    {
+      "label": "50",
+      "chars_with_punctuation": 50,
+      "chars_without_punctuation": 45,
+      "text": "如果最近持續出現頭痛、發燒、咳嗽或全身無力等症狀，建議先充分休息並補充水分，同時持續觀察身體的狀況。"
+    },
+    {
+      "label": "100",
+      "chars_with_punctuation": 100,
+      "chars_without_punctuation": 90,
+      "text": "如果最近持續出現頭痛、發燒、咳嗽、喉嚨疼痛或全身無力等症狀，建議先充分休息並適量補充水分，同時記錄每天的體溫與症狀變化。如果症狀持續數日仍未改善，或出現呼吸困難、胸痛及意識不清等情形，請儘速就醫治療。"
+    },
+    {
+      "label": "150",
+      "chars_with_punctuation": 150,
+      "chars_without_punctuation": 136,
+      "text": "如果最近持續出現頭痛、發燒、咳嗽、喉嚨疼痛或全身無力等症狀，建議先充分休息並適量補充水分，同時記錄每天的體溫、症狀變化以及服藥後的身體反應。若本身有慢性疾病或正在服用其他藥物，就醫時應主動告知醫療人員。如果症狀持續數日仍未改善，或突然出現呼吸困難、劇烈胸痛、持續高燒及意識不清等情形，應儘速就醫治療。"
+    }
+  ],
+  "summary": [
+    {
+      "label": "10",
+      "chars_with_punctuation": 10,
+      "chars_without_punctuation": 10,
+      "failures": 0,
+      "latency_seconds": {
+        "n": 5,
+        "median": 0.398,
+        "mean": 0.405,
+        "min": 0.377,
+        "max": 0.455
+      },
+      "audio_seconds": 3.1
+    },
+    {
+      "label": "25",
+      "chars_with_punctuation": 25,
+      "chars_without_punctuation": 24,
+      "failures": 0,
+      "latency_seconds": {
+        "n": 5,
+        "median": 0.402,
+        "mean": 0.405,
+        "min": 0.38,
+        "max": 0.437
+      },
+      "audio_seconds": 6.26
+    },
+    {
+      "label": "50",
+      "chars_with_punctuation": 50,
+      "chars_without_punctuation": 45,
+      "failures": 0,
+      "latency_seconds": {
+        "n": 5,
+        "median": 0.46,
+        "mean": 0.459,
+        "min": 0.434,
+        "max": 0.485
+      },
+      "audio_seconds": 11.23
+    },
+    {
+      "label": "100",
+      "chars_with_punctuation": 100,
+      "chars_without_punctuation": 90,
+      "failures": 0,
+      "latency_seconds": {
+        "n": 5,
+        "median": 0.641,
+        "mean": 0.63,
+        "min": 0.587,
+        "max": 0.656
+      },
+      "audio_seconds": 22.46
+    },
+    {
+      "label": "150",
+      "chars_with_punctuation": 150,
+      "chars_without_punctuation": 136,
+      "failures": 0,
+      "latency_seconds": {
+        "n": 5,
+        "median": 0.457,
+        "mean": 0.453,
+        "min": 0.418,
+        "max": 0.482
+      },
+      "audio_seconds": 33.26
+    }
+  ],
+  "runs": [
+    {
+      "label": "10",
+      "run": 1,
+      "ok": true,
+      "seconds": 0.398,
+      "bytes": 18576,
+      "audio_seconds": 3.1
+    },
+    {
+      "label": "10",
+      "run": 2,
+      "ok": true,
+      "seconds": 0.398,
+      "bytes": 18576,
+      "audio_seconds": 3.1
+    },
+    {
+      "label": "10",
+      "run": 3,
+      "ok": true,
+      "seconds": 0.395,
+      "bytes": 18576,
+      "audio_seconds": 3.1
+    },
+    {
+      "label": "10",
+      "run": 4,
+      "ok": true,
+      "seconds": 0.455,
+      "bytes": 18576,
+      "audio_seconds": 3.1
+    },
+    {
+      "label": "10",
+      "run": 5,
+      "ok": true,
+      "seconds": 0.377,
+      "bytes": 18576,
+      "audio_seconds": 3.1
+    },
+    {
+      "label": "25",
+      "run": 1,
+      "ok": true,
+      "seconds": 0.392,
+      "bytes": 37584,
+      "audio_seconds": 6.26
+    },
+    {
+      "label": "25",
+      "run": 2,
+      "ok": true,
+      "seconds": 0.38,
+      "bytes": 37584,
+      "audio_seconds": 6.26
+    },
+    {
+      "label": "25",
+      "run": 3,
+      "ok": true,
+      "seconds": 0.402,
+      "bytes": 37584,
+      "audio_seconds": 6.26
+    },
+    {
+      "label": "25",
+      "run": 4,
+      "ok": true,
+      "seconds": 0.437,
+      "bytes": 37584,
+      "audio_seconds": 6.26
+    },
+    {
+      "label": "25",
+      "run": 5,
+      "ok": true,
+      "seconds": 0.416,
+      "bytes": 37584,
+      "audio_seconds": 6.26
+    },
+    {
+      "label": "50",
+      "run": 1,
+      "ok": true,
+      "seconds": 0.451,
+      "bytes": 67392,
+      "audio_seconds": 11.23
+    },
+    {
+      "label": "50",
+      "run": 2,
+      "ok": true,
+      "seconds": 0.464,
+      "bytes": 67392,
+      "audio_seconds": 11.23
+    },
+    {
+      "label": "50",
+      "run": 3,
+      "ok": true,
+      "seconds": 0.46,
+      "bytes": 67392,
+      "audio_seconds": 11.23
+    },
+    {
+      "label": "50",
+      "run": 4,
+      "ok": true,
+      "seconds": 0.434,
+      "bytes": 67392,
+      "audio_seconds": 11.23
+    },
+    {
+      "label": "50",
+      "run": 5,
+      "ok": true,
+      "seconds": 0.485,
+      "bytes": 67392,
+      "audio_seconds": 11.23
+    },
+    {
+      "label": "100",
+      "run": 1,
+      "ok": true,
+      "seconds": 0.609,
+      "bytes": 134784,
+      "audio_seconds": 22.46
+    },
+    {
+      "label": "100",
+      "run": 2,
+      "ok": true,
+      "seconds": 0.656,
+      "bytes": 134784,
+      "audio_seconds": 22.46
+    },
+    {
+      "label": "100",
+      "run": 3,
+      "ok": true,
+      "seconds": 0.587,
+      "bytes": 134784,
+      "audio_seconds": 22.46
+    },
+    {
+      "label": "100",
+      "run": 4,
+      "ok": true,
+      "seconds": 0.641,
+      "bytes": 134784,
+      "audio_seconds": 22.46
+    },
+    {
+      "label": "100",
+      "run": 5,
+      "ok": true,
+      "seconds": 0.655,
+      "bytes": 134784,
+      "audio_seconds": 22.46
+    },
+    {
+      "label": "150",
+      "run": 1,
+      "ok": true,
+      "seconds": 0.457,
+      "bytes": 199584,
+      "audio_seconds": 33.26
+    },
+    {
+      "label": "150",
+      "run": 2,
+      "ok": true,
+      "seconds": 0.438,
+      "bytes": 199584,
+      "audio_seconds": 33.26
+    },
+    {
+      "label": "150",
+      "run": 3,
+      "ok": true,
+      "seconds": 0.47,
+      "bytes": 199584,
+      "audio_seconds": 33.26
+    },
+    {
+      "label": "150",
+      "run": 4,
+      "ok": true,
+      "seconds": 0.482,
+      "bytes": 199584,
+      "audio_seconds": 33.26
+    },
+    {
+      "label": "150",
+      "run": 5,
+      "ok": true,
+      "seconds": 0.418,
+      "bytes": 199584,
+      "audio_seconds": 33.26
+    }
+  ]
+}

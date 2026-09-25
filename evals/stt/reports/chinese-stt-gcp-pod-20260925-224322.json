@@ -1,0 +1,363 @@
+{
+  "meta": {
+    "started_at": "2026-09-25T22:43:22+08:00",
+    "env_label": "gcp-pod",
+    "platform": "Linux 7.0.0-1011-gcp x86_64",
+    "python": "3.12.14",
+    "language": "zh-TW",
+    "model": "gemini-3.5-flash-lite",
+    "thinking_level": "low",
+    "timeout_seconds": 8.0,
+    "voice": "zh-TW-HsiaoChenNeural",
+    "rate": "+0%",
+    "runs": 5,
+    "warmup": 1,
+    "measures": "送出音檔到拿到逐字稿；CER 比對前去掉標點與空白；音檔為 edge-tts 合成語音"
+  },
+  "sentences": [
+    {
+      "label": "10",
+      "chars_with_punctuation": 10,
+      "chars_without_punctuation": 10,
+      "audio_seconds": 3.1,
+      "text": "記得按時服藥並多休息"
+    },
+    {
+      "label": "25",
+      "chars_with_punctuation": 25,
+      "chars_without_punctuation": 24,
+      "audio_seconds": 6.26,
+      "text": "若持續出現頭痛和發燒症狀，建議多休息並注意身體變化"
+    },
+    {
+      "label": "50",
+      "chars_with_punctuation": 50,
+      "chars_without_punctuation": 45,
+      "audio_seconds": 11.23,
+      "text": "如果最近持續出現頭痛、發燒、咳嗽或全身無力等症狀，建議先充分休息並補充水分，同時持續觀察身體的狀況。"
+    },
+    {
+      "label": "100",
+      "chars_with_punctuation": 100,
+      "chars_without_punctuation": 90,
+      "audio_seconds": 22.46,
+      "text": "如果最近持續出現頭痛、發燒、咳嗽、喉嚨疼痛或全身無力等症狀，建議先充分休息並適量補充水分，同時記錄每天的體溫與症狀變化。如果症狀持續數日仍未改善，或出現呼吸困難、胸痛及意識不清等情形，請儘速就醫治療。"
+    },
+    {
+      "label": "150",
+      "chars_with_punctuation": 150,
+      "chars_without_punctuation": 136,
+      "audio_seconds": 33.26,
+      "text": "如果最近持續出現頭痛、發燒、咳嗽、喉嚨疼痛或全身無力等症狀，建議先充分休息並適量補充水分，同時記錄每天的體溫、症狀變化以及服藥後的身體反應。若本身有慢性疾病或正在服用其他藥物，就醫時應主動告知醫療人員。如果症狀持續數日仍未改善，或突然出現呼吸困難、劇烈胸痛、持續高燒及意識不清等情形，應儘速就醫治療。"
+    }
+  ],
+  "summary": [
+    {
+      "label": "10",
+      "chars_with_punctuation": 10,
+      "audio_seconds": 3.1,
+      "failures": 0,
+      "latency_seconds": {
+        "n": 5,
+        "median": 1.351,
+        "mean": 1.357,
+        "min": 1.113,
+        "max": 1.852
+      },
+      "exact": 3,
+      "cer_mean": 0.08,
+      "cer_max": 0.2
+    },
+    {
+      "label": "25",
+      "chars_with_punctuation": 25,
+      "audio_seconds": 6.26,
+      "failures": 0,
+      "latency_seconds": {
+        "n": 5,
+        "median": 1.278,
+        "mean": 1.411,
+        "min": 1.204,
+        "max": 2.034
+      },
+      "exact": 5,
+      "cer_mean": 0.0,
+      "cer_max": 0.0
+    },
+    {
+      "label": "50",
+      "chars_with_punctuation": 50,
+      "audio_seconds": 11.23,
+      "failures": 0,
+      "latency_seconds": {
+        "n": 5,
+        "median": 1.47,
+        "mean": 1.513,
+        "min": 1.416,
+        "max": 1.656
+      },
+      "exact": 5,
+      "cer_mean": 0.0,
+      "cer_max": 0.0
+    },
+    {
+      "label": "100",
+      "chars_with_punctuation": 100,
+      "audio_seconds": 22.46,
+      "failures": 0,
+      "latency_seconds": {
+        "n": 5,
+        "median": 1.561,
+        "mean": 1.703,
+        "min": 1.364,
+        "max": 2.288
+      },
+      "exact": 0,
+      "cer_mean": 0.0222,
+      "cer_max": 0.0333
+    },
+    {
+      "label": "150",
+      "chars_with_punctuation": 150,
+      "audio_seconds": 33.26,
+      "failures": 0,
+      "latency_seconds": {
+        "n": 5,
+        "median": 1.574,
+        "mean": 1.614,
+        "min": 1.476,
+        "max": 1.815
+      },
+      "exact": 3,
+      "cer_mean": 0.003,
+      "cer_max": 0.0074
+    }
+  ],
+  "runs": [
+    {
+      "label": "10",
+      "run": 1,
+      "ok": true,
+      "seconds": 1.113,
+      "transcript": "記得按時服藥並多休息。",
+      "cer": 0.0,
+      "exact": true
+    },
+    {
+      "label": "10",
+      "run": 2,
+      "ok": true,
+      "seconds": 1.353,
+      "transcript": "記得 按時 服用 病多 休息",
+      "cer": 0.2,
+      "exact": false
+    },
+    {
+      "label": "10",
+      "run": 3,
+      "ok": true,
+      "seconds": 1.351,
+      "transcript": "記得 按時 服用 病 多 休息 。",
+      "cer": 0.2,
+      "exact": false
+    },
+    {
+      "label": "10",
+      "run": 4,
+      "ok": true,
+      "seconds": 1.116,
+      "transcript": "記得按時服藥並多休息。",
+      "cer": 0.0,
+      "exact": true
+    },
+    {
+      "label": "10",
+      "run": 5,
+      "ok": true,
+      "seconds": 1.852,
+      "transcript": "記得按時服藥並多休息。",
+      "cer": 0.0,
+      "exact": true
+    },
+    {
+      "label": "25",
+      "run": 1,
+      "ok": true,
+      "seconds": 1.26,
+      "transcript": "若 持 續 出 現 頭 痛 和 發 燒 症 狀 ， 建 議 多 休 息 並 注 意 身 體 變 化 。",
+      "cer": 0.0,
+      "exact": true
+    },
+    {
+      "label": "25",
+      "run": 2,
+      "ok": true,
+      "seconds": 1.204,
+      "transcript": "若 持 續 出 現 頭 痛 和 發 燒 症 狀 ， 建 議 多 休 息 並 注 意 身 體 變 化 。",
+      "cer": 0.0,
+      "exact": true
+    },
+    {
+      "label": "25",
+      "run": 3,
+      "ok": true,
+      "seconds": 1.279,
+      "transcript": "若 持 續 出 現 頭 痛 和 發 燒 症 狀 ， 建 議 多 休 息 並 注 意 身 體 變 化 。",
+      "cer": 0.0,
+      "exact": true
+    },
+    {
+      "label": "25",
+      "run": 4,
+      "ok": true,
+      "seconds": 1.278,
+      "transcript": "若 持 續 出 現 頭 痛 和 發 燒 症 狀 ， 建 議 多 休 息 並 注 意 身 體 變 化 。",
+      "cer": 0.0,
+      "exact": true
+    },
+    {
+      "label": "25",
+      "run": 5,
+      "ok": true,
+      "seconds": 2.034,
+      "transcript": "若 持 續 出 現 頭 痛 和 發 燒 症 狀 , 建 議 多 休 息 並 注 意 身 體 變 化 。",
+      "cer": 0.0,
+      "exact": true
+    },
+    {
+      "label": "50",
+      "run": 1,
+      "ok": true,
+      "seconds": 1.445,
+      "transcript": "如果最近持續出現頭痛、發燒、咳嗽或全身無力等症狀，建議先充分休息並補充水分，同時持續觀察身體的狀況。",
+      "cer": 0.0,
+      "exact": true
+    },
+    {
+      "label": "50",
+      "run": 2,
+      "ok": true,
+      "seconds": 1.416,
+      "transcript": "如果最近持續出現頭痛、發燒、咳嗽或全身無力等症狀，建議先充分休息並補充水分，同時持續觀察身體的狀況。",
+      "cer": 0.0,
+      "exact": true
+    },
+    {
+      "label": "50",
+      "run": 3,
+      "ok": true,
+      "seconds": 1.47,
+      "transcript": "如 果 最 近 持 續 出 現 頭 痛 、 發 燒 、 咳 嗽 或 全 身 無 力 等 症 狀 ， 建 議 先 充 分 休 息 並 補 充 水 分 ， 同 時 持 續 觀 察 身 體 的 狀 況 。",
+      "cer": 0.0,
+      "exact": true
+    },
+    {
+      "label": "50",
+      "run": 4,
+      "ok": true,
+      "seconds": 1.577,
+      "transcript": "如 果 最 近 持 續 出 現 頭 痛 、 發 燒 、 咳 嗽 或 全 身 無 力 等 症 狀 ， 建 議 先 充 分 休 息 並 補 充 水 分 ， 同 時 持 續 觀 察 身 體 的 狀 況 。",
+      "cer": 0.0,
+      "exact": true
+    },
+    {
+      "label": "50",
+      "run": 5,
+      "ok": true,
+      "seconds": 1.656,
+      "transcript": "如 果 最 近 持 續 出 現 頭 痛 、 發 燒 、 咳 嗽 或 全 身 無 力 等 症 狀 ， 建 議 先 充 分 休 息 並 補 充 水 分 ， 同 時 持 續 觀 察 身 體 的 狀 況 。",
+      "cer": 0.0,
+      "exact": true
+    },
+    {
+      "label": "100",
+      "run": 1,
+      "ok": true,
+      "seconds": 1.747,
+      "transcript": "如 果 最 近 持 續 出 現 頭 痛 、 發 燒 、 咳 嗽 、 喉 嚨 痛 或 全 身 無 力 等 症 狀 ， 建 議 先 充 分 休 息 並 適 量 補 充 水 分 ， 同 時 記 錄 每 天 的 體 溫 與 症 狀 變 化 。 如 果 症 狀 持 續 數 日 人 未 改 善 ， 或 出 現 呼 吸 困 難 、 胸 痛 及 意 識 不 清 等 情 形 ， 請 盡 速 就 醫 治 療 。",
+      "cer": 0.0333,
+      "exact": false
+    },
+    {
+      "label": "100",
+      "run": 2,
+      "ok": true,
+      "seconds": 1.554,
+      "transcript": "如 果 最 近 持 續 出 現 頭 痛 、 發 燒 、 咳 嗽 、 喉 嚨 痛 或 全 身 無 力 等 症 狀 ， 建 議 先 充 分 休 息 並 適 量 補 充 水 分 ， 同 時 記 錄 每 天 的 體 溫 與 症 狀 變 化 。 如 果 症 狀 持 續 數 日 人 未 改 善 ， 或 出 現 呼 吸 困 難 、 胸 痛 及 意 識 不 清 等 情 形 ， 請 盡 速 就 醫 治 療 。",
+      "cer": 0.0333,
+      "exact": false
+    },
+    {
+      "label": "100",
+      "run": 3,
+      "ok": true,
+      "seconds": 2.288,
+      "transcript": "如果最近持續出現頭痛、發燒、咳嗽、喉嚨疼痛或全身無力等症狀，建議先充分休息並適量補充水分，同時記錄每天的體溫與症狀變化。如果症狀持續數日仍未改善，或出現呼吸困難、胸痛及意識不清等情形，請盡速就醫治療。",
+      "cer": 0.0111,
+      "exact": false
+    },
+    {
+      "label": "100",
+      "run": 4,
+      "ok": true,
+      "seconds": 1.561,
+      "transcript": "如 果 最 近 持 續 出 現 頭 痛 、 發 燒 、 咳 嗽 、 喉 嚨 疼 痛 或 全 身 無 力 等 症 狀 ， 建 議 先 充 分 休 息 並 適 量 補 充 水 分 ， 同 時 記 錄 每 天 的 體 溫 與 症 狀 變 化 。 如 果 症 狀 持 續 數 日 人 未 改 善 ， 或 出 現 呼 吸 困 難 、 胸 痛 及 意 識 不 清 等 情 形 ， 請 盡 速 就 醫 治 療 。",
+      "cer": 0.0222,
+      "exact": false
+    },
+    {
+      "label": "100",
+      "run": 5,
+      "ok": true,
+      "seconds": 1.364,
+      "transcript": "如果最近持續出現頭痛、發燒、咳嗽、喉嚨疼痛或全身無力等症狀，建議先充分休息並適量補充水分，同時記錄每天的體溫與症狀變化。 如果症狀持續數日仍未改善，或出現呼吸困難、胸痛及意識不清等情形，請盡速就醫治療。",
+      "cer": 0.0111,
+      "exact": false
+    },
+    {
+      "label": "150",
+      "run": 1,
+      "ok": true,
+      "seconds": 1.557,
+      "transcript": "如果最近持續出現頭痛、發燒、咳嗽、喉嚨疼痛或全身無力等症狀，建議先充分休息並適量補充水分，同時記錄每天的體溫、症狀變化以及服藥後的身體反應。 若本身有慢性疾病或正在服用其他藥物，就醫時應主動告知醫療人員。 如果症狀持續數日仍未改善，或突然出現呼吸困難、劇烈胸痛、持續高燒及意識不清等情形，應儘速就醫治療。",
+      "cer": 0.0,
+      "exact": true
+    },
+    {
+      "label": "150",
+      "run": 2,
+      "ok": true,
+      "seconds": 1.65,
+      "transcript": "如果最近持續出現頭痛、發燒、咳嗽、喉嚨疼痛或全身無力等症狀，建議先充分休息並適量補充水分，同時記錄每天的體溫、症狀變化以及服藥後的身體反應。 若本身有慢性疾病或正在服用其他藥物，就醫時應主動告知醫療人員。 如果症狀持續數日仍未改善，或突然出現呼吸困難、劇烈胸痛、持續高燒及意識不清等情形，應儘速就醫治療。",
+      "cer": 0.0,
+      "exact": true
+    },
+    {
+      "label": "150",
+      "run": 3,
+      "ok": true,
+      "seconds": 1.815,
+      "transcript": "如果最近持續出現頭痛、發燒、咳嗽、喉嚨疼痛或全身無力等症狀，建議先充分休息，並適量補充水分，同時記錄每天的體溫、症狀變化以及服藥後的身體反應。 若本身有慢性疾病或正在服用其他藥物，就醫時應主動告知醫護人員。 如果症狀持續數日仍未改善，或突然出現呼吸困難、劇烈胸痛、持續高燒及意識不清等情形，應儘速就醫治療。",
+      "cer": 0.0074,
+      "exact": false
+    },
+    {
+      "label": "150",
+      "run": 4,
+      "ok": true,
+      "seconds": 1.574,
+      "transcript": "如果最近持續出現頭痛、發燒、咳嗽、喉嚨疼痛或全身無力等症狀，建議先充分休息並適量補充水分，同時記錄每天的體溫、症狀變化以及服藥後的身體反應。 若本身有慢性疾病或正在服用其他藥物，就醫時應主動告知醫療人員。 如果症狀持續數日仍未改善，或突然出現呼吸困難、劇烈胸痛、持續高燒及意識不清等情形，應盡速就醫治療。",
+      "cer": 0.0074,
+      "exact": false
+    },
+    {
+      "label": "150",
+      "run": 5,
+      "ok": true,
+      "seconds": 1.476,
+      "transcript": "如果最近持續出現頭痛、發燒、咳嗽、喉嚨疼痛或全身無力等症狀，建議先充分休息並適量補充水分，同時記錄每天的體溫、症狀變化以及服藥後的身體反應。 若本身有慢性疾病或正在服用其他藥物，就醫時應主動告知醫療人員。 如果症狀持續數日仍未改善，或突然出現呼吸困難、劇烈胸痛、持續高燒及意識不清等情形，應儘速就醫治療。",
+      "cer": 0.0,
+      "exact": true
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+# 合成出來的 mp3 可以用 scripts/speech_bench/chinese_tts_bench.py --save-audio 重新產生，不進版控。
+samples/

@@ -42,6 +42,13 @@ _EF_SEARCH_MULTIPLIER = 30
 # ef_search 的下限。pgvector 預設 40，低於這個值召回率會掉得很快。
 _MIN_EF_SEARCH = 40
 
+# ef_search 的上限。pgvector 只接受 1..1000，超過直接報錯（"1200 is outside the
+# valid range for parameter "hnsw.ef_search" (1 .. 1000)"）。k=40 時 k×30=1200，
+# 9/19 上線後向量腿就間歇失效、整條檢索退回只剩 BM25：新連線第一次 SET 時
+# pgvector 可能還沒載入，值被當成佔位不檢查，連線被重用時才報錯。線上 9/19–9/25
+# 共 86 次查詢失敗 8 次，全部發生在前一次查詢的 5 分鐘內。
+_MAX_EF_SEARCH = 1000
+
 
 def _distance_to_atlas_score(distance: float) -> float:
     """把 pgvector 的 cosine distance 換算成 Atlas `vectorSearchScore` 的標度。
@@ -160,7 +167,9 @@ class PgVectorRetriever:
         # 少一個依賴（不必註冊型別），代價是每次查詢多一次字串組裝——3072 個
         # 浮點數，相對於整條 RAG 管線可以忽略。
         vector_literal = "[" + ",".join(repr(float(v)) for v in query_embedding) + "]"
-        ef_search = max(_MIN_EF_SEARCH, self.k * _EF_SEARCH_MULTIPLIER)
+        ef_search = min(
+            _MAX_EF_SEARCH, max(_MIN_EF_SEARCH, self.k * _EF_SEARCH_MULTIPLIER)
+        )
 
         sql = (
             f"SELECT id, {self.vector_column} <=> $1::halfvec AS distance "

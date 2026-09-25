@@ -62,3 +62,31 @@ class SafetyAlertRecord(BaseModel):
     risk_level: RiskLevel
     notified_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     expires_at: datetime
+
+
+class EmergencyReportEntry(BaseModel):
+    """緊急判定後的一位受影響者與這次通報的處置（emergency_reports，僅可追加）。
+
+    一次緊急判定可能有好幾位受影響者（「我阿公跌倒叫不醒，我自己也胸口痛」），
+    每位一筆、以 `report_id` 串起來。平鋪而非巢狀，才能直接以回報者或病人加時間
+    計數做頻率限制。
+
+    不存使用者原話：`reason` 是急迫度判斷的白話轉述，原話屬於對話紀錄，另有保存
+    期限。`label` 是使用者對這個人的稱呼（「阿公」「路人」），供事後辨認。
+    """
+
+    report_id: str
+    reporter_id: str
+    # 通知對象：本人急症是回報者；家人是名單中唯一解析到的成員；其他人為 None。
+    patient_id: Optional[str] = None
+    person_kind: Literal["self", "family", "third_party"]
+    label: str = ""
+    # 名單解析結果（member／ambiguous／not_found／conflict）；本人與第三人為 None。
+    resolution_kind: Optional[str] = None
+    cross_person: bool = False
+    # sent／no_recipient／disabled／failed：實際通報；duplicate／rate_limited：被擋下；
+    # not_linked：名單有對方但連結未經確認；not_notified：不知道是哪個家庭。
+    outcome: str
+    reason: str = ""
+    reported_at: datetime
+    expires_at: datetime

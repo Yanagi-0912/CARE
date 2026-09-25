@@ -54,6 +54,37 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "สิ่งที่ {name} เพิ่งพูด",
         "ja": "{name} さんが今言ったこと",
     },
+    # 別人代為回報（孫子說「我阿公跌倒」）時的開頭與引述標題（10.16）。原話是
+    # 回報者說的，SHALL NOT 寫成「{病人} 剛才說」——那會讓家屬以為病人還能自己打字。
+    "emergency_family.lead_reported": {
+        "zh-TW": "{reporter} 剛才在 CARE 回報 {name} 的狀況，系統判定可能需要立即處置。",
+        "en": (
+            "{reporter} just reported in CARE that {name} may need immediate care."
+        ),
+        "id": (
+            "{reporter} baru saja melaporkan di CARE bahwa {name} mungkin "
+            "memerlukan penanganan segera."
+        ),
+        "vi": "{reporter} vừa báo trong CARE rằng {name} có thể cần được xử trí ngay.",
+        "th": "{reporter} เพิ่งแจ้งใน CARE ว่า {name} อาจต้องได้รับการดูแลทันที",
+        "ja": "{reporter} さんが CARE で、{name} さんにすぐの対応が必要かもしれないと知らせました。",
+    },
+    "emergency_family.words_label_reported": {
+        "zh-TW": "{reporter} 回報的內容",
+        "en": "What {reporter} reported",
+        "id": "Laporan dari {reporter}",
+        "vi": "Nội dung {reporter} báo",
+        "th": "สิ่งที่ {reporter} แจ้ง",
+        "ja": "{reporter} さんからの報告",
+    },
+    "emergency_family.fallback_reporter": {
+        "zh-TW": "一位家人",
+        "en": "A family member",
+        "id": "Seorang anggota keluarga",
+        "vi": "Một người thân",
+        "th": "สมาชิกในครอบครัวคนหนึ่ง",
+        "ja": "ご家族の方",
+    },
     "emergency_family.reason_label": {
         "zh-TW": "系統為什麼判定為緊急",
         "en": "Why the system flagged this",
@@ -88,6 +119,15 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "vi": "Hãy gọi cho {name} trước để xem hiện giờ họ thế nào.",
         "th": "โทรหา {name} ก่อน เพื่อดูว่าตอนนี้เป็นอย่างไร",
         "ja": "まず {name} さんに電話して、今の様子を確かめてください。",
+    },
+    # 代為回報時病人可能正叫不醒、接不了電話；回報者此刻就在旁邊，先找他。
+    "emergency_family.step.1_reported": {
+        "zh-TW": "先打電話給 {reporter} 或 {name}，確認現在的狀況。",
+        "en": "Call {reporter} or {name} first and check what is happening right now.",
+        "id": "Hubungi {reporter} atau {name} lebih dulu dan pastikan keadaannya sekarang.",
+        "vi": "Hãy gọi cho {reporter} hoặc {name} trước để xem hiện giờ ra sao.",
+        "th": "โทรหา {reporter} หรือ {name} ก่อน เพื่อดูว่าตอนนี้เป็นอย่างไร",
+        "ja": "まず {reporter} さんか {name} さんに電話して、今の様子を確かめてください。",
     },
     "emergency_family.step.2": {
         "zh-TW": "聯絡不上、或情況危急時，直接撥 119 並前往他所在的位置。",
@@ -156,30 +196,122 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "สมาชิกในครอบครัวของคุณ",
         "ja": "ご家族",
     },
-    # 通知當事人「家人已經知道了」。措辭刻意是支持性的而非警告式的——
-    # 這則訊息的收件人正處於危機中，讀起來必須像有人來陪，不是像被舉報。
-    "text.emergency.family_notified": {
-        "zh-TW": "我已經讓你的家人知道你現在需要有人陪。你不用一個人撐著。",
-        "en": (
-            "I've let your family know you need someone with you right now. "
-            "You don't have to get through this alone."
-        ),
-        "id": (
-            "Saya sudah memberi tahu keluarga Anda bahwa Anda butuh seseorang "
-            "di dekat Anda sekarang. Anda tidak perlu menghadapinya sendiri."
-        ),
-        "vi": (
-            "Tôi đã báo cho người thân biết rằng bạn đang cần ai đó ở bên. "
-            "Bạn không phải một mình vượt qua chuyện này."
-        ),
-        "th": (
-            "ฉันได้แจ้งครอบครัวของคุณแล้วว่าตอนนี้คุณต้องการใครสักคนอยู่ด้วย "
-            "คุณไม่ต้องผ่านเรื่องนี้คนเดียว"
-        ),
-        "ja": (
-            "今そばに誰かが必要だということを、ご家族に伝えました。"
-            "ひとりで抱えなくて大丈夫です。"
-        ),
+    # 紅卡之後給發話者的那一則（10.17）：依「人物種類 × 通知結果」選固定文案。
+    # 只有 sent 可以說家人收到了；{name} 只放使用者自己說的稱呼，且只在唯一
+    # 解析到家庭成員時使用。措辭是支持性的，不是警告式的——讀起來要像有人來陪，
+    # 不是像被舉報，否則下一次他就不說了。
+    "text.emergency.result.self.sent": {
+        "zh-TW": "我已通知可以協助你的家人。請依紅卡立即尋求協助，不要獨自處理。",
+        "en": "I've notified family members who can help you. Get help right away as shown on the red card, and don't handle this alone.",
+        "id": "Saya sudah memberi tahu keluarga yang bisa membantu Anda. Segera cari bantuan sesuai kartu merah, jangan menanganinya sendirian.",
+        "vi": "Tôi đã báo cho người thân có thể giúp bạn. Hãy tìm trợ giúp ngay theo thẻ đỏ, đừng tự xử lý một mình.",
+        "th": "ฉันแจ้งครอบครัวที่ช่วยคุณได้แล้ว โปรดขอความช่วยเหลือทันทีตามการ์ดสีแดง และอย่าจัดการเพียงลำพัง",
+        "ja": "助けになれるご家族に知らせました。赤いカードの案内に沿ってすぐに助けを求め、ひとりで対応しないでください。",
+    },
+    "text.emergency.result.self.no_recipient": {
+        "zh-TW": "目前沒有設定可以接收緊急通知的家人，沒有自動通知任何人。請直接依紅卡尋求協助。",
+        "en": "No family member is set up to receive emergency alerts, so no one was notified. Please get help directly as shown on the red card.",
+        "id": "Belum ada anggota keluarga yang diatur untuk menerima peringatan darurat, jadi tidak ada yang diberi tahu. Silakan langsung cari bantuan sesuai kartu merah.",
+        "vi": "Chưa có người thân nào được thiết lập để nhận cảnh báo khẩn cấp nên chưa ai được báo. Hãy tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "ยังไม่มีสมาชิกในครอบครัวที่ตั้งค่าให้รับการแจ้งเตือนฉุกเฉิน จึงไม่ได้แจ้งใคร โปรดขอความช่วยเหลือโดยตรงตามการ์ดสีแดง",
+        "ja": "緊急通知を受け取るよう設定されたご家族がいないため、誰にも知らせていません。赤いカードの案内に沿って、直接助けを求めてください。",
+    },
+    "text.emergency.result.self.disabled": {
+        "zh-TW": "你的家人目前關閉了通知，這次沒有收到。請直接依紅卡尋求協助。",
+        "en": "Your family members have turned off notifications and did not receive this. Please get help directly as shown on the red card.",
+        "id": "Keluarga Anda menonaktifkan notifikasi dan tidak menerima pesan ini. Silakan langsung cari bantuan sesuai kartu merah.",
+        "vi": "Người thân của bạn đã tắt thông báo nên không nhận được lần này. Hãy tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "ครอบครัวของคุณปิดการแจ้งเตือนไว้ จึงไม่ได้รับครั้งนี้ โปรดขอความช่วยเหลือโดยตรงตามการ์ดสีแดง",
+        "ja": "ご家族は通知をオフにしているため、今回は届いていません。赤いカードの案内に沿って、直接助けを求めてください。",
+    },
+    "text.emergency.result.self.failed": {
+        "zh-TW": "目前沒有成功通知到家人，請直接依紅卡尋求協助。",
+        "en": "I couldn't reach your family just now. Please get help directly as shown on the red card.",
+        "id": "Saat ini keluarga Anda belum berhasil diberi tahu. Silakan langsung cari bantuan sesuai kartu merah.",
+        "vi": "Hiện chưa báo được cho người thân. Hãy tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "ตอนนี้ยังแจ้งครอบครัวไม่สำเร็จ โปรดขอความช่วยเหลือโดยตรงตามการ์ดสีแดง",
+        "ja": "今はご家族に知らせることができませんでした。赤いカードの案内に沿って、直接助けを求めてください。",
+    },
+    "text.emergency.result.member.sent": {
+        "zh-TW": "我已通知可以協助{name}的家人。請留在{name}身邊，並依紅卡立即尋求協助。",
+        "en": "I've notified family members who can help {name}. Please stay with {name} and get help right away as shown on the red card.",
+        "id": "Saya sudah memberi tahu keluarga yang bisa membantu {name}. Tetaplah bersama {name} dan segera cari bantuan sesuai kartu merah.",
+        "vi": "Tôi đã báo cho người thân có thể giúp {name}. Hãy ở bên {name} và tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "ฉันแจ้งครอบครัวที่ช่วย{name}ได้แล้ว โปรดอยู่กับ{name} และขอความช่วยเหลือทันทีตามการ์ดสีแดง",
+        "ja": "{name}を助けられるご家族に知らせました。{name}のそばにいて、赤いカードの案内に沿ってすぐに助けを求めてください。",
+    },
+    "text.emergency.result.member.no_recipient": {
+        "zh-TW": "{name}目前沒有設定可以接收緊急通知的家人，沒有自動通知任何人。請留在{name}身邊，並依紅卡立即尋求協助。",
+        "en": "No one is set up to receive emergency alerts for {name}, so no one was notified. Please stay with {name} and get help right away as shown on the red card.",
+        "id": "Belum ada yang diatur untuk menerima peringatan darurat {name}, jadi tidak ada yang diberi tahu. Tetaplah bersama {name} dan segera cari bantuan sesuai kartu merah.",
+        "vi": "Chưa có ai được thiết lập để nhận cảnh báo khẩn cấp của {name} nên chưa ai được báo. Hãy ở bên {name} và tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "ยังไม่มีผู้ที่ตั้งค่าให้รับการแจ้งเตือนฉุกเฉินของ{name} จึงไม่ได้แจ้งใคร โปรดอยู่กับ{name} และขอความช่วยเหลือทันทีตามการ์ดสีแดง",
+        "ja": "{name}の緊急通知を受け取るよう設定された人がいないため、誰にも知らせていません。{name}のそばにいて、赤いカードの案内に沿ってすぐに助けを求めてください。",
+    },
+    "text.emergency.result.member.disabled": {
+        "zh-TW": "{name}的家人目前關閉了通知，這次沒有收到。請留在{name}身邊，並依紅卡立即尋求協助。",
+        "en": "{name}'s family members have turned off notifications and did not receive this. Please stay with {name} and get help right away as shown on the red card.",
+        "id": "Keluarga {name} menonaktifkan notifikasi dan tidak menerima pesan ini. Tetaplah bersama {name} dan segera cari bantuan sesuai kartu merah.",
+        "vi": "Người thân của {name} đã tắt thông báo nên không nhận được lần này. Hãy ở bên {name} và tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "ครอบครัวของ{name}ปิดการแจ้งเตือนไว้ จึงไม่ได้รับครั้งนี้ โปรดอยู่กับ{name} และขอความช่วยเหลือทันทีตามการ์ดสีแดง",
+        "ja": "{name}のご家族は通知をオフにしているため、今回は届いていません。{name}のそばにいて、赤いカードの案内に沿ってすぐに助けを求めてください。",
+    },
+    "text.emergency.result.member.failed": {
+        "zh-TW": "目前沒有成功通知到{name}的家人。請留在{name}身邊，並依紅卡立即尋求協助。",
+        "en": "I couldn't reach {name}'s family just now. Please stay with {name} and get help right away as shown on the red card.",
+        "id": "Saat ini keluarga {name} belum berhasil diberi tahu. Tetaplah bersama {name} dan segera cari bantuan sesuai kartu merah.",
+        "vi": "Hiện chưa báo được cho người thân của {name}. Hãy ở bên {name} và tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "ตอนนี้ยังแจ้งครอบครัวของ{name}ไม่สำเร็จ โปรดอยู่กับ{name} และขอความช่วยเหลือทันทีตามการ์ดสีแดง",
+        "ja": "今は{name}のご家族に知らせることができませんでした。{name}のそばにいて、赤いカードの案内に沿ってすぐに助けを求めてください。",
+    },
+    "text.emergency.result.member.not_notified": {
+        "zh-TW": "目前沒有自動通知{name}的家人。請留在{name}身邊，並依紅卡立即尋求協助。",
+        "en": "{name}'s family was not notified automatically. Please stay with {name} and get help right away as shown on the red card.",
+        "id": "Keluarga {name} tidak diberi tahu secara otomatis. Tetaplah bersama {name} dan segera cari bantuan sesuai kartu merah.",
+        "vi": "Người thân của {name} chưa được báo tự động. Hãy ở bên {name} và tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "ยังไม่ได้แจ้งครอบครัวของ{name}โดยอัตโนมัติ โปรดอยู่กับ{name} และขอความช่วยเหลือทันทีตามการ์ดสีแดง",
+        "ja": "{name}のご家族には自動で知らせていません。{name}のそばにいて、赤いカードの案内に沿ってすぐに助けを求めてください。",
+    },
+    "text.emergency.result.other.not_notified": {
+        "zh-TW": "目前沒有自動通知家人，請立即撥打 119 並留在對方身邊。",
+        "en": "No family was notified automatically. Call 119 now and stay with the person.",
+        "id": "Tidak ada keluarga yang diberi tahu secara otomatis. Segera hubungi 119 dan tetaplah bersama orang tersebut.",
+        "vi": "Chưa báo tự động cho người thân nào. Hãy gọi 119 ngay và ở bên người đó.",
+        "th": "ยังไม่ได้แจ้งครอบครัวโดยอัตโนมัติ โปรดโทร 119 ทันทีและอยู่กับบุคคลนั้น",
+        "ja": "ご家族には自動で知らせていません。すぐに 119 に電話し、その方のそばにいてください。",
+    },
+    "text.emergency.result.self.duplicate": {
+        "zh-TW": "剛才已通知過可以協助你的家人。請依紅卡立即尋求協助，不要獨自處理。",
+        "en": "Your family members who can help were notified a moment ago. Get help right away as shown on the red card, and don't handle this alone.",
+        "id": "Keluarga yang bisa membantu Anda sudah diberi tahu barusan. Segera cari bantuan sesuai kartu merah, jangan menanganinya sendirian.",
+        "vi": "Người thân có thể giúp bạn vừa được báo lúc nãy. Hãy tìm trợ giúp ngay theo thẻ đỏ, đừng tự xử lý một mình.",
+        "th": "เพิ่งแจ้งครอบครัวที่ช่วยคุณได้ไปเมื่อสักครู่ โปรดขอความช่วยเหลือทันทีตามการ์ดสีแดง และอย่าจัดการเพียงลำพัง",
+        "ja": "助けになれるご家族には、先ほど知らせました。赤いカードの案内に沿ってすぐに助けを求め、ひとりで対応しないでください。",
+    },
+    "text.emergency.result.member.duplicate": {
+        "zh-TW": "剛才已通知過可以協助{name}的家人。請留在{name}身邊，並依紅卡立即尋求協助。",
+        "en": "Family members who can help {name} were notified a moment ago. Please stay with {name} and get help right away as shown on the red card.",
+        "id": "Keluarga yang bisa membantu {name} sudah diberi tahu barusan. Tetaplah bersama {name} dan segera cari bantuan sesuai kartu merah.",
+        "vi": "Người thân có thể giúp {name} vừa được báo lúc nãy. Hãy ở bên {name} và tìm trợ giúp ngay theo hướng dẫn trên thẻ đỏ.",
+        "th": "เพิ่งแจ้งครอบครัวที่ช่วย{name}ได้ไปเมื่อสักครู่ โปรดอยู่กับ{name} และขอความช่วยเหลือทันทีตามการ์ดสีแดง",
+        "ja": "{name}を助けられるご家族には、先ほど知らせました。{name}のそばにいて、赤いカードの案内に沿ってすぐに助けを求めてください。",
+    },
+    "text.emergency.result.member.rate_limited": {
+        "zh-TW": "這段時間已多次通知{name}的家人，這次沒有再通知。請直接撥打 119，並留在{name}身邊。",
+        "en": "{name}'s family has been notified several times recently, so they were not notified again. Call 119 directly and stay with {name}.",
+        "id": "Keluarga {name} sudah beberapa kali diberi tahu belakangan ini, jadi kali ini tidak diberi tahu lagi. Hubungi 119 langsung dan tetaplah bersama {name}.",
+        "vi": "Người thân của {name} đã được báo nhiều lần gần đây nên lần này không báo nữa. Hãy gọi thẳng 119 và ở bên {name}.",
+        "th": "ช่วงนี้แจ้งครอบครัวของ{name}ไปหลายครั้งแล้ว ครั้งนี้จึงไม่ได้แจ้งอีก โปรดโทร 119 โดยตรงและอยู่กับ{name}",
+        "ja": "最近{name}のご家族には何度も知らせているため、今回は知らせていません。直接 119 に電話し、{name}のそばにいてください。",
+    },
+    # 同一句裡發話者自己也有急症：兩人的狀況分開講，不合併成一句。
+    "text.emergency.self_also_urgent": {
+        "zh-TW": "你自己的狀況也可能需要立即處置，打 119 時請一併說明。",
+        "en": "Your own condition may also need immediate care. Mention it when you call 119.",
+        "id": "Kondisi Anda sendiri mungkin juga perlu segera ditangani. Sebutkan juga saat menelepon 119.",
+        "vi": "Tình trạng của chính bạn cũng có thể cần xử lý ngay. Hãy nói rõ khi gọi 119.",
+        "th": "อาการของคุณเองก็อาจต้องได้รับการดูแลทันที โปรดแจ้งด้วยเมื่อโทร 119",
+        "ja": "あなた自身の状態もすぐに対応が必要かもしれません。119 に電話するときに一緒に伝えてください。",
     },
     # --- 緊急狀況卡片 ---------------------------------------------------
     #
@@ -244,13 +376,15 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "โปรดไปห้องฉุกเฉินที่ใกล้ที่สุดโดยเร็วที่สุด หรือโทร 119 เพื่อขอความช่วยเหลือ",
         "ja": "できるだけ早く最寄りの救急外来へ行くか、119 に電話して助けを求めてください。",
     },
+    # 紅卡在知道出事的是誰之前就送出（行動先到），這一句不能假設是發話者本人：
+    # 舊版「請讓對方陪同前往」在「我阿公跌倒」時等於叫孫子找人陪他去急診。
     "emergency.body.3": {
-        "zh-TW": "若身邊有人，請讓對方陪同前往。",
-        "en": "If someone is with you, ask them to go with you.",
-        "id": "Jika ada orang di dekat Anda, mintalah mereka menemani Anda.",
-        "vi": "Nếu có người bên cạnh, hãy nhờ họ đi cùng bạn.",
-        "th": "หากมีคนอยู่ด้วย โปรดขอให้เขาไปเป็นเพื่อน",
-        "ja": "そばに誰かいる場合は、付き添ってもらってください。",
+        "zh-TW": "請不要獨自處理，請身邊的人一起協助。",
+        "en": "Don't handle this alone. Ask anyone nearby to help.",
+        "id": "Jangan menanganinya sendirian. Mintalah orang di sekitar untuk membantu.",
+        "vi": "Đừng xử lý một mình. Hãy nhờ người xung quanh cùng giúp.",
+        "th": "อย่าจัดการเพียงลำพัง โปรดขอให้คนที่อยู่ใกล้ช่วยกัน",
+        "ja": "ひとりで対応せず、近くにいる人に手伝ってもらってください。",
     },
     "emergency.hotline_label": {
         "zh-TW": "可以馬上撥打",
@@ -2330,12 +2464,12 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "ja": "お子さまについてのご相談のため、小児科も候補に含めています。",
     },
     "flex.symptom.pediatric.age": {
-        "zh-TW": "因為你還未滿 {age} 歲，另外列出兒科。",
-        "en": "Because you are under {age}, Pediatrics is also listed.",
-        "id": "Karena usia Anda belum {age} tahun, Poli Anak juga dicantumkan.",
-        "vi": "Vì bạn chưa đủ {age} tuổi, Nhi khoa cũng được liệt kê.",
-        "th": "เนื่องจากคุณอายุต่ำกว่า {age} ปี จึงเพิ่มแผนกกุมารเวชกรรมไว้ด้วย",
-        "ja": "{age}歳未満のため、小児科も候補に含めています。",
+        "zh-TW": "因為看診者未滿 {age} 歲，另外列出兒科。",
+        "en": "Because the patient is under {age}, Pediatrics is also listed.",
+        "id": "Karena pasien berusia di bawah {age} tahun, Poli Anak juga dicantumkan.",
+        "vi": "Vì người bệnh chưa đủ {age} tuổi, Nhi khoa cũng được liệt kê.",
+        "th": "เนื่องจากผู้ป่วยอายุต่ำกว่า {age} ปี จึงเพิ่มแผนกกุมารเวชกรรมไว้ด้วย",
+        "ja": "受診する方が{age}歳未満のため、小児科も候補に含めています。",
     },
     "flex.symptom.nearby.prompt": {
         "zh-TW": "是否需要搜尋附近{department}的醫院或診所？",
@@ -2381,6 +2515,14 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "id": "panduan hanya mencantumkan gejala ini di Poli Anak", "vi": "hướng dẫn chỉ liệt kê triệu chứng này ở Nhi khoa",
         "th": "คู่มือระบุอาการนี้ไว้เฉพาะกุมารเวชกรรม", "ja": "案内ではこの症状が小児科にのみ掲載されています",
     },
+    "flex.symptom.fallback_reason.patient_context": {
+        "zh-TW": "依看診者資料，沒有適合預設顯示的特定科別",
+        "en": "the patient details do not support a specific department by default",
+        "id": "berdasarkan data pasien, tidak ada poli tertentu yang sesuai untuk ditampilkan secara otomatis",
+        "vi": "dựa trên thông tin người bệnh, không có chuyên khoa cụ thể phù hợp để hiển thị mặc định",
+        "th": "จากข้อมูลผู้ป่วย ไม่มีแผนกเฉพาะที่เหมาะจะแสดงเป็นค่าเริ่มต้น",
+        "ja": "受診者の情報から、初期表示に適した特定の診療科を示せません",
+    },
     "flex.symptom.fallback_reason.generic": {
         "zh-TW": "資訊不足", "en": "there was not enough information",
         "id": "informasi belum cukup", "vi": "chưa có đủ thông tin",
@@ -2420,6 +2562,38 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "vi": "Dịch vụ gợi ý chuyên khoa hiện chưa khả dụng. Vui lòng thử lại sau.",
         "th": "บริการแนะนำแผนกยังไม่พร้อมใช้งาน โปรดลองอีกครั้งภายหลัง",
         "ja": "診療科案内サービスを利用できません。しばらくしてからもう一度お試しください。",
+    },
+    "flex.symptom.patient.ambiguous": {
+        "zh-TW": "找到多位符合的家人：{names}。請說完整姓名後，再問一次要看哪一科。",
+        "en": "More than one family member matches: {names}. Please give the full name, then ask again which department to visit.",
+        "id": "Ada beberapa anggota keluarga yang cocok: {names}. Sebutkan nama lengkap, lalu tanyakan lagi poli yang sesuai.",
+        "vi": "Có nhiều người thân phù hợp: {names}. Vui lòng cho biết họ tên đầy đủ, rồi hỏi lại nên khám chuyên khoa nào.",
+        "th": "พบสมาชิกครอบครัวที่ตรงกันหลายคน: {names} โปรดบอกชื่อเต็ม แล้วถามอีกครั้งว่าควรไปแผนกใด",
+        "ja": "該当するご家族が複数います：{names}。フルネームを伝えてから、受診科をもう一度お尋ねください。",
+    },
+    "flex.symptom.patient.conflict": {
+        "zh-TW": "「{query}」與指定的稱謂不一致。請確認姓名或稱謂後，再問一次要看哪一科。",
+        "en": "“{query}” does not match the specified relationship. Please check the name or relationship, then ask again which department to visit.",
+        "id": "“{query}” tidak sesuai dengan hubungan yang disebutkan. Periksa nama atau hubungannya, lalu tanyakan lagi poli yang sesuai.",
+        "vi": "“{query}” không khớp với quan hệ đã nêu. Hãy kiểm tra tên hoặc quan hệ, rồi hỏi lại nên khám chuyên khoa nào.",
+        "th": "“{query}” ไม่ตรงกับความสัมพันธ์ที่ระบุ โปรดตรวจสอบชื่อหรือความสัมพันธ์ แล้วถามอีกครั้งว่าควรไปแผนกใด",
+        "ja": "「{query}」は指定された続柄と一致しません。名前または続柄を確認してから、受診科をもう一度お尋ねください。",
+    },
+    "flex.symptom.patient.multiple": {
+        "zh-TW": "這則訊息提到多位需要看診的人。請先告訴我想先處理哪一位，以及他的症狀。",
+        "en": "This message mentions more than one person who needs care. Please tell me whom to help first and that person's symptoms.",
+        "id": "Pesan ini menyebut lebih dari satu orang yang perlu berobat. Beri tahu saya siapa yang ingin dibantu lebih dahulu dan gejalanya.",
+        "vi": "Tin nhắn này đề cập nhiều người cần đi khám. Vui lòng cho tôi biết muốn hỗ trợ ai trước và triệu chứng của người đó.",
+        "th": "ข้อความนี้กล่าวถึงผู้ที่ต้องเข้ารับการตรวจมากกว่าหนึ่งคน โปรดบอกว่าต้องการให้ช่วยใครก่อนและอาการของคนนั้น",
+        "ja": "このメッセージには受診が必要な方が複数います。まず誰について相談したいか、その方の症状とともに教えてください。",
+    },
+    "flex.symptom.patient.missing": {
+        "zh-TW": "請告訴我是哪一位需要看診，以及他的症狀。",
+        "en": "Please tell me who needs care and that person's symptoms.",
+        "id": "Beri tahu saya siapa yang perlu berobat dan gejalanya.",
+        "vi": "Vui lòng cho tôi biết ai cần đi khám và triệu chứng của người đó.",
+        "th": "โปรดบอกว่าใครต้องเข้ารับการตรวจและมีอาการอะไร",
+        "ja": "受診が必要なのは誰か、その方の症状とともに教えてください。",
     },
     "flex.symptom.sentence_separator": {
         "zh-TW": "。", "en": ". ", "id": ". ",
@@ -5080,6 +5254,7 @@ _SYMPTOM_FALLBACK_REASON_KEYS = {
     "無法對應到已知的症狀條目": "flex.symptom.fallback_reason.unknown",
     "這個症狀可能牽涉多個科別": "flex.symptom.fallback_reason.broad",
     "這個症狀在對照表中只列了兒科": "flex.symptom.fallback_reason.pediatric_only",
+    "依看診者資料，沒有適合預設顯示的特定科別": "flex.symptom.fallback_reason.patient_context",
 }
 
 

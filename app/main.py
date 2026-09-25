@@ -46,6 +46,7 @@ from app.repositories.clinic_transcript_repository import (
 from app.repositories.family_delegation_repository import FamilyDelegationRepository
 from app.repositories.family_rbac_metrics_repository import FamilyRbacMetricsRepository
 from app.repositories.family_role_audit_repository import FamilyRoleAuditRepository
+from app.repositories.emergency_report_repository import EmergencyReportRepository
 from app.repositories.health_alert_claim_repository import HealthAlertClaimRepository
 from app.repositories.health_alert_threshold_repository import (
     HealthAlertThresholdRepository,
@@ -185,6 +186,9 @@ async def lifespan(app: FastAPI):
     await MenstrualRecordRepository.ensure_indexes()
     await StepSessionRepository.ensure_indexes()
     await HealthAlertClaimRepository.ensure_indexes()
+    # 緊急回報稽核：頻率限制靠 (reporter_id／patient_id, reported_at) 計數，60 天
+    # 保存期限靠 expires_at 的 TTL。建不起來時照常通報，只是少了限流與自動刪除。
+    await ensure_indexes_or_log("emergency_reports", EmergencyReportRepository.ensure_indexes)
 
     # 預載院所名稱索引，供判斷使用者說的「診所／醫院／藥局」是專名還是泛稱。
     # 放在啟動而非對話路徑：名稱集合約 512 KB，載入一次即可，

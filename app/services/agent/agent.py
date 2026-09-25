@@ -21,10 +21,7 @@ from app.i18n.messages import (
 )
 from app.services.agent.utils.nodes import AgentNodes
 from app.services.agent.utils.state import State
-from app.services.medical.symptom_classification.urgency import (
-    URGENCY_EMERGENCY,
-    URGENCY_NONE,
-)
+from app.services.medical.symptom_classification.urgency import NOT_URGENT
 from app.services.gemini.shared.parser import content_to_text
 from app.services.rag.fail_messages import (
     RagFailCode,
@@ -501,7 +498,8 @@ def _log_tool_result_summaries(messages: list[Any], *, ms: int, names: list[str]
 
 def _urgency_condition(state: State) -> str:
     """急迫度為 emergency 時繞過 agent，直接走緊急flex message。"""
-    return "emergency" if state.get("urgency") == URGENCY_EMERGENCY else "agent"
+    verdict = state.get("urgency")
+    return "emergency" if verdict is not None and verdict.is_emergency else "agent"
 
 
 class Agent:
@@ -603,8 +601,7 @@ class Agent:
                 {
                     "messages": messages,
                     "allow_rag": False,
-                    "urgency": URGENCY_NONE,
-                    "urgency_display": "",
+                    "urgency": NOT_URGENT,
                     "user_profile": user_profile,
                 },
                 config={"recursion_limit": AGENT_RECURSION_LIMIT},
@@ -686,7 +683,8 @@ class Agent:
         # 新增的其他 Flex 工具。
         #
         # 急迫度短路時 response 是緊急卡的 Flex JSON，理由與上同，一併跳過。
-        is_emergency = result.get("urgency") == URGENCY_EMERGENCY
+        verdict = result.get("urgency") or NOT_URGENT
+        is_emergency = verdict.is_emergency
         rag_tool_content = None
         if not used_tool_names and not is_emergency:
             for msg in reversed(result.get("messages", [])):
@@ -767,8 +765,9 @@ class Agent:
             "response": response,
             "call_request_location": call_request_location,
             "answer_kind": answer_kind,
-            # 供呼叫端決定要不要通報家人。回傳判定與說明而不是「要不要通報」，
-            # 因為「誰該收到」是家庭授權的事，不屬於 agent。
+            # 供呼叫端決定要不要通報家人。回傳判定本身而不是「要不要通報」，
+            # 因為「誰出事、誰該收到」是紅卡送出後的人物解析與家庭授權的事，
+            # 不屬於 agent。
             "emergency": is_emergency,
-            "emergency_reason": result.get("urgency_display") or "",
+            "urgency_verdict": verdict if is_emergency else None,
         }

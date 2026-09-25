@@ -333,11 +333,15 @@ def test_quick_reply_text_is_routable_by_the_existing_nearby_intent():
 _CHILD_FALLBACK = (PEDIATRIC_DEPARTMENT, *FALLBACK_DEPARTMENTS)
 
 
-def _fallback(names=FALLBACK_DEPARTMENTS, pediatric_reason=None):
+def _fallback(
+    names=FALLBACK_DEPARTMENTS,
+    pediatric_reason=None,
+    fallback_reason="無法對應到已知的症狀條目",
+):
     return SymptomTriageResult(
         kind=RESULT_FALLBACK,
         user_input="全身不舒服",
-        fallback_reason="無法對應到已知的症狀條目",
+        fallback_reason=fallback_reason,
         candidates=tuple(_candidate(name, sources=0) for name in names),
         pediatric_reason=pediatric_reason,
     )
@@ -432,7 +436,7 @@ def test_child_fallback_header_leads_with_pediatrics():
 def test_under_age_note_follows_the_age_limit():
     """說明裡的歲數取自年齡界線，界線改了文案跟著改，不會一邊 15 一邊 18。"""
     label, _, _, _, _ = _body_parts(_bubble(_fallback(_CHILD_FALLBACK, PEDIATRIC_REASON_AGE)))
-    assert f"你還未滿 {PEDIATRIC_AGE_LIMIT} 歲" in label["text"]
+    assert f"看診者未滿 {PEDIATRIC_AGE_LIMIT} 歲" in label["text"]
 
 
 def test_pediatric_note_never_appears_on_a_suggestion_card():
@@ -684,6 +688,18 @@ def test_localized_fallback_reason_does_not_leak_chinese(language):
     )
     rendered = json.dumps(payload["contents"], ensure_ascii=False)
     assert "無法對應到已知的症狀條目" not in rendered
+
+
+@pytest.mark.parametrize("language", ["en", "id", "vi", "th", "ja"])
+def test_localized_patient_context_fallback_reason_does_not_leak_chinese(language):
+    reason = "依看診者資料，沒有適合預設顯示的特定科別"
+    payload = build_symptom_department_flex(
+        _fallback(fallback_reason=reason),
+        references=(),
+        language=language,
+    )
+
+    assert reason not in json.dumps(payload["contents"], ensure_ascii=False)
 
 
 @pytest.mark.parametrize("language", ["zh-TW", "en", "id", "vi", "th", "ja"])

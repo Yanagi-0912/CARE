@@ -89,3 +89,18 @@ async def test_try_claim_returns_false_on_second_attempt_within_the_window():
     )
 
     assert granted is False
+
+
+@pytest.mark.asyncio
+async def test_release_deletes_only_that_claim():
+    """緊急通報沒有送到任何人時交還名額，下一次才不會被當成重複擋下。"""
+    collection = _collection()
+    collection.delete_one = AsyncMock()
+
+    await HealthAlertClaimRepository.release(
+        user_id="U_GRANDPA", alert_key="emergency_detected", collection=collection
+    )
+
+    collection.delete_one.assert_awaited_once_with(
+        {"user_id": "U_GRANDPA", "alert_key": "emergency_detected"}
+    )

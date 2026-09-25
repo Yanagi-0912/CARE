@@ -193,6 +193,76 @@ async def test_agent_uses_share_care_flex_json_verbatim_as_final_response(
 
 
 @pytest.mark.asyncio
+async def test_agent_uses_symptom_patient_clarification_verbatim(
+    mock_llm, mock_guardrail_service
+):
+    """人物歧義的固定反問須像科別 Flex 一樣直通，不讓模型改寫。"""
+    from langchain_core.messages import ToolMessage
+
+    agent = Agent(llm=mock_llm, guardrail_service=mock_guardrail_service)
+    clarification = (
+        "找到多位符合的家人：王大明、林美玲。"
+        "請說完整姓名後，再問一次要看哪一科。"
+    )
+    agent._graph = MagicMock()
+    agent._graph.ainvoke = AsyncMock(
+        return_value={
+            "messages": [
+                HumanMessage(content="我父親頭痛要看哪科"),
+                ToolMessage(
+                    content=clarification,
+                    tool_call_id="1",
+                    name="suggest_department_for_symptom",
+                ),
+                AIMessage(content="請問是哪一位家人呢？"),
+            ]
+        }
+    )
+
+    response = await agent.invoke(
+        user_input="我父親頭痛要看哪科",
+        messages=None,
+    )
+
+    assert response["response"] == clarification
+
+
+@pytest.mark.asyncio
+async def test_agent_uses_multiple_patient_clarification_verbatim(
+    mock_llm, mock_guardrail_service
+):
+    """多人 case 的固定反問也是科別工具成品，不得交給模型自行取捨人物。"""
+    from langchain_core.messages import ToolMessage
+
+    agent = Agent(llm=mock_llm, guardrail_service=mock_guardrail_service)
+    clarification = (
+        "這則訊息提到多位需要看診的人。"
+        "請先告訴我想先處理哪一位，以及他的症狀。"
+    )
+    agent._graph = MagicMock()
+    agent._graph.ainvoke = AsyncMock(
+        return_value={
+            "messages": [
+                HumanMessage(content="我老婆肚子痛，我也頭痛，我們要看哪一科"),
+                ToolMessage(
+                    content=clarification,
+                    tool_call_id="1",
+                    name="suggest_department_for_symptom",
+                ),
+                AIMessage(content="你們可以一起看家醫科。"),
+            ]
+        }
+    )
+
+    response = await agent.invoke(
+        user_input="我老婆肚子痛，我也頭痛，我們要看哪一科",
+        messages=None,
+    )
+
+    assert response["response"] == clarification
+
+
+@pytest.mark.asyncio
 async def test_agent_keeps_flex_json_intact_when_rag_tool_also_ran(
     mock_llm, mock_guardrail_service
 ):

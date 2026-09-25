@@ -16,10 +16,15 @@ from linebot.v3.webhooks import (
     UserSource,
 )
 
+from app.services.medical.symptom_classification.urgency import (
+    URGENCY_EMERGENCY,
+    UrgencyVerdict,
+)
 from app.core.user_language import SUPPORTED_LANGUAGES
 from app.i18n.messages import _MESSAGES
 from app.services.line_messaging.dispatcher.dispatcher import LineEventDispatcher
 from app.services.line_messaging.handler.message_handler import LineMessageHandler
+from app.services.safety.emergency_alert_service import EmergencyFamilyAlertService
 from app.services.lost.lost_classifier import LostIntentDetector
 from app.services.lost.lost_location_service import LostLocationService
 from resources.flex_messages.lost_location_flex_message import (
@@ -169,14 +174,26 @@ class FakeUrgency:
             return UrgencyVerdict(level=URGENCY_EMERGENCY, display="叫不醒、身體冰冷")
         return NOT_URGENT
 
+    async def identify_affected(self, verdict, text, *, language="zh-TW", earlier=()):
+        # 紅卡之後的人物辨識。這裡測的是走失流程仍會補紅卡與通報，人物一律
+        # 歸給長輩本人；「是誰出事」的解析另有測試（test_message_handler）。
+        from dataclasses import replace
 
-class FakeEmergencyAlert:
+        from app.services.medical.symptom_classification.urgency import AffectedPerson
+
+        return replace(verdict, affected=(AffectedPerson(kind="self", event="叫不醒"),))
+
+
+class FakeEmergencyAlert(EmergencyFamilyAlertService):
+    """選病人用正式邏輯（patients_to_notify），只把推播換成記錄。"""
+
     def __init__(self):
+        super().__init__(replier=None)
         self.calls = []
 
-    async def notify(self, user_id, reason, patient_words=""):
+    async def notify(self, user_id, reason, patient_words="", *, reporter_id=""):
         self.calls.append((user_id, reason, patient_words))
-        return True
+        return "sent"
 
 
 def _setup(classifier, *, urgency=None, agent_response=None):
@@ -280,7 +297,7 @@ async def test_unsure_classifier_still_answers_and_offers_the_lost_button():
 async def test_unsure_message_that_turns_out_to_be_an_emergency_gets_no_lost_button():
     dispatcher, handler, service, agent, replier, _ = _setup(
         FakeClassifier(0.5),
-        agent_response={"response": "{}", "emergency": True, "emergency_reason": "叫不醒"},
+        agent_response={"response": "{}", "emergency": True, "urgency_verdict": UrgencyVerdict(level=URGENCY_EMERGENCY, display="叫不醒")},
     )
 
     await dispatcher.handle(_text("阮後生叫袂醒"))

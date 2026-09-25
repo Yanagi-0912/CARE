@@ -2,6 +2,12 @@ import json
 
 import pytest
 
+from app.core.request_context import reset_line_user_id, set_line_user_id
+from app.services.family.patient_context import (
+    PatientCandidate,
+    PatientContext,
+    ValueSource,
+)
 from app.services.medical.symptom_classification.symptom_department_service import (
     PEDIATRIC_REASON_AGE,
     PEDIATRIC_REASON_MENTIONED_CHILD,
@@ -22,18 +28,48 @@ class StubService:
     def __init__(self, result):
         self._result = result
         self.calls: list[str] = []
+        self.contexts: list[PatientContext] = []
+        self.requested_departments: list[str] = []
 
-    async def suggest(self, text):
+    async def suggest(self, text, *, patient_context, requested_department=""):
         self.calls.append(text)
+        self.contexts.append(patient_context)
+        self.requested_departments.append(requested_department)
         return self._result
+
+
+class StubPatientContextService:
+    def __init__(self, context: PatientContext | None = None):
+        self.context = context or PatientContext(
+            operator_id="U_OPERATOR",
+            patient_kind="self",
+            patient_id="U_OPERATOR",
+        )
+        self.calls: list[tuple[str, dict]] = []
+
+    async def resolve(self, operator_id, **kwargs):
+        self.calls.append((operator_id, kwargs))
+        return self.context
+
+
+def _configure(service, patient_context_service=None):
+    configure_symptom_tool(
+        service,
+        patient_context_service or StubPatientContextService(),
+    )
 
 
 @pytest.fixture(autouse=True)
 def reset_tool():
     """每個測試獨立設定注入狀態，結束後還原，避免影響其他測試模組。"""
-    original = symptom_tools._symptom_department_service
-    yield
-    configure_symptom_tool(original)
+    original_service = symptom_tools._symptom_department_service
+    original_context_service = symptom_tools._patient_context_service
+    token = set_line_user_id("U_OPERATOR")
+    try:
+        yield
+    finally:
+        reset_line_user_id(token)
+        configure_symptom_tool(original_service, original_context_service)
 
 
 def _suggestion(*names):
@@ -48,6 +84,10 @@ def _suggestion(*names):
             for name in names
         ),
     )
+
+
+def _case(symptom: str, **kwargs) -> dict:
+    return {"cases": [{"symptom": symptom, **kwargs}]}
 
 
 # ---------------------------------------------------------------- 註冊
@@ -68,9 +108,9 @@ def test_tool_is_always_registered(include_rag_tool):
 
 @pytest.mark.asyncio
 async def test_returns_flex_envelope():
-    configure_symptom_tool(StubService(_suggestion("內科", "兒科")))
+    _configure(StubService(_suggestion("內科", "兒科")))
     payload = json.loads(
-        await suggest_department_for_symptom.ainvoke({"symptom": "肚子好痛"})
+        await suggest_department_for_symptom.ainvoke(_case("肚子好痛"))
     )
     assert payload["type"] == "flex"
     assert payload["contents"]["type"] == "bubble"
@@ -80,20 +120,300 @@ async def test_returns_flex_envelope():
 async def test_passes_symptom_through_untouched():
     """工具不得自行改寫使用者的說法，正規化是服務層的事。"""
     stub = StubService(_suggestion("內科"))
-    configure_symptom_tool(stub)
-    await suggest_department_for_symptom.ainvoke({"symptom": "肚子好痛"})
+    _configure(stub)
+    await suggest_department_for_symptom.ainvoke(_case("肚子好痛"))
     assert stub.calls == ["肚子好痛"]
+
+
+@pytest.mark.asyncio
+async def test_builds_patient_context_from_structured_tool_arguments():
+    context = PatientContext(
+        operator_id="U_OPERATOR",
+        patient_kind="member",
+        patient_id="U_CHILD",
+        display_label="王小明",
+        relationship="child",
+        age=5,
+        age_source=ValueSource.MESSAGE,
+        gender="male",
+        gender_source=ValueSource.MESSAGE,
+    )
+    contexts = StubPatientContextService(context)
+    departments = StubService(_suggestion("兒科"))
+    _configure(departments, contexts)
+
+    await suggest_department_for_symptom.ainvoke(
+        _case("一直嘔吐", relationship="child", age=5, gender="male")
+    )
+
+    assert contexts.calls == [
+        (
+            "U_OPERATOR",
+            {
+                "person": "",
+                "relationship": "child",
+                "message_age": 5,
+                "message_gender": "male",
+            },
+        )
+    ]
+    assert departments.calls == ["一直嘔吐"]
+    assert departments.contexts == [context]
+    assert departments.requested_departments == [""]
+
+
+@pytest.mark.asyncio
+async def test_explicit_department_is_forwarded_separately_from_symptom_text():
+    departments = StubService(_suggestion("婦產科"))
+    _configure(departments)
+
+    await suggest_department_for_symptom.ainvoke(
+        _case("肚子痛", requested_department="婦產科")
+    )
+
+    assert departments.calls == ["肚子痛"]
+    assert departments.requested_departments == ["婦產科"]
+
+
+@pytest.mark.asyncio
+async def test_multiple_patient_cases_ask_which_person_first_without_any_lookup():
+    contexts = StubPatientContextService()
+    departments = StubService(_suggestion("內科"))
+    _configure(departments, contexts)
+
+    reply = await suggest_department_for_symptom.ainvoke(
+        {
+            "cases": [
+                {"symptom": "肚子痛", "relationship": "spouse"},
+                {"symptom": "頭痛"},
+            ]
+        }
+    )
+
+    assert reply == (
+        "這則訊息提到多位需要看診的人。"
+        "請先告訴我想先處理哪一位，以及他的症狀。"
+    )
+    assert contexts.calls == []
+    assert departments.calls == []
+
+
+@pytest.mark.asyncio
+async def test_empty_patient_cases_ask_for_person_and_symptom_without_lookup():
+    contexts = StubPatientContextService()
+    departments = StubService(_suggestion("內科"))
+    _configure(departments, contexts)
+
+    reply = await suggest_department_for_symptom.ainvoke({"cases": []})
+
+    assert reply == "請告訴我是哪一位需要看診，以及他的症狀。"
+    assert contexts.calls == []
+    assert departments.calls == []
+
+
+@pytest.mark.parametrize(
+    ("language", "expected"),
+    [
+        ("en", "more than one person"),
+        ("id", "lebih dari satu orang"),
+        ("vi", "nhiều người"),
+        ("th", "มากกว่าหนึ่งคน"),
+        ("ja", "複数います"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_multiple_patient_reply_uses_request_language(language, expected):
+    from app.core.user_language import reset_request_language, set_request_language
+
+    contexts = StubPatientContextService()
+    departments = StubService(_suggestion("內科"))
+    _configure(departments, contexts)
+    token = set_request_language(language)
+    try:
+        reply = await suggest_department_for_symptom.ainvoke(
+            {"cases": [{"symptom": "x"}, {"symptom": "y"}]}
+        )
+    finally:
+        reset_request_language(token)
+
+    assert expected in reply
+    assert contexts.calls == []
+    assert departments.calls == []
+
+
+@pytest.mark.asyncio
+async def test_ambiguous_patient_asks_for_full_name_without_querying_symptom_table():
+    context = PatientContext(
+        operator_id="U_OPERATOR",
+        patient_kind="ambiguous",
+        display_label="parent",
+        relationship="parent",
+        candidates=(
+            PatientCandidate("U_FATHER", "王大明", "parent"),
+            PatientCandidate("U_MOTHER", "林美玲", "parent"),
+        ),
+    )
+    contexts = StubPatientContextService(context)
+    departments = StubService(_suggestion("內科"))
+    _configure(departments, contexts)
+
+    reply = await suggest_department_for_symptom.ainvoke(
+        _case("頭痛", relationship="parent")
+    )
+
+    assert reply == (
+        "找到多位符合的家人：王大明、林美玲。"
+        "請說完整姓名後，再問一次要看哪一科。"
+    )
+    assert departments.calls == []
+
+
+@pytest.mark.asyncio
+async def test_conflicting_name_and_relationship_asks_for_correction_without_lookup():
+    context = PatientContext(
+        operator_id="U_OPERATOR",
+        patient_kind="conflict",
+        display_label="王美玲",
+        relationship="parent",
+        candidates=(PatientCandidate("U_SPOUSE", "王美玲", "spouse"),),
+    )
+    departments = StubService(_suggestion("內科"))
+    _configure(departments, StubPatientContextService(context))
+
+    reply = await suggest_department_for_symptom.ainvoke(
+        _case("頭痛", person="王美玲", relationship="parent")
+    )
+
+    assert reply == (
+        "「王美玲」與指定的稱謂不一致。"
+        "請確認姓名或稱謂後，再問一次要看哪一科。"
+    )
+    assert departments.calls == []
+
+
+@pytest.mark.asyncio
+async def test_unlinked_patient_still_gets_general_advice_from_message_values():
+    context = PatientContext(
+        operator_id="U_OPERATOR",
+        patient_kind="not_found",
+        display_label="隔壁阿伯",
+        age=70,
+        age_source=ValueSource.MESSAGE,
+        gender="male",
+        gender_source=ValueSource.MESSAGE,
+    )
+    departments = StubService(_suggestion("神經內科"))
+    _configure(departments, StubPatientContextService(context))
+
+    payload = json.loads(
+        await suggest_department_for_symptom.ainvoke(
+            _case("頭痛", person="隔壁阿伯", age=70, gender="male")
+        )
+    )
+
+    assert payload["type"] == "flex"
+    assert departments.calls == ["頭痛"]
+    assert departments.contexts == [context]
+
+
+@pytest.mark.parametrize(
+    ("language", "expected"),
+    [
+        ("en", "More than one family member matches: A, B."),
+        ("id", "Ada beberapa anggota keluarga yang cocok: A, B."),
+        ("vi", "Có nhiều người thân phù hợp: A, B."),
+        ("th", "พบสมาชิกครอบครัวที่ตรงกันหลายคน: A, B"),
+        ("ja", "該当するご家族が複数います：A、B。"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_ambiguous_patient_reply_uses_request_language(language, expected):
+    from app.core.user_language import reset_request_language, set_request_language
+
+    context = PatientContext(
+        operator_id="U_OPERATOR",
+        patient_kind="ambiguous",
+        candidates=(
+            PatientCandidate("U_A", "A", "parent"),
+            PatientCandidate("U_B", "B", "parent"),
+        ),
+    )
+    departments = StubService(_suggestion("內科"))
+    _configure(departments, StubPatientContextService(context))
+    token = set_request_language(language)
+    try:
+        reply = await suggest_department_for_symptom.ainvoke(_case("頭痛"))
+    finally:
+        reset_request_language(token)
+
+    assert expected in reply
+    assert departments.calls == []
+
+
+def test_tool_schema_exposes_only_structured_patient_clues():
+    schema = suggest_department_for_symptom.args_schema.model_json_schema()
+
+    assert set(schema["properties"]) == {"cases"}
+    assert schema["required"] == ["cases"]
+    case_schema = schema["$defs"]["SymptomPatientCase"]
+    assert set(case_schema["properties"]) == {
+        "symptom",
+        "person",
+        "relationship",
+        "age",
+        "gender",
+        "requested_department",
+    }
+    assert case_schema["required"] == ["symptom"]
+    relationship_schema = case_schema["properties"]["relationship"]
+    relationship_enum = next(
+        option["enum"]
+        for option in relationship_schema["anyOf"]
+        if "enum" in option
+    )
+    assert set(relationship_enum) == {
+        "parent",
+        "child",
+        "spouse",
+        "sibling",
+        "grandparent",
+        "grandchild",
+    }
+    assert "" not in relationship_enum
+
+
+def test_gemini_schema_uses_an_optional_non_empty_relationship_enum():
+    """Gemini 會先驗證整包工具；巢狀 enum 含空字串時連寒暄都會回 400。"""
+    from langchain_google_genai._function_utils import (
+        convert_to_genai_function_declarations,
+    )
+
+    declaration = convert_to_genai_function_declarations(
+        [suggest_department_for_symptom]
+    )[0].function_declarations[0]
+    case_schema = declaration.parameters.properties["cases"].items
+    relationship_schema = case_schema.properties["relationship"]
+
+    assert relationship_schema.enum == [
+        "parent",
+        "child",
+        "spouse",
+        "sibling",
+        "grandparent",
+        "grandchild",
+    ]
+    assert "relationship" not in case_schema.required
 
 
 @pytest.mark.asyncio
 async def test_request_language_context_localizes_the_flex_card():
     from app.core.user_language import reset_request_language, set_request_language
 
-    configure_symptom_tool(StubService(_suggestion("內科")))
+    _configure(StubService(_suggestion("內科")))
     token = set_request_language("en")
     try:
         payload = json.loads(
-            await suggest_department_for_symptom.ainvoke({"symptom": "肚子好痛"})
+            await suggest_department_for_symptom.ainvoke(_case("肚子好痛"))
         )
     finally:
         reset_request_language(token)
@@ -106,9 +426,34 @@ async def test_request_language_context_localizes_the_flex_card():
 
 @pytest.mark.asyncio
 async def test_uninitialized_service_returns_message_not_exception():
-    configure_symptom_tool(None)
-    reply = await suggest_department_for_symptom.ainvoke({"symptom": "肚子痛"})
+    _configure(None)
+    reply = await suggest_department_for_symptom.ainvoke(_case("肚子痛"))
     assert "未初始化" in reply
+
+
+@pytest.mark.asyncio
+async def test_missing_patient_context_service_returns_message_not_exception():
+    configure_symptom_tool(StubService(_suggestion("內科")), None)
+
+    reply = await suggest_department_for_symptom.ainvoke(_case("肚子痛"))
+
+    assert "未初始化" in reply
+
+
+@pytest.mark.asyncio
+async def test_missing_operator_id_does_not_query_patient_or_department():
+    contexts = StubPatientContextService()
+    departments = StubService(_suggestion("內科"))
+    _configure(departments, contexts)
+    token = set_line_user_id("")
+    try:
+        reply = await suggest_department_for_symptom.ainvoke(_case("肚子痛"))
+    finally:
+        reset_line_user_id(token)
+
+    assert "未初始化" in reply
+    assert contexts.calls == []
+    assert departments.calls == []
 
 
 # ---------------------------------------------------------------- 純文字 fallback
@@ -181,7 +526,7 @@ def _fallback(*names, pediatric_reason=None):
     ("pediatric_reason", "note"),
     [
         (PEDIATRIC_REASON_MENTIONED_CHILD, "因為是幫孩子詢問，另外列出兒科。"),
-        (PEDIATRIC_REASON_AGE, "因為你還未滿 15 歲，另外列出兒科。"),
+        (PEDIATRIC_REASON_AGE, "因為看診者未滿 15 歲，另外列出兒科。"),
     ],
 )
 def test_plain_reply_explains_pediatrics_in_child_fallback(pediatric_reason, note):

@@ -21,6 +21,7 @@ from app.repositories.family_delegation_repository import (
 from app.repositories.family_rbac_metrics_repository import (
     FamilyRbacMetricsRepository,
 )
+from app.repositories.emergency_report_repository import EmergencyReportRepository
 from app.repositories.family_role_audit_repository import (
     FamilyRoleAuditRepository,
 )
@@ -60,6 +61,7 @@ from app.services.family.family_delegation_service import (
 )
 from app.services.family.family_role_service import FamilyRoleService
 from app.services.family.family_tree_service import FamilyTreeService
+from app.services.family.patient_context_service import PatientContextService
 from app.services.health.health_alert_service import HealthAlertService
 from app.services.health.health_alert_threshold_service import (
     HealthAlertThresholdService,
@@ -651,7 +653,6 @@ _symptom_department_service = SymptomDepartmentService(
         gemini_service=_gemini_service,
     ),
 )
-configure_symptom_tool(_symptom_department_service)
 
 # 急迫度判斷。刻意與科別建議分開建構：它擋在整個 agent 之前，不屬於任何工具，
 # 也不依賴對照表——對照表壞掉時科別建議可以不上線，安全檢查不行。
@@ -769,6 +770,13 @@ _family_authorization_service = FamilyAuthorizationService(
     metrics_repository=FamilyRbacMetricsRepository,
 )
 
+_patient_context_service = PatientContextService(
+    family_tree_repository=FamilyTreeRepository,
+    authorization_service=_family_authorization_service,
+    user_profile_service=_user_profile_service,
+)
+configure_symptom_tool(_symptom_department_service, _patient_context_service)
+
 # 查服藥狀況（LINE 裡問「我今天要吃什麼藥」「媽媽吃藥了沒」）。查家人時經過同一個
 # 授權決策點；repository 同樣直接傳類別本身。
 _medication_status_service = MedicationStatusService(
@@ -861,6 +869,9 @@ _emergency_family_alert_service = EmergencyFamilyAlertService(
     replier=_line_replier,
     authorization_service=_family_authorization_service,
     user_profile_service=_user_profile_service,
+    # 稽核（60 天）兼頻率計數；去重借用健康提醒的節流 collection。
+    report_repository=EmergencyReportRepository,
+    claim_repository=HealthAlertClaimRepository,
 )
 # 走失求救與即時位置分享。收件人同樣走 NOTIFICATION_POLICY（elder_lost）；沒有
 # 開關，理由同緊急通報。LIFF_ID 沒設時卡片不放定位頁按鈕，只剩「傳送一次位置」。
@@ -892,6 +903,7 @@ _message_handler = LineMessageHandler(
     lost_location_service=_lost_location_service,
     urgency_classifier=_urgency_classifier,
     clinic_recording_flow=_clinic_recording_flow,
+    patient_context_service=_patient_context_service,
 )
 _media_handler = LineMediaHandler(
     agent=_care_agent,
@@ -905,6 +917,7 @@ _media_handler = LineMediaHandler(
     lost_location_service=_lost_location_service,
     urgency_classifier=_urgency_classifier,
     clinic_recording_flow=_clinic_recording_flow,
+    patient_context_service=_patient_context_service,
 )
 _location_handler = LineLocationHandler(
     agent=_care_agent,

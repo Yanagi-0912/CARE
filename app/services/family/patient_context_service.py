@@ -44,7 +44,9 @@ class PatientContextService:
         """
         del external_patient_id
 
-        resolution = await self._resolve(operator_id, person, relationship)
+        resolution = await self.resolve_person(
+            operator_id, person=person, relationship=relationship
+        )
         profile = await self._authorized_profile(operator_id, resolution)
         return build_patient_context(
             operator_id=operator_id,
@@ -55,12 +57,18 @@ class PatientContextService:
             profile_gender=(profile or {}).get("gender"),
         )
 
-    async def _resolve(
+    async def resolve_person(
         self,
         operator_id: str,
+        *,
         person: str,
         relationship: str,
     ) -> PersonResolution:
+        """只把說法對到家庭名單中的一位，不讀任何健康資料、不做授權。
+
+        緊急流程用它決定稱謂與通知對象：命中家人不等於能讀他的 profile。
+        名單讀不到時退回「無名單」的解析結果（不會是 member），不猜。
+        """
         without_members = resolve_person((), person=person, relationship=relationship)
         if without_members.kind == "self":
             return without_members

@@ -89,6 +89,15 @@ class MongoDBManager:
         return cls.get_database()["family_delegations"]
 
     @classmethod
+    def get_emergency_reports_collection(cls):
+        """
+        取得 emergency_reports collection（緊急回報的稽核紀錄，僅可追加，60 天後過期）
+
+        一筆是一位受影響者：誰回報、通知了誰、結果如何。同時是頻率限制的計數來源。
+        """
+        return cls.get_database()["emergency_reports"]
+
+    @classmethod
     def get_family_role_audit_collection(cls):
         """
         取得 family_role_audit collection（角色與委任變更的稽核紀錄）

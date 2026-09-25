@@ -485,3 +485,265 @@ def test_default_timeout_covers_the_measured_llm_latency():
     )
 
     assert DEFAULT_TIMEOUT_SECONDS >= 8.0
+
+
+# --- 受影響人物（10.13）--------------------------------------------------------
+#
+# 判斷器只說「訊息提到誰」，不查族譜；人物在判定之後另問，永遠不改 level。
+
+
+from app.services.medical.symptom_classification.urgency import (  # noqa: E402
+    _AFFECTED_SCHEMA,
+    _PROMPT_TEMPLATE,
+    _SCHEMA,
+    AffectedPerson,
+)
+
+_EMERGENCY = UrgencyVerdict(level=URGENCY_EMERGENCY, display="你提到有人失去意識")
+
+
+def _person(relation, label="", event="", urgent=True):
+    return {"relation": relation, "label": label, "event": event, "urgent": urgent}
+
+
+async def _identify(text, *people, verdict=_EMERGENCY, **kwargs):
+    classifier = _classifier({"affected": list(people)}, **kwargs)
+    return await classifier.identify_affected(verdict, text)
+
+
+@pytest.mark.asyncio
+async def test_self_emergency_is_a_self_report():
+    verdict = await _identify("我昏倒了", _person("self", "我", "昏倒"))
+    assert verdict.affected == (AffectedPerson(kind="self", event="昏倒"),)
+    assert verdict.affected[0].is_self_report is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("text", "event"), [("我阿公跌倒", "跌倒"), ("我阿公昏迷", "昏迷")])
+async def test_named_relative_keeps_label_and_relationship(text, event):
+    verdict = await _identify(text, _person("grandparent", "阿公", event))
+    (grandpa,) = verdict.affected
+    assert grandpa == AffectedPerson(
+        kind="family", label="阿公", relationship="grandparent", event=event
+    )
+    # 孫子代為回報，不是阿公自己說的。
+    assert grandpa.is_self_report is False
+
+
+@pytest.mark.asyncio
+async def test_relative_without_a_known_relationship_stays_unresolved_family():
+    """「我舅舅」是家人但不在六種關係內：保留稱呼，交給下游解析，不猜關係。"""
+    verdict = await _identify("我舅舅叫不醒", _person("other_family", "舅舅", "叫不醒"))
+    assert verdict.affected == (
+        AffectedPerson(kind="family", label="舅舅", relationship=None, event="叫不醒"),
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("text", "label"), [("路人跌倒了", "路人"), ("我朋友想自殺", "朋友")])
+async def test_unlinked_people_are_third_parties(text, label):
+    verdict = await _identify(text, _person("not_family", label, "緊急狀況"))
+    (person,) = verdict.affected
+    assert person.kind == "third_party"
+    assert person.label == label
+    assert person.relationship is None
+
+
+@pytest.mark.asyncio
+async def test_two_people_in_one_message_stay_separate_and_ordered():
+    verdict = await _identify(
+        "我阿公跌倒叫不醒，我自己也胸口痛",
+        _person("grandparent", "阿公", "跌倒叫不醒"),
+        _person("self", "", "胸口痛", urgent=False),
+    )
+    grandpa, me = verdict.affected
+    assert (grandpa.kind, grandpa.event, grandpa.urgent) == ("family", "跌倒叫不醒", True)
+    assert (me.kind, me.event, me.urgent) == ("self", "胸口痛", False)
+
+
+@pytest.mark.asyncio
+async def test_unknown_or_invented_relation_is_not_assumed_to_be_self():
+    verdict = await _identify(
+        "有人昏倒", _person("unknown", "", "昏倒"), _person("boss", "老闆", "昏倒")
+    )
+    assert [p.kind for p in verdict.affected] == ["unknown", "unknown"]
+
+
+@pytest.mark.asyncio
+async def test_missing_urgent_flag_counts_as_urgent():
+    verdict = await _identify("我阿公昏迷", {"relation": "grandparent", "label": "阿公"})
+    assert verdict.affected[0].urgent is True
+
+
+@pytest.mark.asyncio
+async def test_lists_and_text_fields_are_capped():
+    many = [_person("not_family", "路" * 50, "倒" * 80) for _ in range(9)]
+    verdict = await _identify("好多人倒下", *many)
+    assert len(verdict.affected) == 4
+    assert all(len(p.label) <= 20 and len(p.event) <= 30 for p in verdict.affected)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload", [None, "阿公", 3, {"affected": "阿公"}, {"affected": [None, 5]}])
+async def test_malformed_payload_keeps_the_verdict(payload):
+    verdict = await _classifier(payload).identify_affected(_EMERGENCY, "我阿公昏迷")
+    assert verdict == _EMERGENCY
+    assert verdict.affected == ()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kwargs", [{"exc": RuntimeError("gemini down")}, {"delay": 0.2, "timeout": 0.01}]
+)
+async def test_failure_or_timeout_keeps_the_emergency_without_people(kwargs):
+    verdict = await _identify("我阿公昏迷", _person("grandparent", "阿公"), **kwargs)
+    assert verdict.is_emergency is True
+    assert verdict.affected == ()
+
+
+@pytest.mark.asyncio
+async def test_not_urgent_verdict_never_asks_for_people():
+    calls = []
+
+    async def invoke(prompt):
+        calls.append(prompt)
+        return {"affected": [_person("grandparent", "阿公")]}
+
+    classifier = UrgencyClassifier(invoke=invoke)
+    assert await classifier.identify_affected(NOT_URGENT, "老人跌倒後要注意什麼") is NOT_URGENT
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_identifying_people_never_changes_level_or_display():
+    verdict = await _identify("我阿公昏迷", _person("grandparent", "阿公", "昏迷"))
+    assert (verdict.level, verdict.display) == (_EMERGENCY.level, _EMERGENCY.display)
+    assert verdict.hotlines == _EMERGENCY.hotlines
+
+
+@pytest.mark.asyncio
+async def test_classify_itself_carries_no_people():
+    """判定那一次呼叫不問人物：人物欄位不能擾動判定（見模組註解）。"""
+    payload = _emergency_payload()
+    payload["affected"] = [_person("grandparent", "阿公")]
+    verdict = await _classifier(payload).classify("我阿公昏迷")
+    assert verdict.is_emergency is True
+    assert verdict.affected == ()
+
+
+@pytest.mark.asyncio
+async def test_people_prompt_wraps_user_text_and_uses_the_language():
+    prompts = []
+
+    async def invoke(prompt):
+        prompts.append(prompt)
+        return {"affected": []}
+
+    await UrgencyClassifier(invoke=invoke).identify_affected(
+        _EMERGENCY, "My grandpa collapsed", language="English"
+    )
+    (prompt,) = prompts
+    assert "My grandpa collapsed" in prompt
+    assert "English" in prompt
+    assert "不要重新判斷是否緊急" in prompt
+
+
+def test_default_verdict_has_no_people():
+    assert UrgencyVerdict(level=URGENCY_EMERGENCY).affected == ()
+    assert NOT_URGENT.affected == ()
+
+
+def test_decision_schema_and_prompt_do_not_mention_people():
+    assert set(_SCHEMA["properties"]) == {"happening_now", "needs_immediate_care", "display"}
+    assert "affected" not in _PROMPT_TEMPLATE
+
+
+def test_people_schema_relation_enum_has_no_empty_value():
+    """Gemini 不接受空字串 enum（2026-09-24 科別工具就是這樣被整批 400 退回）。"""
+    relation = _AFFECTED_SCHEMA["properties"]["affected"]["items"]["properties"]["relation"]
+    assert "" not in relation["enum"]
+    assert {"self", "grandparent", "other_family", "not_family", "unknown"} <= set(
+        relation["enum"]
+    )
+
+
+# --- 前文與 someone_else（2026-09-25 整合測試 A1 的修正）-----------------------
+
+
+def _capturing(people=()):
+    prompts = []
+
+    async def invoke(prompt):
+        prompts.append(prompt)
+        return {"affected": list(people)}
+
+    return UrgencyClassifier(invoke=invoke), prompts
+
+
+@pytest.mark.asyncio
+async def test_earlier_messages_reach_the_prompt_before_this_message():
+    classifier, prompts = _capturing()
+
+    await classifier.identify_affected(
+        _EMERGENCY, "他現在叫不醒", earlier=("我阿公剛剛跌倒",)
+    )
+
+    (prompt,) = prompts
+    assert "我阿公剛剛跌倒" in prompt
+    # 這次的訊息是最後一段資料：前文不能被當成這次的事件。
+    last_block = prompt.rsplit("<<<DATA_BEGIN>>>", 1)[1]
+    assert "他現在叫不醒" in last_block and "我阿公剛剛跌倒" not in last_block
+
+
+@pytest.mark.asyncio
+async def test_only_the_last_three_earlier_messages_are_used():
+    classifier, prompts = _capturing()
+
+    await classifier.identify_affected(
+        _EMERGENCY, "他叫不醒", earlier=("第一則", "第二則", "第三則", "第四則", "")
+    )
+
+    (prompt,) = prompts
+    assert "第一則" not in prompt
+    assert all(m in prompt for m in ("第二則", "第三則", "第四則"))
+
+
+@pytest.mark.asyncio
+async def test_no_earlier_messages_is_stated_plainly():
+    classifier, prompts = _capturing()
+    await classifier.identify_affected(_EMERGENCY, "他叫不醒")
+    assert "前文：\n（無）" in prompts[0]
+
+
+@pytest.mark.asyncio
+async def test_prompt_says_earlier_events_are_not_this_event():
+    classifier, prompts = _capturing()
+    await classifier.identify_affected(_EMERGENCY, "他叫不醒", earlier=("我阿公昨天跌倒",))
+    assert "前文裡的事件不是這次的事件" in prompts[0]
+
+
+@pytest.mark.asyncio
+async def test_someone_else_is_not_the_reporter():
+    """確定不是發話者、但對不到是誰：當第三人處理，不通知任何家庭。"""
+    classifier, _ = _capturing([_person("someone_else", "他", "叫不醒")])
+    verdict = await classifier.identify_affected(_EMERGENCY, "他現在叫不醒")
+    assert verdict.affected == (AffectedPerson(kind="third_party", label="他", event="叫不醒"),)
+
+
+def test_schema_offers_someone_else_apart_from_unknown():
+    relation = _AFFECTED_SCHEMA["properties"]["affected"]["items"]["properties"]["relation"]
+    assert {"someone_else", "unknown"} <= set(relation["enum"])
+
+
+@pytest.mark.asyncio
+async def test_no_one_flagged_urgent_still_counts_everyone_as_urgent():
+    """前一步已判定緊急；這步全標不緊急時不能讓家人通報消失（自傷最常見）。"""
+    verdict = await _identify("我不想活了", _person("self", "", "有輕生念頭", urgent=False))
+    assert verdict.affected == (AffectedPerson(kind="self", event="有輕生念頭"),)
+
+
+@pytest.mark.asyncio
+async def test_prompt_marks_self_harm_as_urgent():
+    from app.services.medical.symptom_classification.urgency import _AFFECTED_PROMPT_TEMPLATE
+
+    assert "自傷、輕生念頭一律 urgent=true" in _AFFECTED_PROMPT_TEMPLATE

@@ -13,9 +13,9 @@
     對照表有多條症狀同時掛在兒科與成人科別（腹痛、發燒、咳嗽…），因為那些
     症狀大人小孩都會有。不過濾時，成人問「我肚子好痛要掛哪一科」會拿到
     「內科、兒科」——兒科那一項對他沒有意義，卻佔掉一個候選名額。
-    判斷依據是使用者填的年齡，加上訊息裡有沒有孩童指涉（家長幫小孩問時，
-    年齡欄位是家長的）。兩者都不成立才濾掉；濾掉後沒有剩下任何候選時走保底，
-    理由見 _filter_pediatric。
+    判斷依據是 PatientContext 中實際看診者的年齡，加上訊息裡是否明確提到「寶寶」。
+    兩者都不成立才濾掉；「兒子／女兒／child」只代表關係，不代表未成年。濾掉後
+    沒有剩下任何候選時走保底，理由見 _filter_pediatric。
 
 本服務不做急迫度判斷：
     急迫度是「要不要現在就去急診」，科別建議是「門診該掛哪一科」，兩者正交。
@@ -30,9 +30,12 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 
-from app.core.user_age import get_request_age, is_pediatric_age
+from app.core.user_age import is_pediatric_age
+from app.services.family.patient_context import PatientContext
+from app.services.medical.department_matcher import resolve_department
 from app.services.medical.symptom_classification.normalizer import (
     SymptomResolver,
     mentions_child,
@@ -57,6 +60,27 @@ FALLBACK_DEPARTMENTS: tuple[str, ...] = ("家醫科", "內科", "不分科")
 
 # 兒科的 canonical 值。過濾用，不寫死在方法裡以免與對照表脫鉤。
 PEDIATRIC_DEPARTMENT = "兒科"
+OBSTETRICS_GYNECOLOGY_DEPARTMENT = "婦產科"
+
+# 本輪明確語意高於 profile 性別。只處理懷孕、生產、月經與生殖脈絡，不把
+# 「腹痛」「性病」等跨性別的一般症狀算進來。外語詞讓六語工具契約不必先翻中文；
+# matched_term 也一起檢查，避免正規化後的專屬症狀失去語意。
+# 不收「生產」（生產線）與日文單字「生理」（生理時鐘）：一般用語也會用到，男性
+# 講到就會把婦產科列回來。拉丁字母的詞要整個字相符，見 _REPRODUCTIVE_WORD_PATTERN。
+_REPRODUCTIVE_CONTEXT_TERMS = (
+    "懷孕", "妊娠", "孕婦", "孕期", "生小孩", "臨盆", "待產", "分娩",
+    "宮縮", "羊水", "胎兒", "胎動", "產前", "產後", "流產", "月經", "經期",
+    "經痛", "生理期", "停經", "生殖", "不孕", "避孕", "子宮", "卵巢", "陰道", "婦科",
+    "pregnant", "pregnancy", "childbirth", "giving birth", "in labor", "menstrual",
+    "menstruation", "reproductive", "infertility", "contraception", "uterus", "ovary", "vaginal",
+    "hamil", "kehamilan", "melahirkan", "menstruasi", "haid", "reproduksi", "rahim",
+    "ovarium", "vagina", "kontrasepsi", "infertil",
+    "mang thai", "thai kỳ", "sinh con", "kinh nguyệt", "hành kinh", "sinh sản", "tử cung",
+    "buồng trứng", "âm đạo", "tránh thai", "vô sinh",
+    "ตั้งครรภ์", "คลอด", "ประจำเดือน", "สืบพันธุ์", "มดลูก", "รังไข่", "ช่องคลอด",
+    "คุมกำเนิด", "มีบุตรยาก",
+    "妊娠", "出産", "月経", "生理痛", "生理中", "生理不順", "不妊", "避妊", "生殖", "子宮", "卵巣", "膣",
+)
 
 # 保底多列兒科的原因。卡片依原因用不同說法：提到孩童是家長在問，年齡未滿界線則是
 # 孩童本人在問。
@@ -76,18 +100,67 @@ def _term_sources(entry: SymptomEntry) -> tuple[str, ...]:
     return tuple(codes)
 
 
-def _pediatric_reason(text: str) -> str | None:
+def _pediatric_reason(
+    text: str,
+    patient_context: PatientContext | None,
+) -> str | None:
     """
     這次是不是為孩童詢問；是的話回傳原因（PEDIATRIC_REASON_*），否則 None。
 
-    訊息提到寶寶優先於年齡：12 歲使用者問寶寶時，要看病的是被提到的孩子，
-    卡片要用「幫孩子詢問」的說法，而不是「你還未滿 15 歲」。
+    訊息提到寶寶優先於年齡，卡片要用「幫孩子詢問」的說法。除此之外只讀
+    PatientContext.age；發話者的 request ContextVar 與家人稱謂都不得影響結果。
     """
     if mentions_child(text):
         return PEDIATRIC_REASON_MENTIONED_CHILD
-    if is_pediatric_age(get_request_age()):
+    age = patient_context.age if patient_context is not None else None
+    if (
+        isinstance(age, int)
+        and not isinstance(age, bool)
+        and 0 <= age <= 130
+        and is_pediatric_age(age)
+    ):
         return PEDIATRIC_REASON_AGE
     return None
+
+
+# 拉丁字母的詞（英文、印尼文、越南文）逐字比對會誤中別的字：hamil 在 Hamilton
+# 裡、haid 在 haida 裡。這些詞只在整個字相符時算數；中日泰文沒有空白分詞，照舊
+# 用包含比對。
+_REPRODUCTIVE_WORD_PATTERN = re.compile(
+    "|".join(
+        rf"\b{re.escape(term.casefold())}\b"
+        for term in _REPRODUCTIVE_CONTEXT_TERMS
+        if term.isascii() or re.search(r"[a-z]", term)
+    )
+)
+_REPRODUCTIVE_SUBSTRING_TERMS = tuple(
+    term.casefold()
+    for term in _REPRODUCTIVE_CONTEXT_TERMS
+    if not (term.isascii() or re.search(r"[a-z]", term))
+)
+
+
+def _has_reproductive_context(text: str, matched_term: str) -> bool:
+    normalized = f"{text} {matched_term}".casefold()
+    return bool(_REPRODUCTIVE_WORD_PATTERN.search(normalized)) or any(
+        term in normalized for term in _REPRODUCTIVE_SUBSTRING_TERMS
+    )
+
+
+def _explicitly_requests_obstetrics(requested_department: str) -> bool:
+    match = resolve_department(requested_department)
+    return bool(match and match.canonical == OBSTETRICS_GYNECOLOGY_DEPARTMENT)
+
+
+def _should_include_obstetrics(
+    text: str,
+    matched_term: str | None,
+    requested_department: str,
+) -> bool:
+    return _has_reproductive_context(text, matched_term or "") or (
+        _explicitly_requests_obstetrics(requested_department)
+    )
+
 
 @dataclass(frozen=True)
 class SymptomTriageResult:
@@ -95,6 +168,8 @@ class SymptomTriageResult:
     """RESULT_SUGGESTION / RESULT_FALLBACK"""
 
     user_input: str
+    patient_context: PatientContext | None = None
+    """本次症狀所屬的看診者；10.7 起由流程依解析結果決定後續處置。"""
 
     # --- 建議 ---
     matched_term: str | None = None
@@ -127,10 +202,21 @@ class SymptomDepartmentService:
         self._table = table
         self._normalizer = normalizer
 
-    async def suggest(self, text: str) -> SymptomTriageResult:
+    async def suggest(
+        self,
+        text: str,
+        *,
+        patient_context: PatientContext | None = None,
+        requested_department: str = "",
+    ) -> SymptomTriageResult:
         term = await self._normalizer.resolve(text)
         if term is None:
-            return self._fallback(text, "無法對應到已知的症狀條目")
+            return self._fallback(
+                text,
+                "無法對應到已知的症狀條目",
+                patient_context=patient_context,
+                requested_department=requested_department,
+            )
 
         entry = self._table.lookup(term)
         if entry is None:
@@ -138,7 +224,12 @@ class SymptomDepartmentService:
             logger.warning(
                 f"{LOGGER_HEADER_TEXT} 正規化回傳表中不存在的條目 %r", term
             )
-            return self._fallback(text, "無法對應到已知的症狀條目")
+            return self._fallback(
+                text,
+                "無法對應到已知的症狀條目",
+                patient_context=patient_context,
+                requested_department=requested_department,
+            )
 
         if entry.is_too_broad:
             # 候選過多代表這個症狀本來就跨科（腹痛可以是內、外、婦、泌尿…），
@@ -148,26 +239,80 @@ class SymptomDepartmentService:
                 term,
                 len(entry.candidates),
             )
-            return self._fallback(text, "這個症狀可能牽涉多個科別", matched_term=term)
+            return self._fallback(
+                text,
+                "這個症狀可能牽涉多個科別",
+                matched_term=term,
+                patient_context=patient_context,
+                requested_department=requested_department,
+            )
 
-        candidates = self._filter_pediatric(entry.candidates, text)
+        candidates = self._filter_gender_applicability(
+            entry.candidates,
+            text=text,
+            matched_term=term,
+            patient_context=patient_context,
+            requested_department=requested_department,
+        )
         if not candidates:
             return self._fallback(
-                text, "這個症狀在對照表中只列了兒科", matched_term=term
+                text,
+                "依看診者資料，沒有適合預設顯示的特定科別",
+                matched_term=term,
+                patient_context=patient_context,
+                requested_department=requested_department,
+            )
+
+        candidates = self._filter_pediatric(
+            candidates,
+            text,
+            patient_context,
+        )
+        if not candidates:
+            return self._fallback(
+                text,
+                "這個症狀在對照表中只列了兒科",
+                matched_term=term,
+                patient_context=patient_context,
+                requested_department=requested_department,
             )
         return SymptomTriageResult(
             kind=RESULT_SUGGESTION,
             user_input=text,
+            patient_context=patient_context,
             matched_term=term,
             candidates=candidates[:MAX_CANDIDATES],
             term_sources=_term_sources(entry),
         )
 
+    @staticmethod
+    def _filter_gender_applicability(
+        candidates: tuple[DepartmentCandidate, ...],
+        *,
+        text: str,
+        matched_term: str,
+        patient_context: PatientContext | None,
+        requested_department: str,
+    ) -> tuple[DepartmentCandidate, ...]:
+        """男性的一般症狀不預設顯示婦產科；明確語意與指定科別優先。"""
+        if patient_context is None or patient_context.gender != "male":
+            return candidates
+        if _should_include_obstetrics(text, matched_term, requested_department):
+            return candidates
+        return tuple(
+            candidate
+            for candidate in candidates
+            if candidate.canonical != OBSTETRICS_GYNECOLOGY_DEPARTMENT
+        )
+
     def _filter_pediatric(
-        self, candidates: tuple[DepartmentCandidate, ...], text: str
+        self,
+        candidates: tuple[DepartmentCandidate, ...],
+        text: str,
+        patient_context: PatientContext | None,
     ) -> tuple[DepartmentCandidate, ...]:
         """成人的提問不給兒科。濾光時回傳空序列，由呼叫端走保底。"""
-        if _pediatric_reason(text) is not None:
+        if _pediatric_reason(text, patient_context) is not None:
             return candidates
         without = tuple(c for c in candidates if c.canonical != PEDIATRIC_DEPARTMENT)
         if without:
@@ -182,15 +327,22 @@ class SymptomDepartmentService:
         return ()
 
     def _fallback(
-        self, text: str, reason: str, *, matched_term: str | None = None
+        self,
+        text: str,
+        reason: str,
+        *,
+        matched_term: str | None = None,
+        patient_context: PatientContext | None = None,
+        requested_department: str = "",
     ) -> SymptomTriageResult:
-        # 孩童的初診方向以兒科為首，其後照舊；非孩童的保底不含兒科。
-        pediatric_reason = _pediatric_reason(text)
-        names = (
-            (PEDIATRIC_DEPARTMENT, *FALLBACK_DEPARTMENTS)
-            if pediatric_reason is not None
-            else FALLBACK_DEPARTMENTS
-        )
+        # 明確生殖情境／指定婦產科與孩童提示可在一般初診方向前補上對應科別。
+        pediatric_reason = _pediatric_reason(text, patient_context)
+        prefixes: list[str] = []
+        if _should_include_obstetrics(text, matched_term, requested_department):
+            prefixes.append(OBSTETRICS_GYNECOLOGY_DEPARTMENT)
+        if pediatric_reason is not None:
+            prefixes.append(PEDIATRIC_DEPARTMENT)
+        names = tuple(dict.fromkeys((*prefixes, *FALLBACK_DEPARTMENTS)))
         candidates = tuple(
             DepartmentCandidate(
                 canonical=name,
@@ -203,6 +355,7 @@ class SymptomDepartmentService:
         return SymptomTriageResult(
             kind=RESULT_FALLBACK,
             user_input=text,
+            patient_context=patient_context,
             matched_term=matched_term,
             candidates=candidates,
             fallback_reason=reason,

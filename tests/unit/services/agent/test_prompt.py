@@ -81,6 +81,43 @@ def test_system_prompt_routes_family_directory_questions_to_the_directory_tool()
     assert "王美玲是我的誰" in SYSTEM_PROMPT
     assert "relationship=parent" in SYSTEM_PROMPT
     assert "禁止把「父母」填進 `person`" in SYSTEM_PROMPT
+    assert "我兒子王美玲" in SYSTEM_PROMPT
+    assert "姓名與 `relationship` 都要填" in SYSTEM_PROMPT
+    assert "禁止送進 `get_rag_answer`" in SYSTEM_PROMPT
+
+
+def test_system_prompt_structures_the_department_patient_without_guessing():
+    assert "relationship=child" in SYSTEM_PROMPT
+    assert "relationship=spouse" in SYSTEM_PROMPT
+    assert "person=王美玲" in SYSTEM_PROMPT
+    assert "age=5" in SYSTEM_PROMPT
+    assert "gender" in SYSTEM_PROMPT
+    assert "person=王大明" in SYSTEM_PROMPT
+    assert "symptom=懷孕了而且肚子痛" in SYSTEM_PROMPT
+    assert "requested_department=婦產科" in SYSTEM_PROMPT
+    assert "同一句同時明確提供姓名與稱謂時兩者都填" in SYSTEM_PROMPT
+    assert "禁止從兒子、女兒、老婆等稱謂推測年齡或性別" in SYSTEM_PROMPT
+
+
+def test_system_prompt_limits_cross_turn_patient_continuation():
+    assert "前文只有一位可能的看診者" in SYSTEM_PROMPT
+    assert "依最近出現、性別、年齡或照顧對象猜測" in SYSTEM_PROMPT
+    assert "禁止呼叫工具" in SYSTEM_PROMPT
+    assert "換我頭痛了" in SYSTEM_PROMPT
+    assert "重設為本人" in SYSTEM_PROMPT
+    assert "人物延續只依目前收到的近期對話" in SYSTEM_PROMPT
+    assert "我老婆肚子痛要看哪科" in SYSTEM_PROMPT
+    assert "她還有發燒，要看哪科" in SYSTEM_PROMPT
+    assert "前文提過兩位男性家人" in SYSTEM_PROMPT
+
+
+def test_system_prompt_keeps_multiple_patients_in_separate_cases():
+    assert "`cases` 中每位看診者各填一筆" in SYSTEM_PROMPT
+    assert "混入另一人的症狀" in SYSTEM_PROMPT
+    assert "同句有多位看診者" in SYSTEM_PROMPT
+    assert "同一次工具呼叫" in SYSTEM_PROMPT
+    assert "禁止合併成一筆" in SYSTEM_PROMPT
+    assert "我老婆肚子痛，我也頭痛" in SYSTEM_PROMPT
 
 
 def test_system_prompt_declines_requests_unrelated_to_health():
@@ -156,3 +193,4 @@ def test_system_prompt_rule_10_treats_web_search_failures_like_timeout():
     assert "WEB_RATE_LIMITED" in retry_clause
     assert "稍後再問一次" in retry_clause
     assert "不要叫使用者換個說法" in retry_clause
+    assert "[RAG_ERR:" in SYSTEM_PROMPT

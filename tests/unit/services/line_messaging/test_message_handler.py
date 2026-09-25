@@ -9,6 +9,13 @@ from linebot.v3.webhooks import (
     UserSource,
 )
 
+from app.services.medical.symptom_classification.urgency import (
+    URGENCY_EMERGENCY,
+    AffectedPerson,
+    UrgencyVerdict,
+)
+from app.i18n.messages import t
+from app.services.safety.emergency_alert_service import EmergencyFamilyAlertService
 from app.services.line_messaging.handler.message_handler import LineMessageHandler
 
 USER_ID = "U_PATIENT"
@@ -400,45 +407,21 @@ class _AgentCapturingContext:
         self.seen = {}
 
     async def invoke(self, **kwargs):
-        from app.core.user_age import get_request_age
         from app.core.user_font_size import get_request_font_size
         from app.core.user_language import get_request_language
 
         self.seen = {
-            "age": get_request_age(),
             "font_size": get_request_font_size(),
             "language": get_request_language(),
         }
         return {"response": "主回覆內容"}
 
 
-@pytest.mark.parametrize("age", [8, 40, 70])
-async def test_user_age_reaches_the_agent(age):
-    agent = _AgentCapturingContext()
-    handler = _profile_handler(
-        {"age": age, "settings": {"language": "zh-TW", "font_size": "large"}}, agent
-    )
-
-    await handler.handle(_text_event())
-
-    assert agent.seen["age"] == age
-
-
-async def test_missing_age_is_none_not_a_default_number():
-    """
-    拿不到年齡時要表現為「不知道」，由呼叫端決定保守或寬鬆。給一個假的預設值
-    會讓兒科過濾以為自己知道使用者幾歲。
-    """
-    agent = _AgentCapturingContext()
-    handler = _profile_handler({"settings": {"language": "zh-TW"}}, agent)
-
-    await handler.handle(_text_event())
-
-    assert agent.seen["age"] is None
-
-
 async def test_language_and_font_size_reach_the_agent_too():
-    """三個 ContextVar 是同一套機制，一起釘住，少接一個就會失敗。"""
+    """語言與字級是同一套機制，一起釘住，少接一個就會失敗。
+
+    刻意沒有發話者年齡：年齡屬於看診者，不屬於發話者（design 決策 16）。
+    """
     agent = _AgentCapturingContext()
     handler = _profile_handler(
         {"age": 30, "settings": {"language": "en", "font_size": "xlarge"}}, agent
@@ -450,30 +433,54 @@ async def test_language_and_font_size_reach_the_agent_too():
     assert agent.seen["font_size"] == "xlarge"
 
 
-async def test_age_is_reset_after_the_turn():
-    """不還原會讓下一位使用者沿用上一位的年齡。"""
-    from app.core.user_age import get_request_age
-
-    agent = _AgentCapturingContext()
-    handler = _profile_handler({"age": 8, "settings": {}}, agent)
-
-    await handler.handle(_text_event())
-
-    assert agent.seen["age"] == 8
-    assert get_request_age() is None
-
-
 # --- 緊急狀況家人通報的排程 ---------------------------------------------------
 
 
-class FakeEmergencyAlertService:
-    def __init__(self, sent=True):
-        self.calls = []
-        self._sent = sent
+class _Links:
+    """家庭連結的替身：`links` 裡的 (回報者, 病人) 才有連結，任何角色皆可。"""
 
-    async def notify(self, user_id, reason, patient_words=""):
+    def __init__(self, links=(), *, error=None):
+        self.links = set(links)
+        self.error = error
+        self.calls = []
+
+    async def resolve_role(self, operator_id, target_owner_id, now=None):
+        self.calls.append((operator_id, target_owner_id))
+        if self.error:
+            raise self.error
+        return "MEMBER" if (operator_id, target_owner_id) in self.links else None
+
+    async def authorize(self, *args, **kwargs):
+        raise AssertionError("緊急回報不得走 SENSITIVE READ 授權")
+
+
+class FakeEmergencyAlertService(EmergencyFamilyAlertService):
+    """選病人用正式邏輯（patients_to_notify），只把推播換成記錄。"""
+
+    def __init__(self, sent=True, links=(), link_error=None):
+        super().__init__(replier=None, authorization_service=_Links(links, error=link_error))
+        self.calls = []
+        self.reporters = []
+        # True／False 是舊測試的寫法，對到送達／沒有收件人；也可直接給結果字串。
+        self._outcome = {True: "sent", False: "no_recipient"}.get(sent, sent)
+
+    async def notify(self, user_id, reason, patient_words="", *, reporter_id=""):
         self.calls.append((user_id, reason, patient_words))
-        return self._sent
+        self.reporters.append(reporter_id)
+        return self._outcome
+
+
+class _SelfReport:
+    """紅卡之後的人物辨識替身：事件歸給發話者本人。"""
+
+    def __init__(self):
+        self.calls = []
+
+    async def identify_affected(self, verdict, text, *, language, earlier=()):
+        from dataclasses import replace
+
+        self.calls.append(text)
+        return replace(verdict, affected=(AffectedPerson(kind="self", event="急症"),))
 
 
 class _AgentReturning:
@@ -484,7 +491,16 @@ class _AgentReturning:
         return self._payload
 
 
-def _emergency_handler(agent_payload, alert_service, replier=None):
+def _emergency_handler(
+    agent_payload,
+    alert_service,
+    replier=None,
+    *,
+    urgency_classifier=None,
+    patient_context_service=None,
+):
+    # 沒指定時人物歸給發話者本人：這一段的舊測試都在驗本人急症的通報。
+    urgency_classifier = urgency_classifier or _SelfReport()
     class _History:
         async def load_history(self, **kwargs):
             return []
@@ -503,6 +519,8 @@ def _emergency_handler(agent_payload, alert_service, replier=None):
         replier=replier or FakeReplier(),
         safety_alert_service=None,
         emergency_family_alert_service=alert_service,
+        urgency_classifier=urgency_classifier,
+        patient_context_service=patient_context_service,
     )
 
 
@@ -514,7 +532,7 @@ async def test_family_alert_carries_the_users_verbatim_text():
     """
     service = FakeEmergencyAlertService()
     handler = _emergency_handler(
-        {"response": "卡片", "emergency": True, "emergency_reason": "提到喝下大量農藥"},
+        {"response": "卡片", "emergency": True, "urgency_verdict": UrgencyVerdict(level=URGENCY_EMERGENCY, display="提到喝下大量農藥")},
         service,
     )
 
@@ -527,7 +545,7 @@ async def test_family_alert_carries_the_users_verbatim_text():
 async def test_emergency_verdict_schedules_a_family_alert():
     service = FakeEmergencyAlertService()
     handler = _emergency_handler(
-        {"response": "卡片", "emergency": True, "emergency_reason": "提到失去意識"},
+        {"response": "卡片", "emergency": True, "urgency_verdict": UrgencyVerdict(level=URGENCY_EMERGENCY, display="提到失去意識")},
         service,
     )
 
@@ -555,18 +573,19 @@ async def test_family_alert_does_not_block_the_reply():
     """
     replier = FakeReplier()
 
-    class _SlowService:
+    class _SlowService(FakeEmergencyAlertService):
         def __init__(self):
+            super().__init__(sent=False)
             self.done = False
 
-        async def notify(self, user_id, reason, patient_words=""):
+        async def notify(self, user_id, reason, patient_words="", *, reporter_id=""):
             await asyncio.sleep(0.05)
             self.done = True
-            return False
+            return "no_recipient"
 
     service = _SlowService()
     handler = _emergency_handler(
-        {"response": "卡片", "emergency": True, "emergency_reason": "x"},
+        {"response": "卡片", "emergency": True, "urgency_verdict": UrgencyVerdict(level=URGENCY_EMERGENCY, display="x")},
         service,
         replier=replier,
     )
@@ -579,11 +598,11 @@ async def test_family_alert_does_not_block_the_reply():
     assert service.done is True
 
 
-async def test_patient_is_told_only_when_someone_was_actually_notified():
-    """沒有合格收件人時說「我已經讓你的家人知道」是假的。"""
+async def test_patient_is_never_told_family_received_it_when_nobody_did():
+    """沒有合格收件人時說「我已通知你的家人」是假的：改說明沒有設定收件人。"""
     replier = FakeReplier()
     handler = _emergency_handler(
-        {"response": "卡片", "emergency": True, "emergency_reason": "x"},
+        {"response": "卡片", "emergency": True, "urgency_verdict": UrgencyVerdict(level=URGENCY_EMERGENCY, display="x")},
         FakeEmergencyAlertService(sent=False),
         replier=replier,
     )
@@ -591,13 +610,16 @@ async def test_patient_is_told_only_when_someone_was_actually_notified():
     await handler.handle(_text_event())
     await _drain(handler)
 
-    assert replier.pushed_texts == []
+    assert [text for _, text in replier.pushed_texts] == [
+        t("text.emergency.result.self.no_recipient", "zh-TW")
+    ]
+    assert "已通知" not in replier.pushed_texts[0][1]
 
 
 async def test_patient_is_told_when_family_was_notified():
     replier = FakeReplier()
     handler = _emergency_handler(
-        {"response": "卡片", "emergency": True, "emergency_reason": "x"},
+        {"response": "卡片", "emergency": True, "urgency_verdict": UrgencyVerdict(level=URGENCY_EMERGENCY, display="x")},
         FakeEmergencyAlertService(sent=True),
         replier=replier,
     )
@@ -605,20 +627,19 @@ async def test_patient_is_told_when_family_was_notified():
     await handler.handle(_text_event())
     await _drain(handler)
 
-    assert len(replier.pushed_texts) == 1
-    assert "不用一個人" in replier.pushed_texts[0][1]
+    assert [text for _, text in replier.pushed_texts] == [t("text.emergency.result.self.sent", "zh-TW")]
 
 
 async def test_alert_failure_never_reaches_the_user():
     """背景旁路，例外不得逸散，也不得影響已經送出的回覆。"""
 
-    class _Exploding:
-        async def notify(self, user_id, reason, patient_words=""):
+    class _Exploding(FakeEmergencyAlertService):
+        async def notify(self, user_id, reason, patient_words="", *, reporter_id=""):
             raise RuntimeError("boom")
 
     replier = FakeReplier()
     handler = _emergency_handler(
-        {"response": "卡片", "emergency": True, "emergency_reason": "x"},
+        {"response": "卡片", "emergency": True, "urgency_verdict": UrgencyVerdict(level=URGENCY_EMERGENCY, display="x")},
         _Exploding(),
         replier=replier,
     )
@@ -627,3 +648,397 @@ async def test_alert_failure_never_reaches_the_user():
     await _drain(handler)
 
     assert replier.replies
+
+
+# --- 行動先到：紅卡之後才辨識人物、查族譜、通報（10.14）----------------------
+
+
+from app.models.family_tree import FamilyMember  # noqa: E402
+from app.services.family.person_resolution import resolve_person  # noqa: E402
+
+_GRANDPA_FELL = UrgencyVerdict(level=URGENCY_EMERGENCY, display="你提到有人跌倒")
+
+
+def _emergency_payload(verdict=_GRANDPA_FELL):
+    return {"response": "紅卡", "emergency": True, "urgency_verdict": verdict}
+
+
+class _Identifier:
+    """急迫度判斷器的替身：只實作紅卡之後才會用到的 identify_affected。"""
+
+    def __init__(self, *people, delay=0.0, error=None):
+        self.people = people
+        self.delay = delay
+        self.error = error
+        self.calls = []
+
+    async def identify_affected(self, verdict, text, *, language, earlier=()):
+        self.calls.append((text, language))
+        if self.delay:
+            await asyncio.sleep(self.delay)
+        if self.error:
+            raise self.error
+        from dataclasses import replace
+
+        return replace(verdict, affected=self.people)
+
+
+class _FamilyList:
+    def __init__(self, *members, delay=0.0, error=None):
+        self.members = members
+        self.delay = delay
+        self.error = error
+        self.calls = []
+
+    async def resolve_person(self, operator_id, *, person, relationship):
+        self.calls.append(operator_id)
+        if self.delay:
+            await asyncio.sleep(self.delay)
+        if self.error:
+            raise self.error
+        return resolve_person(self.members, person=person, relationship=relationship)
+
+
+_GRANDPA = AffectedPerson(kind="family", label="阿公", relationship="grandparent", event="跌倒")
+
+
+def _grandpa_member(user_id="U_GRANDPA", name="王大明"):
+    return FamilyMember(user_id=user_id, display_name=name, relationship_type="grandparent")
+
+
+class _OrderedReplier(FakeReplier):
+    """記下紅卡、推播與通報的先後。"""
+
+    def __init__(self, log):
+        super().__init__()
+        self.log = log
+
+    async def reply(self, **kwargs):
+        self.log.append("red_card")
+        return await super().reply(**kwargs)
+
+    async def push_text(self, user_id, text):
+        self.log.append("push_text")
+        await super().push_text(user_id, text)
+
+
+class _OrderedAlert(FakeEmergencyAlertService):
+    def __init__(self, log, sent=False, links=()):
+        super().__init__(sent=sent, links=links)
+        self.log = log
+
+    async def notify(self, user_id, reason, patient_words="", *, reporter_id=""):
+        self.log.append("notify")
+        return await super().notify(
+            user_id, reason, patient_words, reporter_id=reporter_id
+        )
+
+
+async def test_red_card_is_sent_before_identification_lookup_and_alert_start():
+    log = []
+    identifier = _Identifier(_GRANDPA)
+    family = _FamilyList(_grandpa_member())
+    handler = _emergency_handler(
+        _emergency_payload(),
+        _OrderedAlert(log, links={(USER_ID, "U_GRANDPA")}),
+        replier=_OrderedReplier(log),
+        urgency_classifier=identifier,
+        patient_context_service=family,
+    )
+
+    await handler.handle(_text_event())
+
+    assert log == ["red_card"], "紅卡送出前不得開始任何後續工作"
+    assert identifier.calls == [] and family.calls == []
+    await _drain(handler)
+    assert log[0] == "red_card"
+    assert "notify" in log
+
+
+async def test_slow_family_lookup_does_not_delay_the_red_card():
+    replier = FakeReplier()
+    family = _FamilyList(_grandpa_member(), delay=0.05)
+    handler = _emergency_handler(
+        _emergency_payload(),
+        None,
+        replier=replier,
+        urgency_classifier=_Identifier(_GRANDPA, delay=0.05),
+        patient_context_service=family,
+    )
+
+    await handler.handle(_text_event())
+
+    assert len(replier.replies) == 1
+    assert replier.pushed_texts == []
+    await _drain(handler)
+    # 沒接通知服務：阿公沒有被通知，照實說並給行動提示。
+    assert replier.pushed_texts == [
+        (USER_ID, "目前沒有自動通知阿公的家人。請留在阿公身邊，並依紅卡立即尋求協助。")
+    ]
+
+
+async def test_family_lookup_failure_still_sends_the_card_and_a_neutral_prompt():
+    replier = FakeReplier()
+    handler = _emergency_handler(
+        _emergency_payload(),
+        FakeEmergencyAlertService(sent=False),
+        replier=replier,
+        urgency_classifier=_Identifier(_GRANDPA),
+        patient_context_service=_FamilyList(error=RuntimeError("mongo down")),
+    )
+
+    await handler.handle(_text_event())
+    await _drain(handler)
+
+    assert len(replier.replies) == 1
+    assert replier.pushed_texts == [(USER_ID, "目前沒有自動通知家人，請立即撥打 119 並留在對方身邊。")]
+
+
+async def test_identification_failure_is_treated_as_self_and_keeps_the_card():
+    """辨識失敗當成本人。這裡沒接通知服務，所以照實說沒有成功通知。"""
+    replier = FakeReplier()
+    handler = _emergency_handler(
+        _emergency_payload(),
+        None,
+        replier=replier,
+        urgency_classifier=_Identifier(error=RuntimeError("gemini down")),
+        patient_context_service=_FamilyList(_grandpa_member()),
+    )
+
+    await handler.handle(_text_event())
+    await _drain(handler)
+
+    assert len(replier.replies) == 1
+    assert [text for _, text in replier.pushed_texts] == [
+        t("text.emergency.result.self.failed", "zh-TW")
+    ]
+
+
+async def test_two_grandparents_are_addressed_neutrally():
+    replier = FakeReplier()
+    handler = _emergency_handler(
+        _emergency_payload(),
+        None,
+        replier=replier,
+        urgency_classifier=_Identifier(_GRANDPA),
+        patient_context_service=_FamilyList(
+            _grandpa_member("U_G1", "王大明"), _grandpa_member("U_G2", "李阿土")
+        ),
+    )
+
+    await handler.handle(_text_event())
+    await _drain(handler)
+
+    assert replier.pushed_texts == [(USER_ID, "目前沒有自動通知家人，請立即撥打 119 並留在對方身邊。")]
+
+
+async def test_self_emergency_does_not_look_up_the_family_list():
+    replier = FakeReplier()
+    family = _FamilyList(_grandpa_member())
+    handler = _emergency_handler(
+        _emergency_payload(),
+        None,
+        replier=replier,
+        urgency_classifier=_Identifier(AffectedPerson(kind="self", event="昏倒")),
+        patient_context_service=family,
+    )
+
+    await handler.handle(_text_event())
+    await _drain(handler)
+
+    assert family.calls == []
+    assert [text for _, text in replier.pushed_texts] == [
+        t("text.emergency.result.self.failed", "zh-TW")
+    ]
+
+
+async def test_identification_uses_the_users_text_and_language():
+    identifier = _Identifier()
+    handler = _emergency_handler(
+        _emergency_payload(), None, urgency_classifier=identifier
+    )
+
+    await handler.handle(_text_event())
+    await _drain(handler)
+
+    assert identifier.calls == [(USER_TEXT, "zh-TW")]
+
+
+async def test_emergency_without_a_verdict_object_still_alerts_family():
+    """舊格式的 agent 回覆（只有 emergency=True）不得讓通報消失。"""
+    service = FakeEmergencyAlertService()
+    handler = _emergency_handler({"response": "紅卡", "emergency": True}, service)
+
+    await handler.handle(_text_event())
+    await _drain(handler)
+
+    assert service.calls == [(USER_ID, "", USER_TEXT)]
+
+
+# --- 通知正確病人的照顧者（10.15）----------------------------------------------
+
+
+_LINKED = {(USER_ID, "U_GRANDPA")}
+_GRANDPA_NOTIFIED = "我已通知可以協助阿公的家人。請留在阿公身邊，並依紅卡立即尋求協助。"
+
+
+async def _run_emergency(*people, members=(), links=_LINKED, sent=True, family=None):
+    replier = FakeReplier()
+    alert = FakeEmergencyAlertService(sent=sent, links=links)
+    handler = _emergency_handler(
+        _emergency_payload(),
+        alert,
+        replier=replier,
+        urgency_classifier=_Identifier(*people),
+        patient_context_service=family or _FamilyList(*members),
+    )
+    await handler.handle(_text_event())
+    await _drain(handler)
+    return alert, replier
+
+
+async def test_self_emergency_notifies_own_family_with_own_words():
+    """「我昏倒了」：病人就是發話者，原話照舊轉給家人，成功後告訴他。"""
+    alert, replier = await _run_emergency(AffectedPerson(kind="self", event="昏倒"))
+
+    assert alert.calls == [(USER_ID, "你提到有人跌倒", USER_TEXT)]
+    assert alert.reporters == [USER_ID]
+    assert len(replier.replies) == 1
+    assert [text for _, text in replier.pushed_texts] == [t("text.emergency.result.self.sent", "zh-TW")]
+
+
+@pytest.mark.parametrize("event", ["跌倒", "昏迷"])
+async def test_grandpa_emergency_notifies_grandpas_caregivers_not_the_reporters(event):
+    """「我阿公跌倒／昏迷」：通知的是阿公的照顧者，不是孫子自己的家人。"""
+    grandpa = AffectedPerson(kind="family", label="阿公", relationship="grandparent", event=event)
+    alert, replier = await _run_emergency(grandpa, members=[_grandpa_member()])
+
+    # 原話照轉，但帶上回報者：卡片會標成「孫子回報」，不冒充阿公發言（10.16）。
+    assert alert.calls == [("U_GRANDPA", "你提到有人跌倒", USER_TEXT)]
+    assert alert.reporters == [USER_ID]
+    # 發話者收到的是「已通知阿公的家人」；對病人本人說的話（「你不用一個人撐著」）不送。
+    assert [text for _, text in replier.pushed_texts] == [_GRANDPA_NOTIFIED]
+
+
+async def test_two_grandparents_notify_nobody():
+    alert, replier = await _run_emergency(
+        _GRANDPA,
+        members=[_grandpa_member("U_G1", "王大明"), _grandpa_member("U_G2", "李阿土")],
+        links={(USER_ID, "U_G1"), (USER_ID, "U_G2")},
+    )
+
+    assert alert.calls == []
+    assert len(replier.replies) == 1
+
+
+@pytest.mark.parametrize(
+    "person",
+    [
+        AffectedPerson(kind="third_party", label="路人", event="跌倒"),
+        AffectedPerson(kind="third_party", label="朋友", event="想自殺"),
+    ],
+    ids=["passer-by-fell", "friend-suicidal"],
+)
+async def test_unlinked_third_parties_notify_nobody(person):
+    """「路人跌倒了」「我朋友想自殺」：不通知發話者的家人，也不猜對方是誰。"""
+    alert, replier = await _run_emergency(person, members=[_grandpa_member()])
+
+    assert alert.calls == []
+    assert [text for _, text in replier.pushed_texts] == ["目前沒有自動通知家人，請立即撥打 119 並留在對方身邊。"]
+
+
+async def test_grandpa_and_self_in_one_message_notify_each_patients_family():
+    urgent_self = AffectedPerson(kind="self", event="胸口痛到喘不過氣")
+    alert, _ = await _run_emergency(_GRANDPA, urgent_self, members=[_grandpa_member()])
+
+    assert alert.calls == [
+        ("U_GRANDPA", "你提到有人跌倒", USER_TEXT),
+        (USER_ID, "你提到有人跌倒", USER_TEXT),
+    ]
+    assert alert.reporters == [USER_ID, USER_ID]
+
+
+@pytest.mark.parametrize(
+    "family",
+    [_FamilyList(error=RuntimeError("mongo down")), _FamilyList(_grandpa_member(), delay=6)],
+    ids=["lookup-fails", "lookup-times-out"],
+)
+async def test_family_lookup_problems_notify_nobody_but_keep_the_card(family, monkeypatch):
+    import app.services.safety.emergency_alert_service as alert_module
+
+    monkeypatch.setattr(alert_module, "RESOLVE_TIMEOUT_SECONDS", 0.01)
+    alert, replier = await _run_emergency(_GRANDPA, family=family)
+
+    assert alert.calls == []
+    assert len(replier.replies) == 1
+
+
+async def test_unlinked_grandpa_is_not_notified():
+    """阿公在我的名單裡，但他的族譜裡沒有我：不自動通知。"""
+    alert, _ = await _run_emergency(_GRANDPA, members=[_grandpa_member()], links=set())
+    assert alert.calls == []
+
+
+@pytest.mark.parametrize("outcome", ["no_recipient", "disabled", "failed"])
+async def test_undelivered_notification_is_stated_and_keeps_the_card(outcome):
+    alert, replier = await _run_emergency(
+        AffectedPerson(kind="self", event="昏倒"), sent=outcome
+    )
+
+    assert len(alert.calls) == 1
+    assert len(replier.replies) == 1
+    assert [text for _, text in replier.pushed_texts] == [
+        t(f"text.emergency.result.self.{outcome}", "zh-TW")
+    ]
+    assert "已通知" not in replier.pushed_texts[0][1]
+
+
+@pytest.mark.parametrize("outcome", ["no_recipient", "disabled", "failed"])
+async def test_undelivered_grandpa_notification_is_stated(outcome):
+    _, replier = await _run_emergency(_GRANDPA, members=[_grandpa_member()], sent=outcome)
+
+    assert [text for _, text in replier.pushed_texts] == [
+        t(f"text.emergency.result.member.{outcome}", "zh-TW").format(name="阿公")
+    ]
+
+
+async def test_unrecognized_people_are_treated_as_the_reporter():
+    """人物辨識失敗（例如 LLM 中斷）：當成發話者本人，通知他自己的家人。"""
+    alert, replier = await _run_emergency()
+    assert alert.calls == [(USER_ID, "你提到有人跌倒", USER_TEXT)]
+    assert len(replier.replies) == 1
+    assert [text for _, text in replier.pushed_texts] == [t("text.emergency.result.self.sent", "zh-TW")]
+
+
+# --- 前文帶進人物辨識（2026-09-25 整合測試 A1 的修正）--------------------------
+
+
+async def test_earlier_user_messages_reach_person_identification():
+    """「他現在叫不醒」要對得到前一則的阿公：辨識時帶入發話者稍早說的話。"""
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    seen = {}
+
+    class _Recording(_Identifier):
+        async def identify_affected(self, verdict, text, *, language, earlier=()):
+            seen["earlier"] = earlier
+            return await super().identify_affected(verdict, text, language=language)
+
+    class _History:
+        async def load_history(self, **kwargs):
+            return [
+                HumanMessage(content="我阿公剛剛跌倒"),
+                AIMessage(content="請確認王大明有沒有意識"),  # AI 的話不是發話者說的
+                HumanMessage(content=USER_TEXT),  # 這一則本身不算前文
+            ]
+
+        async def save_turn(self, **kwargs):
+            pass
+
+    handler = _emergency_handler(_emergency_payload(), None, urgency_classifier=_Recording())
+    handler._history_service = _History()
+
+    await handler.handle(_text_event())
+    await _drain(handler)
+
+    assert seen["earlier"] == ("我阿公剛剛跌倒",)

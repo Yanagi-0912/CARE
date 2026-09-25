@@ -1,6 +1,11 @@
 """
 緊急狀況家人通報卡：對話中判定為緊急時，推播給合格家屬的 Flex Message。
-卡片含當事人的原話，而且是逐字：
+卡片含發話者的原話，而且是逐字。
+
+誰說的要標對：
+    病人本人發話時寫「{病人} 剛才說的話」；別人代為回報時（孫子說「我阿公跌倒」）
+    寫「{回報者} 回報的內容」，開頭也改成「{回報者} 回報 {病人} 的狀況」。
+    「阿公剛才說：我阿公跌倒」會讓家屬以為阿公還能自己打字，而那正好相反。
 
 為什麼免責寫得比其他卡片重：
     這是唯一一種「系統判斷錯誤會驚動第三人」的通知。誤報收不回來，所以卡片
@@ -98,10 +103,8 @@ def _header(patient_name: str, ft: theme.FlexTheme, language: str | None) -> dic
     }
 
 
-def _quote_box(
-    words: str, patient_name: str, ft: theme.FlexTheme, language: str | None
-) -> dict[str, Any]:
-    """當事人的原話，逐字。左側色條是引述的視覺記號。"""
+def _quote_box(words: str, label: str, ft: theme.FlexTheme) -> dict[str, Any]:
+    """發話者的原話，逐字。左側色條是引述的視覺記號；label 標明是誰說的。"""
     quoted = words.strip()
     if len(quoted) > MAX_QUOTED_CHARS:
         quoted = quoted[:MAX_QUOTED_CHARS] + "…"
@@ -117,7 +120,7 @@ def _quote_box(
         "margin": "md",
         "contents": [
             _text(
-                t("emergency_family.words_label", language).format(name=patient_name),
+                label,
                 size=ft.caption,
                 color=_TPL_LABEL_COLOR,
                 weight="bold",
@@ -230,15 +233,19 @@ def build_emergency_family_bubble(
     *,
     patient_name: str,
     reason: str,
-    patient_words: str = "",
+    words: str = "",
+    reporter_name: Optional[str] = None,
     patient_tel_uri: Optional[str] = None,
     language: str | None = None,
     font_size: str | None = None,
 ) -> dict[str, Any]:
     """組出 bubble 的 raw dict。供模板產生與大小檢查用。
 
-    patient_words 是當事人的原話，逐字帶入不改寫。空字串時整段不出現——
+    words 是發話者的原話，逐字帶入不改寫。空字串時整段不出現——
     取不到原話（例如語音或圖片訊息）不該讓卡片留一個空引述框。
+
+    reporter_name 有值代表別人代為回報：開頭、引述標題與第一步都改寫成回報者
+    的角度，原話標成回報者說的，不冒充病人發言。None 代表病人本人發話。
 
     patient_tel_uri 省略時不顯示撥號按鈕——CARE 沒有存使用者電話，多數情況下
     會是 None。缺按鈕不影響卡片可用性：步驟說明仍然告訴家屬先打電話，家屬本來
@@ -246,17 +253,27 @@ def build_emergency_family_bubble(
     """
     ft = theme.resolve_theme(font_size)
     name = patient_name or t("emergency_family.fallback_name", language)
+    if reporter_name is None:
+        lead = t("emergency_family.lead", language).format(name=name)
+        words_label = t("emergency_family.words_label", language).format(name=name)
+        first_step = t("emergency_family.step.1", language).format(name=name)
+    else:
+        reporter = reporter_name or t("emergency_family.fallback_reporter", language)
+        lead = t("emergency_family.lead_reported", language).format(
+            reporter=reporter, name=name
+        )
+        words_label = t("emergency_family.words_label_reported", language).format(
+            reporter=reporter
+        )
+        first_step = t("emergency_family.step.1_reported", language).format(
+            reporter=reporter, name=name
+        )
 
-    body_contents: list[dict[str, Any]] = [
-        _text(
-            t("emergency_family.lead", language).format(name=name),
-            size=ft.body,
-        ),
-    ]
+    body_contents: list[dict[str, Any]] = [_text(lead, size=ft.body)]
     # 原話排在系統判定之前：它是事實，判定是推論。家屬掃過卡片時最先看到的
-    # 應該是「他說了什麼」。
-    if patient_words and patient_words.strip():
-        body_contents.append(_quote_box(patient_words, name, ft, language))
+    # 應該是「說了什麼」。
+    if words and words.strip():
+        body_contents.append(_quote_box(words, words_label, ft))
     body_contents += [
         _reason_box(reason, ft, language),
         {"type": "separator", "margin": "xl", "color": _TPL_SEPARATOR_COLOR},
@@ -267,7 +284,7 @@ def build_emergency_family_bubble(
             weight="bold",
             margin="xl",
         ),
-        _step(1, t("emergency_family.step.1", language).format(name=name), ft),
+        _step(1, first_step, ft),
         _step(2, t("emergency_family.step.2", language), ft),
     ]
 
@@ -315,7 +332,8 @@ def build_emergency_family_flex(
     *,
     patient_name: str,
     reason: str,
-    patient_words: str = "",
+    words: str = "",
+    reporter_name: Optional[str] = None,
     patient_tel_uri: Optional[str] = None,
     language: str | None = None,
     font_size: str | None = None,
@@ -328,7 +346,8 @@ def build_emergency_family_flex(
     bubble = build_emergency_family_bubble(
         patient_name=name,
         reason=reason,
-        patient_words=patient_words,
+        words=words,
+        reporter_name=reporter_name,
         patient_tel_uri=patient_tel_uri,
         language=language,
         font_size=font_size,

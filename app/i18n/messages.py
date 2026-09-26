@@ -2600,6 +2600,101 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "vi": ". ", "th": ". ", "ja": "。",
     },
 
+    # --- 院所類型 ---
+    # key 與診療科別同理，直接用資料庫的中文原文（medicalFacilities.type 的 distinct
+    # 值），外加使用者可選的三個分類（醫院／診所／藥局）。查不到的由
+    # facility_type_label() 原樣回傳。
+    "facility_type.醫院": {
+        "zh-TW": "醫院", "en": "Hospital", "id": "Rumah Sakit",
+        "vi": "Bệnh viện", "th": "โรงพยาบาล", "ja": "病院",
+    },
+    "facility_type.綜合醫院": {
+        "zh-TW": "綜合醫院", "en": "General Hospital", "id": "Rumah Sakit Umum",
+        "vi": "Bệnh viện đa khoa", "th": "โรงพยาบาลทั่วไป", "ja": "総合病院",
+    },
+    "facility_type.精神科醫院": {
+        "zh-TW": "精神科醫院", "en": "Psychiatric Hospital", "id": "Rumah Sakit Jiwa",
+        "vi": "Bệnh viện tâm thần", "th": "โรงพยาบาลจิตเวช", "ja": "精神科病院",
+    },
+    "facility_type.中醫醫院": {
+        "zh-TW": "中醫醫院", "en": "Traditional Chinese Medicine Hospital",
+        "id": "Rumah Sakit Pengobatan Tradisional Tiongkok",
+        "vi": "Bệnh viện Đông y", "th": "โรงพยาบาลแพทย์แผนจีน", "ja": "中医病院",
+    },
+    "facility_type.診所": {
+        "zh-TW": "診所", "en": "Clinic", "id": "Klinik",
+        "vi": "Phòng khám", "th": "คลินิก", "ja": "クリニック",
+    },
+    "facility_type.西醫診所": {
+        "zh-TW": "西醫診所", "en": "Western Medicine Clinic", "id": "Klinik Kedokteran Barat",
+        "vi": "Phòng khám Tây y", "th": "คลินิกแพทย์แผนปัจจุบัน", "ja": "西洋医学クリニック",
+    },
+    "facility_type.西醫診所(醫務室)": {
+        "zh-TW": "西醫診所(醫務室)", "en": "Western Medicine Clinic (Infirmary)",
+        "id": "Klinik Kedokteran Barat (Ruang Kesehatan)",
+        "vi": "Phòng khám Tây y (phòng y tế)", "th": "คลินิกแพทย์แผนปัจจุบัน (ห้องพยาบาล)",
+        "ja": "西洋医学クリニック（医務室）",
+    },
+    "facility_type.一般診所(醫務室)": {
+        "zh-TW": "一般診所(醫務室)", "en": "General Clinic (Infirmary)",
+        "id": "Klinik Umum (Ruang Kesehatan)",
+        "vi": "Phòng khám đa khoa (phòng y tế)", "th": "คลินิกทั่วไป (ห้องพยาบาล)",
+        "ja": "一般クリニック（医務室）",
+    },
+    "facility_type.專科診所": {
+        "zh-TW": "專科診所", "en": "Specialist Clinic", "id": "Klinik Spesialis",
+        "vi": "Phòng khám chuyên khoa", "th": "คลินิกเฉพาะทาง", "ja": "専門クリニック",
+    },
+    "facility_type.牙醫診所": {
+        "zh-TW": "牙醫診所", "en": "Dental Clinic", "id": "Klinik Gigi",
+        "vi": "Phòng khám nha khoa", "th": "คลินิกทันตกรรม", "ja": "歯科クリニック",
+    },
+    "facility_type.牙醫一般診所": {
+        "zh-TW": "牙醫一般診所", "en": "General Dental Clinic", "id": "Klinik Gigi Umum",
+        "vi": "Phòng khám nha khoa tổng quát", "th": "คลินิกทันตกรรมทั่วไป", "ja": "一般歯科クリニック",
+    },
+    "facility_type.牙醫專科診所": {
+        "zh-TW": "牙醫專科診所", "en": "Specialist Dental Clinic", "id": "Klinik Gigi Spesialis",
+        "vi": "Phòng khám nha khoa chuyên khoa", "th": "คลินิกทันตกรรมเฉพาะทาง",
+        "ja": "専門歯科クリニック",
+    },
+    "facility_type.中醫診所": {
+        "zh-TW": "中醫診所", "en": "Traditional Chinese Medicine Clinic",
+        "id": "Klinik Pengobatan Tradisional Tiongkok",
+        "vi": "Phòng khám Đông y", "th": "คลินิกแพทย์แผนจีน", "ja": "中医クリニック",
+    },
+    "facility_type.中醫一般診所": {
+        "zh-TW": "中醫一般診所", "en": "General Traditional Chinese Medicine Clinic",
+        "id": "Klinik Umum Pengobatan Tradisional Tiongkok",
+        "vi": "Phòng khám Đông y tổng quát", "th": "คลินิกแพทย์แผนจีนทั่วไป",
+        "ja": "一般中医クリニック",
+    },
+    "facility_type.中醫專科診所": {
+        "zh-TW": "中醫專科診所", "en": "Specialist Traditional Chinese Medicine Clinic",
+        "id": "Klinik Spesialis Pengobatan Tradisional Tiongkok",
+        "vi": "Phòng khám Đông y chuyên khoa", "th": "คลินิกแพทย์แผนจีนเฉพาะทาง",
+        "ja": "専門中医クリニック",
+    },
+    "facility_type.病理中心": {
+        "zh-TW": "病理中心", "en": "Pathology Center", "id": "Pusat Patologi",
+        "vi": "Trung tâm giải phẫu bệnh", "th": "ศูนย์พยาธิวิทยา", "ja": "病理センター",
+    },
+    "facility_type.藥局": {
+        "zh-TW": "藥局", "en": "Pharmacy", "id": "Apotek",
+        "vi": "Nhà thuốc", "th": "ร้านขายยา", "ja": "薬局",
+    },
+    "facility_type.藥師自營": {
+        "zh-TW": "藥師自營", "en": "Pharmacy (Pharmacist-run)", "id": "Apotek (dikelola apoteker)",
+        "vi": "Nhà thuốc (do dược sĩ điều hành)", "th": "ร้านขายยา (เภสัชกรดำเนินการ)",
+        "ja": "薬局（薬剤師経営）",
+    },
+    "facility_type.藥劑生自營": {
+        "zh-TW": "藥劑生自營", "en": "Pharmacy (Assistant Pharmacist-run)",
+        "id": "Apotek (dikelola asisten apoteker)",
+        "vi": "Nhà thuốc (do dược tá điều hành)", "th": "ร้านขายยา (ผู้ช่วยเภสัชกรดำเนินการ)",
+        "ja": "薬局（薬剤助手経営）",
+    },
+
     # --- 診療科別 ---
     # key 直接用資料庫的中文原文（medicalFacilities.departments 的 distinct 值），
     # 因為那本來就是唯一穩定的識別字；另外造一組英文 slug 只會多一層對照表要維護。
@@ -5239,6 +5334,18 @@ def department_label(department: str, language: str | None = None) -> str:
         return department
     lang = get_request_language() if language is None else normalize_user_language(language)
     return translations.get(lang) or department
+
+
+def facility_type_label(facility_type: str, language: str | None = None) -> str:
+    """把資料庫的院所類型（或醫院／診所／藥局分類）譯成使用者語言；沒有對應翻譯時原樣回傳。
+
+    不用 t() 的理由同 department_label：查不到時要退回原文，不能顯示成 key。
+    """
+    translations = _MESSAGES.get(f"facility_type.{facility_type}")
+    if not translations:
+        return facility_type
+    lang = get_request_language() if language is None else normalize_user_language(language)
+    return translations.get(lang) or facility_type
 
 
 def subgroup_label(subgroup: str, language: str | None = None) -> str:

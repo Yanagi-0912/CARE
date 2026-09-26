@@ -1,0 +1,5 @@
+# 試跑（例如 facility_name_coverage.py --limit 200）的報告輸出到這裡，可以重新產生，不進版控。
+scratch/
+
+# 報告的 json（每一次的原始數據）只留在本機，不進版控；摘要看同名 .md。
+reports/*.json

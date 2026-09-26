@@ -1,0 +1,5 @@
+# 送去轉文字的合成 mp3 可以用 scripts/speech_bench/chinese_stt_bench.py --save-audio 重新產生，不進版控。
+samples/
+
+# 報告的 json（每一次的原始數據）只留在本機，不進版控；摘要看同名 .md。
+reports/*.json

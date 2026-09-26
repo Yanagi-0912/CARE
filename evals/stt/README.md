@@ -1,7 +1,7 @@
 # STT 回應時間與錯字率量測
 
 腳本：`scripts/speech_bench/chinese_stt_bench.py`（國語，正式程式的 GeminiTranscriber）。
-報告：`reports/chinese-stt-<env-label>-YYYYMMDD-HHMMSS.json`（每一次的時間、逐字稿與錯字率）與同名 `.md`（摘要）。
+報告：`reports/chinese-stt-<env-label>-YYYYMMDD-HHMMSS.json`（每一次的時間、逐字稿與錯字率）與同名 `.md`（摘要）。json 只留在本機、不進版控，版控只收 `.md`。
 
 台語見文末〈[台語 STT](#台語-stt)〉：`scripts/speech_bench/taigi_stt_bench.py`，報告 `reports/taigi-stt-*`。
 

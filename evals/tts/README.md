@@ -1,7 +1,7 @@
 # TTS 回應時間量測
 
 腳本：`scripts/speech_bench/chinese_tts_bench.py`（國語，正式程式的 edge-tts 引擎）。
-報告：`reports/chinese-tts-<env-label>-YYYYMMDD-HHMMSS.json`（每一次的原始數據）與同名 `.md`（摘要）。
+報告：`reports/chinese-tts-<env-label>-YYYYMMDD-HHMMSS.json`（每一次的原始數據）與同名 `.md`（摘要）。json 只留在本機、不進版控，版控只收 `.md`。
 
 台語見文末〈[台語 TTS](#台語-tts)〉：`scripts/speech_bench/taigi_tts_bench.py`，報告 `reports/taigi-tts-*`。
 

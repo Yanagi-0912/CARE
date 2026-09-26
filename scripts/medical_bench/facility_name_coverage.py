@@ -5,7 +5,8 @@ r"""醫療院所名稱查詢覆蓋率：資料庫裡每一家院所，用它自�
     對 medicalFacilities 的每一家院所，用它登記的名稱呼叫正式的
     MedicalService.find_facility_by_name，看結果（最多 20 筆）裡有沒有它自己：
     - 不帶座標：同名的院所查的是同一句，所以每個不重複的名稱只查一次，結果套用到同名的每一家；
-    - 帶座標：用該院所自己的座標查，模擬「使用者就在附近」，每家各查一次。
+    - 帶座標：用該院所在資料庫裡自己的座標查（不是使用者位置，也不是寫死的座標），模擬
+      「使用者就站在院所旁邊」，每家各查一次。
     覆蓋率＝查得到的家數 ÷ 資料庫總家數，另列「排第一」的比例，並依院所類型分開列。
 
     用完整登記名稱查是最好查的情況，數字是**上限**；使用者平常講簡稱（臺大醫院、長庚），
@@ -63,6 +64,8 @@ from app.services.medical.medical_service import (  # noqa: E402
 
 PHARMACY_COLLECTION = "medical_facilities_pharmacy"
 PROGRESS_EVERY = 1000
+# 查不到時保留結果的前幾個名稱寫進報告。
+RETURNED_NAMES_KEPT = 3
 
 
 async def load_facilities() -> list[dict]:
@@ -107,6 +110,7 @@ async def query_all(calls: list, concurrency: int, interval: float, title: str) 
             answers[index] = {
                 "seconds": round(seconds, 3),
                 "ids": [f.id for f in facilities],
+                "names": [f.name for f in facilities[:RETURNED_NAMES_KEPT]],
                 "errors": errors,
             }
             done += 1
@@ -124,13 +128,17 @@ async def query_all(calls: list, concurrency: int, interval: float, title: str) 
 def _outcome(target_id: str, answer: dict) -> dict:
     ids = answer["ids"]
     rank = ids.index(target_id) + 1 if target_id in ids else None
-    return {
+    outcome = {
         "found": rank is not None,
         "rank": rank,
         "results": len(ids),
         "failed": bool(answer["errors"]),
         "timeout": any(is_timeout(e) for e in answer["errors"]),
     }
+    if rank is None:
+        # 查不到時記下查到的是誰，報告才看得出「有結果但不是它自己」是被誰佔走。
+        outcome["returned"] = answer["names"]
+    return outcome
 
 
 async def run(
@@ -191,10 +199,36 @@ def _summarize(facilities: list[dict], results: list[dict]) -> dict:
     }
 
 
-MODE_TITLES = {"no-location": "不帶座標", "with-location": "帶該院所座標"}
+MODE_TITLES = {"no-location": "不帶座標", "with-location": "帶座標（該院所自己的座標）"}
+MODE_QUERY_NOTES = {
+    "no-location": "每個不重複的名稱查一次，同名院所共用結果",
+    "with-location": "每家院所各查一次",
+}
+
+
+def query_counts(facilities: list[dict]) -> dict[str, int]:
+    """各模式實際送出的查詢次數：不帶座標依不重複名稱，帶座標依家數。"""
+    return {
+        "no-location": len({f["name"] for f in facilities}),
+        "with-location": len(facilities),
+    }
+
+
+def _miss_line(miss: dict) -> str:
+    head = f"- {miss['name']}（{miss['type']}）："
+    if not miss["results"]:
+        return head + "結果 0 筆"
+    returned = miss.get("returned")
+    if not returned:
+        return head + f"結果 {miss['results']} 筆，都不是它自己"
+    more = "…" if miss["results"] > len(returned) else ""
+    # 同名的是別家（全台同名院所很多），標出來免得讀成「明明查到了」。
+    shown = [f"{n}（同名另一家）" if n == miss["name"] else n for n in returned]
+    return head + f"結果 {miss['results']} 筆，都不是它自己（查到：{'、'.join(shown)}{more}）"
 
 
 def _markdown(meta: dict, summaries: dict, misses: dict[str, list[dict]]) -> str:
+    queries = meta["queries"]
     lines = [
         f"# 醫療院所名稱查詢覆蓋率 {meta['started_at']}",
         "",
@@ -204,36 +238,40 @@ def _markdown(meta: dict, summaries: dict, misses: dict[str, list[dict]]) -> str
         + ("，隨機抽樣" if meta["tested"] < meta["db_total"] else "")
         + "）",
         "- 做法：用每家院所自己的登記名稱呼叫 `MedicalService.find_facility_by_name`，"
-        "看最多 20 筆的結果裡有沒有它自己。",
-        "  - 不帶座標：同名院所查同一句，結果套用到同名的每一家。",
-        f"  - 帶座標：用該院所自己的座標查，先查 {NAME_SEARCH_RADIUS_METERS // 1000} 公里內，"
-        "查無再放寬全國（與正式程式相同）。",
+        "看最多 20 筆的結果裡**有沒有它自己**。結果有其他院所、但沒有它自己，也算查不到。",
+        f"  - 不帶座標：{queries['no-location']:,} 次查詢（{MODE_QUERY_NOTES['no-location']}）。",
+        f"  - 帶座標：{queries['with-location']:,} 次查詢（{MODE_QUERY_NOTES['with-location']}）。"
+        "座標是**該院所在資料庫裡自己的座標**，模擬使用者就站在院所旁邊查；"
+        "不是使用者當下的位置，也不是寫死的座標。",
+        f"    先查 {NAME_SEARCH_RADIUS_METERS // 1000} 公里內、由近到遠，查無再放寬全國（與正式程式相同）。",
         "- 用完整登記名稱查是最好查的情況，覆蓋率是**上限**；使用者講簡稱的情況不在這份報告裡。",
         f"- 分母不含藥局：藥局在 `{PHARMACY_COLLECTION}`（{meta['pharmacy_total']:,} 家），"
         "名稱查詢目前不查那裡。",
-        "- 失敗＝repository 記下 DB 錯誤（正式程式此時回空清單，會被算成查不到）。",
+        "- 欄位：查不到＝家數 − 查得到；**DB 錯誤**是查詢本身出錯（repository 記下 ERROR，"
+        "正式程式此時回空清單），也會算進查不到；逾時是 DB 錯誤裡訊息含 timeout 的。",
     ]
     for mode, summary in summaries.items():
         o = summary["overall"]
         lines += [
             "",
-            f"## {MODE_TITLES[mode]}",
+            f"## {MODE_TITLES[mode]}：{queries[mode]:,} 次查詢（{MODE_QUERY_NOTES[mode]}）",
             "",
-            f"查得到 {_ratio(o['found'], o['total'])}，排第一 {_ratio(o['top1'], o['total'])}，"
-            f"失敗 {o['failures']}、逾時 {o['timeouts']}。",
+            f"查得到 {_ratio(o['found'], o['total'])}，查不到 {_ratio(o['total'] - o['found'], o['total'])}，"
+            f"排第一 {_ratio(o['top1'], o['total'])}；DB 錯誤 {o['failures']}、逾時 {o['timeouts']}。",
             "",
-            "| 院所類型 | 家數 | 查得到 | 排第一 | 失敗 | 逾時 |",
-            "| --- | --- | --- | --- | --- | --- |",
+            "| 院所類型 | 家數 | 查得到 | 查不到 | 排第一 | DB 錯誤 | 逾時 |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
         ]
         for t, b in summary["by_type"].items():
             lines.append(
                 f"| {t} | {b['total']:,} | {_ratio(b['found'], b['total'])} "
-                f"| {_ratio(b['top1'], b['total'])} | {b['failures']} | {b['timeouts']} |"
+                f"| {b['total'] - b['found']:,} | {_ratio(b['top1'], b['total'])} "
+                f"| {b['failures']} | {b['timeouts']} |"
             )
         examples = misses[mode][:20]
         if examples:
             lines += ["", f"查不到的例子（前 {len(examples)} 家，完整清單在 json）：", ""]
-            lines += [f"- {m['name']}（{m['type']}）：結果 {m['results']} 筆" for m in examples]
+            lines += [_miss_line(m) for m in examples]
     return "\n".join(lines) + "\n"
 
 
@@ -248,7 +286,7 @@ async def _main_async(
         facilities = random.Random(args.seed).sample(facilities, args.limit)
     pharmacy_total = await count_pharmacies()
 
-    names = len({f["name"] for f in facilities})
+    names = query_counts(facilities)["no-location"]
     planned = (names if "no-location" in args.modes else 0) + (
         len(facilities) if "with-location" in args.modes else 0
     )
@@ -313,6 +351,7 @@ def main() -> None:
         "database": settings.MONGODB_DB,
         "db_total": db_total,
         "tested": len(facilities),
+        "queries": {m: n for m, n in query_counts(facilities).items() if m in args.modes},
         "seed": args.seed if args.limit else None,
         "pharmacy_total": pharmacy_total,
         "modes": args.modes,

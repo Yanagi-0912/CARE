@@ -3,7 +3,7 @@ r"""醫療院所查詢回應時間量測：正式程式的 MedicalService，32 �
 
 量的是什麼：
     LINE 上「找附近院所」三個工具背後的 service 呼叫，從呼叫到拿回院所清單的時間：
-    - 不分科：MedicalService.find_nearby_hospitals（含「現在有營業」與院所類型）
+    - 不限科別：MedicalService.find_nearby_hospitals（含「現在有營業」與院所類型）
     - 依科別：MedicalService.find_nearby_facilities_by_department（含多科、科別＋類型）
     - 依名稱：MedicalService.find_facility_by_name（有帶座標與沒帶座標）
     幾乎全是 MongoDB 查詢（$geoNear、名稱 regex），數字反映「這台機器到正式資料庫」加上
@@ -101,8 +101,8 @@ LOCATIONS: dict[str, tuple[float, float]] = {
     "高雄車站": (22.6394, 120.3025),
 }
 
-# 使用者指定的極端地點（2026-09-26），各查「不分科」與「不分科」科別。
-# 同日唯讀查 5／10／20／50 公里內的家數（全部／不分科）：
+# 使用者指定的極端地點（2026-09-26），各查「不限科別」與「科別＝不分科」。
+# 同日唯讀查 5／10／20／50 公里內的家數（不限科別／科別＝不分科）：
 #   海洋大學       209／318／618／7,812；23／43／85／785
 #   金門            42／59／62／62；7／10／11／11
 #   澎湖望安         2／2／3／87；0／0／0／6
@@ -135,12 +135,12 @@ class Case:
 
 
 CASES: list[Case] = [
-    Case("nearby-taipei", "nearby", "不分科", "台北車站"),
-    Case("nearby-puli", "nearby", "不分科", "埔里"),
-    Case("nearby-lanyu", "nearby", "不分科", "蘭嶼"),
-    Case("open-taipei", "nearby", "不分科＋現在有營業", "台北車站", open_now=True),
-    Case("open-puli", "nearby", "不分科＋現在有營業", "埔里", open_now=True),
-    Case("open-lanyu", "nearby", "不分科＋現在有營業", "蘭嶼", open_now=True),
+    Case("nearby-taipei", "nearby", "不限科別", "台北車站"),
+    Case("nearby-puli", "nearby", "不限科別", "埔里"),
+    Case("nearby-lanyu", "nearby", "不限科別", "蘭嶼"),
+    Case("open-taipei", "nearby", "不限科別＋現在有營業", "台北車站", open_now=True),
+    Case("open-puli", "nearby", "不限科別＋現在有營業", "埔里", open_now=True),
+    Case("open-lanyu", "nearby", "不限科別＋現在有營業", "蘭嶼", open_now=True),
     Case("type-clinic-puli", "nearby", "類型：診所", "埔里", facility_type="診所"),
     Case("dept-gi-taipei", "department", "腸胃科", "台北車站", departments=("腸胃科",)),
     Case("dept-dental-puli", "department", "牙科", "埔里", departments=("牙科",)),
@@ -166,11 +166,14 @@ CASES: list[Case] = [
     Case("name-city-prefix", "name", "花蓮中正診所（開頭是地名）", keyword="花蓮中正診所"),
     Case("name-missing", "name", "不存在的院所（帶座標，會查兩次）", "台北車站", keyword="王小明診所"),
 ]
-# 極端地點：找附近院所；要找科別時一律找不分科。
+# 極端地點：不限科別找附近院所；要找科別時一律找「不分科」（沒申報專科的一般西醫診所）。
 for _place in EDGE_LOCATIONS:
     CASES += [
-        Case(f"edge-nearby-{_place}", "nearby", "不分科", _place),
-        Case(f"edge-dept-{_place}", "department", "科別：不分科", _place, departments=("不分科",)),
+        Case(f"edge-nearby-{_place}", "nearby", "不限科別", _place),
+        Case(
+            f"edge-dept-{_place}", "department", "科別＝不分科（沒申報專科的診所）", _place,
+            departments=("不分科",),
+        ),
     ]
 
 
@@ -322,7 +325,11 @@ def _summaries(rows: list[dict]) -> list[dict]:
     return summaries
 
 
-KIND_TITLES = {"nearby": "不分科", "department": "依科別", "name": "依名稱"}
+KIND_TITLES = {
+    "nearby": "不限科別（找附近院所）",
+    "department": "依科別",
+    "name": "依名稱",
+}
 
 
 def _markdown(meta: dict, summaries: list[dict]) -> str:

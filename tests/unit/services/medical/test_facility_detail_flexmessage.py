@@ -4,8 +4,10 @@
 from datetime import datetime
 
 import pytest
+from app.i18n import facility_type_label
 from app.schemas import MedicalFacility, ClinicDaySchedule, ClinicTimeSlot
 from app.services.medical.business_hours import TAIPEI_TZ, WEEKDAY_KEYS
+from app.services.medical.facility_type_matcher import FACILITY_TYPE_CATEGORIES
 from resources.flex_messages import theme
 from resources.flex_messages.medical_messages.facility_brief_flex_message import (
     FACILITIES_KEY,
@@ -343,3 +345,46 @@ def test_generate_facility_detail_flex_message_top_level_names_empty_without_nam
     )
 
     assert result[FACILITIES_KEY] == {"names": []}
+
+
+def _all_texts(node) -> list[str]:
+    """巢狀 dict/list 裡所有 text 元件的文字。"""
+    if isinstance(node, dict):
+        own = [node["text"]] if node.get("type") == "text" else []
+        return own + [t for v in node.values() for t in _all_texts(v)]
+    if isinstance(node, list):
+        return [t for item in node for t in _all_texts(item)]
+    return []
+
+
+def test_generate_facility_detail_flex_message_localizes_facility_type():
+    # 切換語言後，標頭的院所類型要跟著翻譯，不能留著資料庫的中文原值
+    result = generate_facility_detail_flex_message(
+        _base_facility(type="綜合醫院"), language="en"
+    )
+
+    assert "General Hospital" in _all_texts(result["contents"])
+    assert "綜合醫院" not in _all_texts(result["contents"])
+
+
+def test_generate_facility_detail_flex_message_unknown_facility_type_falls_back():
+    # 字典沒收的類型退回原文，不得顯示成 facility_type.xxx 這種 key
+    result = generate_facility_detail_flex_message(
+        _base_facility(type="某新類型"), language="en"
+    )
+
+    assert "某新類型" in _all_texts(result["contents"])
+
+
+@pytest.mark.parametrize("language", ["zh-TW", "en", "id", "vi", "th", "ja"])
+def test_every_known_facility_type_has_translation(language):
+    # 資料庫會出現的類型與使用者可選的分類，每種語言都要有譯名
+    known = {"病理中心", *FACILITY_TYPE_CATEGORIES}
+    for values in FACILITY_TYPE_CATEGORIES.values():
+        known.update(values)
+
+    for value in known:
+        label = facility_type_label(value, language)
+        assert label, value
+        if language != "zh-TW":
+            assert label != value, f"{value} 在 {language} 沒有翻譯"

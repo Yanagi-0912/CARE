@@ -3,9 +3,11 @@ import io
 import json
 import shutil
 import stat
+import subprocess
 import zipfile
 
 import pytest
+from PIL import Image
 
 from scripts.build_drug_catalog import (
     _require_magick,
@@ -13,6 +15,7 @@ from scripts.build_drug_catalog import (
     image_fetch_targets,
     pending_image_targets,
     read_dataset_zip,
+    thumbnail_command,
     thumbnail_filename,
 )
 
@@ -282,6 +285,29 @@ def test_pending_image_targets_returns_destination_path_under_image_dir(tmp_path
     assert pending == [
         ("L1", "https://example.test/1.jpg", str(tmp_path / thumbnail_filename("L1")))
     ]
+
+
+def test_thumbnail_command_forces_jpeg_output_regardless_of_extension():
+    """暫存檔是 `.jpg.tmp`，ImageMagick 認不得 `.tmp` 會沿用原圖格式；食藥署
+    原圖是 PNG，少了 `jpg:` 前綴就會產出檔名 .jpg 的 PNG。"""
+    command = thumbnail_command("x.jpg.src", "x.jpg.tmp")
+
+    assert command[1] == "x.jpg.src"
+    assert command[-1] == "jpg:x.jpg.tmp"
+
+
+@pytest.mark.skipif(shutil.which("magick") is None, reason="需要 ImageMagick")
+def test_thumbnail_command_turns_png_source_into_160px_jpeg(tmp_path):
+    """同上，但用真的 magick 轉一張 PNG，確認前綴確實讓輸出變成 JPEG。"""
+    src = tmp_path / "x.jpg.src"
+    Image.new("RGBA", (640, 480), (255, 0, 0, 255)).save(src, format="PNG")
+    dst = tmp_path / "x.jpg.tmp"
+
+    subprocess.run(thumbnail_command(str(src), str(dst)), check=True, capture_output=True)
+
+    with Image.open(dst) as image:
+        assert image.format == "JPEG"
+        assert image.size == (160, 160)
 
 
 # ── magick 前置檢查（fetch_images 的第一件事，見 build_drug_catalog 模組文件）──

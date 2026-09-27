@@ -356,6 +356,25 @@ def _require_magick(path: Optional[str] = None) -> None:
         )
 
 
+def thumbnail_command(src_path: str, dst_path: str) -> list[str]:
+    """組出把一張原圖縮成縮圖的 `magick` 指令。純函式，可直接單元測試。
+
+    輸出路徑必須帶 `jpg:` 前綴：`_fetch_and_thumbnail_one` 先寫到
+    `xxx.jpg.tmp` 再改名，而 ImageMagick 認不得 `.tmp` 副檔名時會沿用原圖
+    格式——食藥署原圖是 PNG，結果就是檔名叫 .jpg 的 RGBA PNG（2026-09-27
+    補抓 33 張時全數如此，被 `test_all_files_decode_and_are_160x160` 擋下）。
+    """
+    return [
+        "magick", src_path,
+        "-resize", f"{IMAGE_THUMBNAIL_PX}x{IMAGE_THUMBNAIL_PX}>",
+        "-background", "white",
+        "-gravity", "center",
+        "-extent", f"{IMAGE_THUMBNAIL_PX}x{IMAGE_THUMBNAIL_PX}",
+        "-strip", "-quality", str(IMAGE_THUMBNAIL_QUALITY),
+        f"jpg:{dst_path}",
+    ]
+
+
 def thumbnail_filename(license_number: str) -> str:
     """縮圖檔名為證號 SHA-256 的前 16 字元。
 
@@ -423,15 +442,7 @@ def _fetch_and_thumbnail_one(image_url: str, out_path: str) -> str:
         with open(tmp_src_path, "wb") as tmp_file:
             tmp_file.write(data)
         subprocess.run(
-            [
-                "magick", tmp_src_path,
-                "-resize", f"{IMAGE_THUMBNAIL_PX}x{IMAGE_THUMBNAIL_PX}>",
-                "-background", "white",
-                "-gravity", "center",
-                "-extent", f"{IMAGE_THUMBNAIL_PX}x{IMAGE_THUMBNAIL_PX}",
-                "-strip", "-quality", str(IMAGE_THUMBNAIL_QUALITY),
-                tmp_dst_path,
-            ],
+            thumbnail_command(tmp_src_path, tmp_dst_path),
             check=True,
             capture_output=True,
             timeout=IMAGE_CONVERT_TIMEOUT_SECONDS,

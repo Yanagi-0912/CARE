@@ -207,6 +207,7 @@ class FirecrawlClient:
         final_url: str | None = None
         title = ""
         content_type = ""
+        published_at = ""
         if isinstance(metadata, dict):
             raw_final_url = metadata.get("url") or metadata.get("sourceURL")
             if raw_final_url:
@@ -220,9 +221,27 @@ class FirecrawlClient:
             raw_content_type = metadata.get("contentType")
             if raw_content_type:
                 content_type = str(raw_content_type).strip()
+            # 發布時間的鍵名依網頁作者用的 meta 標籤而異，依序試。
+            # 實測（2026-09-27）兩個臺北榮總衛教頁一個都沒有，所以這裡拿不到
+            # 是常態而非異常；缺了由 resolve_page_published_at 改從內文找。
+            for key in (
+                "publishedTime",
+                "article:published_time",
+                "datePublished",
+                "og:article:published_time",
+                "dcterms.date",
+            ):
+                raw_published = metadata.get(key)
+                if raw_published:
+                    published_at = str(raw_published).strip()
+                    break
 
         return ScrapedPage(
-            text=text, final_url=final_url, title=title, content_type=content_type
+            text=text,
+            final_url=final_url,
+            title=title,
+            content_type=content_type,
+            published_at=published_at,
         )
 
     async def scrape(self, url: str) -> str:

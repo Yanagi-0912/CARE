@@ -492,3 +492,46 @@ async def test_ingest_url_also_reuses_existing_source_name():
     docs = collection.insert_many.await_args[0][0]
     for doc in docs:
         assert doc["source_name"] == "衛福部國健署"
+
+
+@pytest.mark.asyncio
+async def test_ingest_content_writes_the_date_from_the_approved_snapshot():
+    """日期跟著內容一起從快照傳進來——這條路徑不重新抓取，沒得現找。"""
+    service, _, _, collection = _make_service()
+
+    await service.ingest_content(
+        ALLOWED_URL,
+        "第一段內容。\n\n第二段內容。",
+        title=PAGE_TITLE,
+        published_at="2024-01-08",
+        source_name="國健署",
+    )
+
+    docs = collection.insert_many.await_args[0][0]
+    assert all(doc["published_at"] == "2024-01-08" for doc in docs)
+
+
+@pytest.mark.asyncio
+async def test_ingest_omits_the_field_entirely_when_the_page_states_no_date():
+    """不寫 None 也不拿 ingested_at 充數：缺席等同 ETL 寫出來的沒有日期。"""
+    service, _, _, collection = _make_service()
+
+    await service.ingest_content(
+        ALLOWED_URL, "第一段內容。", title=PAGE_TITLE, source_name="國健署"
+    )
+
+    docs = collection.insert_many.await_args[0][0]
+    assert all("published_at" not in doc for doc in docs)
+    assert all(doc["ingested_at"] for doc in docs)
+
+
+@pytest.mark.asyncio
+async def test_ingest_url_takes_the_date_from_the_page_it_scraped():
+    service, _, _, collection = _make_service(
+        scrape_return="高血壓宜低鈉飲食。\n\n更新日期：2023/05/01"
+    )
+
+    await service.ingest_url(ALLOWED_URL)
+
+    docs = collection.insert_many.await_args[0][0]
+    assert all(doc["published_at"] == "2023-05-01" for doc in docs)

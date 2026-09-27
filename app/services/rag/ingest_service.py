@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from app.services.rag.web_client import resolve_page_title
+from app.services.rag.web_client import resolve_page_published_at, resolve_page_title
 from app.services.rag.chunking import KB_CHUNKER_VERSION, split_kb_chunks
 from app.services.rag.whitelist import UrlPolicy, default_url_policy
 
@@ -118,6 +118,7 @@ class IngestService:
             final_norm=final_norm,
             text=text,
             title=resolve_page_title(page),
+            published_at=resolve_page_published_at(page),
             source_name=source_name,
             default_source_name=default_source_name,
         )
@@ -128,6 +129,7 @@ class IngestService:
         content: str,
         *,
         title: str = "",
+        published_at: str = "",
         source_name: str | None = None,
         default_source_name: str | None = None,
     ) -> IngestResult:
@@ -138,6 +140,10 @@ class IngestService:
 
         *title* 是頁面標題，會成為向量化輸入的「主題」與 original_title；
         沒有標題就不收（見 `_write`）。
+
+        *published_at* 同樣來自那份快照（`ContentPreviewItem.published_at`）。
+        這條路徑不重新抓取，所以日期也必須跟著內容一起傳進來，不能在這裡
+        現找。
         """
         normalized = self.url_policy.normalize(url)
         if normalized is None or not self.url_policy.is_allowed(url):
@@ -164,6 +170,7 @@ class IngestService:
             final_norm=None,
             text=content,
             title=title,
+            published_at=published_at,
             source_name=source_name,
             default_source_name=default_source_name,
         )
@@ -210,6 +217,7 @@ class IngestService:
         final_norm: str | None,
         text: str,
         title: str,
+        published_at: str = "",
         source_name: str | None,
         default_source_name: str | None,
     ) -> IngestResult:
@@ -219,12 +227,12 @@ class IngestService:
         同一種向量化輸入（`kb_embedding_input`）、帶 original_title、chunk_index
         從 1 起算。檢索時這兩個來源的 chunk 混在同一個索引裡互相比分數。
 
-        **一個明確的例外：沒有 `published_at`。** ETL 的每個 scraper 都是從
-        頁面抽出文章自己標示的發布日期，這條路徑沒有那個資訊——`ingest_content`
-        拿到的是 admin 審核過的純文字快照，頁面 metadata 已經不在了。不拿
+        `published_at` 只在**頁面自己標示**日期時才寫（見
+        `resolve_page_published_at`），抓不到就整個欄位不寫。不拿
         `ingested_at` 充數：那是 CARE 收錄的時間，把它當成發布日期會讓一篇
-        2019 年的衛教文在來源列上顯示成今天發布的。缺席的後果是這些 chunk
-        在 RAG 來源列與每日推播排序上沒有日期可用，那是實情的正確呈現。
+        2019 年的衛教文在來源列上顯示成今天發布的。實測（2026-09-27）線上由
+        這條路徑收錄的 22 篇裡，只有 4 篇的頁面有日期標示——缺席是常態，
+        下游（RAG 來源列、每日推播排序）本來就要能處理沒有日期的文件。
         """
         # 沒有標題就不收，與 ETL（CARE-data/scraper_api.py）同一條規則：向量化
         # 輸入會變成空白的「主題：」，BM25 的標題比對也對它無效。這個檢查排在
@@ -316,6 +324,10 @@ class IngestService:
                 "chunker_version": KB_CHUNKER_VERSION,
                 "ingested_at": ingested_at,
             }
+            # 抓不到日期就不寫這個欄位，而不是寫 None：與 ETL 寫出來的文件
+            # 一致（缺席等同沒有），下游的 `$nin: [None, ""]` 兩種都接得住。
+            if published_at:
+                doc["published_at"] = published_at
             if include_final_url:
                 doc["final_url"] = final_norm
             docs.append(doc)

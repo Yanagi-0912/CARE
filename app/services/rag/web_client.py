@@ -4,6 +4,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
+from app.core.publish_date import extract_stated_publish_date, format_publish_date
+
 
 @dataclass(frozen=True)
 class WebSearchHit:
@@ -29,6 +31,10 @@ class ScrapedPage:
     # 抓取端回報的 MIME type（Firecrawl 的 metadata.contentType）。拿不到就留
     # 空字串。用途見 resolve_page_title()：PDF 的標題要另外認。
     content_type: str = ""
+    # 抓取端 metadata 裡的發布時間（article:published_time 之類）。多數
+    # gov.tw 與醫院衛教頁沒有這些 meta 標籤，拿不到就留空字串，改由
+    # resolve_page_published_at() 從內文找。
+    published_at: str = ""
 
 
 # 只掃開頭幾行找標題：標題印在第一頁最上方，掃到後面撈到的是內文小節。
@@ -68,6 +74,23 @@ def resolve_page_title(page: ScrapedPage) -> str:
     if "pdf" not in (page.content_type or "").lower():
         return (page.title or "").strip()
     return _first_markdown_heading(page.text or "") or (page.title or "").strip()
+
+
+def resolve_page_published_at(page: ScrapedPage) -> str:
+    """決定這一頁的發布日期：抓取端的 metadata 優先，其次是內文自己標示的。
+
+    兩者皆無就回空字串——**不拿抓取當下的時間充數**。那是 CARE 收錄的時間，
+    把它當成發布日期會讓一篇 2019 年的衛教文在來源列上顯示成今天發布的。
+
+    順序的理由：metadata 是網頁作者明確標記的（article:published_time），
+    比從內文撈到的字串可靠。實測多數衛教頁兩者都沒有，那就誠實地沒有。
+    """
+    # meta 標籤的時間多半是 ISO 8601 帶時分秒（2024-03-15T08:30:00Z），取
+    # 日期的部分。format_publish_date 本身刻意不認時間戳：知識庫那個欄位裡
+    # 出現時間戳代表抽錯了欄位，這裡則是明確知道自己在處理什麼。
+    raw = (page.published_at or "").strip()
+    from_metadata = format_publish_date(raw.split("T", 1)[0])
+    return from_metadata or extract_stated_publish_date(page.text)
 
 
 class WebSearchUnavailable(Exception):

@@ -14,7 +14,7 @@ from app.models.knowledge_report import ContentPreview, ContentPreviewItem
 from app.repositories.knowledge_report_preview_repository import (
     KnowledgeReportPreviewRepository,
 )
-from app.services.rag.web_client import resolve_page_title
+from app.services.rag.web_client import resolve_page_published_at, resolve_page_title
 from app.services.rag.whitelist import UrlNotAllowedError, UrlPolicy, default_url_policy
 
 logger = logging.getLogger(__name__)
@@ -254,6 +254,10 @@ class ContentPreviewService:
             title=title,
             content=text,
             content_hash=hashlib.sha256(text.encode()).hexdigest(),
+            # 發布日期在這裡就定案，與 content 綁在同一份快照裡。抓不到就是
+            # 空字串：多數醫院衛教頁沒有任何日期標示（實測 22 篇中 18 篇），
+            # 缺席是常態。
+            published_at=resolve_page_published_at(page),
             char_count=len(text),
         )
 

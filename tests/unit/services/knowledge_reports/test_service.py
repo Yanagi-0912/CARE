@@ -208,6 +208,7 @@ async def test_run_ingest_success(mock_repo: MagicMock, mock_ingest: AsyncMock):
         ALLOWED_URL,
         SNAPSHOT_CONTENT,
         title="高血壓防治",
+        published_at="",
         default_source_name="高血壓防治",
     )
 
@@ -942,6 +943,7 @@ async def test_approve_falls_back_to_user_source_urls(
         ALLOWED_URL,
         SNAPSHOT_CONTENT,
         title="高血壓防治",
+        published_at="",
         default_source_name="高血壓防治",
     )
 
@@ -1201,6 +1203,7 @@ async def test_run_ingest_uses_snapshot_content_and_never_scrapes(
         ALLOWED_URL,
         SNAPSHOT_CONTENT,
         title="高血壓防治",
+        published_at="",
         default_source_name="高血壓防治",
     )
 

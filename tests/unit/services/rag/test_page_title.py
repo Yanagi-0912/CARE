@@ -66,3 +66,30 @@ def test_heading_deeper_in_document_is_ignored():
         content_type="application/pdf",
     )
     assert resolve_page_title(page) == "封面標題"
+
+
+def test_publish_date_prefers_metadata_over_the_page_text():
+    """meta 標籤是網頁作者明確標記的，比從內文撈到的字串可靠。"""
+    from app.services.rag.web_client import resolve_page_published_at
+
+    page = ScrapedPage(
+        text="衛教內容……\n更新日期：2020-01-01",
+        # article:published_time 常見的 ISO 8601 形態
+        published_at="2024-03-15T08:30:00Z",
+    )
+    assert resolve_page_published_at(page) == "2024-03-15"
+
+
+def test_publish_date_falls_back_to_the_date_the_page_states():
+    """實測多數醫院衛教頁的 metadata 沒有任何日期欄位。"""
+    from app.services.rag.web_client import resolve_page_published_at
+
+    page = ScrapedPage(text="骨質疏鬆症衛教\n更新：2024-01-08")
+    assert resolve_page_published_at(page) == "2024-01-08"
+
+
+def test_publish_date_is_empty_when_the_page_never_says_one():
+    """不拿抓取當下的時間充數：那是收錄時間，不是發布日期。"""
+    from app.services.rag.web_client import resolve_page_published_at
+
+    assert resolve_page_published_at(ScrapedPage(text="本頁沒有任何日期標示")) == ""

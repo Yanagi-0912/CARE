@@ -77,6 +77,9 @@ class ContentPreviewItem(BaseModel):
     title: str = Field(default="", description="頁面標題，供 source_name fallback")
     content: str = Field(default="", description="抓取到的原文")
     content_hash: str = Field(default="", description="sha256(content)，核准時綁定用")
+    # 頁面自己標示的發布日期，`YYYY-MM-DD`；抓不到就是空字串。與 content
+    # 同屬這份快照：核准綁定的是這一次抓到的內容，日期也該是同一次抓到的。
+    published_at: str = Field(default="", description="頁面標示的發布日期，可能為空")
     char_count: int = Field(default=0, description="原文字元數（截斷前）")
     truncated: bool = Field(default=False, description="回傳的 content 是否已被截斷")
     message: str = Field(default="", description="失敗或空內容的說明")

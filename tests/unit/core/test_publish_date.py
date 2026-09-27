@@ -8,7 +8,11 @@ from datetime import date
 
 import pytest
 
-from app.core.publish_date import format_publish_date, parse_publish_date
+from app.core.publish_date import (
+    extract_stated_publish_date,
+    format_publish_date,
+    parse_publish_date,
+)
 
 
 @pytest.mark.parametrize(
@@ -51,6 +55,34 @@ def test_format_normalizes_every_accepted_form_to_one_display_format():
     assert format_publish_date("2024/03/15") == "2024-03-15"
     assert format_publish_date("113-03-15") == "2024-03-15"
     assert format_publish_date("2024-3-5") == "2024-03-05"
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # 線上實測抓到的四種真實寫法（2026-09-27）
+        ("衛教內容……\n更新時間：114-01-15", "2025-01-15"),
+        ("骨質疏鬆症衛教\n更新：2024-01-08", "2024-01-08"),
+        ("食品安全問答\n維護日期：2023/05/01", "2023-05-01"),
+        ("新聞稿內容\n發布日期： 2022年3月5日", "2022-03-05"),
+    ],
+)
+def test_extracts_the_date_a_page_labels_as_its_own(text, expected):
+    assert extract_stated_publish_date(text) == expected
+
+
+def test_extraction_ignores_dates_that_are_not_labelled_as_the_pages_date():
+    """衛教內文出現的日期多半是別的東西，抓來當發布日只會標錯。"""
+    assert extract_stated_publish_date("自 2023-01-01 起健保給付本項目") == ""
+    assert extract_stated_publish_date("研究收案期間 2019/01/01 至 2020/12/31") == ""
+    assert extract_stated_publish_date("本頁無任何日期") == ""
+    assert extract_stated_publish_date("") == ""
+    assert extract_stated_publish_date(None) == ""
+
+
+def test_extraction_takes_the_last_match_because_gov_pages_put_it_in_the_footer():
+    text = "更新日期：2020-01-01\n（這是導覽列）\n內文……\n更新日期：2024-06-30"
+    assert extract_stated_publish_date(text) == "2024-06-30"
 
 
 def test_format_drops_unparseable_values_instead_of_echoing_them():

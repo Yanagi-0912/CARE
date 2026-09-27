@@ -442,6 +442,8 @@ class KnowledgeReportService:
                     item.content,
                     # 頁面標題是向量化輸入的「主題」與 original_title（與 ETL 同格式）
                     title=item.title,
+                    # 日期同樣取自核准綁定的那份快照，不在收錄時重新抓
+                    published_at=item.published_at,
                     # 當來源名則只是預設值：庫裡既有的策展來源名優先，不被 <title> 蓋掉
                     default_source_name=item.title or None,
                 )

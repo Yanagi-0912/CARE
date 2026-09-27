@@ -57,6 +57,34 @@ def parse_publish_date(value: str | None) -> date | None:
         return None
 
 
+# 頁面內文自己標示的日期。前面必須有標籤（「更新日期：」「發布時間」…），
+# 裸日期一律不認——衛教文內文出現的日期多半是別的東西（統計年度、活動日期、
+# 法規施行日），抓來當發布日只會標錯。
+#
+# 實測（2026-09-27，線上 22 篇由知識回報收錄的文章）：4 篇的內文有這種標籤，
+# 其餘 18 篇整頁沒有任何日期標示。Firecrawl 的 metadata 則完全沒有日期欄位
+# （兩個臺北榮總頁面實測，回的鍵只有 title／og:*／contentType 那些）。
+_STATED_DATE = re.compile(
+    r"(?:發[布佈]|刊登|更新|修改|維護|公告|上稿|異動)\s*(?:日期|時間)?\s*[:：]\s*"
+    r"(?:民國\s*)?(\d{2,4})\s*[-/.年]\s*(\d{1,2})\s*[-/.月]\s*(\d{1,2})"
+)
+
+
+def extract_stated_publish_date(text: str | None) -> str:
+    """從頁面內文抓它自己標示的日期，回 `YYYY-MM-DD`；沒有就回空字串。
+
+    取**最後一個**符合的：gov.tw 的頁面把「更新日期」放在頁尾，而頁首常有
+    導覽列或前一篇文章的日期。
+    """
+    if not text:
+        return ""
+    matches = _STATED_DATE.findall(text)
+    if not matches:
+        return ""
+    year, month, day = matches[-1]
+    return format_publish_date(f"{year}-{month}-{day}")
+
+
 def format_publish_date(value: str | None) -> str:
     """呈現用的 `YYYY-MM-DD`；解析不出來回空字串。
 

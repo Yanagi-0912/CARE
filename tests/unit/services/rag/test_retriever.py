@@ -93,6 +93,7 @@ async def test_retriever_returns_documents():
             "url": "https://a.example",
             "original_title": None,
             "verdict": None,
+            "published_at": None,
         },
     )
     assert docs[1].page_content == "B"
@@ -215,6 +216,7 @@ async def test_text_retriever_builds_search_pipeline():
         "url": None,
         "original_title": None,
         "verdict": None,
+        "published_at": None,
     }
 
     pipeline = collection.aggregate.call_args.args[0]

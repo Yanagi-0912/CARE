@@ -102,6 +102,27 @@ def test_source_buttons_use_uri_action_with_verbatim_url():
     assert "[1]" in str(bubble["footer"]) and "食藥署" in str(bubble["footer"])
 
 
+def test_source_button_shows_the_publish_date_when_there_is_one():
+    ft = theme.resolve_theme("large")
+    sources = [
+        SourceRef(
+            index=1,
+            label="食藥署",
+            url="https://www.fda.gov.tw/b",
+            published_at="2024-03-15",
+        ),
+        SourceRef(index=2, label="台灣 e 院", url="https://sp1.hso.mohw.gov.tw/a"),
+    ]
+
+    bubble = _bubble_of(build_rag_answer_flex("q", "a [1][2]。", sources, ft))
+
+    footer = str(bubble["footer"])
+    assert "[1] 食藥署（2024-03-15 發布）" in footer
+    # 沒有日期的來源維持原本的樣子，不留空括號
+    assert "[2] 台灣 e 院" in footer
+    assert "（ 發布）" not in footer
+
+
 def test_source_without_url_produces_no_button():
     """URI action 缺 uri 會被 LINE 拒收；該筆仍留在純文字清單裡。"""
     ft = theme.resolve_theme("large")

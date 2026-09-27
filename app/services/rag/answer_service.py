@@ -17,6 +17,7 @@ from app.services.rag.cannot_answer import (
 from app.services.rag.answer_prompts import build_rag_prompt, wrap_context
 from app.services.rag.cohere_reranker import Reranker, VectorScoreReranker
 from app.services.rag.link_check import LinkChecker, dead_urls
+from app.core.publish_date import format_publish_date
 from app.core.rag_sources import SourceRef, set_request_rag_sources
 from app.services.rag.fail_messages import (
     NO_ANSWER_MESSAGE,
@@ -470,16 +471,25 @@ class RagAnswerService:
         標頭只放 source_name 與 original_title，**不放 url** —— url 進 context
         會佔 token，且模型可能改寫或杜撰網址。url 由 `_append_sources`
         依編號對應回填。
+
+        發布日期有值時一併放進標頭。prompt 刻意**不**加「引用舊資料要加註
+        提醒」這類規則：答案有字數上限（ANSWER_MAX_CHARS），強制加註會排擠
+        掉衛教內容本身，而「多舊算舊」在沒有實測之前只是憑感覺定的門檻。
+        這裡只是把日期交到模型手上，讓它在問題本身就與時間有關時（「現在的
+        規定」「最新公告」）有東西可依據。
         """
         blocks: list[str] = []
         for idx, doc in enumerate(docs, start=1):
             parts: list[str] = []
             source = str(doc.metadata.get("source_name") or "").strip()
             title = str(doc.metadata.get("original_title") or "").strip()
+            published_at = RagAnswerService._doc_published_at(doc)
             if source:
                 parts.append(f"來源：{source}")
             if title:
                 parts.append(f"標題：{title}")
+            if published_at:
+                parts.append(f"發布日期：{published_at}")
             header = f"[{idx}]" + (f" {'｜'.join(parts)}" if parts else "")
             blocks.append(f"{header}\n{doc.page_content}")
         return "\n\n".join(blocks)
@@ -555,6 +565,16 @@ class RagAnswerService:
     @staticmethod
     def _doc_url(doc: Document) -> str:
         return str(doc.metadata.get("url") or "").strip()
+
+    @staticmethod
+    def _doc_published_at(doc: Document) -> str:
+        """這份文件的發布日期，正規化成 `YYYY-MM-DD`；沒有或解析不出來回空字串。
+
+        解析不出來就當成沒有（見 `format_publish_date`）：庫裡這個欄位是各
+        scraper 原樣寫入的，混著佔位字串與抽錯欄位的值，照樣印出去等於宣稱
+        那是發布日期。
+        """
+        return format_publish_date(doc.metadata.get("published_at"))
 
     @staticmethod
     def _cited_urls(answer_text: str, docs: list[Document]) -> list[str]:
@@ -652,10 +672,17 @@ class RagAnswerService:
         *url* 為 None 時取 metadata 原值。呼叫端會在網址判定為打不開時改傳
         空字串——把「死掉的 url」完全等同於「沒有 url」，既有的退回邏輯就
         原封不動地變成降級路徑，不需要新增一種顯示分支。
+
+        有發布日期時接在來源名後面，寫法與查核判定卡一致（「（YYYY-MM-DD
+        發布）」）；沒有來源名就不標日期——單獨一個日期掛在網址前面看不出
+        是什麼的日期。
         """
         source = str(doc.metadata.get("source_name") or "").strip()
         url = RagAnswerService._doc_url(doc) if url is None else url.strip()
         title = str(doc.metadata.get("original_title") or "").strip()
+        published_at = RagAnswerService._doc_published_at(doc)
+        if source and published_at:
+            source = f"{source}（{published_at} 發布）"
         if url:
             return f"{source}：{url}" if source else url
         if title:
@@ -689,7 +716,14 @@ class RagAnswerService:
         title = str(doc.metadata.get("original_title") or "").strip()
         url = RagAnswerService._doc_url(doc) if url is None else url.strip()
         label = source or title or f"來源 {index}"
-        return SourceRef(index=index, label=label, url=url)
+        # 日期分成獨立欄位而不是併進 label：呈現層要自己決定放不放得下
+        # （Flex 按鈕的文字會被截斷，純文字清單不會）。
+        return SourceRef(
+            index=index,
+            label=label,
+            url=url,
+            published_at=RagAnswerService._doc_published_at(doc),
+        )
 
     @staticmethod
     def _append_sources(

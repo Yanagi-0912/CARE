@@ -13,8 +13,9 @@ design.md 決策 5 的前幾道防線。
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, timedelta
+from datetime import timedelta
 
+from app.core.publish_date import parse_publish_date as _parse_date
 from app.services.medication.drug_catalog_service import normalize_drug_name
 
 # 正規化後短於此長度的鍵不予比對。單字元的鍵（來自「藥名只剩一個字」這類資料
@@ -116,21 +117,9 @@ POLICY_ANNOUNCEMENT_KEYWORDS: tuple[str, ...] = (
     "跨國交流",
 )
 
-# 明顯不是日期的佔位字串。判定「有沒有可用的日期」時，這些等同於沒有。
-_NON_DATE_PLACEHOLDERS: frozenset[str] = frozenset({"不詳", "未提供", "無", "-", "N/A"})
-
-_DATE_PATTERN = re.compile(r"^(\d{2,4})[-/.](\d{1,2})[-/.](\d{1,2})$")
-
-# 民國年與西元年的界線。三位數（含）以下一律當成民國年——西元年不可能是三位數。
-#
-# **訂正（2026-09-04）**：本行原本寫著「食藥署與衛福部的頁面普遍以民國年呈現」，
-# 那是未經查證的推測。實際量測 `health_articles_chunks` 中 `chunk_index=1` 且有
-# 網址的 2,422 筆，**民國格式 0 筆**——國健署新聞 1,011 筆、TFC 823 筆、
-# 食藥署闢謠專區 587 筆全部是西元 `YYYY-MM-DD`（食藥署的抽取 regex 本身就寫死
-# `\d{4}`）。民國年的支援仍然保留：gov.tw 各頁面的日期呈現本來就不一致，上游
-# 改版時多認一種格式的成本是零，而少認一種會讓整批文章安靜地消失。
-_ROC_YEAR_OFFSET = 1911
-_ROC_YEAR_MAX = 999
+# 日期字串的解析（格式、民國年、佔位字串）已移到 `app/core/publish_date.py`：
+# RAG 的來源標示是第二個呼叫端，兩邊對「什麼字串算一個日期」必須是同一個答案。
+# 這裡以 `_parse_date` 的名字 import，是為了讓本模組既有的說明與呼叫維持原樣。
 
 # 允許的未來偏差。時區換算與頁面時差可能讓發布日看起來早一天；超過這個範圍
 # 代表日期抽錯了欄位（抓到了「有效期限」之類），不該被當成最新消息。
@@ -306,24 +295,3 @@ def is_recent(published_at: str | None, today: str, max_age_days: int) -> bool:
     if published > reference + timedelta(days=_FUTURE_TOLERANCE_DAYS):
         return False
     return published >= reference - timedelta(days=max_age_days)
-
-
-def _parse_date(value: str | None) -> date | None:
-    """把 `2026-08-30` 或民國年的 `115-09-01` 解析成 date；失敗回 None。"""
-    if not value:
-        return None
-    cleaned = value.strip()
-    if not cleaned or cleaned.upper() in _NON_DATE_PLACEHOLDERS:
-        return None
-
-    match = _DATE_PATTERN.match(cleaned)
-    if match is None:
-        return None
-
-    year, month, day = (int(part) for part in match.groups())
-    if year <= _ROC_YEAR_MAX:
-        year += _ROC_YEAR_OFFSET
-    try:
-        return datetime(year, month, day).date()
-    except ValueError:
-        return None

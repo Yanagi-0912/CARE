@@ -92,10 +92,15 @@ def _make_service(
     )
 
 
-def _doc(source=None, url=None, title=None, content="內容"):
+def _doc(source=None, url=None, title=None, content="內容", published_at=None):
     return Document(
         page_content=content,
-        metadata={"source_name": source, "url": url, "original_title": title},
+        metadata={
+            "source_name": source,
+            "url": url,
+            "original_title": title,
+            "published_at": published_at,
+        },
     )
 
 
@@ -181,6 +186,72 @@ def test_build_context_includes_numbered_source_and_title_header():
     assert "標題：None" not in context
     # url 不得進 context（避免模型改寫或杜撰網址）
     assert "http" not in context
+
+
+def test_build_context_includes_publish_date_when_available():
+    """問題本身與時間有關時（「現在的規定」），模型要有日期可依據。"""
+    docs = [
+        _doc(source="食藥署", title="用藥安全", published_at="2024-03-15"),
+        _doc(source="國健署", title="篩檢須知", published_at=None),
+        # 抽錯欄位或佔位字串：當成沒有日期，不照原字串印出去
+        _doc(source="衛福部", title="長照資源", published_at="不詳"),
+    ]
+
+    context = RagAnswerService._build_context(docs)
+
+    assert "[1] 來源：食藥署｜標題：用藥安全｜發布日期：2024-03-15" in context
+    assert "[2] 來源：國健署｜標題：篩檢須知\n" in context
+    assert "發布日期：不詳" not in context
+
+
+def test_source_label_shows_publish_date_after_source_name():
+    labelled = RagAnswerService._source_label(
+        _doc(source="食藥署", url="https://fda.example/1", published_at="2024/03/15")
+    )
+    # 斜線格式（scraper_api 原樣寫入的）統一正規化成 YYYY-MM-DD
+    assert labelled == "食藥署（2024-03-15 發布）：https://fda.example/1"
+
+    # 網址死掉而退回「來源名｜標題」時，日期一樣要在
+    fallback = RagAnswerService._source_label(
+        _doc(source="食藥署", url="https://fda.example/1", title="用藥安全",
+             published_at="2024-03-15"),
+        "",
+    )
+    assert fallback == "食藥署（2024-03-15 發布）｜用藥安全"
+
+    # 沒有來源名時不標日期：單獨一個日期看不出是什麼的日期
+    anonymous = RagAnswerService._source_label(
+        _doc(url="https://fda.example/1", published_at="2024-03-15")
+    )
+    assert anonymous == "https://fda.example/1"
+
+
+def test_source_ref_carries_publish_date_as_its_own_field():
+    """呈現層自己決定放不放得下，所以日期不併進 label。"""
+    ref = RagAnswerService._source_ref(
+        _doc(source="食藥署", url="https://fda.example/1", published_at="2024-03-15"),
+        1,
+    )
+
+    assert ref.label == "食藥署"
+    assert ref.published_at == "2024-03-15"
+
+    undated = RagAnswerService._source_ref(
+        _doc(source="食藥署", url="https://fda.example/1"), 1
+    )
+    assert undated.published_at == ""
+
+
+def test_publish_date_does_not_split_one_source_into_two():
+    """去重看的是 url，與日期無關——同一頁不該因為日期而列成兩筆。"""
+    docs = [
+        _doc(source="食藥署", url="https://fda.example/1", published_at="2024-03-15"),
+        _doc(source="食藥署", url="https://fda.example/1", published_at="2024-03-15"),
+    ]
+
+    out = RagAnswerService._append_sources("甲 [1]。乙 [2]。", docs)
+
+    assert out.count("食藥署（2024-03-15 發布）") == 1
 
 
 @pytest.mark.asyncio

@@ -103,15 +103,24 @@ def _source_buttons(
     url 為空的來源略過：URI action 沒有 uri 會被 LINE 拒收。該筆仍存在於
     純文字的來源清單中，符合 rag-responses「缺 url 不得靜默丟棄」的要求——
     這裡略過的是按鈕，不是來源本身。
+
+    有發布日期就接在來源名後面，寫法與查核判定卡一致。按鈕文字是 wrap 的
+    text，長了會折行而不是被截掉，所以不需要為了長度取捨掉日期。
     """
     return [
         ft.secondary_button(
-            f"[{source.index}] {source.label}",
+            _button_label(source),
             {"type": "uri", "label": f"[{source.index}]", "uri": source.url},
         )
         for source in sources
         if source.url.strip()
     ]
+
+
+def _button_label(source: SourceRef) -> str:
+    date = source.published_at.strip()
+    suffix = f"（{date} 發布）" if date else ""
+    return f"[{source.index}] {source.label}{suffix}"
 
 
 def _alt_text(header: str, body: str) -> str:

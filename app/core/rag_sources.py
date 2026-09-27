@@ -34,11 +34,16 @@ class SourceRef:
 
     url 可能為空字串：rag-responses 明文要求缺少 url 的來源仍須顯示（以
     「來源名｜標題」呈現），不得靜默丟棄。呈現層負責決定空 url 時不產生按鈕。
+
+    published_at 是已正規化為 `YYYY-MM-DD` 的發布日期，取不到就是空字串——
+    庫裡有一半來源結構上沒有這個值，缺席是常態而不是異常。有預設值，既有的
+    位置引數呼叫（`SourceRef(1, "食藥署", url)`）不受影響。
     """
 
     index: int
     label: str
     url: str
+    published_at: str = ""
 
 
 _request_rag_sources: ContextVar[list[SourceRef] | None] = ContextVar(

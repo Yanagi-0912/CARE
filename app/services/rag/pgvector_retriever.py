@@ -229,6 +229,9 @@ class PgVectorRetriever:
             # 與 MongoAtlasVectorRetriever 同步投影 verdict，理由見該處註解：
             # 查核判定卡的「相關衛教資訊」要靠這個欄位排除 TFC 報告。
             "verdict": 1,
+            # 發布日期，只用於呈現，理由見 MongoAtlasVectorRetriever 的註解。
+            # PG 那張表沒有日期欄，日期一律從 Mongo 這道回撈取得。
+            "published_at": 1,
         }
         with stage_timer(logger, "fetch_content", retriever="kb"):
             raw_docs = await (
@@ -256,6 +259,7 @@ class PgVectorRetriever:
                         "url": doc.get("url"),
                         "original_title": doc.get("original_title"),
                         "verdict": doc.get("verdict"),
+                        "published_at": doc.get("published_at"),
                     },
                 )
             )

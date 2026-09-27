@@ -462,6 +462,11 @@ class ClaimVerificationService:
                 seen_keys.add(key)
                 index = len(sources) + 1
                 excerpts.append(f"{title}\n{content}" if title else content)
+                # 刻意不帶 published_at（RAG 答案卡會標，見 answer_service
+                # ._source_ref）：判定卡上已經有一個日期——「判定來源（X 發布）」
+                # ——那是查核報告的日期。相關衛教資訊只是附帶參考、不是查核依據
+                # （決策 4），在同一張卡上再放第二種日期，兩者指的是不同東西，
+                # 只會讓人把衛教文的日期讀成查核日期。
                 sources.append(
                     SourceRef(
                         index=index,

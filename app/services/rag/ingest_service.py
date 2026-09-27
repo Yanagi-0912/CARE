@@ -218,6 +218,13 @@ class IngestService:
         寫出來的 chunk 與 CARE-data ETL 同格式：同一套切法（chunker_version）、
         同一種向量化輸入（`kb_embedding_input`）、帶 original_title、chunk_index
         從 1 起算。檢索時這兩個來源的 chunk 混在同一個索引裡互相比分數。
+
+        **一個明確的例外：沒有 `published_at`。** ETL 的每個 scraper 都是從
+        頁面抽出文章自己標示的發布日期，這條路徑沒有那個資訊——`ingest_content`
+        拿到的是 admin 審核過的純文字快照，頁面 metadata 已經不在了。不拿
+        `ingested_at` 充數：那是 CARE 收錄的時間，把它當成發布日期會讓一篇
+        2019 年的衛教文在來源列上顯示成今天發布的。缺席的後果是這些 chunk
+        在 RAG 來源列與每日推播排序上沒有日期可用，那是實情的正確呈現。
         """
         # 沒有標題就不收，與 ETL（CARE-data/scraper_api.py）同一條規則：向量化
         # 輸入會變成空白的「主題：」，BM25 的標題比對也對它無效。這個檢查排在

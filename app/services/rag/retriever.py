@@ -157,6 +157,12 @@ class MongoAtlasVectorRetriever:
                     # 下游就算想過濾也無資料可用（claim-verdict-card 最終
                     # review 的 C1 finding）。
                     "verdict": 1,
+                    # 發布日期。**只用於呈現與 context 標頭，不參與排序或過濾**
+                    # ——與查核判定卡同一個取捨（verdict_flex._source_note）：
+                    # 衛教文章舊不等於錯，用日期硬篩會把仍然正確的答案擋掉，
+                    # 這份資料有多新由使用者自己判斷。缺值是常態（一半來源的
+                    # updated_at 結構上恆為 None），呈現層據此不顯示日期。
+                    "published_at": 1,
                     "score": {"$meta": "vectorSearchScore"},
                 }
             },
@@ -185,6 +191,7 @@ class MongoAtlasVectorRetriever:
                         "url": doc.get("url"),
                         "original_title": doc.get("original_title"),
                         "verdict": doc.get("verdict"),
+                        "published_at": doc.get("published_at"),
                     },
                 )
             )
@@ -301,6 +308,10 @@ class MongoAtlasTextRetriever:
                     # 一邊帶 verdict metadata，經過融合後仍可能漏掉沒被過濾到
                     # 的 TFC 文件。
                     "verdict": 1,
+                    # 同步投影 published_at，理由同 verdict：兩條腿融合後
+                    # 只有一邊帶 metadata 的話，最終排名裡會混著有日期與
+                    # 沒日期的同一篇文章，顯示與否變成看它從哪條腿進來。
+                    "published_at": 1,
                     "score": {"$meta": "searchScore"},
                 }
             },
@@ -326,6 +337,7 @@ class MongoAtlasTextRetriever:
                         "url": doc.get("url"),
                         "original_title": doc.get("original_title"),
                         "verdict": doc.get("verdict"),
+                        "published_at": doc.get("published_at"),
                     },
                 )
             )

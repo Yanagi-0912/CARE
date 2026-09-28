@@ -1,7 +1,7 @@
 {
-  "version": 11,
+  "version": 12,
   "status": "verified",
-  "generated_at": "2026-09-20",
+  "generated_at": "2026-09-29",
   "purpose": "症狀／科別對照的彙整參考。由多家醫院公開的就醫病症對照表整併，科別一律已轉換為 medicalFacilities.departments 實際存在的值，可直接供 find_nearby_facilities_by_department 使用。",
   "usage_rules": [
     "本檔 status 為 verified，可直接用於線上回覆。",
@@ -84,6 +84,13 @@
       "site_updated": null,
       "retrieved_at": "2026-09-17",
       "level": "醫學中心"
+    },
+    "TAH_SS": {
+      "name": "臺安醫院雙十分院",
+      "url": "https://www.tassh.com.tw/page/about/index.aspx?kind=106",
+      "site_updated": null,
+      "retrieved_at": "2026-09-29",
+      "level": null
     }
   },
   "planned_sources": {
@@ -218,7 +225,8 @@
             "AFGH_KH",
             "CTH_XD",
             "AFGH_TY",
-            "MMH_TP"
+            "MMH_TP",
+            "TAH_SS"
           ]
         },
         {
@@ -233,7 +241,8 @@
             "CTH_XD",
             "AFGH_TY",
             "MMH_TP",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -246,7 +255,8 @@
             "CTH_XD",
             "AFGH_TY",
             "MMH_TP",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -254,7 +264,8 @@
           "kind": "symptom",
           "subgroup": "胃腸肝膽科",
           "sources": [
-            "TPVGH_YL"
+            "TPVGH_YL",
+            "TAH_SS"
           ]
         },
         {
@@ -267,7 +278,8 @@
             "AFGH_TY",
             "CMUH_HC",
             "MMH_TP",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -289,7 +301,8 @@
             "NCKUH_TN",
             "NTUH_YL",
             "CTH_XD",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -312,8 +325,10 @@
             "NCKUH_TN",
             "NTUH_YL",
             "CTH_XD",
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：黑色便"
         },
         {
           "term": "血便",
@@ -335,7 +350,8 @@
             "NTUH_YL",
             "CTH_XD",
             "MMH_TP",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -346,7 +362,8 @@
             "NTUH_YL",
             "CTH_XD",
             "MMH_TP",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "note": "來源原文為錯字「吞嚥因難」"
         },
@@ -364,8 +381,10 @@
           "subgroup": "胃腸肝膽科",
           "sources": [
             "TPVGH_YL",
-            "NTUH_YL"
-          ]
+            "NTUH_YL",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：膚色變黃"
         },
         {
           "term": "肝腫大",
@@ -392,7 +411,8 @@
             "NCKUH_TN",
             "NTUH_YL",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -402,7 +422,8 @@
           "sources": [
             "NCKUH_TN",
             "NTUH_YL",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -412,7 +433,8 @@
           "sources": [
             "NCKUH_TN",
             "NTUH_YL",
-            "CMUH_HC"
+            "CMUH_HC",
+            "TAH_SS"
           ]
         },
         {
@@ -421,7 +443,8 @@
           "subgroup": "胃腸肝膽科",
           "sources": [
             "NTUH_YL",
-            "CMUH_HC"
+            "CMUH_HC",
+            "TAH_SS"
           ]
         },
         {
@@ -450,7 +473,8 @@
             "NCKUH_TN",
             "NTUH_YL",
             "CTH_XD",
-            "MMH_TP"
+            "MMH_TP",
+            "TAH_SS"
           ]
         },
         {
@@ -464,7 +488,8 @@
             "CTH_XD",
             "AFGH_TY",
             "MMH_TP",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -478,7 +503,8 @@
             "NTUH_YL",
             "CTH_XD",
             "AFGH_TY",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -505,8 +531,10 @@
             "TPVGH_HC",
             "AFGH_KH",
             "CTH_XD",
-            "AFGH_TY"
-          ]
+            "AFGH_TY",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：氣喘症"
         },
         {
           "term": "肺炎",
@@ -523,7 +551,8 @@
             "CTH_XD",
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -536,7 +565,8 @@
             "AFGH_KH",
             "CTH_XD",
             "AFGH_TY",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -554,7 +584,8 @@
             "CTH_XD",
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -602,7 +633,8 @@
             "NTUH_YL",
             "TPVGH_HC",
             "AFGH_KH",
-            "CTH_XD"
+            "CTH_XD",
+            "TAH_SS"
           ]
         },
         {
@@ -618,8 +650,10 @@
             "TPVGH_HC",
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：尿路感染"
         },
         {
           "term": "蜂窩性組織炎",
@@ -654,7 +688,8 @@
             "AFGH_TY",
             "CMUH_HC",
             "MMH_TP",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -670,8 +705,10 @@
             "CTH_XD",
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：尿蛋白"
         },
         {
           "term": "水腫",
@@ -689,7 +726,8 @@
             "AFGH_TY",
             "CMUH_HC",
             "MMH_TP",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -725,8 +763,10 @@
           "subgroup": "腎臟內科",
           "sources": [
             "TPVGH_YL",
-            "NTUH_YL"
-          ]
+            "NTUH_YL",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：腎功能異常"
         },
         {
           "term": "尿毒症",
@@ -738,8 +778,10 @@
             "TPVGH_HC",
             "AFGH_KH",
             "AFGH_TY",
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：尿毒"
         },
         {
           "term": "腎結石",
@@ -749,7 +791,8 @@
             "NCKUH_TN",
             "CTH_XD",
             "AFGH_TY",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -778,7 +821,8 @@
             "AFGH_TY",
             "CMUH_HC",
             "MMH_TP",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -793,7 +837,8 @@
             "TPVGH_HC",
             "CTH_XD",
             "AFGH_TY",
-            "MMH_TP"
+            "MMH_TP",
+            "TAH_SS"
           ]
         },
         {
@@ -807,7 +852,8 @@
             "CTH_XD",
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -818,7 +864,8 @@
             "NCKUH_TN",
             "TPVGH_HC",
             "CTH_XD",
-            "AFGH_TY"
+            "AFGH_TY",
+            "TAH_SS"
           ]
         },
         {
@@ -832,7 +879,8 @@
             "CTH_XD",
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -867,7 +915,8 @@
             "CTH_XD",
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -894,7 +943,8 @@
             "TPVGH_HC",
             "CTH_XD",
             "AFGH_TY",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -908,7 +958,8 @@
             "CTH_XD",
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -928,7 +979,8 @@
           "sources": [
             "NCKUH_TN",
             "NTUH_YL",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -942,7 +994,8 @@
             "CTH_XD",
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -956,7 +1009,8 @@
             "CTH_XD",
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -969,7 +1023,8 @@
             "CTH_XD",
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -980,7 +1035,8 @@
             "NCKUH_TN",
             "NTUH_YL",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -1123,7 +1179,8 @@
           "sources": [
             "TPVGH_HC",
             "AFGH_KH",
-            "CTH_XD"
+            "CTH_XD",
+            "TAH_SS"
           ],
           "subgroup": "一般內科"
         },
@@ -1262,7 +1319,8 @@
           "sources": [
             "TPVGH_HC",
             "AFGH_KH",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "subgroup": "腎臟內科"
         },
@@ -1279,7 +1337,8 @@
           "kind": "disease",
           "sources": [
             "TPVGH_HC",
-            "CTH_XD"
+            "CTH_XD",
+            "TAH_SS"
           ],
           "subgroup": "腎臟內科"
         },
@@ -1385,7 +1444,8 @@
             "AFGH_KH",
             "CTH_XD",
             "AFGH_TY",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "subgroup": "胸腔內科"
         },
@@ -1405,7 +1465,8 @@
             "AFGH_KH",
             "CTH_XD",
             "AFGH_TY",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "subgroup": "胸腔內科"
         },
@@ -1495,7 +1556,8 @@
           "sources": [
             "AFGH_KH",
             "AFGH_TY",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "subgroup": "腎臟內科"
         },
@@ -1544,7 +1606,8 @@
           "term": "潰瘍",
           "kind": "disease",
           "sources": [
-            "AFGH_KH"
+            "AFGH_KH",
+            "TAH_SS"
           ],
           "subgroup": "一般內科"
         },
@@ -1749,9 +1812,11 @@
           "sources": [
             "AFGH_KH",
             "CTH_XD",
-            "CMUH_HC"
+            "CMUH_HC",
+            "TAH_SS"
           ],
-          "subgroup": "免疫風濕科"
+          "subgroup": "免疫風濕科",
+          "note": "TAH_SS 原文：鼻炎"
         },
         {
           "term": "肺氣腫",
@@ -1926,7 +1991,8 @@
           "sources": [
             "CTH_XD",
             "AFGH_TY",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "subgroup": "心臟內科"
         },
@@ -1936,7 +2002,8 @@
           "sources": [
             "CTH_XD",
             "AFGH_TY",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "subgroup": "心臟內科"
         },
@@ -2028,7 +2095,8 @@
           "kind": "symptom",
           "sources": [
             "CTH_XD",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "subgroup": "胃腸肝膽科"
         },
@@ -2090,7 +2158,8 @@
             "CTH_XD",
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "subgroup": "免疫風濕科"
         },
@@ -2109,9 +2178,11 @@
             "CTH_XD",
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
-          "subgroup": "免疫風濕科"
+          "subgroup": "免疫風濕科",
+          "note": "TAH_SS 原文：硬皮症"
         },
         {
           "term": "肌炎",
@@ -2127,7 +2198,8 @@
           "sources": [
             "CTH_XD",
             "AFGH_TY",
-            "CMUH_HC"
+            "CMUH_HC",
+            "TAH_SS"
           ],
           "subgroup": "免疫風濕科"
         },
@@ -2250,9 +2322,11 @@
           "sources": [
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
-          "subgroup": "新陳代謝及內分泌科"
+          "subgroup": "新陳代謝及內分泌科",
+          "note": "TAH_SS 原文：副甲狀腺病變"
         },
         {
           "term": "腦下垂體病變",
@@ -2260,7 +2334,8 @@
           "sources": [
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "subgroup": "新陳代謝及內分泌科"
         },
@@ -2286,7 +2361,8 @@
           "sources": [
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "subgroup": "免疫風濕科"
         },
@@ -2447,9 +2523,11 @@
           "term": "雷諾氏症",
           "kind": "disease",
           "sources": [
-            "CMUH_HC"
+            "CMUH_HC",
+            "TAH_SS"
           ],
-          "subgroup": "免疫風濕科"
+          "subgroup": "免疫風濕科",
+          "note": "TAH_SS 原文：錯字「雷諾式症」"
         },
         {
           "term": "低血糖",
@@ -2548,10 +2626,11 @@
           "kind": "disease",
           "sources": [
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "subgroup": "新陳代謝及內分泌科",
-          "note": "CMUH_HC 原文：腎上腺〈皮質、髓質〉功能異常及腫瘤"
+          "note": "CMUH_HC 原文：腎上腺〈皮質、髓質〉功能異常及腫瘤；TAH_SS 原文：腎上腺"
         },
         {
           "term": "性腺功能異常",
@@ -2633,9 +2712,11 @@
           "kind": "symptom",
           "sources": [
             "MMH_TP",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
-          "subgroup": "胃腸肝膽科"
+          "subgroup": "胃腸肝膽科",
+          "note": "TAH_SS 原文：肝機能異常"
         },
         {
           "term": "小便困難",
@@ -2709,6 +2790,67 @@
             "TZUCHI_HL"
           ],
           "subgroup": "胸腔內科"
+        },
+        {
+          "term": "胃腸腫瘤",
+          "kind": "disease",
+          "subgroup": "胃腸肝膽科",
+          "sources": [
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：胃腸肝膽胰腫瘤"
+        },
+        {
+          "term": "肝膽胰腫瘤",
+          "kind": "disease",
+          "subgroup": "胃腸肝膽科",
+          "sources": [
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：胃腸肝膽胰腫瘤"
+        },
+        {
+          "term": "白色便",
+          "kind": "symptom",
+          "subgroup": "胃腸肝膽科",
+          "sources": [
+            "TAH_SS"
+          ]
+        },
+        {
+          "term": "感染性關節炎",
+          "kind": "disease",
+          "subgroup": "免疫風濕科",
+          "sources": [
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：關節炎(感染性)"
+        },
+        {
+          "term": "異位性皮膚炎",
+          "kind": "disease",
+          "subgroup": "免疫風濕科",
+          "sources": [
+            "TAH_SS"
+          ]
+        },
+        {
+          "term": "藥物過敏",
+          "kind": "disease",
+          "subgroup": "免疫風濕科",
+          "sources": [
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：藥物及食物過敏"
+        },
+        {
+          "term": "食物過敏",
+          "kind": "disease",
+          "subgroup": "免疫風濕科",
+          "sources": [
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：藥物及食物過敏"
         }
       ]
     },
@@ -2749,7 +2891,8 @@
             "NTUH_YL",
             "TPVGH_HC",
             "AFGH_KH",
-            "AFGH_TY"
+            "AFGH_TY",
+            "TAH_SS"
           ]
         },
         {
@@ -2766,8 +2909,10 @@
             "AFGH_KH",
             "MMH_TP",
             "CMUH_HC",
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：內外痔"
         },
         {
           "term": "血便",
@@ -2782,9 +2927,10 @@
             "AFGH_KH",
             "MMH_TP",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
-          "note": "NCKUH_TN、NTUH_YL、AFGH_KH、MMH_TP 原文：便血"
+          "note": "NCKUH_TN、NTUH_YL、AFGH_KH、MMH_TP 原文：便血；TAH_SS 原文：便血"
         },
         {
           "term": "脫肛",
@@ -2794,7 +2940,8 @@
             "NCKUH_TN",
             "NTUH_YL",
             "AFGH_KH",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -2803,8 +2950,10 @@
           "subgroup": "大腸直腸外科",
           "sources": [
             "NCKUH_TN",
-            "NTUH_YL"
-          ]
+            "NTUH_YL",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：肛門痛腫"
         },
         {
           "term": "大便失禁",
@@ -2815,8 +2964,10 @@
             "NTUH_YL",
             "AFGH_KH",
             "MMH_TP",
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：「小便失禁」，經人工確認為大便失禁誤植"
         },
         {
           "term": "大便習慣改變",
@@ -2851,7 +3002,8 @@
             "NCKUH_TN",
             "NTUH_YL",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -2862,8 +3014,10 @@
             "TPVGH_YL",
             "NCKUH_TN",
             "NTUH_YL",
-            "AFGH_TY"
-          ]
+            "AFGH_TY",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：乳房有硬塊"
         },
         {
           "term": "乳房疼痛",
@@ -2902,8 +3056,10 @@
             "TPVGH_YL",
             "NTUH_YL",
             "AFGH_TY",
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：表皮及軟部組織腫瘤"
         },
         {
           "term": "皮下腫塊",
@@ -3029,7 +3185,8 @@
             "AFGH_KH",
             "AFGH_TY",
             "MMH_TP",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -3412,9 +3569,13 @@
           "term": "動脈瘤",
           "kind": "disease",
           "sources": [
-            "AFGH_KH"
+            "AFGH_KH",
+            "TAH_SS"
           ],
-          "subgroup": "心臟外科"
+          "subgroup": [
+            "心臟外科",
+            "一般外科"
+          ]
         },
         {
           "term": "動靜脈阻塞",
@@ -3422,9 +3583,13 @@
           "sources": [
             "AFGH_KH",
             "AFGH_TY",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
-          "subgroup": "心臟外科"
+          "subgroup": [
+            "心臟外科",
+            "一般外科"
+          ]
         },
         {
           "term": "小兒先天性心臟病",
@@ -3590,7 +3755,8 @@
           "kind": "symptom",
           "sources": [
             "MMH_TP",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "subgroup": [
             "一般外科",
@@ -3603,7 +3769,8 @@
           "sources": [
             "MMH_TP",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "subgroup": "大腸直腸外科"
         },
@@ -3664,9 +3831,11 @@
           "kind": "symptom",
           "sources": [
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
-          "subgroup": "大腸直腸外科"
+          "subgroup": "大腸直腸外科",
+          "note": "TAH_SS 原文：下痢"
         },
         {
           "term": "發炎性腸道疾病",
@@ -3745,7 +3914,8 @@
           "term": "腹脹",
           "kind": "symptom",
           "sources": [
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "subgroup": "大腸直腸外科"
         },
@@ -3761,7 +3931,8 @@
           "term": "直腸肛門癌",
           "kind": "disease",
           "sources": [
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "subgroup": "大腸直腸外科"
         },
@@ -3788,6 +3959,58 @@
             "TZUCHI_HL"
           ],
           "note": "TZUCHI_HL 原文：皮膚皮下或其他部位腫瘤"
+        },
+        {
+          "term": "一般外傷",
+          "kind": "symptom",
+          "subgroup": "一般外科",
+          "sources": [
+            "TAH_SS"
+          ]
+        },
+        {
+          "term": "甲狀腺腫大",
+          "kind": "symptom",
+          "subgroup": "一般外科",
+          "sources": [
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：甲狀腺肥大"
+        },
+        {
+          "term": "軟組織腫瘤",
+          "kind": "disease",
+          "subgroup": "一般外科",
+          "sources": [
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：表皮及軟部組織腫瘤"
+        },
+        {
+          "term": "大便不規則",
+          "kind": "symptom",
+          "subgroup": "大腸直腸外科",
+          "sources": [
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：大便不規則(裡急後重)"
+        },
+        {
+          "term": "裡急後重",
+          "kind": "symptom",
+          "subgroup": "大腸直腸外科",
+          "sources": [
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：大便不規則(裡急後重)"
+        },
+        {
+          "term": "下腹部腫瘤",
+          "kind": "disease",
+          "subgroup": "大腸直腸外科",
+          "sources": [
+            "TAH_SS"
+          ]
         }
       ]
     },
@@ -4807,7 +5030,8 @@
             "AFGH_KH",
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -4820,7 +5044,8 @@
             "NTUH_YL",
             "AFGH_KH",
             "AFGH_TY",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -4848,7 +5073,8 @@
           "kind": "disease",
           "subgroup": null,
           "sources": [
-            "NTUH_YL"
+            "NTUH_YL",
+            "TAH_SS"
           ],
           "note": "亦見於復健科"
         },
@@ -4858,7 +5084,8 @@
           "subgroup": null,
           "sources": [
             "TPVGH_YL",
-            "NTUH_YL"
+            "NTUH_YL",
+            "TAH_SS"
           ],
           "note": "亦見於家醫科與復健科"
         },
@@ -4914,7 +5141,8 @@
             "NCKUH_TN",
             "NTUH_YL",
             "AFGH_KH",
-            "AFGH_TY"
+            "AFGH_TY",
+            "TAH_SS"
           ]
         },
         {
@@ -4924,7 +5152,8 @@
           "sources": [
             "TPVGH_YL",
             "NCKUH_TN",
-            "TPVGH_HC"
+            "TPVGH_HC",
+            "TAH_SS"
           ],
           "note": "亦見於復健科與中醫"
         },
@@ -4938,7 +5167,8 @@
             "NTUH_YL",
             "TPVGH_HC",
             "AFGH_KH",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -4949,7 +5179,8 @@
             "NTUH_YL",
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -5010,7 +5241,8 @@
             "NTUH_YL",
             "TPVGH_HC",
             "AFGH_TY",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -5020,7 +5252,8 @@
           "sources": [
             "NTUH_YL",
             "MMH_TP",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -5030,8 +5263,10 @@
             "TPVGH_HC",
             "AFGH_KH",
             "MMH_TP",
-            "CMUH_HC"
-          ]
+            "CMUH_HC",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：骨質疏鬆症"
         },
         {
           "term": "腰背酸痛",
@@ -5053,8 +5288,10 @@
           "kind": "disease",
           "sources": [
             "TPVGH_HC",
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：脊椎側彎"
         },
         {
           "term": "骨關節畸形",
@@ -5062,8 +5299,10 @@
           "sources": [
             "AFGH_KH",
             "AFGH_TY",
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：骨畸形"
         },
         {
           "term": "風濕退化關節炎",
@@ -5182,7 +5421,8 @@
           "term": "駝背",
           "kind": "symptom",
           "sources": [
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "note": "TZUCHI_HL 原文：脊椎側彎駝背"
         },
@@ -5192,6 +5432,21 @@
           "sources": [
             "TZUCHI_HL"
           ]
+        },
+        {
+          "term": "骨骼疼痛",
+          "kind": "symptom",
+          "sources": [
+            "TAH_SS"
+          ]
+        },
+        {
+          "term": "脊椎骨折",
+          "kind": "disease",
+          "sources": [
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：脊椎骨骨折"
         }
       ]
     },
@@ -5223,7 +5478,8 @@
             "AFGH_KH",
             "AFGH_TY",
             "MMH_TP",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -5259,7 +5515,8 @@
             "AFGH_KH",
             "AFGH_TY",
             "MMH_TP",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "note": "女性尿失禁亦見於婦產科"
         },
@@ -5275,7 +5532,8 @@
             "AFGH_TY",
             "MMH_TP",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "note": "亦見於內科腎臟方向"
         },
@@ -5322,8 +5580,10 @@
             "TPVGH_HC",
             "AFGH_KH",
             "AFGH_TY",
-            "CMUH_HC"
-          ]
+            "CMUH_HC",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：前列腺肥大"
         },
         {
           "term": "陰囊腫大",
@@ -5345,8 +5605,10 @@
             "TPVGH_HC",
             "AFGH_KH",
             "AFGH_TY",
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：包皮"
         },
         {
           "term": "男性不孕症",
@@ -5356,8 +5618,10 @@
             "TPVGH_YL",
             "NCKUH_TN",
             "NTUH_YL",
-            "AFGH_TY"
-          ]
+            "AFGH_TY",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：男性不孕"
         },
         {
           "term": "男性性功能障礙",
@@ -5382,7 +5646,8 @@
             "NTUH_YL",
             "AFGH_KH",
             "AFGH_TY",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -5392,7 +5657,8 @@
           "sources": [
             "TPVGH_YL",
             "NCKUH_TN",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -5421,7 +5687,8 @@
           "sources": [
             "NCKUH_TN",
             "MMH_TP",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -5429,7 +5696,8 @@
           "kind": "symptom",
           "sources": [
             "TPVGH_HC",
-            "AFGH_KH"
+            "AFGH_KH",
+            "TAH_SS"
           ],
           "subgroup": "泌尿科"
         },
@@ -5488,7 +5756,8 @@
           "sources": [
             "TPVGH_HC",
             "AFGH_KH",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ],
           "subgroup": "泌尿科"
         },
@@ -5506,7 +5775,8 @@
           "kind": "symptom",
           "sources": [
             "TPVGH_HC",
-            "AFGH_KH"
+            "AFGH_KH",
+            "TAH_SS"
           ],
           "subgroup": "泌尿科"
         },
@@ -5523,7 +5793,8 @@
           "kind": "disease",
           "sources": [
             "AFGH_KH",
-            "AFGH_TY"
+            "AFGH_TY",
+            "TAH_SS"
           ]
         },
         {
@@ -5538,14 +5809,16 @@
           "kind": "disease",
           "sources": [
             "AFGH_KH",
-            "AFGH_TY"
+            "AFGH_TY",
+            "TAH_SS"
           ]
         },
         {
           "term": "隱睪",
           "kind": "disease",
           "sources": [
-            "AFGH_KH"
+            "AFGH_KH",
+            "TAH_SS"
           ]
         },
         {
@@ -5581,7 +5854,8 @@
           "term": "小便無力",
           "kind": "symptom",
           "sources": [
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -5597,6 +5871,14 @@
           "sources": [
             "TZUCHI_HL"
           ]
+        },
+        {
+          "term": "膀胱功能異常",
+          "kind": "symptom",
+          "sources": [
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：膀胱機能異常"
         }
       ]
     },
@@ -8331,8 +8613,10 @@
           "sources": [
             "TPVGH_YL",
             "NCKUH_TN",
-            "NTUH_YL"
-          ]
+            "NTUH_YL",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：肩頸上背疼痛"
         },
         {
           "term": "關節疼痛",
@@ -8342,7 +8626,8 @@
             "NCKUH_TN",
             "NTUH_YL",
             "AFGH_TY",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -8366,7 +8651,8 @@
             "AFGH_KH",
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -8408,7 +8694,8 @@
           "sources": [
             "NCKUH_TN",
             "NTUH_YL",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -8488,7 +8775,8 @@
             "TPVGH_YL",
             "AFGH_KH",
             "AFGH_TY",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -8569,7 +8857,8 @@
             "AFGH_KH",
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "TAH_SS"
           ]
         },
         {
@@ -8579,8 +8868,10 @@
             "AFGH_KH",
             "AFGH_TY",
             "CMUH_HC",
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "TAH_SS"
+          ],
+          "note": "TAH_SS 原文：脊椎損害"
         },
         {
           "term": "肢體骨折後遺症",
@@ -11344,6 +11635,126 @@
       "raw": "腎臟內科：腰痛",
       "source": "AFGH_TY",
       "reason": "裸腰痛缺少血尿、排尿異常等腎臟相關線索，作為通用條目會讓腎臟內科壓過肌骨初診方向。"
+    },
+    {
+      "raw": "一般內科：慢性病、繼續治療〈腦中風〉",
+      "source": "TAH_SS",
+      "reason": "慢性病為籠統描述；腦中風列在一般內科的繼續治療下，收錄會讓腦中風多出內科候選，應導向神經科。"
+    },
+    {
+      "raw": "一般內科：異常檢驗、分析及診治",
+      "source": "TAH_SS",
+      "reason": "服務類項目，新併入來源不收 service。"
+    },
+    {
+      "raw": "肝膽腸胃科：胃酸",
+      "source": "TAH_SS",
+      "reason": "無法分辨是胃酸過多或胃酸逆流。"
+    },
+    {
+      "raw": "心臟血管內科：其他心臟血管方面之疾病",
+      "source": "TAH_SS",
+      "reason": "籠統描述。"
+    },
+    {
+      "raw": "胸腔內科：呼吸道異物取出",
+      "source": "TAH_SS",
+      "reason": "處置項目。"
+    },
+    {
+      "raw": "胸腔內科：各種肺部疾病",
+      "source": "TAH_SS",
+      "reason": "籠統描述。"
+    },
+    {
+      "raw": "腎臟內科：各種藥物及農藥中毒",
+      "source": "TAH_SS",
+      "reason": "急症，由急迫度判斷處理。"
+    },
+    {
+      "raw": "內分泌新陳代謝科：各種內分泌異常",
+      "source": "TAH_SS",
+      "reason": "籠統描述。"
+    },
+    {
+      "raw": "過敏免疫風濕科：小兒及成人過敏性氣喘",
+      "source": "TAH_SS",
+      "reason": "經人工裁決不收。"
+    },
+    {
+      "raw": "過敏免疫風濕科：血體免疫疾病",
+      "source": "TAH_SS",
+      "reason": "原文錯字（自體免疫疾病），且為籠統描述。"
+    },
+    {
+      "raw": "一般外科：傷口治療",
+      "source": "TAH_SS",
+      "reason": "治療項目。"
+    },
+    {
+      "raw": "一般外科：腹腔內器官需手術（胃腸出血及腫瘤、腸阻塞、盲腸炎、腹膜炎、肝膽腫瘤、膽道結石、脾臟及胰臟疾病、腹腔內腫瘤）",
+      "source": "TAH_SS",
+      "reason": "標題為手術，底下病名依規則不收；胃腸出血另屬急症。"
+    },
+    {
+      "raw": "一般外科：週邊血管有關外科疾病",
+      "source": "TAH_SS",
+      "reason": "籠統描述。"
+    },
+    {
+      "raw": "一般外科：動靜瘤",
+      "source": "TAH_SS",
+      "reason": "疑為動靜脈瘻或動靜脈瘤誤植，無法確認。"
+    },
+    {
+      "raw": "一般外科：各類血管手術",
+      "source": "TAH_SS",
+      "reason": "手術項目。"
+    },
+    {
+      "raw": "骨科：僵直性脊椎炎畸形",
+      "source": "TAH_SS",
+      "reason": "畸形矯正屬手術路徑，收錄會讓骨科成為僵直性脊椎炎候選。"
+    },
+    {
+      "raw": "胸腔外科：整段（肺癌、食道癌及胃賁門癌、胸腔腫瘤、氣胸、血胸、膿胸、手汗症、胸骨肋骨骨折、胸廓畸形、食道氣管狹窄、重症肌無力症、胃酸逆流食道炎、橫膈疝氣、頸部腫瘤之手術治療）",
+      "source": "TAH_SS",
+      "reason": "全段為手術治療，底下病名依規則不收。"
+    },
+    {
+      "raw": "大腸直腸外科：肛病、大腸直腸病症",
+      "source": "TAH_SS",
+      "reason": "籠統描述。"
+    },
+    {
+      "raw": "心臟血管外科：整段（先天性及後天性心臟病手術、主動脈瘤、周邊血管阻塞、深部靜脈栓塞、門脈高壓減壓及腹水分流手術）",
+      "source": "TAH_SS",
+      "reason": "全段為手術，底下病名依規則不收。"
+    },
+    {
+      "raw": "骨科：小兒骨關節異常",
+      "source": "TAH_SS",
+      "reason": "兒科過濾只排除兒科，列在骨科會讓成人也拿到兒童條目；經人工裁決不收。"
+    },
+    {
+      "raw": "復健醫學科：骨骼肌肉神經病變",
+      "source": "TAH_SS",
+      "reason": "籠統描述。"
+    },
+    {
+      "raw": "復健醫學科：頭部外傷",
+      "source": "TAH_SS",
+      "reason": "急性頭部外傷不應導向復健科；經人工裁決不收。"
+    },
+    {
+      "raw": "復健醫學科：灼傷及外傷引起的功能或運動障礙之肢體復健、截肢後復建訓練",
+      "source": "TAH_SS",
+      "reason": "治療與服務項目。"
+    },
+    {
+      "raw": "家庭醫學科：整段說明（不知道看哪一科、症狀未明、初診篩檢、慢性病追蹤）",
+      "source": "TAH_SS",
+      "reason": "科別說明文字，非症狀條目。"
     }
   ],
   "resolved_questions": [
@@ -11501,6 +11912,18 @@
       "decision": "不保留。刪除 CTH_XD 的背痛／牙齦出血→血液腫瘤科，以及 TPVGH_YL、AFGH_TY 的裸腰痛→腎臟內科關聯。",
       "rationale": "前兩項在來源中分別是骨髓病變與凝血異常的警訊，不是無條件初診方向；裸腰痛則缺少血尿或排尿異常等辨識腎臟問題的線索。拆掉上下文後會把血液腫瘤科或腎臟內科排到通用主訴前面。",
       "decided_at": "2026-09-20"
+    },
+    {
+      "question": "一般內科項下列出、同一家醫院又列在專科的條目，要不要把一般內科加進 subgroup？",
+      "decision": "不加。只補來源代碼，subgroup 維持專科（TAH_SS 的便秘、高血壓、糖尿病、心臟衰竭）。",
+      "rationale": "同一家醫院已把這些條目列在對應專科，一般內科只是首診或慢性病追蹤的泛稱；加進 subgroup 只會讓卡片多出不具區辨力的掛號診名。",
+      "decided_at": "2026-09-29"
+    },
+    {
+      "question": "TAH_SS 併入時的誤植、同義詞與不收項目？",
+      "decision": "大腸直腸外科「小便失禁」視為大便失禁誤植並補在大便失禁；腎功能異常補在腎功能不良；腎臟內科的尿路感染補在內科「泌尿道感染」；肩頸上背疼痛補在肩頸腰背酸痛。過敏性氣喘（免疫風濕科）、頭部外傷（復健科）、小兒骨關節異常（骨科）、腦中風（一般內科）、胃酸、動靜瘤不收。",
+      "rationale": "誤植與同義詞併入既有條目，避免再產生重複列；不收項目若收錄，會讓不適合初診的科別（復健科之於急性頭部外傷、內科之於腦中風）或兒童條目出現在一般候選中，其餘則無法確認原意。",
+      "decided_at": "2026-09-29"
     }
   ]
 }

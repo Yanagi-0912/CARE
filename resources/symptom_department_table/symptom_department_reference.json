@@ -1,5 +1,5 @@
 {
-  "version": 16,
+  "version": 17,
   "status": "verified",
   "generated_at": "2026-09-29",
   "purpose": "症狀／科別對照的彙整參考。由多家醫院公開的就醫病症對照表整併，科別一律已轉換為 medicalFacilities.departments 實際存在的值，可直接供 find_nearby_facilities_by_department 使用。",
@@ -119,6 +119,13 @@
       "site_updated": null,
       "retrieved_at": "2026-09-29",
       "level": "醫學中心"
+    },
+    "WGMH_TF": {
+      "name": "為恭紀念醫院",
+      "url": "https://cmu.weigong.org.tw/CMUHPagesDetail/%E7%9C%8B%E5%93%AA%E4%B8%80%E7%A7%91/%E4%BE%9D%E7%A7%91%E5%88%A5%E6%9F%A5%E8%A9%A2",
+      "site_updated": null,
+      "retrieved_at": "2026-09-29",
+      "level": "區域醫院"
     }
   },
   "planned_sources": {
@@ -257,7 +264,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "TPH_XZ 原文：腹部疼痛；CHIMEI_YK 原文：一般腹痛（一般性機能問題、急性腸炎、膽囊（道）結石、膽囊炎、胰臟炎、胃炎…）→ 胃腸肝膽科"
         },
@@ -277,7 +285,8 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "note": "TPH_XZ 原文：打嗝漲氣；CHIMEI_YK 原文：腹脹（胃腸道脹氣、習慣性便秘、腸躁症）→ 胃腸肝膽科"
         },
@@ -294,7 +303,8 @@
             "TZUCHI_HL",
             "TAH_SS",
             "TPH_XZ",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ],
           "note": "TPH_XZ 原文：嘔吐腹瀉"
         },
@@ -320,9 +330,10 @@
             "MMH_TP",
             "TZUCHI_HL",
             "TAH_SS",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：腹脹的原因：習慣性便秘 → 胃腸肝膽科"
+          "note": "CHIMEI_YK 原文：腹脹的原因：習慣性便秘 → 胃腸肝膽科；WGMH_TF 原文：便祕"
         },
         {
           "term": "打嗝",
@@ -348,7 +359,8 @@
             "TZUCHI_HL",
             "TAH_SS",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -361,9 +373,10 @@
             "NTUH_YL",
             "AFGH_TY",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：心窩灼熱的原因：胃食道逆流 → 胃腸肝膽科；嘔酸水（十二指腸潰瘍、胃食道逆流）→ 胃腸肝膽科"
+          "note": "CHIMEI_YK 原文：心窩灼熱的原因：胃食道逆流 → 胃腸肝膽科；嘔酸水（十二指腸潰瘍、胃食道逆流）→ 胃腸肝膽科；WGMH_TF 原文：溢酸"
         },
         {
           "term": "黑便",
@@ -378,9 +391,10 @@
             "TAH_SS",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "TAH_SS 原文：黑色便；CHIMEI_YK 原文：吐血便血（黑便）→ 胃腸肝膽科"
+          "note": "TAH_SS 原文：黑色便；CHIMEI_YK 原文：吐血便血（黑便）→ 胃腸肝膽科；WGMH_TF 原文：黑色便"
         },
         {
           "term": "血便",
@@ -408,7 +422,8 @@
             "TAH_SS",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：吐血便血（黑便）（胃潰瘍、十二指腸潰瘍、急性胃炎、胃癌、大腸癌）→ 胃腸肝膽科"
         },
@@ -424,7 +439,8 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "來源原文為錯字「吞嚥因難」；TPH_XZ 原文：吞嚥異常"
         },
@@ -476,7 +492,8 @@
             "CMUH_HC",
             "TZUCHI_HL",
             "TAH_SS",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -490,7 +507,8 @@
             "TAH_SS",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：吐血便血的原因：胃潰瘍 → 胃腸肝膽科"
         },
@@ -504,8 +522,10 @@
             "CMUH_HC",
             "TAH_SS",
             "FEMH_BQ",
-            "TSGH_TP"
-          ]
+            "TSGH_TP",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：B 型肝炎帶原"
         },
         {
           "term": "C型肝炎",
@@ -552,7 +572,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：（頸部）咳嗽（呼吸道發炎或感染、呼吸道異物、喉咽炎、氣管炎）→ 胸腔內科；（胸部）咳嗽（感冒併發症、氣喘、氣管炎、支氣管擴張症）→ 胸腔內科"
         },
@@ -572,7 +593,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：咳血（肺臟的疾病（肺結核））→ 胸腔內科"
         },
@@ -591,7 +613,8 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -609,7 +632,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：胸痛（氣胸、肺炎、肺結核、嚴重咳嗽、肺癌、肋膜炎）→ 胸腔內科；胸痛（狹心症）→ 心臟血管內科"
         },
@@ -627,9 +651,10 @@
             "TAH_SS",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "TAH_SS 原文：氣喘症；CHIMEI_YK 原文：呼吸急促困難的原因：氣喘；TSGH_TP 原文：氣喘症"
+          "note": "TAH_SS 原文：氣喘症；CHIMEI_YK 原文：呼吸急促困難的原因：氣喘；TSGH_TP 原文：氣喘症；WGMH_TF 原文：氣喘哮喘"
         },
         {
           "term": "肺炎",
@@ -651,7 +676,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：胸痛（→ 胸腔內科）的原因：肺炎"
         },
@@ -670,9 +696,10 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：呼吸急促困難的原因：慢性支氣管炎"
+          "note": "CHIMEI_YK 原文：呼吸急促困難的原因：慢性支氣管炎；WGMH_TF 原文：慢性支氣管炎"
         },
         {
           "term": "肺結核",
@@ -694,7 +721,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：胸痛（→ 胸腔內科）的原因：肺結核"
         },
@@ -725,9 +753,10 @@
             "TZUCHI_HL",
             "TPH_XZ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：發燒（感染、免疫疾病、中樞神經、惡性腫瘤…）→ 感染科；TSGH_TP 原文：各種原因導致之發燒"
+          "note": "CHIMEI_YK 原文：發燒（感染、免疫疾病、中樞神經、惡性腫瘤…）→ 感染科；TSGH_TP 原文：各種原因導致之發燒；WGMH_TF 原文：急慢性發燒"
         },
         {
           "term": "不明原因發燒",
@@ -777,9 +806,10 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "TAH_SS 原文：尿路感染；TPH_XZ 原文：腎泌尿道感染；FEMH_BQ 原文：尿路感染；CHIMEI_YK 原文：小便燒痛灼熱的原因：泌尿道感染 → 感染科"
+          "note": "TAH_SS 原文：尿路感染；TPH_XZ 原文：腎泌尿道感染；FEMH_BQ 原文：尿路感染；CHIMEI_YK 原文：小便燒痛灼熱的原因：泌尿道感染 → 感染科；WGMH_TF 原文：尿路感染"
         },
         {
           "term": "蜂窩性組織炎",
@@ -802,7 +832,8 @@
             "NCKUH_TN",
             "NTUH_YL",
             "TPH_XZ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "note": "TPH_XZ 原文：性傳染病；CHIMEI_YK 原文：疑性傳染病 → 感染科"
         },
@@ -825,7 +856,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：血尿（膀胱炎、尿道炎、結石、細菌感染、攝護腺肥大、泌尿道腫瘤）→ 腎臟科"
         },
@@ -846,9 +878,10 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "TAH_SS 原文：尿蛋白；TPH_XZ 原文：尿蛋白；FEMH_BQ 原文：尿蛋白"
+          "note": "TAH_SS 原文：尿蛋白；TPH_XZ 原文：尿蛋白；FEMH_BQ 原文：尿蛋白；WGMH_TF 原文：尿蛋白"
         },
         {
           "term": "水腫",
@@ -870,7 +903,8 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -930,9 +964,10 @@
             "TZUCHI_HL",
             "TAH_SS",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "TAH_SS 原文：尿毒"
+          "note": "TAH_SS 原文：尿毒；WGMH_TF 原文：尿毒"
         },
         {
           "term": "腎結石",
@@ -944,7 +979,8 @@
             "AFGH_TY",
             "TZUCHI_HL",
             "TAH_SS",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -978,7 +1014,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：頭痛的原因：高血壓 → 心臟血管內科；端坐呼吸的原因：高血壓 → 心臟血管內科；疑高血壓 → 心臟血管內科"
         },
@@ -997,7 +1034,8 @@
             "MMH_TP",
             "TAH_SS",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：心悸（心臟的疾病）→ 心臟血管內科；心悸（甲狀腺機能亢進）→ 內分泌科"
         },
@@ -1017,7 +1055,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "TPH_XZ 原文：錯字「心率不整」；CHIMEI_YK 原文：暈厥的原因：心律不整 → 心臟血管內科"
         },
@@ -1031,7 +1070,8 @@
             "CTH_XD",
             "AFGH_TY",
             "TAH_SS",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：胸痛的原因：狹心症 → 心臟血管內科"
         },
@@ -1050,7 +1090,8 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "FEMH_BQ 原文：心臟無力"
         },
@@ -1059,7 +1100,8 @@
           "kind": "symptom",
           "subgroup": "心臟內科",
           "sources": [
-            "NTUH_YL"
+            "NTUH_YL",
+            "WGMH_TF"
           ]
         },
         {
@@ -1067,7 +1109,8 @@
           "kind": "symptom",
           "subgroup": "心臟內科",
           "sources": [
-            "NTUH_YL"
+            "NTUH_YL",
+            "WGMH_TF"
           ]
         },
         {
@@ -1091,7 +1134,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：頭暈的原因：糖尿病 → 內分泌科；疑糖尿病 → 內分泌科"
         },
@@ -1108,9 +1152,10 @@
             "CMUH_HC",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：疑高血脂症 → 內分泌科；TSGH_TP 原文：高脂血症"
+          "note": "CHIMEI_YK 原文：疑高血脂症 → 內分泌科；TSGH_TP 原文：高脂血症；WGMH_TF 原文：高脂血症"
         },
         {
           "term": "甲狀腺疾病",
@@ -1127,7 +1172,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "FEMH_BQ 原文：甲狀腺病變；CHIMEI_YK 原文：頭暈的原因：甲狀腺功能失調 → 內分泌科；異常怕冷或怕熱的原因：甲狀腺功能異常 → 內分泌科"
         },
@@ -1146,7 +1192,8 @@
             "TAH_SS",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：肥胖症（遺傳因素、營養過度、甲狀腺功能低下） → 內科；TSGH_TP 原文：肥胖症"
         },
@@ -1172,7 +1219,8 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -1190,7 +1238,8 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "FEMH_BQ 原文：關節炎（痛風）；TSGH_TP 原文：關節炎（痛風）"
         },
@@ -1224,7 +1273,8 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "TSGH_TP 原文：狼瘡"
         },
@@ -1240,7 +1290,8 @@
             "TAH_SS",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "FEMH_BQ 原文：關節炎（類風濕性）；CHIMEI_YK 原文：晨起關節僵硬的原因：類風濕關節炎 → 風濕免疫科；TSGH_TP 原文：關節炎（類風溼性）"
         },
@@ -1286,7 +1337,8 @@
             "MMH_TP",
             "TPH_XZ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：頭暈的原因：貧血 → 血液腫瘤科；蒼白貧血（缺鐵性、慢性疾病、維生素B12或葉酸缺乏、海洋性、骨髓再生不良性貧血）→ 血液腫瘤科；疑貧血 → 血液腫瘤科"
         },
@@ -1416,17 +1468,19 @@
           "sources": [
             "TPVGH_HC",
             "TPH_XZ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "subgroup": "心臟內科",
-          "note": "CHIMEI_YK 原文：暈厥的原因：心臟瓣膜狹窄 → 心臟血管內科"
+          "note": "CHIMEI_YK 原文：暈厥的原因：心臟瓣膜狹窄 → 心臟血管內科；WGMH_TF 原文：辦膜性心臟病"
         },
         {
           "term": "心雜音",
           "kind": "symptom",
           "sources": [
             "TPVGH_HC",
-            "CTH_XD"
+            "CTH_XD",
+            "WGMH_TF"
           ],
           "subgroup": "心臟內科"
         },
@@ -1558,10 +1612,11 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "腎臟內科",
-          "note": "TPH_XZ 原文：電解質異常；TSGH_TP 原文：電解質異常（如低血鉀症）"
+          "note": "TPH_XZ 原文：電解質異常；TSGH_TP 原文：電解質異常（如低血鉀症）；WGMH_TF 原文：電解質不平均"
         },
         {
           "term": "腎絲球炎",
@@ -1613,7 +1668,8 @@
           "kind": "disease",
           "sources": [
             "TPVGH_HC",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "感染科"
         },
@@ -1689,9 +1745,11 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "subgroup": "胸腔內科"
+          "subgroup": "胸腔內科",
+          "note": "WGMH_TF 原文：胸肺及縱膈腔腫瘤"
         },
         {
           "term": "肺癌",
@@ -1716,7 +1774,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "胸腔內科",
           "note": "TPH_XZ 原文：支氣管擴張症；FEMH_BQ 原文：支氣管擴張症；CHIMEI_YK 原文：咳嗽的原因：支氣管擴張症 → 胸腔內科；TSGH_TP 原文：支氣管擴張症"
@@ -1809,7 +1868,8 @@
             "AFGH_TY",
             "TZUCHI_HL",
             "TAH_SS",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ],
           "subgroup": "腎臟內科",
           "note": "FEMH_BQ 原文：腎臟發炎"
@@ -1915,18 +1975,22 @@
           "kind": "symptom",
           "sources": [
             "AFGH_KH",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "subgroup": "血液腫瘤科"
+          "subgroup": "血液腫瘤科",
+          "note": "WGMH_TF 原文：白血球過高"
         },
         {
           "term": "白血球不足",
           "kind": "symptom",
           "sources": [
             "AFGH_KH",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "subgroup": "血液腫瘤科"
+          "subgroup": "血液腫瘤科",
+          "note": "WGMH_TF 原文：白血球過低"
         },
         {
           "term": "血小板過多",
@@ -1990,7 +2054,8 @@
           "kind": "symptom",
           "sources": [
             "AFGH_KH",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "血液腫瘤科"
         },
@@ -1999,9 +2064,11 @@
           "kind": "symptom",
           "sources": [
             "AFGH_KH",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "subgroup": "血液腫瘤科"
+          "subgroup": "血液腫瘤科",
+          "note": "WGMH_TF 原文：異常出血"
         },
         {
           "term": "血液凝固異常",
@@ -2170,9 +2237,11 @@
           "sources": [
             "CTH_XD",
             "TZUCHI_HL",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ],
-          "subgroup": "胸腔內科"
+          "subgroup": "胸腔內科",
+          "note": "WGMH_TF 原文：睡眠呼吸中止或不良疾病"
         },
         {
           "term": "心跳過慢",
@@ -2231,7 +2300,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": [
             "心臟內科",
@@ -2290,7 +2360,8 @@
             "AFGH_TY",
             "TZUCHI_HL",
             "TAH_SS",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "心臟內科",
           "note": "TSGH_TP 原文：心臟病（先天性）"
@@ -2304,7 +2375,8 @@
             "TZUCHI_HL",
             "TAH_SS",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "心臟內科",
           "note": "CHIMEI_YK 原文：夜間陣發性呼吸（→ 心臟血管內科）的原因：風濕性心臟病；TSGH_TP 原文：心臟病（風濕性）"
@@ -2313,7 +2385,8 @@
           "term": "心肌炎",
           "kind": "disease",
           "sources": [
-            "CTH_XD"
+            "CTH_XD",
+            "WGMH_TF"
           ],
           "subgroup": "心臟內科"
         },
@@ -2324,7 +2397,8 @@
             "CTH_XD",
             "CMUH_HC",
             "TZUCHI_HL",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "心臟內科"
         },
@@ -2333,7 +2407,8 @@
           "kind": "disease",
           "sources": [
             "CTH_XD",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "subgroup": "心臟內科",
           "note": "CHIMEI_YK 原文：胸痛的原因：大動脈瘤 → 心臟血管內科"
@@ -2343,13 +2418,14 @@
           "kind": "disease",
           "sources": [
             "CTH_XD",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": [
             "心臟內科",
             "感染科"
           ],
-          "note": "TSGH_TP 原文：心臟內膜炎"
+          "note": "TSGH_TP 原文：心臟內膜炎；WGMH_TF 原文：感染性心內膜炎"
         },
         {
           "term": "動脈硬化症",
@@ -2412,7 +2488,8 @@
             "TZUCHI_HL",
             "TAH_SS",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "胃腸肝膽科"
         },
@@ -2437,7 +2514,8 @@
             "AFGH_TY",
             "MMH_TP",
             "TPH_XZ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "subgroup": "胃腸肝膽科",
           "note": "TPH_XZ 原文：嘔吐腹瀉；CHIMEI_YK 原文：噁心嘔吐 → 胃腸肝膽科"
@@ -2451,13 +2529,14 @@
             "MMH_TP",
             "TPH_XZ",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "subgroup": [
             "胃腸肝膽科",
             "血液腫瘤科"
           ],
-          "note": "TPH_XZ 原文：錯字「黃膽水腫」；FEMH_BQ 原文：眼白黃；CHIMEI_YK 原文：黃疸（肝臟、膽道、胰臟引起）→ 胃腸肝膽科"
+          "note": "TPH_XZ 原文：錯字「黃膽水腫」；FEMH_BQ 原文：眼白黃；CHIMEI_YK 原文：黃疸（肝臟、膽道、胰臟引起）→ 胃腸肝膽科；WGMH_TF 原文：皮膚成黃"
         },
         {
           "term": "消化道腫瘤",
@@ -2488,7 +2567,8 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "免疫風濕科",
           "note": "TPH_XZ 原文：退化關節炎；FEMH_BQ 原文：關節炎（退化性）；TSGH_TP 原文：關節炎（退化性）"
@@ -2498,7 +2578,8 @@
           "kind": "disease",
           "sources": [
             "CTH_XD",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "免疫風濕科",
           "note": "TSGH_TP 原文：肌腱疼痛"
@@ -2514,10 +2595,11 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "免疫風濕科",
-          "note": "TAH_SS 原文：硬皮症；TPH_XZ 原文：硬皮症；FEMH_BQ 原文：硬皮症；TSGH_TP 原文：硬皮症"
+          "note": "TAH_SS 原文：硬皮症；TPH_XZ 原文：硬皮症；FEMH_BQ 原文：硬皮症；TSGH_TP 原文：硬皮症；WGMH_TF 原文：硬皮症"
         },
         {
           "term": "肌炎",
@@ -2537,7 +2619,8 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "免疫風濕科",
           "note": "FEMH_BQ 原文：皮肌炎血管炎"
@@ -2549,7 +2632,8 @@
             "CTH_XD",
             "MMH_TP",
             "TPH_XZ",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ],
           "subgroup": [
             "免疫風濕科",
@@ -2628,7 +2712,8 @@
           "sources": [
             "CTH_XD",
             "AFGH_TY",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "subgroup": "胃腸肝膽科",
           "note": "CHIMEI_YK 原文：噁心嘔吐 → 胃腸肝膽科"
@@ -2678,10 +2763,11 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "新陳代謝及內分泌科",
-          "note": "TAH_SS 原文：副甲狀腺病變；FEMH_BQ 原文：副甲狀腺病變"
+          "note": "TAH_SS 原文：副甲狀腺病變；FEMH_BQ 原文：副甲狀腺病變；WGMH_TF 原文：副甲狀腺病變"
         },
         {
           "term": "腦下垂體病變",
@@ -2693,7 +2779,8 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "新陳代謝及內分泌科",
           "note": "TSGH_TP 原文：腦垂腺病變"
@@ -2724,7 +2811,8 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "免疫風濕科",
           "note": "FEMH_BQ 原文：皮肌炎血管炎"
@@ -3007,10 +3095,11 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "新陳代謝及內分泌科",
-          "note": "CMUH_HC 原文：腎上腺〈皮質、髓質〉功能異常及腫瘤；TAH_SS 原文：腎上腺；TPH_XZ 原文：腎上腺病變；CHIMEI_YK 原文：體重異常增加的原因：腎上腺功能異常 → 內分泌科"
+          "note": "CMUH_HC 原文：腎上腺〈皮質、髓質〉功能異常及腫瘤；TAH_SS 原文：腎上腺；TPH_XZ 原文：腎上腺病變；CHIMEI_YK 原文：體重異常增加的原因：腎上腺功能異常 → 內分泌科；WGMH_TF 原文：腎上腺病變"
         },
         {
           "term": "性腺功能異常",
@@ -3099,10 +3188,11 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "胃腸肝膽科",
-          "note": "TAH_SS 原文：肝機能異常；FEMH_BQ 原文：肝機能異常；TSGH_TP 原文：肝機能異常"
+          "note": "TAH_SS 原文：肝機能異常；FEMH_BQ 原文：肝機能異常；TSGH_TP 原文：肝機能異常；WGMH_TF 原文：肝機能異常"
         },
         {
           "term": "小便困難",
@@ -3141,7 +3231,8 @@
           "term": "發育不良",
           "kind": "symptom",
           "sources": [
-            "MMH_TP"
+            "MMH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "新陳代謝及內分泌科"
         },
@@ -3163,9 +3254,14 @@
             "TZUCHI_HL",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "subgroup": "胸腔內科"
+          "subgroup": [
+            "胸腔內科",
+            "感染科"
+          ],
+          "note": "WGMH_TF 原文：呼吸道之細菌及病毒感染"
         },
         {
           "term": "哮鳴聲",
@@ -3207,19 +3303,24 @@
           "subgroup": "胃腸肝膽科",
           "sources": [
             "TAH_SS",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ]
         },
         {
           "term": "感染性關節炎",
           "kind": "disease",
-          "subgroup": "免疫風濕科",
+          "subgroup": [
+            "免疫風濕科",
+            "感染科"
+          ],
           "sources": [
             "TAH_SS",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "TAH_SS 原文：關節炎(感染性)；FEMH_BQ 原文：關節炎（感染性）；TSGH_TP 原文：關節炎（感染性）"
+          "note": "TAH_SS 原文：關節炎(感染性)；FEMH_BQ 原文：關節炎（感染性）；TSGH_TP 原文：關節炎（感染性）；WGMH_TF 原文：關節炎"
         },
         {
           "term": "異位性皮膚炎",
@@ -3236,9 +3337,10 @@
           "sources": [
             "TAH_SS",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "TAH_SS 原文：藥物及食物過敏；FEMH_BQ 原文：藥物食物等過敏症；TSGH_TP 原文：藥物食物等過敏"
+          "note": "TAH_SS 原文：藥物及食物過敏；FEMH_BQ 原文：藥物食物等過敏症；TSGH_TP 原文：藥物食物等過敏；WGMH_TF 原文：藥物等過敏症"
         },
         {
           "term": "食物過敏",
@@ -3247,9 +3349,10 @@
           "sources": [
             "TAH_SS",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "TAH_SS 原文：藥物及食物過敏；FEMH_BQ 原文：藥物食物等過敏症；TSGH_TP 原文：藥物食物等過敏"
+          "note": "TAH_SS 原文：藥物及食物過敏；FEMH_BQ 原文：藥物食物等過敏症；TSGH_TP 原文：藥物食物等過敏；WGMH_TF 原文：食物等過敏症"
         },
         {
           "term": "脂肪肝",
@@ -3345,9 +3448,10 @@
           "sources": [
             "TPH_XZ",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
-          "note": "FEMH_BQ 原文：尿酸代謝異常；CHIMEI_YK 原文：疑尿酸症 → 內分泌科"
+          "note": "FEMH_BQ 原文：尿酸代謝異常；CHIMEI_YK 原文：疑尿酸症 → 內分泌科；WGMH_TF 原文：高尿酸症"
         },
         {
           "term": "腎臟病",
@@ -3371,7 +3475,8 @@
           "subgroup": "免疫風濕科",
           "sources": [
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -3724,7 +3829,8 @@
           "kind": "disease",
           "subgroup": "心臟內科",
           "sources": [
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -3783,6 +3889,82 @@
           "subgroup": "新陳代謝及內分泌科",
           "sources": [
             "TSGH_TP"
+          ]
+        },
+        {
+          "term": "腸胃道感染",
+          "kind": "disease",
+          "subgroup": "感染科",
+          "sources": [
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：腸胃道之細菌及病毒感染"
+        },
+        {
+          "term": "骨髓炎",
+          "kind": "disease",
+          "subgroup": "感染科",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "膀胱炎",
+          "kind": "disease",
+          "subgroup": "感染科",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "皮膚感染",
+          "kind": "disease",
+          "subgroup": "感染科",
+          "sources": [
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：一般皮膚性感染"
+        },
+        {
+          "term": "愛滋病",
+          "kind": "disease",
+          "subgroup": "感染科",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "咳痰",
+          "kind": "symptom",
+          "subgroup": "胸腔內科",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "縱膈腔腫瘤",
+          "kind": "disease",
+          "subgroup": "胸腔內科",
+          "sources": [
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：胸肺及縱膈腔腫瘤"
+        },
+        {
+          "term": "肋膜疾病",
+          "kind": "disease",
+          "subgroup": "胸腔內科",
+          "sources": [
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：肋膜病變"
+        },
+        {
+          "term": "白血病",
+          "kind": "disease",
+          "subgroup": "血液腫瘤科",
+          "sources": [
+            "WGMH_TF"
           ]
         }
       ]
@@ -3851,9 +4033,10 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "TAH_SS 原文：內外痔；FEMH_BQ 原文：內外痔；CHIMEI_YK 原文：吐血便血的原因：痔瘡 → 一般外科；便血、腸道不適、肛門相關病症：內外痔瘡 → 大腸直腸外科；TSGH_TP 原文：內外痔"
+          "note": "TAH_SS 原文：內外痔；FEMH_BQ 原文：內外痔；CHIMEI_YK 原文：吐血便血的原因：痔瘡 → 一般外科；便血、腸道不適、肛門相關病症：內外痔瘡 → 大腸直腸外科；TSGH_TP 原文：內外痔；WGMH_TF 原文：內外痔"
         },
         {
           "term": "血便",
@@ -3872,9 +4055,10 @@
             "TAH_SS",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "NCKUH_TN、NTUH_YL、AFGH_KH、MMH_TP 原文：便血；TAH_SS 原文：便血；FEMH_BQ 原文：便血；CHIMEI_YK 原文：便血、腸道不適、肛門相關病症：便血 → 大腸直腸外科；TSGH_TP 原文：便血"
+          "note": "NCKUH_TN、NTUH_YL、AFGH_KH、MMH_TP 原文：便血；TAH_SS 原文：便血；FEMH_BQ 原文：便血；CHIMEI_YK 原文：便血、腸道不適、肛門相關病症：便血 → 大腸直腸外科；TSGH_TP 原文：便血；WGMH_TF 原文：便血"
         },
         {
           "term": "脫肛",
@@ -3888,7 +4072,8 @@
             "TAH_SS",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：便血、腸道不適、肛門相關病症：脫肛 → 大腸直腸外科"
         },
@@ -3900,7 +4085,8 @@
             "NCKUH_TN",
             "NTUH_YL",
             "TAH_SS",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ],
           "note": "TAH_SS 原文：肛門痛腫；FEMH_BQ 原文：肛門痛腫"
         },
@@ -3917,7 +4103,8 @@
             "TAH_SS",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "TAH_SS 原文：「小便失禁」，經人工確認為大便失禁誤植；CHIMEI_YK 原文：便血、腸道不適、肛門相關病症：大便失禁 → 大腸直腸外科"
         },
@@ -3961,7 +4148,8 @@
             "TAH_SS",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：便血、腸道不適、肛門相關病症：大腸癌 → 大腸直腸外科；TSGH_TP 原文：大腸腫瘤或大腸癌"
         },
@@ -3976,7 +4164,8 @@
             "AFGH_TY",
             "TAH_SS",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "note": "TAH_SS 原文：乳房有硬塊；CHIMEI_YK 原文：乳房腫瘤或硬塊（乳房纖維性囊腫、乳癌、乳房良性腫瘤）→ 一般外科；乳房相關病症（乳房硬塊、腫瘤、疼痛、乳癌）→ 乳房疾病特別門診"
         },
@@ -3988,9 +4177,10 @@
             "NTUH_YL",
             "AFGH_TY",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：乳房疼痛（乳房發炎）→ 一般外科；TSGH_TP 原文：乳房發炎疼痛"
+          "note": "CHIMEI_YK 原文：乳房疼痛（乳房發炎）→ 一般外科；TSGH_TP 原文：乳房發炎疼痛；WGMH_TF 原文：乳房或乳頭疼痛"
         },
         {
           "term": "乳癌",
@@ -4025,9 +4215,10 @@
             "TZUCHI_HL",
             "TAH_SS",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "TAH_SS 原文：表皮及軟部組織腫瘤；FEMH_BQ 原文：表皮及軟部組織腫瘤；TSGH_TP 原文：表皮及軟部組織腫瘤"
+          "note": "TAH_SS 原文：表皮及軟部組織腫瘤；FEMH_BQ 原文：表皮及軟部組織腫瘤；TSGH_TP 原文：表皮及軟部組織腫瘤；WGMH_TF 原文：表皮及軟性組織腫瘤"
         },
         {
           "term": "皮下腫塊",
@@ -4112,7 +4303,8 @@
             "NCKUH_TN",
             "NTUH_YL",
             "TZUCHI_HL",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：上腹痛的原因：膽結石 → 一般外科"
         },
@@ -4160,7 +4352,8 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -4184,7 +4377,8 @@
             "TZUCHI_HL",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：氣胸 → 胸腔外科；TSGH_TP 原文：血氣胸及膿胸"
         },
@@ -4219,9 +4413,10 @@
             "AFGH_TY",
             "TZUCHI_HL",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "TSGH_TP 原文：隱睪"
+          "note": "TSGH_TP 原文：隱睪；WGMH_TF 原文：隱睪"
         },
         {
           "term": "斜頸",
@@ -4232,7 +4427,8 @@
             "NTUH_YL",
             "TZUCHI_HL",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -4280,7 +4476,8 @@
             "AFGH_TY",
             "TZUCHI_HL",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -4364,7 +4561,8 @@
             "AFGH_KH",
             "CMUH_HC",
             "TZUCHI_HL",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "胸腔外科"
         },
@@ -4423,10 +4621,11 @@
             "AFGH_KH",
             "AFGH_TY",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "乳房外科",
-          "note": "CHIMEI_YK 原文：乳房分泌物（乳房發炎或代謝問題）→ 一般外科；TSGH_TP 原文：乳房不正常內分泌"
+          "note": "CHIMEI_YK 原文：乳房分泌物（乳房發炎或代謝問題）→ 一般外科；TSGH_TP 原文：乳房不正常內分泌；WGMH_TF 原文：乳頭不正常分泌"
         },
         {
           "term": "乳房發炎",
@@ -4435,7 +4634,8 @@
             "AFGH_KH",
             "AFGH_TY",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "乳房外科",
           "note": "CHIMEI_YK 原文：乳房疼痛的原因：乳房發炎 → 一般外科；TSGH_TP 原文：乳房發炎疼痛"
@@ -4447,7 +4647,8 @@
             "AFGH_KH",
             "TZUCHI_HL",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "胸腔外科"
         },
@@ -4476,10 +4677,11 @@
           "sources": [
             "AFGH_KH",
             "TZUCHI_HL",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "胸腔外科",
-          "note": "TSGH_TP 原文：胸壁畸形(漏斗胸及雞胸)"
+          "note": "TSGH_TP 原文：胸壁畸形(漏斗胸及雞胸)；WGMH_TF 原文：胸壁畸型"
         },
         {
           "term": "血胸",
@@ -4488,7 +4690,8 @@
             "AFGH_KH",
             "TZUCHI_HL",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "胸腔外科",
           "note": "TSGH_TP 原文：血氣胸及膿胸"
@@ -4500,7 +4703,8 @@
             "AFGH_KH",
             "TZUCHI_HL",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "胸腔外科",
           "note": "TSGH_TP 原文：血氣胸及膿胸"
@@ -4523,7 +4727,8 @@
             "TZUCHI_HL",
             "TPH_XZ",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "subgroup": "胸腔外科",
           "note": "CHIMEI_YK 原文：胸痛（→ 胸腔外科）的原因：胸部外傷"
@@ -4577,7 +4782,8 @@
           "kind": "disease",
           "sources": [
             "AFGH_KH",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "心臟外科",
           "note": "TSGH_TP 原文：心臟病（風濕性）"
@@ -4587,7 +4793,8 @@
           "kind": "disease",
           "sources": [
             "AFGH_KH",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "WGMH_TF"
           ],
           "subgroup": "心臟外科"
         },
@@ -4597,7 +4804,8 @@
           "sources": [
             "AFGH_KH",
             "TAH_SS",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": [
             "心臟外科",
@@ -4611,7 +4819,8 @@
             "AFGH_KH",
             "AFGH_TY",
             "TZUCHI_HL",
-            "TAH_SS"
+            "TAH_SS",
+            "WGMH_TF"
           ],
           "subgroup": [
             "心臟外科",
@@ -4622,7 +4831,8 @@
           "term": "小兒先天性心臟病",
           "kind": "disease",
           "sources": [
-            "AFGH_KH"
+            "AFGH_KH",
+            "WGMH_TF"
           ],
           "subgroup": "心臟外科"
         },
@@ -4791,7 +5001,8 @@
             "TZUCHI_HL",
             "TAH_SS",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": [
             "一般外科",
@@ -4809,7 +5020,8 @@
             "TAH_SS",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "大腸直腸外科",
           "note": "CHIMEI_YK 原文：便血、腸道不適、肛門相關病症：便秘 → 大腸直腸外科"
@@ -4878,10 +5090,11 @@
             "TZUCHI_HL",
             "TAH_SS",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "大腸直腸外科",
-          "note": "TAH_SS 原文：下痢；CHIMEI_YK 原文：便血、腸道不適、肛門相關病症：下痢 → 大腸直腸外科；TSGH_TP 原文：下痢（拉肚子）"
+          "note": "TAH_SS 原文：下痢；CHIMEI_YK 原文：便血、腸道不適、肛門相關病症：下痢 → 大腸直腸外科；TSGH_TP 原文：下痢（拉肚子）；WGMH_TF 原文：下痢"
         },
         {
           "term": "發炎性腸道疾病",
@@ -4965,7 +5178,8 @@
             "TAH_SS",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "大腸直腸外科",
           "note": "CHIMEI_YK 原文：便血、腸道不適、肛門相關病症：腹脹 → 大腸直腸外科"
@@ -4986,7 +5200,8 @@
             "TAH_SS",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "大腸直腸外科",
           "note": "CHIMEI_YK 原文：便血、腸道不適、肛門相關病症：直腸癌、肛門癌 → 大腸直腸外科；TSGH_TP 原文：肛門腫瘤或肛門癌；直腸腫瘤或直腸癌"
@@ -5024,7 +5239,8 @@
           "sources": [
             "TAH_SS",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -5045,9 +5261,10 @@
           "sources": [
             "TAH_SS",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "TAH_SS 原文：表皮及軟部組織腫瘤；FEMH_BQ 原文：表皮及軟部組織腫瘤；TSGH_TP 原文：表皮及軟部組織腫瘤"
+          "note": "TAH_SS 原文：表皮及軟部組織腫瘤；FEMH_BQ 原文：表皮及軟部組織腫瘤；TSGH_TP 原文：表皮及軟部組織腫瘤；WGMH_TF 原文：表皮及軟性組織腫瘤"
         },
         {
           "term": "大便不規則",
@@ -5056,7 +5273,8 @@
           "sources": [
             "TAH_SS",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "TAH_SS 原文：大便不規則(裡急後重)；FEMH_BQ 原文：大便不規則（裏急後重感）；TSGH_TP 原文：大便不規則或習慣改變"
         },
@@ -5077,7 +5295,8 @@
           "sources": [
             "TAH_SS",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：便血、腸道不適、肛門相關病症：下腹部腫瘤 → 大腸直腸外科"
         },
@@ -5162,7 +5381,8 @@
           "subgroup": "小兒外科",
           "sources": [
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -5208,7 +5428,8 @@
           "subgroup": "小兒外科",
           "sources": [
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -5254,7 +5475,8 @@
           "subgroup": "乳房外科",
           "sources": [
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：乳房腫瘤或硬塊 → 一般外科"
         },
@@ -5307,6 +5529,111 @@
           "sources": [
             "TSGH_TP"
           ]
+        },
+        {
+          "term": "肝膽結石",
+          "kind": "disease",
+          "subgroup": "一般外科",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "肝膽腫瘤",
+          "kind": "disease",
+          "subgroup": "一般外科",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "胃癌",
+          "kind": "disease",
+          "subgroup": "一般外科",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "肝癌",
+          "kind": "disease",
+          "subgroup": "一般外科",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "胰臟腫瘤",
+          "kind": "disease",
+          "subgroup": "一般外科",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "肝內結石",
+          "kind": "disease",
+          "subgroup": "一般外科",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "膽管結石",
+          "kind": "disease",
+          "subgroup": "一般外科",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "腋下腫塊",
+          "kind": "symptom",
+          "subgroup": "乳房外科",
+          "sources": [
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：腋下腫塊疼痛"
+        },
+        {
+          "term": "乳房發育異常",
+          "kind": "symptom",
+          "subgroup": "乳房外科",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "肋膜積水",
+          "kind": "disease",
+          "subgroup": "胸腔外科",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "胃賁門腫瘤",
+          "kind": "disease",
+          "subgroup": "胸腔外科",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "周邊血管疾病",
+          "kind": "disease",
+          "subgroup": "心臟外科",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "大腸炎",
+          "kind": "disease",
+          "subgroup": "大腸直腸外科",
+          "sources": [
+            "WGMH_TF"
+          ]
         }
       ]
     },
@@ -5343,7 +5670,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "突發劇烈頭痛由急迫度判斷處理；亦見於內科、兒科；CHIMEI_YK 原文：頭痛（腦炎、腦膜炎、腦瘤）→ 腦神經內科；TSGH_TP 原文：頭、頸疼痛或痙攣"
         },
@@ -5509,8 +5837,10 @@
             "TZUCHI_HL",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
-          ]
+            "TSGH_TP",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：巴金森症"
         },
         {
           "term": "癲癇",
@@ -5528,9 +5858,10 @@
             "TZUCHI_HL",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "發作中由急迫度判斷處理；TSGH_TP 原文：癲癇症"
+          "note": "發作中由急迫度判斷處理；TSGH_TP 原文：癲癇症；WGMH_TF 原文：癲癇症"
         },
         {
           "term": "失智症",
@@ -5546,7 +5877,8 @@
             "TZUCHI_HL",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "亦見於精神科與家醫科；TPH_XZ 原文：失智；FEMH_BQ 原文：癡呆；TSGH_TP 原文：痴呆"
         },
@@ -5697,7 +6029,8 @@
           "kind": "disease",
           "sources": [
             "TPVGH_HC",
-            "CTH_XD"
+            "CTH_XD",
+            "WGMH_TF"
           ],
           "subgroup": "神經內科"
         },
@@ -5706,10 +6039,11 @@
           "kind": "symptom",
           "sources": [
             "TPVGH_HC",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "subgroup": "神經內科",
-          "note": "CHIMEI_YK 原文：眩暈（房子會轉）（脊骨基底動脈循環不全、腦幹血管病變、小腦腫瘤或病變）→ 腦神經內科"
+          "note": "CHIMEI_YK 原文：眩暈（房子會轉）（脊骨基底動脈循環不全、腦幹血管病變、小腦腫瘤或病變）→ 腦神經內科；WGMH_TF 原文：眩暈症"
         },
         {
           "term": "顫抖症",
@@ -5814,10 +6148,11 @@
             "TZUCHI_HL",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "神經內科",
-          "note": "CHIMEI_YK 原文：頭痛／頭暈的原因：腦瘤 → 腦神經內科"
+          "note": "CHIMEI_YK 原文：頭痛／頭暈的原因：腦瘤 → 腦神經內科；WGMH_TF 原文：腦部及神經腫瘤"
         },
         {
           "term": "痙攣",
@@ -5847,9 +6182,11 @@
           "term": "失眠",
           "kind": "symptom",
           "sources": [
-            "CTH_XD"
+            "CTH_XD",
+            "WGMH_TF"
           ],
-          "subgroup": "神經內科"
+          "subgroup": "神經內科",
+          "note": "WGMH_TF 原文：失眠症"
         },
         {
           "term": "腰酸背痛",
@@ -5870,7 +6207,8 @@
           "kind": "symptom",
           "sources": [
             "AFGH_TY",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "WGMH_TF"
           ],
           "subgroup": "神經內科"
         },
@@ -5881,10 +6219,11 @@
             "AFGH_TY",
             "CMUH_HC",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "subgroup": "神經內科",
-          "note": "CHIMEI_YK 原文：複視的原因：重症肌無力 → 腦神經內科；眼瞼下垂的原因：肌無力症 → 腦神經內科；TSGH_TP 原文：重症肌無力"
+          "note": "CHIMEI_YK 原文：複視的原因：重症肌無力 → 腦神經內科；眼瞼下垂的原因：肌無力症 → 腦神經內科；TSGH_TP 原文：重症肌無力；WGMH_TF 原文：重症肌無力"
         },
         {
           "term": "猝睡症",
@@ -6105,6 +6444,14 @@
             "TSGH_TP"
           ],
           "note": "TSGH_TP 原文：運動神經元疾病（漸凍人）"
+        },
+        {
+          "term": "下背痛",
+          "kind": "symptom",
+          "subgroup": "神經內科",
+          "sources": [
+            "WGMH_TF"
+          ]
         }
       ]
     },
@@ -6135,8 +6482,10 @@
             "TZUCHI_HL",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
-          ]
+            "TSGH_TP",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：腦部及神經腫瘤"
         },
         {
           "term": "顱內出血",
@@ -6194,7 +6543,8 @@
           "sources": [
             "NTUH_YL",
             "CMUH_HC",
-            "TPH_XZ"
+            "TPH_XZ",
+            "WGMH_TF"
           ],
           "note": "亦見於骨科"
         },
@@ -6280,8 +6630,10 @@
           "sources": [
             "TPVGH_HC",
             "AFGH_TY",
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：後頸疼痛"
         },
         {
           "term": "下背疼痛",
@@ -6431,7 +6783,8 @@
           "kind": "disease",
           "sources": [
             "AFGH_TY",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "AFGH_TY 原文：骨質疏鬆性脊椎壓迫性骨折；TSGH_TP 原文：脊椎（頸、胸及腰椎）骨折"
         },
@@ -6465,8 +6818,10 @@
           "term": "手腳麻痺",
           "kind": "symptom",
           "sources": [
-            "MMH_TP"
-          ]
+            "MMH_TP",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：手腳麻痛"
         },
         {
           "term": "腰痛",
@@ -6504,8 +6859,10 @@
           "kind": "disease",
           "sources": [
             "CMUH_HC",
-            "TPH_XZ"
-          ]
+            "TPH_XZ",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：腰椎滑脫；頸椎滑脫"
         },
         {
           "term": "頸腰椎壓迫",
@@ -6562,9 +6919,10 @@
           "term": "頸部僵硬",
           "kind": "symptom",
           "sources": [
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：頸僵硬 → 神經外科"
+          "note": "CHIMEI_YK 原文：頸僵硬 → 神經外科；WGMH_TF 原文：後頸僵硬"
         },
         {
           "term": "臂神經叢損傷",
@@ -6572,6 +6930,21 @@
           "sources": [
             "TSGH_TP"
           ]
+        },
+        {
+          "term": "感覺異常",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "步態不穩",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：走路不穩"
         }
       ]
     },
@@ -6788,7 +7161,8 @@
           "subgroup": null,
           "sources": [
             "TPVGH_YL",
-            "AFGH_TY"
+            "AFGH_TY",
+            "WGMH_TF"
           ],
           "note": "亦見於復健科"
         },
@@ -7106,8 +7480,10 @@
           "kind": "disease",
           "sources": [
             "TPH_XZ",
-            "TSGH_TP"
-          ]
+            "TSGH_TP",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：前後十字韌帶斷裂"
         },
         {
           "term": "半月板損傷",
@@ -7154,9 +7530,10 @@
           "term": "旋轉肌腱撕裂",
           "kind": "disease",
           "sources": [
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：肩膀痛的原因：肩部旋轉肌腱斷裂 → 骨科"
+          "note": "CHIMEI_YK 原文：肩膀痛的原因：肩部旋轉肌腱斷裂 → 骨科；WGMH_TF 原文：旋轉肌袖破裂"
         },
         {
           "term": "髖關節疼痛",
@@ -7186,9 +7563,10 @@
           "term": "退化性關節炎",
           "kind": "disease",
           "sources": [
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：肩、膝、踝、髖關節疾病與傷害：退化性關節炎 → 骨科"
+          "note": "CHIMEI_YK 原文：肩、膝、踝、髖關節疾病與傷害：退化性關節炎 → 骨科；WGMH_TF 原文：膝肩髖退化性關節炎"
         },
         {
           "term": "臂神經叢損傷",
@@ -7213,6 +7591,71 @@
             "TSGH_TP"
           ],
           "note": "TSGH_TP 原文：手掌燧神經壓迫麻木"
+        },
+        {
+          "term": "感染性關節炎",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：關節感染（原文跨列截斷為「關。」「節感染」）"
+        },
+        {
+          "term": "關節攣縮",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "拇指外翻",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "媽媽手",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "扳機指",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "三角纖維軟骨撕裂",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "肩夾擠症候群",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：肩夾幾症候群"
+        },
+        {
+          "term": "下背痛",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "四肢腫瘤",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
         }
       ]
     },
@@ -7249,7 +7692,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：頻尿、夜間多次小便（攝護腺問題、膀胱自然老化所導致）→ 泌尿外科"
         },
@@ -7261,8 +7705,10 @@
             "TPVGH_YL",
             "NCKUH_TN",
             "NTUH_YL",
-            "MMH_TP"
-          ]
+            "MMH_TP",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：排尿困難"
         },
         {
           "term": "排尿障礙",
@@ -7290,9 +7736,10 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "女性尿失禁亦見於婦產科；TSGH_TP 原文：女性尿失禁"
+          "note": "女性尿失禁亦見於婦產科；TSGH_TP 原文：女性尿失禁；WGMH_TF 原文：婦女於咳嗽、打噴嚏或是腹部用力時發生漏尿"
         },
         {
           "term": "血尿",
@@ -7311,9 +7758,10 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "亦見於內科腎臟方向；CHIMEI_YK 原文：血尿（膀胱炎、尿道炎、結石、細菌感染、攝護腺肥大、泌尿道腫瘤）→ 泌尿外科"
+          "note": "亦見於內科腎臟方向；CHIMEI_YK 原文：血尿（膀胱炎、尿道炎、結石、細菌感染、攝護腺肥大、泌尿道腫瘤）→ 泌尿外科；WGMH_TF 原文：無痛性血尿"
         },
         {
           "term": "泌尿道結石",
@@ -7326,9 +7774,10 @@
             "CMUH_HC",
             "TZUCHI_HL",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：血尿的原因：結石 → 泌尿外科；TSGH_TP 原文：泌尿管結石"
+          "note": "CHIMEI_YK 原文：血尿的原因：結石 → 泌尿外科；TSGH_TP 原文：泌尿管結石；WGMH_TF 原文：尿路結石"
         },
         {
           "term": "尿路感染",
@@ -7368,7 +7817,8 @@
             "TAH_SS",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "TAH_SS 原文：前列腺肥大；CHIMEI_YK 原文：血尿的原因：攝護腺肥大 → 泌尿外科；TSGH_TP 原文：前列腺（攝護腺）腫大"
         },
@@ -7397,7 +7847,8 @@
             "TZUCHI_HL",
             "TAH_SS",
             "TPH_XZ",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ],
           "note": "TAH_SS 原文：包皮；TPH_XZ 原文：包皮；FEMH_BQ 原文：包皮"
         },
@@ -7413,7 +7864,8 @@
             "TAH_SS",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "TAH_SS 原文：男性不孕；FEMH_BQ 原文：男性不孕；CHIMEI_YK 原文：不孕（輸精管阻塞、隱睪症）→ 泌尿外科；TSGH_TP 原文：男性不孕"
         },
@@ -7448,9 +7900,10 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：血尿的原因：泌尿道腫瘤 → 泌尿外科；TSGH_TP 原文：腫瘤"
+          "note": "CHIMEI_YK 原文：血尿的原因：泌尿道腫瘤 → 泌尿外科；TSGH_TP 原文：腫瘤；WGMH_TF 原文：腎臟、輸尿管、膀胱、攝護腺等之腫瘤"
         },
         {
           "term": "尿道下裂",
@@ -7483,7 +7936,8 @@
             "TPVGH_HC",
             "AFGH_TY",
             "TZUCHI_HL",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：不孕的原因：隱睪症 → 泌尿外科"
         },
@@ -7509,7 +7963,8 @@
             "AFGH_KH",
             "TAH_SS",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "subgroup": "泌尿科",
           "note": "CHIMEI_YK 原文：頻尿、夜間多次小便 → 泌尿外科"
@@ -7538,7 +7993,8 @@
           "sources": [
             "TPVGH_HC",
             "CMUH_HC",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "subgroup": "泌尿科",
           "note": "CHIMEI_YK 原文：小便燒痛灼熱的原因：泌尿道感染 → 泌尿外科"
@@ -7564,10 +8020,11 @@
           "kind": "disease",
           "sources": [
             "TPVGH_HC",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "subgroup": "泌尿科",
-          "note": "CHIMEI_YK 原文：陰囊腫的原因：腹股溝疝氣 → 泌尿外科"
+          "note": "CHIMEI_YK 原文：陰囊腫的原因：腹股溝疝氣 → 泌尿外科；WGMH_TF 原文：腹股溝疝氣；小兒疝氣"
         },
         {
           "term": "陰囊腫痛",
@@ -7710,8 +8167,10 @@
           "term": "尿床",
           "kind": "symptom",
           "sources": [
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：小兒夜尿"
         },
         {
           "term": "膀胱功能異常",
@@ -7761,9 +8220,10 @@
           "term": "排尿疼痛",
           "kind": "symptom",
           "sources": [
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：小便燒痛灼熱（膀胱炎、尿道炎、泌尿道感染）→ 泌尿外科"
+          "note": "CHIMEI_YK 原文：小便燒痛灼熱（膀胱炎、尿道炎、泌尿道感染）→ 泌尿外科；WGMH_TF 原文：解尿疼痛"
         },
         {
           "term": "尿道炎",
@@ -7777,9 +8237,10 @@
           "term": "尿急",
           "kind": "symptom",
           "sources": [
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：急尿（忍不住尿）（膀胱過動症）→ 泌尿外科"
+          "note": "CHIMEI_YK 原文：急尿（忍不住尿）（膀胱過動症）→ 泌尿外科；WGMH_TF 原文：急尿感"
         },
         {
           "term": "膀胱過動症",
@@ -7825,6 +8286,65 @@
           "kind": "disease",
           "sources": [
             "TSGH_TP"
+          ]
+        },
+        {
+          "term": "腎上腺腫瘤",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "睪丸腫瘤",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：睪丸等之腫瘤"
+        },
+        {
+          "term": "陰莖腫瘤",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：陰莖等之腫瘤"
+        },
+        {
+          "term": "膀胱脫垂",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "先天尿路畸形",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：先天尿路畸型"
+        },
+        {
+          "term": "性功能障礙",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "男性更年期",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "陰莖彎曲",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
           ]
         }
       ]
@@ -7912,9 +8432,10 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：月經不規則（子宮內膜病變、卵巢病變、內分泌失調、壓力過大、藥物副作用、更年期）→ 婦產部"
+          "note": "CHIMEI_YK 原文：月經不規則（子宮內膜病變、卵巢病變、內分泌失調、壓力過大、藥物副作用、更年期）→ 婦產部；WGMH_TF 原文：月經不規則"
         },
         {
           "term": "更年期症狀",
@@ -7940,7 +8461,8 @@
             "MMH_TP",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -7988,7 +8510,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "TPH_XZ 原文：不孕；CHIMEI_YK 原文：不孕（性功能障礙與精蟲質量不好）→ 婦產部；不孕症（排卵或賀爾蒙因素異常、子宮內膜異位症、先天子宮構造異常、輸卵管的阻塞或沾粘…）→ 婦產部"
         },
@@ -8032,8 +8555,10 @@
           "subgroup": "產科",
           "sources": [
             "NTUH_YL",
-            "CMUH_HC"
-          ]
+            "CMUH_HC",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：孕婦有子癇症、多胞胎妊娠、妊娠糖尿病、紅班性狼瘡、妊娠心臟病"
         },
         {
           "term": "胎兒超音波",
@@ -8115,7 +8640,8 @@
           "term": "更年期症候群",
           "kind": "disease",
           "sources": [
-            "TPVGH_HC"
+            "TPVGH_HC",
+            "WGMH_TF"
           ]
         },
         {
@@ -8155,7 +8681,8 @@
           "kind": "symptom",
           "sources": [
             "MMH_TP",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ]
         },
         {
@@ -8170,8 +8697,10 @@
           "term": "性病",
           "kind": "disease",
           "sources": [
-            "MMH_TP"
-          ]
+            "MMH_TP",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：性傳染病"
         },
         {
           "term": "陰道分泌物增加",
@@ -8185,8 +8714,10 @@
           "kind": "symptom",
           "sources": [
             "MMH_TP",
-            "TSGH_TP"
-          ]
+            "TSGH_TP",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：停經障礙"
         },
         {
           "term": "骨質疏鬆",
@@ -8209,10 +8740,11 @@
           "kind": "disease",
           "sources": [
             "CMUH_HC",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "subgroup": "生殖醫學科",
-          "note": "CHIMEI_YK 原文：月經疼痛的原因：子宮內膜異位 → 婦產部"
+          "note": "CHIMEI_YK 原文：月經疼痛的原因：子宮內膜異位 → 婦產部；WGMH_TF 原文：子宮內膜異位"
         },
         {
           "term": "卵巢囊腫",
@@ -8228,9 +8760,10 @@
           "sources": [
             "CMUH_HC",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
-          "note": "CMUH_HC 原文：子宮內膜異位症（卵巢囊腫、經痛、慢性骨盆腔疼痛、骨盆腔沾黏）；CHIMEI_YK 原文：女性腹部疼痛的原因：經痛 → 婦產部；月經疼痛（子宮肌瘤、子宮腺瘤、子宮內膜異位）→ 婦產部"
+          "note": "CMUH_HC 原文：子宮內膜異位症（卵巢囊腫、經痛、慢性骨盆腔疼痛、骨盆腔沾黏）；CHIMEI_YK 原文：女性腹部疼痛的原因：經痛 → 婦產部；月經疼痛（子宮肌瘤、子宮腺瘤、子宮內膜異位）→ 婦產部；WGMH_TF 原文：痛經"
         },
         {
           "term": "慢性骨盆腔疼痛",
@@ -8268,10 +8801,11 @@
           "term": "重複性流產",
           "kind": "symptom",
           "sources": [
-            "CMUH_HC"
+            "CMUH_HC",
+            "WGMH_TF"
           ],
           "subgroup": "生殖醫學科",
-          "note": "CMUH_HC 原文：重覆性流產"
+          "note": "CMUH_HC 原文：重覆性流產；WGMH_TF 原文：習慣性流產"
         },
         {
           "term": "乳房疾病",
@@ -8380,6 +8914,76 @@
             "TSGH_TP"
           ],
           "note": "TSGH_TP 原文：月經過期"
+        },
+        {
+          "term": "骨盆疼痛",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "骨盆腔鬆弛",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "子宮頸癌",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "子宮體癌",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "會陰癌",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "陰道癌",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "卵巢癌",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "葡萄胎",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "妊娠糖尿病",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "多毛症",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ]
         }
       ]
     },
@@ -8880,9 +9484,10 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：視力模糊的原因：白內障 → 眼科"
+          "note": "CHIMEI_YK 原文：視力模糊的原因：白內障 → 眼科；WGMH_TF 原文：先天性白內障"
         },
         {
           "term": "青光眼",
@@ -8898,9 +9503,10 @@
             "TZUCHI_HL",
             "TPH_XZ",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
-          "note": "FEMH_BQ 原文：急慢性青光眼；CHIMEI_YK 原文：頭痛的原因：青光眼 → 眼科；視力模糊的原因：急性青光眼 → 眼科"
+          "note": "FEMH_BQ 原文：急慢性青光眼；CHIMEI_YK 原文：頭痛的原因：青光眼 → 眼科；視力模糊的原因：急性青光眼 → 眼科；WGMH_TF 原文：先天性青光眼；隅角閉鎖性青光眼；隅角開放性青光眼"
         },
         {
           "term": "乾眼症",
@@ -8913,7 +9519,8 @@
             "CMUH_HC",
             "TZUCHI_HL",
             "TPH_XZ",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ]
         },
         {
@@ -8926,9 +9533,10 @@
             "TZUCHI_HL",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "FEMH_BQ 原文：角結膜炎；CHIMEI_YK 原文：眼睛痛的原因：結膜炎 → 眼科"
+          "note": "FEMH_BQ 原文：角結膜炎；CHIMEI_YK 原文：眼睛痛的原因：結膜炎 → 眼科；WGMH_TF 原文：慢性結膜炎"
         },
         {
           "term": "角膜炎",
@@ -8940,7 +9548,8 @@
             "TZUCHI_HL",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "FEMH_BQ 原文：角結膜炎；CHIMEI_YK 原文：眼睛癢的原因：角膜炎 → 眼科"
         },
@@ -8953,7 +9562,8 @@
             "NTUH_YL",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "TPH_XZ 原文：視網膜剝離/裂孔；FEMH_BQ 原文：視網膜裂孔及剝離；TSGH_TP 原文：視網膜疾病出血破裂剝離"
         },
@@ -8968,7 +9578,8 @@
             "TZUCHI_HL",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -8978,9 +9589,10 @@
           "sources": [
             "NCKUH_TN",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
-          "note": "合併頭痛與噴射性嘔吐時由急迫度判斷處理；FEMH_BQ 原文：未明原因視力減退；CHIMEI_YK 原文：視力模糊（近視老花眼、白內障、黃斑病變、急性青光眼、葡萄膜炎、角膜受損、糖尿病視網膜病變）→ 眼科"
+          "note": "合併頭痛與噴射性嘔吐時由急迫度判斷處理；FEMH_BQ 原文：未明原因視力減退；CHIMEI_YK 原文：視力模糊（近視老花眼、白內障、黃斑病變、急性青光眼、葡萄膜炎、角膜受損、糖尿病視網膜病變）→ 眼科；WGMH_TF 原文：不明原因的視力模糊"
         },
         {
           "term": "視野缺損",
@@ -8988,7 +9600,8 @@
           "subgroup": null,
           "sources": [
             "NCKUH_TN",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -8997,7 +9610,8 @@
           "subgroup": null,
           "sources": [
             "NCKUH_TN",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ]
         },
         {
@@ -9010,9 +9624,10 @@
             "TZUCHI_HL",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "FEMH_BQ 原文：眼皮下垂；CHIMEI_YK 原文：眼瞼下垂 → 眼科"
+          "note": "FEMH_BQ 原文：眼皮下垂；CHIMEI_YK 原文：眼瞼下垂 → 眼科；WGMH_TF 原文：先天性眼瞼下垂"
         },
         {
           "term": "睫毛倒插",
@@ -9023,7 +9638,8 @@
             "TZUCHI_HL",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "FEMH_BQ 原文：眼睫毛倒生；CHIMEI_YK 原文：眼睛癢的原因：倒睫毛 → 眼科；TSGH_TP 原文：倒睫"
         },
@@ -9037,9 +9653,10 @@
             "TZUCHI_HL",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：視力模糊的原因：近視 → 眼科"
+          "note": "CHIMEI_YK 原文：視力模糊的原因：近視 → 眼科；WGMH_TF 原文：屈光不正(近視)"
         },
         {
           "term": "遠視",
@@ -9049,8 +9666,10 @@
             "NCKUH_TN",
             "TZUCHI_HL",
             "FEMH_BQ",
-            "TSGH_TP"
-          ]
+            "TSGH_TP",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：屈光不正(遠視)"
         },
         {
           "term": "散光",
@@ -9060,9 +9679,10 @@
             "NCKUH_TN",
             "TZUCHI_HL",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：複視的原因：嚴重散光 → 眼科；TSGH_TP 原文：亂視"
+          "note": "CHIMEI_YK 原文：複視的原因：嚴重散光 → 眼科；TSGH_TP 原文：亂視；WGMH_TF 原文：屈光不正(散光)"
         },
         {
           "term": "老花",
@@ -9072,9 +9692,10 @@
             "NCKUH_TN",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：視力模糊的原因：老花眼 → 眼科；TSGH_TP 原文：老花眼"
+          "note": "CHIMEI_YK 原文：視力模糊的原因：老花眼 → 眼科；TSGH_TP 原文：老花眼；WGMH_TF 原文：老花眼"
         },
         {
           "term": "斜視",
@@ -9087,7 +9708,8 @@
             "AFGH_KH",
             "TZUCHI_HL",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -9101,7 +9723,8 @@
             "AFGH_KH",
             "TZUCHI_HL",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -9116,7 +9739,8 @@
             "CMUH_HC",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：視力模糊的原因：糖尿病視網膜病變 → 眼科；TSGH_TP 原文：糖尿病視網膜症"
         },
@@ -9164,9 +9788,10 @@
             "TPVGH_HC",
             "TZUCHI_HL",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "FEMH_BQ 原文：淚管阻塞；TSGH_TP 原文：淚管阻塞"
+          "note": "FEMH_BQ 原文：淚管阻塞；TSGH_TP 原文：淚管阻塞；WGMH_TF 原文：先天性鼻淚管阻塞"
         },
         {
           "term": "老年性視網膜病變",
@@ -9180,8 +9805,10 @@
           "kind": "disease",
           "sources": [
             "TPVGH_HC",
-            "CMUH_HC"
-          ]
+            "CMUH_HC",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：高度近視造成之視網膜病變"
         },
         {
           "term": "視網膜疾病",
@@ -9223,7 +9850,8 @@
           "kind": "symptom",
           "sources": [
             "MMH_TP",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ],
           "note": "MMH_TP 原文：眼睛紅；FEMH_BQ 原文：眼睛紅腫痛"
         },
@@ -9233,9 +9861,10 @@
           "sources": [
             "MMH_TP",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
-          "note": "MMH_TP 原文：眼睛癢；FEMH_BQ 原文：眼睛痠癢；CHIMEI_YK 原文：眼睛癢、眼分泌物（過敏性結膜炎、角膜異物、結膜炎、倒睫毛、角膜炎、慢性淚囊炎）→ 眼科"
+          "note": "MMH_TP 原文：眼睛癢；FEMH_BQ 原文：眼睛痠癢；CHIMEI_YK 原文：眼睛癢、眼分泌物（過敏性結膜炎、角膜異物、結膜炎、倒睫毛、角膜炎、慢性淚囊炎）→ 眼科；WGMH_TF 原文：癢"
         },
         {
           "term": "眼睛痛",
@@ -9243,9 +9872,10 @@
           "sources": [
             "MMH_TP",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
-          "note": "MMH_TP 原文：眼睛疼痛；FEMH_BQ 原文：眼睛紅腫痛；CHIMEI_YK 原文：眼睛痛或眼周圍痛（結膜炎、假性近視、老花眼、葡萄膜炎、角膜受損、青光眼、虹彩炎）→ 眼科"
+          "note": "MMH_TP 原文：眼睛疼痛；FEMH_BQ 原文：眼睛紅腫痛；CHIMEI_YK 原文：眼睛痛或眼周圍痛（結膜炎、假性近視、老花眼、葡萄膜炎、角膜受損、青光眼、虹彩炎）→ 眼科；WGMH_TF 原文：痛"
         },
         {
           "term": "凸眼",
@@ -9254,17 +9884,20 @@
             "MMH_TP",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "FEMH_BQ 原文：眼球突出；CHIMEI_YK 原文：眼球突出（眼窩腫瘤、眼窩蜂窩織炎、眼窩骨畸形、血管畸形、高度近視）→ 眼科；TSGH_TP 原文：眼球突出"
+          "note": "FEMH_BQ 原文：眼球突出；CHIMEI_YK 原文：眼球突出（眼窩腫瘤、眼窩蜂窩織炎、眼窩骨畸形、血管畸形、高度近視）→ 眼科；TSGH_TP 原文：眼球突出；WGMH_TF 原文：凸眼症"
         },
         {
           "term": "老年性黃斑部病變",
           "kind": "disease",
           "sources": [
             "CMUH_HC",
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：黃斑部退化"
         },
         {
           "term": "葡萄膜炎",
@@ -9329,9 +9962,10 @@
             "TZUCHI_HL",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "FEMH_BQ 原文：眼窩腫瘤；CHIMEI_YK 原文：眼球突出的原因：眼窩腫瘤 → 眼科；TSGH_TP 原文：眼瘤"
+          "note": "FEMH_BQ 原文：眼窩腫瘤；CHIMEI_YK 原文：眼球突出的原因：眼窩腫瘤 → 眼科；TSGH_TP 原文：眼瘤；WGMH_TF 原文：眼窩腫瘤"
         },
         {
           "term": "眼窩疾病",
@@ -9399,8 +10033,10 @@
           "term": "視神經病變",
           "kind": "disease",
           "sources": [
-            "FEMH_BQ"
-          ]
+            "FEMH_BQ",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：多發性硬化症視神經病變"
         },
         {
           "term": "水晶體脫位",
@@ -9423,9 +10059,10 @@
           "term": "眼分泌物",
           "kind": "symptom",
           "sources": [
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：眼睛癢、眼分泌物 → 眼科"
+          "note": "CHIMEI_YK 原文：眼睛癢、眼分泌物 → 眼科；WGMH_TF 原文：分泌物增多"
         },
         {
           "term": "過敏性結膜炎",
@@ -9501,7 +10138,8 @@
           "term": "視神經炎",
           "kind": "disease",
           "sources": [
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -9518,6 +10156,112 @@
             "TSGH_TP"
           ],
           "note": "TSGH_TP 原文：眼痙攣"
+        },
+        {
+          "term": "瞼板腺功能障礙",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "眼翳",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "圓錐角膜",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "角膜瘢痕",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：角膜斑痕"
+        },
+        {
+          "term": "隱形眼鏡相關問題",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "畏光",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "急性視力喪失",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "視物時有簾幕感",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "突發性閃光或亮點",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "視物扭曲變形",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "早產兒視網膜病變",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "高眼壓症",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "甲狀腺眼病變",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "眼皮瘀腫",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "麥粒腫（針眼）",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
         }
       ]
     },
@@ -9550,7 +10294,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：耳鳴（慢性中耳炎、聽神經瘤及其他疾病引起）→ 耳鼻喉科"
         },
@@ -9568,7 +10313,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "TPH_XZ 原文：聽力/語言/味覺/嗅覺/睡眠障礙；CHIMEI_YK 原文：重聽、耳聾（慢性中耳炎、聽神經瘤）→ 耳鼻喉科"
         },
@@ -9594,7 +10340,8 @@
             "TZUCHI_HL",
             "TPH_XZ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：重聽的原因：慢性中耳炎 → 耳鼻喉科；頸部腫塊的原因：中耳炎 → 耳鼻喉科"
         },
@@ -9613,8 +10360,10 @@
           "kind": "disease",
           "subgroup": null,
           "sources": [
-            "NTUH_YL"
-          ]
+            "NTUH_YL",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：中耳積水"
         },
         {
           "term": "鼻炎",
@@ -9640,7 +10389,8 @@
             "CMUH_HC",
             "TZUCHI_HL",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -9663,9 +10413,10 @@
             "TPVGH_HC",
             "MMH_TP",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
-          "note": "FEMH_BQ 原文：扁桃腺病變；CHIMEI_YK 原文：吞嚥困難的原因：扁桃腺炎 → 耳鼻喉科；頸部腫塊的原因：扁桃腺炎 → 耳鼻喉科"
+          "note": "FEMH_BQ 原文：扁桃腺病變；CHIMEI_YK 原文：吞嚥困難的原因：扁桃腺炎 → 耳鼻喉科；頸部腫塊的原因：扁桃腺炎 → 耳鼻喉科；WGMH_TF 原文：扁桃腺發炎"
         },
         {
           "term": "喉嚨痛",
@@ -9710,7 +10461,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "亦見於內科與復健科；CHIMEI_YK 原文：咀嚼困難、吞嚥困難（扁桃腺炎）→ 耳鼻喉科；（腹部段）吞嚥困難（唇部、口腔內粘膜、舌部、牙根部等潰瘍或食道）→ 耳鼻喉科"
         },
@@ -9725,7 +10477,8 @@
             "AFGH_TY",
             "MMH_TP",
             "TZUCHI_HL",
-            "TPH_XZ"
+            "TPH_XZ",
+            "WGMH_TF"
           ]
         },
         {
@@ -9733,7 +10486,8 @@
           "kind": "disease",
           "subgroup": null,
           "sources": [
-            "NTUH_YL"
+            "NTUH_YL",
+            "WGMH_TF"
           ]
         },
         {
@@ -9752,7 +10506,8 @@
           "subgroup": null,
           "sources": [
             "NTUH_YL",
-            "MMH_TP"
+            "MMH_TP",
+            "WGMH_TF"
           ],
           "note": "亦見於牙科"
         },
@@ -9778,7 +10533,8 @@
             "CMUH_HC",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "FEMH_BQ 原文：暈眩；CHIMEI_YK 原文：眩暈（房子會轉）（內耳疾病、梅尼爾氏病、頸部循環）→ 耳鼻喉科"
         },
@@ -9792,7 +10548,8 @@
             "TZUCHI_HL",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：鼻塞、鼻不通（感冒性鼻炎、過敏性鼻炎）→ 耳鼻喉科"
         },
@@ -9812,8 +10569,10 @@
           "kind": "disease",
           "sources": [
             "TPVGH_HC",
-            "AFGH_TY"
-          ]
+            "AFGH_TY",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：喉頭發炎"
         },
         {
           "term": "感冒",
@@ -9822,16 +10581,20 @@
             "TPVGH_HC",
             "AFGH_TY",
             "MMH_TP",
-            "TPH_XZ"
-          ]
+            "TPH_XZ",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：上呼吸道感染(感冒)"
         },
         {
           "term": "上呼吸道感染",
           "kind": "disease",
           "sources": [
             "TPVGH_HC",
-            "AFGH_TY"
-          ]
+            "AFGH_TY",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：上呼吸道感染(感冒)"
         },
         {
           "term": "咽喉疾病",
@@ -9874,7 +10637,8 @@
             "AFGH_TY",
             "MMH_TP",
             "CMUH_HC",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：癢、打噴嚏的原因：過敏性鼻炎 → 耳鼻喉科"
         },
@@ -9898,22 +10662,26 @@
           "term": "膽脂瘤",
           "kind": "disease",
           "sources": [
-            "AFGH_TY"
-          ]
+            "AFGH_TY",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：中耳珍珠瘤"
         },
         {
           "term": "鼻中隔彎曲",
           "kind": "disease",
           "sources": [
             "AFGH_TY",
-            "CMUH_HC"
+            "CMUH_HC",
+            "WGMH_TF"
           ]
         },
         {
           "term": "肥厚性鼻炎",
           "kind": "disease",
           "sources": [
-            "AFGH_TY"
+            "AFGH_TY",
+            "WGMH_TF"
           ]
         },
         {
@@ -9960,7 +10728,8 @@
           "kind": "symptom",
           "sources": [
             "MMH_TP",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：鼻出血（外傷、鼻炎、鼻中隔潰瘍…）→ 耳鼻喉科"
         },
@@ -9993,7 +10762,8 @@
           "sources": [
             "MMH_TP",
             "TPH_XZ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：（頸部）咳嗽（呼吸道發炎或感染、呼吸道異物、喉咽炎、氣管炎）→ 耳鼻喉科；（胸部）咳嗽（感冒併發症、氣喘、氣管炎、支氣管擴張症）→ 耳鼻喉科"
         },
@@ -10179,9 +10949,10 @@
           "term": "咽喉炎",
           "kind": "disease",
           "sources": [
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：聲音沙啞的原因：咽喉炎 → 耳鼻喉科；頸部腫塊的原因：喉咽炎 → 耳鼻喉科"
+          "note": "CHIMEI_YK 原文：聲音沙啞的原因：咽喉炎 → 耳鼻喉科；頸部腫塊的原因：喉咽炎 → 耳鼻喉科；WGMH_TF 原文：慢性咽喉炎"
         },
         {
           "term": "聲帶腫瘤",
@@ -10210,6 +10981,83 @@
           "kind": "disease",
           "sources": [
             "TSGH_TP"
+          ]
+        },
+        {
+          "term": "耳部外傷",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "外耳癤",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "耳腫瘤",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "耳黴菌感染",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "突發性耳聾",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "耳咽管阻塞",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "鼻腫瘤",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "鼻竇腫瘤",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "腮腺炎",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "淋巴炎",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "聲帶炎",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
           ]
         }
       ]
@@ -11094,7 +11942,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：失眠（壓力、焦慮、憂鬱、創傷症候群）→ 精神科"
         },
@@ -11136,7 +11985,8 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：嗜睡的原因：憂鬱症 → 精神科"
         },
@@ -11150,7 +12000,8 @@
             "TPVGH_HC",
             "AFGH_KH",
             "AFGH_TY",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ]
         },
         {
@@ -11176,7 +12027,8 @@
             "NTUH_YL",
             "CMUH_HC",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -11188,8 +12040,10 @@
             "NTUH_YL",
             "TPVGH_HC",
             "CMUH_HC",
-            "FEMH_BQ"
-          ]
+            "FEMH_BQ",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：精神分裂症"
         },
         {
           "term": "妄想",
@@ -11206,9 +12060,10 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：幻想、傻笑胡言亂語（妄想症）→ 精神科"
+          "note": "CHIMEI_YK 原文：幻想、傻笑胡言亂語（妄想症）→ 精神科；WGMH_TF 原文：妄想症"
         },
         {
           "term": "幻覺",
@@ -11217,7 +12072,8 @@
           "sources": [
             "TPVGH_YL",
             "CMUH_HC",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ]
         },
         {
@@ -11229,7 +12085,8 @@
             "NCKUH_TN",
             "NTUH_YL",
             "TPVGH_HC",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -11330,9 +12187,10 @@
             "TZUCHI_HL",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "資料庫另有「成癮防治科」但僅 2 筆，依 downgrade_rule 以精神科為候選；CHIMEI_YK 原文：酒癮 → 精神科"
+          "note": "資料庫另有「成癮防治科」但僅 2 筆，依 downgrade_rule 以精神科為候選；CHIMEI_YK 原文：酒癮 → 精神科；WGMH_TF 原文：酒藥癮戒治特別門診（酒）"
         },
         {
           "term": "藥癮",
@@ -11347,9 +12205,10 @@
             "AFGH_TY",
             "TZUCHI_HL",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
-          "note": "FEMH_BQ 原文：藥物成癮；CHIMEI_YK 原文：藥癮 → 精神科"
+          "note": "FEMH_BQ 原文：藥物成癮；CHIMEI_YK 原文：藥癮 → 精神科；WGMH_TF 原文：酒藥癮戒治特別門診（藥癮）"
         },
         {
           "term": "菸癮戒治",
@@ -11390,9 +12249,11 @@
           "subgroup": "兒童青少年精神科",
           "sources": [
             "NTUH_YL",
-            "AFGH_TY"
+            "AFGH_TY",
+            "WGMH_TF"
           ],
-          "downgraded_from": "兒童青少年精神科"
+          "downgraded_from": "兒童青少年精神科",
+          "note": "WGMH_TF 原文：兒童心智特別門診（發展遲緩）"
         },
         {
           "term": "學習障礙",
@@ -11402,9 +12263,11 @@
             "NTUH_YL",
             "AFGH_KH",
             "AFGH_TY",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ],
-          "downgraded_from": "兒童青少年精神科"
+          "downgraded_from": "兒童青少年精神科",
+          "note": "WGMH_TF 原文：兒童心智特別門診（學習障礙）"
         },
         {
           "term": "妥瑞氏症",
@@ -11453,7 +12316,8 @@
             "TPVGH_HC",
             "AFGH_KH",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：口渴、口乾的原因：焦慮症 →（原文科別截斷，經人工確認為精神科）；容易緊張的原因：焦慮症 → 精神科"
         },
@@ -11536,7 +12400,8 @@
             "TPVGH_HC",
             "AFGH_TY",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：頭暈的原因：身心症 → 精神科；TSGH_TP 原文：心身症"
         },
@@ -11723,9 +12588,10 @@
           "term": "創傷後壓力症候群",
           "kind": "disease",
           "sources": [
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：失眠的原因：創傷症候群 → 精神科"
+          "note": "CHIMEI_YK 原文：失眠的原因：創傷症候群 → 精神科；WGMH_TF 原文：創傷心理調適特別門診（創傷後焦慮、憂鬱、壓力等）"
         },
         {
           "term": "壓力大",
@@ -11771,9 +12637,10 @@
             "CMUH_HC",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "亦見於中醫；CHIMEI_YK 原文：肩膀痛的原因：五十肩 → 復健科"
+          "note": "亦見於中醫；CHIMEI_YK 原文：肩膀痛的原因：五十肩 → 復健科；WGMH_TF 原文：冷凍肩（五十肩）"
         },
         {
           "term": "退化性關節炎",
@@ -11854,7 +12721,8 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -11899,7 +12767,8 @@
             "TZUCHI_HL",
             "TAH_SS",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -11908,8 +12777,10 @@
           "subgroup": null,
           "sources": [
             "TPVGH_YL",
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：小兒麻痺"
         },
         {
           "term": "語言治療",
@@ -12023,9 +12894,10 @@
             "AFGH_KH",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "FEMH_BQ 原文：扭挫傷；CHIMEI_YK 原文：腰痠背痛的原因：扭傷 → 復健科；TSGH_TP 原文：關節扭傷"
+          "note": "FEMH_BQ 原文：扭挫傷；CHIMEI_YK 原文：腰痠背痛的原因：扭傷 → 復健科；TSGH_TP 原文：關節扭傷；WGMH_TF 原文：扭傷與挫傷之復健"
         },
         {
           "term": "肌腱炎",
@@ -12092,9 +12964,10 @@
             "TAH_SS",
             "TPH_XZ",
             "FEMH_BQ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "TAH_SS 原文：脊椎損害"
+          "note": "TAH_SS 原文：脊椎損害；WGMH_TF 原文：脊髓損傷之復健"
         },
         {
           "term": "肢體骨折後遺症",
@@ -12111,9 +12984,10 @@
           "kind": "disease",
           "sources": [
             "AFGH_KH",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ],
-          "note": "FEMH_BQ 原文：面神經麻痺"
+          "note": "FEMH_BQ 原文：面神經麻痺；WGMH_TF 原文：顏面痲痹"
         },
         {
           "term": "骨刺",
@@ -12130,15 +13004,18 @@
           "kind": "disease",
           "sources": [
             "AFGH_KH",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
         },
         {
           "term": "小兒語言發展遲緩",
           "kind": "disease",
           "sources": [
-            "AFGH_KH"
-          ]
+            "AFGH_KH",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：語言發展遲緩"
         },
         {
           "term": "兒童構音障礙",
@@ -12151,8 +13028,10 @@
           "term": "肌筋膜疼痛",
           "kind": "disease",
           "sources": [
-            "AFGH_KH"
-          ]
+            "AFGH_KH",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：筋膜疼痛"
         },
         {
           "term": "語言障礙",
@@ -12168,7 +13047,8 @@
           "term": "口吃",
           "kind": "symptom",
           "sources": [
-            "MMH_TP"
+            "MMH_TP",
+            "WGMH_TF"
           ]
         },
         {
@@ -12261,9 +13141,10 @@
             "CMUH_HC",
             "TZUCHI_HL",
             "TPH_XZ",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "CMUH_HC 原文：兒童發展遲緩"
+          "note": "CMUH_HC 原文：兒童發展遲緩；WGMH_TF 原文：兒童發展遲緩"
         },
         {
           "term": "發音障礙",
@@ -12316,8 +13197,10 @@
           "term": "神經損傷",
           "kind": "disease",
           "sources": [
-            "FEMH_BQ"
-          ]
+            "FEMH_BQ",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：周邊神經傷害（肌肉麻痺）之復健"
         },
         {
           "term": "顳顎關節疼痛",
@@ -12427,8 +13310,25 @@
           "term": "構音異常",
           "kind": "symptom",
           "sources": [
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ]
+        },
+        {
+          "term": "下背痛",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：下背症候群"
+        },
+        {
+          "term": "關節攣縮",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：攣縮"
         }
       ]
     },
@@ -12471,7 +13371,8 @@
             "AFGH_KH",
             "TZUCHI_HL",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：牙齦出血、牙痛的原因：蛀牙 → 牙醫部"
         },
@@ -12484,9 +13385,10 @@
             "NTUH_YL",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "FEMH_BQ 原文：牙齒疼痛；CHIMEI_YK 原文：牙齦出血、牙痛（蛀牙、牙周病、口腔腫瘤、血液疾病）→ 牙醫部；TSGH_TP 原文：牙髓疼痛"
+          "note": "FEMH_BQ 原文：牙齒疼痛；CHIMEI_YK 原文：牙齦出血、牙痛（蛀牙、牙周病、口腔腫瘤、血液疾病）→ 牙醫部；TSGH_TP 原文：牙髓疼痛；WGMH_TF 原文：牙齒疼痛"
         },
         {
           "term": "補牙",
@@ -12536,9 +13438,10 @@
             "NCKUH_TN",
             "NTUH_YL",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "資料庫另有「牙周病科」但僅 6 筆，依 downgrade_rule 以牙科為候選；CHIMEI_YK 原文：牙齦出血、牙痛的原因：牙周病 → 牙醫部；TSGH_TP 原文：牙周疾病診斷及治療"
+          "note": "資料庫另有「牙周病科」但僅 6 筆，依 downgrade_rule 以牙科為候選；CHIMEI_YK 原文：牙齦出血、牙痛的原因：牙周病 → 牙醫部；TSGH_TP 原文：牙周疾病診斷及治療；WGMH_TF 原文：膿漏"
         },
         {
           "term": "植牙",
@@ -12587,9 +13490,10 @@
             "NCKUH_TN",
             "TZUCHI_HL",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：牙關節疼（張嘴會痛）→ 牙醫部／口腔顎面外科"
+          "note": "CHIMEI_YK 原文：牙關節疼（張嘴會痛）→ 牙醫部／口腔顎面外科；WGMH_TF 原文：顎關節疼痛"
         },
         {
           "term": "口腔潰瘍",
@@ -12609,8 +13513,10 @@
           "kind": "symptom",
           "subgroup": null,
           "sources": [
-            "NTUH_YL"
-          ]
+            "NTUH_YL",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：口內白斑"
         },
         {
           "term": "潔牙與口腔保健",
@@ -12695,7 +13601,8 @@
           "term": "暴牙",
           "kind": "symptom",
           "sources": [
-            "AFGH_KH"
+            "AFGH_KH",
+            "WGMH_TF"
           ]
         },
         {
@@ -12724,7 +13631,8 @@
           "kind": "symptom",
           "sources": [
             "AFGH_KH",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ]
         },
         {
@@ -12757,7 +13665,8 @@
             "AFGH_KH",
             "MMH_TP",
             "TZUCHI_HL",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ]
         },
         {
@@ -12771,8 +13680,10 @@
           "term": "牙齒搖動",
           "kind": "symptom",
           "sources": [
-            "AFGH_KH"
-          ]
+            "AFGH_KH",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：牙齒動搖"
         },
         {
           "term": "齲齒",
@@ -12795,7 +13706,8 @@
             "MMH_TP",
             "TZUCHI_HL",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "note": "MMH_TP 原文：上下牙齒咬合不正；FEMH_BQ 原文：咬合功能異常；CHIMEI_YK 原文：咬合不良（齒列不整、蛀牙、牙周病）→ 牙醫部"
         },
@@ -12804,7 +13716,8 @@
           "kind": "symptom",
           "sources": [
             "TZUCHI_HL",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ]
         },
         {
@@ -12812,7 +13725,8 @@
           "kind": "disease",
           "sources": [
             "TZUCHI_HL",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ],
           "note": "FEMH_BQ 原文：口腔感染流膿"
         },
@@ -12846,7 +13760,8 @@
           "sources": [
             "TZUCHI_HL",
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
           "note": "FEMH_BQ 原文：口腔不明腫瘤；CHIMEI_YK 原文：口腔腫瘤、舌病變 → 牙醫部／口腔顎面外科"
         },
@@ -12863,25 +13778,28 @@
           "kind": "symptom",
           "sources": [
             "FEMH_BQ",
-            "CHIMEI_YK"
+            "CHIMEI_YK",
+            "WGMH_TF"
           ],
-          "note": "FEMH_BQ 原文：牙齦腫大、出血、化膿；CHIMEI_YK 原文：牙齦出血、牙痛（蛀牙、牙周病、口腔腫瘤、血液疾病）→ 牙醫部"
+          "note": "FEMH_BQ 原文：牙齦腫大、出血、化膿；CHIMEI_YK 原文：牙齦出血、牙痛（蛀牙、牙周病、口腔腫瘤、血液疾病）→ 牙醫部；WGMH_TF 原文：出血"
         },
         {
           "term": "牙齒敏感",
           "kind": "symptom",
           "sources": [
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ],
-          "note": "FEMH_BQ 原文：牙根敏感"
+          "note": "FEMH_BQ 原文：牙根敏感；WGMH_TF 原文：牙根敏感"
         },
         {
           "term": "牙縫變大",
           "kind": "symptom",
           "sources": [
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ],
-          "note": "FEMH_BQ 原文：縫隙太大"
+          "note": "FEMH_BQ 原文：縫隙太大；WGMH_TF 原文：牙間縫隙太大；牙齒隙縫太大"
         },
         {
           "term": "牙齒鬆動",
@@ -12895,8 +13813,10 @@
           "term": "牙齦發炎",
           "kind": "symptom",
           "sources": [
-            "FEMH_BQ"
-          ]
+            "FEMH_BQ",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：牙齦腫大發炎"
         },
         {
           "term": "牙根露出",
@@ -12925,14 +13845,16 @@
           "term": "顎骨發育不良",
           "kind": "disease",
           "sources": [
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ]
         },
         {
           "term": "顎骨病變",
           "kind": "disease",
           "sources": [
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ]
         },
         {
@@ -12988,6 +13910,65 @@
           "kind": "symptom",
           "sources": [
             "TSGH_TP"
+          ]
+        },
+        {
+          "term": "牙齦化膿",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：化膿"
+        },
+        {
+          "term": "口腔疼痛",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：口腔疼痛症候群"
+        },
+        {
+          "term": "牙齒形狀顏色異常",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "牙齒空間不足",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "咬合功能異常",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "拔牙後併發症",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ]
+        },
+        {
+          "term": "下巴脫臼",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：顎骨脫臼"
+        },
+        {
+          "term": "顎骨骨折",
+          "kind": "disease",
+          "sources": [
+            "WGMH_TF"
           ]
         }
       ]
@@ -13280,9 +14261,10 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：疑高血壓 → 家庭醫學科"
+          "note": "CHIMEI_YK 原文：疑高血壓 → 家庭醫學科；WGMH_TF 原文：常見疾病（如：糖尿病、高血壓）之處置"
         },
         {
           "term": "糖尿病",
@@ -13292,9 +14274,10 @@
             "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
-            "TSGH_TP"
+            "TSGH_TP",
+            "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：疑糖尿病 → 家庭醫學科"
+          "note": "CHIMEI_YK 原文：疑糖尿病 → 家庭醫學科；WGMH_TF 原文：常見疾病（如：糖尿病、高血壓）之處置"
         },
         {
           "term": "高血脂",
@@ -14348,8 +15331,10 @@
           "subgroup": null,
           "sources": [
             "NTUH_YL",
-            "AFGH_TY"
-          ]
+            "AFGH_TY",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：肢體慢性潰爛"
         },
         {
           "term": "褥瘡",
@@ -14436,8 +15421,10 @@
           "sources": [
             "AFGH_KH",
             "TZUCHI_HL",
-            "FEMH_BQ"
-          ]
+            "FEMH_BQ",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：灼（燙）傷"
         },
         {
           "term": "顏面傷殘",
@@ -14450,15 +15437,18 @@
           "term": "顏面腫瘤",
           "kind": "disease",
           "sources": [
-            "AFGH_KH"
+            "AFGH_KH",
+            "WGMH_TF"
           ]
         },
         {
           "term": "肢體外傷",
           "kind": "symptom",
           "sources": [
-            "AFGH_KH"
-          ]
+            "AFGH_KH",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：肢體嚴重外傷"
         },
         {
           "term": "傷口感染",
@@ -14521,7 +15511,8 @@
           "term": "手部外傷",
           "kind": "disease",
           "sources": [
-            "AFGH_TY"
+            "AFGH_TY",
+            "WGMH_TF"
           ],
           "note": "AFGH_TY 原文：手外科（手部外傷、骨折）"
         },
@@ -14558,21 +15549,24 @@
           "term": "皮膚腫瘤",
           "kind": "disease",
           "sources": [
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "WGMH_TF"
           ]
         },
         {
           "term": "頭頸部腫瘤",
           "kind": "disease",
           "sources": [
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "WGMH_TF"
           ]
         },
         {
           "term": "血管瘤",
           "kind": "disease",
           "sources": [
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ]
         },
         {
@@ -14736,7 +15730,8 @@
           "sources": [
             "TPVGH_YL",
             "AFGH_KH",
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "WGMH_TF"
           ]
         },
         {
@@ -14863,7 +15858,8 @@
           "term": "更年期症候群",
           "kind": "disease",
           "sources": [
-            "AFGH_KH"
+            "AFGH_KH",
+            "WGMH_TF"
           ]
         },
         {
@@ -14871,8 +15867,10 @@
           "kind": "symptom",
           "sources": [
             "AFGH_KH",
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：腦中風及盧腦損傷與脊椎損傷後肢體障礙"
         },
         {
           "term": "痛風",
@@ -14895,7 +15893,8 @@
             "AFGH_KH",
             "CMUH_HC",
             "TZUCHI_HL",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ]
         },
         {
@@ -14924,8 +15923,10 @@
           "kind": "disease",
           "sources": [
             "AFGH_KH",
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：三高"
         },
         {
           "term": "頭痛",
@@ -14933,8 +15934,10 @@
           "sources": [
             "AFGH_KH",
             "TZUCHI_HL",
-            "FEMH_BQ"
-          ]
+            "FEMH_BQ",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：頭痛眩暈"
         },
         {
           "term": "睡眠障礙",
@@ -14947,8 +15950,10 @@
           "term": "憂鬱症",
           "kind": "disease",
           "sources": [
-            "AFGH_KH"
-          ]
+            "AFGH_KH",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：焦慮憂鬱及自律神經失調"
         },
         {
           "term": "躁鬱症",
@@ -14968,8 +15973,10 @@
           "term": "心血管疾病",
           "kind": "disease",
           "sources": [
-            "AFGH_KH"
-          ]
+            "AFGH_KH",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：心臟疾患"
         },
         {
           "term": "新陳代謝症候群",
@@ -15019,8 +16026,10 @@
           "term": "眩暈",
           "kind": "symptom",
           "sources": [
-            "CMUH_HC"
-          ]
+            "CMUH_HC",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：頭痛眩暈"
         },
         {
           "term": "過敏性鼻炎",
@@ -15028,8 +16037,10 @@
           "sources": [
             "CMUH_HC",
             "TZUCHI_HL",
-            "FEMH_BQ"
-          ]
+            "FEMH_BQ",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：小兒優質治療門診如過敏性鼻炎"
         },
         {
           "term": "氣喘",
@@ -15037,9 +16048,10 @@
           "sources": [
             "CMUH_HC",
             "TZUCHI_HL",
-            "FEMH_BQ"
+            "FEMH_BQ",
+            "WGMH_TF"
           ],
-          "note": "FEMH_BQ 原文：心悸氣喘"
+          "note": "FEMH_BQ 原文：心悸氣喘；WGMH_TF 原文：小兒優質治療門診如氣喘"
         },
         {
           "term": "耳鳴",
@@ -15126,15 +16138,19 @@
           "term": "自律神經失調",
           "kind": "disease",
           "sources": [
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：焦慮憂鬱及自律神經失調"
         },
         {
           "term": "糖尿病",
           "kind": "disease",
           "sources": [
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：三高"
         },
         {
           "term": "慢性肝炎",
@@ -15206,15 +16222,18 @@
           "term": "巴金森氏症",
           "kind": "disease",
           "sources": [
-            "TZUCHI_HL"
+            "TZUCHI_HL",
+            "WGMH_TF"
           ]
         },
         {
           "term": "焦慮",
           "kind": "symptom",
           "sources": [
-            "TZUCHI_HL"
-          ]
+            "TZUCHI_HL",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：焦慮憂鬱及自律神經失調"
         },
         {
           "term": "打嗝",
@@ -15252,9 +16271,10 @@
           "term": "不孕症",
           "kind": "disease",
           "sources": [
-            "TPH_XZ"
+            "TPH_XZ",
+            "WGMH_TF"
           ],
-          "note": "TPH_XZ 原文：不孕"
+          "note": "TPH_XZ 原文：不孕；WGMH_TF 原文：男女不孕症"
         },
         {
           "term": "倦怠",
@@ -15274,14 +16294,31 @@
           "term": "白帶",
           "kind": "symptom",
           "sources": [
-            "FEMH_BQ"
-          ]
+            "FEMH_BQ",
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：帶下病"
         },
         {
           "term": "濕疹",
           "kind": "disease",
           "sources": [
             "FEMH_BQ"
+          ]
+        },
+        {
+          "term": "跌打損傷",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
+          ],
+          "note": "WGMH_TF 原文：一般跌打損傷"
+        },
+        {
+          "term": "顏面神經麻痺",
+          "kind": "symptom",
+          "sources": [
+            "WGMH_TF"
           ]
         }
       ]
@@ -16842,6 +17879,306 @@
       "raw": "小兒骨科：小兒先天性骨骼關節病變及發育不良、多指（趾）、併指（趾）、缺指（趾）等",
       "source": "TSGH_TP",
       "reason": "比照 TAH_SS 小兒骨關節異常先例，不讓兒童條目出現在成人骨科候選。"
+    },
+    {
+      "raw": "家庭醫學科：凡十八歲以上有急、慢性疾病病症，覺得身體不舒服，而無法決定該就診下列那一次專科者",
+      "source": "WGMH_TF",
+      "reason": "科別說明文字，比照 AFGH_TY、TAH_SS 家醫科先例。"
+    },
+    {
+      "raw": "感染科：發炎性疾病、腹腔內或骨盆腔內感染、發疹性疾病",
+      "source": "WGMH_TF",
+      "reason": "籠統描述，或民眾無法自行辨認的住院層級診斷。"
+    },
+    {
+      "raw": "感染科：敗血症",
+      "source": "WGMH_TF",
+      "reason": "急症，由急迫度判斷處理（比照 TSGH_TP）。"
+    },
+    {
+      "raw": "感染科：腎臟炎",
+      "source": "WGMH_TF",
+      "reason": "感染脈絡的器官發炎不替其加感染科方向（比照 TSGH_TP）；腎臟炎由腎臟科該筆補代碼。"
+    },
+    {
+      "raw": "神經內科：精神官能症、焦慮症、憂鬱症",
+      "source": "WGMH_TF",
+      "reason": "收錄會讓神經科成為情緒問題的候選，不符就醫直覺；精神科已收錄。"
+    },
+    {
+      "raw": "神經內科：各種神經及肌肉病患",
+      "source": "WGMH_TF",
+      "reason": "籠統描述。"
+    },
+    {
+      "raw": "胸腔內科：慢性阻塞",
+      "source": "WGMH_TF",
+      "reason": "原文截斷，經人工裁決不收。"
+    },
+    {
+      "raw": "胸腔內科：呼吸道異物取出",
+      "source": "WGMH_TF",
+      "reason": "處置項目。"
+    },
+    {
+      "raw": "腎臟科：腎臟移植、血液透析、腹膜透析",
+      "source": "WGMH_TF",
+      "reason": "處置與治療項目。"
+    },
+    {
+      "raw": "腎臟科：腰痛",
+      "source": "WGMH_TF",
+      "reason": "裸腰痛缺少血尿、排尿異常等腎臟相關線索，比照既有先例不收。"
+    },
+    {
+      "raw": "腎臟科：中毒",
+      "source": "WGMH_TF",
+      "reason": "急症，由急迫度判斷處理（比照 TSGH_TP）。"
+    },
+    {
+      "raw": "心臟科：氣喘",
+      "source": "WGMH_TF",
+      "reason": "不替氣喘加心臟內科方向，比照 AFGH_TY 心臟內科「喘」、TSGH_TP 風濕科氣喘。"
+    },
+    {
+      "raw": "心臟科：血管瘤",
+      "source": "WGMH_TF",
+      "reason": "心臟內科列血管瘤不符就醫直覺，且收錄後血管瘤會達 5 科。"
+    },
+    {
+      "raw": "血液腫瘤科：身體各部位有硬塊者—所有腫瘤之治療計畫及化學治療相關問題（如療效、藥物選擇副作用等）之諮詢",
+      "source": "WGMH_TF",
+      "reason": "治療諮詢；硬塊脫離上下文會把一般硬塊導向血液腫瘤科。"
+    },
+    {
+      "raw": "風濕免疫科：減敏治療、膠原血管和自體免疫疾病",
+      "source": "WGMH_TF",
+      "reason": "治療項目；籠統描述。"
+    },
+    {
+      "raw": "新陳代謝科：各種內分泌異常",
+      "source": "WGMH_TF",
+      "reason": "籠統描述（比照 TSGH_TP）。"
+    },
+    {
+      "raw": "一般外科：消化性潰瘍（胃腸出血、胃潰瘍、十二指腸潰瘍）",
+      "source": "WGMH_TF",
+      "reason": "收錄會替潰瘍新增外科候選，不符就醫直覺；胃腸出血屬急症。"
+    },
+    {
+      "raw": "一般外科：甲狀腺、副甲狀腺及各種內分泌之檢查及治療（兩處）",
+      "source": "WGMH_TF",
+      "reason": "檢查及治療項目。"
+    },
+    {
+      "raw": "一般外科（小兒外科內容）：小兒疝氣、各種先天性胸腹部異常、肛門閉鎖、囊腫等、表皮腫瘤、腹部腫瘤、闌尾炎",
+      "source": "WGMH_TF",
+      "reason": "比照 TSGH_TP 小兒外科幾乎相同的段落；闌尾炎屬急症；其餘籠統或為新生兒罕見疾病。"
+    },
+    {
+      "raw": "一般外科：有關消化系統的疾病、脾腫大、門靜脈高壓",
+      "source": "WGMH_TF",
+      "reason": "籠統描述；脾腫大與門靜脈高壓初診應看內科。"
+    },
+    {
+      "raw": "胸腔外科：嚥困難（原文截斷）、呼吸不順、咳血、胸腔腫瘤",
+      "source": "WGMH_TF",
+      "reason": "比照 TZUCHI_HL 胸腔外科先例，不替常見症狀新增外科候選；胸腔腫瘤為籠統描述。"
+    },
+    {
+      "raw": "心臟血管外科：各類血管手術",
+      "source": "WGMH_TF",
+      "reason": "手術項目。"
+    },
+    {
+      "raw": "大腸直腸肛門外科：肛病",
+      "source": "WGMH_TF",
+      "reason": "籠統描述。"
+    },
+    {
+      "raw": "神經外科：頭痛、頭暈、腰酸背痛",
+      "source": "WGMH_TF",
+      "reason": "已達 5 科，再加一科即超過候選上限。"
+    },
+    {
+      "raw": "神經外科：意識障礙、昏迷",
+      "source": "WGMH_TF",
+      "reason": "急症，由急迫度判斷處理。"
+    },
+    {
+      "raw": "神經外科：手腳無力",
+      "source": "WGMH_TF",
+      "reason": "表內無此條目，收錄後神經外科會成為唯一候選，應先看神經科。"
+    },
+    {
+      "raw": "骨科：一般骨科之各種骨折的檢查及治療",
+      "source": "WGMH_TF",
+      "reason": "檢查及治療項目。"
+    },
+    {
+      "raw": "骨科：小兒長短腳",
+      "source": "WGMH_TF",
+      "reason": "比照 TSGH_TP 小兒骨科先例，不讓兒童條目出現在成人骨科候選。"
+    },
+    {
+      "raw": "骨科：肌肉韌帶疾患",
+      "source": "WGMH_TF",
+      "reason": "籠統描述。"
+    },
+    {
+      "raw": "牙科：牙齒健診、牙齒美容、琺瑯質異常之牙齒整型、根管治療、牙根尖手術、牙齒漂白、牙齒潔白、智齒拔除、正顎手術、正顎美容手術",
+      "source": "WGMH_TF",
+      "reason": "檢查、美容、治療與手術項目。"
+    },
+    {
+      "raw": "牙科：人工植牙（活動假牙不適者、不想帶活動假牙、缺牙欲做假牙但不想磨兩邊正常牙齒者）、牙結石清除（洗牙）",
+      "source": "WGMH_TF",
+      "reason": "標題為處置，底下所列不收。"
+    },
+    {
+      "raw": "牙科：齒冠不整",
+      "source": "WGMH_TF",
+      "reason": "意義不明。"
+    },
+    {
+      "raw": "牙科：牙齦病變之纖維性異常增生、牙關緊閉",
+      "source": "WGMH_TF",
+      "reason": "經人工裁決不收。"
+    },
+    {
+      "raw": "眼科：視力保健、青光眼雷射",
+      "source": "WGMH_TF",
+      "reason": "服務與治療項目。"
+    },
+    {
+      "raw": "眼科：大小眼、眼袋、淚溝",
+      "source": "WGMH_TF",
+      "reason": "美容路徑，比照 CHIMEI_YK 眼袋先例。"
+    },
+    {
+      "raw": "泌尿科：單側腰痛",
+      "source": "WGMH_TF",
+      "reason": "比照 MMH_TP、CMUH_HC 泌尿科腰痛不收。"
+    },
+    {
+      "raw": "泌尿科：其他小兒泌尿疾病",
+      "source": "WGMH_TF",
+      "reason": "籠統描述。"
+    },
+    {
+      "raw": "泌尿科：直腸脫垂",
+      "source": "WGMH_TF",
+      "reason": "直腸問題應看大腸直腸外科，列在泌尿科不符就醫直覺。"
+    },
+    {
+      "raw": "婦產科：一般產前檢查、胎兒畸型、子宮頸抹片、更年期門診、骨質疏鬆症預防",
+      "source": "WGMH_TF",
+      "reason": "檢查、篩檢與服務項目。"
+    },
+    {
+      "raw": "婦產科：子宮外孕",
+      "source": "WGMH_TF",
+      "reason": "急症，比照 CHIMEI_YK。"
+    },
+    {
+      "raw": "婦產科：內分泌失調、先天性生殖器官異常",
+      "source": "WGMH_TF",
+      "reason": "籠統描述。"
+    },
+    {
+      "raw": "耳鼻喉科：一般耳鼻喉病症",
+      "source": "WGMH_TF",
+      "reason": "籠統描述。"
+    },
+    {
+      "raw": "耳鼻喉科：助聽器配選、學前聽障檢查及聽力語言訓練、鼻整形及美容",
+      "source": "WGMH_TF",
+      "reason": "服務、檢查與美容項目。"
+    },
+    {
+      "raw": "復健科：中風復健、頭部外傷復健、心肺功能訓練與復健、兒童復健早期療育、過動兒之復健治療、副木及裝具、吞咽障礙之復健治療",
+      "source": "WGMH_TF",
+      "reason": "復健處置（比照 TPH_XZ 中風復健）；頭部外傷比照 TAH_SS 不導向復健科。"
+    },
+    {
+      "raw": "復健科：頸部症候群、急慢性疼痛、各種手腳部傷害或病變之復健",
+      "source": "WGMH_TF",
+      "reason": "籠統描述。"
+    },
+    {
+      "raw": "復健科：骨折",
+      "source": "WGMH_TF",
+      "reason": "急性骨折應先看骨科，比照 TAH_SS 頭部外傷先例。"
+    },
+    {
+      "raw": "復健科：挫傷之復健、神經性膀胱障礙之復健",
+      "source": "WGMH_TF",
+      "reason": "「XX之復健」只補復健科已有的條目，不另新增。"
+    },
+    {
+      "raw": "復健科：聲音異常、唇顎裂",
+      "source": "WGMH_TF",
+      "reason": "語言治療脈絡，比照 TSGH_TP 復健科聲音沙啞不替其新增復健科候選。"
+    },
+    {
+      "raw": "家庭醫學科：身心症等之諮詢與治療、健康檢查、健康諮詢",
+      "source": "WGMH_TF",
+      "reason": "諮詢、治療與檢查項目。"
+    },
+    {
+      "raw": "臨床營養科：整段",
+      "source": "WGMH_TF",
+      "reason": "營養諮詢，比照 NTUH_YL 營養室、TSGH_TP 營養諮詢科。"
+    },
+    {
+      "raw": "精神醫學科：個別或團體心理治療特別門診（人際困擾、個人成長、潛能啟發）、司法精神鑑定特別門診、兒童少年保護特別門診（受虐兒童創傷處理）、美沙冬替代療法",
+      "source": "WGMH_TF",
+      "reason": "治療、鑑定與服務項目。"
+    },
+    {
+      "raw": "精神醫學科：青少年特別門診（12 至 18 歲青少年各類情緒行為問題）、兒童心智特別門診之情緒困擾",
+      "source": "WGMH_TF",
+      "reason": "籠統描述，比照 FEMH_BQ、TSGH_TP。"
+    },
+    {
+      "raw": "中醫內科：整段",
+      "source": "WGMH_TF",
+      "reason": "次專科名稱，無具體症狀。"
+    },
+    {
+      "raw": "中醫婦科：乳癌及婦科癌症免疫化放療調理、減重瘦身、產前中後調理、產後腰痠骨盆矯正、一般婦科疾病、美顏針",
+      "source": "WGMH_TF",
+      "reason": "調理、矯正、服務與美容項目，或籠統描述。"
+    },
+    {
+      "raw": "中醫兒科：小兒推拿、小兒視力保健、小兒生長發育調理、小兒雷射針灸、兒童神經與心智疾患、兒童癌症、一般兒科疾病",
+      "source": "WGMH_TF",
+      "reason": "處置、保健服務或籠統描述。"
+    },
+    {
+      "raw": "中醫傷科：骨折脫臼復位、傷口照護與疤痕修復、足踝相關疾病、顱腦損傷與脊椎損傷後肢體障礙",
+      "source": "WGMH_TF",
+      "reason": "處置項目或籠統描述（比照 TPH_XZ 顱腦脊髓神經受損）。"
+    },
+    {
+      "raw": "中醫傷科：脊椎側彎、風濕性關節炎、骨質疏鬆、股骨頭壞死",
+      "source": "WGMH_TF",
+      "reason": "中醫不是這些問題的初診方向；風濕性關節炎名稱不明確；骨質疏鬆加中醫會達 5 科。"
+    },
+    {
+      "raw": "中醫針灸：腦中風及腦外傷",
+      "source": "WGMH_TF",
+      "reason": "比照 TPH_XZ 中醫中風先例。"
+    },
+    {
+      "raw": "中醫針灸：五官疾患、癌症手術化放療後遺症之急慢性疼痛、皮膚疾病、居家服務醫療、美顏針",
+      "source": "WGMH_TF",
+      "reason": "籠統描述、服務或美容項目。"
+    },
+    {
+      "raw": "中醫針灸：肌少症、衰弱症、三高之高血脂",
+      "source": "WGMH_TF",
+      "reason": "高齡照護議題中醫不是初診方向；不替高血脂新增中醫（比照 FEMH_BQ 血脂肪）。"
     }
   ],
   "resolved_questions": [
@@ -17058,6 +18395,12 @@
       "question": "TSGH_TP 併入時的裁決？",
       "decision": "痛風不因腎臟科、新陳代謝科列出而擴充 subgroup，維持免疫風濕科。感染科兼一般內科列的器官發炎（氣管炎、腎炎、膀胱炎、膽囊炎、膽道炎、骨髓炎）不替其加感染科方向。疼痛科只補三叉神經痛與帶狀皰疹。肺結節（只列胸腔外科）不收。小兒骨科條目比照 TAH_SS 不收。",
       "rationale": "痛風的初診方向是免疫風濕科；器官發炎列在感染科是感染脈絡，民眾初診應看各器官專科；肺結節只掛外科會漏掉胸腔內科這個常見初診方向。",
+      "decided_at": "2026-09-29"
+    },
+    {
+      "question": "WGMH_TF 併入時的裁決？",
+      "decision": "原文清楚時不改名（急性視力喪失、突發性閃光或亮點、眼翳、子宮體癌、會陰癌、咬合功能異常、骨盆腔鬆弛照原文；拇指外翻原文未指手或腳，不改成拇趾外翻），只校正錯字、舊用語與裸詞（化膿→牙齦化膿、顎骨脫臼→下巴脫臼、精神分裂症→思覺失調症）。神經內科列的精神官能症、焦慮症、憂鬱症不收。感染科列的關節炎補在感染性關節炎並加感染科方向，腎臟炎不加。次類型併入上層條目（隅角閉鎖性／開放性／先天性青光眼→青光眼、慢性結膜炎→結膜炎、眼窩腫瘤→眼部腫瘤）。復健科「XX之復健」只補復健科既有條目。門診名稱含「戒治」「治療門診」時，底下的病名若該科已有條目照補代碼。",
+      "rationale": "改名只在有根據時進行：未經 embedding 實測的口語化改寫沒有依據，且可能改變原意。精神疾病列在神經科會讓情緒問題多出不符直覺的候選。次類型另立長條目可能在比對時搶走短詞。「之復健」屬處置脈絡，只借用來確認既有關聯，不據以新增。戒治門診與治療門診是門診名稱，底下病名補代碼不會新增科別。",
       "decided_at": "2026-09-29"
     }
   ]

@@ -145,7 +145,7 @@ async def test_patient_context_stays_bound_to_the_triage_result(table):
 
 _REFERENCES = tuple(
     SourceReference(code=code, name=f"{code} 醫院", url=f"https://example.com/{code}")
-    for code in ("TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK", "A", "B", "D", "E")
+    for code in ("TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK", "TSGH_TP", "A", "B", "D", "E")
 )
 
 
@@ -825,65 +825,65 @@ def test_T27_largest_card_passes_line_validation(font_size):
 # 預期值由原始 JSON 直接推導（撤回補列與 rank 後依來源家數、院所數排序），
 # 不經過服務程式。
 _SUGGESTION_CASES = [
-    ("D1", "咳嗽", 40, 10, [("內科", ("胸腔內科",), 8), ("耳鼻喉科", (), 3), ("中醫一般科", (), 2), ("家醫科", (), 2)], ["NCKUH_TN", "NTUH_YL", "CTH_XD", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK"]),
+    ("D1", "咳嗽", 40, 11, [("內科", ("胸腔內科",), 9), ("耳鼻喉科", (), 3), ("中醫一般科", (), 2), ("家醫科", (), 2)], ["NCKUH_TN", "NTUH_YL", "CTH_XD", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK", "TSGH_TP"]),
     (
         "D2",
         "咳嗽",
         8,
-        10,
-        [("內科", ("胸腔內科",), 8), ("耳鼻喉科", (), 3), ("中醫一般科", (), 2), ("家醫科", (), 2), ("兒科", (), 1)],
-        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "CTH_XD", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK"],
+        11,
+        [("內科", ("胸腔內科",), 9), ("耳鼻喉科", (), 3), ("中醫一般科", (), 2), ("家醫科", (), 2), ("兒科", (), 1)],
+        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "CTH_XD", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK", "TSGH_TP"],
     ),
     ("D4", "嘔吐", 8, 6, [("內科", ("胃腸肝膽科",), 5), ("家醫科", (), 1), ("兒科", (), 1)], ["TPVGH_YL", "CTH_XD", "AFGH_TY", "MMH_TP", "TPH_XZ", "CHIMEI_YK"]),
     (
         "D6",
         "坐骨神經痛",
         40,
-        13,
-        [("神經外科", (), 9), ("復健科", (), 7), ("骨科", (), 7), ("神經科", ("神經內科",), 2), ("麻醉科", ("疼痛科",), 2)],
-        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK"],
+        14,
+        [("神經外科", (), 9), ("復健科", (), 8), ("骨科", (), 8), ("神經科", ("神經內科",), 2), ("麻醉科", ("疼痛科",), 2)],
+        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK", "TSGH_TP"],
     ),
     (
         "D7",
         "性病",
         40,
-        9,
-        [("泌尿科", (), 6), ("內科", ("感染科",), 4), ("皮膚科", (), 4), ("家醫科", (), 2), ("婦產科", (), 1)],
-        ["NCKUH_TN", "NTUH_YL", "AFGH_KH", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK"],
+        10,
+        [("泌尿科", (), 7), ("內科", ("感染科",), 4), ("皮膚科", (), 4), ("家醫科", (), 2), ("婦產科", (), 1)],
+        ["NCKUH_TN", "NTUH_YL", "AFGH_KH", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK", "TSGH_TP"],
     ),
     (
         "D8",
         "感冒",
         40,
-        13,
-        [("內科", (), 8), ("家醫科", (), 4), ("耳鼻喉科", (), 4), ("中醫一般科", (), 2)],
-        ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK"],
+        14,
+        [("內科", (), 9), ("家醫科", (), 5), ("耳鼻喉科", (), 4), ("中醫一般科", (), 2)],
+        ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK", "TSGH_TP"],
     ),
     (
         "D9",
         "氣喘",
         40,
-        12,
-        [("內科", ("胸腔內科",), 9), ("中醫一般科", (), 3), ("家醫科", (), 1)],
-        ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "TZUCHI_HL", "TAH_SS", "FEMH_BQ", "CHIMEI_YK"],
+        13,
+        [("內科", ("胸腔內科",), 10), ("中醫一般科", (), 3), ("家醫科", (), 1)],
+        ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "TZUCHI_HL", "TAH_SS", "FEMH_BQ", "CHIMEI_YK", "TSGH_TP"],
     ),
-    ("D10", "高血脂", 40, 6, [("內科", ("新陳代謝及內分泌科", "心臟內科", "腎臟內科"), 5), ("家醫科", (), 4)], ["NCKUH_TN", "NTUH_YL", "CMUH_HC", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK"]),
+    ("D10", "高血脂", 40, 7, [("內科", ("新陳代謝及內分泌科", "心臟內科"), 6), ("家醫科", (), 5)], ["NCKUH_TN", "NTUH_YL", "CMUH_HC", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK", "TSGH_TP"]),
     (
         "D11",
         "酒癮",
         40,
-        10,
-        [("精神科", (), 10)],
-        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY", "CMUH_HC", "TZUCHI_HL", "FEMH_BQ", "CHIMEI_YK"],
+        11,
+        [("精神科", (), 11)],
+        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY", "CMUH_HC", "TZUCHI_HL", "FEMH_BQ", "CHIMEI_YK", "TSGH_TP"],
     ),
     ("D12", "身心障礙者牙科照護", 40, 1, [("牙科", ("特殊需求者牙科",), 1)], ["NTUH_YL"]),
     (
         "D16",
         "腹瀉",
         40,
-        11,
-        [("內科", ("胃腸肝膽科",), 9), ("外科", ("大腸直腸外科",), 4), ("中醫一般科", (), 2), ("家醫科", (), 1)],
-        ["TPVGH_YL", "NCKUH_TN", "CTH_XD", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK"],
+        12,
+        [("內科", ("胃腸肝膽科",), 9), ("外科", ("大腸直腸外科",), 5), ("中醫一般科", (), 2), ("家醫科", (), 1)],
+        ["TPVGH_YL", "NCKUH_TN", "CTH_XD", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK", "TSGH_TP"],
     ),
 ]
 
@@ -992,7 +992,7 @@ async def test_T33_fallback_card_explains_why_pediatrics_is_listed(
 @pytest.mark.parametrize(
     ("term", "expected"),
     [
-        ("背痛", ["骨科", "神經外科", "家醫科", "復健科"]),
+        ("背痛", ["復健科", "骨科", "神經外科", "家醫科"]),
         ("腰痛", ["家醫科", "復健科", "骨科", "神經外科"]),
     ],
 )

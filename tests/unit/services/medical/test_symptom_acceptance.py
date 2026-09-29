@@ -145,7 +145,7 @@ async def test_patient_context_stays_bound_to_the_triage_result(table):
 
 _REFERENCES = tuple(
     SourceReference(code=code, name=f"{code} 醫院", url=f"https://example.com/{code}")
-    for code in ("TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL", "TAH_SS", "A", "B", "D", "E")
+    for code in ("TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ", "A", "B", "D", "E")
 )
 
 
@@ -380,7 +380,7 @@ def test_T11_candidates_sorted_by_source_count_then_facility_count(table):
     ("term", "expected"),
     [
         ("坐骨神經痛", ["神經外科", "復健科", "骨科", "神經科", "麻醉科"]),
-        ("性病", ["泌尿科", "皮膚科", "內科", "家醫科", "婦產科"]),
+        ("性病", ["泌尿科", "內科", "皮膚科", "家醫科", "婦產科"]),
     ],
 )
 def test_T12_order_follows_sources_not_manual_rank(table, term, expected):
@@ -825,39 +825,39 @@ def test_T27_largest_card_passes_line_validation(font_size):
 # 預期值由原始 JSON 直接推導（撤回補列與 rank 後依來源家數、院所數排序），
 # 不經過服務程式。
 _SUGGESTION_CASES = [
-    ("D1", "咳嗽", 40, 7, [("內科", ("胸腔內科",), 5), ("中醫一般科", (), 1), ("家醫科", (), 1), ("耳鼻喉科", (), 1)], ["NCKUH_TN", "NTUH_YL", "CTH_XD", "MMH_TP", "TZUCHI_HL", "TAH_SS"]),
+    ("D1", "咳嗽", 40, 8, [("內科", ("胸腔內科",), 6), ("耳鼻喉科", (), 2), ("中醫一般科", (), 1), ("家醫科", (), 1)], ["NCKUH_TN", "NTUH_YL", "CTH_XD", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ"]),
     (
         "D2",
         "咳嗽",
         8,
-        7,
-        [("內科", ("胸腔內科",), 5), ("中醫一般科", (), 1), ("家醫科", (), 1), ("兒科", (), 1), ("耳鼻喉科", (), 1)],
-        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "CTH_XD", "MMH_TP", "TZUCHI_HL", "TAH_SS"],
+        8,
+        [("內科", ("胸腔內科",), 6), ("耳鼻喉科", (), 2), ("中醫一般科", (), 1), ("家醫科", (), 1), ("兒科", (), 1)],
+        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "CTH_XD", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ"],
     ),
-    ("D4", "嘔吐", 8, 4, [("內科", ("胃腸肝膽科",), 3), ("家醫科", (), 1), ("兒科", (), 1)], ["TPVGH_YL", "CTH_XD", "AFGH_TY", "MMH_TP"]),
+    ("D4", "嘔吐", 8, 5, [("內科", ("胃腸肝膽科",), 4), ("家醫科", (), 1), ("兒科", (), 1)], ["TPVGH_YL", "CTH_XD", "AFGH_TY", "MMH_TP", "TPH_XZ"]),
     (
         "D6",
         "坐骨神經痛",
         40,
-        10,
-        [("神經外科", (), 7), ("復健科", (), 4), ("骨科", (), 4), ("神經科", ("神經內科",), 2), ("麻醉科", ("疼痛科",), 2)],
-        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL", "TAH_SS"],
+        11,
+        [("神經外科", (), 7), ("復健科", (), 5), ("骨科", (), 5), ("神經科", ("神經內科",), 2), ("麻醉科", ("疼痛科",), 2)],
+        ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "TPVGH_HC", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ"],
     ),
     (
         "D7",
         "性病",
         40,
-        6,
-        [("泌尿科", (), 4), ("皮膚科", (), 3), ("內科", ("感染科",), 2), ("家醫科", (), 1), ("婦產科", (), 1)],
-        ["NCKUH_TN", "NTUH_YL", "AFGH_KH", "MMH_TP", "TZUCHI_HL", "TAH_SS"],
+        7,
+        [("泌尿科", (), 5), ("內科", ("感染科",), 3), ("皮膚科", (), 3), ("家醫科", (), 1), ("婦產科", (), 1)],
+        ["NCKUH_TN", "NTUH_YL", "AFGH_KH", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ"],
     ),
     (
         "D8",
         "感冒",
         40,
-        10,
-        [("內科", (), 6), ("耳鼻喉科", (), 3), ("家醫科", (), 2), ("中醫一般科", (), 1)],
-        ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL", "TAH_SS"],
+        11,
+        [("內科", (), 7), ("耳鼻喉科", (), 4), ("家醫科", (), 2), ("中醫一般科", (), 1)],
+        ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ"],
     ),
     (
         "D9",
@@ -867,7 +867,7 @@ _SUGGESTION_CASES = [
         [("內科", ("胸腔內科",), 7), ("中醫一般科", (), 2)],
         ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "TZUCHI_HL", "TAH_SS"],
     ),
-    ("D10", "高血脂", 40, 3, [("內科", ("新陳代謝及內分泌科", "心臟內科", "腎臟內科"), 3), ("家醫科", (), 1)], ["NCKUH_TN", "NTUH_YL", "CMUH_HC"]),
+    ("D10", "高血脂", 40, 4, [("內科", ("新陳代謝及內分泌科", "心臟內科", "腎臟內科"), 3), ("家醫科", (), 2)], ["NCKUH_TN", "NTUH_YL", "CMUH_HC", "TPH_XZ"]),
     (
         "D11",
         "酒癮",
@@ -881,9 +881,9 @@ _SUGGESTION_CASES = [
         "D16",
         "腹瀉",
         40,
-        8,
-        [("內科", ("胃腸肝膽科",), 7), ("外科", ("大腸直腸外科",), 3), ("中醫一般科", (), 1), ("家醫科", (), 1)],
-        ["TPVGH_YL", "NCKUH_TN", "CTH_XD", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL", "TAH_SS"],
+        9,
+        [("內科", ("胃腸肝膽科",), 8), ("外科", ("大腸直腸外科",), 3), ("中醫一般科", (), 1), ("家醫科", (), 1)],
+        ["TPVGH_YL", "NCKUH_TN", "CTH_XD", "AFGH_TY", "CMUH_HC", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ"],
     ),
 ]
 

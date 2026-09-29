@@ -22,8 +22,8 @@ Condorcet and individual Rank Learning Methods*, SIGIR 2009, pp. 758-759），
 Hybrid Retrieval*（ACM TOIS 42(1), 2023；arXiv:2210.11934）在 in-domain 與
 out-of-domain 兩種設定下都量到凸組合勝過 RRF，並指出 **RRF 對其參數敏感**，
 而凸組合的權重「只需少量標註查詢」即可調出來（sample-efficient）。後面這點
-是本專案採用它的關鍵——`evals/rag/golden.jsonl` 目前只有 55 題，不足以訓練
-排序模型，但足以掃一個一維權重。
+是本專案採用它的關鍵——`evals/rag/golden.jsonl` 採用時只有 55 題（2026-09-29
+擴到約 1000 題可計分、其中一半是說法變體，仍不足以訓練排序模型），但足以掃一個一維權重。
 
 正規化選 min-max 而不是 z-score：BM25 分數的分佈右尾很長，z-score 會讓
 少數極高分把其餘壓成一團；min-max 只保證「該腿的第一名是 1、最後一名是 0」，

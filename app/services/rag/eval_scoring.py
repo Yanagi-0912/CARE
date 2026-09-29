@@ -74,6 +74,9 @@ class EvalCase:
     # 空字串＝本題不參與判定計分，既有的 hit_rate／MRR／nDCG 完全不受影響——
     # `has_retrieval_expectations` 與 `score_case_retrieval` 都不看這個欄位。
     expected_verdict: str = ""
+    # 可選：題目類別（hpa_news、myth、colloquial…，見 evals/rag/README.md），
+    # 只用來分組看命中率，不影響計分。空字串的題目歸在 UNCATEGORIZED。
+    category: str = ""
 
     @property
     def has_retrieval_expectations(self) -> bool:
@@ -349,6 +352,7 @@ def load_golden_jsonl(path: Path) -> list[EvalCase]:
                     notes=str(data.get("notes") or ""),
                     split=str(data.get("split") or ""),
                     expected_verdict=expected_verdict,
+                    category=str(data.get("category") or "").strip(),
                 )
             )
     return cases
@@ -416,6 +420,28 @@ def summarize_results(results: list[CaseResult]) -> EvalSummary:
         skipped_ids=[r.id for r in results if r.skipped],
         error_ids=[r.id for r in results if r.error],
     )
+
+
+UNCATEGORIZED = "（未分類）"
+
+
+def summarize_by_category(
+    results: list[CaseResult], categories: dict[str, str]
+) -> dict[str, EvalSummary]:
+    """依題目類別各算一份 summary；`categories` 是題目 id → category。
+
+    題庫混了官方衛教、闢謠、口語變體、外語等類別，總命中率會把某一類整批
+    失效蓋掉。全被 skip 的類別（例如只有 web 題的 kb_gap）沒有可計分題，不列。
+    """
+    groups: dict[str, list[CaseResult]] = {}
+    for r in results:
+        groups.setdefault(categories.get(r.id) or UNCATEGORIZED, []).append(r)
+    by_category: dict[str, EvalSummary] = {}
+    for name, group in sorted(groups.items()):
+        summary = summarize_results(group)
+        if summary.scored_cases:
+            by_category[name] = summary
+    return by_category
 
 
 @dataclass(frozen=True)

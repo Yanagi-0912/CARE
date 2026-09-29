@@ -23,6 +23,8 @@ from app.services.rag.eval_scoring import (
     score_case_retrieval,
     score_verdict,
     source_names_from_docs,
+    UNCATEGORIZED,
+    summarize_by_category,
     summarize_results,
     summarize_verdicts,
     urls_from_docs,
@@ -260,6 +262,45 @@ def test_summarize_results():
     assert summary.hits == 1
     assert summary.hit_rate == 0.5
     assert summary.miss_ids == ["2"]
+
+
+def test_load_golden_jsonl_reads_optional_category(tmp_path: Path):
+    path = tmp_path / "g.jsonl"
+    rows = [
+        {"id": "a", "query": "q1", "route": "kb", "expected_title_substrings": ["t"],
+         "category": " myth "},
+        {"id": "b", "query": "q2", "route": "kb", "expected_title_substrings": ["t"]},
+    ]
+    path.write_text(
+        "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows),
+        encoding="utf-8",
+    )
+    cases = load_golden_jsonl(path)
+    assert [c.category for c in cases] == ["myth", ""]
+
+
+def test_summarize_by_category_groups_scored_cases():
+    def _r(case_id: str, hit: bool | None, skipped: bool = False) -> CaseResult:
+        return CaseResult(
+            id=case_id,
+            query="q",
+            route="web" if skipped else "kb",
+            skipped=skipped,
+            retrieval_hit=hit,
+            retrieved_urls=[],
+        )
+
+    results = [_r("m1", True), _r("m2", False), _r("o1", True), _r("g1", None, skipped=True)]
+    categories = {"m1": "myth", "m2": "myth", "o1": "", "g1": "kb_gap"}
+
+    by_category = summarize_by_category(results, categories)
+
+    # 全被 skip 的類別（例如只有 web 題的 kb_gap）沒有可計分題，不列
+    assert list(by_category) == ["myth", UNCATEGORIZED]
+    assert by_category["myth"].scored_cases == 2
+    assert by_category["myth"].hit_rate == 0.5
+    assert by_category["myth"].miss_ids == ["m2"]
+    assert by_category[UNCATEGORIZED].hit_rate == 1.0
 
 
 @pytest.mark.asyncio
@@ -657,7 +698,14 @@ def test_real_golden_jsonl_verdict_cases_are_additive_only():
     verdict_cases = [c for c in cases if c.expected_verdict]
     non_verdict_cases = [c for c in cases if not c.expected_verdict]
 
-    assert len(non_verdict_cases) == 38  # 既有題目，數量與欄位都不變
+    # 既有 38 題（kb-001～034、refuse-001～003、web-001）都還在、都沒有判定；
+    # 2026-09-28 擴充的題目都不是查核型，所以總數只能比 38 多
+    original_ids = (
+        {f"kb-{i:03d}" for i in range(1, 35)}
+        | {f"refuse-{i:03d}" for i in range(1, 4)}
+        | {"web-001"}
+    )
+    assert original_ids <= {c.id for c in non_verdict_cases}
     # 12 題（Task 8 初版）+ 1 題（CARE-data 回填 verdict=正確 後追加）
     # + 4 題（code review 後補的真正盲測負樣本，verdict-014~017）
     assert len(verdict_cases) == 17

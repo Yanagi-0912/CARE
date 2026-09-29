@@ -48,6 +48,7 @@ from app.services.rag.eval_scoring import (
     score_verdict,
     is_refuse_ok,
     is_source_hit,
+    summarize_by_category,
     summarize_results,
     summarize_verdicts,
 )
@@ -241,7 +242,15 @@ async def _eval_one(
     return result
 
 
-def _print_summary(label: str, golden: Path, summary, results, *, with_answer: bool) -> None:
+def _print_summary(
+    label: str,
+    golden: Path,
+    summary,
+    results,
+    *,
+    with_answer: bool,
+    categories: Optional[dict[str, str]] = None,
+) -> None:
     print(f"=== RAG Eval Summary ({label}) ===")
     print(f"golden: {golden}")
     print(f"total_cases: {summary.total_cases}")
@@ -270,6 +279,21 @@ def _print_summary(label: str, golden: Path, summary, results, *, with_answer: b
             print(f"source_hit: {ok}/{len(source_cases)}")
         if summary.citation_coverage is not None:
             print(f"citation_coverage: {_fmt(summary.citation_coverage)}")
+    by_category = summarize_by_category(results, categories or {})
+    if len(by_category) > 1:
+        print("by_category (scored / hit_rate / mrr / ndcg@5):")
+        for name, s in by_category.items():
+            print(
+                f"  {name:<14}{s.scored_cases:>4}  {_fmt(s.hit_rate)}  "
+                f"{_fmt(s.mean_mrr)}  {_fmt(s.mean_ndcg_at_5)}"
+            )
+
+
+def _by_category_dict(results, categories: dict[str, str]) -> dict[str, dict]:
+    return {
+        name: s.to_dict()
+        for name, s in summarize_by_category(results, categories).items()
+    }
 
 
 def _print_verdict_summary(summary: VerdictSummary) -> None:
@@ -524,6 +548,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
+    categories = {c.id: c.category for c in load_golden_jsonl(golden)}
+
     if args.compare_rerank:
         compare = asyncio.run(
             run_compare_rerank(
@@ -540,6 +566,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             v_sum,
             compare["vector"]["results"],
             with_answer=False,
+            categories=categories,
         )
         print()
         _print_summary(
@@ -548,6 +575,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             c_sum,
             compare["cohere"]["results"],
             with_answer=False,
+            categories=categories,
         )
         print()
         print("=== Delta (cohere - vector) ===")
@@ -571,10 +599,16 @@ def main(argv: Optional[list[str]] = None) -> int:
                 "top_n": compare["top_n"],
                 "vector": {
                     "summary": v_sum.to_dict(),
+                    "by_category": _by_category_dict(
+                        compare["vector"]["results"], categories
+                    ),
                     "results": [r.to_dict() for r in compare["vector"]["results"]],
                 },
                 "cohere": {
                     "summary": c_sum.to_dict(),
+                    "by_category": _by_category_dict(
+                        compare["cohere"]["results"], categories
+                    ),
                     "results": [r.to_dict() for r in compare["cohere"]["results"]],
                 },
             }
@@ -607,6 +641,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         summary,
         results,
         with_answer=args.with_answer,
+        categories=categories,
     )
 
     verdict_results: list[VerdictResult] = []
@@ -632,6 +667,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     if out_path is not None:
         payload = {
             "summary": summary.to_dict(),
+            "by_category": _by_category_dict(results, categories),
             "rank_mode": args.rank_mode,
             "results": [r.to_dict() for r in results],
         }

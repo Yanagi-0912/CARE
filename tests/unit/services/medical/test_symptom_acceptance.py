@@ -368,10 +368,11 @@ def test_T10_real_table_holds_only_source_backed_entries(table):
         assert table.lookup(term) is None, term
 
 
-def test_T11_candidates_sorted_by_source_count_then_facility_count(table):
+def test_T11_candidates_sorted_by_source_count_then_western_then_facility_count(table):
     for term in table.terms:
         keys = [
-            (-len(c.sources), -c.facility_count) for c in table.lookup(term).candidates
+            (-len(c.sources), c.canonical == "中醫一般科", -c.facility_count)
+            for c in table.lookup(term).candidates
         ]
         assert keys == sorted(keys), term
 
@@ -457,6 +458,25 @@ async def test_T18_patient_age_is_used_even_when_speaker_age_is_adult(table):
 
     assert result.kind == RESULT_SUGGESTION
     assert [c.canonical for c in result.candidates] == ["兒科"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("term", ["自閉症類群疾患", "注意力不足過動症"])
+async def test_T18_adult_keeps_psychiatry_without_child_direction(table, term):
+    """兒童青少年精神科是精神科候選上的方向：成人仍拿到精神科，但不掛兒童方向。"""
+    result = await _suggest(table, term, 40)
+    assert result.kind == RESULT_SUGGESTION
+    assert [(c.canonical, c.subgroups) for c in result.candidates] == [("精神科", ())]
+
+
+@pytest.mark.asyncio
+async def test_T18_child_keeps_child_psychiatry_direction(table):
+    result = await _suggest(table, "注意力不足過動症", 8)
+    assert result.kind == RESULT_SUGGESTION
+    assert [(c.canonical, c.subgroups) for c in result.candidates] == [
+        ("精神科", ("兒童青少年精神科",)),
+        ("兒科", ()),
+    ]
 
 
 @pytest.mark.asyncio
@@ -689,9 +709,9 @@ async def test_T19_headache_no_longer_falls_back(table):
     assert result.kind == RESULT_SUGGESTION
     assert [c.canonical for c in result.candidates] == [
         "神經科",
-        "中醫一般科",
         "內科",
         "家醫科",
+        "中醫一般科",
     ]
 
 
@@ -825,13 +845,13 @@ def test_T27_largest_card_passes_line_validation(font_size):
 # 預期值由原始 JSON 直接推導（撤回補列與 rank 後依來源家數、院所數排序），
 # 不經過服務程式。
 _SUGGESTION_CASES = [
-    ("D1", "咳嗽", 40, 12, [("內科", ("胸腔內科",), 10), ("耳鼻喉科", (), 4), ("中醫一般科", (), 2), ("家醫科", (), 2)], ["NCKUH_TN", "NTUH_YL", "CTH_XD", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK", "TSGH_TP", "WGMH_TF"]),
+    ("D1", "咳嗽", 40, 12, [("內科", ("胸腔內科",), 10), ("耳鼻喉科", (), 4), ("家醫科", (), 2), ("中醫一般科", (), 2)], ["NCKUH_TN", "NTUH_YL", "CTH_XD", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK", "TSGH_TP", "WGMH_TF"]),
     (
         "D2",
         "咳嗽",
         8,
         12,
-        [("內科", ("胸腔內科",), 10), ("耳鼻喉科", (), 4), ("中醫一般科", (), 2), ("家醫科", (), 2), ("兒科", (), 1)],
+        [("內科", ("胸腔內科",), 10), ("耳鼻喉科", (), 4), ("家醫科", (), 2), ("中醫一般科", (), 2), ("兒科", (), 1)],
         ["TPVGH_YL", "NCKUH_TN", "NTUH_YL", "CTH_XD", "MMH_TP", "TZUCHI_HL", "TAH_SS", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK", "TSGH_TP", "WGMH_TF"],
     ),
     ("D4", "嘔吐", 8, 7, [("內科", ("胃腸肝膽科",), 6), ("家醫科", (), 1), ("兒科", (), 1)], ["TPVGH_YL", "CTH_XD", "AFGH_TY", "MMH_TP", "TPH_XZ", "CHIMEI_YK", "WGMH_TF"]),
@@ -867,7 +887,7 @@ _SUGGESTION_CASES = [
         [("內科", ("胸腔內科",), 11), ("中醫一般科", (), 4), ("家醫科", (), 1)],
         ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_KH", "AFGH_TY", "CMUH_HC", "TZUCHI_HL", "TAH_SS", "FEMH_BQ", "CHIMEI_YK", "TSGH_TP", "WGMH_TF"],
     ),
-    ("D10", "高血脂", 40, 8, [("內科", ("新陳代謝及內分泌科", "心臟內科"), 7), ("家醫科", (), 5)], ["NCKUH_TN", "NTUH_YL", "CMUH_HC", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK", "TSGH_TP", "WGMH_TF"]),
+    ("D10", "高血脂", 40, 11, [("內科", ("新陳代謝及內分泌科", "心臟內科"), 10), ("家醫科", (), 5)], ["NCKUH_TN", "NTUH_YL", "TPVGH_HC", "CTH_XD", "AFGH_TY", "CMUH_HC", "TPH_XZ", "FEMH_BQ", "CHIMEI_YK", "TSGH_TP", "WGMH_TF"]),
     (
         "D11",
         "酒癮",

@@ -1,5 +1,5 @@
 {
-  "version": 17,
+  "version": 18,
   "status": "verified",
   "generated_at": "2026-09-29",
   "purpose": "症狀／科別對照的彙整參考。由多家醫院公開的就醫病症對照表整併，科別一律已轉換為 medicalFacilities.departments 實際存在的值，可直接供 find_nearby_facilities_by_department 使用。",
@@ -1149,13 +1149,16 @@
           "sources": [
             "NCKUH_TN",
             "NTUH_YL",
+            "TPVGH_HC",
+            "CTH_XD",
+            "AFGH_TY",
             "CMUH_HC",
             "FEMH_BQ",
             "CHIMEI_YK",
             "TSGH_TP",
             "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：疑高血脂症 → 內分泌科；TSGH_TP 原文：高脂血症；WGMH_TF 原文：高脂血症"
+          "note": "CHIMEI_YK 原文：疑高血脂症 → 內分泌科；TSGH_TP 原文：高脂血症；WGMH_TF 原文：高脂血症；TPVGH_HC、CTH_XD、AFGH_TY 原文：高血脂症"
         },
         {
           "term": "甲狀腺疾病",
@@ -1196,17 +1199,6 @@
             "WGMH_TF"
           ],
           "note": "CHIMEI_YK 原文：肥胖症（遺傳因素、營養過度、甲狀腺功能低下） → 內科；TSGH_TP 原文：肥胖症"
-        },
-        {
-          "term": "骨質疏鬆症",
-          "kind": "disease",
-          "subgroup": "新陳代謝及內分泌科",
-          "sources": [
-            "NTUH_YL",
-            "AFGH_TY",
-            "CMUH_HC",
-            "TSGH_TP"
-          ]
         },
         {
           "term": "關節炎",
@@ -1285,15 +1277,19 @@
           "sources": [
             "NCKUH_TN",
             "NTUH_YL",
+            "AFGH_KH",
+            "CTH_XD",
+            "AFGH_TY",
             "CMUH_HC",
             "TZUCHI_HL",
             "TAH_SS",
+            "TPH_XZ",
             "FEMH_BQ",
             "CHIMEI_YK",
             "TSGH_TP",
             "WGMH_TF"
           ],
-          "note": "FEMH_BQ 原文：關節炎（類風濕性）；CHIMEI_YK 原文：晨起關節僵硬的原因：類風濕關節炎 → 風濕免疫科；TSGH_TP 原文：關節炎（類風溼性）"
+          "note": "FEMH_BQ 原文：關節炎（類風濕性）；CHIMEI_YK 原文：晨起關節僵硬的原因：類風濕關節炎 → 風濕免疫科；TSGH_TP 原文：關節炎（類風溼性）；AFGH_KH、CTH_XD、AFGH_TY、TPH_XZ 原文：類風濕關節炎"
         },
         {
           "term": "乾燥症",
@@ -1708,16 +1704,6 @@
           "subgroup": "新陳代謝及內分泌科"
         },
         {
-          "term": "高血脂症",
-          "kind": "disease",
-          "sources": [
-            "TPVGH_HC",
-            "CTH_XD",
-            "AFGH_TY"
-          ],
-          "subgroup": "新陳代謝及內分泌科"
-        },
-        {
           "term": "心血管疾病",
           "kind": "disease",
           "sources": [
@@ -2106,17 +2092,6 @@
             "AFGH_KH"
           ],
           "subgroup": "血液腫瘤科"
-        },
-        {
-          "term": "類風濕關節炎",
-          "kind": "disease",
-          "sources": [
-            "AFGH_KH",
-            "CTH_XD",
-            "AFGH_TY",
-            "TPH_XZ"
-          ],
-          "subgroup": "免疫風濕科"
         },
         {
           "term": "痛風關節炎",
@@ -2629,16 +2604,21 @@
           "term": "骨質疏鬆",
           "kind": "disease",
           "sources": [
+            "NTUH_YL",
             "CTH_XD",
+            "AFGH_TY",
+            "CMUH_HC",
             "MMH_TP",
             "TPH_XZ",
             "FEMH_BQ",
+            "TSGH_TP",
             "WGMH_TF"
           ],
           "subgroup": [
             "免疫風濕科",
             "新陳代謝及內分泌科"
-          ]
+          ],
+          "note": "NTUH_YL、AFGH_TY、CMUH_HC、TSGH_TP 原文：骨質疏鬆症"
         },
         {
           "term": "高血糖",
@@ -4929,10 +4909,11 @@
           "term": "間歇跛行",
           "kind": "symptom",
           "sources": [
-            "AFGH_TY"
+            "AFGH_TY",
+            "TSGH_TP"
           ],
           "subgroup": "心臟外科",
-          "note": "AFGH_TY 原文：下肢運動後酸痛"
+          "note": "AFGH_TY 原文：下肢運動後酸痛；TSGH_TP 原文：間歇性跛行"
         },
         {
           "term": "乳房外觀改變",
@@ -5498,14 +5479,6 @@
           "note": "TSGH_TP 原文：胸壁畸形(漏斗胸及雞胸)"
         },
         {
-          "term": "間歇性跛行",
-          "kind": "symptom",
-          "subgroup": "心臟外科",
-          "sources": [
-            "TSGH_TP"
-          ]
-        },
-        {
           "term": "淋巴水腫",
           "kind": "symptom",
           "subgroup": "心臟外科",
@@ -5683,6 +5656,7 @@
             "TPVGH_YL",
             "NCKUH_TN",
             "NTUH_YL",
+            "CTH_XD",
             "AFGH_TY",
             "TZUCHI_HL",
             "TPH_XZ",
@@ -5690,17 +5664,7 @@
             "CHIMEI_YK",
             "TSGH_TP"
           ],
-          "note": "CHIMEI_YK 原文：頭暈（腦瘤、頸椎病變）→ 腦神經內科"
-        },
-        {
-          "term": "暈眩",
-          "kind": "symptom",
-          "subgroup": null,
-          "sources": [
-            "NCKUH_TN",
-            "NTUH_YL"
-          ],
-          "note": "亦見於耳鼻喉科"
+          "note": "CHIMEI_YK 原文：頭暈（腦瘤、頸椎病變）→ 腦神經內科；CTH_XD 原文：頭晕"
         },
         {
           "term": "中風",
@@ -6038,12 +6002,14 @@
           "term": "眩暈",
           "kind": "symptom",
           "sources": [
+            "NCKUH_TN",
+            "NTUH_YL",
             "TPVGH_HC",
             "CHIMEI_YK",
             "WGMH_TF"
           ],
           "subgroup": "神經內科",
-          "note": "CHIMEI_YK 原文：眩暈（房子會轉）（脊骨基底動脈循環不全、腦幹血管病變、小腦腫瘤或病變）→ 腦神經內科；WGMH_TF 原文：眩暈症"
+          "note": "CHIMEI_YK 原文：眩暈（房子會轉）（脊骨基底動脈循環不全、腦幹血管病變、小腦腫瘤或病變）→ 腦神經內科；WGMH_TF 原文：眩暈症；亦見於耳鼻喉科；NCKUH_TN、NTUH_YL 原文：暈眩"
         },
         {
           "term": "顫抖症",
@@ -6115,14 +6081,6 @@
           "kind": "disease",
           "sources": [
             "AFGH_KH"
-          ],
-          "subgroup": "神經內科"
-        },
-        {
-          "term": "頭晕",
-          "kind": "symptom",
-          "sources": [
-            "CTH_XD"
           ],
           "subgroup": "神經內科"
         },
@@ -7451,14 +7409,6 @@
           ]
         },
         {
-          "term": "板機指",
-          "kind": "disease",
-          "sources": [
-            "TPH_XZ"
-          ],
-          "note": "TPH_XZ 原文：扳機指"
-        },
-        {
           "term": "脊椎滑脫",
           "kind": "disease",
           "sources": [
@@ -7625,8 +7575,10 @@
           "term": "扳機指",
           "kind": "disease",
           "sources": [
+            "TPH_XZ",
             "WGMH_TF"
-          ]
+          ],
+          "note": "TPH_XZ 原文：扳機指"
         },
         {
           "term": "三角纖維軟骨撕裂",
@@ -7780,17 +7732,6 @@
           "note": "CHIMEI_YK 原文：血尿的原因：結石 → 泌尿外科；TSGH_TP 原文：泌尿管結石；WGMH_TF 原文：尿路結石"
         },
         {
-          "term": "尿路感染",
-          "kind": "disease",
-          "subgroup": null,
-          "sources": [
-            "NCKUH_TN",
-            "NTUH_YL",
-            "AFGH_KH",
-            "AFGH_TY"
-          ]
-        },
-        {
           "term": "膀胱炎",
           "kind": "disease",
           "subgroup": null,
@@ -7934,12 +7875,17 @@
           "sources": [
             "NCKUH_TN",
             "TPVGH_HC",
+            "AFGH_KH",
             "AFGH_TY",
             "TZUCHI_HL",
+            "TAH_SS",
+            "TPH_XZ",
+            "FEMH_BQ",
             "CHIMEI_YK",
+            "TSGH_TP",
             "WGMH_TF"
           ],
-          "note": "CHIMEI_YK 原文：不孕的原因：隱睪症 → 泌尿外科"
+          "note": "CHIMEI_YK 原文：不孕的原因：隱睪症 → 泌尿外科；AFGH_KH、TAH_SS、TPH_XZ、FEMH_BQ、TSGH_TP 原文：隱睪"
         },
         {
           "term": "性病",
@@ -7991,13 +7937,17 @@
           "term": "泌尿道感染",
           "kind": "disease",
           "sources": [
+            "NCKUH_TN",
+            "NTUH_YL",
             "TPVGH_HC",
+            "AFGH_KH",
+            "AFGH_TY",
             "CMUH_HC",
             "CHIMEI_YK",
             "WGMH_TF"
           ],
           "subgroup": "泌尿科",
-          "note": "CHIMEI_YK 原文：小便燒痛灼熱的原因：泌尿道感染 → 泌尿外科"
+          "note": "CHIMEI_YK 原文：小便燒痛灼熱的原因：泌尿道感染 → 泌尿外科；NCKUH_TN、NTUH_YL、AFGH_KH、AFGH_TY 原文：尿路感染"
         },
         {
           "term": "膀胱癌",
@@ -8101,17 +8051,6 @@
             "CHIMEI_YK"
           ],
           "note": "CHIMEI_YK 原文：血尿的原因：膀胱結石 → 泌尿外科"
-        },
-        {
-          "term": "隱睪",
-          "kind": "disease",
-          "sources": [
-            "AFGH_KH",
-            "TAH_SS",
-            "TPH_XZ",
-            "FEMH_BQ",
-            "TSGH_TP"
-          ]
         },
         {
           "term": "陰囊水腫",
@@ -10319,16 +10258,6 @@
           "note": "TPH_XZ 原文：聽力/語言/味覺/嗅覺/睡眠障礙；CHIMEI_YK 原文：重聽、耳聾（慢性中耳炎、聽神經瘤）→ 耳鼻喉科"
         },
         {
-          "term": "暈眩",
-          "kind": "symptom",
-          "subgroup": null,
-          "sources": [
-            "NTUH_YL",
-            "TZUCHI_HL"
-          ],
-          "note": "亦見於神經科"
-        },
-        {
           "term": "中耳炎",
           "kind": "disease",
           "subgroup": null,
@@ -10526,17 +10455,19 @@
           "term": "眩暈",
           "kind": "symptom",
           "sources": [
+            "NTUH_YL",
             "TPVGH_HC",
             "AFGH_KH",
             "AFGH_TY",
-            "MMH_TP",
             "CMUH_HC",
+            "MMH_TP",
+            "TZUCHI_HL",
             "FEMH_BQ",
             "CHIMEI_YK",
             "TSGH_TP",
             "WGMH_TF"
           ],
-          "note": "FEMH_BQ 原文：暈眩；CHIMEI_YK 原文：眩暈（房子會轉）（內耳疾病、梅尼爾氏病、頸部循環）→ 耳鼻喉科"
+          "note": "FEMH_BQ 原文：暈眩；CHIMEI_YK 原文：眩暈（房子會轉）（內耳疾病、梅尼爾氏病、頸部循環）→ 耳鼻喉科；亦見於神經科；NTUH_YL、TZUCHI_HL 原文：暈眩"
         },
         {
           "term": "鼻塞",
@@ -13741,13 +13672,6 @@
           "note": "TZUCHI_HL 原文：黏膜病變；FEMH_BQ 原文：口腔紅斑白斑病變；TSGH_TP 原文：口腔黏膜疾病診斷及治療"
         },
         {
-          "term": "口乾症",
-          "kind": "symptom",
-          "sources": [
-            "TZUCHI_HL"
-          ]
-        },
-        {
           "term": "口角炎",
           "kind": "disease",
           "sources": [
@@ -13861,9 +13785,10 @@
           "term": "口乾",
           "kind": "symptom",
           "sources": [
+            "TZUCHI_HL",
             "FEMH_BQ"
           ],
-          "note": "FEMH_BQ 原文：口乾症"
+          "note": "FEMH_BQ 原文：口乾症；TZUCHI_HL 原文：口乾症"
         },
         {
           "term": "口腔出血",
@@ -15716,14 +15641,6 @@
           ]
         },
         {
-          "term": "筋骨痠痛",
-          "kind": "symptom",
-          "subgroup": null,
-          "sources": [
-            "TPVGH_YL"
-          ]
-        },
-        {
           "term": "五十肩",
           "kind": "disease",
           "subgroup": null,
@@ -15735,12 +15652,13 @@
           ]
         },
         {
-          "term": "板機指",
+          "term": "扳機指",
           "kind": "disease",
           "subgroup": null,
           "sources": [
             "TPVGH_YL"
-          ]
+          ],
+          "note": "TPVGH_YL 原文：板機指"
         },
         {
           "term": "運動傷害調理",
@@ -15915,8 +15833,10 @@
           "term": "筋骨酸痛",
           "kind": "symptom",
           "sources": [
+            "TPVGH_YL",
             "AFGH_KH"
-          ]
+          ],
+          "note": "TPVGH_YL 原文：筋骨痠痛"
         },
         {
           "term": "高血壓",
@@ -18401,6 +18321,12 @@
       "question": "WGMH_TF 併入時的裁決？",
       "decision": "原文清楚時不改名（急性視力喪失、突發性閃光或亮點、眼翳、子宮體癌、會陰癌、咬合功能異常、骨盆腔鬆弛照原文；拇指外翻原文未指手或腳，不改成拇趾外翻），只校正錯字、舊用語與裸詞（化膿→牙齦化膿、顎骨脫臼→下巴脫臼、精神分裂症→思覺失調症）。神經內科列的精神官能症、焦慮症、憂鬱症不收。感染科列的關節炎補在感染性關節炎並加感染科方向，腎臟炎不加。次類型併入上層條目（隅角閉鎖性／開放性／先天性青光眼→青光眼、慢性結膜炎→結膜炎、眼窩腫瘤→眼部腫瘤）。復健科「XX之復健」只補復健科既有條目。門診名稱含「戒治」「治療門診」時，底下的病名若該科已有條目照補代碼。",
       "rationale": "改名只在有根據時進行：未經 embedding 實測的口語化改寫沒有依據，且可能改變原意。精神疾病列在神經科會讓情緒問題多出不符直覺的候選。次類型另立長條目可能在比對時搶走短詞。「之復健」屬處置脈絡，只借用來確認既有關聯，不據以新增。戒治門診與治療門診是門診名稱，底下病名補代碼不會新增科別。",
+      "decided_at": "2026-09-29"
+    },
+    {
+      "question": "全部醫院匯入後，同一件事的重複條目如何處理？",
+      "decision": "合併 11 組：高血脂症→高血脂、骨質疏鬆症→骨質疏鬆、類風濕關節炎→類風濕性關節炎、隱睪→隱睪症、尿路感染→泌尿道感染、頭晕（簡體字）→頭暈、間歇性跛行→間歇跛行、板機指→扳機指、筋骨痠痛→筋骨酸痛、暈眩→眩暈、口乾症→口乾。來源代碼與 subgroup 併入保留的條目，原名記入 note。焦慮／焦慮症、紫斑／紫斑症不合併。",
+      "rationale": "重複條目會把同一件事的來源家數拆成兩半，排序與卡片標註都失真，比對時也會分散命中。焦慮是症狀、焦慮症是疾病；紫斑是徵象、紫斑症是疾病，依同義詞規則不確定就不合併。",
       "decided_at": "2026-09-29"
     }
   ]

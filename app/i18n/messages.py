@@ -599,6 +599,16 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "ต่อไปนี้อ้างอิงจากข้อมูลสาธารณะบนเว็บ",
         "ja": "以下は公開ウェブ資料に基づきます",
     },
+    # 查詢改寫確認過的同音錯字（query_rewriter.accept_typo_fix）。放在網搜答案的前綴
+    # 之後，讓使用者知道答的是更正後的詞；猜錯時使用者才看得出來、能換個說法再問。
+    "rag.typo_corrected": {
+        "zh-TW": "（你輸入的「{wrong}」應該是「{right}」，以下以「{right}」回答）",
+        "en": '(You typed "{wrong}"; it looks like you meant "{right}", so the answer below is about "{right}".)',
+        "id": '(Anda mengetik "{wrong}"; sepertinya maksud Anda "{right}", jadi jawaban di bawah membahas "{right}".)',
+        "vi": '(Bạn đã nhập "{wrong}"; có vẻ ý bạn là "{right}", nên câu trả lời dưới đây nói về "{right}".)',
+        "th": '(คุณพิมพ์ว่า "{wrong}" น่าจะหมายถึง "{right}" คำตอบด้านล่างจึงเป็นเรื่อง "{right}")',
+        "ja": "（「{wrong}」は「{right}」の入力ミスと判断し、「{right}」についてお答えします）",
+    },
     "rag.generate_fallback": {
         "zh-TW": "抱歉，我目前找不到相關資料，請稍後再試。",
         "en": "Sorry, I couldn't find relevant information right now. Please try again later.",

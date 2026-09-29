@@ -88,6 +88,11 @@ dependencies = [
     # 看診錄音的轉錄模型指定 zh-TW 仍回簡體（2026-09-22 實測），逐字稿要轉正體。
     # 用 s2tw 只換字形不換用語，見 app/services/speech/clinic_transcribe.py。
     "opencc==1.4.2",
+
+    # 查詢改寫修正注音／語音選錯的同音字時，確認被換掉的字真的同音
+    # （app/services/rag/query_rewriter.py 的 accept_typo_fix）。只載入單字讀音表
+    # （+14 MiB）；整包 import 會連詞組字典一起載入（+64 MiB），所以不走 package。
+    "pypinyin==0.55.0",
 ]
 
 # 測試相關（pytest-asyncio 0.25 僅支援 pytest<9）。

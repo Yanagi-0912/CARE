@@ -1,0 +1,1142 @@
+[
+ {
+  "id": "typo-01",
+  "attempt": 1,
+  "query": "圓錐膠膜是什麼",
+  "ms": 1856,
+  "error": null,
+  "raw_typo": [
+   "圓錐膠膜",
+   "圓錐角膜"
+  ],
+  "typo_fix": [
+   "圓錐膠膜",
+   "圓錐角膜"
+  ],
+  "kb_query": "什麼是圓錐角膜？其成因與症狀為何？",
+  "zh_terms": "圓錐角膜 角膜 症狀",
+  "en_terms": "keratoconus cornea symptoms",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-01",
+  "attempt": 2,
+  "query": "圓錐膠膜是什麼",
+  "ms": 1844,
+  "error": null,
+  "raw_typo": [
+   "圓錐膠膜",
+   "圓錐角膜"
+  ],
+  "typo_fix": [
+   "圓錐膠膜",
+   "圓錐角膜"
+  ],
+  "kb_query": "什麼是圓錐角膜？其成因與症狀為何？",
+  "zh_terms": "圓錐角膜 角膜 症狀",
+  "en_terms": "keratoconus cornea symptoms",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-01",
+  "attempt": 3,
+  "query": "圓錐膠膜是什麼",
+  "ms": 1993,
+  "error": null,
+  "raw_typo": [
+   "圓錐膠膜",
+   "圓錐角膜"
+  ],
+  "typo_fix": [
+   "圓錐膠膜",
+   "圓錐角膜"
+  ],
+  "kb_query": "圓錐角膜是什麼疾病與症狀",
+  "zh_terms": "圓錐角膜 症狀 角膜病變",
+  "en_terms": "keratoconus symptoms corneal disease",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-02",
+  "attempt": 1,
+  "query": "設護腺肥大怎麼辦",
+  "ms": 2358,
+  "error": null,
+  "raw_typo": [
+   "設護腺",
+   "攝護腺"
+  ],
+  "typo_fix": [
+   "設護腺",
+   "攝護腺"
+  ],
+  "kb_query": "攝護腺肥大怎麼辦與治療方式",
+  "zh_terms": "攝護腺肥大 治療 改善",
+  "en_terms": "benign prostatic hyperplasia treatment BPH",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-02",
+  "attempt": 2,
+  "query": "設護腺肥大怎麼辦",
+  "ms": 1678,
+  "error": null,
+  "raw_typo": [
+   "設護腺",
+   "攝護腺"
+  ],
+  "typo_fix": [
+   "設護腺",
+   "攝護腺"
+  ],
+  "kb_query": "攝護腺肥大該如何治療與改善？",
+  "zh_terms": "攝護腺肥大 治療 改善",
+  "en_terms": "benign prostatic hyperplasia BPH treatment",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-02",
+  "attempt": 3,
+  "query": "設護腺肥大怎麼辦",
+  "ms": 2033,
+  "error": null,
+  "raw_typo": [
+   "設護腺",
+   "攝護腺"
+  ],
+  "typo_fix": [
+   "設護腺",
+   "攝護腺"
+  ],
+  "kb_query": "攝護腺肥大該如何治療與改善？",
+  "zh_terms": "攝護腺肥大 治療 改善",
+  "en_terms": "benign prostatic hyperplasia BPH treatment",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-03",
+  "attempt": 1,
+  "query": "白內章要開刀嗎",
+  "ms": 1619,
+  "error": null,
+  "raw_typo": [
+   "白內章",
+   "白內障"
+  ],
+  "typo_fix": [
+   "白內章",
+   "白內障"
+  ],
+  "kb_query": "白內障需要開刀手術嗎",
+  "zh_terms": "白內障 手術 開刀",
+  "en_terms": "cataract surgery indications",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-03",
+  "attempt": 2,
+  "query": "白內章要開刀嗎",
+  "ms": 1548,
+  "error": null,
+  "raw_typo": [
+   "白內章",
+   "白內障"
+  ],
+  "typo_fix": [
+   "白內章",
+   "白內障"
+  ],
+  "kb_query": "白內障需要開刀手術治療嗎？",
+  "zh_terms": "白內障 手術 開刀",
+  "en_terms": "cataract surgery operation",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-03",
+  "attempt": 3,
+  "query": "白內章要開刀嗎",
+  "ms": 1514,
+  "error": null,
+  "raw_typo": [
+   "白內章",
+   "白內障"
+  ],
+  "typo_fix": [
+   "白內章",
+   "白內障"
+  ],
+  "kb_query": "白內障需要開刀手術治療嗎",
+  "zh_terms": "白內障 手術 開刀",
+  "en_terms": "cataract surgery",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-04",
+  "attempt": 1,
+  "query": "骨質輸送要吃什麼鈣片",
+  "ms": 1352,
+  "error": null,
+  "raw_typo": [
+   "骨質輸送",
+   "骨質疏鬆"
+  ],
+  "typo_fix": [
+   "骨質輸送",
+   "骨質疏鬆"
+  ],
+  "kb_query": "骨質疏鬆要吃什麼鈣片",
+  "zh_terms": "骨質疏鬆 鈣片",
+  "en_terms": "osteoporosis calcium supplements",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-04",
+  "attempt": 2,
+  "query": "骨質輸送要吃什麼鈣片",
+  "ms": 1538,
+  "error": null,
+  "raw_typo": [
+   "骨質輸送",
+   "骨質疏鬆"
+  ],
+  "typo_fix": [
+   "骨質輸送",
+   "骨質疏鬆"
+  ],
+  "kb_query": "骨質疏鬆要吃什麼鈣片補充？",
+  "zh_terms": "骨質疏鬆 鈣片 補充",
+  "en_terms": "osteoporosis calcium supplements",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-04",
+  "attempt": 3,
+  "query": "骨質輸送要吃什麼鈣片",
+  "ms": 1323,
+  "error": null,
+  "raw_typo": [
+   "骨質輸送",
+   "骨質疏鬆"
+  ],
+  "typo_fix": [
+   "骨質輸送",
+   "骨質疏鬆"
+  ],
+  "kb_query": "骨質疏鬆要吃什麼鈣片",
+  "zh_terms": "骨質疏鬆 鈣片 補充",
+  "en_terms": "osteoporosis calcium supplements",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-05",
+  "attempt": 1,
+  "query": "帕金森氏證會遺傳嗎",
+  "ms": 1596,
+  "error": null,
+  "raw_typo": [
+   "帕金森氏證",
+   "帕金森氏症"
+  ],
+  "typo_fix": [
+   "帕金森氏證",
+   "帕金森氏症"
+  ],
+  "kb_query": "帕金森氏症會遺傳嗎？",
+  "zh_terms": "帕金森氏症 遺傳 基因",
+  "en_terms": "Parkinson disease inheritance genetic",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-05",
+  "attempt": 2,
+  "query": "帕金森氏證會遺傳嗎",
+  "ms": 1615,
+  "error": null,
+  "raw_typo": [
+   "帕金森氏證",
+   "帕金森氏症"
+  ],
+  "typo_fix": [
+   "帕金森氏證",
+   "帕金森氏症"
+  ],
+  "kb_query": "帕金森氏症會遺傳嗎",
+  "zh_terms": "帕金森氏症 遺傳",
+  "en_terms": "Parkinson's disease genetic inheritance",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-05",
+  "attempt": 3,
+  "query": "帕金森氏證會遺傳嗎",
+  "ms": 1880,
+  "error": null,
+  "raw_typo": [
+   "帕金森氏證",
+   "帕金森氏症"
+  ],
+  "typo_fix": [
+   "帕金森氏證",
+   "帕金森氏症"
+  ],
+  "kb_query": "帕金森氏症會遺傳嗎",
+  "zh_terms": "帕金森氏症 遺傳",
+  "en_terms": "Parkinsons disease heredity genetic",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-06",
+  "attempt": 1,
+  "query": "胃食道逆留要注意什麼",
+  "ms": 1426,
+  "error": null,
+  "raw_typo": [
+   "胃食道逆留",
+   "胃食道逆流"
+  ],
+  "typo_fix": [
+   "胃食道逆留",
+   "胃食道逆流"
+  ],
+  "kb_query": "胃食道逆流要注意什麼飲食與生活習慣？",
+  "zh_terms": "胃食道逆流 注意事項 飲食原則",
+  "en_terms": "gastroesophageal reflux disease precautions diet",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-06",
+  "attempt": 2,
+  "query": "胃食道逆留要注意什麼",
+  "ms": 1778,
+  "error": null,
+  "raw_typo": [
+   "胃食道逆留",
+   "胃食道逆流"
+  ],
+  "typo_fix": [
+   "胃食道逆留",
+   "胃食道逆流"
+  ],
+  "kb_query": "胃食道逆流的注意事項與生活飲食調整有哪些？",
+  "zh_terms": "胃食道逆流 注意事項 飲食衛教",
+  "en_terms": "GERD gastroesophageal reflux lifestyle modifications",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-06",
+  "attempt": 3,
+  "query": "胃食道逆留要注意什麼",
+  "ms": 2510,
+  "error": null,
+  "raw_typo": [
+   "胃食道逆留",
+   "胃食道逆流"
+  ],
+  "typo_fix": [
+   "胃食道逆留",
+   "胃食道逆流"
+  ],
+  "kb_query": "胃食道逆流的注意事項與生活飲食照護有哪些？",
+  "zh_terms": "胃食道逆流 注意事項 照護",
+  "en_terms": "gastroesophageal reflux precautions lifestyle",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-07",
+  "attempt": 1,
+  "query": "清光眼會失明嗎",
+  "ms": 1378,
+  "error": null,
+  "raw_typo": [
+   "清光眼",
+   "青光眼"
+  ],
+  "typo_fix": [
+   "清光眼",
+   "青光眼"
+  ],
+  "kb_query": "青光眼會導致失明嗎",
+  "zh_terms": "青光眼 失明",
+  "en_terms": "glaucoma blindness",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-07",
+  "attempt": 2,
+  "query": "清光眼會失明嗎",
+  "ms": 2855,
+  "error": null,
+  "raw_typo": [
+   "清光眼",
+   "青光眼"
+  ],
+  "typo_fix": [
+   "清光眼",
+   "青光眼"
+  ],
+  "kb_query": "青光眼會導致失明嗎？",
+  "zh_terms": "青光眼 失明",
+  "en_terms": "glaucoma blindness",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-07",
+  "attempt": 3,
+  "query": "清光眼會失明嗎",
+  "ms": 1809,
+  "error": null,
+  "raw_typo": [
+   "清光眼",
+   "青光眼"
+  ],
+  "typo_fix": [
+   "清光眼",
+   "青光眼"
+  ],
+  "kb_query": "青光眼會導致失明嗎？",
+  "zh_terms": "青光眼 失明",
+  "en_terms": "glaucoma blindness",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-08",
+  "attempt": 1,
+  "query": "高血鴨的藥可以自己停嗎",
+  "ms": 2042,
+  "error": null,
+  "raw_typo": [
+   "高血鴨",
+   "高血壓"
+  ],
+  "typo_fix": [
+   "高血鴨",
+   "高血壓"
+  ],
+  "kb_query": "高血壓的藥物可以自行停藥嗎",
+  "zh_terms": "高血壓 降血壓藥 自行停藥",
+  "en_terms": "hypertension antihypertensive discontinuation",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-08",
+  "attempt": 2,
+  "query": "高血鴨的藥可以自己停嗎",
+  "ms": 1698,
+  "error": null,
+  "raw_typo": [
+   "高血鴨",
+   "高血壓"
+  ],
+  "typo_fix": [
+   "高血鴨",
+   "高血壓"
+  ],
+  "kb_query": "高血壓的藥可以自行停藥嗎？",
+  "zh_terms": "高血壓 降血壓藥 停藥",
+  "en_terms": "hypertension antihypertensive discontinuation",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-08",
+  "attempt": 3,
+  "query": "高血鴨的藥可以自己停嗎",
+  "ms": 1430,
+  "error": null,
+  "raw_typo": [
+   "高血鴨",
+   "高血壓"
+  ],
+  "typo_fix": [
+   "高血鴨",
+   "高血壓"
+  ],
+  "kb_query": "高血壓的藥可以自行停藥嗎",
+  "zh_terms": "高血壓 降血壓藥 停藥",
+  "en_terms": "hypertension antihypertensive discontinuation",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-09",
+  "attempt": 1,
+  "query": "失志症初期有什麼症狀",
+  "ms": 1541,
+  "error": null,
+  "raw_typo": [
+   "失志症",
+   "失智症"
+  ],
+  "typo_fix": [
+   "失志症",
+   "失智症"
+  ],
+  "kb_query": "失智症初期有哪些常見症狀？",
+  "zh_terms": "失智症 症狀 初期",
+  "en_terms": "dementia early symptoms",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-09",
+  "attempt": 2,
+  "query": "失志症初期有什麼症狀",
+  "ms": 1196,
+  "error": null,
+  "raw_typo": [
+   "失志症",
+   "失智症"
+  ],
+  "typo_fix": [
+   "失志症",
+   "失智症"
+  ],
+  "kb_query": "失智症初期有哪些常見症狀？",
+  "zh_terms": "失智症 症狀 初期",
+  "en_terms": "dementia early symptoms",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-09",
+  "attempt": 3,
+  "query": "失志症初期有什麼症狀",
+  "ms": 1468,
+  "error": null,
+  "raw_typo": [
+   "失志症",
+   "失智症"
+  ],
+  "typo_fix": [
+   "失志症",
+   "失智症"
+  ],
+  "kb_query": "失智症初期有哪些症狀？",
+  "zh_terms": "失智症 初期 症狀",
+  "en_terms": "dementia early symptoms",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-10",
+  "attempt": 1,
+  "query": "痛瘋發作的時候怎麼辦",
+  "ms": 1400,
+  "error": null,
+  "raw_typo": [
+   "痛瘋",
+   "痛風"
+  ],
+  "typo_fix": [
+   "痛瘋",
+   "痛風"
+  ],
+  "kb_query": "痛風發作的時候怎麼辦",
+  "zh_terms": "痛風 發作 緩解",
+  "en_terms": "gout attack flare",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-10",
+  "attempt": 2,
+  "query": "痛瘋發作的時候怎麼辦",
+  "ms": 1587,
+  "error": null,
+  "raw_typo": [
+   "痛瘋",
+   "痛風"
+  ],
+  "typo_fix": [
+   "痛瘋",
+   "痛風"
+  ],
+  "kb_query": "痛風發作的時候怎麼辦",
+  "zh_terms": "痛風 發作 處理",
+  "en_terms": "gout attack management",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "typo-10",
+  "attempt": 3,
+  "query": "痛瘋發作的時候怎麼辦",
+  "ms": 1581,
+  "error": null,
+  "raw_typo": [
+   "痛瘋",
+   "痛風"
+  ],
+  "typo_fix": [
+   "痛瘋",
+   "痛風"
+  ],
+  "kb_query": "痛風發作時的緊急處理與緩解方法有哪些？",
+  "zh_terms": "痛風 發作 緩解",
+  "en_terms": "gout attack relief",
+  "proposed": true,
+  "pass": true
+ },
+ {
+  "id": "clean-01",
+  "attempt": 1,
+  "query": "圓錐角膜是什麼",
+  "ms": 2185,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "什麼是圓錐角膜？其成因、症狀與診斷方式為何？",
+  "zh_terms": "圓錐角膜 症狀 成因",
+  "en_terms": "keratoconus symptoms causes",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-01",
+  "attempt": 2,
+  "query": "圓錐角膜是什麼",
+  "ms": 1848,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "什麼是圓錐角膜？症狀與成因為何？",
+  "zh_terms": "圓錐角膜 角膜 視力模糊",
+  "en_terms": "keratoconus cornea",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-01",
+  "attempt": 3,
+  "query": "圓錐角膜是什麼",
+  "ms": 1284,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "什麼是圓錐角膜？其成因、症狀與診斷方式為何？",
+  "zh_terms": "圓錐角膜 症狀 診斷",
+  "en_terms": "keratoconus symptoms diagnosis",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-02",
+  "attempt": 1,
+  "query": "胃痛怎麼辦",
+  "ms": 1435,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "胃痛該如何處理與緩解？",
+  "zh_terms": "胃痛 緩解 處理",
+  "en_terms": "stomachache stomach pain relief",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-02",
+  "attempt": 2,
+  "query": "胃痛怎麼辦",
+  "ms": 2270,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "胃痛該如何處理或緩解？",
+  "zh_terms": "胃痛 緩解 處理",
+  "en_terms": "stomach ache gastric pain relief",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-02",
+  "attempt": 3,
+  "query": "胃痛怎麼辦",
+  "ms": 1672,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "胃痛該如何處理與緩解？",
+  "zh_terms": "胃痛 緩解 處理",
+  "en_terms": "stomachache stomach pain relief",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-03",
+  "attempt": 1,
+  "query": "我阿公最近頭暈又耳鳴",
+  "ms": 2200,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "長輩出現頭暈伴隨耳鳴的原因與檢查",
+  "zh_terms": "頭暈 耳鳴",
+  "en_terms": "dizziness tinnitus",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-03",
+  "attempt": 2,
+  "query": "我阿公最近頭暈又耳鳴",
+  "ms": 1464,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "長輩同時出現頭暈與耳鳴症狀的原因與衛教",
+  "zh_terms": "頭暈 耳鳴 老人",
+  "en_terms": "dizziness tinnitus elderly",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-03",
+  "attempt": 3,
+  "query": "我阿公最近頭暈又耳鳴",
+  "ms": 1480,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "長輩出現頭暈伴隨耳鳴的原因與應就醫評估項目有哪些？",
+  "zh_terms": "頭暈 耳鳴",
+  "en_terms": "dizziness tinnitus",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-04",
+  "attempt": 1,
+  "query": "長輩喘、腳腫是怎麼了",
+  "ms": 1614,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "長輩喘且腳腫的原因有哪些",
+  "zh_terms": "喘 腳腫 長輩",
+  "en_terms": "dyspnea leg edema elderly",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-04",
+  "attempt": 2,
+  "query": "長輩喘、腳腫是怎麼了",
+  "ms": 2185,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "長輩出現喘和腳腫症狀的原因是什麼",
+  "zh_terms": "長輩 喘 腳腫",
+  "en_terms": "elderly dyspnea leg edema",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-04",
+  "attempt": 3,
+  "query": "長輩喘、腳腫是怎麼了",
+  "ms": 1345,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "長輩出現喘和腳腫的原因可能有哪些",
+  "zh_terms": "長輩 喘 腳腫",
+  "en_terms": "elderly dyspnea leg edema",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-05",
+  "attempt": 1,
+  "query": "喝醋可以軟化血管嗎",
+  "ms": 1525,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "喝醋可以軟化血管嗎？",
+  "zh_terms": "喝醋 軟化血管 血管硬化",
+  "en_terms": "vinegar blood vessels atherosclerosis",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-05",
+  "attempt": 2,
+  "query": "喝醋可以軟化血管嗎",
+  "ms": 1756,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "喝醋可以軟化血管嗎？",
+  "zh_terms": "喝醋 軟化血管 血管硬化",
+  "en_terms": "vinegar blood vessels atherosclerosis",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-05",
+  "attempt": 3,
+  "query": "喝醋可以軟化血管嗎",
+  "ms": 1494,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "喝醋可以軟化血管嗎？",
+  "zh_terms": "喝醋 軟化血管 血管硬化",
+  "en_terms": "vinegar blood vessels atherosclerosis",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-06",
+  "attempt": 1,
+  "query": "感冒可以喝牛奶嗎",
+  "ms": 1365,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "感冒期間可以喝牛奶嗎？",
+  "zh_terms": "感冒 牛奶 飲食",
+  "en_terms": "common cold milk diet",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-06",
+  "attempt": 2,
+  "query": "感冒可以喝牛奶嗎",
+  "ms": 1884,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "感冒期間可以喝牛奶嗎",
+  "zh_terms": "感冒 牛奶",
+  "en_terms": "common cold milk",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-06",
+  "attempt": 3,
+  "query": "感冒可以喝牛奶嗎",
+  "ms": 2518,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "感冒期間可以喝牛奶嗎？",
+  "zh_terms": "感冒 牛奶 飲食",
+  "en_terms": "common cold milk diet",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-07",
+  "attempt": 1,
+  "query": "攝護腺肥大怎麼辦",
+  "ms": 2974,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "攝護腺肥大的治療與改善方式有哪些？",
+  "zh_terms": "攝護腺肥大 治療 改善",
+  "en_terms": "benign prostatic hyperplasia treatment",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-07",
+  "attempt": 2,
+  "query": "攝護腺肥大怎麼辦",
+  "ms": 1716,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "攝護腺肥大該如何治療與改善？",
+  "zh_terms": "攝護腺肥大 治療 改善",
+  "en_terms": "benign prostatic hyperplasia treatment management",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-07",
+  "attempt": 3,
+  "query": "攝護腺肥大怎麼辦",
+  "ms": 2204,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "攝護腺肥大該如何治療與改善？",
+  "zh_terms": "攝護腺肥大 治療 改善",
+  "en_terms": "benign prostatic hyperplasia treatment management",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-08",
+  "attempt": 1,
+  "query": "骨質疏鬆要吃什麼鈣片",
+  "ms": 1691,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "骨質疏鬆應該如何選擇鈣片補充",
+  "zh_terms": "骨質疏鬆 鈣片 補充",
+  "en_terms": "osteoporosis calcium supplement",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-08",
+  "attempt": 2,
+  "query": "骨質疏鬆要吃什麼鈣片",
+  "ms": 1327,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "骨質疏鬆應該如何選擇鈣片補充劑",
+  "zh_terms": "骨質疏鬆 鈣片 鈣質補充",
+  "en_terms": "osteoporosis calcium supplements",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-08",
+  "attempt": 3,
+  "query": "骨質疏鬆要吃什麼鈣片",
+  "ms": 1684,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "骨質疏鬆應該如何選擇鈣片補充",
+  "zh_terms": "骨質疏鬆 鈣片 鈣補充劑",
+  "en_terms": "osteoporosis calcium supplements",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-09",
+  "attempt": 1,
+  "query": "帶狀皰疹疫苗要打幾劑",
+  "ms": 1565,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "帶狀皰疹疫苗需要接種幾劑？",
+  "zh_terms": "帶狀皰疹 疫苗 劑次",
+  "en_terms": "herpes zoster vaccine doses",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-09",
+  "attempt": 2,
+  "query": "帶狀皰疹疫苗要打幾劑",
+  "ms": 3103,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "帶狀皰疹疫苗需要接種幾劑？",
+  "zh_terms": "帶狀皰疹疫苗 劑次 接種",
+  "en_terms": "herpes zoster vaccine doses vaccination",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-09",
+  "attempt": 3,
+  "query": "帶狀皰疹疫苗要打幾劑",
+  "ms": 1245,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "帶狀皰疹疫苗需要接種幾劑？",
+  "zh_terms": "帶狀皰疹 疫苗 劑次",
+  "en_terms": "herpes zoster vaccine doses",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-10",
+  "attempt": 1,
+  "query": "失眠可以吃褪黑激素嗎",
+  "ms": 2357,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "失眠可以吃褪黑激素改善嗎？",
+  "zh_terms": "失眠 褪黑激素",
+  "en_terms": "insomnia melatonin",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-10",
+  "attempt": 2,
+  "query": "失眠可以吃褪黑激素嗎",
+  "ms": 1230,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "失眠可以吃褪黑激素嗎？",
+  "zh_terms": "失眠 褪黑激素",
+  "en_terms": "insomnia melatonin",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ },
+ {
+  "id": "clean-10",
+  "attempt": 3,
+  "query": "失眠可以吃褪黑激素嗎",
+  "ms": 1490,
+  "error": null,
+  "raw_typo": [
+   "",
+   ""
+  ],
+  "typo_fix": null,
+  "kb_query": "失眠可以吃褪黑激素治療嗎？",
+  "zh_terms": "失眠 褪黑激素",
+  "en_terms": "insomnia melatonin",
+  "proposed": false,
+  "forbidden_hit": [],
+  "pass": true
+ }
+]

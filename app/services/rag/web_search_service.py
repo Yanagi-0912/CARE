@@ -122,7 +122,16 @@ class WebSearchService:
     async def answer(
         self, query: str, *, search_queries: RewrittenQuery | None = None
     ) -> str:
-        """*search_queries* 只決定「拿什麼去搜」；生成與知識回報一律用原句。"""
+        """*search_queries* 只決定「拿什麼去搜」；生成與知識回報一律用原句。
+
+        唯一的例外是改寫確認過的同音錯字（`typo_fix`，見 query_rewriter 的
+        `accept_typo_fix`）：那時原句本身就是錯的——2026-09-29「圓錐膠膜是什麼」
+        拿原句生成，模型只會回「找不到圓錐膠膜」。所以搜尋、重搜、生成、知識回報
+        都改用更正後的問句，並在答案開頭告訴使用者改了哪個詞。
+        """
+        typo_fix = search_queries.typo_fix if search_queries is not None else None
+        if typo_fix is not None:
+            query = query.replace(*typo_fix)
         try:
             web_docs = await self._fetch_web_docs(query, search_queries)
         except WebSearchUnavailable as exc:
@@ -161,7 +170,14 @@ class WebSearchService:
             )
             return rag_fail(RagFailCode.MODEL_REFUSE)
 
-        annotated = f"{web_answer_prefix()}\n\n{web_answer}"
+        # 更正說明放在前綴之後：卡片路徑只剝開頭的前綴（strip_rag_prefix），
+        # 說明要留在本文最上面，使用者才看得到被改了哪個詞、猜錯時才認得出來。
+        notice = (
+            t("rag.typo_corrected").format(wrong=typo_fix[0], right=typo_fix[1]) + "\n\n"
+            if typo_fix is not None
+            else ""
+        )
+        annotated = f"{web_answer_prefix()}\n\n{notice}{web_answer}"
         dead = await link_check
         result = self._append_sources(annotated, web_docs, dead)
         # 知識回報是給審核佇列的，使用者不在等它：主題把關要打一次模型、再寫

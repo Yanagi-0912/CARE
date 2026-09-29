@@ -992,3 +992,81 @@ async def test_short_snippet_survives_a_failed_scrape():
     result = await svc.answer("高血壓要注意什麼")
 
     assert url in result
+
+
+# --- 同音錯字修正（改寫確認過是同音字才會帶 typo_fix） ---
+
+_TYPO_QUERIES = RewrittenQuery(
+    kb_query="圓錐角膜是什麼？",
+    zh_terms="圓錐角膜",
+    typo_fix=("圓錐膠膜", "圓錐角膜"),
+)
+
+
+@pytest.mark.asyncio
+async def test_typo_fix_answers_the_corrected_question_and_says_so():
+    """2026-09-29 線上：「圓錐膠膜是什麼」拿原句生成，模型回「找不到圓錐膠膜」。"""
+    web = FakeWebClient(
+        hits_by_query={
+            "圓錐角膜 site:gov.tw": [_hit("圓錐角膜", "https://www.mohw.gov.tw/k")]
+        }
+    )
+    on_success = AsyncMock()
+    svc, gemini = _make_service(
+        answer_content="圓錐角膜是角膜逐漸變薄、向前突出的疾病 [1]。",
+        web_client=web,
+        on_web_fallback_success=on_success,
+    )
+    token = set_line_user_id("U_LINE")
+    try:
+        result = await svc.answer("圓錐膠膜是什麼", search_queries=_TYPO_QUERIES)
+    finally:
+        reset_line_user_id(token)
+
+    prompt = gemini.chat_model.ainvoke.await_args.args[0][0].content
+    assert "圓錐角膜是什麼" in prompt
+    assert "圓錐膠膜" not in prompt
+    # 前綴 → 更正說明 → 本文：說明放在前綴之後，卡片剝前綴（strip_rag_prefix）照常運作
+    prefix, notice, body = result.split("\n\n")[:3]
+    assert prefix == web_answer_prefix()
+    assert "圓錐膠膜" in notice and "圓錐角膜" in notice
+    assert body.startswith("圓錐角膜是角膜")
+    await svc.wait_for_background_tasks()
+    assert on_success.await_args.kwargs["question"] == "圓錐角膜是什麼"
+
+
+@pytest.mark.asyncio
+async def test_typo_fix_retry_searches_the_corrected_question():
+    web = FakeWebClient(
+        hits_by_query={
+            "圓錐角膜是什麼 site:gov.tw": [_hit("說明", "https://www.mohw.gov.tw/x")]
+        }
+    )
+    svc, _ = _make_service(answer_content="說明 [1]。", web_client=web)
+    await svc.answer("圓錐膠膜是什麼", search_queries=_TYPO_QUERIES)
+    assert "圓錐角膜是什麼 site:gov.tw" in web.search_calls
+    assert not any("圓錐膠膜" in call for call in web.search_calls)
+
+
+@pytest.mark.asyncio
+async def test_typo_fix_is_not_announced_when_model_refuses():
+    web = FakeWebClient(
+        hits_by_query={
+            "圓錐角膜 site:gov.tw": [_hit("圓錐角膜", "https://www.mohw.gov.tw/k")]
+        }
+    )
+    svc, _ = _make_service(
+        answer_content="[NO_ANSWER] 根據公開網路資料，找不到相關資料。", web_client=web
+    )
+    result = await svc.answer("圓錐膠膜是什麼", search_queries=_TYPO_QUERIES)
+    assert result == rag_fail(RagFailCode.MODEL_REFUSE)
+
+
+@pytest.mark.parametrize("language", SUPPORTED_LANGUAGES)
+def test_typo_notice_is_translated_in_every_language(language):
+    notice = t("rag.typo_corrected", language=language).format(wrong="甲甲", right="乙乙")
+    assert "甲甲" in notice and "乙乙" in notice
+    if language != "zh-TW":  # 缺翻譯時 t() 會退回華語，不能靠 format 成功就算有翻
+        assert notice != t("rag.typo_corrected", language="zh-TW").format(
+            wrong="甲甲", right="乙乙"
+        )

@@ -1,0 +1,20 @@
+{"id": "typo-01", "query": "圓錐膠膜是什麼", "expect": "圓錐角膜", "note": "2026-09-29 線上實例；膠 jiāo／角 jiǎo"}
+{"id": "typo-02", "query": "設護腺肥大怎麼辦", "expect": "攝護腺"}
+{"id": "typo-03", "query": "白內章要開刀嗎", "expect": "白內障"}
+{"id": "typo-04", "query": "骨質輸送要吃什麼鈣片", "expect": "骨質疏鬆", "note": "兩個字都錯"}
+{"id": "typo-05", "query": "帕金森氏證會遺傳嗎", "expect": "帕金森氏症"}
+{"id": "typo-06", "query": "胃食道逆留要注意什麼", "expect": "胃食道逆流"}
+{"id": "typo-07", "query": "清光眼會失明嗎", "expect": "青光眼"}
+{"id": "typo-08", "query": "高血鴨的藥可以自己停嗎", "expect": "高血壓"}
+{"id": "typo-09", "query": "失志症初期有什麼症狀", "expect": "失智症", "note": "失志本身是詞，但放在「症」前面是錯字"}
+{"id": "typo-10", "query": "痛瘋發作的時候怎麼辦", "expect": "痛風"}
+{"id": "clean-01", "query": "圓錐角膜是什麼", "forbid": []}
+{"id": "clean-02", "query": "胃痛怎麼辦", "forbid": ["胃癌", "胃潰瘍"], "note": "只差一字就能改成病名"}
+{"id": "clean-03", "query": "我阿公最近頭暈又耳鳴", "forbid": ["梅尼爾"], "note": "規則 1 的原始例子"}
+{"id": "clean-04", "query": "長輩喘、腳腫是怎麼了", "forbid": ["心臟衰竭", "心衰竭"], "note": "規則 1 量到的失誤"}
+{"id": "clean-05", "query": "喝醋可以軟化血管嗎", "forbid": [], "note": "規則 2：查證主體要留著"}
+{"id": "clean-06", "query": "感冒可以喝牛奶嗎", "forbid": []}
+{"id": "clean-07", "query": "攝護腺肥大怎麼辦", "forbid": []}
+{"id": "clean-08", "query": "骨質疏鬆要吃什麼鈣片", "forbid": []}
+{"id": "clean-09", "query": "帶狀皰疹疫苗要打幾劑", "forbid": []}
+{"id": "clean-10", "query": "失眠可以吃褪黑激素嗎", "forbid": []}

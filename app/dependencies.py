@@ -125,7 +125,10 @@ from app.services.line_messaging.rich_menu_service import RichMenuService
 from app.services.line_messaging.official_account import OfficialAccountService
 from app.services.line_messaging.share_card import ShareCardService
 from app.services.line_messaging.token_manager import LineTokenManager
-from app.services.medical.facility_name_index import configure_facility_names
+from app.services.medical.facility_name_index import (
+    configure_facility_names,
+    indexable_pharmacy_names,
+)
 from app.services.medical.medical_service import MedicalService, medical_service
 from app.services.medical.symptom_classification import (
     SymptomDepartmentService,
@@ -474,7 +477,13 @@ async def preload_facility_name_index() -> None:
     if not names:
         logger.warning("[Startup] 院所名稱索引為空，類型意圖判定將降級")
         return
-    configure_facility_names(names)
+    # 藥局名稱在另一個 collection。載不到只影響「XX藥局」的專名判定，院所名稱照常生效。
+    try:
+        pharmacy_names = await medical_service.pharmacy_repository.list_all_names()
+    except Exception:
+        logger.exception("[Startup] 載入藥局名稱失敗，名稱索引只含醫院與診所")
+        pharmacy_names = set()
+    configure_facility_names(names | indexable_pharmacy_names(pharmacy_names))
 
 
 configure_official_site_tool(

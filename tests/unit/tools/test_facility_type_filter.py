@@ -372,16 +372,45 @@ async def test_department_unresolved_facility_type_reports_raw_user_wording(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("facility_type", ["藥局", "藥房", "藥師自營"])
+async def test_department_with_pharmacy_type_ignores_department(
+    inject_medical_service, facility_type
+):
+    """藥局沒有科別資料：科別＋藥局類型時忽略科別，改走不分科的搜尋。"""
+    result = NearbySearchResult(
+        facilities=[_facility("健安藥局")],
+        reached_meters=5_000,
+        satisfied=True,
+        facility_type_match=FacilityTypeMatch(category="藥局", requested=facility_type),
+    )
+    stub = inject_medical_service(_StubMedicalService(hospitals_result=result))
+
+    payload = await medical_tools.find_nearby_facilities_by_department.ainvoke(
+        {
+            "lat": 25.0,
+            "lng": 121.0,
+            "departments": ["家醫科"],
+            "facility_type": facility_type,
+        }
+    )
+
+    assert stub.department_calls == []
+    assert stub.hospitals_calls == [{"open_now": False, "facility_type": facility_type}]
+    assert "健安藥局" in payload
+    assert t("location.type.title").format(type="藥局") in payload
+    assert "家醫科" not in payload
+
+
+@pytest.mark.asyncio
 async def test_department_pharmacy_empty_result_uses_dedicated_message(
     inject_medical_service,
 ):
-    """3.4：科別＋藥局類型同時查無結果時，仍要用藥局專屬文案而非科別查無文案。"""
-    result = DepartmentSearchResult(
-        matches=(DepartmentMatch(canonical="家醫科", requested="家醫科"),),
+    """科別＋藥局類型查無結果時，用藥局專屬文案而非科別查無文案。"""
+    result = NearbySearchResult(
         facilities=[],
         facility_type_match=FacilityTypeMatch(category="藥局", requested="藥局"),
     )
-    inject_medical_service(_StubMedicalService(department_result=result))
+    inject_medical_service(_StubMedicalService(hospitals_result=result))
 
     payload = await medical_tools.find_nearby_facilities_by_department.ainvoke(
         {
@@ -393,6 +422,35 @@ async def test_department_pharmacy_empty_result_uses_dedicated_message(
     )
 
     assert payload == t("location.type.pharmacy_none").format(radius_km="50")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("facility_type", ["大醫院", "診所", None])
+async def test_department_with_non_pharmacy_type_still_searches_by_department(
+    inject_medical_service, facility_type
+):
+    """對照組：類型不是藥局時，科別搜尋照舊。"""
+    result = DepartmentSearchResult(
+        matches=(DepartmentMatch(canonical="家醫科", requested="家醫科"),),
+        facilities=[_facility(departments=["家醫科"])],
+        reached_meters=5_000,
+        satisfied=True,
+    )
+    stub = inject_medical_service(_StubMedicalService(department_result=result))
+
+    await medical_tools.find_nearby_facilities_by_department.ainvoke(
+        {
+            "lat": 25.0,
+            "lng": 121.0,
+            "departments": ["家醫科"],
+            "facility_type": facility_type,
+        }
+    )
+
+    assert stub.hospitals_calls == []
+    assert stub.department_calls == [
+        {"departments": ["家醫科"], "facility_type": facility_type}
+    ]
 
 
 @pytest.mark.asyncio

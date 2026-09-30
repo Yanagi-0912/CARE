@@ -77,3 +77,13 @@ def test_safety_alerts_collection_getter(monkeypatch):
     MongoDBManager.get_safety_alerts_collection()
 
     fake_db.__getitem__.assert_any_call("safety_alerts")
+
+
+def test_pharmacy_collection_getter(monkeypatch):
+    """藥局不在 medicalFacilities，另有一個 collection。"""
+    fake_db = MagicMock()
+    monkeypatch.setattr(MongoDBManager, "get_database", classmethod(lambda cls: fake_db))
+
+    MongoDBManager.get_pharmacy_collection()
+
+    fake_db.__getitem__.assert_any_call("medical_facilities_pharmacy")

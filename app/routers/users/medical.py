@@ -34,6 +34,7 @@ from app.services.medical.medical_service import (
     MedicalService,
     NearbySearchResult,
 )
+from app.services.medical.facility_type_matcher import is_pharmacy_type
 from app.services.medical.search_summary import pharmacy_data_gap_meters
 
 logger = logging.getLogger(__name__)
@@ -302,11 +303,17 @@ async def get_nearby_hospitals(
         facility_type,
     )
 
+    # 藥局沒有科別資料，帶著科別去查必定零筆；類型是藥局時忽略科別，
+    # 與 LINE 的 find_nearby_facilities_by_department 同一條規則。
+    is_department_search = bool((department or "").strip()) and not is_pharmacy_type(
+        facility_type
+    )
+
     try:
         # 有帶科別就走科別搜尋——service 層的兩支方法共用同一套階梯與類型過濾，
         # 差別只在多一層科別解析，因此這裡只需要選對入口，不必自己組查詢條件。
         # service 可一次查多科，但 /nearby 的參數與回傳格式都還是單科，前端不必跟著改。
-        if (department or "").strip():
+        if is_department_search:
             result: NearbySearchResult = (
                 await service.find_nearby_facilities_by_department(
                     lat=lat,
@@ -336,7 +343,6 @@ async def get_nearby_hospitals(
     # 使用者講了一個系統對不上的詞，屬於正常的查詢結果之一。用錯誤碼會逼前端把
     # 它塞進錯誤橫幅，跟「Atlas 掛了」混為一談；回 200 加上 unresolved_* 欄位，
     # 前端才能在同一個結果區裡好好說明「我不確定你說的是哪一科」。
-    is_department_search = bool((department or "").strip())
     unresolved_department = (
         department
         if is_department_search and not getattr(result, "matches", ())

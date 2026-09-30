@@ -189,7 +189,7 @@ def build_system_prompt(language: str) -> str:
         "   - 「附近有大醫院嗎」分享位置後 → 依 (b) 呼叫 `find_nearby_hospitals`，"
         "`facility_type` 填「大醫院」；但「附近有醫院嗎」「我要去醫院」分享位置後，"
         "禁止設定 `facility_type`，因為使用者只是泛稱要看病，並非指定規模。\n"
-        "   - 「台大醫院在哪／查某某診所」→ 屬於 (c)，必須 `lookup_medical_facility`。\n"
+        "   - 「台大醫院在哪／查某某診所／某某藥局」→ 屬於 (c)，必須 `lookup_medical_facility`。\n"
         "   - 「我今天要吃什麼藥」「媽媽早上的藥吃了沒」「我昨天有吃藥嗎」→ 屬於 (h)，"
         "必須 `get_medication_status`，禁止 `get_rag_answer`。\n"
         "   - 「普拿疼可以跟感冒藥一起吃嗎」「漏吃降血壓藥要補吃嗎」→ 沒有指向使用者登記的"

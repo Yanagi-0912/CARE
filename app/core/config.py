@@ -280,6 +280,14 @@ class Settings:
         "RAG_WEB_FALLBACK_ENABLED", "true"
     ).lower() in ("1", "true", "yes", "on")
 
+    # 複合問題拆題（一則訊息問兩件事時，逐子問題檢索與分級，答得出的部分照答）。
+    # 預設關閉：開啟後判為複合問題的訊息多一次拆題 LLM 呼叫（p50 約 1.5–2 秒），
+    # 每個子問題各自一次檢索、精排、分級。只處理 zh-TW。
+    # 設計與離線實驗數據見 openspec/changes/compound-question-decomposition/design.md。
+    RAG_COMPOUND_DECOMPOSE_ENABLED: bool = os.getenv(
+        "RAG_COMPOUND_DECOMPOSE_ENABLED", "false"
+    ).lower() in ("1", "true", "yes", "on")
+
     # 整條 RAG 管線的總逾時（秒）。0＝不設限。到點回 [RAG_ERR:TIMEOUT]，agent
     # 請使用者稍後再問。45 秒＝LINE loading 動畫上限 60 秒，扣掉 RAG 以外的段落；
     # 實測最慢一題 18.7 秒，正常題目不會被切。來由見

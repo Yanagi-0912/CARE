@@ -1,5 +1,7 @@
 from langchain_core.tools import tool
 
+from app.core.user_message import get_request_user_message
+
 _rag_answer_service = None
 
 
@@ -16,4 +18,7 @@ async def get_rag_answer(query: str) -> str:
     """
     if _rag_answer_service is None:
         return "RAG 服務未初始化，請稍後再試。"
-    return await _rag_answer_service.answer(query)
+    # 原文只由這支工具明確傳入：複合問題拆題要看使用者原句（見 app/core/user_message.py）
+    return await _rag_answer_service.answer(
+        query, original_message=get_request_user_message()
+    )

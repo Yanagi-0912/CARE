@@ -74,6 +74,26 @@ def test_keyword_hit_does_not_need_the_classifier():
     assert classifier.calls == []
 
 
+def test_facility_request_never_reaches_the_classifier():
+    """「幫我找附近診所」：分類器給 0.44，曾讓回覆多一顆「我迷路了」（2026-09-30）。"""
+    classifier = FakeClassifier(probability=0.95)
+
+    detection = LostIntentDetector(classifier).detect("幫我找附近診所")
+
+    assert detection.intent is None
+    assert not detection.needs_confirmation
+    assert classifier.calls == []
+
+
+def test_lost_near_a_facility_still_reaches_the_classifier():
+    classifier = FakeClassifier(probability=0.95)
+
+    detection = LostIntentDetector(classifier).detect("這裡是哪裡附近只有一間藥局")
+
+    assert detection.intent == "lost"
+    assert classifier.calls == ["這裡是哪裡附近只有一間藥局"]
+
+
 @pytest.mark.parametrize(
     ("probability", "intent", "confirm"),
     [

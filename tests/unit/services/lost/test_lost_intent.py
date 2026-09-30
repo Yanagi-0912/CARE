@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.lost.lost_intent import detect_lost_intent
+from app.services.lost.lost_intent import detect_lost_intent, is_place_search
 
 
 @pytest.mark.parametrize(
@@ -93,3 +93,54 @@ def test_elder_wants_family_to_have_their_location(text):
 )
 def test_other_sentences_are_left_to_the_agent(text):
     assert detect_lost_intent(text) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # 2026-09-30 實際案例：這句讓回覆下方多出「我迷路了，通知家人」
+        "幫我找附近診所",
+        "幫我找附近醫院",
+        "幫我找 附近 的 藥局。",
+        "幫我找醫院",
+        "請問附近有藥局嗎？",
+        "這附近有沒有牙醫",
+        "附近哪裡有耳鼻喉科",
+        "可以幫我找附近的診所嗎",
+        "幫我搜尋附近診所",
+        "幫忙找一下附近的醫院",
+        "幫我找離我最近的診所，謝謝",
+        "幫我找現在有開的藥局",
+        "幫我找附近的診所或藥局",
+        "最近的醫院在哪",
+        "我想掛眼科",
+        "我要看腸胃科",
+    ],
+)
+def test_whole_sentence_asking_for_a_nearby_facility(text):
+    assert is_place_search(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # 句子裡有院所，但人是走丟的：必須照舊交給關鍵字與分類器
+        "我在醫院附近迷路了",
+        "幫我找附近診所我迷路了",
+        "這裡是哪裡附近只有一間藥局",
+        "我在藥局前面不知道怎麼回家",
+        "診所附近我不認識路",
+        "找不到路去診所",
+        "醫院在哪我找不到路",
+        # 找的不是院所
+        "幫我找路",
+        "幫我找家人",
+        "幫我找回家的路",
+        "幫我找我女兒她在醫院",
+        "幫我找附近",
+        "幫我找最近的派出所",
+        "",
+    ],
+)
+def test_anything_beyond_a_facility_request_is_not_a_place_search(text):
+    assert not is_place_search(text)

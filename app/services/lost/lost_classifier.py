@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from app.services.guardrail.local import LocalGuardrailClassifier
-from app.services.lost.lost_intent import LostIntent, detect_lost_intent
+from app.services.lost.lost_intent import LostIntent, detect_lost_intent, is_place_search
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,9 @@ class LostIntentDetector:
         intent = detect_lost_intent(text)
         if intent is not None:
             return LostDetection(intent=intent, source="keyword")
+        # 整句只是在找附近院所的不問分類器，理由與實測見 lost_intent 的 _PLACE_SEARCH。
+        if is_place_search(text):
+            return NOT_LOST
         if self._classifier is None or not (text or "").strip():
             return NOT_LOST
         try:

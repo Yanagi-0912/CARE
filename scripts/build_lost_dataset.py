@@ -22,7 +22,7 @@
   python scripts/build_lost_dataset.py --per-bucket 3 --per-bucket-other 2 --out /tmp/lost.jsonl
   python scripts/build_lost_dataset.py
   python scripts/build_guardrail_model.py --dataset evals/lost/dataset.jsonl \\
-      --out resources/lost_model.json --max-miss-rate 0.01 --max-false-alarm-rate 0.002
+      --out resources/lost_model.json --max-miss-rate 0.005 --max-false-alarm-rate 0.002
 """
 
 from __future__ import annotations

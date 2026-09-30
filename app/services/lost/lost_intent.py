@@ -23,6 +23,11 @@ import re
 import unicodedata
 from typing import Literal, Optional
 
+from app.services.medical.department_matcher import (
+    CANONICAL_DEPARTMENTS,
+    DEPARTMENT_ALIASES,
+)
+
 LostIntent = Literal["lost", "share"]
 
 # 比對前拿掉的字元：空白與常見的中英文標點（同 share_intent）。
@@ -103,9 +108,58 @@ _FOREIGN_LOST = re.compile(
 # 「迷路了怎麼辦」是真的在求救。
 _HOW_TO_RE = re.compile(r"怎麼用|怎樣|如何|怎麼傳|怎麼分享|怎麼設定|教我|功能|可不可以用")
 
+# ── 找院所：整句就是「幫我找附近診所」──────────────────────────────────
+# 這類句子不交給走失分類器。2026-09-30「幫我找附近診所」被分類器給了 0.44，落在
+# 沒把握的區間，回覆下方多出一顆「我迷路了，通知家人」；「幫我找附近醫院」是 0.67，
+# 離直接通知家人的 0.70 只差一點。用模板量分類器，這種短句有兩成會附按鈕。
+#
+# 為什麼用規則擋、不補資料重訓：補模板短句當負例重訓了兩版，短句是壓下來了，
+# holdout 的走失正例卻從「直接通報」掉到「只附按鈕」：
+#   補六語 450 筆　　　短句附按鈕 19/90 → 4/90，正例直接通報 505/536 → 492
+#   只補中英印尼 270 筆　短句附按鈕 15/54 → 2/54，正例直接通報 505/536 → 479
+# 「找附近的院所」與「我在某某附近、找不到路」對模型來說太近，壓低前者就連帶壓低
+# 後者。真的走丟的人被降級成只附按鈕，比多一顆按鈕嚴重。這條規則在走失資料集
+# 20,036 筆上一筆都沒命中（正例 2,695 筆全數照舊交給分類器），模板短句附按鈕
+# 30/150 → 1/150。只管中文；英文、印尼文的短句仍有三成多會附按鈕。
+#
+# 要求整句從頭到尾只有「找＋附近＋院所類別」，多一個字就不算、照舊交給分類器：
+# 「我在醫院附近迷路了」「這裡是哪裡附近只有一間藥局」都比對不到。
+_PLACE_LEAD = r"(?:請問|請|麻煩|不好意思|你好|哈囉|那個|可不可以|可以|能不能)*"
+_PLACE_FIND = (
+    r"(?:(?:幫我|幫忙|替我|給我)?(?:找|查|搜尋|搜|看|推薦)(?:一下|看看)?"
+    r"|我?(?:想要|想|要)(?:找|去|看|掛))?"
+)
+_PLACE_NEAR = (
+    r"(?:這|我家|我這|離我|離這裡)?(?:附近|最近|周邊|周圍|鄰近)?的?"
+    r"(?:現在)?(?:還)?(?:有開)?的?(?:有沒有|哪裡有|哪邊有|有哪些|有什麼|有)?"
+)
+# 院所類別＝院所種類＋科別。科別沿用找院所工具認得的說法（department_matcher），
+# 只取「…科」結尾的：別名表裡的「牙齒」「生產」「洗腎」是身體部位與處置，不是去處。
+_PLACE_KINDS = (
+    "診所", "小診所", "醫院", "大醫院", "醫療院所", "院所", "藥局", "藥房", "健保藥局",
+    "急診", "急診室", "衛生所", "中醫", "西醫", "牙醫", "洗腎中心",
+)
+_PLACE_TERMS = sorted(
+    {
+        *_PLACE_KINDS,
+        *(name for name in (*CANONICAL_DEPARTMENTS, *DEPARTMENT_ALIASES) if name.endswith("科")),
+    },
+    key=lambda term: (-len(term), term),
+)
+_PLACE = rf"(?:{'|'.join(map(re.escape, _PLACE_TERMS))})(?:診所|醫院|門診)?"
+_PLACE_TAIL = r"(?:嗎|呢|好嗎|可以嗎|謝謝|感謝|拜託|有哪些|有嗎|在哪裡|在哪)*$"
+_PLACE_SEARCH = re.compile(
+    rf"^{_PLACE_LEAD}{_PLACE_FIND}{_PLACE_NEAR}{_PLACE}(?:(?:或是|或|和|跟|還有){_PLACE})*{_PLACE_TAIL}"
+)
+
 
 def _normalize(text: str) -> str:
     return _NOISE_RE.sub("", unicodedata.normalize("NFKC", text).lower())
+
+
+def is_place_search(text: str) -> bool:
+    """整句就是在找附近的院所（「幫我找附近診所」「附近有藥局嗎」）。"""
+    return bool(text) and _PLACE_SEARCH.match(_normalize(text)) is not None
 
 
 def detect_lost_intent(text: str) -> Optional[LostIntent]:

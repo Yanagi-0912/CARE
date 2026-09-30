@@ -133,6 +133,46 @@ _CJK_RUN_RE = re.compile(r"[一-鿿぀-ヿ]+")
 # 只會把半個藥證庫拉進候選，與 `_MIN_CONTAINMENT_LENGTH` 同一個道理。
 _MIN_VARIANT_LENGTH = 3
 
+# 分段比對（`_match_by_segments`）用的切分規則。醫院藥袋把一顆藥印成
+# 「英文品牌 含量 (學名) 中文品名」，還常夾著顏色、管制分級、廠商：
+# 「Nexium 40mg棕紅(Esomeprazole) 耐適恩錠 Esomeprazole」。
+#
+# 含量：數字加單位，連同「/tab」「/puff」這類每單位的分母一起拿掉。含量
+# 單獨拿去比對時會命中上千張藥證（「40mg」556 張、「500mg」1,293 張），
+# 不帶任何品項資訊。前面接著字母的數字不算（「B12」是品名的一部分）。
+_STRENGTH_RE = re.compile(
+    r"(?<![A-Z])(?P<value>\d+(?:\.\d+)?)\s*"
+    r"(?P<unit>MCG|ΜG|UG|MG|G|ML|IU|%|微公克|微克|毫克|公絲|公克|毫升|公撮)?"
+    r"(?:\s*/\s*[A-Z一-鿿]+)?"
+)
+# 換算成毫克的倍率，只收質量單位。含量只拿來否決釘選（見
+# `_strengths_conflict`），所以換算不了的單位（ML、IU、%）直接不參與。
+_MG_PER_UNIT = {
+    "MG": 1.0, "毫克": 1.0, "公絲": 1.0,
+    "MCG": 0.001, "ΜG": 0.001, "UG": 0.001, "微克": 0.001, "微公克": 0.001,
+    "G": 1000.0, "公克": 1000.0,
+}
+# 分隔符號：空白、括號、標點、商標符號與各式引號（廠商名常用〝〞括起來）。
+# 不在這裡、也不是拉丁字母數字或中日文的字元，一律讓分段比對整個放棄——
+# 只有認得的雜訊才能丟，見 `_segments`。
+_SEGMENT_SEPARATOR_RE = re.compile(
+    r"[\s()（）\[\]【】{}<>《》,，、;；:：/*+&.。!！?？#=_~·・®™'\"“”‘’〝〞「」『』]+"
+)
+_SEGMENT_RUN_RE = re.compile(r"[A-Z0-9-]+|[一-鿿぀-ヿ]+")
+# 英文的劑型與劑量單位字（「0.25 mg/tab」「SALONPAS ... PATCH」）。中文劑型
+# 另外從藥證庫的「劑型」欄建（見 `_form_keys`）。劑型字在全庫最不具鑑別力
+# （「TAB」是 20,397 張藥證的子字串），它代表「這是一種錠劑」，不代表是
+# 哪一顆藥，因此不能投票——拿去投票只會讓英文品名碰巧寫 TABLETS 的藥證勝過
+# 寫 CAPLETS 或只有中文品名的同名藥。
+_DOSAGE_FORM_WORDS = frozenset(
+    {
+        "TAB", "TABS", "TABLET", "TABLETS", "CAP", "CAPS", "CAPSULE", "CAPSULES",
+        "CAPLET", "CAPLETS", "SYRUP", "INJ", "INJECTION", "SOLUTION", "SUSPENSION",
+        "CREAM", "OINTMENT", "GEL", "LOTION", "PATCH", "DROPS", "POWDER", "GRANULES",
+        "SPRAY", "SUPPS", "FILM-COATED",
+    }
+)
+
 
 @dataclass(frozen=True)
 class DrugCatalogEntry:
@@ -246,6 +286,34 @@ def normalize_drug_name(name: str) -> str:
     return normalized.upper()
 
 
+def _strengths_mg(text: str) -> frozenset[float]:
+    """字串裡帶質量單位的含量，換算成毫克。沒有單位的數字不算。"""
+    normalized = unicodedata.normalize("NFKC", text).upper()
+    values = set()
+    for found in _STRENGTH_RE.finditer(normalized):
+        factor = _MG_PER_UNIT.get(found.group("unit") or "")
+        if factor is not None:
+            values.add(round(float(found.group("value")) * factor, 6))
+    return frozenset(values)
+
+
+def _strengths_conflict(printed_mg: frozenset[float], entry: "DrugCatalogEntry") -> bool:
+    """藥袋與藥證品名都寫了質量含量、卻沒有任何一個相同。一邊沒寫就不算衝突。"""
+    registered_mg = _strengths_mg(f"{entry.name_zh} {entry.name_en}")
+    return bool(printed_mg and registered_mg and not printed_mg & registered_mg)
+
+
+@dataclass(frozen=True)
+class _Segmentation:
+    """`DrugCatalogService._segments` 的結果。"""
+
+    segments: list[str]
+    # 丟掉了帶字母或中文的短片段。它們多半是顏色、管制分級或廠商，但也可能
+    # 是版本字（「XL」「CR」「二號」），無從分辨，因此有丟時不釘證號。
+    dropped_words: bool
+    strengths_mg: frozenset[float]
+
+
 def _has_identifying_content(key: str) -> bool:
     """鍵是否至少含有一個英數字或中日韓文字。
 
@@ -328,6 +396,24 @@ class DrugCatalogService:
                 self._single_char_keys.add(key)
             else:
                 self._by_prefix.setdefault(key[:2], []).append(key)
+
+        # 學名鍵：全庫主成分的正規化字串，外加第一個字（「ESOMEPRAZOLE
+        # MAGNESIUM TRIHYDRATE」的「ESOMEPRAZOLE」——藥袋只印鹽基前的學名）。
+        # 分段比對用它認出哪一段是學名，見 `_match_by_segments`。
+        self._ingredient_keys: set[str] = set()
+        # 劑型鍵：「劑型」欄的值，外加去掉字尾「劑」的寫法（藥袋印「膠囊」、
+        # 藥證寫「膠囊劑」）。同樣只給分段比對用。
+        self._form_keys: set[str] = set(_DOSAGE_FORM_WORDS)
+        for entry in self._entries:
+            for ingredient in entry.ingredients:
+                for form in (ingredient, ingredient.split(" ", 1)[0]):
+                    key = normalize_drug_name(form)
+                    if len(key) >= _MIN_VARIANT_LENGTH:
+                        self._ingredient_keys.add(key)
+            form_key = normalize_drug_name(entry.dosage_form)
+            if form_key:
+                self._form_keys.add(form_key)
+                self._form_keys.add(form_key.removesuffix("劑"))
 
     def entry_by_license_number(self, license_number: str) -> Optional[DrugCatalogEntry]:
         """依許可證字號取條目。查無回 None。
@@ -442,9 +528,13 @@ class DrugCatalogService:
                 return alternate
 
         split = self._match_by_script_split(name)
+        if split is not None:
+            return split
+
+        segmented = self._match_by_segments(name)
         # 變體全部落空時回到主鍵的結果（可能是模糊命中的「藥名已驗證、
         # 身分不明」）——變體幫不上忙不該讓原本通過的藥名驗證消失。
-        return split if split is not None else primary
+        return segmented if segmented is not None else primary
 
     def _query_variants(self, name: str) -> list[str]:
         """主鍵定不出證號時要再試的衍生查詢，依序回傳、不含主鍵本身。
@@ -514,6 +604,130 @@ class DrugCatalogService:
             score=min(latin_match.score, cjk_match.score),
             candidates=[entry],
         )
+
+    def _segments(self, name: str) -> Optional[_Segmentation]:
+        """把藥袋上的一整串藥名切成可以各自比對的段，已正規化、去重、保序。
+
+        只丟得掉三種認得的雜訊：含量、分隔符號，以及短於
+        `_MIN_VARIANT_LENGTH` 的片段——顏色（「棕紅」）、管制分級（「管4」
+        「關」）、兩字的廠商名（「永信」）都落在最後一種，它們不在品名鍵裡，
+        留著只會讓整串比不到。其他認不得的字元（別種文字、私人使用區）回傳
+        None 讓分段比對整個放棄：把它們丟掉等於替一個不存在的藥名挑出剛好
+        登記過的片段去問，正是模組文件「證據力」那段要擋的事。
+        """
+        text = unicodedata.normalize("NFKC", name).upper()
+        strengths = _strengths_mg(text)
+        text = _STRENGTH_RE.sub(" ", text)
+        segments: list[str] = []
+        dropped_words = False
+        for piece in _SEGMENT_SEPARATOR_RE.split(text):
+            runs = _SEGMENT_RUN_RE.findall(piece)
+            if "".join(runs) != piece:
+                return None
+            for run in runs:
+                key = normalize_drug_name(run)
+                if key.replace("-", "").isdigit():
+                    continue
+                if len(key) < _MIN_VARIANT_LENGTH:
+                    dropped_words = True
+                elif key not in segments:
+                    segments.append(key)
+        return _Segmentation(segments, dropped_words, strengths)
+
+    def _match_by_segments(self, name: str) -> Optional[DrugCatalogMatch]:
+        """藥袋把品牌、含量、學名、中文品名印成一串時，逐段比對再合併。
+
+        `_match_by_script_split` 把英文段全部接起來、中文段全部接起來各問
+        一次，只要藥袋多印了含量、顏色或學名，接起來的字串就不存在於任何
+        品名裡。線上 25 筆藥袋辨識結果有 8 筆因此整串比不到（2026-09-30），
+        拆開後 8 筆都通過：2 筆直接釘證號（都有官方照片），3 筆縮到 2～3 個
+        候選且其中有官方照片。
+
+        安全量測（2026-09-30）：從全庫抽 1,908 張有中英品名的口服錠劑／
+        膠囊藥證，各造五種藥袋寫法（品牌＋含量＋學名＋中文、加管制標記、
+        加顏色等），這一層改變結果的 8,833 筆裡釘錯 0 筆、正確釘選 1,493
+        筆、候選含正解 7,319 筆、候選不含正解 21 筆（藥證品名帶「(R)」
+        這類正規化沒處理的字，只給候選不釘證號）。`looks_drug_related` 在
+        23,037 句聊天訊息上的判定一句都沒變。
+
+        三條規則，前兩條守住既有的證據標準：
+
+        1. **每一段都必須自己通過驗證**（完全比對或 forward 含容命中，帶
+           候選）。任何一段比不到就整個放棄——模型讀錯品牌時，不能靠同一串
+           裡讀對的學名或劑型字眼過關；聊天訊息的探測字串也因此不會被一個
+           碰巧是藥名的片段誤判成藥名。模糊命中不算：它不證明片段是真實品名。
+        2. **只有某一段自己就唯一比到一張藥證時才釘證號**，而且各段投票的
+           結果也只剩那一張。這一層不產生新的釘選能力，只是把能唯一定位的
+           那一段從雜訊裡取出來。另外三種情況一律不釘、只給候選：丟掉過
+           帶字的短片段（可能是「XL」「二號」這類版本字）、藥袋含量跟藥證
+           品名上的含量對不上、學名段跟藥證主成分對不上。含量刻意只用來否決、
+           不拿來收斂：模型把 40 讀成 20 時，收斂會釘到另一個劑量的藥並貼上
+           它的照片；同名多張交給使用者拿實物比對照片挑選。
+        3. **候選是得票最多的藥證**。劑型字（「膜衣錠」「TABLETS」）不投票，
+           它只說明是錠劑，不說明是哪一顆；整串只剩劑型字時不算驗證通過，
+           與 reverse-only 命中不建立驗證結果同一條理由。學名段也不投票：
+           品名不一定印學名（「NEXIUM TABLETS 40MG」沒有 ESOMEPRAZOLE），用它
+           投票會讓品名剛好帶學名的別家學名藥勝過原廠藥。整串除了劑型只有
+           學名時才讓學名投票，結果等同直接拿學名去問。
+        """
+        segmentation = self._segments(name)
+        if segmentation is None:
+            return None
+        segments = segmentation.segments
+        if not segments or segments == [normalize_drug_name(name)]:
+            return None
+
+        results: list[tuple[str, DrugCatalogMatch]] = []
+        for segment in segments:
+            result = self._match_key(segment)
+            if result is None or not result.candidates:
+                return None
+            results.append((segment, result))
+
+        named = [(s, r) for s, r in results if s not in self._form_keys]
+        brand = [(s, r) for s, r in named if s not in self._ingredient_keys]
+        generic = [s for s, _ in named if s in self._ingredient_keys]
+        voters = brand or named
+        if not voters:
+            return None
+
+        votes: dict[str, int] = {}
+        entries: dict[str, DrugCatalogEntry] = {}
+        for _, result in voters:
+            for entry in result.candidates:
+                votes[entry.license_number] = votes.get(entry.license_number, 0) + 1
+                entries.setdefault(entry.license_number, entry)
+        top = max(votes.values())
+        best = [entries[number] for number, count in votes.items() if count == top]
+        score = min(result.score for _, result in voters)
+
+        if len(best) == 1 and not segmentation.dropped_words:
+            (entry,) = best
+            pinned_by_a_segment = any(r.license_number == entry.license_number for _, r in voters)
+            if (
+                pinned_by_a_segment
+                and self._agrees_with_generics(entry, generic)
+                and not _strengths_conflict(segmentation.strengths_mg, entry)
+            ):
+                return DrugCatalogMatch(
+                    license_number=entry.license_number,
+                    name_zh=entry.name_zh,
+                    name_en=entry.name_en,
+                    score=score,
+                    candidates=best,
+                )
+        return DrugCatalogMatch(
+            license_number=None, name_zh="", name_en="", score=score, candidates=best
+        )
+
+    @staticmethod
+    def _agrees_with_generics(entry: DrugCatalogEntry, generic_segments: list[str]) -> bool:
+        """藥袋上的學名是否都對得上這張藥證的主成分。沒有成分資料時不否決。"""
+        if not generic_segments or not entry.ingredients:
+            return True
+        own = {normalize_drug_name(i) for i in entry.ingredients}
+        own |= {normalize_drug_name(i.split(" ", 1)[0]) for i in entry.ingredients}
+        return all(segment in own for segment in generic_segments)
 
     def _match_key(self, key: str) -> Optional[DrugCatalogMatch]:
         if not key or not self._by_key:

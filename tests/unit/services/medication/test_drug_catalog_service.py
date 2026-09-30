@@ -1231,3 +1231,182 @@ class TestVariantsNeverBypassRealAmbiguity:
         )
 
         assert service.match("脈定錠5毫克") is not None
+
+
+# ── 分段比對：醫院藥袋把品牌、含量、學名、中文品名印成一串 ─────────────
+#
+# 實測來源：線上 25 筆藥袋辨識結果有 8 筆整串比不到（2026-09-30），例如
+# 「Nexium 40mg棕紅(Esomeprazole) 耐適恩錠 Esomeprazole」。
+
+NEXIUM_40 = DrugCatalogEntry(
+    license_number="N40",
+    name_zh="耐適恩錠４０公絲",
+    name_en="NEXIUM TABLETS 40MG",
+    ingredients=("ESOMEPRAZOLE MAGNESIUM TRIHYDRATE",),
+)
+NEXIUM_20 = DrugCatalogEntry(
+    license_number="N20",
+    name_zh="耐適恩錠２０公絲",
+    name_en="NEXIUM TABLETS 20MG",
+    ingredients=("ESOMEPRAZOLE MAGNESIUM TRIHYDRATE",),
+)
+ESOMEPRAZOLE_GENERIC = DrugCatalogEntry(
+    license_number="G20",
+    name_zh="吉舒胃腸溶膜衣錠20毫克",
+    name_en="Jubium (Esomeprazole Gastro Resistant Tablets 20mg)",
+    ingredients=("ESOMEPRAZOLE MAGNESIUM",),
+)
+DYNIN_TABLET = DrugCatalogEntry(
+    license_number="D1",
+    name_zh="帶寧錠",
+    name_en="DYNIN TABLETS",
+    ingredients=("METRONIDAZOLE",),
+)
+DYNIN_CAPSULE = DrugCatalogEntry(
+    license_number="D2",
+    name_zh="帶寧膠囊",
+    name_en="DYNIN CAPSULES",
+    ingredients=("METRONIDAZOLE",),
+)
+METRONIDAZOLE_GENERIC = DrugCatalogEntry(
+    license_number="M1",
+    name_zh="妥潔爽錠２５０公絲",
+    name_en="METROZOLE TABLETS 250MG (METRONIDAZOLE)",
+    ingredients=("METRONIDAZOLE",),
+)
+
+
+class TestSegmentedBagName:
+    def test_bag_line_resolves_to_the_brand_family_not_the_generics(self):
+        """學名段不投票：原廠藥品名沒印 ESOMEPRAZOLE，用它投票會讓別家學名藥
+        勝出。含量不拿來收斂，20 與 40 都留給使用者比對實物挑。"""
+        service = _variant_service(NEXIUM_40, NEXIUM_20, ESOMEPRAZOLE_GENERIC)
+
+        result = service.match("Nexium 40mg棕紅(Esomeprazole) 耐適恩錠 Esomeprazole")
+
+        assert result is not None
+        assert result.license_number is None
+        assert {c.license_number for c in result.candidates} == {"N40", "N20"}
+
+    def test_segment_that_pins_alone_is_pinned_when_the_votes_agree(self):
+        service = _variant_service(DYNIN_TABLET, DYNIN_CAPSULE, METRONIDAZOLE_GENERIC)
+
+        result = service.match("Dynin (Metronidazole 250mg) 帶寧錠 Metronidazole")
+
+        assert result.license_number == "D1"
+        assert [c.license_number for c in result.candidates] == ["D1"]
+
+    def test_agreement_alone_never_pins(self):
+        """兩段投票只剩一張，但沒有任何一段自己就唯一比到它：只給候選，
+        由使用者確認——分段比對不產生新的釘選能力。"""
+        service = _variant_service(
+            DrugCatalogEntry(license_number="S1", name_zh="適喘樂舒沛噴", name_en="Spiriva Respimat"),
+            DrugCatalogEntry(license_number="S2", name_zh="適喘樂吸入膠囊", name_en="SPIRIVA HANDIHALER"),
+            DrugCatalogEntry(license_number="S3", name_zh="適倍樂舒沛噴", name_en="Spiolto Respimat"),
+        )
+
+        result = service.match("Spiriva Respimat 2.5mcg/puff")
+
+        assert result.license_number is None
+        assert [c.license_number for c in result.candidates] == ["S1"]
+
+    def test_any_unverified_segment_rejects_the_whole_name(self):
+        """品牌讀錯時不能靠同一串裡讀對的學名過關——這是藥證庫比對存在的理由。"""
+        service = _variant_service(NEXIUM_40, NEXIUM_20, ESOMEPRAZOLE_GENERIC)
+
+        assert service.match("Nexiun 40mg (Esomeprazole)") is None
+
+    def test_unrecognised_characters_are_not_silently_dropped(self):
+        """丟掉認不得的字元等於替不存在的藥名挑出登記過的片段去問。"""
+        service = _variant_service(NEXIUM_40, NEXIUM_20)
+
+        assert service.match("넥시움 耐適恩錠") is None
+        assert service.match(" 耐適恩錠") is None
+
+    def test_dosage_form_words_alone_do_not_verify(self):
+        """劑型字查得到，但只說明是錠劑，不說明是哪一顆。"""
+        service = _variant_service(
+            DrugCatalogEntry(license_number="L1", name_zh="脈優錠5毫克", name_en="NORVASC TABLETS 5MG"),
+            DrugCatalogEntry(license_number="L2", name_zh="安莫西林膠囊", name_en="AMOXIL CAPSULES"),
+        )
+
+        assert service.match("TABLETS CAPSULES") is None
+
+    def test_dropped_short_words_prevent_pinning(self):
+        """「二號」「XL」這類兩字的版本字跟顏色、廠商一樣會被丟掉，無從分辨，
+        所以丟過就不釘。"""
+        oil = DrugCatalogEntry(license_number="W1", name_zh="和興白花油", name_en="HOEHIN WHITE FLOWER OIL")
+        service = _variant_service(oil)
+
+        dropped = service.match("和興白花油 二號")
+        assert dropped.license_number is None
+        assert [c.license_number for c in dropped.candidates] == ["W1"]
+
+        assert service.match("和興白花油 WHITE FLOWER").license_number == "W1"
+
+    def test_strength_conflict_prevents_pinning(self):
+        """含量只用來否決：藥袋寫 500mg、藥證品名寫 250 毫克，不釘。"""
+        service = _variant_service(
+            DrugCatalogEntry(license_number="D1", name_zh="帶寧錠250毫克", name_en="DYNIN TABLETS 250MG")
+        )
+
+        conflicting = service.match("Dynin 500mg 帶寧錠")
+        assert conflicting.license_number is None
+        assert [c.license_number for c in conflicting.candidates] == ["D1"]
+
+        assert service.match("Dynin 250mg 帶寧錠").license_number == "D1"
+        assert service.match("Dynin 250mcg 帶寧錠").license_number is None
+        assert service.match("Dynin 0.25g 帶寧錠").license_number == "D1"
+
+    def test_generic_that_contradicts_the_ingredients_prevents_pinning(self):
+        service = _variant_service(
+            DYNIN_TABLET,
+            DrugCatalogEntry(
+                license_number="A1",
+                name_zh="安莫西林膠囊",
+                name_en="AMOXICILLIN CAPSULES",
+                ingredients=("AMOXICILLIN",),
+            ),
+        )
+
+        result = service.match("Dynin (Amoxicillin) 帶寧錠")
+
+        assert result.license_number is None
+        assert [c.license_number for c in result.candidates] == ["D1"]
+
+    def test_generic_only_line_behaves_like_asking_the_generic(self):
+        """除了劑型只有學名時讓學名投票，結果等同直接拿學名去問。"""
+        service = _variant_service(METRONIDAZOLE_GENERIC, DYNIN_TABLET)
+
+        segmented = service.match("Metronidazole 250mg tab")
+        direct = service.match("Metronidazole")
+
+        assert segmented.license_number == direct.license_number
+        assert segmented.candidates == direct.candidates
+
+
+@pytest.mark.skipif(
+    not REAL_CATALOG_PATH.is_file(), reason="resources/drug_catalog.json 未產出，略過真實規模測試"
+)
+def test_real_bag_lines_from_production_resolve():
+    """線上實際辨識出來、原本整串比不到的藥名（2026-09-30）。"""
+    service = DrugCatalogService.load_from_path(str(REAL_CATALOG_PATH), threshold=0.88)
+
+    dynin = service.match("Dynin (Metronidazole 250mg) 帶寧錠 Metronidazole")
+    assert dynin.license_number == "衛署藥製字第004249號"
+
+    mozapry = service.match("Mozapry 5mg 胃默適膜衣錠")
+    assert mozapry.license_number == "衛署藥製字第055584號"
+
+    nexium = service.match("Nexium 40mg棕紅(Esomeprazole) 耐適恩錠 Esomeprazole")
+    assert nexium.license_number is None
+    assert {c.license_number for c in nexium.candidates} == {
+        "衛署藥輸字第023221號",
+        "衛署藥輸字第023225號",
+    }
+
+    lendormin = service.match("(管4)(關)戀多眠 Lendormin 0.25 mg/tab")
+    assert lendormin.license_number is None
+    assert len(lendormin.candidates) == 2
+
+    assert service.match("Nin Jiom Kruidensiroop") is None

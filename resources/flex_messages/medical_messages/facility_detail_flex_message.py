@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections import Counter
 from datetime import datetime
 from typing import Any
-from app.i18n import department_label, t
+from app.i18n import department_label, facility_type_label, t
 from app.schemas import MedicalFacility
 from app.services.medical.business_hours import TAIPEI_TZ, WEEKDAY_KEYS
 from resources.flex_messages import theme
@@ -370,7 +370,7 @@ def generate_facility_detail_flex_message(
         header_contents.append(
             {
                 "type": "text",
-                "text": facility.type,
+                "text": facility_type_label(facility.type, language),
                 "size": ft.body,
                 "weight": "bold",
                 "color": theme.BRAND,

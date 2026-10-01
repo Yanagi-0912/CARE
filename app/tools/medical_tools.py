@@ -4,7 +4,7 @@ import math
 from typing import Any
 
 from langchain_core.tools import tool
-from app.i18n.messages import t
+from app.i18n.messages import facility_type_label, t
 from app.services.medical.medical_service import (
     NEARBY_SEARCH_STEPS,
     DepartmentSearchResult,
@@ -289,7 +289,7 @@ async def _search_nearby_facilities(
     title_override = None
     if result.facility_type_match is not None:
         title_override = t("location.type.title").format(
-            type=result.facility_type_match.category
+            type=facility_type_label(result.facility_type_match.category)
         )
     return _to_flex_message_text(
         generate_facility_list_flex_message(
@@ -425,7 +425,9 @@ async def find_nearby_facilities_by_department(
     # 系統其實同時套用了兩個條件，以為篩選範圍比實際寬。
     department_label = _DEPARTMENT_SEPARATOR.join(canonicals)
     if result.facility_type_match is not None:
-        department_label = f"{department_label}（{result.facility_type_match.category}）"
+        department_label = (
+            f"{department_label}（{facility_type_label(result.facility_type_match.category)}）"
+        )
     title_key = (
         "location.department.title_unspecified"
         if _all_unspecified(result)

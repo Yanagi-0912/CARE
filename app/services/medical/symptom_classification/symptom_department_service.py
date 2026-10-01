@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from app.core.user_age import is_pediatric_age
 from app.services.family.patient_context import PatientContext
@@ -60,6 +60,8 @@ FALLBACK_DEPARTMENTS: tuple[str, ...] = ("家醫科", "內科", "不分科")
 
 # 兒科的 canonical 值。過濾用，不寫死在方法裡以免與對照表脫鉤。
 PEDIATRIC_DEPARTMENT = "兒科"
+# 精神科候選上的兒童方向。成人提問時拿掉，見 _filter_pediatric。
+CHILD_PSYCHIATRY_SUBGROUP = "兒童青少年精神科"
 OBSTETRICS_GYNECOLOGY_DEPARTMENT = "婦產科"
 
 # 本輪明確語意高於 profile 性別。只處理懷孕、生產、月經與生殖脈絡，不把
@@ -98,6 +100,14 @@ def _term_sources(entry: SymptomEntry) -> tuple[str, ...]:
         for code in candidate.sources:
             codes.setdefault(code, None)
     return tuple(codes)
+
+
+def _without_child_psychiatry(candidate: DepartmentCandidate) -> DepartmentCandidate:
+    """拿掉兒童青少年精神科方向；其他方向保留，沒有這個方向就原樣回傳。"""
+    if CHILD_PSYCHIATRY_SUBGROUP not in candidate.subgroups:
+        return candidate
+    rest = tuple(s for s in candidate.subgroups if s != CHILD_PSYCHIATRY_SUBGROUP)
+    return replace(candidate, subgroup=rest or None)
 
 
 def _pediatric_reason(
@@ -311,10 +321,17 @@ class SymptomDepartmentService:
         text: str,
         patient_context: PatientContext | None,
     ) -> tuple[DepartmentCandidate, ...]:
-        """成人的提問不給兒科。濾光時回傳空序列，由呼叫端走保底。"""
+        """成人的提問不給兒科，也不掛兒童青少年精神科方向。濾光時回傳空序列，由呼叫端走保底。"""
         if _pediatric_reason(text, patient_context) is not None:
             return candidates
-        without = tuple(c for c in candidates if c.canonical != PEDIATRIC_DEPARTMENT)
+        # 兒童青少年精神科是精神科候選上的方向，不是獨立科別。整個候選拿掉會讓
+        # 成人問自閉症、學習障礙落入保底，成人過動症也失去精神科；只拿掉這個
+        # 方向，成人仍拿到精神科，卡片不再叫他去兒童門診。
+        without = tuple(
+            _without_child_psychiatry(c)
+            for c in candidates
+            if c.canonical != PEDIATRIC_DEPARTMENT
+        )
         if without:
             return without
         # 濾光有兩種可能，而程式分不出來：

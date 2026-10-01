@@ -22,6 +22,10 @@
     多家醫院都把某症狀掛在同一科比只有一家可信；共識相同再看院所數——建議一個
     全台只有個位數院所的科別，使用者接著搜尋多半查無結果。院所數代表的是
     「找不找得到」，不是建議的信心度。
+
+    共識相同時中醫一般科排在西醫科之後，再比院所數：中醫院所 4172 家，遠多於
+    任何西醫科，單比院所數它幾乎必排前面（頭痛變成神經科、中醫、內科）。中醫
+    不是一般初診方向，院所多只代表好找，不代表該先去。
 """
 
 from __future__ import annotations
@@ -47,6 +51,9 @@ DEFAULT_TABLE_PATH = (
 # 超過這個數量的候選就代表這個症狀本來就不該由對照表回答（腹痛可以是內科、
 # 外科、婦產科、泌尿科…），改走保底建議，不硬挑五個充數。
 MAX_CANDIDATES = 5
+
+# 中醫一般科的 canonical 值。排序時同家數排在西醫科之後，見模組說明。
+TCM_DEPARTMENT = "中醫一般科"
 
 # 症狀條目允許的欄位（spec「對照表載入時強制轉為部定專科並驗證來源」）。出現其他
 # 欄位即載入失敗：只擋已知的壞欄位（rank、origin）擋不住下一個。
@@ -153,9 +160,13 @@ def _subgroup_of(symptom: dict) -> str | tuple[str, ...] | None:
     return raw or None
 
 
-def _candidate_sort_key(candidate: DepartmentCandidate) -> tuple[int, int]:
-    """跨院共識 > 院所數量。見模組說明。"""
-    return (-candidate.source_count, -candidate.facility_count)
+def _candidate_sort_key(candidate: DepartmentCandidate) -> tuple[int, bool, int]:
+    """跨院共識 > 西醫優先 > 院所數量。見模組說明。"""
+    return (
+        -candidate.source_count,
+        candidate.canonical == TCM_DEPARTMENT,
+        -candidate.facility_count,
+    )
 
 
 def _facility_count_of(block: dict) -> int:

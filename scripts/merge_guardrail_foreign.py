@@ -19,6 +19,13 @@ guardrail 資料集本來就是依 bucket 標標籤，換過來的列與中文�
 split 沿用急迫度資料集的切法，holdout 仍是模型沒看過的資料。重複執行會先移除上一次
 併入的列（`source == "urgency_dataset"`），中文列不動。
 
+**標籤更正（`evals/guardrail/label_overrides.jsonl`）。** 依 bucket 標標籤的前提是生成
+的句子真的落在那個 bucket，外語這批常常不是：寫「財經新聞」「購物旅遊」的句子裡夾著
+「股票跌到偏頭痛，吃普拿疼沒好」這類健康問題，卻照 bucket 標成 0。2026-10-02 用 5 折
+交叉驗證找出模型有把握、但與標籤相反的 481 列逐列複核（Claude 複核，非人工），107 列
+改標 1、48 列兩可移除，見該檔的 reason 欄。更正以原文為鍵、在最後對全部列套用，所以
+重跑本腳本不會把它洗掉。
+
 用法（專案根目錄）：
   python scripts/merge_guardrail_foreign.py
   python scripts/build_guardrail_model.py --max-false-alarm-rate 0.10
@@ -33,6 +40,7 @@ from pathlib import Path
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
 GUARDRAIL_DATASET = _PROJECT_ROOT / "evals" / "guardrail" / "dataset.jsonl"
 URGENCY_DATASET = _PROJECT_ROOT / "evals" / "urgency" / "dataset.jsonl"
+LABEL_OVERRIDES = _PROJECT_ROOT / "evals" / "guardrail" / "label_overrides.jsonl"
 SOURCE = "urgency_dataset"
 PRIMARY_LANGUAGE = "zh-TW"
 
@@ -70,6 +78,23 @@ def _read(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+def _apply_overrides(rows: list[dict]) -> tuple[list[dict], int, int]:
+    """label 為 null 的列移除，其餘改成更正後的標籤。中文列已更正過，再套一次結果不變。"""
+    if not LABEL_OVERRIDES.exists():
+        return rows, 0, 0
+    overrides = {o["text"]: o["label"] for o in _read(LABEL_OVERRIDES)}
+    out, relabeled, dropped = [], 0, 0
+    for row in rows:
+        if row["text"] not in overrides:
+            out.append(row)
+        elif overrides[row["text"]] is None:
+            dropped += 1
+        else:
+            relabeled += int(row["label"] != overrides[row["text"]])
+            out.append({**row, "label": overrides[row["text"]]})
+    return out, relabeled, dropped
+
+
 def main() -> int:
     kept = [row for row in _read(GUARDRAIL_DATASET) if row.get("source") != SOURCE]
     added = []
@@ -88,11 +113,11 @@ def main() -> int:
                 "generated_at": row.get("generated_at"),
             }
         )
-    rows = kept + added
+    rows, relabeled, dropped = _apply_overrides(kept + added)
     GUARDRAIL_DATASET.write_text(
         "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows), encoding="utf-8"
     )
-    print(f"中文與既有列 {len(kept)}，併入外語 {len(added)}，共 {len(rows)}")
+    print(f"中文與既有列 {len(kept)}，併入外語 {len(added)}；更正改標 {relabeled}、移除 {dropped}，共 {len(rows)}")
     for (lang, label), n in sorted(Counter((r["lang"], r["label"]) for r in added).items()):
         print(f"  {lang} label={label}: {n}")
     return 0

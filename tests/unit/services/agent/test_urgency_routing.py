@@ -37,7 +37,7 @@ def _isolated_rag_tool():
     import app.tools.rag_tools as rag_tools
 
     class _FakeRagService:
-        async def answer(self, query: str) -> str:
+        async def answer(self, query: str, *, original_message: str | None = None) -> str:
             return "知識庫回覆"
 
     previous = rag_tools._rag_answer_service

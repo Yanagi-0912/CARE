@@ -6,6 +6,7 @@ from typing import Any
 from langchain_core.documents import Document
 
 from app.core.request_logging import stage_timer
+from app.core.user_language import get_request_language
 from app.services.gemini import GeminiService
 from app.i18n.messages import t
 from app.services.rag.cannot_answer import (
@@ -26,6 +27,11 @@ from app.services.rag.fail_messages import (
     rag_fail,
 )
 from app.services.rag.query_rewriter import QueryRewriter, RewrittenQuery
+from app.services.rag.question_decomposer import (
+    QuestionDecomposer,
+    SubQuestion,
+    looks_compound,
+)
 from app.services.rag.retrieval_grader import Grade, RetrievalGrader
 from app.services.rag.retriever import MongoAtlasVectorRetriever
 from app.services.rag.web_search_service import WebSearchService
@@ -85,6 +91,9 @@ DEFAULT_RAG_ANSWER_TIMEOUT_SECONDS = 45.0
 
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 
+# 複合問題拆題只處理繁中：拆題 prompt、規則閘（全形問號）與全部實驗都只涵蓋 zh-TW。
+COMPOUND_LANGUAGE = "zh-TW"
+
 
 def cited_indices(answer_text: str) -> list[int]:
     """回傳答案中出現過的引用編號，依首次出現順序、去重。"""
@@ -116,6 +125,7 @@ class RagAnswerService:
         link_checker: LinkChecker | None = None,
         speculative_generate: bool = DEFAULT_SPECULATIVE_GENERATE,
         total_timeout_seconds: float = DEFAULT_RAG_ANSWER_TIMEOUT_SECONDS,
+        decomposer: QuestionDecomposer | None = None,
     ) -> None:
         self.gemini_service = gemini_service
         self.retriever = retriever
@@ -133,8 +143,15 @@ class RagAnswerService:
         # 只有 CRAG 開啟時才有東西可以並行——沒有分級就沒有等待可以填。
         self.speculative_generate = bool(speculative_generate and self.crag_enabled)
         self.total_timeout_seconds = total_timeout_seconds
+        # None＝不拆複合問題（RAG_COMPOUND_DECOMPOSE_ENABLED=false），行為與導入前相同
+        self.decomposer = decomposer
 
-    async def answer(self, user_text: str) -> str:
+    async def answer(self, user_text: str, *, original_message: str | None = None) -> str:
+        """*original_message* 是本輪使用者原文，只有 `get_rag_answer` 會傳。
+
+        有原文且看起來是複合問題時才嘗試拆題（見 `_answer_compound`）；其餘呼叫端
+        （藥單問答、主張查核）不傳，查詢裡的附加內容就不會被拆題改寫掉。
+        """
         # 總計時的 path 欄位標出這一輪實際走了哪條路——同樣是 40 秒，
         # 走 kb 與走 web 要查的地方完全不同。
         with stage_timer(logger, "rag_answer") as timing:
@@ -142,7 +159,7 @@ class RagAnswerService:
             deadline = asyncio.timeout(limit)
             try:
                 async with deadline:
-                    return await self._answer(user_text, timing)
+                    return await self._answer(user_text, timing, original_message)
             except TimeoutError:
                 # 只接自己這個總逾時。管線裡別處拋出的 TimeoutError 是另一種
                 # 故障，照舊往上拋——記成「逾時」會把查錯方向帶歪。
@@ -171,7 +188,14 @@ class RagAnswerService:
         )
         return rag_fail(RagFailCode.TIMEOUT)
 
-    async def _answer(self, user_text: str, timing: dict[str, Any]) -> str:
+    async def _answer(
+        self, user_text: str, timing: dict[str, Any], original_message: str | None = None
+    ) -> str:
+        if self._should_try_compound(original_message):
+            assert original_message is not None
+            compound = await self._answer_compound(original_message, timing)
+            if compound is not None:
+                return compound
         timing["path"] = "kb"
         # candidates＝第一輪的 docs；approved＝CRAG 放行的 docs。兩者刻意用不同
         # 名字：投機生成是否可用，正是靠「這兩個是不是同一個 list」判斷的。
@@ -276,6 +300,124 @@ class RagAnswerService:
 
         dead = await self._dead_source_urls(kb_answer, ranked, timing, link_prefetch)
         return self._append_sources(kb_answer, ranked, dead)
+
+    def _should_try_compound(self, original_message: str | None) -> bool:
+        return (
+            self.decomposer is not None
+            and looks_compound(original_message)
+            and get_request_language() == COMPOUND_LANGUAGE
+        )
+
+    async def _answer_compound(self, message: str, timing: dict[str, Any]) -> str | None:
+        """複合問題：逐子問題檢索、分級，只把通過的子問題交給生成。
+
+        回傳 None＝放棄拆題，由呼叫端走現行流程（含 Web Fallback）。放棄的情況：
+        不是複合問題、拆題或分級失敗、所有子問題都沒通過、生成只寫出拒答標記。
+        也就是說這條路只在「至少一個子問題以知識庫答得出」時接手，其餘與現況相同。
+
+        設計取捨都是 2026-09-27～30 的離線實驗量出來的（design.md 決策 3～7）：
+          - 子問題只用自己的候選，不做原句那一路檢索：原句會撈進謠言文擠掉
+            子問題的相關文件（T05 Q1 合併池 9/9 ambiguous，只用自己的候選 3/3 correct）
+          - 檢索用 retrieval_query、分級與生成用 question：分級維持「能不能回答
+            這位使用者的情況」這個嚴格標準，不因拆題而放寬
+          - 生成不給原句：看得到原句時，模型會替沒通過的子問題也寫一段，或因為
+            原句裡有答不了的部分而整段寫拒答標記
+          - 沒通過的子問題由程式補固定句：交給模型寫，它會寫成拒答標記拖垮整題
+        日誌只記數量，不記原文（原文是病史與家人狀況，理由同 Agent.invoke）。
+        """
+        assert self.decomposer is not None
+        try:
+            with stage_timer(logger, "rag_decompose") as t_decompose:
+                subs = await self.decomposer.decompose(message)
+                t_decompose["subs"] = len(subs)
+        except Exception:
+            logger.exception("compound_decompose_failed; falling back to single-question path")
+            return None
+        if len(subs) < 2:
+            return None
+
+        timing["path"] = "kb_compound"
+        timing["subs"] = len(subs)
+        ranked_by_sub = await asyncio.gather(
+            *(self._retrieve_and_rerank(sub.retrieval_query) for sub in subs)
+        )
+        try:
+            supported = await self._grade_sub_questions(subs, ranked_by_sub)
+        except Exception:
+            logger.exception("compound_crag_failed; falling back to single-question path")
+            return None
+        timing["supported"] = sum(supported)
+        if not any(supported):
+            logger.info("rag_compound fallback=none_supported subs=%d", len(subs))
+            return None
+
+        evidence = self._interleave_evidence(
+            [docs for docs, ok in zip(ranked_by_sub, supported) if ok]
+        )
+        answered = [sub.question for sub, ok in zip(subs, supported) if ok]
+        raw = await self._generate_answer(_compound_generation_question(answered), evidence)
+        if self._is_cannot_answer(raw):
+            if not cited_indices(raw):
+                logger.info("rag_compound fallback=model_refuse subs=%d", len(subs))
+                return None
+            # 有引用的段落是答得出來的內容；標記是模型對其中某一段的保留，不能
+            # 讓它把整段答案判成拒答。
+            raw = raw.replace(NO_ANSWER_SENTINEL, "").strip()
+
+        unanswered = [sub.question for sub, ok in zip(subs, supported) if not ok]
+        body = raw.strip()
+        if unanswered:
+            notes = "\n".join(
+                t("rag.compound_unsupported").format(question=q) for q in unanswered
+            )
+            body = f"{body}\n\n{notes}"
+        logger.info(
+            "rag_compound subs=%d supported=%d evidence=%d",
+            len(subs),
+            len(answered),
+            len(evidence),
+        )
+        dead = await self._dead_source_urls(body, evidence, timing)
+        return self._append_sources(body, evidence, dead)
+
+    async def _grade_sub_questions(
+        self, subs: list[SubQuestion], ranked_by_sub: list[list[Document]]
+    ) -> list[bool]:
+        """嚴格分級：只有 correct 算通過（與單題路徑同一標準）。CRAG 關閉時有文件就算。"""
+        if not self.crag_enabled:
+            return [bool(docs) for docs in ranked_by_sub]
+        assert self.grader is not None
+
+        async def _one(sub: SubQuestion, docs: list[Document]) -> bool:
+            if not docs:
+                return False
+            return await self.grader.grade(sub.question, docs) is Grade.CORRECT
+
+        with stage_timer(logger, "rag_crag_grade", subs=len(subs)):
+            return list(
+                await asyncio.gather(*(_one(s, d) for s, d in zip(subs, ranked_by_sub)))
+            )
+
+    def _interleave_evidence(self, lists: list[list[Document]]) -> list[Document]:
+        """各子問題的精排結果輪流取用，總數不超過 rerank_top_n；同一 chunk 只收一次。
+
+        輪流而不是全域排序：全域 top-n 可能被某個子問題的文件佔滿，另一個子問題
+        一篇都分不到——那正是拆題要避免的「漏答其中一件事」。
+        """
+        evidence: list[Document] = []
+        seen: set[tuple[str, str]] = set()
+        depth = 0
+        longest = max((len(docs) for docs in lists), default=0)
+        while len(evidence) < self.rerank_top_n and depth < longest:
+            for docs in lists:
+                if depth < len(docs) and len(evidence) < self.rerank_top_n:
+                    doc = docs[depth]
+                    key = (self._source_key(doc), doc.page_content)
+                    if key not in seen:
+                        seen.add(key)
+                        evidence.append(doc)
+            depth += 1
+        return evidence
 
     @staticmethod
     def _top_rerank_score(docs: list[Document]) -> float | None:
@@ -854,3 +996,13 @@ def dedup_ranked_docs(
         counts[key] = count + 1
         out.append(doc)
     return out
+
+
+def _compound_generation_question(questions: list[str]) -> str:
+    """拆題路徑送進 RAG prompt 的「使用者問題」欄位：只列通過的子問題、不含原句。"""
+    lines = [
+        "請只回答下列問題，每個問題各自一段，每段開頭用「關於（簡短主題）：」標出在回答哪個問題，"
+        "不要回答或提及清單以外的問題："
+    ]
+    lines += [f"{i}. {q}" for i, q in enumerate(questions, start=1)]
+    return "\n".join(lines)

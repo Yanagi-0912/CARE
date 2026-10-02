@@ -583,6 +583,16 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "แหล่งอ้างอิง:",
         "ja": "参考資料：",
     },
+    # 複合問題裡沒通過分級的子問題：由程式補在答案後面，不交給模型寫（模型會寫成
+    # 拒答標記拖垮整題）。刻意不含引用標記——這句話沒有任何來源支持。
+    "rag.compound_unsupported": {
+        "zh-TW": "關於「{question}」：目前知識庫沒有找到可靠資料，建議詢問醫師或藥師。",
+        "en": "About \"{question}\": no reliable information was found in the knowledge base. Please ask a doctor or pharmacist.",
+        "id": "Tentang \"{question}\": belum ada informasi tepercaya di basis pengetahuan. Silakan tanyakan kepada dokter atau apoteker.",
+        "vi": "Về \"{question}\": hiện chưa tìm thấy thông tin đáng tin cậy trong cơ sở kiến thức. Vui lòng hỏi bác sĩ hoặc dược sĩ.",
+        "th": "เกี่ยวกับ \"{question}\": ยังไม่พบข้อมูลที่เชื่อถือได้ในฐานความรู้ กรุณาปรึกษาแพทย์หรือเภสัชกร",
+        "ja": "「{question}」について：ナレッジベースに信頼できる情報が見つかりませんでした。医師または薬剤師にご相談ください。",
+    },
     "rag.web_source_label": {
         "zh-TW": "網路",
         "en": "Web",

@@ -12,6 +12,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from app.core.request_logging import log_stage, stage_timer
+from app.core.user_message import reset_request_user_message, set_request_user_message
 from app.i18n.messages import (
     insert_before_sources,
     split_at_sources_heading,
@@ -596,17 +597,23 @@ class Agent:
         # 在 log 裡。
         logger.debug("[Agent] user_input_preview=%s", (user_input or "")[:80])
 
-        with stage_timer(logger, "agent_graph") as timing:
-            result = await self._graph.ainvoke(
-                {
-                    "messages": messages,
-                    "allow_rag": False,
-                    "urgency": NOT_URGENT,
-                    "user_profile": user_profile,
-                },
-                config={"recursion_limit": AGENT_RECURSION_LIMIT},
-            )
-            timing["msgs"] = len(result.get("messages") or ())
+        # 本輪使用者原文交給 get_rag_answer：複合問題的拆題要看原句，不能看 agent
+        # 改寫過的關鍵字 query（見 app/core/user_message.py）。
+        message_token = set_request_user_message(user_input or _latest_user_text(messages))
+        try:
+            with stage_timer(logger, "agent_graph") as timing:
+                result = await self._graph.ainvoke(
+                    {
+                        "messages": messages,
+                        "allow_rag": False,
+                        "urgency": NOT_URGENT,
+                        "user_profile": user_profile,
+                    },
+                    config={"recursion_limit": AGENT_RECURSION_LIMIT},
+                )
+                timing["msgs"] = len(result.get("messages") or ())
+        finally:
+            reset_request_user_message(message_token)
 
         last_msg = result["messages"][-1]
         response = (

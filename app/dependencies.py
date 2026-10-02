@@ -167,6 +167,7 @@ from app.services.rag.query_rewriter import (
     REWRITE_THINKING_LEVEL,
     GeminiQueryRewriter,
 )
+from app.services.rag.question_decomposer import GeminiQuestionDecomposer
 from app.services.rag.jev_grader import JevRetrievalGrader
 from app.services.rag.retrieval_grader import (
     GRADE_THINKING_LEVEL,
@@ -432,6 +433,20 @@ _web_search_service = WebSearchService(
     en_search_domains=settings.RAG_WEB_SEARCH_EN_DOMAINS.split(","),
 )
 
+# 複合問題拆題器：與查詢改寫同模型、同 thinking 等級（低延遲、只需結構化判斷）。
+# 開關關閉時不建立，RagAnswerService 收到 None 就完全不走拆題路徑。
+_rag_decomposer = (
+    GeminiQuestionDecomposer(
+        GeminiService(
+            api_key=settings.GEMINI_API_KEY,
+            model_name=settings.MODEL_NAME,
+            thinking_level=REWRITE_THINKING_LEVEL,
+        )
+    )
+    if settings.RAG_COMPOUND_DECOMPOSE_ENABLED
+    else None
+)
+
 _rag_answer_service = RagAnswerService(
     gemini_service=_gemini_for(settings.RAG_GENERATE_MODEL_NAME),
     retriever=_rag_retriever,
@@ -447,6 +462,7 @@ _rag_answer_service = RagAnswerService(
     degraded_min_score=settings.RAG_DEGRADED_MIN_SCORE,
     link_checker=_link_checker,
     total_timeout_seconds=settings.RAG_ANSWER_TIMEOUT_SECONDS,
+    decomposer=_rag_decomposer,
 )
 
 _chat_history_repository = build_chat_history_repository(

@@ -118,13 +118,6 @@ class FakeMedicalFacilityRepository:
                 "type": {"$regex": "醫院", "$options": "i"},
             },
         ),
-        (
-            "高雄藥局",
-            {
-                "address": {"$regex": "高雄", "$options": "i"},
-                "type": {"$regex": "自營", "$options": "i"},
-            },
-        ),
         ("衛生所", {"name": {"$regex": "衛生所", "$options": "i"}}),
         ("成大", {"name": {"$regex": "成功大學", "$options": "i"}}),
         ("臺大", {"name": {"$regex": "臺灣大學", "$options": "i"}}),

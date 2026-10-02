@@ -43,6 +43,9 @@ logger = logging.getLogger(__name__)
 # 避免對整段使用者輸入做無界掃描。
 MAX_FACILITY_NAME_LENGTH = 40
 
+# 進索引的藥局名稱至少要這麼長，見 indexable_pharmacy_names。
+MIN_PHARMACY_NAME_LENGTH = 4
+
 _facility_names: frozenset[str] = frozenset()
 
 
@@ -63,6 +66,18 @@ def configure_facility_names(names: frozenset[str] | set[str] | list[str]) -> No
     logger.info(
         "[FacilityNameIndex] 已載入院所名稱索引，共 %s 筆", len(_facility_names)
     )
+
+
+def indexable_pharmacy_names(names: set[str]) -> set[str]:
+    """
+    挑出要放進索引的藥局名稱：排除「X藥局」這種只有一個字的店名。
+
+    藥局庫有 71 筆單字店名（李藥局、來藥局、高藥局…），放進索引會把
+    「我要來藥局」「評價高藥局」的「藥局」誤判成專名，使用者要找附近藥局
+    卻被當成在指名某一家。排除後「李藥局在哪」仍會走名稱查詢，因為那是
+    由「在哪」判定的，不靠這份索引。
+    """
+    return {name for name in names if len(name) >= MIN_PHARMACY_NAME_LENGTH}
 
 
 def is_index_loaded() -> bool:

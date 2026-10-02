@@ -19,10 +19,14 @@ from app.services.agent.utils.nodes import (
     AgentNodes,
     _extract_facility_type_from_history,
     _facility_type_intent,
+    _is_named_facility_lookup,
     _is_nearby_facility_intent,
 )
 from app.services.medical.department_matcher import extract_department_intents
-from app.services.medical.facility_name_index import configure_facility_names
+from app.services.medical.facility_name_index import (
+    configure_facility_names,
+    indexable_pharmacy_names,
+)
 from app.services.medical.facility_type_matcher import all_facility_type_terms
 
 LOCATION_TEXT = "這是我的目前位置：lat=25.033, lng=121.56"
@@ -642,3 +646,51 @@ def test_falls_back_to_generic_when_index_not_loaded():
     assert _facility_type_intent("皇家診所在哪") == "診所"  # 降級：無索引可查
     assert _facility_type_intent("台大醫院在哪") is None  # 別名表仍生效
     assert _facility_type_intent("附近有診所嗎") == "診所"  # 泛稱不受影響
+
+
+# --- 藥局名稱併入索引 ---------------------------------------------------------
+# 藥局名稱來自另一個 collection（medical_facilities_pharmacy），啟動時與院所名稱
+# 一起載入，但排除「X藥局」這種單字店名（見 indexable_pharmacy_names）。
+REAL_PHARMACY_NAMES = {"健安藥局", "康是美三井藥局", "來藥局", "高藥局", "李藥局"}
+
+
+@pytest.fixture
+def pharmacy_names_indexed():
+    configure_facility_names(
+        REAL_FACILITY_NAMES | indexable_pharmacy_names(REAL_PHARMACY_NAMES)
+    )
+
+
+@pytest.mark.parametrize("text", ["健安藥局在哪", "健安藥局", "康是美三井藥局電話"])
+def test_registered_pharmacy_name_is_not_a_type_preference(pharmacy_names_indexed, text):
+    """
+    先問過「健安藥局在哪」的人，之後問「附近有醫院嗎」不該被套上藥局類型——
+    類型意圖會回溯前幾輪訊息，店名裡的「藥局」不能算數。
+    """
+    assert _facility_type_intent(text) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "我要來藥局",
+        "評價高藥局",
+        "附近有藥局嗎",
+        "附近的健保藥局",
+        "附近有大藥局嗎",
+        "離我最近的藥局",
+    ],
+)
+def test_generic_pharmacy_phrases_survive_pharmacy_name_index(pharmacy_names_indexed, text):
+    """「來藥局」「高藥局」是登記在案的店名，進了索引就會吃掉這些泛稱句。"""
+    assert _facility_type_intent(text) == "藥局"
+
+
+@pytest.mark.parametrize("text", ["附近有藥房嗎", "哪裡有藥房", "附近的藥房", "附近有藥局嗎"])
+def test_pharmacy_wording_counts_as_nearby_facility_search(text):
+    assert _is_nearby_facility_intent(text) is True
+
+
+def test_named_pharmacy_lookup_is_not_a_nearby_search():
+    assert _is_nearby_facility_intent("健安藥房在哪") is False
+    assert _is_named_facility_lookup("健安藥房在哪") is True

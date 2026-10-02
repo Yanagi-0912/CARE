@@ -282,6 +282,76 @@ def build_facility_query(keyword: str) -> tuple[dict[str, Any], str]:
 
     return query, query_keyword_unified
 
+PHARMACY_SUFFIXES = ("藥局", "藥房")
+
+
+def is_pharmacy_keyword(keyword: str) -> bool:
+    """關鍵字是否指名藥局（含「藥局」或「藥房」）。"""
+    return any(suffix in (keyword or "") for suffix in PHARMACY_SUFFIXES)
+
+
+def _tai_insensitive_regex(text: str) -> dict[str, str]:
+    """藥局名稱多半登記成「台」（台中大樹藥局），地址卻用「臺」，兩種寫法都要比對得到。"""
+    pattern = re.sub("[台臺]", "[台臺]", re.escape(text))
+    return {"$regex": pattern, "$options": "i"}
+
+
+def build_pharmacy_query(keyword: str) -> tuple[dict[str, Any], str]:
+    """
+    組出查藥局庫（medical_facilities_pharmacy）的條件，回傳形狀同 build_facility_query。
+
+    不沿用 build_facility_query，因為那裡的兩條規則套在藥局上會查錯：
+      - FACILITY_ALIASES 會把「成大」換成「成功大學」，但「成大藥局」「榮總藥局」
+        「奇美藥局」都是登記在案的藥局名稱。
+      - 開頭的縣市會被當成地區拿掉，但「台中大樹藥局」的「台中」是店名的一部分。
+
+    藥局不需要口語對照表：民眾講的連鎖名稱（康是美、大樹、杏一）本來就是登記名稱
+    的一段，子字串比對就找得到。
+    """
+    cleaned = re.sub(r"\s+", "", keyword or "")
+    cleaned = re.sub(r"[，,。．.？?！!：:；;「」『』()（）\[\]【】]", "", cleaned)
+    if not cleaned:
+        return {}, ""
+
+    core = cleaned
+    for suffix in PHARMACY_SUFFIXES:
+        if core.endswith(suffix):
+            core = core[: -len(suffix)]
+            break
+
+    def name_term(text: str) -> str:
+        # 只剩一個字（「李藥局」→「李」）會比對到一大堆，補回「藥局」再比對。
+        return text if len(text) >= 2 else f"{text}藥局"
+
+    city = next(
+        (
+            prefix
+            for prefix in (*_COUNTY_CITY_PREFIXES, *_INFORMAL_CITY_NAMES)
+            if core.startswith(prefix)
+        ),
+        None,
+    )
+    if city is None:
+        return {"name": _tai_insensitive_regex(name_term(core))}, core.replace("台", "臺")
+
+    rest = core[len(city):]
+    if not rest:
+        # 「高雄藥局」是地區泛稱，不比對名稱。
+        return {"address": _tai_insensitive_regex(city)}, ""
+
+    # 「台中大樹藥局」可能是完整店名，也可能是「台中的大樹藥局」，兩種都收。
+    query = {
+        "$or": [
+            {"name": _tai_insensitive_regex(core)},
+            {
+                "name": _tai_insensitive_regex(name_term(rest)),
+                "address": _tai_insensitive_regex(city),
+            },
+        ]
+    }
+    return query, core.replace("台", "臺")
+
+
 # 依據關鍵字與院所名稱的相似度進行排序
 def similarity_rank(facility: MedicalFacility, keyword: str) -> tuple[int, int]:
     facility_name = normalize_facility_name(facility.name)

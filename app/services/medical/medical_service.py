@@ -24,12 +24,15 @@ from app.services.medical.department_matcher import (
     resolve_department,
 )
 from app.services.medical.facility_type_matcher import (
+    PHARMACY_CATEGORY,
     FacilityTypeMatch,
     build_facility_type_query,
     resolve_facility_type,
 )
 from app.services.medical.medical_facility_matcher import (
     build_facility_query,
+    build_pharmacy_query,
+    is_pharmacy_keyword,
     similarity_rank,
 )
 
@@ -163,11 +166,17 @@ class MedicalService:
         self,
         repository: MedicalFacilityRepository | None = None,
         *,
+        pharmacy_repository: MedicalFacilityRepository | None = None,
         department_resolver: "TermResolver | None" = None,
         facility_type_resolver: "TermResolver | None" = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.repository = repository or MedicalFacilityRepository()
+        # 藥局不在 medicalFacilities 裡，另有一個 collection。醫院、診所的查詢
+        # 一律走 self.repository，只有確定要找藥局時才用這一個。
+        self.pharmacy_repository = (
+            pharmacy_repository or MedicalFacilityRepository.for_pharmacies()
+        )
         # 營業中篩選要知道現在幾點。以參數注入，測試才能把時間固定在深夜。
         self._clock = clock or (lambda: datetime.now(TAIPEI_TZ))
         # 兩個兜底解析器都是選填：沒接上時行為與加這層之前完全相同（表查不到就
@@ -246,9 +255,12 @@ class MedicalService:
         query: dict[str, Any] | None = None,
         open_now: bool = False,
         facility_type_match: FacilityTypeMatch | None = None,
+        repository: MedicalFacilityRepository | None = None,
     ) -> NearbySearchResult:
         """
         逐級放寬 5→10→20→50 公里，直到湊滿目標筆數。
+
+        repository 省略時查醫院、診所；找藥局時由 find_nearby_pharmacies 傳入藥局庫。
 
         facility_type_match 純粹是要原樣夾帶進回傳結果，本身不影響查詢邏輯——
         真正的類型過濾條件已經在呼叫端組進 query 裡了，這裡只是共用建構子的
@@ -263,11 +275,12 @@ class MedicalService:
         但城市裡最近 20 家都在 600 公尺內、深夜全關 —— 實測 9 個地點在 23:30 與
         02:30 全部篩成 0 家、退回列一排沒開的，其實 1～3 公里外就有急診醫院。
         """
+        repository = repository or self.repository
         max_meters = NEARBY_SEARCH_STEPS[-1]
         fell_back_from_open_now = False
         if open_now:
             now = self._clock()
-            candidates = await self.repository.find_near(
+            candidates = await repository.find_near(
                 lat,
                 lng,
                 max_meters,
@@ -283,11 +296,11 @@ class MedicalService:
                 logger.info(
                     f"{LOGGER_HEADER_TEXT} open_now 過濾後為 0 筆，退回未過濾結果"
                 )
-                facilities = await self.repository.find_near(
+                facilities = await repository.find_near(
                     lat, lng, max_meters, target_count, query=query
                 )
         else:
-            facilities = await self.repository.find_near(
+            facilities = await repository.find_near(
                 lat, lng, max_meters, target_count, query=query
             )
 
@@ -332,6 +345,12 @@ class MedicalService:
                     facility_type,
                 )
                 return NearbySearchResult(facility_type_unresolved=True)
+            # 藥局放在另一個 collection，交給 find_nearby_pharmacies；
+            # 以下的醫院、診所搜尋不受影響。
+            if type_match.category == PHARMACY_CATEGORY:
+                return await self.find_nearby_pharmacies(
+                    lat, lng, target_count, open_now, type_match
+                )
             type_query = build_facility_type_query(type_match.category)
 
         logger.info(
@@ -352,6 +371,47 @@ class MedicalService:
         )
         logger.info(
             f"{LOGGER_HEADER_TEXT} 搜尋完成，回傳=%s 筆, 涵蓋範圍=%s 公尺, 湊滿目標=%s",
+            len(result.facilities),
+            result.reached_meters,
+            result.satisfied,
+        )
+        return result
+
+    async def find_nearby_pharmacies(
+        self,
+        lat: float,
+        lng: float,
+        target_count: int = DEFAULT_TARGET_COUNT,
+        open_now: bool = False,
+        facility_type_match: FacilityTypeMatch | None = None,
+    ) -> NearbySearchResult:
+        """
+        找出鄰近的藥局，資料來自藥局庫而非 medicalFacilities。
+
+        放寬範圍與營業中篩選沿用 _search_tiered，和找醫院、診所是同一套規則。
+        藥局沒有科別（departments 一律為空），所以沒有依科別找藥局這回事。
+        facility_type_match 是使用者原本的說法（「藥房」「藥妝店」），原樣夾帶進結果。
+        """
+        match = facility_type_match or FacilityTypeMatch(
+            category=PHARMACY_CATEGORY, requested=PHARMACY_CATEGORY
+        )
+        logger.info(
+            f"{LOGGER_HEADER_TEXT} 搜尋 ({lat}, {lng}) 附近藥局，"
+            f"上限=%s 公尺, target=%s, open_now=%s",
+            NEARBY_SEARCH_STEPS[-1],
+            target_count,
+            open_now,
+        )
+        result = await self._search_tiered(
+            lat,
+            lng,
+            target_count,
+            open_now=open_now,
+            facility_type_match=match,
+            repository=self.pharmacy_repository,
+        )
+        logger.info(
+            f"{LOGGER_HEADER_TEXT} 藥局搜尋完成，回傳=%s 筆, 涵蓋範圍=%s 公尺, 湊滿目標=%s",
             len(result.facilities),
             result.reached_meters,
             result.satisfied,
@@ -618,17 +678,69 @@ class MedicalService:
         lng: float | None = None,
         limit: int = 20,  # 最多回傳20筆資料
     ) -> tuple[list[MedicalFacility], int]:
+        """
+        依名稱找醫療院所（醫院、診所、衛生所），查 medicalFacilities。
+
+        藥局不在 medicalFacilities 裡，這裡只負責分流，實際查詢在
+        find_pharmacy_by_name：
+          1. 關鍵字指名藥局（含「藥局／藥房」）→ 直接找藥局，不查院所。
+          2. 院所查無 → 再找一次藥局，接住名稱裡沒有「藥局」二字的店
+             （例如「屈臣氏景安門市」）。
+        院所查得到時，結果與加入藥局之前完全相同。
+        """
+        if is_pharmacy_keyword(keyword):
+            return await self.find_pharmacy_by_name(keyword, lat, lng, limit)
+
         query, query_keyword_unified = build_facility_query(keyword)
 
         # 如果什麼搜尋條件都沒撈到，才回傳空結果
         if not query:
             return [], 0
 
+        results = await self._find_by_name_query(
+            self.repository, query, query_keyword_unified, lat, lng, limit
+        )
+        if not results:
+            return await self.find_pharmacy_by_name(keyword, lat, lng, limit)
+
+        return results, len(results)
+
+    async def find_pharmacy_by_name(
+        self,
+        keyword: str,
+        lat: float | None = None,
+        lng: float | None = None,
+        limit: int = 20,
+    ) -> tuple[list[MedicalFacility], int]:
+        """依名稱找藥局，查藥局庫。比對規則見 build_pharmacy_query。"""
+        query, query_keyword_unified = build_pharmacy_query(keyword)
+        if not query:
+            return [], 0
+
+        results = await self._find_by_name_query(
+            self.pharmacy_repository, query, query_keyword_unified, lat, lng, limit
+        )
+        return results, len(results)
+
+    async def _find_by_name_query(
+        self,
+        repository: MedicalFacilityRepository,
+        query: dict[str, Any],
+        query_keyword_unified: str,
+        lat: float | None,
+        lng: float | None,
+        limit: int,
+    ) -> list[MedicalFacility]:
+        """
+        名稱查詢的共用步驟，院所與藥局只差在查哪一個 repository。
+
+        有座標時由近到遠、先限生活圈再放寬全國；沒有座標時依名稱相似度排序。
+        """
         logger.info(f"{LOGGER_HEADER_TEXT} 最終 MongoDB 查詢條件 query = {query}")
 
         if lat is not None and lng is not None:
             # 先限縮在生活圈內，避免「仁愛醫院」把幾百公里外的同名院所排在前面。
-            results = await self.repository.find_by_query_near(
+            results = await repository.find_by_query_near(
                 query,
                 lat,
                 lng,
@@ -642,16 +754,18 @@ class MedicalService:
                     f"{LOGGER_HEADER_TEXT} {NAME_SEARCH_RADIUS_METERS} 公尺內查無院所，"
                     "放寬為全國搜尋"
                 )
-                results = await self.repository.find_by_query_near(
-                    query, lat, lng, limit
-                )
+                results = await repository.find_by_query_near(query, lat, lng, limit)
         else:
-            results = await self.repository.find_by_query(query, limit)
+            results = await repository.find_by_query(query, limit)
             results.sort(key=lambda item: similarity_rank(item, query_keyword_unified))
 
-        return results, len(results)
+        return results
 
     async def get_facility_by_id(self, facility_id: str) -> MedicalFacility | None:
-        return await self.repository.find_by_id(facility_id)
+        facility = await self.repository.find_by_id(facility_id)
+        if facility is None:
+            # 藥局卡片的 id 來自藥局庫，medicalFacilities 查不到是正常的。
+            facility = await self.pharmacy_repository.find_by_id(facility_id)
+        return facility
 
 medical_service = MedicalService()

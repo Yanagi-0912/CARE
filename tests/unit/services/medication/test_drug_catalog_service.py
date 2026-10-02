@@ -1374,6 +1374,78 @@ class TestSegmentedBagName:
         assert result.license_number is None
         assert [c.license_number for c in result.candidates] == ["D1"]
 
+    def test_chinese_name_breaks_a_tied_vote(self):
+        """盒子上的英文是行銷名，不一定是登記英文名：普拿疼伏冒鼻炎感冒錠登記成
+        PANADOL ALLERGY SINUS，盒子印 Cold & Flu Sinus，英文字段把整個伏冒系列
+        拉成同票（2026-10-02 線上 11 個候選）。中文品名段點到的那張優先。"""
+        service = _variant_service(
+            DrugCatalogEntry(
+                license_number="P1",
+                name_zh="普拿疼伏冒鼻炎感冒錠",
+                name_en="PANADOL ALLERGY SINUS CAPLETS",
+            ),
+            DrugCatalogEntry(
+                license_number="P2", name_zh="普拿疼伏冒錠", name_en="PANADOL COLD & FLU TABLETS"
+            ),
+            DrugCatalogEntry(license_number="G1", name_zh="感冒錠"),
+        )
+
+        result = service.match("普拿疼伏冒鼻炎感冒錠 Panadol Cold & Flu Sinus")
+
+        assert result.license_number is None
+        assert [c.license_number for c in result.candidates] == ["P1"]
+
+    def test_tie_break_never_pins(self):
+        """中文段自己就唯一比到也一樣不釘：投票平手代表英文段不同意，釘選仍
+        要「投票也只剩那一張」。這一步只縮小候選，交給使用者確認。"""
+        service = _variant_service(
+            DrugCatalogEntry(
+                license_number="P1",
+                name_zh="普拿疼伏冒鼻炎感冒錠",
+                name_en="PANADOL ALLERGY SINUS CAPLETS",
+            ),
+            DrugCatalogEntry(
+                license_number="P2", name_zh="普拿疼伏冒錠", name_en="PANADOL COLD & FLU TABLETS"
+            ),
+        )
+
+        result = service.match("普拿疼伏冒鼻炎感冒錠 Panadol Cold & Flu Sinus")
+
+        assert result.license_number is None
+        assert [c.license_number for c in result.candidates] == ["P1"]
+
+    def test_tie_without_a_chinese_segment_is_left_alone(self):
+        service = _variant_service(
+            DrugCatalogEntry(
+                license_number="P1",
+                name_zh="普拿疼伏冒鼻炎感冒錠",
+                name_en="PANADOL ALLERGY SINUS CAPLETS",
+            ),
+            DrugCatalogEntry(
+                license_number="P2", name_zh="普拿疼伏冒錠", name_en="PANADOL COLD & FLU TABLETS"
+            ),
+        )
+
+        result = service.match("Panadol Cold Sinus")
+
+        assert {c.license_number for c in result.candidates} == {"P1", "P2"}
+
+    def test_chinese_segment_naming_every_tied_entry_changes_nothing(self):
+        service = _variant_service(
+            DrugCatalogEntry(
+                license_number="P1",
+                name_zh="普拿疼伏冒鼻炎感冒錠",
+                name_en="PANADOL ALLERGY SINUS CAPLETS",
+            ),
+            DrugCatalogEntry(
+                license_number="P2", name_zh="普拿疼伏冒錠", name_en="PANADOL COLD & FLU TABLETS"
+            ),
+        )
+
+        result = service.match("普拿疼伏冒 Panadol Cold Sinus")
+
+        assert {c.license_number for c in result.candidates} == {"P1", "P2"}
+
     def test_generic_only_line_behaves_like_asking_the_generic(self):
         """除了劑型只有學名時讓學名投票，結果等同直接拿學名去問。"""
         service = _variant_service(METRONIDAZOLE_GENERIC, DYNIN_TABLET)
@@ -1410,3 +1482,12 @@ def test_real_bag_lines_from_production_resolve():
     assert len(lendormin.candidates) == 2
 
     assert service.match("Nin Jiom Kruidensiroop") is None
+
+    # 2026-10-02 線上：英文是盒子上的行銷名，11 張伏冒系列同票，中文品名只點到一張。
+    sinus = service.match("普拿疼伏冒鼻炎感冒錠 Panadol Cold & Flu Sinus")
+    assert sinus.license_number is None
+    assert [c.license_number for c in sinus.candidates] == ["衛署藥輸字第023723號"]
+
+    # 引號裡的廠商名不算中文品名：鍵拿掉了開頭的「"巴斯夫"」，這段只點得到別張。
+    panthenol = service.match('"巴斯夫" 泛醇 D-PANTHENOL')
+    assert "衛署藥輸字第015899號" in {c.license_number for c in panthenol.candidates}

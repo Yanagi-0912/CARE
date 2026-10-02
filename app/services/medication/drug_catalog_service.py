@@ -717,8 +717,54 @@ class DrugCatalogService:
                     candidates=best,
                 )
         return DrugCatalogMatch(
-            license_number=None, name_zh="", name_en="", score=score, candidates=best
+            license_number=None,
+            name_zh="",
+            name_en="",
+            score=score,
+            candidates=self._prefer_chinese_name(best, [segment for segment, _ in voters]),
         )
+
+    @staticmethod
+    def _prefer_chinese_name(
+        best: list[DrugCatalogEntry], segments: list[str]
+    ) -> list[DrugCatalogEntry]:
+        """同票時，登記中文品名裡出現最多中文段的藥證優先。只縮小候選，不釘證號。
+
+        盒子上的英文常是行銷名，不是登記的英文品名：普拿疼伏冒鼻炎感冒錠登記成
+        PANADOL ALLERGY SINUS CAPLETS，盒子印 Panadol Cold & Flu Sinus。
+        COLD、FLU 兩段替整個伏冒系列各投一票，正確那張靠中文段與 SINUS 才追平，
+        2026-10-02 線上因此給了 11 個候選。
+
+        比的是品名原文，不是比對鍵。量測（2026-10-02）：每張有中英品名的藥證造
+        「中＋英」「英＋中」「中＋同品牌別張的英文」三種寫法。從中抽 10,000 張、
+        26,752 筆時，用鍵比（中文段點得到就算）把正解刷掉 8 次——鍵拿掉了開頭
+        引號裡的廠商名，`"巴斯夫" 泛醇` 的「巴斯夫」只點得到名字中段也有巴斯夫的
+        別張；要求中文段逐字等於全名則刷掉 422 次——含量在分段時被拿掉，
+        「氯黴素注射劑１２５ＭＧ/ＭＬ」切出的段剛好等於另一張沒寫含量的藥證。
+        改比原文後全庫 66,418 張、177,899 筆：候選有變 10,177 筆、正解刷掉 0 次，
+        「中＋同品牌別張的英文」那組候選總數 978,614 → 50,370。
+
+        釘證號的判斷在呼叫端、用的是縮小前的票數，所以這一步不會讓任何原本
+        不釘的藥被釘上：同票代表英文段不同意，仍交給使用者確認。沒有中文段、
+        或每一張同票藥證點到的一樣多時原樣返回。
+        """
+        chinese = [segment for segment in segments if _CJK_RUN_RE.fullmatch(segment)]
+        if len(best) < 2 or not chinese:
+            return best
+
+        def _hits(entry: DrugCatalogEntry) -> int:
+            # 英文品名也看：少數藥證兩欄填反了（衛署藥輸字第026015號的 name_zh
+            # 是 Lycadex PF、name_en 才是單水葡萄糖）。正常的英文品名沒有中文，
+            # 多看一欄不影響其他藥證。
+            text = unicodedata.normalize("NFKC", f"{entry.name_zh} {entry.name_en}").upper()
+            runs = _CJK_RUN_RE.findall(text)
+            return sum(any(segment in run for run in runs) for segment in chinese)
+
+        hits = {entry.license_number: _hits(entry) for entry in best}
+        top = max(hits.values())
+        if top == 0:
+            return best
+        return [entry for entry in best if hits[entry.license_number] == top]
 
     @staticmethod
     def _agrees_with_generics(entry: DrugCatalogEntry, generic_segments: list[str]) -> bool:

@@ -11,7 +11,7 @@ from typing import Any, Optional
 import pytest
 
 from app.services.safety.ingredient_overlap import IngredientClass, IngredientWatchlist
-from app.services.medication.drug_catalog_service import DrugCatalogEntry
+from app.services.medication.drug_catalog_service import DrugCatalogEntry, DrugCatalogMatch
 from app.services.medication.tcm_catalog_service import TcmCatalogEntry, TcmCatalogService
 from app.services.safety.atc_interaction import ClassPairTable
 from app.services.safety.otc_alert_service import OtcAlertService
@@ -32,6 +32,7 @@ def _Entry(
     ingredients: tuple[str, ...],
     dosage_form: str = "膜衣錠",
     atc_codes: tuple[str, ...] = (),
+    license_number: str = "L-TEST",
 ) -> DrugCatalogEntry:
     """建真的 `DrugCatalogEntry`，不是形狀相符的自製 stub。
 
@@ -44,7 +45,7 @@ def _Entry(
     只能回答「如果它存在，邏輯對不對」。
     """
     return DrugCatalogEntry(
-        license_number="L-TEST",
+        license_number=license_number,
         name_zh="測試藥",
         drug_class=drug_class,
         ingredients=tuple(ingredients),
@@ -62,11 +63,23 @@ class _Med:
 
 
 class _Catalog:
-    def __init__(self, by_licence: dict) -> None:
+    """`by_name` 是藥名比對的結果：藥名 → 候選藥證。真的 `match` 定不出證號時
+    就是這個形狀——`license_number` 留空、候選交給使用者挑。"""
+
+    def __init__(self, by_licence: dict, by_name: Optional[dict] = None) -> None:
         self._by_licence = by_licence
+        self._by_name = by_name or {}
 
     def entry_by_license_number(self, licence: str):
         return self._by_licence.get(licence)
+
+    def match(self, name: str):
+        candidates = self._by_name.get(name)
+        if not candidates:
+            return None
+        return DrugCatalogMatch(
+            license_number=None, name_zh="", name_en="", score=1.0, candidates=list(candidates)
+        )
 
 
 class _MedRepo:
@@ -136,11 +149,12 @@ def _build(
     tcm_interactions: Any = None,
     class_pairs: Any = None,
     tcm_watch_herbs: Any = None,
+    candidates: Optional[dict] = None,
 ):
     replier = _Replier()
     auth = _Auth(recipients, raises=auth_raises)
     service = OtcAlertService(
-        catalog_service=_Catalog(catalog),
+        catalog_service=_Catalog(catalog, candidates),
         medication_repository=_MedRepo(meds, existing),
         replier=replier,
         watchlist=WATCHLIST,
@@ -982,3 +996,210 @@ async def test_missing_atc_codes_disable_only_the_bleeding_rule():
 
     assert [u for u, _ in replier.flexes] == ["family-1"], "新增通知仍要發"
     assert replier.texts == []
+
+
+# --- 沒釘證號的藥：用所有候選都有的成分 -----------------------------------
+#
+# 藥名對到不只一張藥證、或唯一候選旁還有反向含容命中時，證號留空、交給使用者
+# 挑。沒挑的藥以前查不到任何成分，既不觸發也不進比對池——2026-10-02 線上一位
+# 使用者加了四盒成藥，兩盒沒挑，三盒都含乙醯胺酚卻一則警示都沒有。
+
+
+@pytest.mark.asyncio
+async def test_unpinned_otc_uses_ingredients_every_candidate_shares():
+    """11 個普拿疼伏冒候選成分各不相同，但每一張都有乙醯胺酚——不管實際是
+    哪一張，跟普拿疼加強錠重複這件事都成立。"""
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="普拿疼伏冒鼻炎感冒錠"),
+            "old": _Med(id="old", name="普拿疼加強錠", license_number="L-OLD"),
+        },
+        catalog={"L-OLD": _Entry("otc_guided", ("CAFFEINE", "ACETAMINOPHEN"))},
+        candidates={
+            "普拿疼伏冒鼻炎感冒錠": [
+                _Entry(
+                    "otc_guided",
+                    ("PSEUDOEPHEDRINE HCL", "ACETAMINOPHEN", "CHLORPHENIRAMINE MALEATE"),
+                    license_number="L-1",
+                ),
+                _Entry("otc_guided", ("PHENYLEPHRINE HCL", "ACETAMINOPHEN"), license_number="L-2"),
+            ]
+        },
+        existing=["old"],
+    )
+
+    await service.check("patient", ["new"])
+
+    assert "用藥重複提醒" in replier.flexes[0][1].alt_text
+    ((_, text),) = replier.texts
+    assert "普拿疼伏冒鼻炎感冒錠" in text and "普拿疼加強錠" in text
+    assert "ACETAMINOPHEN" in text
+
+
+@pytest.mark.asyncio
+async def test_ingredient_only_some_candidates_have_is_not_claimed():
+    """CPM 只在其中一張候選裡——說「含有相同成分 CPM」就是替使用者猜了證號。"""
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="普拿疼伏冒"),
+            "old": _Med(id="old", name="鼻炎糖漿", license_number="L-OLD"),
+        },
+        catalog={"L-OLD": _Entry("otc", ("CHLORPHENIRAMINE MALEATE",), dosage_form="糖漿劑")},
+        candidates={
+            "普拿疼伏冒": [
+                _Entry("otc_guided", ("ACETAMINOPHEN", "CHLORPHENIRAMINE MALEATE"), license_number="L-1"),
+                _Entry("otc_guided", ("ACETAMINOPHEN",), license_number="L-2"),
+            ]
+        },
+        existing=["old"],
+    )
+
+    await service.check("patient", ["new"])
+
+    assert replier.texts == []
+    assert "新增了用藥提醒" in replier.flexes[0][1].alt_text
+
+
+@pytest.mark.asyncio
+async def test_unpinned_existing_drug_is_in_the_comparison_pool():
+    """比對池那一側同理：斯斯感冒膠囊只有一個候選但沒確認，仍要拿來比。"""
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="普拿疼加強錠", license_number="L-NEW"),
+            "old": _Med(id="old", name="斯斯感冒膠囊"),
+        },
+        catalog={"L-NEW": _Entry("otc_guided", ("CAFFEINE", "ACETAMINOPHEN"))},
+        candidates={
+            "斯斯感冒膠囊": [
+                _Entry(
+                    "otc_guided",
+                    ("ACETAMINOPHEN", "CHLORPHENIRAMINE MALEATE", "CODEINE PHOSPHATE"),
+                    license_number="L-1",
+                )
+            ]
+        },
+        existing=["old"],
+    )
+
+    await service.check("patient", ["new"])
+
+    ((_, text),) = replier.texts
+    assert "斯斯感冒膠囊" in text and "ACETAMINOPHEN" in text
+
+
+@pytest.mark.asyncio
+async def test_unpinned_stacking_against_existing_anticholinergic():
+    """暈車藥（Dimenhydrinate）＋候選都含 CPM 的感冒藥：成分不同、作用疊加。"""
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="斯斯感冒膠囊"),
+            "old": _Med(id="old", name="暈車船液", license_number="L-OLD"),
+        },
+        catalog={"L-OLD": _Entry("otc_guided", ("DIMENHYDRINATE",), dosage_form="內服液劑")},
+        candidates={
+            "斯斯感冒膠囊": [
+                _Entry("otc_guided", ("ACETAMINOPHEN", "CHLORPHENIRAMINE MALEATE"), license_number="L-1")
+            ]
+        },
+        existing=["old"],
+    )
+
+    await service.check("patient", ["new"])
+
+    ((_, text),) = replier.texts
+    assert "斯斯感冒膠囊" in text and "暈車船液" in text
+    assert "走路要特別小心" in text
+
+
+@pytest.mark.asyncio
+async def test_candidates_of_mixed_class_do_not_trigger():
+    """候選裡有處方藥也有成藥——分級不明，照「認不得的分級不觸發」處理。"""
+    service, replier, auth = _build(
+        meds={
+            "new": _Med(id="new", name="某某錠"),
+            "old": _Med(id="old", name="普拿疼", license_number="L-OLD"),
+        },
+        catalog={"L-OLD": _Entry("otc", ("ACETAMINOPHEN",))},
+        candidates={
+            "某某錠": [
+                _Entry("prescription", ("ACETAMINOPHEN",), license_number="L-1"),
+                _Entry("otc", ("ACETAMINOPHEN",), license_number="L-2"),
+            ]
+        },
+        existing=["old"],
+    )
+
+    await service.check("patient", ["new"])
+
+    assert replier.flexes == [] and replier.texts == []
+    assert auth.kinds == []
+
+
+@pytest.mark.asyncio
+async def test_any_local_action_candidate_keeps_the_drug_out_of_comparison():
+    """候選裡有一張是眼藥水，就不能確定它會全身吸收——寧可少比一組。"""
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="新一點靈"),
+            "old": _Med(id="old", name="小兒蜜咳樂糖漿", license_number="L-OLD"),
+        },
+        catalog={
+            "L-OLD": _Entry("otc", ("CHLORPHENIRAMINE MALEATE",), dosage_form="糖漿劑")
+        },
+        candidates={
+            "新一點靈": [
+                _Entry("otc", ("CHLORPHENIRAMINE MALEATE",), dosage_form="錠劑", license_number="L-1"),
+                _Entry("otc", ("CHLORPHENIRAMINE MALEATE",), dosage_form="眼用液劑", license_number="L-2"),
+            ]
+        },
+        existing=["old"],
+        local_forms=frozenset({"眼用液劑"}),
+    )
+
+    await service.check("patient", ["new"])
+
+    assert replier.texts == []
+    assert "新增了用藥提醒" in replier.flexes[0][1].alt_text
+
+
+@pytest.mark.asyncio
+async def test_pinned_licence_is_not_second_guessed_by_name():
+    """使用者挑過的證號優先：藥名的候選再多，也不拿來覆蓋已確認的那一張。"""
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="普拿疼", license_number="L-NEW"),
+            "old": _Med(id="old", name="止痛藥", license_number="L-OLD"),
+        },
+        catalog={
+            "L-NEW": _Entry("otc", ("DEXTROMETHORPHAN",)),
+            "L-OLD": _Entry("otc", ("ACETAMINOPHEN",)),
+        },
+        candidates={"普拿疼": [_Entry("otc", ("ACETAMINOPHEN",), license_number="L-1")]},
+        existing=["old"],
+    )
+
+    await service.check("patient", ["new"])
+
+    assert replier.texts == []
+
+
+@pytest.mark.asyncio
+async def test_tcm_formula_name_is_not_replaced_by_catalog_candidates():
+    """中藥方名比對照舊優先：沒釘證號的藥以前就是先問中藥庫，候選只補在
+    中藥庫也認不得的時候，不改變任何已經會發的中西藥警示。"""
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="葛根湯"),
+            "old": _Med(id="old", name="阿斯匹靈腸溶錠", license_number="L-OLD"),
+        },
+        catalog={"L-OLD": _Entry("prescription", ("ASPIRIN",))},
+        candidates={"葛根湯": [_Entry("otc", ("PUERARIA ROOT",), license_number="L-1")]},
+        existing=["old"],
+        tcm_catalog=TCM_CATALOG,
+        tcm_interactions=TCM_PAIRS,
+    )
+
+    await service.check("patient-1", ["new"])
+
+    ((_, text),) = replier.texts
+    assert "葛根湯" in text and "溫和" in text

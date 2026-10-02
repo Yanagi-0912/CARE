@@ -37,6 +37,7 @@ from typing import Any, Optional, Protocol, Sequence
 
 from app.i18n import t
 from app.models.medication import TAIPEI_TZ
+from app.services.medication.drug_catalog_service import DrugCatalogEntry
 from app.services.line_messaging.flex.otc_flex import build_otc_family_flex
 from app.services.safety.atc_interaction import ClassPairTable, find_class_pair
 from app.services.safety.tcm_interaction import (
@@ -379,11 +380,13 @@ class OtcAlertService:
     def _to_view(self, medication: Any) -> _DrugView:
         """把 `Medication` 補上藥證庫的分級、成分與劑型。
 
-        `entry_by_license_number` 查無（使用者沒有確認證號、或藥證庫是尚未帶
-        新欄位的舊版）時，成分為空、分級為空字串——`should_check` 對空字串回
-        False，這筆藥因此既不觸發偵測也不會被誤判成非處方藥。
+        沒有證號的藥（使用者沒挑候選）先問中藥庫，中藥庫也認不得時改用藥名
+        候選共有的部分，見 `_shared_by_candidates`。兩邊都查無、或藥證庫是
+        尚未帶新欄位的舊版時，成分為空、分級為空字串——`should_check` 對空
+        字串回 False，這筆藥因此既不觸發偵測也不會被誤判成非處方藥。
         """
         entry = None
+        name = getattr(medication, "name", "") or ""
         license_number = getattr(medication, "license_number", None)
         if license_number:
             entry = self._catalog_service.entry_by_license_number(license_number)
@@ -391,12 +394,16 @@ class OtcAlertService:
         # 命中代表這是一張真實的西藥藥證，不該再拿去問中藥庫。
         tcm_keys: tuple[str, ...] = ()
         if self._tcm_catalog_service is not None and not getattr(entry, "ingredients", None):
-            tcm_entry = self._tcm_catalog_service.match(getattr(medication, "name", "") or "")
+            tcm_entry = self._tcm_catalog_service.match(name)
             if tcm_entry is not None:
                 tcm_keys = tcm_entry.interaction_keys
+        # 候選排在中藥庫之後：沒有證號的藥以前就是只問中藥庫，這裡只補中藥庫
+        # 也認不得的那些，已經會發的中西藥警示一則都不變。
+        if entry is None and not tcm_keys:
+            entry = self._shared_by_candidates(name)
         return _DrugView(
             medication_id=str(getattr(medication, "id", "") or ""),
-            name=getattr(medication, "name", "") or "",
+            name=name,
             ingredients=tuple(getattr(entry, "ingredients", ()) or ()),
             atc_codes=tuple(getattr(entry, "atc_codes", ()) or ()),
             dosage_form=getattr(entry, "dosage_form", "") or "",
@@ -406,6 +413,52 @@ class OtcAlertService:
             # `safety_flex` 頂端「原始提問不進推播」是同一條理由。
             indication=getattr(medication, "spc_indication_summary", None),
             tcm_keys=tcm_keys,
+        )
+
+    def _shared_by_candidates(self, name: str) -> Optional[DrugCatalogEntry]:
+        """沒釘證號的藥：取藥名每一張候選藥證都成立的部分。
+
+        藥名對到不只一張藥證、或唯一候選旁還有反向含容命中時，`match` 不釘
+        證號、交給使用者挑（見 `DrugCatalogMatch`）。沒挑的藥以前在這裡查不
+        到任何成分，於是既不觸發也不進比對池——2026-10-02 線上一位使用者加了
+        四盒成藥，普拿疼伏冒鼻炎感冒錠（11 個候選）與斯斯感冒膠囊（1 個候選
+        待確認）沒挑，三盒都含乙醯胺酚卻一則警示都沒有。
+
+        不猜是哪一張，只用「不管是哪一張都成立」的事：
+
+        - 成分與 ATC 取所有候選的交集。普拿疼伏冒那 11 張只共有乙醯胺酚，CPM
+          只在其中 3 張，就不拿 CPM 去比。
+        - 分級要全部一致才算，否則留空字串——處方藥與成藥混在候選裡時，比照
+          藥證庫認不得的分級，不觸發。
+        - 任何一張候選是局部作用劑型，整筆就當局部作用：不能確定會全身吸收，
+          寧可少比一組，與 `_comparable` 的方向相同。
+
+        候選只含完全比對與正向含容命中（`DrugCatalogMatch.candidates`），與
+        LIFF 讓使用者挑的是同一份。
+        """
+        match = getattr(self._catalog_service, "match", None)
+        if match is None or not name:
+            return None
+        candidates = list(getattr(match(name), "candidates", None) or [])
+        if not candidates:
+            return None
+
+        def _shared(field: str) -> tuple[str, ...]:
+            common = set(getattr(candidates[0], field))
+            for candidate in candidates[1:]:
+                common &= set(getattr(candidate, field))
+            return tuple(v for v in getattr(candidates[0], field) if v in common)
+
+        classes = {candidate.drug_class for candidate in candidates}
+        forms = [candidate.dosage_form for candidate in candidates]
+        local_forms = [f for f in forms if is_local_action(f, self._local_action_forms)]
+        return DrugCatalogEntry(
+            license_number="",
+            name_zh=name,
+            drug_class=classes.pop() if len(classes) == 1 else "",
+            dosage_form=local_forms[0] if local_forms else forms[0],
+            ingredients=_shared("ingredients"),
+            atc_codes=_shared("atc_codes"),
         )
 
     # ---- 通知 --------------------------------------------------------------

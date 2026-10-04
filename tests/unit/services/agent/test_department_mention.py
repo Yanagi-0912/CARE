@@ -42,6 +42,17 @@ SHARED_LOCATION = "這是我的目前位置：lat=24.7936, lng=121.0203"
         ("我對這科不熟", None),
         ("科科", None),
         ("看科", None),
+        # 「科」前面是問句詞：是在問要看哪一科，不是指名某一科
+        ("我胃痛要看什麼科", None),
+        ("我頭痛要看甚麼科", None),
+        ("這樣要看什么科", None),
+        ("咳嗽要看啥科", None),
+        ("我喉嚨痛要看哪一科", None),
+        ("頭暈要看哪個科", None),
+        ("這要掛哪種科", None),
+        ("隨便什麼科都可以", None),
+        # 問完之後又指名了某一科：跳過問句，抓後面那一科
+        ("我胃痛要看什麼科附近有腹腔鏡科嗎", "腹腔鏡科"),
         # 完全沒提到科別
         ("附近有醫院嗎", None),
         ("今天天氣如何", None),
@@ -83,3 +94,16 @@ def test_history_returns_empty_when_no_department_mentioned():
         HumanMessage(content=SHARED_LOCATION),
     ]
     assert _extract_department_from_history(messages) == []
+
+
+def test_history_question_about_department_is_not_a_department():
+    """
+    「我頭痛要看什麼科」是在問科別。分享位置時若把「什麼科」當成科別帶去查，
+    回覆會是「我不確定『什麼科』對應到哪一個診療科別」（2026-10-04 線上案例）。
+    """
+    messages = [
+        HumanMessage(content="我頭痛要看什麼科"),
+        HumanMessage(content=SHARED_LOCATION),
+    ]
+    assert _extract_department_from_history(messages) == []
+

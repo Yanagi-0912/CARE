@@ -23,6 +23,7 @@ from typing import Any, Callable, Literal, Optional, Protocol
 from app.core.user_font_size import DEFAULT_USER_FONT_SIZE, normalize_user_font_size
 from app.core.user_language import DEFAULT_USER_LANGUAGE, normalize_user_language
 from app.i18n.messages import t
+from app.models.family_tree import is_detailed_relationship, relationship_group
 from app.models.safety import EmergencyReportEntry
 from app.services.family.person_resolution import PersonResolution
 from app.services.medical.symptom_classification.urgency import AffectedPerson
@@ -528,7 +529,7 @@ def followup_texts(
 
     每位急症者一行，文案依「人物種類 × 通知結果」選固定字串：
     - 本人：依 outcomes[發話者] 說明家人有沒有收到。
-    - 唯一解析的家人：用使用者自己的稱呼（「阿公」），依 outcomes[家人] 說明；
+    - 唯一解析的家人：稱呼見 `_member_address`，依 outcomes[家人] 說明；
       沒有結果（連結未經驗證而沒有通知）時明說沒有自動通知。
     - 其他人（同稱謂多人、名單查不到、朋友、路人）：合成一行「對方」，明說沒有
       自動通知。叫錯人比不叫名字更糟。
@@ -543,7 +544,7 @@ def followup_texts(
         if not (item.is_resolved_member and item.resolution.member is not None):
             neutral = True
             continue
-        name = item.person.label or item.resolution.display_label
+        name = _member_address(item, language)
         outcome = outcomes.get(item.resolution.member.user_id, "not_notified")
         texts.append(
             t(f"text.emergency.result.member.{outcome}", language).format(name=name)
@@ -557,3 +558,25 @@ def followup_texts(
         if others:
             texts.append(t("text.emergency.self_also_urgent", language))
     return texts
+
+
+def _member_address(item: ResolvedAffected, language: Optional[str]) -> str:
+    """紅卡後提示裡怎麼稱呼這位已對到的家人。
+
+    原話的稱呼常是省略的「爸」「媽」，直接套進「請留在{name}身邊」很怪；改用
+    稱謂的固定譯文（「爸爸」「your father」）。稱謂優先取發話者自己在族譜的設定；
+    族譜只設了「父母」這種大類時，取模型從原話判斷的性別，但必須同一類，不能
+    族譜寫祖父母、模型說爸爸還照用。都分不出性別才退回原話與名單上的名字。
+    """
+    member_relationship = item.resolution.member.relationship_type
+    said = item.person.relationship
+    if is_detailed_relationship(member_relationship):
+        relationship = member_relationship
+    elif is_detailed_relationship(said) and relationship_group(said) == relationship_group(
+        member_relationship
+    ):
+        relationship = said
+    else:
+        return item.person.label or item.resolution.display_label
+    return t(f"text.emergency.address.{relationship}", language)
+

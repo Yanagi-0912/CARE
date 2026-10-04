@@ -232,6 +232,39 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "ตอนนี้ยังแจ้งครอบครัวไม่สำเร็จ โปรดขอความช่วยเหลือโดยตรงตามการ์ดสีแดง",
         "ja": "今はご家族に知らせることができませんでした。赤いカードの案内に沿って、直接助けを求めてください。",
     },
+    # 紅卡後提示裡怎麼稱呼這位家人：取發話者自己在族譜設定的稱謂，族譜只設了
+    # 大類時取模型從原話判斷的性別。要放進「請留在{name}身邊」這種句子裡，
+    # 因此是「你的父親」這種稱呼，不是家人名單上的類別名稱。
+    "text.emergency.address.father": {
+        "zh-TW": "爸爸", "en": "your father", "id": "ayah Anda", "vi": "bố của bạn", "th": "พ่อของคุณ", "ja": "お父さん",
+    },
+    "text.emergency.address.mother": {
+        "zh-TW": "媽媽", "en": "your mother", "id": "ibu Anda", "vi": "mẹ của bạn", "th": "แม่ของคุณ", "ja": "お母さん",
+    },
+    "text.emergency.address.son": {
+        "zh-TW": "兒子", "en": "your son", "id": "putra Anda", "vi": "con trai của bạn", "th": "ลูกชายของคุณ", "ja": "息子さん",
+    },
+    "text.emergency.address.daughter": {
+        "zh-TW": "女兒", "en": "your daughter", "id": "putri Anda", "vi": "con gái của bạn", "th": "ลูกสาวของคุณ", "ja": "娘さん",
+    },
+    "text.emergency.address.brother": {
+        "zh-TW": "兄弟", "en": "your brother", "id": "saudara laki-laki Anda", "vi": "anh/em trai của bạn", "th": "พี่ชายหรือน้องชายของคุณ", "ja": "ご兄弟",
+    },
+    "text.emergency.address.sister": {
+        "zh-TW": "姊妹", "en": "your sister", "id": "saudara perempuan Anda", "vi": "chị/em gái của bạn", "th": "พี่สาวหรือน้องสาวของคุณ", "ja": "ご姉妹",
+    },
+    "text.emergency.address.grandfather": {
+        "zh-TW": "阿公", "en": "your grandfather", "id": "kakek Anda", "vi": "ông của bạn", "th": "ปู่หรือตาของคุณ", "ja": "おじいさん",
+    },
+    "text.emergency.address.grandmother": {
+        "zh-TW": "阿嬤", "en": "your grandmother", "id": "nenek Anda", "vi": "bà của bạn", "th": "ย่าหรือยายของคุณ", "ja": "おばあさん",
+    },
+    "text.emergency.address.grandson": {
+        "zh-TW": "孫子", "en": "your grandson", "id": "cucu laki-laki Anda", "vi": "cháu trai của bạn", "th": "หลานชายของคุณ", "ja": "お孫さん",
+    },
+    "text.emergency.address.granddaughter": {
+        "zh-TW": "孫女", "en": "your granddaughter", "id": "cucu perempuan Anda", "vi": "cháu gái của bạn", "th": "หลานสาวของคุณ", "ja": "お孫さん",
+    },
     "text.emergency.result.member.sent": {
         "zh-TW": "我已通知可以協助{name}的家人。請留在{name}身邊，並依紅卡立即尋求協助。",
         "en": "I've notified family members who can help {name}. Please stay with {name} and get help right away as shown on the red card.",
@@ -3149,6 +3182,36 @@ _MESSAGES: dict[str, dict[str, str]] = {
     "family.directory.relationship.grandchild": {
         "zh-TW": "孫子女", "en": "grandchild", "id": "cucu",
         "vi": "cháu", "th": "หลาน", "ja": "孫",
+    },
+    "family.directory.relationship.father": {
+        "zh-TW": "爸爸", "en": "father", "id": "ayah", "vi": "bố", "th": "พ่อ", "ja": "父",
+    },
+    "family.directory.relationship.mother": {
+        "zh-TW": "媽媽", "en": "mother", "id": "ibu", "vi": "mẹ", "th": "แม่", "ja": "母",
+    },
+    "family.directory.relationship.son": {
+        "zh-TW": "兒子", "en": "son", "id": "anak laki-laki", "vi": "con trai", "th": "ลูกชาย", "ja": "息子",
+    },
+    "family.directory.relationship.daughter": {
+        "zh-TW": "女兒", "en": "daughter", "id": "anak perempuan", "vi": "con gái", "th": "ลูกสาว", "ja": "娘",
+    },
+    "family.directory.relationship.brother": {
+        "zh-TW": "兄弟", "en": "brother", "id": "saudara laki-laki", "vi": "anh/em trai", "th": "พี่ชาย/น้องชาย", "ja": "兄弟",
+    },
+    "family.directory.relationship.sister": {
+        "zh-TW": "姊妹", "en": "sister", "id": "saudara perempuan", "vi": "chị/em gái", "th": "พี่สาว/น้องสาว", "ja": "姉妹",
+    },
+    "family.directory.relationship.grandfather": {
+        "zh-TW": "阿公", "en": "grandfather", "id": "kakek", "vi": "ông", "th": "ปู่/ตา", "ja": "祖父",
+    },
+    "family.directory.relationship.grandmother": {
+        "zh-TW": "阿嬤", "en": "grandmother", "id": "nenek", "vi": "bà", "th": "ย่า/ยาย", "ja": "祖母",
+    },
+    "family.directory.relationship.grandson": {
+        "zh-TW": "孫子", "en": "grandson", "id": "cucu laki-laki", "vi": "cháu trai", "th": "หลานชาย", "ja": "孫息子",
+    },
+    "family.directory.relationship.granddaughter": {
+        "zh-TW": "孫女", "en": "granddaughter", "id": "cucu perempuan", "vi": "cháu gái", "th": "หลานสาว", "ja": "孫娘",
     },
     "family.directory.relationship.other": {
         "zh-TW": "其他", "en": "other", "id": "lainnya",

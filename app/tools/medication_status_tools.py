@@ -33,8 +33,10 @@ async def get_medication_status(
     """查使用者本人或家人的用藥安排與服藥紀錄：今天要吃哪些藥、有沒有按下已服用、最近幾天有沒有沒確認的時段。
 
     person：使用者用來指稱對象的原話，例如「媽媽」「王美玲」「阿嬤」；問自己時留空。
-    relationship：person 是親屬稱謂時，換成 parent（父母）、child（子女）、spouse（配偶）、
-    sibling（兄弟姊妹）、grandparent（祖父母）、grandchild（孫子女）其中之一；是名字或問自己時留空。
+    relationship：person 是親屬稱謂時換成族譜稱謂：說得出是誰填 father（爸爸）、mother（媽媽）、
+    son（兒子）、daughter（女兒）、spouse（配偶）、brother（兄弟）、sister（姊妹）、grandfather
+    （阿公、外公）、grandmother（阿嬤、外婆）、grandson（孫子）、granddaughter（孫女）；只知道是哪一類
+    才填 parent、child、sibling、grandparent、grandchild；是名字或問自己時留空。
     days_ago：只問某一天時填幾天前，今天 0、昨天 1、前天 2。
     last_n_days：問一段期間時填天數，例如「這禮拜」「最近幾天」填 7；只問某一天時留 0。
     follow_up_question：使用者在同一則訊息裡除了查清單之外「還問了什麼」，填他的原話；

@@ -747,3 +747,24 @@ async def test_prompt_marks_self_harm_as_urgent():
     from app.services.medical.symptom_classification.urgency import _AFFECTED_PROMPT_TEMPLATE
 
     assert "自傷、輕生念頭一律 urgent=true" in _AFFECTED_PROMPT_TEMPLATE
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("text", "relation", "label"),
+    [("我爸中風", "father", "爸"), ("我阿嬤昏倒", "grandmother", "阿嬤")],
+)
+async def test_gendered_relation_is_kept_for_family_matching(text, relation, label):
+    """模型說得出性別時保留細項：名單裡阿公阿嬤都在才分得出是哪一位。"""
+    verdict = await _identify(text, _person(relation, label, "昏迷"))
+    assert verdict.affected == (
+        AffectedPerson(kind="family", label=label, relationship=relation, event="昏迷"),
+    )
+
+
+def test_people_schema_offers_every_family_relationship_value():
+    from app.models.family_tree import FAMILY_RELATIONSHIP_TYPES
+    from app.services.medical.symptom_classification.urgency import _AFFECTED_SCHEMA
+
+    enum = _AFFECTED_SCHEMA["properties"]["affected"]["items"]["properties"]["relation"]["enum"]
+    assert set(FAMILY_RELATIONSHIP_TYPES) - {"other"} <= set(enum)

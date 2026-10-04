@@ -11,16 +11,40 @@ from app.models.family_authorization import (
 )
 
 # 稱謂是「這份族譜的擁有者如何描述該成員」的單向個人標籤，不是兩人共享的
-# 全域關係，也不參與任何授權判定。順序同前端選單，錯誤訊息因此保持穩定。
-FAMILY_RELATIONSHIP_TYPES: tuple[str, ...] = (
-    "parent",
-    "child",
-    "spouse",
-    "sibling",
-    "grandparent",
-    "grandchild",
-    "other",
-)
+# 全域關係，也不參與任何授權判定。
+#
+# 大類 → 分性別的細項。只有大類時，名單裡爸媽或阿公阿嬤都在，說「我阿公」就
+# 分不出是哪一位，緊急通報因此不通知任何人。大類本身仍是合法值，代表「沒指定
+# 性別」：既有資料都是大類，不必搬移。配偶通常只有一位，不細分。
+FAMILY_RELATIONSHIP_GROUPS: dict[str, tuple[str, ...]] = {
+    "parent": ("father", "mother"),
+    "child": ("son", "daughter"),
+    "spouse": (),
+    "sibling": ("brother", "sister"),
+    "grandparent": ("grandfather", "grandmother"),
+    "grandchild": ("grandson", "granddaughter"),
+}
+
+# 細項 → 所屬大類；大類對應到自己。
+_RELATIONSHIP_GROUP_OF: dict[str, str] = {
+    value: group
+    for group, details in FAMILY_RELATIONSHIP_GROUPS.items()
+    for value in (group, *details)
+}
+
+# 所有合法值，每個大類後面接它的細項，最後是 other。錯誤訊息依這個順序列出。
+FAMILY_RELATIONSHIP_TYPES: tuple[str, ...] = (*_RELATIONSHIP_GROUP_OF, "other")
+
+
+def relationship_group(value: Optional[str]) -> Optional[str]:
+    """稱謂所屬的大類（father → parent）；other、未設定或不認得的值回 None。"""
+    return _RELATIONSHIP_GROUP_OF.get(value or "")
+
+
+def is_detailed_relationship(value: Optional[str]) -> bool:
+    """是否為分性別的細項（father、grandmother…），大類與 spouse 不算。"""
+    group = relationship_group(value)
+    return group is not None and value != group
 
 
 class FamilyMember(BaseModel):

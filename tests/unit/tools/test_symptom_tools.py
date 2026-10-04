@@ -3,6 +3,7 @@ import json
 import pytest
 
 from app.core.request_context import reset_line_user_id, set_line_user_id
+from app.models.family_tree import FAMILY_RELATIONSHIP_TYPES
 from app.services.family.patient_context import (
     PatientCandidate,
     PatientContext,
@@ -371,14 +372,7 @@ def test_tool_schema_exposes_only_structured_patient_clues():
         for option in relationship_schema["anyOf"]
         if "enum" in option
     )
-    assert set(relationship_enum) == {
-        "parent",
-        "child",
-        "spouse",
-        "sibling",
-        "grandparent",
-        "grandchild",
-    }
+    assert set(relationship_enum) == set(FAMILY_RELATIONSHIP_TYPES) - {"other"}
     assert "" not in relationship_enum
 
 
@@ -394,14 +388,7 @@ def test_gemini_schema_uses_an_optional_non_empty_relationship_enum():
     case_schema = declaration.parameters.properties["cases"].items
     relationship_schema = case_schema.properties["relationship"]
 
-    assert relationship_schema.enum == [
-        "parent",
-        "child",
-        "spouse",
-        "sibling",
-        "grandparent",
-        "grandchild",
-    ]
+    assert set(relationship_schema.enum) == set(FAMILY_RELATIONSHIP_TYPES) - {"other"}
     assert "relationship" not in case_schema.required
 
 

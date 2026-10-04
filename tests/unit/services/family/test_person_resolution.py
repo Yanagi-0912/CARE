@@ -111,3 +111,60 @@ def test_external_user_id_in_person_text_does_not_match_member_id():
     result = resolve_person([MOM], person="U_MOM", relationship="")
     assert result.kind == "not_found"
     assert result.member is None
+
+
+# --- 稱謂分性別（father／mother…）與只設大類的舊資料並存 ---
+
+DAD = _member("U_DAD", "王大明", "father")
+MOTHER = _member("U_MOTHER", "李春嬌", "mother")
+LEGACY_A = _member("U_A", "甲", "parent")
+LEGACY_B = _member("U_B", "乙", "parent")
+
+
+def test_gendered_relationship_picks_the_right_parent():
+    """爸媽都在名單：說「我爸」只對到設成爸爸的人，不用再反問。"""
+    result = resolve_person([DAD, MOTHER], person="爸", relationship="father")
+    assert result.kind == "member"
+    assert result.member == DAD
+    assert result.relationship == "father"
+
+
+def test_english_kinship_alias_maps_to_the_gendered_value():
+    result = resolve_person([DAD, MOTHER], person="mom", relationship="mom")
+    assert result.member == MOTHER
+
+
+def test_group_relationship_still_covers_gendered_members():
+    """說「我父母」不分性別：爸爸、媽媽都算，兩位就反問。"""
+    result = resolve_person([DAD, MOTHER], person="父母", relationship="parent")
+    assert result.kind == "ambiguous"
+    assert [m.user_id for m in result.candidates] == ["U_DAD", "U_MOTHER"]
+
+
+def test_gendered_request_falls_back_to_members_without_gender():
+    """族譜只設了「父母」的舊資料：說「我爸」仍要對得到，不能因為細分了就查無。"""
+    result = resolve_person([LEGACY_A], person="爸", relationship="father")
+    assert result.kind == "member"
+    assert result.member == LEGACY_A
+    assert result.relationship == "parent"
+
+
+def test_two_members_without_gender_stay_ambiguous():
+    result = resolve_person([LEGACY_A, LEGACY_B], person="爸", relationship="father")
+    assert result.kind == "ambiguous"
+
+
+def test_exact_gender_wins_over_members_without_gender():
+    result = resolve_person([DAD, LEGACY_B], person="爸", relationship="father")
+    assert result.member == DAD
+
+
+def test_member_set_as_the_other_gender_never_matches():
+    """設成媽媽的人永遠不算爸爸，即使名單只有她一位。"""
+    result = resolve_person([MOTHER], person="爸", relationship="father")
+    assert result.kind == "not_found"
+
+
+def test_name_with_conflicting_gender_is_reported_as_conflict():
+    result = resolve_person([MOTHER], person="春嬌", relationship="father")
+    assert result.kind == "conflict"

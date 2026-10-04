@@ -1379,3 +1379,72 @@ def test_guard_texts_exist_in_every_language(language):
     ):
         assert t(key, language) != key
     assert "{name}" in t("text.emergency.result.member.rate_limited", language)
+
+
+# --- 紅卡後提示的稱謂：用族譜稱謂的譯文，不直接套原話的「爸」 ---
+
+
+def _parent(relationship, user_id="U_DAD", name="王大明"):
+    return FamilyMember(user_id=user_id, display_name=name, relationship_type=relationship)
+
+
+@pytest.mark.asyncio
+async def test_abbreviated_kinship_word_is_shown_as_a_full_address():
+    """2026-10-04 線上案例：「我爸中風」回「請留在爸身邊」。族譜只設了「父母」，
+    取模型判斷的 father，顯示成「爸爸」。"""
+    dad = AffectedPerson(kind="family", label="爸", relationship="father", event="中風")
+    texts = await _texts(
+        dad, resolver=FakeResolver([_parent("parent")]), outcomes={"U_DAD": "sent"}
+    )
+    assert texts == ["我已通知可以協助爸爸的家人。請留在爸爸身邊，並依紅卡立即尋求協助。"]
+
+
+@pytest.mark.asyncio
+async def test_member_relationship_setting_wins_over_the_spoken_word():
+    """族譜設成阿嬤：不論原話怎麼叫，都用發話者自己的設定。"""
+    grandma = AffectedPerson(
+        kind="family", label="嬤", relationship="grandmother", event="昏迷"
+    )
+    member = _parent("grandmother", user_id="U_GRANDMA", name="王阿花")
+    texts = await _texts(
+        grandma, resolver=FakeResolver([member]), outcomes={"U_GRANDMA": "sent"}
+    )
+    assert texts == ["我已通知可以協助阿嬤的家人。請留在阿嬤身邊，並依紅卡立即尋求協助。"]
+
+
+@pytest.mark.asyncio
+async def test_address_follows_the_reply_language():
+    dad = AffectedPerson(kind="family", label="Ayah", relationship="father", event="stroke")
+    texts = await _texts(
+        dad,
+        resolver=FakeResolver([_parent("father")]),
+        outcomes={"U_DAD": "sent"},
+        language="en",
+    )
+    assert "your father" in texts[0]
+
+
+@pytest.mark.asyncio
+async def test_without_any_gender_the_spoken_word_is_kept():
+    """族譜與模型都只知道是「父母」：分不出性別就照舊用原話，不猜。"""
+    parent = AffectedPerson(kind="family", label="爸", relationship="parent", event="中風")
+    texts = await _texts(
+        parent, resolver=FakeResolver([_parent("parent")]), outcomes={"U_DAD": "sent"}
+    )
+    assert "請留在爸身邊" in texts[0]
+
+
+@pytest.mark.asyncio
+async def test_now_unique_grandpa_is_notified_when_grandma_is_also_listed():
+    """阿公阿嬤都在名單：細分稱謂後「我阿公昏迷」對得到唯一一位，可以通知。"""
+    grandpa = AffectedPerson(
+        kind="family", label="阿公", relationship="grandfather", event="昏迷"
+    )
+    members = [
+        _parent("grandfather", user_id="U_GRANDPA", name="王大明"),
+        _parent("grandmother", user_id="U_GRANDMA", name="王阿花"),
+    ]
+    resolved = await resolve_affected((grandpa,), OPERATOR, FakeResolver(members))
+
+    assert resolved[0].is_resolved_member
+    assert resolved[0].resolution.member.user_id == "U_GRANDPA"

@@ -278,3 +278,35 @@ async def test_visible_results_exist_in_every_supported_language(language):
 
     assert all(output.strip() for output in outputs)
     assert all("family.directory" not in output for output in outputs)
+
+
+@pytest.mark.asyncio
+async def test_relationship_query_uses_gendered_values():
+    trees = FakeTrees(
+        _tree(
+            FamilyMember(user_id="U_DAD", display_name="王大明", relationship_type="father"),
+            FamilyMember(user_id="U_MOM", display_name="李春嬌", relationship_type="mother"),
+        )
+    )
+    service = FamilyDirectoryService(trees)
+
+    assert (
+        await service.describe("U_ME", relationship="father", language="zh-TW")
+        == "您設定為爸爸的家人：王大明。"
+    )
+    parents = await service.describe("U_ME", relationship="parent", language="zh-TW")
+    assert "王大明" in parents and "李春嬌" in parents
+
+
+@pytest.mark.asyncio
+async def test_gendered_query_on_legacy_data_reports_the_stored_relationship():
+    """問「爸爸」卻只對到設成「父母」的舊資料：照實說是父母，不替使用者認定。"""
+    trees = FakeTrees(
+        _tree(FamilyMember(user_id="U_A", display_name="王大明", relationship_type="parent"))
+    )
+    service = FamilyDirectoryService(trees)
+
+    assert (
+        await service.describe("U_ME", relationship="father", language="zh-TW")
+        == "您設定為父／母的家人：王大明。"
+    )

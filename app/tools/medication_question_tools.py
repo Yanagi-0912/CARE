@@ -38,8 +38,10 @@ async def ask_about_my_medications(
     question：使用者問題的原話，包含他提到的時間與食物（例如「我 11 點喝了牛奶、
     12 點吃藥，等等要吃午餐，這樣可以嗎」）；不要改寫成醫學名詞，也不要自己補上藥名。
     person：使用者用來指稱對象的原話，例如「媽媽」「王美玲」；問自己時留空。
-    relationship：person 是親屬稱謂時，換成 parent（父母）、child（子女）、spouse（配偶）、
-    sibling（兄弟姊妹）、grandparent（祖父母）、grandchild（孫子女）其中之一；是名字或問自己時留空。
+    relationship：person 是親屬稱謂時換成族譜稱謂：說得出是誰填 father（爸爸）、mother（媽媽）、
+    son（兒子）、daughter（女兒）、spouse（配偶）、brother（兄弟）、sister（姊妹）、grandfather
+    （阿公、外公）、grandmother（阿嬤、外婆）、grandson（孫子）、granddaughter（孫女）；只知道是哪一類
+    才填 parent、child、sibling、grandparent、grandchild；是名字或問自己時留空。
     """
     if _medication_question_service is None:
         return t("medstatus.error")

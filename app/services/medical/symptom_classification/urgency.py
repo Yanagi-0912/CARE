@@ -83,6 +83,7 @@ from typing import Any, Awaitable, Callable, Literal, Sequence
 from langchain_core.messages import HumanMessage
 
 from app.core.request_logging import log_stage
+from app.models.family_tree import FAMILY_RELATIONSHIP_TYPES
 from app.services.guardrail.local import LocalGuardrailClassifier
 from app.services.rag.answer_prompts import CONTEXT_BEGIN, CONTEXT_END, wrap_context
 
@@ -159,7 +160,7 @@ class AffectedPerson:
     label: str = ""
     """訊息中的稱呼或姓名（「阿公」「美玲」「路人」），本人時為空。"""
     relationship: str | None = None
-    """kind 為 family 且說得出是哪一種關係時才有值，六種關係之一。"""
+    """kind 為 family 且說得出是哪一種關係時才有值，族譜稱謂值之一（other 除外）。"""
     event: str = ""
     """此人身上發生的事，白話轉述，不引用原話。"""
     urgent: bool = True
@@ -288,11 +289,12 @@ display：一句話說明「是哪一點讓你判斷需要立即處置」，{lan
 # ——多描述一件事就會擾動判定。判定的 prompt 與 schema 因此一字不動，人物另問
 # 一次，而且只在判定為緊急之後才問：不緊急的訊息不多花一次呼叫，紅卡也不等它。
 
-# 模型填的 relation。族譜能對人的只有六種關係（同 person_resolution）；其餘三個
-# 值只分辨「是家人但說不出哪一種」「不是家人」「看不出是誰」。
+# 模型填的 relation。家人的值與族譜稱謂相同（other 除外，同 person_resolution）：
+# 說得出性別就填細項（father、grandmother…），名單裡阿公阿嬤都在時才分得出是誰；
+# 說不出才填大類。其餘四個值只分辨「是家人但說不出哪一種」「不是家人」「看不出是誰」。
 # 刻意不用空字串當值：Gemini 的 schema 不接受空的 enum 值，整個請求會被 400 退回。
 _FAMILY_RELATIONS = frozenset(
-    {"parent", "child", "spouse", "sibling", "grandparent", "grandchild"}
+    value for value in FAMILY_RELATIONSHIP_TYPES if value != "other"
 )
 _RELATION_VALUES = (
     "self",
@@ -338,10 +340,13 @@ _AFFECTED_PROMPT_TEMPLATE = """下面這則訊息已被判定描述了正在發�
 依訊息順序一人一筆；同一句提到多人時分開列，不可合併兩人的狀況。
 只是在旁邊、沒有狀況的人不要列。
 
-relation：發話者本人填 self；發話者的家人依關係填 parent（父母）、
-  child（子女）、spouse（配偶）、sibling（兄弟姊妹）、grandparent（祖父母、
-  外祖父母）、grandchild（孫子女）；是家人但不屬於這六種或說不出是哪一種
-  （例如舅舅、「我家人」）填 other_family；朋友、同事、路人、陌生人等
+relation：發話者本人填 self；發話者的家人說得出是誰時填 father（爸爸）、
+  mother（媽媽）、son（兒子）、daughter（女兒）、spouse（配偶）、brother（哥哥、
+  弟弟）、sister（姊姊、妹妹）、grandfather（阿公、爺爺、外公）、grandmother
+  （阿嬤、奶奶、外婆）、grandson（孫子）、granddaughter（孫女）；只知道是哪一類、
+  不知道性別時（例如「我爸媽其中一個」「我孫子女」）才填 parent、child、sibling、
+  grandparent、grandchild；是家人但不屬於以上或說不出是哪一種（例如舅舅、
+  「我家人」）填 other_family；朋友、同事、路人、陌生人等
   不是家人的人填 not_family；確定不是發話者本人、但訊息與前文都看不出是誰
   （例如只說「他」「她」「對方」而前文沒有對得上的人）填 someone_else；
   連是不是發話者本人都看不出來才填 unknown。
@@ -353,13 +358,14 @@ urgent：這個人本身的狀況是否需要立刻叫救護車或前往急診�
 
 參考：
   「我昏倒了」→ self, label=""
-  「我阿公昏迷」→ grandparent, label="阿公"
+  「我阿公昏迷」→ grandfather, label="阿公"
+  「我爸中風」→ father, label="爸"
   「路邊有人昏倒了」→ not_family, label="路人"
   「我朋友傳訊息說他想自殺」→ not_family, label="朋友"
   「我不想活了」→ self, label="", urgent=true（自傷、輕生念頭一律 urgent=true）
-  「我阿公跌倒叫不醒，我自己也有點頭痛」→ grandparent, label="阿公", urgent=true；
+  「我阿公跌倒叫不醒，我自己也有點頭痛」→ grandfather, label="阿公", urgent=true；
     self, label="", urgent=false
-  前文「我阿公剛剛跌倒」，這次「他現在叫不醒」→ grandparent, label="阿公"
+  前文「我阿公剛剛跌倒」，這次「他現在叫不醒」→ grandfather, label="阿公"
   前文沒有提到任何人，這次「他現在叫不醒」→ someone_else, label="他"
 
 前文是發話者稍早傳的訊息，只用來判斷這次的「他／她／對方」指的是誰。

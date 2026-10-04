@@ -6,8 +6,15 @@ import logging
 from typing import Any
 
 from app.i18n.messages import t
-from app.models.family_tree import FAMILY_RELATIONSHIP_TYPES, FamilyMember
-from app.services.family.person_resolution import resolve_person
+from app.models.family_tree import (
+    FAMILY_RELATIONSHIP_TYPES,
+    FamilyMember,
+    relationship_group,
+)
+from app.services.family.person_resolution import (
+    members_with_relationship,
+    resolve_person,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -138,11 +145,16 @@ class FamilyDirectoryService:
         relationship: str,
         language: str | None,
     ) -> str:
-        matches = [
-            self._name(member, language)
-            for member in members
-            if member.relationship_type == relationship
-        ]
+        if relationship_group(relationship) is None:
+            # other 不屬於任何大類，只能逐字比。
+            found = [m for m in members if m.relationship_type == relationship]
+        else:
+            found = members_with_relationship(members, relationship)
+        # 問「爸爸」卻只對到設成「父母」的舊資料時，照實說是「父母」，不替使用者
+        # 決定那位就是爸爸。
+        if found and all(m.relationship_type != relationship for m in found):
+            relationship = relationship_group(relationship) or relationship
+        matches = [self._name(member, language) for member in found]
         label = self._relationship_label(relationship, language)
         if not matches:
             return t("family.directory.no_relationship", language).format(

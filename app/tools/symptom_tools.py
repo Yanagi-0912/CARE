@@ -36,13 +36,14 @@ logger = logging.getLogger(__name__)
 
 LOGGER_HEADER_TEXT = "[Tool:suggest_department_for_symptom]"
 
+# 同族譜稱謂（other 除外）：說得出是誰填細項，只知道是哪一類才填大類。
 FamilyRelationship = Literal[
-    "parent",
-    "child",
+    "parent", "father", "mother",
+    "child", "son", "daughter",
     "spouse",
-    "sibling",
-    "grandparent",
-    "grandchild",
+    "sibling", "brother", "sister",
+    "grandparent", "grandfather", "grandmother",
+    "grandchild", "grandson", "granddaughter",
 ]
 
 

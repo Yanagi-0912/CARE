@@ -20,8 +20,10 @@ async def get_family_directory(person: str = "", relationship: str = "") -> str:
     """查目前使用者自己的家庭名單、某位家人的稱謂，或某類稱謂有哪些人。
 
     person：查某位成員時填姓名；列出全部或依稱謂查詢時留空。
-    relationship：只可填 parent、child、spouse、sibling、grandparent、
-    grandchild、other；查姓名或列出全部時可留空。
+    relationship：只可填 parent、father、mother、child、son、daughter、spouse、
+    sibling、brother、sister、grandparent、grandfather、grandmother、grandchild、
+    grandson、granddaughter、other；問「我爸爸是誰」填 father，問「我父母有誰」填
+    parent；查姓名或列出全部時可留空。
     """
     if _family_directory_service is None:
         return t("family.directory.error")

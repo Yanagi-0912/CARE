@@ -5,21 +5,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, Optional, Sequence
 
-from app.models.family_tree import FamilyMember
+from app.models.family_tree import (
+    FAMILY_RELATIONSHIP_TYPES,
+    FamilyMember,
+    relationship_group,
+)
 
 # 問自己時 prompt 要模型留空；這些是模型仍把第一人稱原樣填進來時的保底。
 _SELF_WORDS = frozenset({"我", "自己", "我自己", "本人", "me", "myself", "i"})
 
-# relationship 由模型填，族譜裡能拿來對人的只有這六種（`other` 對不出是誰）。
-# 英文親屬詞是模型偶爾不照 prompt、直接寫出來的說法。
+# relationship 由模型填，族譜的稱謂值都能拿來對人，只有 `other` 對不出是誰。
+# 後面幾個英文親屬詞是模型偶爾不照 prompt、直接寫出來的說法。
 _RELATIONSHIP_ALIASES: dict[str, str] = {
-    "parent": "parent", "mother": "parent", "father": "parent", "mom": "parent", "dad": "parent",
-    "child": "child", "son": "child", "daughter": "child",
-    "spouse": "spouse", "husband": "spouse", "wife": "spouse",
-    "sibling": "sibling", "brother": "sibling", "sister": "sibling",
-    "grandparent": "grandparent", "grandmother": "grandparent", "grandfather": "grandparent",
-    "grandma": "grandparent", "grandpa": "grandparent",
-    "grandchild": "grandchild", "grandson": "grandchild", "granddaughter": "grandchild",
+    **{value: value for value in FAMILY_RELATIONSHIP_TYPES if value != "other"},
+    "mom": "mother", "dad": "father",
+    "husband": "spouse", "wife": "spouse",
+    "grandma": "grandmother", "grandpa": "grandfather",
 }
 
 
@@ -48,9 +49,9 @@ def resolve_person(
 ) -> PersonResolution:
     """把使用者的說法對到名單裡的一位家人：先比名字、再比關係，對到多位就反問。
 
-    名字比對是雙向包含（「美玲」對得到「王美玲」）。關係只到「父／母」這一層，
-    爸媽都在名單裡時分不出來——這時回 ambiguous 讓使用者選，不猜：猜錯就是把
-    另一位家人的資料講給他聽。
+    名字比對是雙向包含（「美玲」對得到「王美玲」）。關係的比對見
+    `members_with_relationship`。仍對到多位時回 ambiguous 讓使用者選，不猜：
+    猜錯就是把另一位家人的資料講給他聽。
     """
     wanted = _normalize(person)
     requested_label = _display_text(person)
@@ -66,9 +67,7 @@ def resolve_person(
         if by_name:
             return _pick_name_matches(by_name, relation, requested_label)
     if relation is not None:
-        by_relation = [
-            member for member in members if member.relationship_type == relation
-        ]
+        by_relation = members_with_relationship(members, relation)
         if by_relation:
             return _pick_relationship_matches(
                 by_relation, relation, requested_label
@@ -78,6 +77,26 @@ def resolve_person(
         display_label=requested_label or _display_text(relationship),
         relationship=relation,
     )
+
+
+def members_with_relationship(
+    members: Sequence[FamilyMember], relation: str
+) -> list[FamilyMember]:
+    """名單裡符合這個稱謂的人。
+
+    說了大類（「我父母」→ parent）：整組都算，包含細分成爸爸、媽媽的人。
+    說了細項（「我爸」→ father）：先找設成爸爸的人；一個都沒有才退回只設了
+    「父母」、沒指定性別的人——既有資料都是這種，不能因為細分了稱謂就對不到。
+    設成媽媽的人永遠不算爸爸。
+    """
+    group = relationship_group(relation)
+    if relation == group:
+        return [
+            member for member in members
+            if relationship_group(member.relationship_type) == group
+        ]
+    exact = [member for member in members if member.relationship_type == relation]
+    return exact or [member for member in members if member.relationship_type == group]
 
 
 def _name_matches(member: FamilyMember, wanted: str) -> bool:
@@ -94,7 +113,7 @@ def _pick_name_matches(
 ) -> PersonResolution:
     matched_by: Literal["name", "name_and_relationship"] = "name"
     if relation is not None:
-        narrowed = [member for member in candidates if member.relationship_type == relation]
+        narrowed = members_with_relationship(candidates, relation)
         if not narrowed:
             return PersonResolution(
                 kind="conflict",
@@ -132,7 +151,8 @@ def _pick_relationship_matches(
             kind="member",
             member=member,
             display_label=_member_label(member, requested_label or relation),
-            relationship=relation,
+            # 回報族譜實際存的稱謂：問「爸爸」可能對到只設了「父母」的舊資料。
+            relationship=member.relationship_type,
             matched_by="relationship",
         )
     return PersonResolution(
@@ -144,4 +164,4 @@ def _pick_relationship_matches(
     )
 
 
-__all__ = ["PersonResolution", "resolve_person"]
+__all__ = ["PersonResolution", "members_with_relationship", "resolve_person"]

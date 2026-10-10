@@ -3,9 +3,11 @@
 長輩常在一則訊息裡問兩件事。現行 RAG 對整題只分一次級，只要其中一個子問題
 查不到，整題就回「知識庫無資料」，另一半答得出來的也一起丟掉。這裡負責兩件事：
 
-1. `looks_compound`：便宜的規則閘，問號 ≥ 2 才值得花一次 LLM 呼叫去拆。
-   2026-09-29 實驗 C：只用拆題器時會把「飲食和活動要注意什麼」拆成兩題
-   （單題過度拆 3/48）；加上這道閘之後單題與控制題 0 誤判、複合題命中 21/24。
+1. `looks_compound`：便宜的規則閘，有兩段以上非空文字才交給 LLM 判斷。
+   逗號、分號、句號、問號、驚嘆號及換行均可斷句；句尾或重複標點不算新段。
+   歷史版本只收問號 ≥ 2：2026-09-29 實驗 C 的單題與控制題 0 誤判、
+   複合題命中 21/24 是舊閘門的數據。2026-10-10 為 Healthnews 四組實驗
+   放寬斷句規則，避免只有一個問號的複合題被擋；仍由 LLM 決定是否真的拆題。
 2. `GeminiQuestionDecomposer`：一次 LLM 呼叫，判斷是否為多個需分別查資料的
    獨立問題，並為每個子問題寫出兩種寫法：
    - `question`：回答與 CRAG 分級用，只保留「拿掉會改變答案」的條件
@@ -23,6 +25,7 @@ prompt 文字與實驗 C3 的 v3_split 版本相同；改動請重跑
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -31,9 +34,8 @@ from langchain_core.messages import HumanMessage
 from app.services.gemini import GeminiService
 from app.services.gemini.shared.parser import content_to_text, parse_json_from_model_text
 
-# 問號 ≥ 2 才嘗試拆題。只數問號是刻意的：題組裡唯一漏掉的 T08 用「；」連接兩問，
-# 但把分號也算進來會讓一般的長句被誤送去拆題，要等真實 LINE 訊息量過再放寬。
-MIN_QUESTION_MARKS = 2
+# 斷句只代表值得分析，不代表各段是獨立意圖；單一問題的病史條件由 LLM 保留。
+_CLAUSE_BOUNDARY_RE = re.compile(r"[，；;。!！?？\r\n]+|(?<!\d)[,.]|[,.](?!\d)")
 # 子問題上限。實驗中拆題器最多拆出 3 題；再多的話每題都要各自檢索、精排、分級。
 MAX_SUB_QUESTIONS = 3
 
@@ -65,10 +67,10 @@ class QuestionDecomposer(Protocol):
 
 
 def looks_compound(text: str | None) -> bool:
-    """問號（全形或半形）≥ 2 才值得花一次 LLM 呼叫去拆。"""
+    """有斷句且至少兩段非空文字時，交給 LLM 判斷是否為多個獨立問題。"""
     if not text:
         return False
-    return text.count("？") + text.count("?") >= MIN_QUESTION_MARKS
+    return sum(bool(clause.strip()) for clause in _CLAUSE_BOUNDARY_RE.split(text)) >= 2
 
 
 def parse_decomposition(raw_text: str) -> list[SubQuestion]:

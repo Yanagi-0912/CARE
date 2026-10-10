@@ -91,7 +91,7 @@ DEFAULT_RAG_ANSWER_TIMEOUT_SECONDS = 45.0
 
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 
-# 複合問題拆題只處理繁中：拆題 prompt、規則閘（全形問號）與全部實驗都只涵蓋 zh-TW。
+# 複合問題拆題只處理繁中：拆題 prompt 與已驗證的使用情境只涵蓋 zh-TW。
 COMPOUND_LANGUAGE = "zh-TW"
 
 

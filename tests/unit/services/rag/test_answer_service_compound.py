@@ -112,6 +112,35 @@ async def test_single_question_mark_does_not_decompose():
     assert decomposer.messages == []
 
 
+async def test_comma_separated_questions_with_one_question_mark_use_subquestion_evidence():
+    message = "魚油跟魚肝油有什麼差別，正在吃降血脂藥還要注意什麼？"
+    service, _, retriever = _service(
+        decomposer=_Decomposer(),
+        grader=_Grader({SUB_A.question: Grade.CORRECT, SUB_B.question: Grade.CORRECT}),
+    )
+
+    out = await service.answer(AGENT_QUERY, original_message=message)
+
+    assert sorted(retriever.queries) == sorted([SUB_A.retrieval_query, SUB_B.retrieval_query])
+    assert "魚油含 EPA" in out
+    assert not is_rag_fail(out)
+
+
+async def test_multi_condition_single_question_keeps_original_query_after_analysis():
+    message = "同時有糖尿病與腎功能不佳的長輩，能不能吃高蛋白？"
+    decomposer = _Decomposer(result=[])
+    service, _, retriever = _service(
+        decomposer=decomposer, grader=_Grader({message: Grade.CORRECT}),
+        retriever=_Retriever({message: DOCS_ORIGINAL}),
+    )
+
+    out = await service.answer(message, original_message=message)
+
+    assert decomposer.messages == [message]
+    assert retriever.queries == [message]
+    assert not is_rag_fail(out)
+
+
 async def test_non_zh_tw_request_does_not_decompose():
     decomposer = _Decomposer()
     service, _, _ = _service(decomposer=decomposer, grader=_Grader({AGENT_QUERY: Grade.CORRECT}))

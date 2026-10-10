@@ -19,15 +19,33 @@ from app.services.rag.question_decomposer import (
         ("魚油跟魚肝油有什麼差別？吃降血脂藥要注意什麼？", True),
         ("Is it safe? What about coffee?", True),
         ("全形？半形?", True),
-        # 只有一個問號：題組裡的單題與「單一問題多條件」控制題都長這樣
-        ("同時有糖尿病與腎功能不佳的長輩，能不能直接按照網路上的高蛋白飲食建議吃？", False),
-        # 以分號連接兩問（題組 T08）目前刻意不收
-        ("我爸說自己吃得很少但都沒瘦；可是他年紀大了，我擔心肌肉流失，該注意什麼？", False),
+        # 斷句只開啟 LLM 判斷；單一问题的病史條件仍交由 LLM 保留。
+        ("同時有糖尿病與腎功能不佳的長輩，能不能直接按照網路上的高蛋白飲食建議吃？", True),
+        ("我爸說自己吃得很少但都沒瘦；可是他年紀大了，我擔心肌肉流失，該注意什麼？", True),
+        ("看到新聞說抗精神病藥和中風後風險有關，這能證明藥物造成中風嗎，我需要自己停藥嗎？", True),
+        ("睡覺打呼中間會停一下又突然喘氣，醫師通常會安排什麼評估，治療是不是每個人都一樣？", True),
+        ("評估睡眠。治療是否一樣", True),
+        ("評估睡眠!治療是否一樣", True),
+        ("評估睡眠！治療是否一樣", True),
+        ("評估睡眠,治療是否一樣", True),
+        ("評估睡眠;治療是否一樣", True),
+        ("評估睡眠.治療是否一樣", True),
+        ("評估睡眠\n治療是否一樣", True),
+        ("評估睡眠\r\n治療是否一樣", True),
+        # 句尾標點、重複標點與空白不產生第二段文字。
+        ("魚油跟魚肝油有什麼差別？", False),
+        ("魚油跟魚肝油有什麼差別？！\n", False),
+        ("，，？\n；", False),
+        ("   ", False),
+        ("沒有標點的單一問題", False),
+        ("血糖5.6正常嗎？", False),
+        ("一天喝1,000毫升夠嗎？", False),
+        ("血糖5.6，還要追蹤嗎？", True),
         ("", False),
         (None, False),
     ],
 )
-def test_looks_compound_counts_question_marks(text, expected):
+def test_looks_compound_accepts_nonempty_clauses(text, expected):
     assert looks_compound(text) is expected
 
 

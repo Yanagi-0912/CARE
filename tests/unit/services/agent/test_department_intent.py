@@ -9,7 +9,7 @@ HumanMessage 已經是系統轉出的「這是我的目前位置：lat=…」，
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.services.agent.utils.nodes import (
     AgentNodes,
@@ -85,7 +85,18 @@ def test_department_intent_also_counts_as_nearby_facility_intent():
     assert _is_nearby_facility_intent("附近有醫院嗎") is True
 
 
-@pytest.mark.parametrize("text", ["我肚子好痛要掛哪一科", "頭暈要看哪一科"])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "我肚子好痛要掛哪一科",
+        "頭暈要看哪一科",
+        # 「什麼科」曾被當成科別名稱，整句判成就診意圖而被強制要位置
+        "我胃痛要看什麼科",
+        "我頭痛要看甚麼科",
+        "我咳嗽該掛什麼科",
+        "這樣要看哪個科",
+    ],
+)
 def test_symptom_with_registration_intent_does_not_request_location(text):
     """
     症狀＋問科別走 suggest_department_for_symptom，只回科別建議，SHALL NOT 跳出要
@@ -316,3 +327,45 @@ async def test_visit_intent_department_carries_to_location_turn(
         "lng": 121.56,
         "departments": ["大腸科"],
     }
+
+
+@pytest.mark.asyncio
+async def test_no_forced_location_after_symptom_card(
+    mock_llm_no_tool_calls, patched_tools
+):
+    """
+    科別建議卡已經回了，模型這一步只是收尾、沒有再呼叫工具。此時不可強制插入
+    要位置：回覆取最後一個工具，卡片會被「請分享位置」蓋掉（2026-10-04 線上案例）。
+    用一句確實會判成就診意圖的話，證明擋下來的是這條新條件，而不是意圖判定。
+    """
+    text = "我要看大腸科"
+    assert _is_nearby_facility_intent(text) is True
+    nodes = AgentNodes(llm=mock_llm_no_tool_calls, guardrail_service=MagicMock())
+    state = {
+        "messages": [
+            HumanMessage(content=text),
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "suggest_department_for_symptom",
+                        "args": {"cases": [{"symptom": "大腸"}]},
+                        "id": "symptom_1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            ToolMessage(
+                content="{\"type\": \"flex\"}",
+                tool_call_id="symptom_1",
+                name="suggest_department_for_symptom",
+            ),
+        ],
+        "allow_rag": False,
+    }
+
+    with patch("app.services.agent.utils.nodes.log_stage"):
+        res = await nodes.agent_node(state)
+
+    assert not res["messages"][0].tool_calls
+

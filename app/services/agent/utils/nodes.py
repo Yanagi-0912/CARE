@@ -173,8 +173,17 @@ _MENTION_MAX_CHARS = 8
 _NOT_A_DEPARTMENT = frozenset(
     {
         "理科", "文科", "商科", "工科", "農科", "學科", "術科", "本科",
-        "專科", "全科", "分科", "選科", "轉科", "這科", "那科", "哪科",
+        "專科", "全科", "分科", "選科", "轉科", "這科", "那科",
     }
+)
+
+# 「科」前面緊接問句詞，是在問要看哪一科，不是指名某一科。
+# 不能靠停止字或上面的清單：「什麼科」「甚麼科」的「什」「麼」不是停止字，
+# 「哪一科」「哪個科」往回取字會停在「哪」而得到「一科」「個科」，變化寫不完。
+# 被誤當成科別的後果是整句判成「要找附近院所」而被強制要位置，分享位置後
+# 還會拿「什麼科」去查。
+_QUESTION_BEFORE_KE_RE = re.compile(
+    r"(?:什麼|甚麼|什么|甚么|啥|哪)(?:一|個|个|種|种|門|门)?$"
 )
 
 
@@ -190,6 +199,8 @@ def _looks_like_department_mention(text: str) -> str | None:
 
     for match in _DEPARTMENT_MENTION_RE.finditer(cleaned):
         end = match.start()  # 「科」本身的位置
+        if _QUESTION_BEFORE_KE_RE.search(cleaned[:end]):
+            continue
         start = end
         while start > 0 and end - start < _MENTION_MAX_CHARS:
             char = cleaned[start - 1]
@@ -1286,6 +1297,9 @@ class AgentNodes:
         elif (
             not tool_calls
             and not _already_used_location_tools(state["messages"])
+            # 科別建議卡已經回了，模型這一步只是收尾。此時再插要位置，回覆會取
+            # 最後一個工具，卡片就被「請分享位置」蓋掉；卡片上已有搜尋附近的按鈕。
+            and not _already_ran_symptom_suggestion(state["messages"])
             and _is_nearby_facility_intent(user_text)
         ):
             response = AIMessage(

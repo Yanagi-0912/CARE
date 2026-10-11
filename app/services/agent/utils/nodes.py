@@ -440,13 +440,13 @@ def _extract_facility_type_from_history(messages) -> str | None:
 
 
 _FACILITY_SEARCH_RE = re.compile(
-    r"醫院|診所|藥局|看醫生|就醫|急診|附近院所|找醫院|找診所|看診|"
+    r"醫院|診所|藥局|藥房|看醫生|就醫|急診|附近院所|找醫院|找診所|看診|"
     r"hospital|clinic|pharmacy",
     re.IGNORECASE,
 )
 _NAMED_LOOKUP_RE = re.compile(r"在哪|地址|電話|怎麼去")
 _FACILITY_TERM_RE = re.compile(
-    r"醫院|診所|藥局|hospital|clinic|pharmacy", re.IGNORECASE
+    r"醫院|診所|藥局|藥房|hospital|clinic|pharmacy", re.IGNORECASE
 )
 # LineMediaHandler 會把 OCR／抽字結果包成此前綴再送進 agent。
 # 文件全文常含「就醫／診所」等衛教用語，不能當成使用者要找附近院所。

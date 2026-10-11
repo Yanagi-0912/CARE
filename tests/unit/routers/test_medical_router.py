@@ -389,3 +389,49 @@ def test_facilities_search_requires_keyword(
 
     assert response.status_code == 422
     override_medical_service.find_facility_by_name.assert_not_awaited()
+
+
+def test_nearby_pharmacy_ignores_department(
+    override_current_user, override_medical_service
+):
+    """藥局沒有科別資料：科別＋藥局時忽略科別，也不回報「看不懂這一科」。"""
+    override_medical_service.find_nearby_hospitals.return_value = NearbySearchResult(
+        facilities=[_facility("健安藥局", 300)],
+        reached_meters=5_000,
+        satisfied=True,
+        facility_type_match=FacilityTypeMatch(category="藥局", requested="藥房"),
+    )
+
+    response = client.get(
+        "/api/medical/nearby",
+        params={"lat": 25.0, "lng": 121.5, "department": "牙科", "facility_type": "藥房"},
+    )
+
+    body = response.json()
+    override_medical_service.find_nearby_facilities_by_department.assert_not_called()
+    assert [f["name"] for f in body["facilities"]] == ["健安藥局"]
+    assert body["facility_type"]["category"] == "藥局"
+    assert body["department"] is None
+    assert body["unresolved_department"] is None
+
+
+def test_nearby_clinic_with_department_still_searches_by_department(
+    override_current_user, override_medical_service
+):
+    """對照組：類型不是藥局時，帶科別照舊走科別搜尋。"""
+    override_medical_service.find_nearby_facilities_by_department.return_value = (
+        DepartmentSearchResult(
+            matches=(DepartmentMatch(canonical="牙科", requested="牙科"),),
+            facilities=[_facility("某牙醫診所", 300, departments=["牙科"])],
+            reached_meters=5_000,
+            satisfied=True,
+        )
+    )
+
+    response = client.get(
+        "/api/medical/nearby",
+        params={"lat": 25.0, "lng": 121.5, "department": "牙科", "facility_type": "診所"},
+    )
+
+    override_medical_service.find_nearby_hospitals.assert_not_called()
+    assert [f["name"] for f in response.json()["facilities"]] == ["某牙醫診所"]

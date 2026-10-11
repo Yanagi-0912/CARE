@@ -19,6 +19,7 @@ from resources.flex_messages.medical_messages.facility_detail_flex_message impor
     generate_facility_detail_flex_message,
 )
 from app.services.medical.business_hours import has_emergency_department
+from app.services.medical.facility_type_matcher import is_pharmacy_type
 from app.services.medical.search_summary import pharmacy_data_gap_meters
 from app.core.request_context import get_line_user_id
 from app.repositories.user_location_repository import UserLocationRepository
@@ -346,6 +347,17 @@ async def find_nearby_facilities_by_department(
             "[Tool:find_nearby_facilities_by_department] departments 為空，"
             "退回不分科別的一般搜尋，facility_type=%r",
             facility_type,
+        )
+        return await _search_nearby_facilities(
+            lat, lng, open_now=open_now, facility_type=facility_type
+        )
+
+    # 藥局沒有科別資料，帶著科別去查必定零筆（例如稍早聊過牙科、接著說要找藥局）。
+    # 類型是藥局時忽略科別，退回不分科別的搜尋。
+    if is_pharmacy_type(facility_type):
+        logger.info(
+            "[Tool:find_nearby_facilities_by_department] 類型為藥局，忽略科別 %r",
+            requested,
         )
         return await _search_nearby_facilities(
             lat, lng, open_now=open_now, facility_type=facility_type

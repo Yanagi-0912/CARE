@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from bson import ObjectId
@@ -11,6 +12,26 @@ logger = logging.getLogger(__name__)
 
 
 class MedicalFacilityRepository:
+    def __init__(self, collection_getter: Callable[[], Any] | None = None) -> None:
+        """
+        collection_getter 省略時查 medicalFacilities（醫院、診所）。
+
+        藥局放在另一個 collection，欄位與索引都相同，所以不另寫一份 repository，
+        改由 for_pharmacies() 建一個指向藥局庫的實例。
+        """
+        self._collection_getter = collection_getter
+
+    @classmethod
+    def for_pharmacies(cls) -> "MedicalFacilityRepository":
+        """指向藥局庫（medical_facilities_pharmacy）的實例。"""
+        return cls(MongoDBManager.get_pharmacy_collection)
+
+    def _collection(self):
+        # 每次查詢才取，不在建構時綁死：service 單例在模組載入時就建好，
+        # 那時 MongoDB 還沒設定。
+        getter = self._collection_getter or MongoDBManager.get_medical_collection
+        return getter()
+
     # 依經緯度搜尋附近醫療院所
     async def find_near(
         self,
@@ -25,7 +46,7 @@ class MedicalFacilityRepository:
         過濾條件會併入 $geoNear 內部，讓 Mongo 邊擴張搜尋半徑邊篩選，
         而不是先取最近 N 筆再過濾（後者會漏掉稍遠但符合條件的院所）。
         """
-        collection = MongoDBManager.get_medical_collection()
+        collection = self._collection()
         geo_near: dict[str, Any] = {
             "near": {"type": "Point", "coordinates": [lng, lat]},
             "distanceField": "distance_calculated",
@@ -49,7 +70,7 @@ class MedicalFacilityRepository:
     async def find_by_query(
         self, query: dict[str, Any], limit: int
     ) -> list[MedicalFacility]:
-        collection = MongoDBManager.get_medical_collection()
+        collection = self._collection()
         results = []
         try:
             cursor = collection.find(query).limit(limit)
@@ -71,7 +92,7 @@ class MedicalFacilityRepository:
         依關鍵字搜尋並由近到遠排序。max_distance_meters 為 None 時不限距離
         （全國搜尋），呼叫端須自行決定是否要限縮。
         """
-        collection = MongoDBManager.get_medical_collection()
+        collection = self._collection()
         geo_near: dict[str, Any] = {
             "near": {"type": "Point", "coordinates": [lng, lat]},
             "distanceField": "distance_calculated",
@@ -99,7 +120,7 @@ class MedicalFacilityRepository:
         只投影 name 欄位（19,528 筆約 512 KB），啟動時載入一次即可，
         不在對話路徑上查詢。
         """
-        collection = MongoDBManager.get_medical_collection()
+        collection = self._collection()
         names: set[str] = set()
         try:
             async for doc in collection.find({}, {"name": 1}):
@@ -122,7 +143,7 @@ class MedicalFacilityRepository:
             )
             return None
 
-        collection = MongoDBManager.get_medical_collection()
+        collection = self._collection()
         try:
             doc = await collection.find_one({"_id": object_id})
         except Exception as e:

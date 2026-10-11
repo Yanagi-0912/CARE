@@ -50,6 +50,10 @@ FACILITY_TYPE_CATEGORIES: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# 藥局這個分類的資料放在另一個 collection（medical_facilities_pharmacy），
+# 查詢時要換資料來源，呼叫端以這個常數判斷。
+PHARMACY_CATEGORY = "藥局"
+
 # type 值 → 所屬分類的反向查表，供 resolve_facility_type() 直接輸入正式
 # type 值（如「專科診所」）時查出分類。刻意不含「病理中心」：它不在
 # FACILITY_TYPE_CATEGORIES 裡，代表本來就不該被解析成任何使用者可選類型。
@@ -153,6 +157,17 @@ def resolve_facility_type(text: str) -> FacilityTypeMatch | None:
         return FacilityTypeMatch(category=category, requested=cleaned)
 
     return None
+
+
+def is_pharmacy_type(text: str | None) -> bool:
+    """
+    這個類型說法是否指藥局（藥局、藥房、藥店、藥師自營…）。
+
+    給「要不要套科別」的呼叫端用：藥局的 departments 一律是空的，帶著科別去查
+    必定零筆，所以類型是藥局時要改走不分科的搜尋。
+    """
+    match = resolve_facility_type(text or "")
+    return match is not None and match.category == PHARMACY_CATEGORY
 
 
 def extract_facility_type_intent(text: str) -> FacilityTypeMatch | None:

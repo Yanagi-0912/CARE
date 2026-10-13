@@ -81,3 +81,21 @@ TimeoutError 並保留既有 Gemini fallback；程序中斷不冒稱逾時。
 KB_EMPTY 模板和最多三來源導致的引用呈現問題仍以 CARE 實際輸出觀察，標 blocking/review 欄位；
 本入口未偷偷重写醫療回答。RAG 直接入口不能驗證完整 Agent 急症分流。無完整 old 快照，不能歸因資料庫擴充效果。
 操作 Job 前須完成最終 READY 預檢；本次交付並未提交正式實驗。
+
+## 2026-10-13：直接連現有資料庫的 Batch 模式
+
+本次改用獨立 `healthnews-live-batch-20261013/experiment.json`，明確設定
+`corpus_mode=live_observed`。只支援 B/D，直接讀取 Mongo `health_articles_chunks`、
+PG `public.health_articles_chunks` 與既有 `care_text_index`，不建立任何資料副本或索引。
+Gemini 仍走 Batch；web fallback、答案快取與寫回仍關閉。使用新的 journal，不能接續舊快照實驗。
+
+`observe-live --config "$CONFIG"` 只讀記錄文章、向量、ID 與索引定義基準；雙次掃描一致才保存，
+不覆寫既有 baseline，也不會自動暂停資料更新。baseline 與 run 共用 execution lock。
+`preflight --config "$CONFIG" --verify-corpus` 檢查實體資料；通過回報 `READY_LIVE_OBSERVED`，
+不代表已驗證付費模型工作。正式 `run --config "$CONFIG" --submit` 仍使用 Batch，並在執行前、後核對基準。
+來源改變時停止，不偷偷更新 baseline 來續跑；新基準需新的實驗身份／目錄。
+
+輸出 `phase=live_observed`、`immutable_corpus=false`；`corpus_verification.json` 保存前後匹配或失敗紀錄。
+只有前後端點一致，不能證明中途從未更新。實驗期間若無法暫停文章匯入與向量更新，結果需以
+即時環境實驗解讀；正常使用者查詢可繼續。暫停正式服務更新不是此程式自動執行的功能。
+來源連結檢查仍可連線原 URL，但不是 web fallback 搜尋；不得將其描述成完全沒有網路存取。

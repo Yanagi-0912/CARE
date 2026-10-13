@@ -123,3 +123,50 @@ def test_context_format_dependency_change_invalidates_freeze(tmp_path):
     date.write_text("date_format = 'changed'")
     with pytest.raises(ValueError, match="source SHA256"):
         load_config(path, code_root=root)
+
+
+def live_fixture(tmp_path):
+    path, data, root = fixture(tmp_path)
+    data['corpus_mode'] = 'live_observed'
+    data['live_corpus'] = {'mongo_collection': 'health_articles_chunks',
+        'pg_table': 'public.health_articles_chunks', 'mongo_search_index': 'care_text_index'}
+    manifest = {'status': 'live_observed', 'snapshot_id': 'live-test',
+        **data['live_corpus'], 'mongo_sha256': 'a'*64, 'pg_sha256': 'b'*64,
+        'mongo_count': 1, 'pg_count': 1, 'mongo_ids_sha256': 'c'*64, 'pg_ids_sha256': 'c'*64,
+        'mongo_search_definition_sha256': 'd'*64, 'pg_indexes_sha256': 'e'*64,
+        'immutable': False, 'observed_at': '2026-10-13T00:00:00Z'}
+    target = tmp_path/'snapshots/new/manifest.json';target.parent.mkdir(parents=True);target.write_text(json.dumps(manifest))
+    path.write_text(json.dumps(data))
+    return path, data, root
+
+
+def test_explicit_live_mode_accepts_existing_corpus_without_claiming_immutable(tmp_path):
+    from scripts.healthnews_batch.config import load_config
+    path, _, root = live_fixture(tmp_path)
+    config = load_config(path, code_root=root, require_snapshots=True)
+    assert config.corpus_mode == 'live_observed'
+    assert config.snapshots['new']['immutable'] is False
+    assert config.blockers == []
+
+
+def test_live_mode_rejects_old_arm_and_silent_target_change(tmp_path):
+    from scripts.healthnews_batch.config import load_config
+    path, data, root = live_fixture(tmp_path)
+    data['selected_arms'] = ['A','D'];path.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match='B/D'):load_config(path, code_root=root)
+    data['selected_arms']=['B','D'];data['live_corpus']['pg_table']='public.other';path.write_text(json.dumps(data))
+    with pytest.raises(ValueError, match='target'):load_config(path, code_root=root, require_snapshots=True)
+
+
+def test_live_mode_cannot_relabel_immutable_snapshot_or_omit_hashes(tmp_path):
+    from scripts.healthnews_batch.config import load_config
+    path, _, root = live_fixture(tmp_path)
+    p=tmp_path/'snapshots/new/manifest.json';m=json.loads(p.read_text());m['immutable']=True;p.write_text(json.dumps(m))
+    with pytest.raises(ValueError, match='live'):load_config(path, code_root=root, require_snapshots=True)
+
+
+def test_live_vector_sql_identifier_rejected_before_client_creation(tmp_path):
+    from scripts.healthnews_batch.config import load_config
+    path,data,root=live_fixture(tmp_path)
+    data['settings']['PGVECTOR_VECTOR_COLUMN']='embedding_half; SELECT dangerous()';path.write_text(json.dumps(data))
+    with pytest.raises(ValueError,match='vector column'):load_config(path,code_root=root)

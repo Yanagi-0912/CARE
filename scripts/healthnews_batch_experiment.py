@@ -77,6 +77,8 @@ async def preflight(config, physical=False, provider_factory=GeminiBatchProvider
               "arms": config.raw["selected_arms"], "rounds": config.raw["rounds"],
               "dataset_sha256": config.raw["dataset"]["sha256"], "review": config.raw["review"],
               "blockers": list(config.blockers), "snapshot_physical_checked": False,
+              "corpus_mode": config.corpus_mode, "immutable_corpus": config.corpus_mode == "immutable_snapshot",
+              "corpus_physical_checked": False, "continuous_immutability_proven": False,
               "model_requests_submitted": 0, "batch_jobs_submitted": 0}
     if not physical or config.blockers:
         return report
@@ -90,7 +92,8 @@ async def preflight(config, physical=False, provider_factory=GeminiBatchProvider
         try:
             _, vectors, close = build_factory(config, journal, coordinator, settings)
             report["snapshot_verification"] = await verify_physical(config, vectors)
-            report.update(status="READY", snapshot_physical_checked=True,
+            report.update(status="READY_LIVE_OBSERVED" if config.corpus_mode == "live_observed" else "READY",
+                          corpus_physical_checked=True, snapshot_physical_checked=config.corpus_mode == "immutable_snapshot",
                           credential_presence_only={k: bool(getattr(settings, k, "")) for k in
                             ("GEMINI_API_KEY", "COHERE_API_KEY", "TYPESAFE_API_KEY", "MONGODB_URI", "PGVECTOR_DSN")})
         finally:
@@ -114,6 +117,10 @@ async def main(args, *, provider_factory=GeminiBatchProvider):
             args.report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
         return report
     from app.core.config import settings
+    if args.command == "observe-live":
+        from scripts.healthnews_batch.live import capture
+        with exclusive(config.output):
+            return await capture(config, settings)
     from scripts.healthnews_batch.runtime import build_factory, run_experiment
     with exclusive(config.output):
         journal = Journal(config.output / "journal.sqlite")
@@ -146,11 +153,29 @@ async def main(args, *, provider_factory=GeminiBatchProvider):
                 coordinator.attach_job(args.job_id, args.provider_job_name)
                 return {"status": "ATTACHED", "local_job_id": args.job_id, "provider_job_name": args.provider_job_name}
             factory, vectors, close = build_factory(config, journal, coordinator, settings)
-            before = await verify_physical(config, vectors)
-            rows = await run_experiment(config, journal, coordinator, factory)
-            after = await verify_physical(config, vectors)
+            verification_path = config.output / "corpus_verification.json"
+            verification = {"corpus_mode": config.corpus_mode, "status": "CHECKING_BEFORE",
+                            "continuous_immutability_proven": False}
+            def record_verification():
+                from scripts.healthnews_snapshot import save
+                save(verification_path, verification)
+            record_verification()
+            try:
+                before = await verify_physical(config, vectors)
+                verification.update(status="BEFORE_MATCHED_AFTER_PENDING", before=before)
+                record_verification()
+                rows = await run_experiment(config, journal, coordinator, factory)
+                after = await verify_physical(config, vectors)
+                verification.update(status="ENDPOINTS_MATCHED", after=after)
+                record_verification()
+            except Exception as exc:
+                verification.update(status="FAILED_OR_DRIFTED", error_type=type(exc).__name__)
+                record_verification()
+                raise
             return {"status": "COMPLETED_PENDING_REVIEW", "completed_runs": len(rows), "planned_runs": config.planned_runs,
                     "snapshot_verified_before": before, "snapshot_verified_after": after,
+                    "corpus_mode": config.corpus_mode, "immutable_corpus": config.corpus_mode == "immutable_snapshot",
+                    "corpus_verification": verification,
                     "run_status_counts": dict(Counter(r["run_status"] for r in rows))}
         finally:
             if close:
@@ -161,10 +186,10 @@ async def main(args, *, provider_factory=GeminiBatchProvider):
 
 def cli():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("preflight", "run", "status", "reconcile", "reconcile-receipt"), nargs="?", default="preflight")
+    parser.add_argument("command", choices=("preflight", "run", "status", "reconcile", "reconcile-receipt", "observe-live"), nargs="?", default="preflight")
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--submit", action="store_true")
-    parser.add_argument("--verify-snapshot", action="store_true")
+    parser.add_argument("--verify-snapshot", "--verify-corpus", dest="verify_snapshot", action="store_true")
     parser.add_argument("--report", type=Path)
     parser.add_argument("--job-id")
     parser.add_argument("--provider-job-name")

@@ -251,3 +251,22 @@ async def test_owner_close_cancels_pending_read_before_journal_closes(tmp_path):
     assert task.cancelled()
     assert journal.db.execute("SELECT status FROM receipts").fetchone()[0] == "retryable_read"
     journal.close()
+
+
+async def test_live_rag_still_uses_batch_and_never_claims_fixed_snapshot(tmp_path):
+    from tests.unit.scripts.test_healthnews_batch_config import live_fixture
+    from scripts.healthnews_batch.config import load_config
+    from scripts.healthnews_batch.runtime import run_experiment
+    path, _, root=live_fixture(tmp_path)
+    config=load_config(path,code_root=root)
+    config=replace(config,cases=[{'id':'HN001','question':'評估什麼，治療相同嗎？','language':'zh-TW'}])
+    journal=Journal(tmp_path/'journal.sqlite');provider=Provider()
+    coordinator=BatchCoordinator(journal,provider,config.version,poll_interval=0)
+    rows=await run_experiment(config,journal,coordinator,factory(coordinator,journal))
+    assert provider.creates>0 and len(rows)==6
+    assert all(r['phase']=='live_observed' and r['immutable_corpus'] is False for r in rows)
+    assert not any(r['web_fallback_executed'] for r in rows)
+    created=provider.creates
+    await run_experiment(config,journal,coordinator,factory(coordinator,journal))
+    assert provider.creates==created
+    journal.close()

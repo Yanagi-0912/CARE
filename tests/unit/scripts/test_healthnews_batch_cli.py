@@ -59,3 +59,24 @@ async def test_manual_receipt_reconciliation_requires_matching_hash_and_no_provi
     journal.assert_no_uncertain_receipts()
     assert journal.get_receipt(run_key, "cohere:0", "a" * 64)["payload"] == {"results": []}
     journal.close()
+
+
+async def test_live_static_preflight_keeps_batch_but_needs_physical_check(tmp_path):
+    from tests.unit.scripts.test_healthnews_batch_config import live_fixture
+    from scripts.healthnews_batch_experiment import main
+    path, _, _=live_fixture(tmp_path)
+    def forbidden(*args,**kwargs):raise AssertionError('static preflight must not create provider')
+    report=await main(SimpleNamespace(command='preflight',config=path,verify_snapshot=False,report=None),provider_factory=forbidden)
+    assert report['corpus_mode']=='live_observed'
+    assert report['immutable_corpus'] is False
+    assert report['status']=='STATIC_READY'
+    assert report['batch_jobs_submitted']==0
+
+
+async def test_observe_live_shares_execution_lock_with_run(tmp_path):
+    from tests.unit.scripts.test_healthnews_batch_config import live_fixture
+    from scripts.healthnews_batch_experiment import main,exclusive
+    path,_,_=live_fixture(tmp_path)
+    with exclusive(tmp_path/'output'):
+        with pytest.raises(ValueError,match='another process'):
+            await main(SimpleNamespace(command='observe-live',config=path))

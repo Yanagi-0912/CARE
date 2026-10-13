@@ -63,6 +63,10 @@ class ExperimentConfig:
     version: str
 
     @property
+    def corpus_mode(self):
+        return self.raw.get("corpus_mode", "immutable_snapshot")
+
+    @property
     def planned_runs(self):
         return len(self.cases) * len(self.raw["selected_arms"]) * self.raw["rounds"]
 
@@ -126,6 +130,20 @@ def load_config(path: Path, *, code_root: Path = ROOT, require_snapshots=False) 
     if any(not isinstance(c.get("question"), str) or not c["question"].strip()
            or c.get("language", "zh-TW") != "zh-TW" for c in cases):
         raise ValueError("cases require original questions and fixed zh-TW")
+    mode = raw.get("corpus_mode", "immutable_snapshot")
+    if mode not in ("immutable_snapshot", "live_observed"):
+        raise ValueError("unknown corpus_mode")
+    if mode == "live_observed":
+        if any(a not in ("B", "D") for a in selected):
+            raise ValueError("live mode supports B/D only; no historical old corpus")
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", settings.get("PGVECTOR_VECTOR_COLUMN", "embedding_half")):
+            raise ValueError("invalid live vector column identifier")
+        target = raw.get("live_corpus", {})
+        for name in ("mongo_collection", "mongo_search_index"):
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", target.get(name, "")):
+                raise ValueError("invalid live target identifier")
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*", target.get("pg_table", "")):
+            raise ValueError("live PG target must be schema-qualified")
     snapshots, blockers = {}, []
     for corpus in sorted({ARM_DEFINITIONS[a]["corpus"] for a in selected}):
         manifest_ref = raw.get("snapshots", {}).get(corpus)
@@ -136,13 +154,24 @@ def load_config(path: Path, *, code_root: Path = ROOT, require_snapshots=False) 
         snapshot = json.loads(manifest_path.read_text())
         required = ("snapshot_id", "mongo_collection", "pg_table", "mongo_search_index",
                     "mongo_sha256", "pg_sha256", "mongo_count", "pg_count")
-        if snapshot.get("status") != "verified_immutable" or any(not snapshot.get(k) for k in required):
-            blockers.append(f"{corpus} snapshot is not verified_immutable")
+        expected_status = "live_observed" if mode == "live_observed" else "verified_immutable"
+        if snapshot.get("status") != expected_status or any(not snapshot.get(k) for k in required):
+            blockers.append(f"{corpus} corpus is not {expected_status}")
+        if mode == "live_observed":
+            if snapshot.get("immutable") is not False or not snapshot.get("observed_at"):
+                blockers.append("live manifest must explicitly be non-immutable and observed")
+            if any(snapshot.get(k) != target[k] for k in target):
+                blockers.append("live manifest target differs from configured target")
+            for name in ("mongo_ids_sha256", "pg_ids_sha256", "mongo_search_definition_sha256", "pg_indexes_sha256"):
+                if not re.fullmatch(r"[0-9a-f]{64}", snapshot.get(name, "")):
+                    blockers.append("live baseline hash missing: " + name)
+            if snapshot.get("mongo_ids_sha256") != snapshot.get("pg_ids_sha256"):
+                blockers.append("live Mongo/PG IDs differ")
         if any(not re.fullmatch(r"[0-9a-f]{64}", snapshot.get(k, "")) for k in ("mongo_sha256", "pg_sha256")):
             blockers.append(f"{corpus} snapshot content SHA256 missing")
         live_collection = snapshot.get("source_mongo_collection", settings.get("MONGODB_COLLECTION", "health_articles_chunks"))
         live_table = snapshot.get("source_pg_table", settings.get("PGVECTOR_TABLE", "health_articles_chunks"))
-        if snapshot.get("mongo_collection") == live_collection or snapshot.get("pg_table") in (live_table, "public." + live_table):
+        if mode == "immutable_snapshot" and (snapshot.get("mongo_collection") == live_collection or snapshot.get("pg_table") in (live_table, "public." + live_table)):
             blockers.append(f"{corpus} snapshot points to live corpus")
         snapshots[corpus] = snapshot
     if require_snapshots and blockers:

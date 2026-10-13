@@ -316,7 +316,9 @@ def export_results(config, journal):
             stream.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
     temporary.replace(config.output / "runs.jsonl")
     (config.output / "manifest.json").write_text(json.dumps({**config.identity(), "planned_runs": config.planned_runs,
-        "completed_runs": len(rows), "formal_submitted_by_this_command": True,
+        "completed_runs": len(rows), "formal_execution_requested": True,
+        "corpus_mode": config.corpus_mode, "immutable_corpus": config.corpus_mode == "immutable_snapshot",
+        "corpus_verification_file": "corpus_verification.json", "continuous_immutability_proven": False,
         "review_status": "pending_post_run_review", "interactive_timeout_applied": False}, ensure_ascii=False, indent=2) + "\n")
     return rows
 
@@ -339,7 +341,9 @@ async def run_experiment(config, journal, coordinator, factory):
             with run_scope(key):
                 corpus = config.raw["arms"][arm]["corpus"]
                 row = await run_case(case, arm, number, factory(arm), config.snapshots[corpus]["snapshot_id"],
-                                     snapshot_id=config.snapshots[corpus]["snapshot_id"], phase="formal")
+                                     snapshot_id=config.snapshots[corpus]["snapshot_id"], phase="live_observed" if config.corpus_mode == "live_observed" else "formal")
+                row["corpus_mode"] = config.corpus_mode
+                row["immutable_corpus"] = config.corpus_mode == "immutable_snapshot"
                 row = _review_fields(row, config.version)
                 row["run_key"] = key
                 journal.assert_no_uncertain_receipts()
@@ -389,7 +393,7 @@ def build_factory(config, journal, coordinator, settings):
     for corpus, snapshot in config.snapshots.items():
         embeddings = GoogleGenerativeAIEmbeddings(model=config.raw["models"]["embedding"],
             google_api_key=settings.GEMINI_API_KEY, task_type="RETRIEVAL_QUERY", output_dimensionality=options["MONGODB_VECTOR_DIM"])
-        snapshot_dsn = os.getenv("PGVECTOR_SNAPSHOT_DSN") or os.getenv("PGVECTOR_SYNC_DSN") or settings.PGVECTOR_DSN
+        snapshot_dsn = settings.PGVECTOR_DSN if config.corpus_mode == "live_observed" else (os.getenv("PGVECTOR_SNAPSHOT_DSN") or os.getenv("PGVECTOR_SYNC_DSN") or settings.PGVECTOR_DSN)
         vector = ReadOnlyPgVectorRetriever(embeddings=embeddings, dsn=snapshot_dsn, mongo_uri=settings.MONGODB_URI,
             db_name=options["MONGODB_DB"], collection_name=snapshot["mongo_collection"], table_name=snapshot["pg_table"],
             vector_column=options["PGVECTOR_VECTOR_COLUMN"], text_field=options["MONGODB_TEXT_FIELD"],

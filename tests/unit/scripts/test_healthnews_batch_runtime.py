@@ -270,3 +270,46 @@ async def test_live_rag_still_uses_batch_and_never_claims_fixed_snapshot(tmp_pat
     await run_experiment(config,journal,coordinator,factory(coordinator,journal))
     assert provider.creates==created
     journal.close()
+
+
+async def test_diagnostic_probe_records_blocking_exports_and_closes(tmp_path):
+    from scripts.healthnews_batch.config import load_config
+    from scripts.healthnews_batch.runtime import run_experiment
+    path,data,root=fixture(tmp_path)
+    data['diagnostics']={'enabled':True};data['batch']['concurrency']=1
+    path.write_text(json.dumps(data))
+    config=load_config(path,code_root=root)
+    config=replace(config,blockers=[],snapshots={'new':{'snapshot_id':'observed'}})
+    journal=Journal(tmp_path/'journal.sqlite');provider=Provider()
+    coordinator=BatchCoordinator(journal,provider,config.version,poll_interval=0)
+    rows=await run_experiment(config,journal,coordinator,factory(coordinator,journal))
+    report=json.loads((config.output/'diagnostics.json').read_text())
+    assert report['blocking_result_exports']['count']==7
+    assert all(r['run_slot_wait_ms']>=0 for r in rows)
+    assert len(rows)==6
+    journal.close()
+
+
+async def test_cancellation_during_probe_start_drains_case_tasks(tmp_path):
+    from scripts.healthnews_batch.config import load_config
+    from scripts.healthnews_batch.runtime import run_experiment
+    path,data,root=fixture(tmp_path);data['diagnostics']={'enabled':True};path.write_text(json.dumps(data))
+    config=load_config(path,code_root=root);config=replace(config,blockers=[],snapshots={'new':{'snapshot_id':'observed'}})
+    journal=Journal(tmp_path/'journal.sqlite');provider=Provider();coordinator=BatchCoordinator(journal,provider,config.version,poll_interval=0)
+    entered=asyncio.Event();seen=[]
+    class Service:
+        web_fallback_enabled=False
+        web_search=None
+        decomposer=None
+        async def answer(self,*args,**kwargs):
+            seen.append(asyncio.current_task());entered.set();await asyncio.Event().wait()
+    class Probe:
+        def __init__(self):self.closed=False
+        async def start(self):await entered.wait();raise asyncio.CancelledError()
+        async def close(self):self.closed=True;return {'samples':0}
+    probe=Probe()
+    with pytest.raises(asyncio.CancelledError):
+        await run_experiment(config,journal,coordinator,lambda arm:Service(),probe_factory=lambda:probe)
+    assert seen and all(t.done() for t in seen)
+    assert probe.closed and provider.creates==0
+    journal.close()

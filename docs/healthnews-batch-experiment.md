@@ -99,3 +99,23 @@ Gemini 仍走 Batch；web fallback、答案快取與寫回仍關閉。使用新�
 只有前後端點一致，不能證明中途從未更新。實驗期間若無法暫停文章匯入與向量更新，結果需以
 即時環境實驗解讀；正常使用者查詢可繼續。暫停正式服務更新不是此程式自動執行的功能。
 來源連結檢查仍可連線原 URL，但不是 web fallback 搜尋；不得將其描述成完全沒有網路存取。
+
+## 2026-10-14：低並行診斷與受控重跑
+
+原600筆保留為問題紀錄，不刪除逾時題。新流程使用最早pilot固定的8題
+HN001/HN002/HN005/HN033/HN036/HN047/HN066/HN094，各B/D一輪，並行1與4各16筆。
+模型、prompt、預算、原限時不變；樣本是基礎設施診斷用途，不能用來估計整體回答正確率。
+新增診斷紀錄分離 embedding、PG取得連線/SQL、Mongo取文/BM25、run slot等待，
+另存事件迴圈lag與同步結果export耗時。不增加或重複計入runtime_error。
+
+`python -m scripts.healthnews_batch.sequence --plan /work/study/sequence.json` 執行預先固定的流程。
+只有並行1的完整16筆無技術錯誤/incident、且實體資料前後匹配，才啟動另一個身份下的
+原100題×B/D×3輪（並行1）。KB_EMPTY/MODEL_REFUSE本身不是基礎設施門檻失敗，也不刪除。
+並行4用來診斷負載差異，不因其產生較多答案就選它做正式比較。
+
+Plan釘住三個config_version、原dataset SHA256與完整100題id/question/language digest；
+跨階段固定預算、所有非concurrency的Batch設定及共同資料基準。每階段各自journal，
+sequence status採exclusive create，禁止直接重啟整段流程造成付費重送。
+受控600若再有技術incident，仍保留全數並標示品質效果評估受阻，不能只刪錯誤題來比較。
+`sequence-output/sequence-status.json` 記錄gate與階段結果；各stage/output/diagnostics.json
+及runs.jsonl保存原始計時。流程失敗維持匯入暫停待查，完整流程結束才恢復排程。

@@ -67,7 +67,17 @@ class ReadOnlyPgVectorRetriever(PgVectorRetriever):
             import asyncpg
             self._pool = await asyncpg.create_pool(self.dsn, min_size=1, max_size=4, command_timeout=30,
                                                   server_settings={"default_transaction_read_only": "on"})
+        if getattr(self, "diagnostics_enabled", False):
+            from .diagnostics import MeasuredPool
+            return MeasuredPool(self._pool)
         return self._pool
+
+    async def _fetch_documents(self, scored):
+        if not getattr(self, "diagnostics_enabled", False):
+            return await super()._fetch_documents(scored)
+        from .diagnostics import measured
+        with measured("mongo_content_fetch"):
+            return await super()._fetch_documents(scored)
 
 
 class DurableCalls:
@@ -323,44 +333,74 @@ def export_results(config, journal):
     return rows
 
 
-async def run_experiment(config, journal, coordinator, factory):
+async def run_experiment(config, journal, coordinator, factory, *, probe_factory=None):
     if config.blockers:
         raise ValueError("; ".join(config.blockers))
     journal.bind_config(config.version, config.identity())
     journal.assert_no_uncertain_receipts()
+    config.output.mkdir(parents=True, exist_ok=True)
     semaphore = asyncio.Semaphore(config.raw["batch"]["concurrency"])
+    export_latencies = []
+    def export():
+        started = time.perf_counter()
+        try:
+            return export_results(config, journal)
+        finally:
+            export_latencies.append((time.perf_counter()-started)*1000)
     capture = Capture()
     logging.getLogger().addHandler(capture)
     logging.getLogger().setLevel(logging.INFO)
 
     async def one(case, arm, number):
+        queued_at = time.perf_counter()
         key = config.run_key(case["id"], arm, number)
         if journal.get_result(key) is not None:
             return journal.get_result(key)
         async with semaphore:
+            slot_wait_ms = (time.perf_counter() - queued_at) * 1000
             with run_scope(key):
                 corpus = config.raw["arms"][arm]["corpus"]
                 row = await run_case(case, arm, number, factory(arm), config.snapshots[corpus]["snapshot_id"],
                                      snapshot_id=config.snapshots[corpus]["snapshot_id"], phase="live_observed" if config.corpus_mode == "live_observed" else "formal")
+                row["run_slot_wait_ms"] = slot_wait_ms
+                row["study_role"] = config.raw.get("study_role", "original_experiment")
                 row["corpus_mode"] = config.corpus_mode
                 row["immutable_corpus"] = config.corpus_mode == "immutable_snapshot"
                 row = _review_fields(row, config.version)
                 row["run_key"] = key
                 journal.assert_no_uncertain_receipts()
                 journal.save_result(key, row)
-                export_results(config, journal)
+                export()
                 return row
     tasks = [asyncio.create_task(one(case, arm, number))
              for number in range(1, config.raw["rounds"] + 1) for case in config.cases
              for arm in (config.raw["selected_arms"] if number % 2 else list(reversed(config.raw["selected_arms"])))]
+    probe = None
+    if config.raw.get("diagnostics", {}).get("enabled", False):
+        from .diagnostics import LoopProbe
+        probe = (probe_factory or LoopProbe)()
     try:
+        if probe is not None:
+            await probe.start()
         await coordinator.drive(tasks)
-        rows = export_results(config, journal)
+        rows = export()
         if len(rows) != config.planned_runs:
             raise ValueError("experiment incomplete; inspect journal before resuming")
         return rows
     finally:
-        logging.getLogger().removeHandler(capture)
+        try:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            if probe is not None:
+                from scripts.healthnews_snapshot import save
+                report = await probe.close()
+                report["blocking_result_exports"] = {"count":len(export_latencies),
+                    "total_ms":sum(export_latencies), "max_ms":max(export_latencies, default=0)}
+                save(config.output / "diagnostics.json", report)
+        finally:
+            logging.getLogger().removeHandler(capture)
 
 
 def build_factory(config, journal, coordinator, settings):
@@ -402,6 +442,11 @@ def build_factory(config, journal, coordinator, settings):
             collection_name=snapshot["mongo_collection"], index_name=snapshot["mongo_search_index"],
             text_field=options["MONGODB_TEXT_FIELD"], title_field=options["MONGODB_TEXT_TITLE_FIELD"],
             title_boost=options["RAG_TEXT_TITLE_BOOST"], k=options["RAG_RETRIEVE_CANDIDATES"])
+        if config.raw.get("diagnostics", {}).get("enabled", False):
+            from .diagnostics import MeasuredEmbeddings, MeasuredRetriever
+            vector.diagnostics_enabled = True
+            vector.embeddings = MeasuredEmbeddings(embeddings)
+            text = MeasuredRetriever(text, "mongo_bm25")
         hybrid = HybridRetriever(vector_retriever=ObservedRetriever(ReceiptRetriever(vector, calls, "vector",
                                       options["RAG_RETRIEVE_LEG_TIMEOUT_SECONDS"]), "vector"),
             text_retriever=ObservedRetriever(ReceiptRetriever(text, calls, "bm25",

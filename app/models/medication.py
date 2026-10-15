@@ -375,6 +375,36 @@ class Medication(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+MedicationInteractionKind = Literal["bleeding", "overlap", "stacking", "tcm"]
+
+
+class MedicationInteractionAlert(BaseModel):
+    """新增藥品當下偵測到的相衝，隨新增的回應交給 LIFF 當場顯示。
+
+    與 LINE 上推給當事人的那則是同一份偵測結果（`OtcAlertService.detect`），
+    不另外算一次——兩邊說的必須是同一件事。
+
+    只帶藥名與成分：新增者剛送出這個藥，而藥名是 GENERAL，他本來就看得到。
+    仿單適應症是 SENSITIVE，不放。
+    """
+
+    kind: MedicationInteractionKind
+    new_drug_name: str
+    existing_drug_name: str
+    # 重複／疊加是成分學名；中西藥是（中藥名, 西藥成分）；出血是兩個藥理類別。
+    ingredients: List[str] = Field(default_factory=list)
+
+
+class CreatedMedication(Medication):
+    """`POST /medications` 的回應：新增的藥品，加上這次新增偵測到的相衝。
+
+    `interaction_alert` 只存在於這次回應，不落地——它描述的是「加入這個藥的
+    那一刻」，不是藥品本身的屬性；之後停掉另一顆藥，它就不成立了。
+    """
+
+    interaction_alert: Optional[MedicationInteractionAlert] = None
+
+
 class MedicationLog(BaseModel):
     """用藥執行與催促/警報日誌"""
 

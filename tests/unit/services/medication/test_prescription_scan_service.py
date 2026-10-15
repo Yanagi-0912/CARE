@@ -1,11 +1,17 @@
 from datetime import datetime, timedelta, timezone
 
 import asyncio
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
 from app.models.family_tree import FamilyMember, FamilyTree
-from app.models.medication import MedicationReminder, ReminderEntry
+from app.models.medication import (
+    MedicationInteractionAlert,
+    MedicationReminder,
+    ReminderEntry,
+)
 from app.models.prescription import (
     CommitDrugItem,
     CommitPrescriptionDraftRequest,
@@ -1860,14 +1866,22 @@ async def test_name_match_without_authorization_service_keeps_legacy_behaviour()
 
 
 class FakeOtcAlertService:
-    def __init__(self, raises: bool = False) -> None:
-        self.calls: list[tuple[str, list[str]]] = []
-        self._raises = raises
+    """`calls` 記偵測、`notified` 記推播。`detection` 是偵測要回的結果。"""
 
-    async def check(self, patient_user_id, added_medication_ids):
+    def __init__(self, raises: bool = False, detection: Any = None) -> None:
+        self.calls: list[tuple[str, list[str]]] = []
+        self.notified: list[tuple[str, Any]] = []
+        self._raises = raises
+        self._detection = detection if detection is not None else SimpleNamespace(alert=None)
+
+    async def detect(self, patient_user_id, added_medication_ids):
         self.calls.append((patient_user_id, list(added_medication_ids)))
         if self._raises:
             raise RuntimeError("boom")
+        return self._detection
+
+    async def notify(self, patient_user_id, detection):
+        self.notified.append((patient_user_id, detection))
 
 
 @pytest.mark.asyncio
@@ -1891,6 +1905,34 @@ async def test_commit_schedules_the_otc_check_for_the_person_taking_the_drug():
 
 
 @pytest.mark.asyncio
+async def test_commit_returns_the_interaction_alert_and_notifies_in_the_background():
+    """LIFF 要在送出後當場顯示警告；推播用的是同一份偵測結果，不重算。"""
+    drafts = FakeDraftRepository()
+    drafts.draft = _stored_draft(RecognizedDrug(name="某藥"))
+    alert = MedicationInteractionAlert(
+        kind="overlap",
+        new_drug_name="普拿疼",
+        existing_drug_name="斯斯感冒膠囊",
+        ingredients=["ACETAMINOPHEN"],
+    )
+    detection = SimpleNamespace(alert=alert)
+    alerts = FakeOtcAlertService(detection=detection)
+    service = _service(
+        drafts=drafts,
+        family=FakeFamilyTreeRepository(_tree(FamilyMember(user_id="U_PATIENT"))),
+        otc_alerts=alerts,
+    )
+
+    result = await service.commit(
+        "D1", "U_FAMILY", _request(CommitDrugItem(name="某藥", frequency_code="QD"))
+    )
+    await asyncio.gather(*service._otc_alert_tasks)
+
+    assert result.interaction_alert == alert
+    assert alerts.notified == [("U_PATIENT", detection)]
+
+
+@pytest.mark.asyncio
 async def test_commit_succeeds_even_when_the_otc_check_explodes():
     """偵測是旁路——它失敗不得讓提交失敗，藥已經寫進去了。"""
     drafts = FakeDraftRepository()
@@ -1908,6 +1950,8 @@ async def test_commit_succeeds_even_when_the_otc_check_explodes():
     await asyncio.gather(*service._otc_alert_tasks)
 
     assert len(result.medication_ids) == 1
+    assert result.interaction_alert is None
+    assert alerts.notified == []
 
 
 @pytest.mark.asyncio
@@ -1928,6 +1972,7 @@ async def test_idempotent_replay_does_not_notify_a_second_time():
     await asyncio.gather(*service._otc_alert_tasks)
 
     assert len(alerts.calls) == 1
+    assert len(alerts.notified) == 1
 
 
 @pytest.mark.asyncio

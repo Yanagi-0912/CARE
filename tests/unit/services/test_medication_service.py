@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import HTTPException
@@ -10,6 +11,7 @@ from app.models.medication import (
     CreateMedicationRequest,
     CreateMedicationReminderRequest,
     Medication,
+    MedicationInteractionAlert,
     MedicationLog,
     MedicationReminder,
     ReminderEntryInput,
@@ -1797,7 +1799,10 @@ async def test_create_manual_medication_sets_manual_source_and_other_frequency()
     assert created.source == "manual"
     assert created.frequency_code == "OTHER"
     assert created.created_by_user_id == "U_CARE"
-    assert fake_medications.created_medications == [created]
+    # 回應多一個不落地的 interaction_alert，其餘欄位就是存進去的那筆
+    assert fake_medications.created_medications == [
+        Medication.model_validate(created.model_dump(exclude={"interaction_alert"}))
+    ]
 
 
 class _FakeCatalog:
@@ -1815,11 +1820,19 @@ class _FakeCatalog:
 
 
 class _RecordingOtcAlert:
-    def __init__(self):
-        self.calls: list[tuple[str, list[str]]] = []
+    """`calls` 記偵測、`notified` 記推播；`alert` 是偵測結果要帶的警告。"""
 
-    async def check(self, patient_user_id: str, medication_ids):
+    def __init__(self, alert=None):
+        self.calls: list[tuple[str, list[str]]] = []
+        self.notified: list[tuple[str, object]] = []
+        self._alert = alert
+
+    async def detect(self, patient_user_id: str, medication_ids):
         self.calls.append((patient_user_id, list(medication_ids)))
+        return SimpleNamespace(alert=self._alert)
+
+    async def notify(self, patient_user_id: str, detection):
+        self.notified.append((patient_user_id, detection))
 
 
 @pytest.mark.asyncio
@@ -1881,7 +1894,10 @@ async def test_create_manual_medication_survives_catalog_and_alert_failures():
         def match(self, name):
             raise RuntimeError("catalog down")
 
-        async def check(self, patient_user_id, medication_ids):
+        async def detect(self, patient_user_id, medication_ids):
+            raise RuntimeError("alert down")
+
+        async def notify(self, patient_user_id, detection):
             raise RuntimeError("alert down")
 
     fake_medications = FakeMedicationRepository()
@@ -1897,7 +1913,37 @@ async def test_create_manual_medication_survives_catalog_and_alert_failures():
     await asyncio.gather(*service._otc_alert_tasks)  # 不得拋出
 
     assert created.license_number is None
-    assert fake_medications.created_medications == [created]
+    assert created.interaction_alert is None
+    assert fake_medications.created_medications == [
+        Medication.model_validate(created.model_dump(exclude={"interaction_alert"}))
+    ]
+
+
+@pytest.mark.asyncio
+async def test_create_manual_medication_returns_the_interaction_alert():
+    """LIFF 新增完要當場顯示警告：偵測結果放進回應，推播同一份丟背景。"""
+    alert = MedicationInteractionAlert(
+        kind="bleeding",
+        new_drug_name="伊普錠",
+        existing_drug_name="可化凝錠",
+        ingredients=["NSAID", "抗凝血劑"],
+    )
+    otc = _RecordingOtcAlert(alert=alert)
+    service = MedicationService(
+        medication_repository=FakeMedicationRepository(),
+        catalog_service=_FakeCatalog({}),
+        otc_alert_service=otc,
+    )
+
+    created = await service.create_manual_medication(
+        "U_SELF", CreateMedicationRequest(user_id="U_SELF", name="伊普錠")
+    )
+    await asyncio.gather(*service._otc_alert_tasks)
+
+    assert created.interaction_alert == alert
+    assert created.name == "伊普錠"
+    ((patient, detection),) = otc.notified
+    assert patient == "U_SELF" and detection.alert == alert
 
 
 # --- 推播分區資料與已服用藥名 ------------------------------------------------

@@ -13,6 +13,7 @@ from app.dependencies import (
 )
 from app.models.medication import (
     CreateMedicationRequest,
+    CreatedMedication,
     CreateMedicationReminderRequest,
     Medication,
     MedicationLog,
@@ -119,7 +120,7 @@ async def list_medications(
 
 @router.post(
     "",
-    response_model=Medication,
+    response_model=CreatedMedication,
     response_model_by_alias=False,  # 見檔頭說明：輸出鍵須為 id，不是 _id
     summary="手動新增藥品",
     description="以藥名手動新增一筆藥品，不含藥證、外觀與適應症等辨識資料。",

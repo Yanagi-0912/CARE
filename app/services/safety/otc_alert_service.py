@@ -15,6 +15,14 @@
 「止痛藥」被當成兩種不同的東西一起買回家）。因此比對的另一邊不只是既有用藥，
 也包含這次提交裡先前處理過的藥；同一次提交裡的處方藥則直接算現有用藥。
 
+## 偵測與通知分開
+
+LIFF 要在送出後當場顯示警告，所以偵測（`detect`）在呼叫端的同步路徑上跑、
+結果放進回應；推播（`notify`）仍然丟背景。兩者吃同一份偵測結果，畫面上和
+LINE 上講的必然是同一組藥。偵測是兩次資料庫查詢加記憶體比對；記憶體比對
+在本機用真實藥證庫、20 筆沒有證號的藥量過，中位 12 ms（2026-10-15，不含
+資料庫查詢）。慢的是推播。
+
 ## 對主流程 fail-open
 
 呼叫端是掃描提交流程，使用者正在等頁面回應，而且藥已經寫進資料庫了。這條
@@ -36,9 +44,16 @@ from datetime import datetime
 from typing import Any, Optional, Protocol, Sequence
 
 from app.i18n import t
-from app.models.medication import TAIPEI_TZ
+from app.models.medication import (
+    TAIPEI_TZ,
+    MedicationInteractionAlert,
+    MedicationInteractionKind,
+)
 from app.services.medication.drug_catalog_service import DrugCatalogEntry
-from app.services.line_messaging.flex.otc_flex import build_otc_family_flex
+from app.services.line_messaging.flex.otc_flex import (
+    build_otc_family_flex,
+    build_otc_patient_flex,
+)
 from app.services.safety.atc_interaction import ClassPairTable, find_class_pair
 from app.services.safety.tcm_interaction import (
     TcmInteractionTable,
@@ -99,6 +114,36 @@ class _DrugView:
         return self.tcm_keys[0] if self.tcm_keys else ""
 
 
+_Finding = tuple[_DrugView, _DrugView, tuple[str, ...]]
+
+
+@dataclass(frozen=True)
+class OtcDetection:
+    """一次提交的偵測結果。推播與 API 回應共用這一份，不重算。
+
+    `added` 是沒有任何發現時家人卡要講的那個藥（這次新增的第一個非處方藥或
+    中藥）；`finding` 是（新加入的, 已經在吃的, 成分）的第一組相衝，沒有則
+    為 None。
+    """
+
+    added: _DrugView
+    finding: Optional[_Finding] = None
+    kind: Optional[MedicationInteractionKind] = None
+
+    @property
+    def alert(self) -> Optional[MedicationInteractionAlert]:
+        """給 LIFF 的那一份；只有相衝才有，「新增了非處方藥」不算。"""
+        if self.finding is None or self.kind is None:
+            return None
+        new_drug, existing_drug, ingredients = self.finding
+        return MedicationInteractionAlert(
+            kind=self.kind,
+            new_drug_name=new_drug.name,
+            existing_drug_name=existing_drug.name,
+            ingredients=list(ingredients),
+        )
+
+
 class OtcAlertService:
     """非處方藥加入提醒後的偵測與通報。
 
@@ -136,15 +181,41 @@ class OtcAlertService:
         self._user_profile_service = user_profile_service
 
     async def check(self, patient_user_id: str, added_medication_ids: Sequence[str]) -> None:
-        """對外的唯一入口。任何失敗都吞在這裡，主流程不受影響。"""
+        """偵測完直接通知。不需要把結果交給畫面的呼叫端用這個。"""
+        await self.notify(
+            patient_user_id, await self.detect(patient_user_id, added_medication_ids)
+        )
+
+    async def detect(
+        self, patient_user_id: str, added_medication_ids: Sequence[str]
+    ) -> Optional[OtcDetection]:
+        """只偵測、不通知。這次全是處方藥時回 None，失敗也回 None（fail-open）。"""
         if not patient_user_id or not added_medication_ids:
-            return
+            return None
         try:
-            await self._check(patient_user_id, list(added_medication_ids))
+            return await self._detect(patient_user_id, list(added_medication_ids))
         except Exception as exc:  # noqa: BLE001 - 對主流程 fail-open
             logger.warning("非處方藥成分偵測失敗，本次不通知：%s", type(exc).__name__)
+            return None
 
-    async def _check(self, patient_user_id: str, added_medication_ids: list[str]) -> None:
+    async def notify(self, patient_user_id: str, detection: Optional[OtcDetection]) -> None:
+        """依偵測結果推播家人與當事人。任何失敗都吞在這裡。"""
+        if not patient_user_id or detection is None:
+            return
+        try:
+            # 家人先發、當事人後發：當事人那則的措辭取決於家人是否真的收到了
+            # （沒有合格收件人時不能說「也讓家人幫你看一下」）。
+            notified_family = await self._notify_family(patient_user_id, detection)
+            if detection.finding is not None and detection.kind is not None:
+                await self._notify_patient(
+                    patient_user_id, detection.finding, notified_family, detection.kind
+                )
+        except Exception as exc:  # noqa: BLE001 - 背景推播，例外不得逸散
+            logger.warning("非處方藥相衝通知失敗：%s", type(exc).__name__)
+
+    async def _detect(
+        self, patient_user_id: str, added_medication_ids: list[str]
+    ) -> Optional[OtcDetection]:
         added = await self._views(added_medication_ids)
         # 中藥與非處方藥同列觸發條件：兩者都是「沒有任何專業判斷把關」的用藥
         # ——長輩自己去藥局買成藥，或自費看中醫、自行到中藥房抓藥，都不會有
@@ -155,7 +226,7 @@ class OtcAlertService:
             # 全是處方藥、非成品藥或分級不明——這條通道整個不啟動，連「新增了
             # 什麼藥」的通知都不發。處方藥已經過醫師診斷與藥師調劑，再通知一次
             # 只是噪音，而通知量該與風險成正比。
-            return
+            return None
 
         existing = await self._existing_views(patient_user_id, set(added_medication_ids))
         # 同一次提交裡**不是**觸發側的藥（處方藥）也要當現有用藥：醫院中醫部的
@@ -182,19 +253,16 @@ class OtcAlertService:
             else self._first_tcm_interaction(new_otc, existing)
         )
         finding = bleeding or overlap or stacking or tcm
-
-        # 家人先發、當事人後發：當事人那則的措辭取決於家人是否真的收到了
-        # （沒有合格收件人時不能說「也讓家人幫你看一下」）。
-        notified_family = await self._notify_family(
-            patient_user_id, new_otc[0], overlap, stacking, tcm, bleeding
-        )
-        if finding is not None:
-            kind = (
-                "bleeding"
-                if bleeding
-                else ("overlap" if overlap else ("stacking" if stacking else "tcm"))
-            )
-            await self._notify_patient(patient_user_id, finding, notified_family, kind)
+        kind: Optional[MedicationInteractionKind] = None
+        if bleeding:
+            kind = "bleeding"
+        elif overlap:
+            kind = "overlap"
+        elif stacking:
+            kind = "stacking"
+        elif tcm:
+            kind = "tcm"
+        return OtcDetection(added=new_otc[0], finding=finding, kind=kind)
 
     # ---- 偵測 --------------------------------------------------------------
 
@@ -463,15 +531,7 @@ class OtcAlertService:
 
     # ---- 通知 --------------------------------------------------------------
 
-    async def _notify_family(
-        self,
-        patient_user_id: str,
-        added: _DrugView,
-        overlap: Optional[tuple[_DrugView, _DrugView, tuple[str, ...]]],
-        stacking: Optional[tuple[_DrugView, _DrugView, tuple[str, ...]]] = None,
-        tcm: Optional[tuple[_DrugView, _DrugView, tuple[str, ...]]] = None,
-        bleeding: Optional[tuple[_DrugView, _DrugView, tuple[str, ...]]] = None,
-    ) -> bool:
+    async def _notify_family(self, patient_user_id: str, detection: OtcDetection) -> bool:
         """通報合格收件人，回傳是否真的送出給任何人。
 
         卡片講哪一組：有重複講重複的、有疊加講疊加的、都沒有講這次新增的第一
@@ -483,8 +543,9 @@ class OtcAlertService:
         if not recipients:
             return False
 
-        finding = bleeding or overlap or stacking or tcm
-        subject = finding[0] if finding else added
+        finding, kind = detection.finding, detection.kind
+        listed = finding[2] if finding else ()
+        subject = finding[0] if finding else detection.added
         patient_name = await self._patient_name(patient_user_id)
         sent = False
         for member_id in recipients:
@@ -494,10 +555,10 @@ class OtcAlertService:
                 drug_name=subject.name,
                 indication=subject.indication,
                 existing_drug_name=finding[1].name if finding else None,
-                shared_ingredients=overlap[2] if overlap else (),
-                stacked_ingredients=stacking[2] if stacking else (),
-                tcm_pair=tcm[2] if tcm else (),
-                class_pair=bleeding[2] if bleeding else (),
+                shared_ingredients=listed if kind == "overlap" else (),
+                stacked_ingredients=listed if kind == "stacking" else (),
+                tcm_pair=listed if kind == "tcm" else (),
+                class_pair=listed if kind == "bleeding" else (),
                 language=language,
                 font_size=font_size,
             )
@@ -514,9 +575,9 @@ class OtcAlertService:
     async def _notify_patient(
         self,
         patient_user_id: str,
-        finding: tuple[_DrugView, _DrugView, tuple[str, ...]],
+        finding: _Finding,
         notified_family: bool,
-        kind: str = "overlap",
+        kind: MedicationInteractionKind = "overlap",
     ) -> None:
         """只在偵測到重複或疊加時才發。
 
@@ -530,10 +591,26 @@ class OtcAlertService:
         溫和、可以配著吃」這個前提——不先講這句，後面導向藥師的話會被當成
         小題大作。
 
-        `kind` 是 overlap／stacking／tcm，決定用哪一組文案。
+        `kind` 是 bleeding／overlap／stacking／tcm，決定用哪一組文案。
+
+        送的是 Flex 卡，與家人那張同一套版面；文案與純文字版是同一份（見
+        `build_otc_patient_flex`）。卡片超過大小上限時退回純文字，比照家人那則。
         """
         new_drug, existing_drug, ingredients = finding
-        language, _ = await self._display_prefs(patient_user_id)
+        language, font_size = await self._display_prefs(patient_user_id)
+        flex = build_otc_patient_flex(
+            kind=kind,
+            new_drug=new_drug.name,
+            existing_drug=existing_drug.name,
+            ingredients=ingredients,
+            notified_family=notified_family,
+            language=language,
+            font_size=font_size,
+        )
+        if fits(flex.contents.to_dict()):
+            await self._replier.push_flex(patient_user_id, flex)
+            return
+        logger.warning("非處方藥當事人提醒卡超過大小上限，改以純文字送出")
         key = f"text.otc.patient.{kind}" if notified_family else f"text.otc.patient.{kind}_solo"
         await self._replier.push_text(
             patient_user_id,

@@ -14,6 +14,7 @@ from app.models.medication import (
     URGENT_AFTER_ANCHOR_MINUTES,
     CreateMedicationReminderRequest,
     CreateMedicationRequest,
+    CreatedMedication,
     Medication,
     MedicationLog,
     MedicationReminder,
@@ -857,7 +858,7 @@ class MedicationService:
 
     async def create_manual_medication(
         self, creator_user_id: str, request: CreateMedicationRequest
-    ) -> Medication:
+    ) -> CreatedMedication:
         """以藥名手動新增藥品（`POST /medications`，見 spec「藥品的列出與手動
         新增」）。手動新增沒有外觀資料來源，`frequency_code` 一律歸類 `OTHER`
         ——臆測頻次會直接變成錯誤的服藥時間（見 `MedicationFrequencyCode` 的
@@ -868,6 +869,9 @@ class MedicationService:
         在這條路徑上沒有候選清單可挑。釘上證號的意義不是外觀照片（手動新增
         沒有候選可對），是讓相衝偵測拿得到成分與 ATC：之前手動新增的藥永遠
         沒有證號，於是長輩自己輸入的「普拿疼」在任何規則裡都是隱形的。
+
+        相衝偵測在這裡同步跑、結果放進回應（`interaction_alert`），LIFF 才能
+        在新增後當場顯示；推播家人與當事人仍然丟背景。
         """
         name = request.name.strip()
         medication = Medication(
@@ -879,8 +883,14 @@ class MedicationService:
             frequency_code="OTHER",
         )
         created = await self._medication_repository.create_one(medication)
-        self._schedule_otc_alert(request.user_id, created.id)
-        return created
+        detection = await self._detect_otc(request.user_id, created.id)
+        self._schedule_otc_notify(request.user_id, detection)
+        return CreatedMedication.model_validate(
+            {
+                **created.model_dump(),
+                "interaction_alert": detection.alert if detection is not None else None,
+            }
+        )
 
     def _unique_license_for(self, name: str) -> Optional[str]:
         """藥名在藥證庫唯一命中時的證號；查無、多張候選或未注入藥證庫都是 None。
@@ -897,21 +907,34 @@ class MedicationService:
             return None
         return match.license_number if match is not None else None
 
-    def _schedule_otc_alert(self, patient_user_id: str, medication_id: Optional[str]) -> None:
-        """把相衝偵測丟到背景，比照 `PrescriptionScanService._schedule_otc_alert`。
+    async def _detect_otc(self, patient_user_id: str, medication_id: Optional[str]) -> Any:
+        """同步跑相衝偵測，比照 `PrescriptionScanService._detect_otc`。
 
-        使用者正在等新增回應，偵測要查藥證庫、查現有用藥、推播家人，串進同步
-        路徑只會讓畫面變慢，而且對「新增成功了嗎」沒有貢獻。例外留在任務內，
+        失敗回 None：「存一個藥名」已經成功了，偵測出錯不能讓它變成失敗。
         log 不帶藥名（用藥組合是病史線索）。
         """
         if self._otc_alert_service is None or not patient_user_id or not medication_id:
+            return None
+        try:
+            return await self._otc_alert_service.detect(patient_user_id, [medication_id])
+        except Exception:  # noqa: BLE001 - 旁路，不影響新增
+            logger.warning("[MedicationService] 手動新增後的相衝偵測失敗")
+            return None
+
+    def _schedule_otc_notify(self, patient_user_id: str, detection: Any) -> None:
+        """把相衝通知丟到背景，比照 `PrescriptionScanService._schedule_otc_notify`。
+
+        使用者正在等新增回應，推播家人串進同步路徑只會讓畫面變慢，而且對
+        「新增成功了嗎」沒有貢獻。例外留在任務內。
+        """
+        if self._otc_alert_service is None or not patient_user_id or detection is None:
             return
 
         async def _run() -> None:
             try:
-                await self._otc_alert_service.check(patient_user_id, [medication_id])
+                await self._otc_alert_service.notify(patient_user_id, detection)
             except Exception:  # noqa: BLE001 - 背景旁路，例外不得逸散
-                logger.warning("[MedicationService] 手動新增後的相衝偵測任務失敗")
+                logger.warning("[MedicationService] 手動新增後的相衝通知任務失敗")
 
         task = asyncio.create_task(_run())
         self._otc_alert_tasks.add(task)

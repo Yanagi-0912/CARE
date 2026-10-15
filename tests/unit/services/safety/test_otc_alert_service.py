@@ -103,17 +103,50 @@ class _MedRepo:
         return [self._meds[i] for i in self._existing_ids if i in self._meds]
 
 
+def _flex_text(flex_message) -> str:
+    """把卡片上所有看得到的字（含 span）串成一段，供內容斷言用。"""
+    parts: list[str] = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            if isinstance(node.get("text"), str):
+                parts.append(node["text"])
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(flex_message.contents.to_dict())
+    return "".join(parts)
+
+
 class _Replier:
-    def __init__(self) -> None:
+    """`flexes` 只收家人卡；`texts` 收當事人看到的那則。
+
+    當事人那則現在是 Flex 卡，這裡攤平成文字放進 `texts`，既有的內容斷言
+    （藥名、「藥師」、有沒有提「家人」）照樣檢查他實際看到的字；卡片本身
+    放在 `patient_flexes`。誰是家人由 `_build` 的 `recipients` 決定。
+    """
+
+    def __init__(self, family_ids=()) -> None:
+        self._family_ids = set(family_ids)
         self.texts: list[tuple[str, str]] = []
         self.flexes: list[tuple[str, Any]] = []
+        self.patient_flexes: list[tuple[str, Any]] = []
+        self.raw_texts: list[tuple[str, str]] = []
 
     async def push_text(self, user_id, text):
         self.texts.append((user_id, text))
+        self.raw_texts.append((user_id, text))
         return True
 
     async def push_flex(self, user_id, flex_message):
-        self.flexes.append((user_id, flex_message))
+        if user_id in self._family_ids:
+            self.flexes.append((user_id, flex_message))
+        else:
+            self.patient_flexes.append((user_id, flex_message))
+            self.texts.append((user_id, _flex_text(flex_message)))
         return True
 
 
@@ -151,7 +184,7 @@ def _build(
     tcm_watch_herbs: Any = None,
     candidates: Optional[dict] = None,
 ):
-    replier = _Replier()
+    replier = _Replier(family_ids=recipients)
     auth = _Auth(recipients, raises=auth_raises)
     service = OtcAlertService(
         catalog_service=_Catalog(catalog, candidates),
@@ -247,6 +280,111 @@ async def test_otc_with_overlap_notifies_both_parties():
     # SHALL 引導詢問藥師、SHALL NOT 指示停藥或給劑量
     assert "藥師" in text
     assert "停" not in text
+
+
+@pytest.mark.asyncio
+async def test_patient_warning_is_a_flex_card_not_plain_text():
+    """當事人那則是卡片：藥名與成分在卡片內容裡，altText 只有標題。"""
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="普拿疼", license_number="L-A"),
+            "old": _Med(id="old", name="斯斯感冒膠囊", license_number="L-B"),
+        },
+        catalog={
+            "L-A": _Entry("otc", ("ACETAMINOPHEN",)),
+            "L-B": _Entry("otc", ("ACETAMINOPHEN",)),
+        },
+        existing=["old"],
+    )
+
+    await service.check("patient", ["new"])
+
+    assert replier.raw_texts == []
+    ((recipient, card),) = replier.patient_flexes
+    assert recipient == "patient"
+    assert card.alt_text == "用藥重複提醒"
+
+
+@pytest.mark.asyncio
+async def test_oversized_patient_card_falls_back_to_plain_text(monkeypatch):
+    """比照家人那則：超過大小上限就送純文字，寧可少了版面也不要整則被退回。"""
+    import app.services.safety.otc_alert_service as module
+
+    monkeypatch.setattr(module, "fits", lambda bubble: False)
+    service, replier, _ = _build(
+        meds={
+            "new": _Med(id="new", name="普拿疼", license_number="L-A"),
+            "old": _Med(id="old", name="斯斯感冒膠囊", license_number="L-B"),
+        },
+        catalog={
+            "L-A": _Entry("otc", ("ACETAMINOPHEN",)),
+            "L-B": _Entry("otc", ("ACETAMINOPHEN",)),
+        },
+        existing=["old"],
+    )
+
+    await service.check("patient", ["new"])
+
+    assert replier.patient_flexes == []
+    patient_texts = [text for uid, text in replier.raw_texts if uid == "patient"]
+    assert len(patient_texts) == 1
+    assert "普拿疼" in patient_texts[0] and "ACETAMINOPHEN" in patient_texts[0]
+
+
+@pytest.mark.asyncio
+async def test_detect_returns_the_alert_without_pushing_anything():
+    """LIFF 用的那條路：只偵測、不推播，結果與推播用的是同一份。"""
+    service, replier, auth = _build(
+        meds={
+            "new": _Med(id="new", name="普拿疼", license_number="L-A"),
+            "old": _Med(id="old", name="斯斯感冒膠囊", license_number="L-B"),
+        },
+        catalog={
+            "L-A": _Entry("otc", ("ACETAMINOPHEN",)),
+            "L-B": _Entry("otc", ("ACETAMINOPHEN",)),
+        },
+        existing=["old"],
+    )
+
+    detection = await service.detect("patient", ["new"])
+
+    assert replier.texts == [] and replier.flexes == [] and auth.kinds == []
+    alert = detection.alert
+    assert alert.kind == "overlap"
+    assert alert.new_drug_name == "普拿疼"
+    assert alert.existing_drug_name == "斯斯感冒膠囊"
+    assert alert.ingredients == ["ACETAMINOPHEN"]
+
+    await service.notify("patient", detection)
+
+    assert [uid for uid, _ in replier.flexes] == ["family-1"]
+    assert [uid for uid, _ in replier.patient_flexes] == ["patient"]
+
+
+@pytest.mark.asyncio
+async def test_detect_has_no_alert_for_an_otc_drug_without_any_finding():
+    """只是「新增了非處方藥」：家人照樣會收到通知，但畫面上沒有警告可顯示。"""
+    service, _, _ = _build(
+        meds={"new": _Med(id="new", name="止咳糖漿", license_number="L-A")},
+        catalog={"L-A": _Entry("otc", ("DEXTROMETHORPHAN",))},
+        existing=[],
+    )
+
+    detection = await service.detect("patient", ["new"])
+
+    assert detection is not None
+    assert detection.alert is None
+
+
+@pytest.mark.asyncio
+async def test_detect_returns_none_for_prescription_drugs_only():
+    service, _, _ = _build(
+        meds={"new": _Med(id="new", name="降血壓藥", license_number="L-RX")},
+        catalog={"L-RX": _Entry("prescription", ("AMLODIPINE",))},
+        existing=[],
+    )
+
+    assert await service.detect("patient", ["new"]) is None
 
 
 @pytest.mark.asyncio

@@ -12,7 +12,11 @@ from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.services.medication.drug_indication_service import IndicationMatch
-from app.models.medication import MedicationFrequencyCode, MedicationSlotType
+from app.models.medication import (
+    MedicationFrequencyCode,
+    MedicationInteractionAlert,
+    MedicationSlotType,
+)
 
 # 醫囑頻次。與 Medication 共用同一份定義，避免兩邊各自演化而失去同步。
 FrequencyCode = MedicationFrequencyCode
@@ -211,6 +215,11 @@ class PrescriptionCommitResult(BaseModel):
     被系統丟掉，若不揭露，他會以為照片會出現而事後困惑，這與
     reactivated_slots「不能讓使用者事後才發現」是同一個理由。冪等重放時
     同樣無法可靠回推，此欄位為空。
+
+    interaction_alert 是這次加入的藥與現有用藥的相衝（成分重複、作用疊加、
+    中西藥併用、出血風險，只取最嚴重的一組），與 LINE 推給當事人的那則是同
+    一份偵測結果。沒有相衝、這次全是處方藥、或偵測失敗時為 None。冪等重放時
+    也是 None——那次提交的通知已經發過，重放只是補回應。
     """
 
     medication_ids: list[str] = Field(default_factory=list)
@@ -218,3 +227,4 @@ class PrescriptionCommitResult(BaseModel):
     reminder_ids: list[str] = Field(default_factory=list)
     reactivated_slots: list[MedicationSlotType] = Field(default_factory=list)
     discarded_license_medication_ids: list[str] = Field(default_factory=list)
+    interaction_alert: Optional[MedicationInteractionAlert] = None

@@ -15,12 +15,17 @@ altText（不帶）與卡片內容（帶）兩層之後，用途可以送到有�
 在鎖定畫面上洩漏。
 """
 
+import re
 from typing import Any, Optional
 
 from linebot.v3.messaging import FlexContainer, FlexMessage
 
 from app.i18n import t
 from resources.flex_messages import theme
+
+# `text.otc.patient.*` 第一段裡的三個佔位符。卡片要把它們換成加粗的 span，
+# 所以先切開再填，不能先 format 完再找——藥名本身可能和句子裡的字重疊。
+_PATIENT_PLACEHOLDER = re.compile(r"\{(new_drug|existing_drug|ingredients)\}")
 
 
 def _row(label: str, value: str, ft) -> dict[str, Any]:
@@ -244,3 +249,123 @@ def build_otc_family_flex(
         altText=t(f"flex.otc.alt.{suffix}", language).format(name=patient_name),
         contents=FlexContainer.from_dict(bubble_dict),
     )
+
+
+def build_otc_patient_flex(
+    kind: str,
+    new_drug: str,
+    existing_drug: str,
+    ingredients: tuple[str, ...],
+    notified_family: bool,
+    language: Optional[str] = None,
+    font_size: Optional[str] = None,
+) -> FlexMessage:
+    """偵測到相衝時給當事人本人的卡片。
+
+    文案直接取 `text.otc.patient.*`：那份純文字已經有六種語言，也是卡片超過
+    大小上限時要退回送出的同一份。卡片只負責排版——第一段（哪兩個藥）放進
+    色塊、藥名加粗、成分標紅，其餘段落是建議，一段一個元件。另寫一套卡片
+    專用文案，等於同一件事有兩份要同步維護的翻譯。
+
+    標題沿用家人卡的 `flex.otc.header.*`，兩張卡講的是同一件事。altText 只放
+    標題、不帶藥名，理由同 `build_otc_family_flex`：通知列與鎖定畫面可能被
+    別人看到。
+
+    `kind` 是 bleeding／overlap／stacking／tcm；`notified_family` 決定用不用
+    「也讓家人幫你看一下」那一版。
+    """
+    ft = theme.resolve_theme(font_size)
+    key = f"text.otc.patient.{kind}" if notified_family else f"text.otc.patient.{kind}_solo"
+    first, *advice = t(key, language).split("\n\n")
+    values = {
+        "new_drug": new_drug,
+        "existing_drug": existing_drug,
+        "ingredients": "、".join(ingredients),
+    }
+
+    # re.split 帶捕捉群組：偶數位是原文、奇數位是佔位符名稱。
+    spans: list[dict[str, Any]] = []
+    for index, part in enumerate(_PATIENT_PLACEHOLDER.split(first)):
+        if index % 2 == 0:
+            if part:
+                spans.append({"type": "span", "text": part})
+            continue
+        value = values[part]
+        if not value:
+            continue
+        span: dict[str, Any] = {"type": "span", "text": value, "weight": "bold"}
+        if part == "ingredients":
+            span["color"] = theme.STATUS_CLOSED
+        spans.append(span)
+
+    body_contents: list[dict[str, Any]] = [
+        {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": theme.SURFACE_ALT,
+            "cornerRadius": "md",
+            "paddingAll": "lg",
+            "contents": [
+                {
+                    "type": "text",
+                    "contents": spans,
+                    "size": ft.body,
+                    "color": theme.TEXT,
+                    "wrap": True,
+                }
+            ],
+        }
+    ]
+    body_contents.extend(
+        {
+            "type": "text",
+            "text": paragraph,
+            "size": ft.body,
+            "color": theme.TEXT,
+            "wrap": True,
+            "margin": "md",
+        }
+        for paragraph in advice
+    )
+    if kind == "tcm":
+        body_contents.append(
+            {
+                "type": "text",
+                "text": t("flex.otc.source.tcm", language),
+                "size": ft.caption,
+                "color": theme.TEXT_MUTED,
+                "wrap": True,
+                "margin": "md",
+            }
+        )
+
+    header = t(f"flex.otc.header.{kind}", language)
+    bubble_dict = {
+        "type": "bubble",
+        "header": {
+            "type": "box",
+            "layout": "vertical",
+            "backgroundColor": theme.BRAND,
+            "paddingAll": "lg",
+            "contents": [
+                {
+                    "type": "text",
+                    "text": header,
+                    "color": theme.TEXT_ON_BRAND,
+                    "weight": "bold",
+                    "size": ft.heading,
+                    "wrap": True,
+                }
+            ],
+        },
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "paddingAll": "xl",
+            "backgroundColor": theme.SURFACE,
+            "spacing": "md",
+            "contents": body_contents,
+        },
+    }
+
+    return FlexMessage(altText=header, contents=FlexContainer.from_dict(bubble_dict))

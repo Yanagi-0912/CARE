@@ -447,10 +447,12 @@ class PrescriptionScanService:
             await self._draft_repository.release_commit(draft_id, user_id, medication_ids)
             raise
 
-        # 藥已經寫進去了，這步只是旁路：非處方藥的成分重複偵測與家人通知。
-        # 刻意不放在冪等重放那條分支——那次提交若成功過，通知已經發過了，
-        # 重放時再發一次只會讓家人以為又新增了一盒藥。
-        self._schedule_otc_alert(target_user_id, medication_ids)
+        # 藥已經寫進去了，這步只是旁路：非處方藥的相衝偵測與通知。偵測結果
+        # 放進回應讓 LIFF 當場顯示，推播丟背景。刻意不放在冪等重放那條分支
+        # ——那次提交若成功過，通知已經發過了，重放時再發一次只會讓家人以為
+        # 又新增了一盒藥。
+        detection = await self._detect_otc(target_user_id, medication_ids)
+        self._schedule_otc_notify(target_user_id, detection)
 
         return PrescriptionCommitResult(
             medication_ids=medication_ids,
@@ -458,33 +460,49 @@ class PrescriptionScanService:
             reminder_ids=reminder_ids,
             reactivated_slots=reactivated_slots,
             discarded_license_medication_ids=self._discarded_license_ids(resolved, medication_ids),
+            interaction_alert=detection.alert if detection is not None else None,
         )
 
-    def _schedule_otc_alert(self, patient_user_id: str, medication_ids: list[str]) -> None:
-        """把成分重複偵測丟到背景執行。
+    async def _detect_otc(self, patient_user_id: str, medication_ids: list[str]) -> Any:
+        """在提交的同步路徑上跑相衝偵測，結果交給 LIFF 當場顯示。
 
-        使用者正在等提交回應，而偵測要查藥證庫、查現有用藥、推播給每一位家人
-        ——把這些串進同步路徑會讓核對畫面明顯變慢，而它對「這次提交成功了嗎」
-        這個問題沒有任何貢獻。
+        偵測是兩次資料庫查詢加記憶體比對（比對部分的實測見
+        `otc_alert_service` 檔頭），慢的推播另外丟背景。任何失敗都回 None：
+        藥已經寫進去了，偵測失敗不能讓提交失敗。
+
+        對象是 `target_user_id`（服藥的人）而不是提交者：家屬代長輩掃描時，
+        有相衝風險的是長輩，不是代掃的人。
+        """
+        if self._otc_alert_service is None or not patient_user_id or not medication_ids:
+            return None
+        try:
+            return await self._otc_alert_service.detect(patient_user_id, medication_ids)
+        except Exception:  # noqa: BLE001 - 旁路，不影響提交
+            # 這裡刻意不用 logger.exception：traceback 會帶出例外訊息，
+            # 而例外訊息常含查詢參數（藥名、證號）。用藥組合本身即為
+            # 病史的強烈線索。
+            logger.warning("非處方藥成分偵測失敗")
+            return None
+
+    def _schedule_otc_notify(self, patient_user_id: str, detection: Any) -> None:
+        """把相衝通知丟到背景執行。
+
+        使用者正在等提交回應，而推播要逐一查每位家人的語言字級、逐一送出
+        ——串進同步路徑會讓核對畫面明顯變慢，而它對「這次提交成功了嗎」這個
+        問題沒有任何貢獻。
 
         例外一律留在任務內部：讓它逸散只會變成 "Task exception was never
         retrieved"，而且污染主流程的錯誤處理。比照
         `MessageHandler._schedule_safety_alert_check`。
-
-        通知對象是 `target_user_id`（服藥的人）而不是提交者：家屬代長輩掃描
-        時，有成分重複風險的是長輩，不是代掃的人。
         """
-        if self._otc_alert_service is None or not patient_user_id or not medication_ids:
+        if self._otc_alert_service is None or not patient_user_id or detection is None:
             return
 
         async def _run() -> None:
             try:
-                await self._otc_alert_service.check(patient_user_id, medication_ids)
+                await self._otc_alert_service.notify(patient_user_id, detection)
             except Exception:  # noqa: BLE001 - 背景旁路，例外不得逸散
-                # 這裡刻意不用 logger.exception：traceback 會帶出例外訊息，
-                # 而例外訊息常含查詢參數（藥名、證號）。用藥組合本身即為
-                # 病史的強烈線索。
-                logger.warning("非處方藥成分偵測任務失敗")
+                logger.warning("非處方藥相衝通知任務失敗")
 
         task = asyncio.create_task(_run())
         self._otc_alert_tasks.add(task)

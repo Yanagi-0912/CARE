@@ -5,11 +5,15 @@ import re
 import pytest
 
 from app.i18n.messages import _MESSAGES
-from app.services.line_messaging.flex.otc_flex import build_otc_family_flex
+from app.services.line_messaging.flex.otc_flex import (
+    build_otc_family_flex,
+    build_otc_patient_flex,
+)
 from resources.flex_messages.size_guard import fits
 
 LANGUAGES = ("zh-TW", "en", "id", "vi", "th", "ja")
 OTC_KEYS = [k for k in _MESSAGES if k.startswith(("flex.otc.", "text.otc."))]
+KINDS = ("overlap", "stacking", "tcm", "bleeding")
 
 
 def _flex(**kwargs):
@@ -106,3 +110,95 @@ def test_patient_message_never_tells_them_to_stop_or_gives_a_dose(lang):
     assert not re.search(r"\d+\s*(mg|毫克|顆|錠|粒|tablets?|pills?)", text, re.I)
     forbidden = ("停藥", "先別吃", "不要吃", "stop taking", "do not take", "服用を中止")
     assert not any(f in text for f in forbidden)
+
+
+# --- 當事人的卡片 ----------------------------------------------------------
+
+
+def _patient_flex(**kwargs):
+    base = dict(
+        kind="overlap",
+        new_drug="普拿疼",
+        existing_drug="斯斯感冒膠囊",
+        ingredients=("ACETAMINOPHEN",),
+        notified_family=True,
+        language="zh-TW",
+    )
+    return build_otc_patient_flex(**{**base, **kwargs})
+
+
+def _spans(flex) -> list[dict]:
+    box = flex.contents.to_dict()["body"]["contents"][0]
+    return box["contents"][0]["contents"]
+
+
+def _rendered(flex) -> str:
+    return str(flex.contents.to_dict())
+
+
+def test_patient_card_bolds_both_drug_names_and_marks_the_ingredient():
+    spans = _spans(_patient_flex())
+
+    bold = [s["text"] for s in spans if s.get("weight") == "bold"]
+    assert bold == ["普拿疼", "斯斯感冒膠囊", "ACETAMINOPHEN"]
+    (ingredient,) = [s for s in spans if s["text"] == "ACETAMINOPHEN"]
+    assert ingredient["color"] != spans[0].get("color")
+    # 句子本身完整：拼回去就是純文字版的第一段
+    assert "".join(s["text"] for s in spans) == (
+        "你剛加入的「普拿疼」，和已經在吃的「斯斯感冒膠囊」含有相同成分（ACETAMINOPHEN）。"
+    )
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_patient_card_alt_text_is_the_header_without_drug_names(kind):
+    """altText 是通知列與鎖定畫面上那一行，不帶藥名與成分。"""
+    flex = _patient_flex(kind=kind)
+
+    assert flex.alt_text == _MESSAGES[f"flex.otc.header.{kind}"]["zh-TW"]
+    assert "普拿疼" not in flex.alt_text
+    assert "ACETAMINOPHEN" not in flex.alt_text
+
+
+def test_patient_card_mentions_family_only_when_family_was_notified():
+    assert "家人" in _rendered(_patient_flex(notified_family=True))
+    assert "家人" not in _rendered(_patient_flex(notified_family=False))
+
+
+def test_only_the_tcm_card_cites_its_source():
+    source = _MESSAGES["flex.otc.source.tcm"]["zh-TW"]
+
+    assert source in _rendered(_patient_flex(kind="tcm"))
+    assert source not in _rendered(_patient_flex(kind="overlap"))
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+@pytest.mark.parametrize("kind", KINDS)
+@pytest.mark.parametrize("suffix", ["", "_solo"])
+def test_patient_text_splits_into_a_drug_sentence_and_advice(lang, kind, suffix):
+    """卡片假設純文字版的第一段講「哪兩個藥」、其後是建議。
+
+    改文案時若把藥名挪到後面的段落，卡片上會出現沒填的 {new_drug}——這裡
+    擋下來。
+    """
+    first, *advice = _MESSAGES[f"text.otc.patient.{kind}{suffix}"][lang].split("\n\n")
+
+    assert "{new_drug}" in first and "{existing_drug}" in first
+    assert advice
+    assert not any("{" in paragraph for paragraph in advice)
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+@pytest.mark.parametrize("font_size", ["small", "medium", "large"])
+@pytest.mark.parametrize("kind", KINDS)
+def test_patient_card_stays_within_the_size_limit(language, font_size, kind):
+    flex = build_otc_patient_flex(
+        kind=kind,
+        new_drug="普拿疼加強錠膜衣錠" * 10,
+        existing_drug="斯斯感冒膠囊" * 10,
+        ingredients=("ACETAMINOPHEN", "CHLORPHENIRAMINE MALEATE", "CAFFEINE"),
+        notified_family=True,
+        language=language,
+        font_size=font_size,
+    )
+
+    assert fits(flex.contents.to_dict())

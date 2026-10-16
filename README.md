@@ -77,6 +77,7 @@ uv run pytest tests/ -v
 uv run scripts/sync_pharmacy_branches.py collect --cache-dir /tmp/care-branches-YYYYMMDD
 uv run scripts/sync_pharmacy_branches.py import                  # 只產生預覽
 uv run scripts/sync_pharmacy_branches.py import --apply          # 備份後寫入 .env 指定的 MongoDB
+uv run scripts/sync_pharmacy_branches.py import --insert-only --apply  # 舊版服務仍在執行時，先只新增
 ```
 
 匯入報告預設放在 repo 外的 `../outputs/pharmacy-branches-<時間>/`，包含修改前的

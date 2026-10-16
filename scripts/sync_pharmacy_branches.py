@@ -7,6 +7,7 @@
 uv run scripts/sync_pharmacy_branches.py collect --cache-dir /tmp/care-branches
 uv run scripts/sync_pharmacy_branches.py import             # preview only
 uv run scripts/sync_pharmacy_branches.py import --apply     # backup before writes
+uv run scripts/sync_pharmacy_branches.py import --insert-only --apply
 
 Only public business facts are retained. No deletions, no invented coordinates,
 and an unreported NHI/prescription status stays unknown (None).
@@ -520,12 +521,18 @@ def import_branches(args):
         documents=[{**doc,"_collection":name} for name,col in collections.items() for doc in col.find({})]
         index=BranchIndex(documents)
         plan=[]
+        skipped_existing=0
         today=datetime.now(timezone.utc).date().isoformat()
         for row in artifact["branches"]:
             if row.get("openingDate",today)>today:
                 continue
             existing=index.by_source.get((row["brand"],row["sourceId"]))
             existing=existing or match_existing(row,index)
+            if args.insert_only and existing:
+                # Stage additions while an older deployment is still serving;
+                # renaming existing records requires the alias-aware reader.
+                skipped_existing+=1
+                continue
             source={k:row[k] for k in ("brand","sourceId","sourceUrl")}
             source["collectedAt"]=artifact["collectedAt"]
             doc_id=existing["_id"] if existing else ObjectId(hashlib.sha256((row["brand"]+":"+row["sourceId"]).encode()).hexdigest()[:24])
@@ -562,6 +569,7 @@ def import_branches(args):
             if not existing:
                 index.add({"_id":doc_id,"_collection":target,**update,"branchSources":[source]})
         counts={"branches":len(plan),"new":sum(p["existing"] is None for p in plan),"matched":sum(p["existing"] is not None for p in plan),"newWithoutCoordinates":sum(p["existing"] is None and "location" not in p["update"] for p in plan)}
+        counts["skippedExisting"]=skipped_existing
         print(json.dumps(counts,ensure_ascii=False),flush=True)
         report_path=Path(args.report_dir)
         report_path.mkdir(parents=True,exist_ok=True)
@@ -594,5 +602,6 @@ if __name__=="__main__":
     parser.add_argument("--cache-dir",default="/tmp/care-pharmacy-sources")
     parser.add_argument("--report-dir",default=str(ROOT.parent/"outputs"/("pharmacy-branches-"+datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))))
     parser.add_argument("--apply",action="store_true")
+    parser.add_argument("--insert-only",action="store_true",help="Only stage new branches; leave existing records unchanged until the alias-aware search is deployed")
     args=parser.parse_args()
     collect(args) if args.action=="collect" else import_branches(args)

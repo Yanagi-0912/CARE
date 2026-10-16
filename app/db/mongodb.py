@@ -66,12 +66,17 @@ class MongoDBManager:
     @classmethod
     def get_pharmacy_collection(cls):
         """
-        取得 medical_facilities_pharmacy collection（健保特約藥局）
+        取得 medical_facilities_pharmacy collection（藥局，含官方補充的非特約藥局）
 
         藥局不在 medicalFacilities 裡。兩個 collection 的欄位與索引相同，
         差別只有藥局的 departments 一律是空陣列。
         """
         return cls.get_database()["medical_facilities_pharmacy"]
+
+    @classmethod
+    def get_retail_collection(cls):
+        """品牌藥妝／醫材門市：名稱搜尋會查，附近藥局搜尋不納入。"""
+        return cls.get_database()["medical_facilities_retail"]
 
     @classmethod
     def get_family_tree_collection(cls):

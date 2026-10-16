@@ -310,6 +310,7 @@ def build_pharmacy_query(keyword: str) -> tuple[dict[str, Any], str]:
     """
     cleaned = re.sub(r"\s+", "", keyword or "")
     cleaned = re.sub(r"[，,。．.？?！!：:；;「」『』()（）\[\]【】]", "", cleaned)
+    cleaned = re.sub(r"tomod[’']?s|三友藥妝|特美事", "Tomod's", cleaned, flags=re.IGNORECASE)
     if not cleaned:
         return {}, ""
 

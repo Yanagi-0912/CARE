@@ -238,6 +238,22 @@ async def test_pharmacy_name_widens_to_nationwide_when_nothing_nearby():
 
 
 @pytest.mark.asyncio
+async def test_named_branch_without_coordinates_can_be_found_with_user_location():
+    branch = _facility("松本清忠孝敦化店", "藥妝門市")
+    branch.latitude = branch.longitude = 0
+    branch.distance_meters = None
+    pharmacies = RecordingRepository(name_results=[[], [], [branch]])
+    service = _service(RecordingRepository(), pharmacies)
+
+    results, total = await service.find_pharmacy_by_name("松本清忠孝敦化店", lat=25.0, lng=121.5)
+
+    assert total == 1
+    assert results[0].name == "松本清忠孝敦化店"
+    assert results[0].distance_meters is None
+    assert pharmacies.name_calls[-1]["max_distance"] == "no-geo"
+
+
+@pytest.mark.asyncio
 async def test_pharmacy_name_without_coordinates_sorts_by_similarity():
     pharmacies = RecordingRepository(
         name_results=[[_pharmacy("新健安中西藥局"), _pharmacy("健安藥局")]]
@@ -355,6 +371,8 @@ def _name(pattern: str) -> dict:
         # 藥局名稱多半登記成「台」，少數用「臺」，兩種都要比對得到。
         ("臺安藥局", _name("[台臺]安"), "臺安"),
         ("康是美", _name("康是美"), "康是美"),
+        ("三友藥妝", _name("Tomod's"), "Tomod's"),
+        ("Tomod’s北車店", _name("Tomod's北車店"), "Tomod's北車店"),
         ("藥局", _name("藥局"), ""),
         (
             "高雄藥局",

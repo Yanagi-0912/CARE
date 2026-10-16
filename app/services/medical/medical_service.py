@@ -720,6 +720,11 @@ class MedicalService:
         results = await self._find_by_name_query(
             self.pharmacy_repository, query, query_keyword_unified, lat, lng, limit
         )
+        if not results and lat is not None and lng is not None:
+            # Official directories sometimes publish an address without coordinates.
+            # Exact name/address matches remain usable; map links use the address.
+            results = await self.pharmacy_repository.find_by_query(query, limit)
+            results.sort(key=lambda item: similarity_rank(item, query_keyword_unified))
         return results, len(results)
 
     async def _find_by_name_query(

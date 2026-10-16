@@ -2736,6 +2736,14 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "zh-TW": "藥局", "en": "Pharmacy", "id": "Apotek",
         "vi": "Nhà thuốc", "th": "ร้านขายยา", "ja": "薬局",
     },
+    "facility_type.藥妝門市": {
+        "zh-TW": "藥妝門市", "en": "Health and Beauty Store", "id": "Toko Kesehatan dan Kecantikan",
+        "vi": "Cửa hàng sức khỏe và làm đẹp", "th": "ร้านสุขภาพและความงาม", "ja": "ドラッグストア",
+    },
+    "facility_type.醫材門市": {
+        "zh-TW": "醫材門市", "en": "Medical Supply Store", "id": "Toko Alat Kesehatan",
+        "vi": "Cửa hàng thiết bị y tế", "th": "ร้านอุปกรณ์การแพทย์", "ja": "医療用品店",
+    },
     "facility_type.藥師自營": {
         "zh-TW": "藥師自營", "en": "Pharmacy (Pharmacist-run)", "id": "Apotek (dikelola apoteker)",
         "vi": "Nhà thuốc (do dược sĩ điều hành)", "th": "ร้านขายยา (เภสัชกรดำเนินการ)",

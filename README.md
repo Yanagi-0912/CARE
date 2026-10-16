@@ -65,6 +65,28 @@ cd C:\你的路徑\CARE
 uv run pytest tests/ -v
 ```
 
+## 連鎖藥局與藥妝門市
+
+`resources/pharmacy_branches.json` 保存連鎖官網門市資料、來源網址及內容雜湊。
+目前涵蓋 12 個品牌的官方目錄，另有屈臣氏的有效分公司登記地址；屈臣氏的
+實際營業狀態仍待確認，博登尚缺可驗證的官方名錄。完整範圍見
+[資料缺口與補齊紀錄](docs/pharmacy-coverage-gap.md)。
+
+```bash
+# 更新資料時使用新的快取目錄；同一目錄會重用已下載的原始來源。
+uv run scripts/sync_pharmacy_branches.py collect --cache-dir /tmp/care-branches-YYYYMMDD
+uv run scripts/sync_pharmacy_branches.py import                  # 只產生預覽
+uv run scripts/sync_pharmacy_branches.py import --apply          # 備份後寫入 .env 指定的 MongoDB
+```
+
+匯入報告預設放在 repo 外的 `../outputs/pharmacy-branches-<時間>/`，包含修改前的
+BSON 備份、新增 ID 及匯入計畫；同一備份目錄不可重複套用。資料不會隨部署自動匯入，
+需執行上面的匯入指令，之後重新載入後端的院所名稱索引。
+
+一般「附近藥局」查 `medical_facilities_pharmacy`；指定品牌或店名時，另查
+`medical_facilities_retail` 的藥妝、醫材門市。未知的健保特約狀態與座標保留未知，
+缺座標的門市可用名稱搜尋及地址導航，不參與距離排序。
+
 ## 藥證庫（藥袋辨識用）
 
 `resources/drug_catalog.json` 是藥袋辨識比對藥名用的離線查表，由食藥署開放資料

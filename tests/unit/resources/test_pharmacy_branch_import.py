@@ -43,6 +43,24 @@ def test_existing_legal_name_variants_choose_the_exact_unique_identity():
     assert match_existing(branch,BranchIndex([first,exact])) is exact
 
 
+def test_same_name_different_floors_and_phones_remain_separate_branches():
+    existing={"_id":"one","name":"維康奇美藥局","address":"台南市永康區正新街67號1F","phone":"06-2814441"}
+    branch={"name":"維康奇美藥局","address":"台南市永康區正新街67號2F","phone":"06-2526893"}
+    assert match_existing(branch,BranchIndex([existing])) is None
+
+
+def test_exact_name_and_postal_address_still_match_after_a_phone_change():
+    existing={"_id":"one","name":"維康奇美藥局","address":"台南市永康區正新街67號1F","phone":"06-2814441"}
+    branch={**existing,"phone":"06-2526893"}
+    assert match_existing(branch,BranchIndex([existing])) is existing
+
+
+def test_conflicting_sources_cannot_overwrite_one_branch_in_the_same_import():
+    entries=[{"id":"one","collection":COLLECTION,"existing":None,"update":{"name":"維康奇美藥局","address":address}} for address in ["台南市永康區正新街67號1F","台南市永康區正新街67號2F"]]
+    with pytest.raises(ValueError,match="Conflicting source rows"):
+        check_unique_targets([],entries)
+
+
 def test_unique_identity_conflicts_abort_before_any_database_writes():
     existing={"_id":"one","_collection":COLLECTION,"name":"康是美東英藥局","address":"臺中市東區十甲路450號"}
     plan=[{"id":"two","collection":COLLECTION,"existing":None,"update":{"name":existing["name"],"address":existing["address"]}}]

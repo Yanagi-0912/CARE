@@ -455,10 +455,11 @@ def match_existing(branch, documents):
         doc_name=clean(doc.get("name"))
         same_name=bool(doc_name) and (doc_name in branch["name"] or branch["name"] in doc_name)
         same_site=bool(address_sites(branch["address"]) & address_sites(doc.get("address")))
-        if (same_phone and (same_address or same_site)) or (same_address and same_name):
+        exact_identity=doc.get("name")==branch["name"] and doc.get("address")==branch["address"]
+        compatible_phone=not phone or not phone_key(doc.get("phone")) or same_phone
+        if exact_identity or (same_phone and (same_address or same_site)) or (same_address and same_name and compatible_phone):
             # The government registry can already contain two legal-name variants
             # of one shop. Prefer the exact unique (name, address) identity.
-            exact_identity=doc.get("name")==branch["name"] and doc.get("address")==branch["address"]
             score=3 if exact_identity else (2 if same_address and doc_name==clean(branch["name"]) else 1)
             candidates.append((score,doc))
     if not candidates:
@@ -471,7 +472,12 @@ def match_existing(branch, documents):
 def check_unique_targets(documents, plan):
     """Fail before any write if the pharmacy name/address index would conflict."""
     identities={(d.get("name"),d.get("address")):d["_id"] for d in documents if d["_collection"]==COLLECTION}
+    updates={}
     for entry in plan:
+        target=(entry["collection"],entry["id"])
+        if target in updates and updates[target]!=entry["update"]:
+            raise ValueError("Conflicting source rows for one branch before writes")
+        updates[target]=entry["update"]
         if entry["collection"]!=COLLECTION:
             continue
         existing=entry["existing"] or {}

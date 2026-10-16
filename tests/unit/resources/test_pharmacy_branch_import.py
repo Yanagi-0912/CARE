@@ -1,8 +1,9 @@
 """Directory repairs must not create duplicate pharmacies or invented geography."""
 import json
 from pathlib import Path
+import pytest
 
-from scripts.sync_pharmacy_branches import BranchIndex, address_key, coordinates, map_coordinates, match_existing, simple_schedule
+from scripts.sync_pharmacy_branches import BranchIndex, COLLECTION, address_key, check_unique_targets, coordinates, map_coordinates, match_existing, simple_schedule
 
 
 def test_store_and_registered_pharmacy_match_even_when_brand_is_not_in_legal_name():
@@ -33,6 +34,20 @@ def test_house_number_variants_match_without_merging_a_nearby_address():
     existing={"_id":"one","name":"士東藥局","address":"臺北市士林區士東路91巷1-1號","phone":"02-28746085"}
     branch={"name":"康是美士東藥局","address":"台北市士林區士東路91巷1之1號","phone":"02-28746085"}
     assert match_existing(branch,BranchIndex([existing])) is existing
+
+
+def test_existing_legal_name_variants_choose_the_exact_unique_identity():
+    first={"_id":"one","name":"康是美藥局東英店","address":"臺中市東區十甲路450號","phone":"04-22139034"}
+    exact={**first,"_id":"two","name":"康是美東英藥局"}
+    branch={"name":"康是美東英藥局","address":exact["address"],"phone":exact["phone"]}
+    assert match_existing(branch,BranchIndex([first,exact])) is exact
+
+
+def test_unique_identity_conflicts_abort_before_any_database_writes():
+    existing={"_id":"one","_collection":COLLECTION,"name":"康是美東英藥局","address":"臺中市東區十甲路450號"}
+    plan=[{"id":"two","collection":COLLECTION,"existing":None,"update":{"name":existing["name"],"address":existing["address"]}}]
+    with pytest.raises(ValueError,match="before writes"):
+        check_unique_targets([existing],plan)
 
 
 def test_untrusted_or_missing_coordinates_remain_missing():

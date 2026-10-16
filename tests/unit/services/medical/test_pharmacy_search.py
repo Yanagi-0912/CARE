@@ -5,6 +5,7 @@
 """
 
 from datetime import datetime
+import re
 
 import pytest
 
@@ -376,12 +377,12 @@ def _name(pattern: str) -> dict:
         ("藥局", _name("藥局"), ""),
         (
             "高雄藥局",
-            {"address": {"$regex": "高雄", "$options": "i"}},
+            {"address": {"$regex": r"^\s*(?:\d{3,6}\s*)?高雄[縣市]", "$options": "i"}},
             "",
         ),
         (
             "台北藥房",
-            {"address": {"$regex": "[台臺]北", "$options": "i"}},
+            {"address": {"$regex": r"^\s*(?:\d{3,6}\s*)?[台臺]北[縣市]", "$options": "i"}},
             "",
         ),
         (
@@ -391,7 +392,7 @@ def _name(pattern: str) -> dict:
                     _name("[台臺]中大樹"),
                     {
                         **_name("大樹"),
-                        "address": {"$regex": "[台臺]中", "$options": "i"},
+                        "address": {"$regex": r"^\s*(?:\d{3,6}\s*)?[台臺]中[縣市]", "$options": "i"},
                     },
                 ]
             },
@@ -404,7 +405,7 @@ def _name(pattern: str) -> dict:
                     _name("高雄市李"),
                     {
                         **_name("李藥局"),
-                        "address": {"$regex": "高雄市", "$options": "i"},
+                        "address": {"$regex": r"^\s*(?:\d{3,6}\s*)?高雄市", "$options": "i"},
                     },
                 ]
             },
@@ -416,6 +417,14 @@ def _name(pattern: str) -> dict:
 )
 def test_build_pharmacy_query(keyword, expected_query, expected_rank_keyword):
     assert build_pharmacy_query(keyword) == (expected_query, expected_rank_keyword)
+
+
+def test_keelung_brand_search_excludes_taipei_stores_on_keelung_road():
+    query, _ = build_pharmacy_query("基隆康是美")
+    pattern = query["$or"][1]["address"]["$regex"]
+    assert re.search(pattern, "基隆市仁愛區愛三路118號")
+    assert re.search(pattern, "200 基隆市仁愛區愛三路118號")
+    assert not re.search(pattern, "臺北市信義區基隆路二段21號")
 
 
 @pytest.mark.parametrize(

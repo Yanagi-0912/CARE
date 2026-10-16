@@ -456,8 +456,30 @@ def match_existing(branch, documents):
         same_name=bool(doc_name) and (doc_name in branch["name"] or branch["name"] in doc_name)
         same_site=bool(address_sites(branch["address"]) & address_sites(doc.get("address")))
         if (same_phone and (same_address or same_site)) or (same_address and same_name):
-            candidates.append(doc)
-    return candidates[0] if len(candidates)==1 else None
+            # The government registry can already contain two legal-name variants
+            # of one shop. Prefer the exact unique (name, address) identity.
+            exact_identity=doc.get("name")==branch["name"] and doc.get("address")==branch["address"]
+            score=3 if exact_identity else (2 if same_address and doc_name==clean(branch["name"]) else 1)
+            candidates.append((score,doc))
+    if not candidates:
+        return None
+    best=max(score for score,_ in candidates)
+    winners=[doc for score,doc in candidates if score==best]
+    return winners[0] if len(winners)==1 else None
+
+
+def check_unique_targets(documents, plan):
+    """Fail before any write if the pharmacy name/address index would conflict."""
+    identities={(d.get("name"),d.get("address")):d["_id"] for d in documents if d["_collection"]==COLLECTION}
+    for entry in plan:
+        if entry["collection"]!=COLLECTION:
+            continue
+        existing=entry["existing"] or {}
+        key=(entry["update"]["name"],entry["update"].get("address",existing.get("address")))
+        owner=identities.get(key)
+        if owner is not None and owner!=entry["id"]:
+            raise ValueError(f"Pharmacy name/address identity conflict before writes: {key!r}")
+        identities[key]=entry["id"]
 
 
 def collect(args):
@@ -568,6 +590,7 @@ def import_branches(args):
             # Subsequent sources in this same run must deduplicate against inserts.
             if not existing:
                 index.add({"_id":doc_id,"_collection":target,**update,"branchSources":[source]})
+        check_unique_targets(documents,plan)
         counts={"branches":len(plan),"new":sum(p["existing"] is None for p in plan),"matched":sum(p["existing"] is not None for p in plan),"newWithoutCoordinates":sum(p["existing"] is None and "location" not in p["update"] for p in plan)}
         counts["skippedExisting"]=skipped_existing
         print(json.dumps(counts,ensure_ascii=False),flush=True)

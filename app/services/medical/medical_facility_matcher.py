@@ -296,6 +296,13 @@ def _tai_insensitive_regex(text: str) -> dict[str, str]:
     return {"$regex": pattern, "$options": "i"}
 
 
+def _pharmacy_city_regex(city: str) -> dict[str, str]:
+    condition = _tai_insensitive_regex(city)
+    suffix = "" if city.endswith(("縣", "市")) else "[縣市]"
+    condition["$regex"] = r"^\s*(?:\d{3,6}\s*)?" + condition["$regex"] + suffix
+    return condition
+
+
 def build_pharmacy_query(keyword: str) -> tuple[dict[str, Any], str]:
     """
     組出查藥局庫（medical_facilities_pharmacy）的條件，回傳形狀同 build_facility_query。
@@ -338,7 +345,7 @@ def build_pharmacy_query(keyword: str) -> tuple[dict[str, Any], str]:
     rest = core[len(city):]
     if not rest:
         # 「高雄藥局」是地區泛稱，不比對名稱。
-        return {"address": _tai_insensitive_regex(city)}, ""
+        return {"address": _pharmacy_city_regex(city)}, ""
 
     # 「台中大樹藥局」可能是完整店名，也可能是「台中的大樹藥局」，兩種都收。
     query = {
@@ -346,7 +353,7 @@ def build_pharmacy_query(keyword: str) -> tuple[dict[str, Any], str]:
             {"name": _tai_insensitive_regex(core)},
             {
                 "name": _tai_insensitive_regex(name_term(rest)),
-                "address": _tai_insensitive_regex(city),
+                "address": _pharmacy_city_regex(city),
             },
         ]
     }

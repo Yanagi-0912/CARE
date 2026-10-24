@@ -1,62 +1,97 @@
 # CARE: Clinical Assistance & Resource Engine
 
-一個以高齡友善設計、資料準確性保障與 AI 科技整合為核心目標的適地性健康醫療資訊 AI 助手。
+CARE 是一個在 LINE 上使用的健康醫療資訊 AI 助手。它有三個核心目標：
+
+- **高齡友善**：設計讓長輩容易使用。
+- **資料準確**：保障提供的資訊正確。
+- **整合 AI 技術**。
+
+CARE 是「適地性」服務：它會依照使用者所在的位置提供資訊，例如附近的醫療院所。
 
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=Yanagi-0912_CARE&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=Yanagi-0912_CARE) [![SonarQube Cloud](https://sonarcloud.io/images/project_badges/sonarcloud-dark.svg)](https://sonarcloud.io/summary/new_code?id=Yanagi-0912_CARE)
 
-## 聲明
+這份文件說明三件事：怎麼在自己的電腦上執行 CARE、怎麼更新資料檔，以及主要功能怎麼運作。
 
-暫無
+## 名詞表
 
-## 快速開始
+| 名詞 | 說明 |
+| --- | --- |
+| 後端 | CARE 的主程式，也就是這個 repo。它接收 LINE 訊息、呼叫 AI、回覆使用者。 |
+| repo | 用 Git 管理的程式碼專案。除了本 repo（後端），CARE 還有：`CARE-LIFF`（LIFF 網頁）、`CARE-infra`（部署設定）、`CARE-n8n`（多媒體處理流程）。 |
+| LIFF | 在 LINE 裡開啟的網頁（LINE Front-end Framework）。CARE 的設定、個人健康與家庭管理畫面都是 LIFF 網頁。 |
+| Webhook 網址 | LINE 收到使用者訊息後，把訊息轉送過去的網址，也稱 callback 網址。LINE 管理頁面上的欄位名稱是「Webhook URL」。 |
+| 代理（agent） | 由 AI 模型決定要呼叫哪些工具、再組成回覆的程式。 |
+| 工具 | 代理可以呼叫的功能，例如搜尋附近院所、查知識庫。 |
+| guardrail | 訊息進入代理之前的檢查。它判斷兩件事：可不可以查知識庫，以及狀況緊不緊急。 |
+| 知識庫 | CARE 收錄的健康資訊文章。 |
+| RAG | 先從知識庫找出相關文章，再讓 AI 根據這些文章回答的方法。 |
+| uv | Python 的套件與版本管理工具。CARE 用它安裝套件、執行程式。 |
+| `.venv` | uv 建立的 Python 虛擬環境資料夾。CARE 需要的套件裝在這裡，不影響電腦上其他的 Python。 |
+| `uv.lock` | 記錄每個套件確切版本的檔案。大家照它安裝，環境才會一樣。 |
+| pytest | Python 的測試工具。 |
+| MongoDB | CARE 存放資料的資料庫。資料分成多個「集合」（collection），類似資料表。 |
+| TTL | 資料的保存期限。期限一到，資料庫會自動刪除那筆資料。 |
+| 產出物 | 由腳本產生、再提交進 repo 的檔案，例如藥證庫與藥品外觀縮圖。 |
+| 映像 | 部署用的 Docker 映像。它包含程式，以及 `resources/` 裡的檔案。 |
+| CI | GitHub 上自動執行測試的流程。 |
+| 藥品許可證（藥證） | 食藥署核發給每個藥品的許可證。每張許可證有一個字號。 |
+| 藥證庫 | `resources/drug_catalog.json`。由食藥署開放資料整理成的藥品查表。藥袋辨識用它比對藥名。 |
+| 藥品外觀縮圖 | `resources/drug_appearance/` 裡的藥丸照片縮圖。 |
+| STT | 語音轉文字（speech-to-text）。 |
 
-先安裝 [uv](https://docs.astral.sh/uv/)（相依與 Python 版本都由它管理）：
+## 在自己的電腦上執行後端
 
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh    # 或 brew install uv
-```
+開始前，請先知道：
 
-```bash
-./init.sh          # macOS / Linux：建立 .venv、依 uv.lock 安裝依賴、跑 pytest
-```
+- 後端從 `.env` 檔讀取設定。範本是 `.env.example`。
+- **注意**：`.env` 裡的 `APP_ROLE` 預設是 `all`。`all` 會同時啟動排程器，排程器負責用藥提醒與每日諮詢摘要。如果你的 `.env` 用的是正式環境的資料庫與 LINE 金鑰，本機的後端可能會推播給真實使用者。
 
-```powershell
-.\init.ps1         # Windows PowerShell
-```
+### 用初始化腳本安裝
 
-啟動後端：
+1. 安裝 uv。uv 會管理套件與 Python 版本。
 
-```bash
-uv run uvicorn app.main:app --port 8000 --reload --reload-exclude .venv
-```
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh    # 或 brew install uv
+   ```
+
+2. 在 CARE 資料夾執行初始化腳本。腳本會建立 `.venv`、照 `uv.lock` 安裝套件，然後執行測試。
+
+   ```bash
+   ./init.sh          # macOS / Linux
+   ```
+
+   ```powershell
+   .\init.ps1         # Windows PowerShell
+   ```
+
+3. 啟動後端：
+
+   ```bash
+   uv run uvicorn app.main:app --port 8000 --reload --reload-exclude .venv
+   ```
+
+   後端會在 port 8000 接收連線。`--reload` 讓後端在程式碼改變時自動重新啟動。`--reload-exclude .venv` 讓 `.venv` 裡的變動不會觸發重新啟動。
 
 ### 手動安裝（可選）
 
+不使用初始化腳本時，執行：
+
 ```bash
-uv sync                                              # 建 .venv 並照 uv.lock 安裝
+uv sync                                              # 建立 .venv，並照 uv.lock 安裝套件
 uv run uvicorn app.main:app --reload --port 8000
 ```
 
-`uv run` 會自己確保環境是最新的，不需要手動 activate。真的想進 shell 也可以
-`source .venv/bin/activate`（Windows：`.venv\Scripts\activate`）。
-
-### 前端（LIFF App）
-
-```bash
-cd frontend/liff-app
-npm install    # 首次或 package 有變更時
-npm run dev    # 預設 http://localhost:5173
-npm run test   # 前端測試
-```
+`uv run` 執行前，會自動把 `.venv` 更新到 `uv.lock` 的狀態，所以不需要先啟用（activate）虛擬環境。如果你想進入虛擬環境的 shell，執行 `source .venv/bin/activate`（Windows：`.venv\Scripts\activate`）。
 
 ## 執行測試
+
+開始前，請先知道：測試要用 `uv run` 執行。原因是用 `uv run`，`pytest-asyncio` 才會載入，非同步的測試（`async def test_xxx`）才能正常執行。
 
 ```bash
 uv run pytest       # 或 uv run pytest tests/ -v
 ```
 
-> 用 `uv run` 執行，`pytest-asyncio` 才會載入，非同步的測試（`async def test_xxx`）才會正常運作。
-> 它會在跑之前自動把 `.venv` 同步到 `uv.lock` 的狀態，不必先手動 activate。
+`uv run` 同樣會先把 `.venv` 更新到 `uv.lock` 的狀態，不需要先啟用虛擬環境。
 
 Windows 範例：
 
@@ -65,67 +100,241 @@ cd C:\你的路徑\CARE
 uv run pytest tests/ -v
 ```
 
-## 連鎖藥局與藥妝門市
+## 前端（LIFF 網頁）
 
-`resources/pharmacy_branches.json` 保存連鎖官網門市資料、來源網址及內容雜湊。
-目前涵蓋 12 個品牌的官方目錄，另有屈臣氏的有效分公司登記地址；屈臣氏的
-實際營業狀態仍待確認，博登尚缺可驗證的官方名錄。完整範圍見
-[資料缺口與補齊紀錄](docs/pharmacy-coverage-gap.md)。
+前端程式不在這個 repo，而在另一個 repo：`CARE-LIFF`。
+
+開始前，請依 `CARE-LIFF/README.md` 的說明，把 `.env.example` 複製成 `.env`，並設定 `VITE_LIFF_ID` 與 `VITE_API_BASE_URL`。
+
+在 `CARE-LIFF` 資料夾執行：
 
 ```bash
-# 更新資料時使用新的快取目錄；同一目錄會重用已下載的原始來源。
-uv run scripts/sync_pharmacy_branches.py collect --cache-dir /tmp/care-branches-YYYYMMDD
-uv run scripts/sync_pharmacy_branches.py import                  # 只產生預覽
-uv run scripts/sync_pharmacy_branches.py import --apply          # 備份後寫入 .env 指定的 MongoDB
-uv run scripts/sync_pharmacy_branches.py import --insert-only --apply  # 舊版服務仍在執行時，先只新增
+npm install    # 第一次執行，或套件有變更時
+npm run dev    # 啟動開發伺服器，預設網址 http://localhost:5173
+npm run test   # 執行前端測試
 ```
 
-匯入報告預設放在 repo 外的 `../outputs/pharmacy-branches-<時間>/`，包含修改前的
-BSON 備份、新增 ID 及匯入計畫；同一備份目錄不可重複套用。資料不會隨部署自動匯入，
-需執行上面的匯入指令，之後重新載入後端的院所名稱索引。
+## 讓 LINE 訊息送到後端
 
-一般「附近藥局」查 `medical_facilities_pharmacy`；指定品牌或店名時，另查
-`medical_facilities_retail` 的藥妝、醫材門市。未知的健保特約狀態與座標保留未知，
-缺座標的門市可用名稱搜尋及地址導航，不參與距離排序。
+### Webhook 網址
+
+正式環境的 Webhook 網址是：
+
+```
+https://care.jamessu2016.com/line/callback
+```
+
+在 [LINE Developers 管理頁面](https://developers.line.biz/console/channel/2008834990/messaging-api) 的「Webhook URL」欄位，填入上面的網址。
+
+**注意**：一個 LINE channel 只有一個 Webhook 網址。改掉這個網址後，所有使用者的訊息都會改送到新網址。
+
+### 用本機後端測試
+
+Cloudflare Tunnel 與 ngrok 都能把本機的後端（port 8000）暫時開放成公開網址。開始前，請先啟動本機後端。
+
+#### Cloudflare Tunnel
+
+開始前：你要先登入 Cloudflare Tunnel 帳號。
+
+```bash
+cloudflared tunnel run care-api
+```
+
+這個指令會把 tunnel 接到本機正在執行的後端（預設是 `uvicorn` 的 port 8000）。
+
+> **待確認**：這一段可能已經過時。2026-10-24 檢查時，`care-api` 這條 tunnel 沒有任何連線。正式網址 `care.jamessu2016.com` 現在由 GCP 上的 care-vm 提供服務。使用前，請先確認這條 tunnel 對外的網址是什麼。
+
+#### ngrok（其他組使用的方式，保留）
+
+**注意**：第 2 步會改掉 LINE channel 的 Webhook 網址。如果你改的是上面連結的 channel，正式環境的使用者訊息會改送到你的電腦。測試完，請改回正式網址。
+
+1. 執行：
+
+   ```bash
+   ngrok http 8000
+   ```
+
+2. 在 [LINE Developers 管理頁面](https://developers.line.biz/console/channel/2008834990/messaging-api) 把 Webhook URL 改成 `<ngrok 網址>/line/callback`。
+
+## 部署
+
+**注意**：程式推送到 `main` 分支後，`.github/workflows/trigger-deploy.yml` 會通知 `CARE-infra` 重新建置並部署前後端。
+
+部署設定（Helm chart）放在另一個 repo：`CARE-infra`（與本 repo 同一層的 `CARE-infra/` 資料夾）。`kubectl` 與 `helm` 的操作方式見 `CARE-infra/README.md`。
+
+- **Kubernetes（K8s）**：管理伺服器上多個服務的系統。CARE 用的是 K3s，一種輕量版的 Kubernetes。
+- **Ingress**：把外部連線導到對應服務的設定。`CARE-infra` 目前使用 K3s 內建的 Traefik。
+
+## 代理怎麼處理一則訊息
+
+LINE 傳來的訊息經 `app/services/line_messaging/` 進入代理。代理用 LangGraph（定義流程步驟的函式庫）編排，程式在 `app/services/agent/agent.py`。回覆由 `app/services/line_messaging/reply/reply.py` 送出。
+
+```
+START → guardrail ─┬─ 緊急 ───→ emergency → END
+                   └─ 不緊急 ─→ agent ─┬─ 不用工具 → END
+                                       └─ tools ─┬─ 直接回覆 → END
+                                                 └─ 回到 agent
+```
+
+1. guardrail 先檢查訊息。它判斷兩件事：可不可以查知識庫，以及狀況緊不緊急。
+2. 判定緊急時，系統直接產生緊急卡片，不進入代理。
+3. 不緊急時，代理決定要不要呼叫工具。不需要工具時，代理直接回覆。
+4. 工具執行完後，有兩種走法：
+   - 部分工具的結果直接組成回覆，流程結束。這些回覆是：知識庫回答（`rag_direct`）、知識庫查詢失敗（`rag_fail_direct`）、服藥狀況（`medication_direct`）、家人名單（`family_directory_direct`）、用藥問題（`medication_question_direct`）、回報服藥（`medication_report_direct`）。
+   - 其他結果回到代理，由代理決定下一步。
+
+### 工具
+
+工具清單在 `app/tools/registry.py`。
+
+下列工具一律提供給代理：
+
+| 工具 | 用途 |
+| --- | --- |
+| `find_nearby_hospitals` | 依座標搜尋附近的醫療院所 |
+| `find_nearby_facilities_by_department` | 依科別搜尋附近的院所 |
+| `lookup_medical_facility` | 用院所名稱查電話、營業時間、科別、地址或地圖連結 |
+| `request_location_quick_reply` | 請使用者分享 LINE 位置 |
+| `submit_knowledge_report` | 使用者指出知識庫內容過時、缺失或有誤時，回報給營運團隊審核 |
+| `open_official_site` | 使用者要開官網或 LIFF 入口時使用 |
+| `share_care` | 分享 CARE 給朋友、邀請家人 |
+| `suggest_department_for_symptom` | 依症狀建議要掛哪一科 |
+| `get_medication_status` | 查本人或家人的服藥狀況 |
+| `get_family_directory` | 查使用者自己的家庭名單與稱謂 |
+| `record_medication_taken` | 使用者在聊天中回報「我吃過了」 |
+
+下列工具只在 guardrail 允許查知識庫時提供：
+
+| 工具 | 用途 |
+| --- | --- |
+| `get_rag_answer` | 用 RAG 回答知識庫問題 |
+| `answer_from_uploaded_document` | 回答使用者先前上傳的 PDF 或檔案內容。只查這位使用者還沒過期的檔案，不查知識庫。 |
+| `ask_about_my_medications` | 回答跟自己用藥有關的問題。內部也是跑 RAG，只是把使用者的藥名附在問題後面。 |
+| `verify_claim` | 查核健康謠言。另外還要查核服務已設定（`CLAIM_VERIFICATION_ENABLED`）才提供。 |
+| `verify_tv_news`、`ask_tv_news_channel` | 查核電視新聞畫面，或詢問是哪一台。開關與 `verify_claim` 相同。 |
+
+## 連鎖藥局與藥妝門市
+
+`resources/pharmacy_branches.json` 存放連鎖藥局與藥妝店的門市資料。資料來自各品牌官網，每筆都記錄來源網址與內容雜湊（由內容算出的檢查碼）。
+
+目前的涵蓋範圍：
+
+- 12 個品牌：有官方門市目錄。
+- 屈臣氏：另外收錄有效的分公司登記地址。這些門市實際有沒有在營業，還沒確認。
+- 博登：還沒有可驗證的官方名錄。
+
+完整範圍見 [資料缺口與補齊紀錄](docs/pharmacy-coverage-gap.md)。
+
+### 更新門市資料
+
+開始前，請先知道：
+
+- 部署不會自動匯入門市資料。要更新，必須自己執行下面的匯入指令。
+- 每次更新都使用新的快取目錄。使用同一個快取目錄時，腳本會重用已經下載的原始資料。
+- 加上 `--apply` 時，腳本會先備份，再寫入 `.env` 指定的 MongoDB。
+- 同一個備份目錄不能重複套用。
+
+步驟：
+
+1. 下載各品牌官網的資料（`YYYYMMDD` 換成當天日期）：
+
+   ```bash
+   uv run scripts/sync_pharmacy_branches.py collect --cache-dir /tmp/care-branches-YYYYMMDD
+   ```
+
+2. 預覽匯入內容。這一步只產生預覽，不寫入資料庫：
+
+   ```bash
+   uv run scripts/sync_pharmacy_branches.py import
+   ```
+
+3. 寫入資料庫。先確認舊版服務是不是還在執行：
+
+   - 舊版服務還在執行：先只新增門市。
+
+     ```bash
+     uv run scripts/sync_pharmacy_branches.py import --insert-only --apply
+     ```
+
+   - 舊版服務沒有在執行：
+
+     ```bash
+     uv run scripts/sync_pharmacy_branches.py import --apply
+     ```
+
+4. 重新載入後端的院所名稱索引。後端在啟動時載入這個索引（`app/main.py`），所以重新啟動後端就會重新載入。
+
+匯入報告預設放在 repo 外面的 `../outputs/pharmacy-branches-<時間>/`。報告包含：
+
+- 修改前的 BSON 備份（BSON 是 MongoDB 的資料格式）
+- 新增的 ID
+- 匯入計畫
+
+### 搜尋時查哪個集合
+
+- 使用者問「附近藥局」時，後端查 `medical_facilities_pharmacy`。
+- 使用者指定品牌或店名時，後端另外查 `medical_facilities_retail`（藥妝、醫材門市）。
+- 健保特約狀態或座標不明時，資料保持「未知」。
+- 沒有座標的門市可以用名稱搜尋、用地址導航，但不參加距離排序。
 
 ## 藥證庫（藥袋辨識用）
 
-`resources/drug_catalog.json` 是藥袋辨識比對藥名用的離線查表，由食藥署開放資料
-建置後**提交進 repo**，執行期不對外連線。它已經在版本控制裡，**一般開發不需要
-做任何事**。
+`resources/drug_catalog.json`（藥證庫）是藥袋辨識比對藥名用的離線查表。它由食藥署開放資料建立，已經提交進 repo。後端執行時不對外連線。
 
-需要重新產生的時機只有一個：食藥署資料集更新（每 7 日同步一次）而你想跟上。
+**一般開發不需要做任何事。**
+
+### 什麼時候要重新產生
+
+只有一種情況：食藥署更新了資料集（每 7 日同步一次），而你想跟上最新資料。
 
 ```bash
 python -m scripts.build_drug_catalog        # 覆寫 resources/drug_catalog.json
 pytest tests/unit/resources/test_drug_catalog_artifact.py
-git add resources/drug_catalog.json         # 更新內容自己成為一個可審查的 commit
+git add resources/drug_catalog.json         # 讓這次更新自成一個可審查的 commit
 ```
 
-腳本會抓「全部藥品許可證資料集」與「藥品外觀資料集」（兩個端點路徑叫 `/json`
-但實際回傳 ZIP），輸出目前 66,478 筆條目、15.9 MB（16,660,025 bytes）。
+腳本會下載兩個資料集：「全部藥品許可證資料集」與「藥品外觀資料集」。這兩個端點的路徑叫 `/json`，但實際回傳的是 ZIP 檔。
 
-**為什麼提交產出物而不是在 build 時產生**：`Dockerfile` 已經 `COPY resources
-./resources`，提交進去就直接進映像；改成建置時下載會讓每次部署都依賴政府站台
-活著，站台維護就等於部署失敗。`resources/` 本來就放已提交的產出物（rich menu
-的各語系 PNG）。取捨與量測見
-`openspec/changes/prescription-bag-scan/design.md` 決策 3。
+2026-10-24 檢查時，藥證庫有 66,523 筆條目，大小約 24.7 MB（25,937,438 bytes）。
 
-**檔案缺席時的行為**：應用照常啟動，但所有藥名比對不到而降為低信心，每份辨識
-草稿都會被判為需要人工逐筆核對。這個降級方向是安全的，但代表功能等於半殘，
-所以 `tests/unit/resources/test_drug_catalog_artifact.py` 會在產出物遺失或損壞
-時直接讓測試失敗，而不是讓它無聲地退化。
+### 背景說明
+
+**為什麼把產出物提交進 repo，而不是在建置時產生**：
+
+- `Dockerfile` 已經把 `resources` 複製進映像（`COPY resources ./resources`），所以提交的檔案會直接進入映像。
+- 如果改成建置時下載，每次部署都要依賴政府網站正常運作。網站維護時，部署就會失敗。
+- `resources/` 本來就放已提交的產出物，例如 rich menu（LINE 聊天室下方的選單）各語系的 PNG 圖片。
+- 取捨與量測見 `openspec/changes/prescription-bag-scan/design.md` 決策 3。
+
+**藥證庫不存在時會怎樣**：
+
+- 後端照常啟動。
+- 但所有藥名都比對不到，信心會降為低。每份辨識草稿都會被判為需要人工逐筆核對。
+- 這個降級方向是安全的，但功能等於壞了一半。
+- 所以 `tests/unit/resources/test_drug_catalog_artifact.py` 會在藥證庫遺失或損壞時讓測試失敗，不讓功能在沒人發現的情況下變差。
 
 ## 藥品外觀縮圖
 
-`resources/drug_appearance/` 是藥丸照片的縮圖（160×160 JPEG，檔名為許可證
-字號 SHA-256 前 16 字元），推播與 LIFF 用它讓長輩用外觀（而不只是藥名）確認
-「該吃哪一顆」。跟藥證庫同一套原則：建置期產出、**提交進 repo**，執行期不對
-外連線（不直連 `mcp.fda.gov.tw`）。它已經在版本控制裡，**一般開發不需要做
-任何事**。
+`resources/drug_appearance/` 存放藥丸照片的縮圖：
 
-需要重新產生的時機只有一個：跟著食藥署藥品外觀資料集的更新（每 7 日同步
-一次）補上新藥證的照片。
+- 規格：160×160 JPEG。
+- 檔名：藥品許可證字號經 SHA-256 雜湊後的前 16 個字元。
+- 用途：推播與 LIFF 網頁顯示縮圖，讓長輩除了看藥名，也能看外觀確認「該吃哪一顆」。
+
+縮圖跟藥證庫用同一套原則：建置期產生、提交進 repo，執行時不對外連線（不直接連 `mcp.fda.gov.tw`）。
+
+**一般開發不需要做任何事。**
+
+### 什麼時候要重新產生
+
+只有一種情況：食藥署更新了藥品外觀資料集（每 7 日同步一次），你要補上新藥證的照片。
+
+開始前，請先知道：
+
+- 抓圖前要先安裝 [ImageMagick](https://imagemagick.org/)（`magick` 指令）。
+- 全量抓取會對 `mcp.fda.gov.tw` 發出六千多次請求，下載約 20 GB 原圖（原圖縮小後就丟掉），實測約 86 分鐘。這對政府主機是不小的負載。
+- 所以這一步刻意設計成預設關閉，要明確加上 `--fetch-images` 才會執行。它不屬於 `build_drug_catalog` 的一般流程，也不在 CI 或部署流程裡。
+- 可以中斷再續跑：已經存在的縮圖會跳過，不會重新下載。重新執行時只會抓缺少的部分。資料集小幅更新時，也只需補抓新增的藥證。
 
 ```bash
 python -m scripts.build_drug_catalog --fetch-images
@@ -133,109 +342,132 @@ pytest tests/unit/resources/test_drug_appearance_images.py
 git add resources/drug_appearance/
 ```
 
-**這一步刻意設計成明確選用（`--fetch-images`，預設關閉），不是 `build_drug_catalog`
-的一般流程，更不在 CI 或部署路徑上**：全量抓取要對 `mcp.fda.gov.tw` 發出六千
-多次請求，下載約 20 GB 原圖（縮圖前即捨棄），實測要跑約 86 分鐘，對政府主機
-是不小的負載。抓圖需要 [ImageMagick](https://imagemagick.org/)（`magick` 指令）
-把原圖縮成置中補白、保留尺規、不裁切的正方形縮圖——刻痕與標註在任何縮圖尺寸
-下都不可辨讀，那部分本來就交給外觀資料的文字欄位；但同名候選常常同色同形，
-尺規顯示的長度差是唯一能分辨的線索，因此不裁切見
-`openspec/changes/drug-appearance-photo/design.md` 決策 6。
+### 背景說明
 
-**可中斷續跑**：已存在的縮圖一律跳過、不重新下載，所以可以隨時中斷，重新
-執行只會抓缺的那一部分，資料集小幅更新時也只需補抓新增的藥證。
+**縮圖怎麼做**：腳本把原圖縮成正方形，置中、補白邊、保留尺規、不裁切。原因如下：
 
-**為什麼提交產出物而不是在 build 時產生**：跟藥證庫同一個理由——部署不依賴
-政府站台活著，映像建置不必每次都對外抓 20 GB。取捨與量測見
-`openspec/changes/drug-appearance-photo/design.md` 決策 2、3。
+- 藥丸上的刻痕與標註，縮成任何尺寸都看不清楚。這部分本來就交給外觀資料的文字欄位。
+- 但同名的候選藥常常同色同形。尺規顯示的長度差，是唯一能分辨它們的線索，所以不裁切。
+- 詳見 `openspec/changes/drug-appearance-photo/design.md` 決策 6。
 
-**檔案缺席或損毀時的行為**：`license_number` 未確定或對應縮圖不存在時，介面
-與推播一律退回既有的純文字版面，不會出現空的圖片區塊——外觀是加分項，不是
-建立藥品或呈現提醒的必要條件。`tests/unit/resources/test_drug_appearance_images.py`
-會在縮圖目錄消失、內容損壞、或跟藥證庫對不上時讓測試失敗，理由與
-`test_drug_catalog_artifact.py` 相同：這類壞掉不會讓任何東西報錯，只會讓照片
-悄悄地全部消失。
+**為什麼把產出物提交進 repo，而不是在建置時產生**：理由跟藥證庫相同：部署不依賴政府網站正常運作，建置映像時也不必每次對外抓 20 GB。取捨與量測見 `openspec/changes/drug-appearance-photo/design.md` 決策 2、3。
+
+**縮圖不存在或損壞時會怎樣**：
+
+- 如果 `license_number`（許可證字號）還沒確定，或對應的縮圖不存在，介面與推播一律退回原本的純文字版面，不會出現空白的圖片區塊。
+- 外觀照片是加分項，不是建立藥品或顯示提醒的必要條件。
+- `tests/unit/resources/test_drug_appearance_images.py` 會在下列情況讓測試失敗：縮圖目錄不見、內容損壞，或跟藥證庫對不上。理由跟藥證庫的測試相同：這類問題不會讓任何程式報錯，只會讓縮圖悄悄全部消失。
 
 ## 看診錄音（陪診逐字稿）
 
-長輩看診時錄音，轉成文字與摘要，本人與有權限的家人在 LINE 聊天室直接收到摘要。2026-09-22 起**在 LINE 聊天室錄**，不經過 LIFF（`app/services/clinic_transcript/line_flow.py`）：
+長輩看診時可以錄音。CARE 把錄音轉成文字與摘要，再把摘要傳到本人與有權限的家人的 LINE 聊天室。
 
-1. 開始：掛號提醒 T-1h「我已出發」卡片上的「看診時錄音」（只有本人版），或直接傳「看診錄音」。
-2. 徵詢：快速回覆「醫師同意錄音／我出來自己講／不錄了」。
-3. 下一則語音（或用手機錄音程式錄完分享進來的音檔）就是看診錄音；背景整理好推播摘要。
-4. 沒先按就傳了很長的錄音（語音 3 分鐘以上、音檔 1 MB 以上）會先問要不要整理，不會被當成問題丟給 agent。
+2026-09-22 起，錄音改在 LINE 聊天室進行，不經過 LIFF 網頁（程式在 `app/services/clinic_transcript/line_flow.py`）。
 
-「等錄音」的狀態存在 `clinic_recording_sessions`（3 小時 TTL），backend 重啟不會掉。目前只替自己錄；家人陪診「替長輩錄」還沒從 LIFF 搬過來。
+### 使用前必須知道
 
-- **一定要先徵詢醫師同意**。衛福部《醫療機構醫療隱私維護規範》第二點要求診療過程錄音須先徵得對方同意；`consent` 沒有預設值。醫師不同意時走 `self_recap`（出診間後自己複述），摘要卡會標明那是就診者記得的版本。
-- **華語走 Gemini、台語走台語 STT**（`app/services/speech/clinic_transcribe.py`）。切 5 分鐘平行送 `gemini-3.5-transcribe`，再把「有聲音但 Gemini 沒轉出字」的時段送 Taigi AI Labs 台語 STT 補（這個模型碰到台語幾乎不出字）。不用先判整份是什麼語言，醫師講華語、長輩回台語也各走各的路。台語 STT 與聊天室語音共用金鑰（每分鐘 10 次），看診錄音每 10 秒送一段、留額度給聊天室。
-- **系統不會說哪一句是醫師講的**。語者分離只拿來決定哪裡換段，段落不帶講者身分。摘要的提示詞也明著禁止寫「醫師說」。
-- **藥名靠使用者自己的用藥清單標示，不改寫逐字稿**。門檻 0.80 由 `scripts/measure_clinic_drug_hints.py` 量出，完整結果在 `drug_hints.MATCH_THRESHOLD` 的註解。劑量數字一律不比對也不更正。
-- **逐字稿統一是台灣正體**。華語回簡體、台語回正體，所以整份先判斷再用 OpenCC `s2tw` 轉（只換字形不換用語）；正體再轉一次會把「干擾」變「幹擾」。
-- **音檔不存**。寫進暫存檔 → 背景轉錄讀它 → 不論成功失敗都刪掉。資料庫裡只有文字，保存 30 天由 Mongo TTL 執行，與對話原文同一條線。只整理前 30 分鐘。
-- **摘要直接進聊天室**（2026-09-22 James 決定，本人與家人都一樣），完整逐字稿用按鈕開 LIFF 檢視頁。權限走 `SENSITIVE`。
+- **一定要先徵得醫師同意。** 衛福部《醫療機構醫療隱私維護規範》第二點要求：診療過程錄音前，必須先徵得對方同意。系統的同意欄位（`consent`）沒有預設值。
+- 目前只能替自己錄。家人陪診時「替長輩錄」的功能，還沒從 LIFF 搬過來。
+- 系統只整理錄音的前 30 分鐘。
 
-2026-09-22 用 30 分鐘 podcast 實測：華語 25 秒；全台語 19 分鐘（修正節流後推估 16 分鐘），補回 8,574 字。整檔送 Gemini 的舊做法華語 96 秒、台語被 `MAX_TOKENS` 截斷。
+### 操作流程
+
+1. 開始錄音。有兩種方式：
+   - 看診前 1 小時，CARE 會送出掛號提醒。在提醒的「我已出發」卡片上，按「看診時錄音」。只有本人收到的卡片有這個按鈕。
+   - 直接傳「看診錄音」。
+2. 回答是否同意錄音。系統會顯示三個快速回覆：「醫師同意錄音」「我出來自己講」「不錄了」。
+   - 醫師不同意時，選「我出來自己講」（`self_recap`）：走出診間後，自己口述看診內容。摘要卡會標明這是「就診者記得的版本」。
+3. 錄音。你接著傳的下一則語音，就是看診錄音。你也可以用手機的錄音程式錄完，再把音檔分享進聊天室。
+4. 系統在背景整理完後，推播摘要。
+
+例外：如果你沒有先開始錄音，就直接傳了很長的錄音（語音 3 分鐘以上、音檔 1 MB 以上），系統會先問你要不要整理，不會把它當成一般問題交給代理。
+
+「等錄音」的狀態存在 MongoDB 的 `clinic_recording_sessions`，保存 3 小時（TTL）。後端重新啟動時，這個狀態不會不見。
+
+### 運作方式
+
+**華語用 Gemini，台語用 Taigi AI Labs 的台語 STT**（`app/services/speech/clinic_transcribe.py`）：
+
+1. 系統把錄音切成每段 5 分鐘，平行送給 `gemini-3.5-transcribe`。
+2. 有聲音、但 Gemini 沒轉出文字的時段，系統改送台語 STT 補上。原因是這個 Gemini 模型碰到台語，幾乎轉不出字。
+
+- 系統不需要先判斷整份錄音是什麼語言。醫師講華語、長輩回台語時，兩種語言各自處理。
+- 台語 STT 跟聊天室的語音訊息共用同一把金鑰，上限是每分鐘 10 次。看診錄音每 10 秒送一段，把額度留給聊天室。
+
+**系統不會標示哪一句是醫師講的。** 語者分離（判斷錄音裡哪裡換了說話的人）只用來決定在哪裡分段，段落不帶講者身分。摘要的提示詞也明確禁止寫「醫師說」。
+
+**藥名用使用者自己的用藥清單標示，不改寫逐字稿。**
+
+- 比對門檻是 0.80，由 `scripts/measure_clinic_drug_hints.py` 量測得出。完整結果寫在 `drug_hints.MATCH_THRESHOLD` 的註解裡。
+- 劑量數字一律不比對，也不更正。
+
+**逐字稿統一使用台灣正體字。**
+
+- 原因：華語的辨識結果是簡體字，台語的辨識結果是正體字。
+- 所以系統先判斷整份逐字稿是簡體還是正體，再用 OpenCC（簡繁轉換工具）的 `s2tw` 轉換。`s2tw` 只換字形，不換用語。
+- 已經是正體的文字不能再轉一次，否則「干擾」會變成「幹擾」。
+
+**系統不保存音檔。**
+
+- 流程是：寫進暫存檔 → 背景轉錄讀取暫存檔 → 不論成功或失敗，都刪除暫存檔。
+- 資料庫只存文字，保存 30 天，由 MongoDB 的 TTL 自動刪除。這跟對話原文的保存規則相同。
+
+**摘要直接傳到聊天室**（2026-09-22 James 決定，本人與家人相同）。
+
+- 完整逐字稿要按按鈕，在 LIFF 檢視頁開啟。
+- 權限等級是 `SENSITIVE`。
+
+### 實測結果
+
+2026-09-22 用一集 30 分鐘的 podcast 測試：
+
+| 做法 | 華語 | 全台語 |
+| --- | --- | --- |
+| 目前做法（切段平行送出） | 25 秒 | 19 分鐘（修正節流後推估 16 分鐘），補回 8,574 字 |
+| 舊做法（整個檔案送 Gemini） | 96 秒 | 輸出超過長度上限，被 `MAX_TOKENS` 截斷 |
+
+### 設定
 
 | 設定 | 說明 | 預設 |
 | --- | --- | --- |
 | `CLINIC_RECORDING_MAX_BYTES` | 錄音檔上限（LIFF 上傳與聊天室下載共用），只擋明顯誤用 | 40 MB |
 
-還沒驗證：真 LINE 上的整條流程（錄音鍵能錄多長、鎖螢幕會不會斷、分享的音檔 MIME）、實際診間的收音品質、醫師華語＋長輩台語混講的效果。
+### 還沒驗證
 
-## LINE Webhook（callback 網址）
+- 真實 LINE 上的整條流程：錄音鍵能錄多長、鎖螢幕會不會中斷、分享進來的音檔類型（MIME）。
+- 實際診間的收音品質。
+- 醫師講華語、長輩講台語混在一起時的效果。
 
-- Callback URL：`https://care.jamessu2016.com/line/callback`
+## n8n 多媒體處理
 
-在 [LINE Developers 管理頁面](https://developers.line.biz/console/channel/2008834990/messaging-api) 的 webhook URL 請填入上面網址。
+n8n 是流程自動化工具。CARE 用它處理使用者傳來的多媒體檔案。n8n 與兩個本機服務的設定在另一個 repo：`CARE-n8n`。
 
-## Cloudflare Tunnel（已登入帳號可直接使用）
+開始前：請先安裝 Docker Desktop。
 
-若你已登入 Cloudflare Tunnel 帳號，可直接執行：
+1. 在 `CARE-n8n` 資料夾啟動服務：
 
-```bash
-cloudflared tunnel run care-api
-```
+   ```bash
+   docker compose up -d
+   ```
 
-這會直接開始監聽你本機啟動中的 Python 後端（預設是 `uvicorn` 跑在 `8000`）。
+   啟動後會有三個服務：
 
-## ngrok（其他組使用方式，保留）
+   - n8n：`http://localhost:5678/`
+   - local-asr（本機語音轉文字）：port `8200`
+   - local-parser（本機檔案解析）：port `8100`
 
-```bash
-ngrok http 8000
-```
+2. 在 n8n 匯入 `CARE-n8n/resources/workflows/mutimedia process.json`，填入 API key，然後 publish（啟用）。
+3. 對 webhook `http://localhost:5678/webhook/multimedia-process` 送出 POST 請求，body 帶上要解析的檔案。
 
-在 [LINE Developers 管理頁面](https://developers.line.biz/console/channel/2008834990/messaging-api) 的 webhook URL 改為 `"ngrok url"/line/callback`。
+## direnv：自動啟用虛擬環境（可選）
 
-## Kubernetes 與 Kong（Ingress）
+direnv 是進入資料夾時自動設定環境變數的工具。專案有 `.envrc`。執行 `direnv allow` 後，每次進入資料夾，direnv 都會自動啟用虛擬環境，並載入 `.env` 的設定。
 
-後端的 K8s manifest 與 Kong Helm values 已獨立放在 **`CARE-infra`** 專案（與本 repo 同層目錄的 `CARE-infra/`），請到該目錄依 `CARE-infra/README.md` 操作 `kubectl` 與 `helm`。
-
-## 代理與工具流程（摘要）
-
-目前代理以 **LangGraph** 編排（`app/services/agent/agent.py`）：
-
-```
-START → guardrail → agent →（tools → agent）→ END
-```
-
-可用工具（`app/tools/registry.py`）：
-
-- `get_rag_answer`：RAG 知識庫問答（guardrail 判定健康相關才啟用）
-- `request_location_quick_reply`：引導使用者分享 LINE 位置
-- `find_nearby_hospitals`：依座標搜尋鄰近醫療院所
-
-LINE 訊息經 `app/services/line_messaging/` 進入代理，回覆由 `LineMessageService` 送出。
-
-## n8n workflow 多媒體處理功能
-
-1. 使用 docker 啟動 n8n，預設運行在 `http://localhost:5678/`；local ASR 與 file parser 兩服務分別運行在 port `8200` 和 `8100`。
-2. 將 `resources/mutimedia process.json` import 至 n8n，填寫 api key 並 publish。
-3. 向 webhook `http://localhost:5678/webhook/multimedia-process` 傳送 POST Request，body 中帶有要解析的檔案。
-
-## direnv 虛擬環境提示字元（可選）
-
-專案有 `.envrc`，`direnv allow` 後進目錄會自動啟用 `venv`。
+> **注意**：目前 `.envrc` 啟用的是 `venv` 資料夾，但 uv 建立的是 `.venv`。如果你用 uv 安裝，direnv 啟用的就不是 uv 建立的那個環境。
 
 - 關掉目前 shell 的虛擬環境：`deactivate`
-- 關閉 direnv 自動啟動：`direnv deny`
+- 停止 direnv 自動啟用：`direnv deny`
+
+## 聲明
+
+目前沒有。

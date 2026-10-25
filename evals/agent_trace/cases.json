@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "location_without_coordinates",
+      "description": "使用者尚未提供位置，agent 應呼叫請求位置工具並回覆分享位置提示。",
+      "user_input": "我想找附近的醫院，但還沒提供位置。請先請我分享位置。",
+      "expected_outputs": {"call_request_location": true, "emergency": false},
+      "expected_response_contains": "位置",
+      "required_run_names": ["LangGraph", "guardrail", "agent", "tools", "request_location_quick_reply"],
+      "status": "previously_verified"
+    }
+  ]
+}

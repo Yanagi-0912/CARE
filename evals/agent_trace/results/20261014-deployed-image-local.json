@@ -1,0 +1,154 @@
+{
+  "status": "TRACE_CONFIRMED",
+  "project": "CARE",
+  "run_id": "808f3f33-af24-42db-98ca-f5c6890f1b57",
+  "trace_url": "https://apac.smith.langchain.com/o/b5e5674f-b8cc-4024-af08-dfc79cff3a33/projects/p/34724c4d-1670-449a-ade9-73bfecdcafc0/r/808f3f33-af24-42db-98ca-f5c6890f1b57?poll=true",
+  "question": "我想找附近的醫院，但還沒提供位置。請先請我分享位置。",
+  "result": {
+    "response": "請點擊下方的『分享位置資訊』按鈕傳送您的位置，我馬上為您尋找附近的醫療院所！",
+    "call_request_location": true,
+    "answer_kind": null,
+    "emergency": false
+  },
+  "wall_ms": 6575.43,
+  "source_commit": "deployment-image:292-6164f92",
+  "runtime": "local CARE Agent, no LINE send/history entrypoint",
+  "runs": [
+    {
+      "id": "808f3f33-af24-42db-98ca-f5c6890f1b57",
+      "parent_id": null,
+      "name": "CARE Deployed Agent First Look - location",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 5027.04
+    },
+    {
+      "id": "01a13967-0e82-75a0-a267-74b80f45b318",
+      "parent_id": "808f3f33-af24-42db-98ca-f5c6890f1b57",
+      "name": "LangGraph",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 5014.55
+    },
+    {
+      "id": "01a13967-0e83-7d10-ae80-b322b7be0527",
+      "parent_id": "01a13967-0e82-75a0-a267-74b80f45b318",
+      "name": "guardrail",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 1712.0
+    },
+    {
+      "id": "01a13967-0e90-7773-94e1-73410ed7ae45",
+      "parent_id": "01a13967-0e83-7d10-ae80-b322b7be0527",
+      "name": "RunnableSequence",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 1696.42
+    },
+    {
+      "id": "01a13967-0eb6-7c23-96b9-5797bdc54db0",
+      "parent_id": "01a13967-0e90-7773-94e1-73410ed7ae45",
+      "name": "ChatGoogleGenerativeAI",
+      "type": "llm",
+      "error": false,
+      "latency_ms": 1653.86
+    },
+    {
+      "id": "01a13967-152e-79c0-8ce8-963f3824215f",
+      "parent_id": "01a13967-0e90-7773-94e1-73410ed7ae45",
+      "name": "JsonOutputParser",
+      "type": "parser",
+      "error": false,
+      "latency_ms": 1.93
+    },
+    {
+      "id": "01a13967-0eb3-75a1-b26d-803a4399c36f",
+      "parent_id": "01a13967-0e83-7d10-ae80-b322b7be0527",
+      "name": "ChatGoogleGenerativeAI",
+      "type": "llm",
+      "error": false,
+      "latency_ms": 2724.08
+    },
+    {
+      "id": "01a13967-1531-7bc2-a57b-b40e251f4c6c",
+      "parent_id": "01a13967-0e83-7d10-ae80-b322b7be0527",
+      "name": "_urgency_condition",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 1.38
+    },
+    {
+      "id": "01a13967-1535-77a1-960f-ac55f527e158",
+      "parent_id": "01a13967-0e82-75a0-a267-74b80f45b318",
+      "name": "agent",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 1060.73
+    },
+    {
+      "id": "01a13967-1958-7ab3-8066-6768e0851d1a",
+      "parent_id": "01a13967-1535-77a1-960f-ac55f527e158",
+      "name": "tools_condition",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 1.0
+    },
+    {
+      "id": "01a13967-195a-74f1-b980-918eca161f96",
+      "parent_id": "01a13967-0e82-75a0-a267-74b80f45b318",
+      "name": "tools",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 2.85
+    },
+    {
+      "id": "01a13967-195b-7c03-bfd9-bb1d83ef23fe",
+      "parent_id": "01a13967-195a-74f1-b980-918eca161f96",
+      "name": "request_location_quick_reply",
+      "type": "tool",
+      "error": false,
+      "latency_ms": 0.69
+    },
+    {
+      "id": "01a13967-195c-7333-aea1-8b3cf08a3214",
+      "parent_id": "01a13967-195a-74f1-b980-918eca161f96",
+      "name": "_route_after_tools",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 0.66
+    },
+    {
+      "id": "01a13967-195d-7370-be4e-e6e65fb393db",
+      "parent_id": "01a13967-0e82-75a0-a267-74b80f45b318",
+      "name": "agent",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 2233.88
+    },
+    {
+      "id": "01a13967-195f-7501-bd77-1fa282c15c64",
+      "parent_id": "01a13967-195d-7370-be4e-e6e65fb393db",
+      "name": "ChatGoogleGenerativeAI",
+      "type": "llm",
+      "error": false,
+      "latency_ms": 2228.95
+    },
+    {
+      "id": "01a13967-2215-7182-bc1a-a1688b960be4",
+      "parent_id": "01a13967-195d-7370-be4e-e6e65fb393db",
+      "name": "tools_condition",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 1.37
+    }
+  ],
+  "root_error": false,
+  "outputs": {
+    "answer_kind": null,
+    "call_request_location": true,
+    "emergency": false,
+    "response": "請點擊下方的『分享位置資訊』按鈕傳送您的位置，我馬上為您尋找附近的醫療院所！"
+  },
+  "root_latency_ms": 5027.044
+}

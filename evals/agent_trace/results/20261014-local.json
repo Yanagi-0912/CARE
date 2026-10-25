@@ -1,0 +1,177 @@
+{
+  "status": "TRACE_CONFIRMED",
+  "project": "CARE",
+  "trace_url": "https://apac.smith.langchain.com/o/b5e5674f-b8cc-4024-af08-dfc79cff3a33/projects/p/34724c4d-1670-449a-ade9-73bfecdcafc0/r/caf6c622-7a92-4fb2-a353-8d3fe3451f81?poll=true",
+  "run_id": "caf6c622-7a92-4fb2-a353-8d3fe3451f81",
+  "inputs": {
+    "user_input": "我想找附近的醫院，但還沒提供位置。請先請我分享位置。"
+  },
+  "outputs": {
+    "answer_kind": null,
+    "call_request_location": true,
+    "emergency": false,
+    "response": "請點擊下方的『分享位置資訊』按鈕傳送您的位置，我馬上為您尋找附近的醫療院所！"
+  },
+  "root_error": false,
+  "runs": [
+    {
+      "id": "caf6c622-7a92-4fb2-a353-8d3fe3451f81",
+      "parent_id": null,
+      "name": "CARE Agent First Look - location",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 3309.78
+    },
+    {
+      "id": "01a13960-32b1-7c73-9ed2-6ca9e30144e2",
+      "parent_id": "caf6c622-7a92-4fb2-a353-8d3fe3451f81",
+      "name": "LangGraph",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 3201.08
+    },
+    {
+      "id": "01a13960-32b3-7360-b250-a9cb96aff28e",
+      "parent_id": "01a13960-32b1-7c73-9ed2-6ca9e30144e2",
+      "name": "guardrail",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 2269.85
+    },
+    {
+      "id": "01a13960-32dd-75e2-9872-b9b14d667f4e",
+      "parent_id": "01a13960-32b3-7360-b250-a9cb96aff28e",
+      "name": "RunnableSequence",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 2226.12
+    },
+    {
+      "id": "01a13960-3303-7da2-9102-349b9d3e2ef4",
+      "parent_id": "01a13960-32dd-75e2-9872-b9b14d667f4e",
+      "name": "ChatGoogleGenerativeAI",
+      "type": "llm",
+      "error": false,
+      "latency_ms": 2185.72
+    },
+    {
+      "id": "01a13960-3b8e-7081-8823-66bc50b23975",
+      "parent_id": "01a13960-32dd-75e2-9872-b9b14d667f4e",
+      "name": "JsonOutputParser",
+      "type": "parser",
+      "error": false,
+      "latency_ms": 1.6
+    },
+    {
+      "id": "01a13960-32fe-73f3-845c-481799e75715",
+      "parent_id": "01a13960-32b3-7360-b250-a9cb96aff28e",
+      "name": "ChatGoogleGenerativeAI",
+      "type": "llm",
+      "error": false,
+      "latency_ms": 1701.22
+    },
+    {
+      "id": "01a13960-3b90-7253-bbba-f688fa6a832e",
+      "parent_id": "01a13960-32b3-7360-b250-a9cb96aff28e",
+      "name": "_urgency_condition",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 0.8
+    },
+    {
+      "id": "01a13960-3b92-7fa2-adc6-67629e2ce22b",
+      "parent_id": "01a13960-32b1-7c73-9ed2-6ca9e30144e2",
+      "name": "agent",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 3.53
+    },
+    {
+      "id": "01a13960-3b92-7fa2-adc6-677a2928fa92",
+      "parent_id": "01a13960-3b92-7fa2-adc6-67629e2ce22b",
+      "name": "tools_condition",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 2.6
+    },
+    {
+      "id": "01a13960-3b96-74d3-ba77-1e7cccbe57f0",
+      "parent_id": "01a13960-32b1-7c73-9ed2-6ca9e30144e2",
+      "name": "tools",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 3.47
+    },
+    {
+      "id": "01a13960-3b97-7da0-b211-5198b1985644",
+      "parent_id": "01a13960-3b96-74d3-ba77-1e7cccbe57f0",
+      "name": "request_location_quick_reply",
+      "type": "tool",
+      "error": false,
+      "latency_ms": 0.74
+    },
+    {
+      "id": "01a13960-3b98-7bc2-b6f2-2c04dfef5111",
+      "parent_id": "01a13960-3b96-74d3-ba77-1e7cccbe57f0",
+      "name": "_route_after_tools",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 0.66
+    },
+    {
+      "id": "01a13960-3b9a-77c0-bc0e-d03296e37e98",
+      "parent_id": "01a13960-32b1-7c73-9ed2-6ca9e30144e2",
+      "name": "agent",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 920.36
+    },
+    {
+      "id": "01a13960-3b9b-7d92-9faa-62db2e1b64c1",
+      "parent_id": "01a13960-3b9a-77c0-bc0e-d03296e37e98",
+      "name": "ChatGoogleGenerativeAI",
+      "type": "llm",
+      "error": false,
+      "latency_ms": 916.35
+    },
+    {
+      "id": "01a13960-3f31-7ee3-8aea-2e51752ba52a",
+      "parent_id": "01a13960-3b9a-77c0-bc0e-d03296e37e98",
+      "name": "tools_condition",
+      "type": "chain",
+      "error": false,
+      "latency_ms": 1.12
+    }
+  ],
+  "source_commit": "864b6a00a228070e884474a9ff7f642de4333b94",
+  "runtime": "local CARE Agent; no LINE send/history entrypoint",
+  "deployed_image": "yanagi0912/care:292-6164f92",
+  "deployed_tracing_enabled": false,
+  "source_comparison": {
+    "app/services/agent/agent.py": {
+      "local_sha256": "fd9d6f9a2b7733a4b4d883216f1d6745cb14437019ba4f99e3f189349f67dc2f",
+      "deployed_sha256": "fd9d6f9a2b7733a4b4d883216f1d6745cb14437019ba4f99e3f189349f67dc2f",
+      "equal": true
+    },
+    "app/services/agent/utils/nodes.py": {
+      "local_sha256": "481f1ff2bb31c7c4cd00a9105fea1bf898f1db85d71ef33f97edb67f597a25d8",
+      "deployed_sha256": "7dfb951f8c221f7a8284a8b23c6e09d696bf93df2c0e45742ab998e3ee23b3a4",
+      "equal": false
+    },
+    "app/services/agent/utils/state.py": {
+      "local_sha256": "f783517f138f932798cd0b19f3ae226c74058ccfa8d5a687fa4122747a9986b6",
+      "deployed_sha256": "f783517f138f932798cd0b19f3ae226c74058ccfa8d5a687fa4122747a9986b6",
+      "equal": true
+    },
+    "app/tools/medical_tools.py": {
+      "local_sha256": "e9187d4c6377dc9d293e59004550a44002b342c4ce9515ff535f7aedc55098d4",
+      "deployed_sha256": "df07a4c585e50ed3e55f2899685dab862b0c4cf983bf8a5d792efdaf895179bd",
+      "equal": false
+    },
+    "app/tools/registry.py": {
+      "local_sha256": "8a8a783b20e880683b8692d66cfdc764b6c0450316605d2f77ae16c90b747f14",
+      "deployed_sha256": "8a8a783b20e880683b8692d66cfdc764b6c0450316605d2f77ae16c90b747f14",
+      "equal": true
+    }
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "status": "TRACE_CONFIRMED",
+  "evidence_source": "2026-10-15 session: local runner output plus subsequent LangSmith readback; summary reconstructed for handoff, not a raw trace export",
+  "runtime": "local CARE Python process",
+  "source_commit": null,
+  "source_commit_note": "Original successful run did not record git revision or model configuration. Current handoff code may differ.",
+  "project": "CARE",
+  "run_id": "6fdaa3ab-8a21-4013-91d9-79f429ae3254",
+  "trace_url": "https://apac.smith.langchain.com/o/b5e5674f-b8cc-4024-af08-dfc79cff3a33/projects/p/34724c4d-1670-449a-ade9-73bfecdcafc0/r/6fdaa3ab-8a21-4013-91d9-79f429ae3254?poll=true",
+  "question": "我想找附近的醫院，但還沒提供位置。請先請我分享位置。",
+  "outputs": {
+    "answer_kind": null,
+    "call_request_location": true,
+    "emergency": false,
+    "response": "請點擊下方的『分享位置資訊』按鈕傳送您的位置，我馬上為您尋找附近的醫療院所！"
+  },
+  "wall_seconds": 3.26,
+  "root_end_time": "2026-10-15T08:31:32.072805+00:00",
+  "root_error": null,
+  "runs_order": "LangSmith query order, not execution order",
+  "runs": [
+    {
+      "name": "tools_condition",
+      "error": null
+    },
+    {
+      "name": "ChatGoogleGenerativeAI",
+      "error": null
+    },
+    {
+      "name": "agent",
+      "error": null
+    },
+    {
+      "name": "_route_after_tools",
+      "error": null
+    },
+    {
+      "name": "request_location_quick_reply",
+      "error": null
+    },
+    {
+      "name": "tools",
+      "error": null
+    },
+    {
+      "name": "tools_condition",
+      "error": null
+    },
+    {
+      "name": "agent",
+      "error": null
+    },
+    {
+      "name": "_urgency_condition",
+      "error": null
+    },
+    {
+      "name": "JsonOutputParser",
+      "error": null
+    },
+    {
+      "name": "ChatGoogleGenerativeAI",
+      "error": null
+    },
+    {
+      "name": "ChatGoogleGenerativeAI",
+      "error": null
+    },
+    {
+      "name": "RunnableSequence",
+      "error": null
+    },
+    {
+      "name": "guardrail",
+      "error": null
+    },
+    {
+      "name": "LangGraph",
+      "error": null
+    },
+    {
+      "name": "CARE Local Agent Demo - location - 20261015",
+      "error": null
+    }
+  ]
+}

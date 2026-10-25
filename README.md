@@ -87,6 +87,8 @@ uv run uvicorn app.main:app --reload --port 8000
 
 本地 CARE／LangSmith 的重跑程式、測試 JSON、歷史結果與交接說明，見 [實驗交接文件](evals/agent_trace/README.md)。
 
+之前的 Healthnews 100 題測試、600 筆執行結果、異常與待審查事項，以及當時的程式／設定快照，見 [100 題測試交接](evals/healthnews_100/README.md)。
+
 ## 執行測試
 
 開始前，請先知道：測試要用 `uv run` 執行。原因是用 `uv run`，`pytest-asyncio` 才會載入，非同步的測試（`async def test_xxx`）才能正常執行。

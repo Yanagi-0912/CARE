@@ -1,0 +1,38 @@
+{
+  "total_runs": 600,
+  "review_status": "pending_all_600",
+  "arms": {
+    "B": {
+      "runs": 300,
+      "fail_codes": {
+        "None": 85,
+        "KB_EMPTY": 213,
+        "MODEL_REFUSE": 2
+      },
+      "runtime_incident_runs": 140,
+      "actual_split_runs": 0
+    },
+    "D": {
+      "runs": 300,
+      "fail_codes": {
+        "None": 114,
+        "KB_EMPTY": 184,
+        "MODEL_REFUSE": 2
+      },
+      "runtime_incident_runs": 138,
+      "actual_split_runs": 61
+    }
+  },
+  "error_events": {
+    "grader_provider / Jev / TimeoutError": 102,
+    "retrieval / vector / TimeoutError": 203,
+    "retrieval / bm25 / TimeoutError": 190,
+    "grader_provider / Jev / ConnectTimeout": 22,
+    "rerank_provider / Cohere / ConnectTimeout": 4
+  },
+  "kb_empty_paths": {
+    "web_empty_retrieval": 168,
+    "web_crag_reject": 229
+  },
+  "normal_output_with_runtime_incidents": 56
+}

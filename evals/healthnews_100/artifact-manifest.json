@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "publication_date": "2026-10-25",
+  "source_experiment": "healthnews-live-batch-20261013",
+  "dataset": {
+    "file": "CARE_Healthnews_100_Review_v3.json",
+    "sha256": "49180741cbe53248876acdf9b45584022e1959ffda1fedd271b2b738b260c34a",
+    "cases": 100,
+    "question_types": {
+      "single": 88,
+      "compound": 12
+    },
+    "matches_user_downloads_file": true
+  },
+  "runs": {
+    "total": 600,
+    "selected_arms": [
+      "B",
+      "D"
+    ],
+    "rounds": 3,
+    "status_counts": {
+      "completed": 322,
+      "completed_with_incidents": 278
+    },
+    "fail_code_counts": {
+      "None": 199,
+      "KB_EMPTY": 397,
+      "MODEL_REFUSE": 4
+    },
+    "review_status_counts": {
+      "pending": 600
+    },
+    "arm_status_counts": {
+      "B": {
+        "completed": 160,
+        "completed_with_incidents": 140
+      },
+      "D": {
+        "completed": 162,
+        "completed_with_incidents": 138
+      }
+    },
+    "arm_fail_code_counts": {
+      "B": {
+        "None": 85,
+        "KB_EMPTY": 213,
+        "MODEL_REFUSE": 2
+      },
+      "D": {
+        "None": 114,
+        "KB_EMPTY": 184,
+        "MODEL_REFUSE": 2
+      }
+    }
+  },
+  "full_results": {
+    "file": "results/20261014-live-batch/full-results.tar.gz",
+    "original_archive_preserved": true,
+    "uncompressed_file": "runs.jsonl",
+    "uncompressed_bytes": 138465184,
+    "uncompressed_sha256": "fb42bb0080b46110c5c53d783ed0af12f83e3484a1f5284e017613996306c53e"
+  },
+  "source_and_config": {
+    "file": "results/20261014-live-batch/source-and-config.tar.gz",
+    "original_archive_preserved": true,
+    "verified_frozen_source_files": 294,
+    "matches_original_dataset_and_config": true
+  },
+  "answer_projection": {
+    "directory": "results/20261014-live-batch/answers",
+    "files": 6,
+    "rows_per_file": 100,
+    "fields_if_present": [
+      "case_id",
+      "original_question",
+      "arm",
+      "round",
+      "run_status",
+      "fail_code",
+      "care_output",
+      "sources",
+      "actual_decomposition_triggered",
+      "actual_subquestions",
+      "runtime_errors",
+      "review_status",
+      "claim_reviews",
+      "subquestion_reviews",
+      "final_citation_review_status",
+      "blocking_findings",
+      "started_at",
+      "completed_at",
+      "config_version",
+      "run_key"
+    ],
+    "care_output_and_selected_fields_unchanged": true,
+    "omitted_fields_remain_in_full_results": true
+  },
+  "verification_scope": "Offline artifact integrity only; no new model runs or clinical review.",
+  "files": [
+    {
+      "path": "CARE_Healthnews_100_Review_v3.json",
+      "bytes": 322910,
+      "sha256": "49180741cbe53248876acdf9b45584022e1959ffda1fedd271b2b738b260c34a"
+    },
+    {
+      "path": "README.md",
+      "bytes": 6074,
+      "sha256": "7134433ab359336a7e7ceb99096dd3457f00b2d929614502861489ef5aa23c7a"
+    },
+    {
+      "path": "results/20261014-live-batch/answers/B-round-1.jsonl",
+      "bytes": 144357,
+      "sha256": "86553bb158ccc29dfc04a4bc17af1becf10b39e287412a406966316efa161037"
+    },
+    {
+      "path": "results/20261014-live-batch/answers/B-round-2.jsonl",
+      "bytes": 134894,
+      "sha256": "882e34df7f9c84a200debfc0519e7717771e7babee5eea01929ae7a48531ce7b"
+    },
+    {
+      "path": "results/20261014-live-batch/answers/B-round-3.jsonl",
+      "bytes": 125208,
+      "sha256": "bc6d6ba2e34d186324af5f644bc7d89816e221c466257ccdad651cfd804c7da0"
+    },
+    {
+      "path": "results/20261014-live-batch/answers/D-round-1.jsonl",
+      "bytes": 162423,
+      "sha256": "3cc3f553d696bd95e3ee71ce2cd5ce1882e9060ece5d0038ab761fb86feda773"
+    },
+    {
+      "path": "results/20261014-live-batch/answers/D-round-2.jsonl",
+      "bytes": 152068,
+      "sha256": "eee9aa9f69b49fbc4811d272d86ce68d2ebd6ae65076e4cf984b8781578ab875"
+    },
+    {
+      "path": "results/20261014-live-batch/answers/D-round-3.jsonl",
+      "bytes": 156033,
+      "sha256": "9e17293e1d777d8e5307559796fb5bc20e4d4c6f74caa3472c2eab4a759f47e4"
+    },
+    {
+      "path": "results/20261014-live-batch/corpus_verification.json",
+      "bytes": 646,
+      "sha256": "744f30a1fe293b2a0f31ccdc2aee030817218a24c59d9c68f2c48debdd93420a"
+    },
+    {
+      "path": "results/20261014-live-batch/full-results.tar.gz",
+      "bytes": 38894729,
+      "sha256": "bbfb9e266fd9c4aac0f39466eea5129d16353c7d20b11a2cc1ed1f0205f4e176"
+    },
+    {
+      "path": "results/20261014-live-batch/initial-analysis.json",
+      "bytes": 885,
+      "sha256": "d192477c20ab69316e7aef2a858d19fb6de45f2ea2f9c13307b0c5f65d6436c6"
+    },
+    {
+      "path": "results/20261014-live-batch/initial-analysis.txt",
+      "bytes": 1614,
+      "sha256": "1323b852884abbf38b282c3c2293935c107cebe8fd06cd91b91ce27afbfa5eb9"
+    },
+    {
+      "path": "results/20261014-live-batch/manifest.json",
+      "bytes": 40180,
+      "sha256": "7457502d657a218efdee8f84204f38316302058e96e91acf1603ed46a36ab269"
+    },
+    {
+      "path": "results/20261014-live-batch/source-and-config.tar.gz",
+      "bytes": 1279911,
+      "sha256": "9558e43174faa01d6391e37a96ac7f6a85225babe3c37652454075b04c6b41bd"
+    }
+  ]
+}

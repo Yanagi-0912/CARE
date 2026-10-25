@@ -1,0 +1,15 @@
+CARE v3 結果初步分析（流程狀態，不是醫療正確率）
+600筆完成，三輪每輪B/D各100；所有逐题答案/引用審查仍pending。
+B未最終失敗碼85/300=28.3%；KB_EMPTY213；MODEL_REFUSE2。
+D未最終失敗碼114/300=38.0%；KB_EMPTY184；MODEL_REFUSE2。
+D有正常回答的流程比例高9.7個百分點，不能當作醫療正確率提升。
+KB_EMPTY397：168走web_empty_retrieval，229走web_crag_reject；web fallback關閉，故不能網搜補救。
+KB_EMPTY是未有可放行的知識庫證據，不代表資料庫沒有任何文章；222筆同時有runtime錯誤。
+521個runtime事件：vector檢索Timeout203、BM25檢索Timeout190、Jev Timeout102+ConnectTimeout22、Cohere ConnectTimeout4。
+影響278筆run；事件次數不是題數，同一筆可有多次錯誤。正常回答199筆中56筆仍有runtime異常。
+不是Gemini Batch排隊逾時；117個Batch jobs均成功，離線45秒總限時停用。
+實際設定：Jev2秒、每路檢索5秒、Cohere5秒、24併發run、PG pool每庫最多4連線。
+短限時與併發/連線池等待是優先查證的壓力來源；目前沒有證據能判定供應商故障、資料庫容量不足或全部KB_EMPTY純粹缺內容。
+未失敗碼=None表示未回傳最終RAG錯誤標記，並不代表回答完整、正確、引用支持或無中途異常。
+建議：先查核檢索併發/連線池與timeout，再用低併發小樣本的新設定版本驗證；人工對正常回答與KB_EMPTY樣本檢查證據。不要覆蓋此批或直接合併重跑結果。
+原始結果 results/runs.jsonl、逐題事件與stage保留。

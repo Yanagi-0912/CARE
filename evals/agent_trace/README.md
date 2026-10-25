@@ -2,6 +2,8 @@
 
 更新：2026-10-16。這份交接對應「在本地執行 CARE，從 LangSmith 看 agent 的實際流程」；與其他 healthnews／RAG 品質實驗分開。
 
+若要找之前討論的 100 題測試，請看 [Healthnews 100 題交接](../healthnews_100/README.md)：包含完整題庫、600 筆執行結果與當時的程式／設定快照。本頁的單案例只驗證流程追蹤。
+
 ## 接手先看這裡
 
 目的：確認真實 CARE LangGraph 的一次執行，可以完整上傳到 LangSmith CARE 專案，讓下一位開發者看見節點、模型呼叫、工具輸入輸出、耗時與錯誤。現階段是單案例 tracing smoke test，尚未建立完整的 agent 功能或醫療品質評測。

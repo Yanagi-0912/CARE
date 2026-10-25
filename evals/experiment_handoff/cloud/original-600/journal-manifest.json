@@ -1,0 +1,11 @@
+{
+  "journal": {
+    "path": "evals/experiment_handoff/cloud/original-600/journal.sqlite.gz",
+    "bytes": 62676239,
+    "sha256": "78976e33d03fb500d0b3a1985a13937b591d15b763cc9c58b10a871139759f51",
+    "uncompressed_bytes": 209567744,
+    "uncompressed_sha256": "bc0f949e8a4b7f105b81d5582378bef6c5c6192e900869e2ce4e6298fffd62d1"
+  },
+  "results": 600,
+  "matches_published_600_results": true
+}

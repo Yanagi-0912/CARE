@@ -1,0 +1,110 @@
+[
+  {
+    "remote_path": "healthnews-v3-live-batch-20261013/etl-pause-state.json",
+    "bytes": 515,
+    "sha256": "f1dd95d5c667df21036c200cca1ecc73efdde55d7cfb84efc6d7fee8be5cf16f",
+    "download_matches": true
+  },
+  {
+    "remote_path": "healthnews-v3-live-batch-20261013/experiment/output/corpus_verification.json",
+    "bytes": 646,
+    "sha256": "744f30a1fe293b2a0f31ccdc2aee030817218a24c59d9c68f2c48debdd93420a",
+    "download_matches": true
+  },
+  {
+    "remote_path": "healthnews-v3-live-batch-20261013/experiment/output/journal.sqlite",
+    "bytes": 209567744,
+    "sha256": "bc0f949e8a4b7f105b81d5582378bef6c5c6192e900869e2ce4e6298fffd62d1",
+    "download_matches": true
+  },
+  {
+    "remote_path": "healthnews-v3-live-batch-20261013/experiment/output/runs.jsonl",
+    "bytes": 138465184,
+    "sha256": "fb42bb0080b46110c5c53d783ed0af12f83e3484a1f5284e017613996306c53e",
+    "download_matches": true
+  },
+  {
+    "remote_path": "healthnews-controlled-20261014/etl-pause-state.json",
+    "bytes": 529,
+    "sha256": "a754d9040ec84b38b05916781af2072db3effac3165af8d7107f050812e6beaa",
+    "download_matches": true
+  },
+  {
+    "remote_path": "healthnews-controlled-20261014/study/controlled/output/corpus_verification.json",
+    "bytes": 646,
+    "sha256": "744f30a1fe293b2a0f31ccdc2aee030817218a24c59d9c68f2c48debdd93420a",
+    "download_matches": true
+  },
+  {
+    "remote_path": "healthnews-controlled-20261014/study/controlled/output/diagnostics.json",
+    "bytes": 266,
+    "sha256": "ad96f9a6df830f30c5d763338d3c84f70eec3c359aadb95a8324817e4e20617f",
+    "download_matches": true
+  },
+  {
+    "remote_path": "healthnews-controlled-20261014/study/controlled/output/journal.sqlite",
+    "bytes": 277647360,
+    "sha256": "bd0a7e354e0cd4e333497f9fc98e5ace65819cc72d70fb693975132603848b03",
+    "download_matches": true
+  },
+  {
+    "remote_path": "healthnews-controlled-20261014/study/controlled/output/runs.jsonl",
+    "bytes": 183367317,
+    "sha256": "434fafe155869334d50e7f5f52e32addbfad2c8cc0f50edf0c3577691540719e",
+    "download_matches": true
+  },
+  {
+    "remote_path": "healthnews-controlled-20261014/study/higher/output/corpus_verification.json",
+    "bytes": 646,
+    "sha256": "744f30a1fe293b2a0f31ccdc2aee030817218a24c59d9c68f2c48debdd93420a",
+    "download_matches": true
+  },
+  {
+    "remote_path": "healthnews-controlled-20261014/study/higher/output/diagnostics.json",
+    "bytes": 261,
+    "sha256": "48aa42c90d968098a8258095a519fe32fe8e3a09822aa24b37a81c994bf6af9a",
+    "download_matches": true
+  },
+  {
+    "remote_path": "healthnews-controlled-20261014/study/higher/output/journal.sqlite",
+    "bytes": 8749056,
+    "sha256": "f1544bc9954aa290036f7f4cf40488027891d8ffdf63b6a8aab1d2642fe52ac9",
+    "download_matches": true
+  },
+  {
+    "remote_path": "healthnews-controlled-20261014/study/higher/output/runs.jsonl",
+    "bytes": 5732748,
+    "sha256": "004dff818db7c887744e8cc9cafdde458388f7cb05700e2d4c8fca944c45aad3",
+    "download_matches": true
+  },
+  {
+    "remote_path": "healthnews-controlled-20261014/study/low/output/corpus_verification.json",
+    "bytes": 646,
+    "sha256": "744f30a1fe293b2a0f31ccdc2aee030817218a24c59d9c68f2c48debdd93420a",
+    "download_matches": true
+  },
+  {
+    "remote_path": "healthnews-controlled-20261014/study/low/output/diagnostics.json",
+    "bytes": 262,
+    "sha256": "aa29deb98d3a0a9eef28f85d5d436787700f5737c12fca6ab5cfa796b426963a",
+    "download_matches": true
+  },
+  {
+    "remote_path": "healthnews-controlled-20261014/study/low/output/journal.sqlite",
+    "bytes": 9060352,
+    "sha256": "94ded059b827ae28ecdccf40710eaba3b167ce3a494981ca7ac599bcf716b513",
+    "download_matches": true
+  },
+  {
+    "remote_path": "healthnews-controlled-20261014/study/low/output/runs.jsonl",
+    "bytes": 5880283,
+    "sha256": "cfd472f6d82c67a38b7334c056121d4c176caa2e10588f0cad687e1ee6bd17c5",
+    "download_matches": true
+  },
+  {
+    "remote_path": "healthnews-controlled-20261014/study/sequence-output/sequence-status.json",
+    "bytes": 1715,
+    "sha256": "629777513a3de4366b13605cadc9afc03d0041048a1495e16f59ea5a751e5644",
+    "download_matches": true
+  }
+]

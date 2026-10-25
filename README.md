@@ -85,6 +85,8 @@ uv run uvicorn app.main:app --reload --port 8000
 
 ## Agent 流程追蹤實驗
 
+所有相關實驗的時間線、題庫、前期試跑、兩批 600 筆結果、診斷與執行 journal，見 [實驗總交接](evals/experiment_handoff/README.md)。
+
 本地 CARE／LangSmith 的重跑程式、測試 JSON、歷史結果與交接說明，見 [實驗交接文件](evals/agent_trace/README.md)。
 
 之前的 Healthnews 100 題測試、600 筆執行結果、異常與待審查事項，以及當時的程式／設定快照，見 [100 題測試交接](evals/healthnews_100/README.md)。

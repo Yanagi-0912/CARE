@@ -1,0 +1,40 @@
+{
+  "runs": 16,
+  "unique_questions": 8,
+  "status_counts": {
+    "completed": 16
+  },
+  "fail_code_counts": {
+    "None": 9,
+    "KB_EMPTY": 7
+  },
+  "review_status_counts": {
+    "pending": 16
+  },
+  "arm_counts": {
+    "B": 8,
+    "D": 8
+  },
+  "runtime_error_events": 0,
+  "incident_runs": 0,
+  "journal_table_rows": {
+    "results": 16,
+    "jobs": 14,
+    "requests": 36,
+    "receipts": 120
+  },
+  "journal_job_states": {
+    "JOB_STATE_SUCCEEDED": 14
+  },
+  "config_versions": [
+    "1416e78a185618a17b89a6129c1f25f20cbc21ed61719c6338c2651471fac36b"
+  ],
+  "journal_matches_export": true,
+  "journal": {
+    "path": "evals/experiment_handoff/cloud/controlled-study/higher/journal.sqlite.gz",
+    "bytes": 2611814,
+    "sha256": "bd5a8e8d6b2de5f8c63b58b835f1f36c94c6d08bf7ca81c9b4e0022eab6ca450",
+    "uncompressed_bytes": 8749056,
+    "uncompressed_sha256": "f1544bc9954aa290036f7f4cf40488027891d8ffdf63b6a8aab1d2642fe52ac9"
+  }
+}

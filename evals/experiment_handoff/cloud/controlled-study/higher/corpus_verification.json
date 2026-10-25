@@ -1,0 +1,21 @@
+{
+  "corpus_mode": "live_observed",
+  "status": "ENDPOINTS_MATCHED",
+  "continuous_immutability_proven": false,
+  "before": {
+    "new": {
+      "mongo_sha256": "d8ef95ecc0e5571fa625a2879536043ea85dbb355e5dc57cead218120326e9a7",
+      "pg_sha256": "a8828d17b54faf86df074e0c9706327c28a7fffab2bd6e8cdb6a2952c014d8b2",
+      "mongo_count": 18867,
+      "pg_count": 18867
+    }
+  },
+  "after": {
+    "new": {
+      "mongo_sha256": "d8ef95ecc0e5571fa625a2879536043ea85dbb355e5dc57cead218120326e9a7",
+      "pg_sha256": "a8828d17b54faf86df074e0c9706327c28a7fffab2bd6e8cdb6a2952c014d8b2",
+      "mongo_count": 18867,
+      "pg_count": 18867
+    }
+  }
+}

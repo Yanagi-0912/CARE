@@ -1,0 +1,13 @@
+{
+  "status": "RESUMED",
+  "namespace": "care-dev",
+  "cronjob": "care-etl",
+  "cronjob_uid": "f59a481e-79a5-42d8-a5ef-68cdef74b980",
+  "original_suspend": false,
+  "original_schedule": "0 5 * * *",
+  "experiment_job": "care-v3-live-batch-20261013",
+  "config_version": "2a5e1a21251f1ea8b7badb274e496f5421dd8096231a820dd1a33fcbb46854cb",
+  "paused_at": "2026-10-13T13:29:23.937070+00:00",
+  "restore_trigger": "matching Job Complete=True; not Failed or missing",
+  "resumed_at": "2026-10-13T15:55:16.413462+00:00"
+}

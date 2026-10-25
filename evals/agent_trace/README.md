@@ -4,6 +4,8 @@
 
 若要找之前討論的 100 題測試，請看 [Healthnews 100 題交接](../healthnews_100/README.md)：包含完整題庫、600 筆執行結果與當時的程式／設定快照。本頁的單案例只驗證流程追蹤。
 
+所有相關實驗、早期部署快照的逐檔對照，以及後續診斷與重跑，統一從 [實驗總交接](../experiment_handoff/README.md) 查閱。
+
 ## 接手先看這裡
 
 目的：確認真實 CARE LangGraph 的一次執行，可以完整上傳到 LangSmith CARE 專案，讓下一位開發者看見節點、模型呼叫、工具輸入輸出、耗時與錯誤。現階段是單案例 tracing smoke test，尚未建立完整的 agent 功能或醫療品質評測。

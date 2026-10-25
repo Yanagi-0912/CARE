@@ -1,0 +1,12 @@
+{
+  "samples": 995306,
+  "mean_lag_ms": 2.1662015318288494,
+  "max_lag_ms": 8024.191374052316,
+  "over_100ms": 619,
+  "interval_seconds": 0.1,
+  "blocking_result_exports": {
+    "count": 601,
+    "total_ms": 1710148.9223246463,
+    "max_ms": 7791.345371864736
+  }
+}

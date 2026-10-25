@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "files": [
+    {
+      "path": "README.md",
+      "bytes": 8051,
+      "sha256": "a1c95833fb80b8511bb41a265e8fc87c9a58d3f05ad30b93ea7683827f3b1a1e"
+    },
+    {
+      "path": "archives/healthnews-100-20261010.tar.gz",
+      "bytes": 17436850,
+      "sha256": "7cbb48f8df2a02ad2551d18d46407fd39374ff2e65f6808b37595a546e6813ea"
+    },
+    {
+      "path": "archives/healthnews-batch-20261011.tar.gz",
+      "bytes": 11869,
+      "sha256": "ee14c8505d46c6e5e059f6b76e76b751a8d6f03b142ecc6784c44b58d1f64de2"
+    },
+    {
+      "path": "archives/healthnews-controlled-20261014.tar.gz",
+      "bytes": 1946157,
+      "sha256": "d350927acfb0a094e8fd3c25eec4bfeb2566330fc449901e5bbb8e3f7868a8f0"
+    },
+    {
+      "path": "archives/healthnews-formal-batch-20261011.tar.gz",
+      "bytes": 3317761,
+      "sha256": "a3a06a357a6497dbb1791871203469bbfb0cfbbafe5e05800757a421c53e2fd7"
+    },
+    {
+      "path": "archives/healthnews-live-batch-20261013.tar.gz",
+      "bytes": 1604276,
+      "sha256": "8f0fba3f519103274f770570d53ecc62b23d43b451303c65fd609c9dc968b459"
+    },
+    {
+      "path": "archives/langsmith-agent-first-look-20261014.tar.gz",
+      "bytes": 19841,
+      "sha256": "320a7a689c102a0e67c8a133aff39a21835dcdb4ff6c810f9e1edab28cc7548a"
+    },
+    {
+      "path": "archives/local-readiness-20261011.tar.gz",
+      "bytes": 1927,
+      "sha256": "0b74bbfea1ea4b1fa7d25253f372d6fb98cc4ddef4fce8ee1e5b9cc080e58032"
+    },
+    {
+      "path": "archives/readiness-20261011.tar.gz",
+      "bytes": 20131,
+      "sha256": "8ec4938bc6701250885c3c820cd96725f2d80bf59c21d1d26208cf51970b697f"
+    },
+    {
+      "path": "cloud/controlled-study/controlled/answers/B-round-1.jsonl",
+      "bytes": 148997,
+      "sha256": "5e3954b91d857b5754080f084937cda2641b96de1a42ee7b7f1d6bf0e622f03c"
+    },
+    {
+      "path": "cloud/controlled-study/controlled/answers/B-round-2.jsonl",
+      "bytes": 145806,
+      "sha256": "953671c6f1e135be45ab9dc7fd5aa97093677247276767f1e1974071a1548212"
+    },
+    {
+      "path": "cloud/controlled-study/controlled/answers/B-round-3.jsonl",
+      "bytes": 147900,
+      "sha256": "f740cc28fcfa41b97bd510d98dddf6ea1f000690b75bcb0cd87d8a3ea3cf1206"
+    },
+    {
+      "path": "cloud/controlled-study/controlled/answers/D-round-1.jsonl",
+      "bytes": 155536,
+      "sha256": "e7a52eacd58cc69fd6b29e7b31be0f4efb2a1ba814f470c04f8a55d76deb85a5"
+    },
+    {
+      "path": "cloud/controlled-study/controlled/answers/D-round-2.jsonl",
+      "bytes": 158029,
+      "sha256": "4bf7c7c60c7cd019f1a37ea9038aaad35a43425721565b963e7493baed3e3b57"
+    },
+    {
+      "path": "cloud/controlled-study/controlled/answers/D-round-3.jsonl",
+      "bytes": 156752,
+      "sha256": "59f2a1bbdacdc8e3a11f6c56829c147f20957d938a3d8b154d8f3f9b1a4c1377"
+    },
+    {
+      "path": "cloud/controlled-study/controlled/corpus_verification.json",
+      "bytes": 646,
+      "sha256": "744f30a1fe293b2a0f31ccdc2aee030817218a24c59d9c68f2c48debdd93420a"
+    },
+    {
+      "path": "cloud/controlled-study/controlled/diagnostics.json",
+      "bytes": 266,
+      "sha256": "ad96f9a6df830f30c5d763338d3c84f70eec3c359aadb95a8324817e4e20617f"
+    },
+    {
+      "path": "cloud/controlled-study/controlled/full-results.tar.gz",
+      "bytes": 51842860,
+      "sha256": "8f4cd11a51767bc5fab4027fe0df9a0f1cdc300e664f52ea50299aa02adf7aab"
+    },
+    {
+      "path": "cloud/controlled-study/controlled/journal.sqlite.gz",
+      "bytes": 83584413,
+      "sha256": "69899efc6eefe93bc8d82c6fd756c36b7053b35f5b06ed326930d648d60d5040"
+    },
+    {
+      "path": "cloud/controlled-study/controlled/manifest.json",
+      "bytes": 40575,
+      "sha256": "2c852fdbb7fc34b72887323c5dfab8cb11e0d96c8516bee3711fbab30cfa54eb"
+    },
+    {
+      "path": "cloud/controlled-study/controlled/summary.json",
+      "bytes": 1023,
+      "sha256": "9764417fc6ba7804bae7aa0fc4d1ee8b89879ccb7cad45d1e6dec86ce074ba87"
+    },
+    {
+      "path": "cloud/controlled-study/etl-pause-state.json",
+      "bytes": 529,
+      "sha256": "a754d9040ec84b38b05916781af2072db3effac3165af8d7107f050812e6beaa"
+    },
+    {
+      "path": "cloud/controlled-study/higher/answers/B-round-1.jsonl",
+      "bytes": 12576,
+      "sha256": "d02f53c1aafea62372fc8c1aa429387ab4a4fa75aa627f1842129fd3d9e03537"
+    },
+    {
+      "path": "cloud/controlled-study/higher/answers/D-round-1.jsonl",
+      "bytes": 16002,
+      "sha256": "454fdf5f85c4226c6811dee4f7f7d15fb6f6f08ab8d54cd11ed644e2093baa1c"
+    },
+    {
+      "path": "cloud/controlled-study/higher/corpus_verification.json",
+      "bytes": 646,
+      "sha256": "744f30a1fe293b2a0f31ccdc2aee030817218a24c59d9c68f2c48debdd93420a"
+    },
+    {
+      "path": "cloud/controlled-study/higher/diagnostics.json",
+      "bytes": 261,
+      "sha256": "48aa42c90d968098a8258095a519fe32fe8e3a09822aa24b37a81c994bf6af9a"
+    },
+    {
+      "path": "cloud/controlled-study/higher/full-results.tar.gz",
+      "bytes": 1620899,
+      "sha256": "b88dfa347741697406278457e309efd5511965f64946c6cd1038467521857a51"
+    },
+    {
+      "path": "cloud/controlled-study/higher/journal.sqlite.gz",
+      "bytes": 2611814,
+      "sha256": "bd5a8e8d6b2de5f8c63b58b835f1f36c94c6d08bf7ca81c9b4e0022eab6ca450"
+    },
+    {
+      "path": "cloud/controlled-study/higher/manifest.json",
+      "bytes": 40561,
+      "sha256": "edc36b1bb17f225445cdd0e89d0577b4649c6fe4785226691f55d23de0678ffb"
+    },
+    {
+      "path": "cloud/controlled-study/higher/summary.json",
+      "bytes": 939,
+      "sha256": "02c0bf23d9b5990608c5e38de3c4b24e9e0028e5f58f061e385cd8a00975b393"
+    },
+    {
+      "path": "cloud/controlled-study/low/answers/B-round-1.jsonl",
+      "bytes": 12837,
+      "sha256": "3a89a591e72ef0b6bfbc91c2a596129bbcc3797e8953e2bd9fd970875082cb8f"
+    },
+    {
+      "path": "cloud/controlled-study/low/answers/D-round-1.jsonl",
+      "bytes": 15871,
+      "sha256": "ca5ea0f5e62c96d2822e7d9edec29145c8b2660646faa49f57c23ec74f94a541"
+    },
+    {
+      "path": "cloud/controlled-study/low/corpus_verification.json",
+      "bytes": 646,
+      "sha256": "744f30a1fe293b2a0f31ccdc2aee030817218a24c59d9c68f2c48debdd93420a"
+    },
+    {
+      "path": "cloud/controlled-study/low/diagnostics.json",
+      "bytes": 262,
+      "sha256": "aa29deb98d3a0a9eef28f85d5d436787700f5737c12fca6ab5cfa796b426963a"
+    },
+    {
+      "path": "cloud/controlled-study/low/full-results.tar.gz",
+      "bytes": 1653272,
+      "sha256": "52061a0d604a2edda8f25b41c565523c628eb53f944466eac4f736dccb3ce050"
+    },
+    {
+      "path": "cloud/controlled-study/low/journal.sqlite.gz",
+      "bytes": 2672979,
+      "sha256": "975e1f935989a3f68f178a2285d21635bbfc0584fbd51abaa9a40c05c3012a2a"
+    },
+    {
+      "path": "cloud/controlled-study/low/manifest.json",
+      "bytes": 40558,
+      "sha256": "eb4a9489d80fb6e4914e13d04033c5460f225454b3ff1bfb6a59b374cfd6d907"
+    },
+    {
+      "path": "cloud/controlled-study/low/summary.json",
+      "bytes": 936,
+      "sha256": "1512120ce2a3c2dc05f8f66b22df796a95bae4ce74639df20c09c8020f582a75"
+    },
+    {
+      "path": "cloud/controlled-study/sequence-status.json",
+      "bytes": 1715,
+      "sha256": "629777513a3de4366b13605cadc9afc03d0041048a1495e16f59ea5a751e5644"
+    },
+    {
+      "path": "cloud/controlled-study/source-and-config.tar.gz",
+      "bytes": 1333667,
+      "sha256": "123e607ffa634cac1102ecfafbd30605deb5a6e77b1c3dad9724acf95c62a4c7"
+    },
+    {
+      "path": "cloud/download-verification.json",
+      "bytes": 4132,
+      "sha256": "132c25277b95fe049a2eefea49fd30a0311e9460a5845d767425f1ea38fb2bc2"
+    },
+    {
+      "path": "cloud/observed-state-20261025.json",
+      "bytes": 16760,
+      "sha256": "a96f0a70f2ce7135334eff96a517088d4a219a6ecf844ccd0abcbf9c3b0fece5"
+    },
+    {
+      "path": "cloud/operations-and-snapshots-20261025.json",
+      "bytes": 3443,
+      "sha256": "c25211bbe3fa1021a1e3896e60c4ef9ad5f91d223c6f13452c227cd0364f89ff"
+    },
+    {
+      "path": "cloud/original-600/etl-pause-state.json",
+      "bytes": 515,
+      "sha256": "f1dd95d5c667df21036c200cca1ecc73efdde55d7cfb84efc6d7fee8be5cf16f"
+    },
+    {
+      "path": "cloud/original-600/journal-manifest.json",
+      "bytes": 395,
+      "sha256": "d770b1b3c35f38bcbefda86c3d3656e8ca4edec1cc06aba29042072cf5bc58e8"
+    },
+    {
+      "path": "cloud/original-600/journal.sqlite.gz",
+      "bytes": 62676239,
+      "sha256": "78976e33d03fb500d0b3a1985a13937b591d15b763cc9c58b10a871139759f51"
+    },
+    {
+      "path": "inventory.json",
+      "bytes": 2967471,
+      "sha256": "ba35f2d85b0293e0e1bc9bae84a3405afe3dc7e765d97d602152203f15e4f694"
+    },
+    {
+      "path": "verification.json",
+      "bytes": 1636,
+      "sha256": "23ec66d4963da134852fc86bdff4e21001441ef7e7f00188499e0371896887a2"
+    }
+  ]
+}

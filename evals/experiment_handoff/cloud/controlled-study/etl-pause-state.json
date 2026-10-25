@@ -1,0 +1,13 @@
+{
+  "status": "RESUMED",
+  "namespace": "care-dev",
+  "cronjob": "care-etl",
+  "cronjob_uid": "f59a481e-79a5-42d8-a5ef-68cdef74b980",
+  "original_suspend": false,
+  "original_schedule": "0 5 * * *",
+  "experiment_job": "care-v3-diag-20261014",
+  "config_version": "4fb6e706bee99b6c2b5dec40db059d5ee88f53e8711647fbc44bcb79bd2323ec",
+  "paused_at": "2026-10-14T05:09:18.861811+00:00",
+  "restore_trigger": "matching sequence Job Complete=True; diagnostics failure keeps paused",
+  "resumed_at": "2026-10-15T10:34:09.592429+00:00"
+}

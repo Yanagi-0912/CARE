@@ -1,0 +1,414 @@
+{
+  "observed_at": "2026-10-25T13:30:02.750569+00:00",
+  "folders": [
+    {
+      "name": "healthnews-v3-batch-20261011",
+      "exists": true,
+      "files": []
+    },
+    {
+      "name": "healthnews-v3-live-batch-20261013",
+      "exists": true,
+      "files": [
+        {
+          "path": "healthnews-v3-live-batch-20261013/etl-pause-state.json",
+          "bytes": 515,
+          "sha256": "f1dd95d5c667df21036c200cca1ecc73efdde55d7cfb84efc6d7fee8be5cf16f",
+          "mtime": "2026-10-13T15:55:16.413312+00:00",
+          "record": {
+            "status": "RESUMED",
+            "namespace": "care-dev",
+            "cronjob": "care-etl",
+            "cronjob_uid": "f59a481e-79a5-42d8-a5ef-68cdef74b980",
+            "original_suspend": false,
+            "original_schedule": "0 5 * * *",
+            "experiment_job": "care-v3-live-batch-20261013",
+            "config_version": "2a5e1a21251f1ea8b7badb274e496f5421dd8096231a820dd1a33fcbb46854cb",
+            "paused_at": "2026-10-13T13:29:23.937070+00:00",
+            "restore_trigger": "matching Job Complete=True; not Failed or missing",
+            "resumed_at": "2026-10-13T15:55:16.413462+00:00"
+          }
+        },
+        {
+          "path": "healthnews-v3-live-batch-20261013/experiment/output/corpus_verification.json",
+          "bytes": 646,
+          "sha256": "744f30a1fe293b2a0f31ccdc2aee030817218a24c59d9c68f2c48debdd93420a",
+          "mtime": "2026-10-13T15:54:55.475255+00:00",
+          "record": {
+            "corpus_mode": "live_observed",
+            "status": "ENDPOINTS_MATCHED",
+            "continuous_immutability_proven": false,
+            "before": {
+              "new": {
+                "mongo_sha256": "d8ef95ecc0e5571fa625a2879536043ea85dbb355e5dc57cead218120326e9a7",
+                "pg_sha256": "a8828d17b54faf86df074e0c9706327c28a7fffab2bd6e8cdb6a2952c014d8b2",
+                "mongo_count": 18867,
+                "pg_count": 18867
+              }
+            },
+            "after": {
+              "new": {
+                "mongo_sha256": "d8ef95ecc0e5571fa625a2879536043ea85dbb355e5dc57cead218120326e9a7",
+                "pg_sha256": "a8828d17b54faf86df074e0c9706327c28a7fffab2bd6e8cdb6a2952c014d8b2",
+                "mongo_count": 18867,
+                "pg_count": 18867
+              }
+            }
+          }
+        },
+        {
+          "path": "healthnews-v3-live-batch-20261013/experiment/output/journal.sqlite",
+          "bytes": 209567744,
+          "sha256": "bc0f949e8a4b7f105b81d5582378bef6c5c6192e900869e2ce4e6298fffd62d1",
+          "mtime": "2026-10-13T15:54:08.751251+00:00",
+          "table_rows": {
+            "results": 600,
+            "jobs": 117,
+            "requests": 1248,
+            "receipts": 3234
+          },
+          "job_states": {
+            "JOB_STATE_SUCCEEDED": 117
+          }
+        },
+        {
+          "path": "healthnews-v3-live-batch-20261013/experiment/output/journal.sqlite-shm",
+          "bytes": 32768,
+          "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+          "mtime": "2026-10-25T13:26:47.871774+00:00"
+        },
+        {
+          "path": "healthnews-v3-live-batch-20261013/experiment/output/journal.sqlite-wal",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "mtime": "2026-10-13T19:02:01.315979+00:00"
+        },
+        {
+          "path": "healthnews-v3-live-batch-20261013/experiment/output/runs.jsonl",
+          "bytes": 138465184,
+          "sha256": "fb42bb0080b46110c5c53d783ed0af12f83e3484a1f5284e017613996306c53e",
+          "mtime": "2026-10-13T15:54:33.593641+00:00"
+        }
+      ]
+    },
+    {
+      "name": "healthnews-controlled-20261014",
+      "exists": true,
+      "files": [
+        {
+          "path": "healthnews-controlled-20261014/etl-pause-state.json",
+          "bytes": 529,
+          "sha256": "a754d9040ec84b38b05916781af2072db3effac3165af8d7107f050812e6beaa",
+          "mtime": "2026-10-15T10:34:09.592557+00:00",
+          "record": {
+            "status": "RESUMED",
+            "namespace": "care-dev",
+            "cronjob": "care-etl",
+            "cronjob_uid": "f59a481e-79a5-42d8-a5ef-68cdef74b980",
+            "original_suspend": false,
+            "original_schedule": "0 5 * * *",
+            "experiment_job": "care-v3-diag-20261014",
+            "config_version": "4fb6e706bee99b6c2b5dec40db059d5ee88f53e8711647fbc44bcb79bd2323ec",
+            "paused_at": "2026-10-14T05:09:18.861811+00:00",
+            "restore_trigger": "matching sequence Job Complete=True; diagnostics failure keeps paused",
+            "resumed_at": "2026-10-15T10:34:09.592429+00:00"
+          }
+        },
+        {
+          "path": "healthnews-controlled-20261014/study/controlled/output/corpus_verification.json",
+          "bytes": 646,
+          "sha256": "744f30a1fe293b2a0f31ccdc2aee030817218a24c59d9c68f2c48debdd93420a",
+          "mtime": "2026-10-15T10:33:34.062000+00:00",
+          "record": {
+            "corpus_mode": "live_observed",
+            "status": "ENDPOINTS_MATCHED",
+            "continuous_immutability_proven": false,
+            "before": {
+              "new": {
+                "mongo_sha256": "d8ef95ecc0e5571fa625a2879536043ea85dbb355e5dc57cead218120326e9a7",
+                "pg_sha256": "a8828d17b54faf86df074e0c9706327c28a7fffab2bd6e8cdb6a2952c014d8b2",
+                "mongo_count": 18867,
+                "pg_count": 18867
+              }
+            },
+            "after": {
+              "new": {
+                "mongo_sha256": "d8ef95ecc0e5571fa625a2879536043ea85dbb355e5dc57cead218120326e9a7",
+                "pg_sha256": "a8828d17b54faf86df074e0c9706327c28a7fffab2bd6e8cdb6a2952c014d8b2",
+                "mongo_count": 18867,
+                "pg_count": 18867
+              }
+            }
+          }
+        },
+        {
+          "path": "healthnews-controlled-20261014/study/controlled/output/diagnostics.json",
+          "bytes": 266,
+          "sha256": "ad96f9a6df830f30c5d763338d3c84f70eec3c359aadb95a8324817e4e20617f",
+          "mtime": "2026-10-15T10:33:09.878140+00:00",
+          "record": {
+            "samples": 995306,
+            "mean_lag_ms": 2.1662015318288494,
+            "max_lag_ms": 8024.191374052316,
+            "over_100ms": 619,
+            "interval_seconds": 0.1,
+            "blocking_result_exports": {
+              "count": 601,
+              "total_ms": 1710148.9223246463,
+              "max_ms": 7791.345371864736
+            }
+          }
+        },
+        {
+          "path": "healthnews-controlled-20261014/study/controlled/output/journal.sqlite",
+          "bytes": 277647360,
+          "sha256": "bd0a7e354e0cd4e333497f9fc98e5ace65819cc72d70fb693975132603848b03",
+          "mtime": "2026-10-15T10:33:35.214018+00:00",
+          "table_rows": {
+            "results": 600,
+            "jobs": 820,
+            "requests": 1458,
+            "receipts": 3882
+          },
+          "job_states": {
+            "JOB_STATE_SUCCEEDED": 820
+          }
+        },
+        {
+          "path": "healthnews-controlled-20261014/study/controlled/output/journal.sqlite-shm",
+          "bytes": 32768,
+          "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+          "mtime": "2026-10-25T13:26:47.886684+00:00"
+        },
+        {
+          "path": "healthnews-controlled-20261014/study/controlled/output/journal.sqlite-wal",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "mtime": "2026-10-15T10:33:37.267050+00:00"
+        },
+        {
+          "path": "healthnews-controlled-20261014/study/controlled/output/runs.jsonl",
+          "bytes": 183367317,
+          "sha256": "434fafe155869334d50e7f5f52e32addbfad2c8cc0f50edf0c3577691540719e",
+          "mtime": "2026-10-15T10:33:08.983607+00:00"
+        },
+        {
+          "path": "healthnews-controlled-20261014/study/higher/output/corpus_verification.json",
+          "bytes": 646,
+          "sha256": "744f30a1fe293b2a0f31ccdc2aee030817218a24c59d9c68f2c48debdd93420a",
+          "mtime": "2026-10-14T06:17:49.172765+00:00",
+          "record": {
+            "corpus_mode": "live_observed",
+            "status": "ENDPOINTS_MATCHED",
+            "continuous_immutability_proven": false,
+            "before": {
+              "new": {
+                "mongo_sha256": "d8ef95ecc0e5571fa625a2879536043ea85dbb355e5dc57cead218120326e9a7",
+                "pg_sha256": "a8828d17b54faf86df074e0c9706327c28a7fffab2bd6e8cdb6a2952c014d8b2",
+                "mongo_count": 18867,
+                "pg_count": 18867
+              }
+            },
+            "after": {
+              "new": {
+                "mongo_sha256": "d8ef95ecc0e5571fa625a2879536043ea85dbb355e5dc57cead218120326e9a7",
+                "pg_sha256": "a8828d17b54faf86df074e0c9706327c28a7fffab2bd6e8cdb6a2952c014d8b2",
+                "mongo_count": 18867,
+                "pg_count": 18867
+              }
+            }
+          }
+        },
+        {
+          "path": "healthnews-controlled-20261014/study/higher/output/diagnostics.json",
+          "bytes": 261,
+          "sha256": "48aa42c90d968098a8258095a519fe32fe8e3a09822aa24b37a81c994bf6af9a",
+          "mtime": "2026-10-14T06:17:29.340806+00:00",
+          "record": {
+            "samples": 8093,
+            "mean_lag_ms": 0.5352550597273822,
+            "max_lag_ms": 144.3882073275745,
+            "over_100ms": 3,
+            "interval_seconds": 0.1,
+            "blocking_result_exports": {
+              "count": 17,
+              "total_ms": 1270.129090640694,
+              "max_ms": 172.08622675389051
+            }
+          }
+        },
+        {
+          "path": "healthnews-controlled-20261014/study/higher/output/journal.sqlite",
+          "bytes": 8749056,
+          "sha256": "f1544bc9954aa290036f7f4cf40488027891d8ffdf63b6a8aab1d2642fe52ac9",
+          "mtime": "2026-10-14T06:17:49.203765+00:00",
+          "table_rows": {
+            "results": 16,
+            "jobs": 14,
+            "requests": 36,
+            "receipts": 120
+          },
+          "job_states": {
+            "JOB_STATE_SUCCEEDED": 14
+          }
+        },
+        {
+          "path": "healthnews-controlled-20261014/study/higher/output/journal.sqlite-shm",
+          "bytes": 32768,
+          "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+          "mtime": "2026-10-25T13:26:47.894093+00:00"
+        },
+        {
+          "path": "healthnews-controlled-20261014/study/higher/output/journal.sqlite-wal",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "mtime": "2026-10-14T06:17:49.265766+00:00"
+        },
+        {
+          "path": "healthnews-controlled-20261014/study/higher/output/runs.jsonl",
+          "bytes": 5732748,
+          "sha256": "004dff818db7c887744e8cc9cafdde458388f7cb05700e2d4c8fca944c45aad3",
+          "mtime": "2026-10-14T06:17:29.335454+00:00"
+        },
+        {
+          "path": "healthnews-controlled-20261014/study/low/output/corpus_verification.json",
+          "bytes": 646,
+          "sha256": "744f30a1fe293b2a0f31ccdc2aee030817218a24c59d9c68f2c48debdd93420a",
+          "mtime": "2026-10-14T06:03:35.066454+00:00",
+          "record": {
+            "corpus_mode": "live_observed",
+            "status": "ENDPOINTS_MATCHED",
+            "continuous_immutability_proven": false,
+            "before": {
+              "new": {
+                "mongo_sha256": "d8ef95ecc0e5571fa625a2879536043ea85dbb355e5dc57cead218120326e9a7",
+                "pg_sha256": "a8828d17b54faf86df074e0c9706327c28a7fffab2bd6e8cdb6a2952c014d8b2",
+                "mongo_count": 18867,
+                "pg_count": 18867
+              }
+            },
+            "after": {
+              "new": {
+                "mongo_sha256": "d8ef95ecc0e5571fa625a2879536043ea85dbb355e5dc57cead218120326e9a7",
+                "pg_sha256": "a8828d17b54faf86df074e0c9706327c28a7fffab2bd6e8cdb6a2952c014d8b2",
+                "mongo_count": 18867,
+                "pg_count": 18867
+              }
+            }
+          }
+        },
+        {
+          "path": "healthnews-controlled-20261014/study/low/output/diagnostics.json",
+          "bytes": 262,
+          "sha256": "aa29deb98d3a0a9eef28f85d5d436787700f5737c12fca6ab5cfa796b426963a",
+          "mtime": "2026-10-14T06:03:13.605346+00:00",
+          "record": {
+            "samples": 31122,
+            "mean_lag_ms": 0.4512999554209415,
+            "max_lag_ms": 427.1501517854631,
+            "over_100ms": 4,
+            "interval_seconds": 0.1,
+            "blocking_result_exports": {
+              "count": 17,
+              "total_ms": 1719.985174946487,
+              "max_ms": 471.41216369345784
+            }
+          }
+        },
+        {
+          "path": "healthnews-controlled-20261014/study/low/output/journal.sqlite",
+          "bytes": 9060352,
+          "sha256": "94ded059b827ae28ecdccf40710eaba3b167ce3a494981ca7ac599bcf716b513",
+          "mtime": "2026-10-14T06:03:35.096374+00:00",
+          "table_rows": {
+            "results": 16,
+            "jobs": 23,
+            "requests": 37,
+            "receipts": 124
+          },
+          "job_states": {
+            "JOB_STATE_SUCCEEDED": 23
+          }
+        },
+        {
+          "path": "healthnews-controlled-20261014/study/low/output/journal.sqlite-shm",
+          "bytes": 32768,
+          "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb",
+          "mtime": "2026-10-25T13:26:47.896039+00:00"
+        },
+        {
+          "path": "healthnews-controlled-20261014/study/low/output/journal.sqlite-wal",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "mtime": "2026-10-14T06:03:35.143374+00:00"
+        },
+        {
+          "path": "healthnews-controlled-20261014/study/low/output/runs.jsonl",
+          "bytes": 5880283,
+          "sha256": "cfd472f6d82c67a38b7334c056121d4c176caa2e10588f0cad687e1ee6bd17c5",
+          "mtime": "2026-10-14T06:03:13.599036+00:00"
+        },
+        {
+          "path": "healthnews-controlled-20261014/study/sequence-output/sequence-status.json",
+          "bytes": 1715,
+          "sha256": "629777513a3de4366b13605cadc9afc03d0041048a1495e16f59ea5a751e5644",
+          "mtime": "2026-10-15T10:33:39.675420+00:00",
+          "record": {
+            "status": "CONTROLLED_COMPLETED_WITH_INCIDENTS_QUALITY_EVALUATION_BLOCKED",
+            "plan_sha256": "4fb6e706bee99b6c2b5dec40db059d5ee88f53e8711647fbc44bcb79bd2323ec",
+            "config_versions": [
+              "365dc26525a14790eb505c7b6acfb396c22cd58420d6aba4a656c0ffbc501431",
+              "1416e78a185618a17b89a6129c1f25f20cbc21ed61719c6338c2651471fac36b",
+              "ab6ee10516cbb2898e638543db7bc74d528d97a383588790ad48f1fe4d7c4a3e"
+            ],
+            "stages": [
+              {
+                "config_version": "365dc26525a14790eb505c7b6acfb396c22cd58420d6aba4a656c0ffbc501431",
+                "study_role": "diagnostic",
+                "stable": true,
+                "completed": 16,
+                "expected": 16,
+                "runtime_error_events": 0,
+                "incident_runs": 0,
+                "kept_all_fail_codes": true
+              },
+              {
+                "config_version": "1416e78a185618a17b89a6129c1f25f20cbc21ed61719c6338c2651471fac36b",
+                "study_role": "diagnostic",
+                "stable": true,
+                "completed": 16,
+                "expected": 16,
+                "runtime_error_events": 0,
+                "incident_runs": 0,
+                "kept_all_fail_codes": true
+              },
+              {
+                "config_version": "ab6ee10516cbb2898e638543db7bc74d528d97a383588790ad48f1fe4d7c4a3e",
+                "study_role": "controlled_rerun",
+                "stable": false,
+                "completed": 600,
+                "expected": 600,
+                "runtime_error_events": 2,
+                "incident_runs": 2,
+                "kept_all_fail_codes": true
+              }
+            ],
+            "original_results_modified": false,
+            "no_failed_case_filtering": true,
+            "active_stage": "controlled/experiment.json",
+            "low_concurrency_gate": {
+              "stable": true,
+              "completed": 16,
+              "expected": 16,
+              "runtime_error_events": 0,
+              "incident_runs": 0,
+              "kept_all_fail_codes": true
+            },
+            "controlled_authorized_by_gate": true,
+            "answer_quality_review": "pending"
+          }
+        }
+      ]
+    }
+  ]
+}

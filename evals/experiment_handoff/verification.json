@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "checked_at_local": "2026-10-25",
+  "scope": "Eight local experiment directories for Healthnews and Agent tracing, plus the completed related cloud outputs and journals.",
+  "local_directories": 8,
+  "non_cache_source_files": 6765,
+  "unmapped_source_files": 0,
+  "python_cache_files_omitted": 250,
+  "cloud_download_sha256_matches": true,
+  "sqlite_integrity_checks_passed": 4,
+  "journal_result_exports_match": {
+    "original": 600,
+    "low": 16,
+    "higher": 16,
+    "controlled": 600
+  },
+  "new_answer_projections_verified": 632,
+  "stages": {
+    "low": {
+      "runs": 16,
+      "status_counts": {
+        "completed": 16
+      },
+      "review_status_counts": {
+        "pending": 16
+      }
+    },
+    "higher": {
+      "runs": 16,
+      "status_counts": {
+        "completed": 16
+      },
+      "review_status_counts": {
+        "pending": 16
+      }
+    },
+    "controlled": {
+      "runs": 600,
+      "status_counts": {
+        "completed": 598,
+        "completed_with_incidents": 2
+      },
+      "review_status_counts": {
+        "pending": 600
+      }
+    }
+  },
+  "frozen_source_static_preflights": "3 passed; 0 model requests",
+  "links": "PASS",
+  "credentials_scan": "Known credential values and credential-token patterns absent from published source artifacts and journals.",
+  "external_database_snapshots": "Retained on VM; paths, sizes, SHA-256 and manifest recorded separately.",
+  "quality_review": "pending; no clinical correctness claim",
+  "repository_checks": {
+    "command": "./init.sh",
+    "passed": 10054,
+    "skipped": 9,
+    "seconds": 56.79,
+    "exit_code": 0
+  }
+}

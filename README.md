@@ -114,6 +114,22 @@ npm run dev    # 啟動開發伺服器，預設網址 http://localhost:5173
 npm run test   # 執行前端測試
 ```
 
+### 管理員標記頁面
+
+admin 登入 CARE 網站後，可從側欄或手機首頁的「標記頁面」進入
+`/admin/annotations`，選擇「健康相關標註」（1,720 題）或「主張配對標註」
+（340 題），兩組各另有 20 題重測。協助標註的同學需使用自己的 admin 帳號登入。
+
+不需另外填姓名；後端以登入帳號辨識標註者、顯示既有姓名。選擇答案後先儲存，
+成功才換下一題；換裝置登入同一帳號可接續。每人答案獨立保存於 MongoDB 的
+`annotation_sessions`，不顯示原標籤或其他人的答案。相同帳號在多個視窗發生更新
+衝突時會要求重新載入，避免舊視窗覆蓋新答案。
+
+頁面可匯出自己的 JSON 結果，欄位相容既有的 `annotation_agreement.py`／
+`health_agreement.py`。原本離線 HTML 的進度仍在原瀏覽器中，不會自動匯入網站。
+題組與來源說明見 `resources/annotations/README.md`；所有題組、進度與匯出 API
+均位於 `/api/admin/annotations`，由後端驗證 admin 權限。
+
 ## 讓 LINE 訊息送到後端
 
 ### Webhook 網址

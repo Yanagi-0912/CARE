@@ -42,6 +42,7 @@ from app.services.line_messaging.flex.rag_answer_flex import (
     build_rag_answer_flex,
 )
 from app.services.line_messaging.flex.table_flex import build_table_flex_from_text
+from app.services.line_messaging.quick_reply import with_feature_guide
 from app.services.line_messaging.send_result import (
     SendOutcome,
     SendResult,
@@ -189,14 +190,13 @@ class LineReplier:
                         )
                     )
                 )
-            if quick_items and messages:
+            # 工具自帶的按鈕也要保留，並搬到最後一則：後面可能還有 followUpText。
+            for message in messages:
+                if message.quick_reply is not None:
+                    quick_items.extend(message.quick_reply.items or [])
+                message.quick_reply = None
+            if quick_items:
                 messages[-1].quick_reply = QuickReply(items=quick_items)
-            elif len(messages) > 1 and getattr(messages[0], "quick_reply", None):
-                # 工具自帶的 quickReply（電視新聞回問台別）原本掛在卡片上，但
-                # 卡片後面還會接 followUpText 與語音，而 LINE 只顯示**最後一則**
-                # 的 quickReply——不搬過去，按鈕就靜靜消失了。
-                messages[-1].quick_reply = messages[0].quick_reply
-                messages[0].quick_reply = None
 
         except Exception:
             # 組訊息就失敗（卡片、token）：使用者不能什麼都收不到。
@@ -204,6 +204,8 @@ class LineReplier:
             messages = [TextMessage(text=t("line.fallback_process_error", language=language))]
             tts_text = None
 
+        # 一般聊天也能直接點開導覽；後續語音會帶同一組，入口不會被音檔蓋掉。
+        messages[-1].quick_reply = with_feature_guide(messages[-1].quick_reply, language)
         ok, delivered = await self._reply_or_push_result(
             reply_token, user_id, messages, language=language
         )

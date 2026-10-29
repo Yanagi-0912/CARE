@@ -11,6 +11,8 @@ from linebot.v3.webhooks import (
 )
 
 from app.i18n.messages import t
+from app.core.user_language import SUPPORTED_LANGUAGES
+from app.services.line_messaging.feature_guide_intent import is_feature_guide_intent
 from app.services.line_messaging.handler.message_handler import LineMessageHandler
 from app.services.line_messaging.reply.reply import LineReplier
 from tests.conftest import fake_line_token_manager
@@ -96,6 +98,96 @@ def _tool_flex_json(**extra) -> str:
 
 def _sent_messages(messaging_api) -> list:
     return messaging_api.reply_message.call_args[0][0].messages
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("language", SUPPORTED_LANGUAGES)
+@pytest.mark.parametrize("voice_reply_enabled", [False, True])
+async def test_chat_reply_has_a_localized_guide_button_that_survives_audio(
+    language, voice_reply_enabled
+):
+    replier = LineReplier(fake_line_token_manager("token"), FakeTTSService())
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        message_text="回答",
+        user_id="U1",
+        voice_reply_enabled=voice_reply_enabled,
+        language=language,
+    )
+
+    assert ok
+    quick_reply = _sent_messages(messaging_api)[-1].quick_reply
+    action = quick_reply.items[-1].action
+    assert action.type == "message"
+    assert action.label == action.text == t("welcome.quick.guide", language)
+    assert 0 < len(action.label) <= 20
+    assert is_feature_guide_intent(action.text)
+    if voice_reply_enabled:
+        assert _pushed_audio(messaging_api).quick_reply.to_dict() == quick_reply.to_dict()
+
+
+@pytest.mark.asyncio
+async def test_guide_preserves_tool_location_and_lost_buttons_on_the_last_reply(replier):
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        user_id="U1",
+        message_text=_tool_flex_json(
+            followUpText="這則新聞是哪一台？",
+            quickReply={"items": [{"action": {
+                "type": "message", "label": "民視", "text": "這則新聞是民視",
+            }}]},
+        ),
+        request_location=True,
+        lost_help_postback="action=lost_confirm",
+        voice_reply_enabled=False,
+    )
+
+    assert ok
+    messages = _sent_messages(messaging_api)
+    assert messages[0].quick_reply is None
+    items = messages[-1].quick_reply.items
+    assert [item.action.type for item in items] == ["location", "postback", "message", "message"]
+    assert items[2].action.text == "這則新聞是民視"
+    assert items[3].action.text == "功能說明"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("count", [12, 13])
+async def test_guide_does_not_exceed_lines_quick_reply_limit(replier, count):
+    existing = [{"action": {"type": "message", "label": str(i), "text": str(i)}}
+                for i in range(count)]
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        user_id="U1",
+        message_text=_tool_flex_json(quickReply={"items": existing}),
+        voice_reply_enabled=False,
+    )
+
+    assert ok
+    actions = [item.action for item in _sent_messages(messaging_api)[-1].quick_reply.items]
+    assert len(actions) == 13
+    assert [action.text for action in actions[:count]] == [str(i) for i in range(count)]
+    if count == 12:
+        assert actions[-1].text == "功能說明"
+
+
+@pytest.mark.asyncio
+async def test_an_existing_guide_button_is_not_duplicated(replier):
+    ok, messaging_api = await _send_reply(
+        replier,
+        reply_token="rt",
+        user_id="U1",
+        message_text=_tool_flex_json(quickReply={"items": [{"action": {
+            "type": "message", "label": "功能說明", "text": "功能說明",
+        }}]}),
+        voice_reply_enabled=False,
+    )
+
+    assert ok
+    assert len(_sent_messages(messaging_api)[-1].quick_reply.items) == 1
 
 
 @pytest.mark.asyncio
@@ -241,7 +333,7 @@ async def test_reply_adds_lost_button_after_location_button():
 
     assert ok is True
     items = messaging_api.reply_message.call_args[0][0].messages[-1].quick_reply.items
-    assert [item.action.type for item in items] == ["location", "postback"]
+    assert [item.action.type for item in items] == ["location", "postback", "message"]
     assert items[1].action.label == t("lost.help.quick_reply", "en")
     assert items[1].action.data == "action=lost_confirm&w=I cannot find the road"
     assert items[1].action.display_text == t("lost.help.display", "en")

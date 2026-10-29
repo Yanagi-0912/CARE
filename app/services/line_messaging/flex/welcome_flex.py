@@ -31,6 +31,7 @@ from linebot.v3.messaging import (
 )
 
 from app.i18n import t
+from app.services.line_messaging.quick_reply import with_feature_guide
 from app.services.line_messaging.rich_menu_layout import liff_uri
 from resources.flex_messages import theme
 
@@ -111,7 +112,7 @@ def build_welcome_flex(
     return FlexMessage(
         altText=title,
         contents=FlexContainer.from_dict(carousel),
-        quickReply=quick_reply,
+        quickReply=with_feature_guide(quick_reply, language),
     )
 
 

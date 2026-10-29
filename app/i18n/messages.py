@@ -4533,12 +4533,12 @@ _MESSAGES: dict[str, dict[str, str]] = {
     },
     # 引號裡的字要被 feature_guide_intent 認得（測試會檢查）。
     "welcome.recall_hint": {
-        "zh-TW": "想再看一次這份說明，傳「功能說明」給我。",
-        "en": "To see this guide again, send me “features”.",
-        "id": "Untuk melihat panduan ini lagi, kirim “fitur”.",
-        "vi": "Muốn xem lại hướng dẫn này, hãy gửi “tính năng”.",
-        "th": "อยากดูคำแนะนำนี้อีกครั้ง ส่งคำว่า “ฟีเจอร์” มาได้เลย",
-        "ja": "この案内をもう一度見たいときは「機能一覧」と送ってください。",
+        "zh-TW": "想再看一次，點下方「功能說明」。",
+        "en": "To see this guide again, tap “Features” below.",
+        "id": "Untuk melihat panduan ini lagi, ketuk “Fitur” di bawah.",
+        "vi": "Muốn xem lại hướng dẫn này, chạm “Tính năng” bên dưới.",
+        "th": "หากต้องการดูคำแนะนำอีกครั้ง แตะ “ฟีเจอร์” ด้านล่าง",
+        "ja": "もう一度見るには、下の「機能一覧」をタップしてください。",
     },
     "welcome.disclaimer": {
         "zh-TW": "CARE 提供衛教資訊，不能取代醫師診斷。緊急狀況請撥 119。",
@@ -4588,6 +4588,14 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "vi": "Chạm vào video để xem toàn màn hình. Đây là minh họa; câu trả lời thật sẽ tùy câu hỏi của bạn.",
         "th": "แตะวิดีโอเพื่อดูเต็มจอ นี่เป็นตัวอย่าง คำตอบจริงจะต่างไปตามคำถามของคุณ",
         "ja": "動画をタップすると全画面で再生します。これは例で、実際の回答は質問によって変わります。",
+    },
+    "welcome.quick.guide": {
+        "zh-TW": "功能說明",
+        "en": "Features",
+        "id": "Fitur",
+        "vi": "Tính năng",
+        "th": "ฟีเจอร์",
+        "ja": "機能一覧",
     },
     "welcome.quick.camera": {
         "zh-TW": "拍照",

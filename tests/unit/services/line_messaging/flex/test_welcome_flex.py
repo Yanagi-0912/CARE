@@ -145,11 +145,13 @@ def test_actions_carry_no_label():
 
 
 @pytest.mark.parametrize("language", SUPPORTED_LANGUAGES)
-def test_quick_reply_opens_camera_and_camera_roll(language):
+def test_quick_reply_opens_camera_camera_roll_and_feature_guide(language):
     items = build_welcome_flex(LIFF, language=language).to_dict()["quickReply"]["items"]
     actions = [item["action"] for item in items]
 
-    assert [a["type"] for a in actions] == ["camera", "cameraRoll"]
+    assert [a["type"] for a in actions] == ["camera", "cameraRoll", "message"]
+    assert actions[-1]["text"] == t("welcome.quick.guide", language)
+    assert is_feature_guide_intent(actions[-1]["text"])
     # LINE 快速回覆的 label 必填，上限 20 字。
     assert all(0 < len(a["label"]) <= 20 for a in actions)
 
@@ -160,6 +162,7 @@ def test_recall_hint_names_a_phrase_that_brings_the_card_back(language):
     quoted = re.findall(r"[「“](.+?)[」”]", hint)
 
     assert len(quoted) == 1
+    assert quoted[0] == t("welcome.quick.guide", language)
     assert is_feature_guide_intent(quoted[0])
 
 

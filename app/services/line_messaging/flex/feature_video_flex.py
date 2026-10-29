@@ -14,6 +14,7 @@ from linebot.v3.messaging import FlexContainer, FlexMessage
 
 from app.i18n import t
 from app.services.line_messaging import feature_videos
+from app.services.line_messaging.quick_reply import with_feature_guide
 from resources.flex_messages import theme
 
 
@@ -72,4 +73,8 @@ def build_feature_video_flex(
             ],
         },
     }
-    return FlexMessage(altText=title, contents=FlexContainer.from_dict(bubble))
+    return FlexMessage(
+        altText=title,
+        contents=FlexContainer.from_dict(bubble),
+        quickReply=with_feature_guide(language=language),
+    )

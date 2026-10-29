@@ -3,6 +3,7 @@ import pytest
 from app.core.user_language import SUPPORTED_LANGUAGES
 from app.i18n import t
 from app.services.line_messaging import feature_videos
+from app.services.line_messaging.feature_guide_intent import is_feature_guide_intent
 from app.services.line_messaging.flex.feature_video_flex import build_feature_video_flex
 from resources.flex_messages.theme import _SIZE_SCALE
 
@@ -50,6 +51,10 @@ def test_title_names_the_page_in_the_users_language(language):
     assert texts[0] == msg.alt_text
     assert t("welcome.section.resources.title", language) in texts[0]
     assert texts[1] == t("feature_video.hint", language)
+    # 看完影片後能直接叫回導覽、換看其他功能，不必手動打字。
+    action = msg.quick_reply.items[0].action
+    assert action.label == action.text == t("welcome.quick.guide", language)
+    assert is_feature_guide_intent(action.text)
 
 
 @pytest.mark.parametrize("font_size", ["normal", "large", "xlarge"])

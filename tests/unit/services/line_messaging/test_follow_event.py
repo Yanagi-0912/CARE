@@ -1,7 +1,14 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from linebot.v3.webhooks import DeliveryContext, FollowDetail, FollowEvent, UserSource
+from linebot.v3.webhooks import (
+    DeliveryContext,
+    FollowDetail,
+    FollowEvent,
+    MessageEvent,
+    TextMessageContent,
+    UserSource,
+)
 
 from app.i18n import t
 from app.services.line_messaging.dispatcher.dispatcher import LineEventDispatcher
@@ -78,7 +85,7 @@ async def test_returning_user_gets_card_in_their_saved_settings():
     await dispatcher.handle(_follow_event(unblocked=True))
 
     card = _sent_card(replier)
-    header = card.to_dict()["contents"]["header"]["contents"][0]
+    header = card.to_dict()["contents"]["contents"][0]["header"]["contents"][0]
     assert card.alt_text == t("welcome.title", "en")
     assert header["size"] == _SIZE_SCALE["heading"]["xlarge"]
     language_service.get_language.assert_not_called()
@@ -92,3 +99,46 @@ async def test_failure_never_sends_the_generic_error_text():
     await dispatcher.handle(_follow_event())
 
     replier.reply.assert_not_awaited()
+
+
+# --- 傳「功能說明」叫回同一張卡 ---------------------------------------------
+
+
+def _text_event(text: str, *, user_id: str = "U_NEW") -> MessageEvent:
+    return MessageEvent(
+        timestamp=1000,
+        mode="active",
+        webhookEventId="01HZTEST000000000000000002",
+        deliveryContext=DeliveryContext(isRedelivery=False),
+        replyToken="text_token",
+        source=UserSource(type="user", userId=user_id),
+        message=TextMessageContent(id="M1", text=text, quoteToken="q"),
+    )
+
+
+@pytest.mark.asyncio
+async def test_feature_guide_phrase_replies_with_the_welcome_card():
+    profile = {"settings": {"language": "en", "font_size": "large"}}
+    dispatcher, _, replier, _ = _dispatcher(profile=profile)
+    message_handler = dispatcher._message_handler
+    message_handler.handle = AsyncMock()
+
+    await dispatcher.handle(_text_event("功能說明"))
+
+    replier.reply_flex.assert_awaited_once()
+    kwargs = replier.reply_flex.await_args.kwargs
+    assert kwargs["reply_token"] == "text_token"
+    assert kwargs["flex_message"].alt_text == t("welcome.title", "en")
+    message_handler.handle.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_other_text_still_goes_to_the_message_handler():
+    dispatcher, _, replier, _ = _dispatcher()
+    message_handler = dispatcher._message_handler
+    message_handler.handle = AsyncMock()
+
+    await dispatcher.handle(_text_event("怎麼用？"))
+
+    message_handler.handle.assert_awaited_once()
+    replier.reply_flex.assert_not_awaited()

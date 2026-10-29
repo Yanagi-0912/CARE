@@ -250,4 +250,13 @@ scripts/e2e_curls.generated.sh
 
 # 句向量模型（135 MB）。由 scripts/fetch_text_encoder.py 下載，Dockerfile 在
 # build 時取得——不進 git：二進位大檔會讓每次更版都在歷史裡留一份完整副本。
-models/
+/models/
+
+# Local runtime session file
+/:memory:.ses
+
+# Finder duplicate copies of already versioned pharmacy imports
+/resources/pharmacy_branches 2.json
+/resources/pharmacy_source_supplements/watsons_official_promotion_20261016 2.json
+/scripts/sync_pharmacy_branches 2.py
+/tests/unit/resources/test_pharmacy_branch_import 2.py

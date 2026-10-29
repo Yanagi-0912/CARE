@@ -1110,6 +1110,7 @@ _line_event_handler = LineEventHandler(
     appointment_service=_appointment_service,
     line_language_service=_line_language_service,
     liff_url=settings.LIFF_URL,
+    public_base_url=settings.PUBLIC_BASE_URL,
     clinic_recording_flow=_clinic_recording_flow,
 )
 

@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "kb_snapshot_date": "2026-10-29",
+  "base_rows": 500,
+  "base_categories": {
+    "single_need": 200,
+    "true_compound": 300
+  },
+  "variant_rows": 500,
+  "variant_types": {
+    "colloquial": 125,
+    "taigi": 125,
+    "stt_typo": 125,
+    "no_punct": 125
+  },
+  "split_seed": "care-compound-20261029-v1",
+  "split_unit": "base_and_its_variant",
+  "split_rows": {
+    "train": 800,
+    "holdout": 200
+  },
+  "base_route_patterns": {
+    "kb": 148,
+    "kb+kb": 86,
+    "web+web": 59,
+    "kb+web": 61,
+    "kb+web+kb": 5,
+    "web": 52,
+    "web+kb": 55,
+    "kb+kb+kb": 11,
+    "kb+web+web": 4,
+    "web+web+kb": 4,
+    "web+kb+kb": 3,
+    "web+kb+web": 6,
+    "web+web+web": 4,
+    "kb+kb+web": 2
+  },
+  "candidate_review_status": {
+    "accepted": 511,
+    "needs_revision": 44,
+    "rejected": 17
+  },
+  "not_reviewed_reserve_candidates": 4,
+  "annotation_models": "Claude prior-session drafts/partial labels; Codex continuation labels and independent agent review",
+  "human_clinical_review": false,
+  "source_artifact_sha256": {
+    "B_label/blind_W1a.jsonl": "545af04f8e209c8a8aa22ae0678a55fee099c8ea09e6f4e9ffbf02c90b336fc3",
+    "B_label/blind_W1b.jsonl": "5855019bebc8bdceea1e018a4db8e53e41cadc4cc8d6b043a87be4c05bc210ff",
+    "B_label/blind_W2a.jsonl": "b43fc801bc18e93295f38e9a750fce2cc3587a4a43fbb77fb8b21a4f51cf2b8f",
+    "B_label/blind_W2b.jsonl": "261352c0ffe3537340b0ccbd8be5f104208ad8ba70c4d1a0b84b3819980bf0f5",
+    "B_label/blind_W3a.jsonl": "19f182209faa15128b2660768cd7bc096216c5dea9833e02dd0b7cb69a883e42",
+    "B_label/blind_W3b.jsonl": "778c901fc6f2ea0ae16fa1c3a021dac2f3a7f0e2fc081722c2ab713818afe2ed",
+    "B_label/blind_W4a.jsonl": "221c152a270cf39346f8f7088a8f9e314fee62755b213f93508e551d5979d22e",
+    "B_label/blind_W4b.jsonl": "d692b789890bf45c815141fa2967f1e18f5cfe7fe7e2703bb07c91b813a8dfab",
+    "B_label/blind_W4c_by_root.jsonl": "cc985e97bee3c760daad66d2f14b04d314958ed1b2f5304c6a8a6a22aeb3c4f0",
+    "B_label/blind_W4c_by_writer3.jsonl": "03375d5b0d7abcff4071791de3b450d27c0e96d76e763ede85762814bfb256b2",
+    "B_label/blind_W4d_by_writer2.jsonl": "5a0f1516eef1ef058e61e8da845b9dd1ca7134a1750630090243183b91327f13",
+    "B_label/golden_part1.jsonl": "a468628d671bac2717a581a51981c3a3f36db3ed4ee86afabb672f1e6451ba17",
+    "B_label/golden_part2.jsonl": "fa80070646b5d506100f4a4e207cebc6441096749a92a2fefaa53cb38ff92236",
+    "B_label/golden_supplement.jsonl": "3cdeaaebc65d727ddd172722c127d9bdb68e3233d154043470b7b253a6d09c5a",
+    "C_review/reviewed_by_root.jsonl": "dc798ff4aa4a6e41388a320687a5f1b5d2a508b6ea711ed42d07c89cc99278a8",
+    "C_review/root_golden_and_w4_reviewed_by_writer1.jsonl": "621e5c11e5e29415f936b8f2b81ab8d5f4a11314888c535296525a722ab9adb8",
+    "C_review/writer1_reviewed_by_writer3.jsonl": "6d46e36d6cd01e7a09874da752c6a8532f19e121a65ab22d4f6752bcac9e8e24",
+    "C_review/writer2_rest_reviewed_by_writer3.jsonl": "d743a76e2e26232f90c42d7b7e79c7d31fc223ce7fafcfb98e221ee90fedd2af",
+    "C_review/writer3_reviewed_by_writer2.jsonl": "cd8e65f9c52ec3797460f24cc779d3e0a8c0443e7ff98fbd3987bc056377ba83",
+    "C_review/writer4_rest_reviewed_by_writer1.jsonl": "d4a72919f77b432fbd7afdbecbfef13102059721935af275fe6631d937376832",
+    "C_review/writer4_supplement_reviewed_by_writer1.jsonl": "c72930c17c3e19120fa9449110c6a851df1e88392777235477f69f9323f53ff5"
+  },
+  "export_sha256": {
+    "README.md": "6cb35b74c25e46cc280d0705e05b9de8ea23b626017c4523bbb0614da713c46b",
+    "audit/LABEL_PROMPT.md": "ecd5c7046dab3695da0c48bb0d429652232f2c0d4204bfad65ef2f35dddea56a",
+    "audit/SPEC.md": "ada17430cd06c9cd53025d14ccc72685caa813db9684db2556982d74a710dc4e",
+    "audit/annotation_provenance.jsonl": "cbad1b683774479e440d81685ae64d0cd498c57265a6ee212fac507088dcd4c7",
+    "audit/assembly_exclusions.json": "beb770c1dee030e53704a775d7b44a92dd7e48f1e1fe9f65fd8d3ce401540cfa",
+    "audit/candidate_decisions.jsonl": "ebedbfb53b7fc68719f39fc9fc47deaf4c82a00bf88d8db433a86cd09e8915b6",
+    "audit/colloquial_independent_review.jsonl": "f5206a40672559db72576ecd13979978e41b09f454e34f02f82d59cc9a5a20cb",
+    "audit/expected_articles.jsonl": "738c2e17d8138a682332435d11bd8d6d7801d79e8f6cb62872f0305debde7bc3",
+    "audit/kb_snapshot_manifest.json": "a124306d6df5219a55b330a18a785e4be7496764170466198f71e69707001418",
+    "audit/late_review_corrections.jsonl": "e84615977275f96fedd2adedf2664302b93f909f0493e3009fc3a2359e439957",
+    "audit/near_duplicate_candidates.json": "7e2ec8b420b896101524f36b3030c2155df405f3e846b37da381e4a6560e1e83",
+    "audit/near_duplicate_review.json": "1cbbeeb1de1bd05804c17c317d2903f47e22e9cedbc7310090def1644e2f8a09",
+    "audit/no_punct_review.jsonl": "a066c75fa69b0a27114fc2445ce57ebd8c1ef73faf7b7a5f84ba159f1af4e1a5",
+    "audit/validation_report.json": "aa7e6006f7a7438b2f75bc03ead1726512daf4fbf14100dbb36723cc0dbf1d33",
+    "audit/variant_corrections.jsonl": "c39453f549d98387369e110db1147a6cd7de51392b7cfcb8e6ef7ff4b8a34058",
+    "audit/variant_spot_review.jsonl": "9d91a2b97a61ba9bbf847b61e2952e8d2678c1f5f73335369ccb525e1c577d25",
+    "golden.jsonl": "e31bc52da8bc122033a00647a9848a2d69f5e972bd38a675fed37b7481d56310",
+    "validate.py": "86d5086957789b285700bbe4d652784bd7a815abb070aa2239255ebd5022710e"
+  }
+}

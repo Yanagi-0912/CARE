@@ -82,8 +82,11 @@ from app.routers.users.appointments import router as appointments_router
 from app.routers.users.lost import router as lost_router
 from app.routers.users.clinic_transcripts import router as clinic_transcripts_router
 from app.routers.admin.knowledge_reports import router as admin_knowledge_reports_router
+from app.routers.admin.annotations import router as admin_annotations_router
 from app.routers.tts.tts import router as tts_router
 from app.routers.drug_appearance.images import router as drug_appearance_router
+from app.routers.feature_videos import router as feature_videos_router
+from app.services.line_messaging import feature_videos
 
 configure_logging()
 
@@ -354,6 +357,11 @@ app.include_router(
     prefix="/api/admin/knowledge-reports",
     tags=["Knowledge Reports Admin"],
 )
+app.include_router(
+    admin_annotations_router,
+    prefix="/api/admin/annotations",
+    tags=["Annotations Admin"],
+)
 # 正式環境的 /tts 由 ingress 導到 care-tts（app/tts_main.py），音檔存在它的 PVC；這裡的
 # 掛載給沒設 TTS_SERVICE_URL、backend 自己合成的本機開發用。
 app.include_router(tts_router, prefix="/tts")
@@ -365,3 +373,5 @@ app.include_router(
     drug_appearance_router,
     prefix="/" + settings.DRUG_APPEARANCE_IMAGE_URL_PATH.strip("/"),
 )
+# 前綴同樣讀共用常數：flex/feature_video_flex.py 組影片網址用的是同一個值。
+app.include_router(feature_videos_router, prefix=feature_videos.URL_PATH)

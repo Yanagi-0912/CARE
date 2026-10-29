@@ -1,0 +1,16 @@
+{
+  "reviewer": "root",
+  "status": "accepted",
+  "base_rows_checked": 500,
+  "normalized_exact_duplicates": 0,
+  "candidate_pairs": 54,
+  "candidate_trigram_jaccard_threshold": 0.08,
+  "max_sequence_ratio": 0.526,
+  "candidate_file_sha256": "7e2ec8b420b896101524f36b3030c2155df405f3e846b37da381e4a6560e1e83",
+  "notes": "主代理逐對閱讀54組原題。均保留：同一句型但疾病/藥物不同、局部需求共通但整體資訊需求組合不同，或影響回答的時序/年齡不同。此為字面候選抽篩與需求比對，不宣稱疾病或來源完全不重疊。",
+  "specific_cases": {
+    "W3-064/W4-052": "坐月子飲水/洗頭/咖啡，與產後三月仍擔心洗頭/咖啡有不同時序及追問集合",
+    "W1-049/W3-011": "共同夜尿與防跌，但一題問原因、一題問掛號科，資訊需求不完全相同",
+    "W3-092/W4-063": "共同家照壓力，但身障證明/補助與喘息年天數/申請是不同服務需求"
+  }
+}

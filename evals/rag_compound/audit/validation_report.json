@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "errors": [],
+  "rows": 1000,
+  "bases": 500,
+  "base_categories": {
+    "single_need": 200,
+    "true_compound": 300
+  },
+  "holdout_rows": 200,
+  "true_compound_non_two_question_marks": 152,
+  "single_need_multiple_question_marks": 195,
+  "numeric_token_changes_for_manual_review": [],
+  "kb_articles_checked": 7743
+}

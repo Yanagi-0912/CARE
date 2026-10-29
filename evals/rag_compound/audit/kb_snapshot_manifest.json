@@ -1,0 +1,18 @@
+{
+  "snapshot_date": "2026-10-29",
+  "articles": 7743,
+  "chunks": 18904,
+  "unchanged_copy": true,
+  "files": [
+    {
+      "path": "chunks.jsonl",
+      "bytes": 31864513,
+      "sha256": "af686850865cd4ef9d438f6e14660ab2cf3d00bb1ec3763aab5ab028c5e292b2"
+    },
+    {
+      "path": "index.pkl",
+      "bytes": 56263868,
+      "sha256": "0a1b118626b5ad37820e8592ff1b024923991c634a496f940cc1d362243e57ae"
+    }
+  ]
+}

@@ -1,0 +1,293 @@
+<!doctype html>
+<!--
+  操作示範影片的模擬聊天室（scripts/feature_videos/render_feature_videos.py 用）。
+
+  不是真的 LINE 畫面，只畫出長輩認得出來的幾樣東西：上方標題、對話泡泡、
+  卡片、底下的快速回覆與輸入列。右上角固定標「示範畫面」。
+
+  劇本由 render 腳本注入 window.SCENE，之後逐格呼叫 render(t)：每一格都從
+  時間 t 重新算出畫面，不靠 CSS 動畫，所以截圖得到的每一格都是確定的。
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --brand: #2E7D32;
+    --brand-tint: #EDF5EE;
+    --text: #111111;
+    --muted: #555555;
+    --faint: #777777;
+    --neutral: #ECEFEC;
+    --chat-bg: #8EA9CF;
+    --user-bubble: #9EE58F;
+    --done: #757575;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 360px; height: 540px; overflow: hidden; background: var(--chat-bg); }
+  body {
+    font-family: -apple-system, "PingFang TC", "Hiragino Sans", "Hiragino Sans GB", "Thonburi", sans-serif;
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  #phone { position: relative; width: 360px; height: 540px; display: flex; flex-direction: column; }
+
+  #header {
+    height: 46px; flex: none; background: #F7F8FA; border-bottom: 1px solid #D9DDE3;
+    display: flex; align-items: center; padding: 0 12px; position: relative;
+  }
+  #header .back { font-size: 26px; color: #333; width: 28px; line-height: 1; }
+  #header .name { font-size: 16px; font-weight: 700; }
+  #header .demo {
+    position: absolute; right: 10px; top: 12px; font-size: 11px; color: #fff;
+    background: #E65100; border-radius: 10px; padding: 3px 8px; font-weight: 700;
+  }
+
+  #chat {
+    flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column;
+    justify-content: flex-end; gap: 10px; padding: 10px 10px 12px;
+  }
+  .row { display: flex; align-items: flex-start; gap: 6px; }
+  .row.user { justify-content: flex-end; }
+  .avatar {
+    flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--brand);
+    color: #fff; font-weight: 800; font-size: 16px; display: flex; align-items: center; justify-content: center;
+  }
+  .bubble {
+    max-width: 252px; padding: 9px 12px; border-radius: 16px; font-size: 14px; line-height: 1.45;
+    white-space: pre-wrap; word-break: break-word; background: #fff;
+  }
+  .row.user .bubble { background: var(--user-bubble); }
+  .bubble .sources { display: block; margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .loading { display: flex; gap: 5px; padding: 13px 14px; }
+  .loading .dot { width: 7px; height: 7px; border-radius: 50%; background: #9AA3AE; display: block; }
+
+  .card { width: 252px; border-radius: 14px; overflow: hidden; background: #fff; }
+  .card .head { background: var(--brand); color: #fff; font-weight: 700; font-size: 15px; padding: 11px 14px; line-height: 1.35; }
+  .card .head.done { background: var(--done); }
+  .card .body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 9px; }
+  .card .lead { font-size: 13.5px; line-height: 1.45; }
+  .card .caption { font-size: 12px; color: var(--muted); line-height: 1.4; }
+  .card .strong { font-size: 14px; font-weight: 700; }
+  .fbtn {
+    border-radius: 9px; padding: 10px 8px; text-align: center; font-weight: 700; font-size: 13.5px;
+    line-height: 1.3; background: var(--neutral); color: var(--text);
+  }
+  .fbtn.primary { background: var(--brand); color: #fff; }
+  .fbtn.outline { background: #fff; color: var(--brand); border: 1.5px solid var(--brand); }
+  .fbtn.pressed { filter: brightness(0.82); }
+  .divider { height: 1px; background: #DDDDDD; }
+  .pill { display: flex; align-items: center; gap: 10px; background: var(--brand-tint); border-radius: 10px; padding: 8px 10px; }
+  .pill .tablet { width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 2px solid #C9D7CA; flex: none; }
+  .clinic { display: flex; flex-direction: column; gap: 2px; }
+  .clinic .meta { font-size: 12px; color: var(--muted); }
+  .clinic .open { color: var(--brand); font-weight: 700; }
+  .qr { width: 132px; height: 132px; margin: 2px auto; display: grid; grid-template-columns: repeat(21, 1fr); }
+  .qr i { display: block; }
+  .qr i.on { background: #111; }
+  .brandmark { color: var(--brand); font-weight: 800; font-size: 13px; letter-spacing: 1px; }
+
+  .photo { width: 150px; height: 190px; border-radius: 14px; overflow: hidden; background: #ddd; position: relative; }
+  .mapthumb { width: 190px; border-radius: 14px; overflow: hidden; background: #fff; }
+  .mapthumb .tiles { height: 96px; position: relative; }
+  .mapthumb .label { font-size: 13px; padding: 7px 10px; font-weight: 700; }
+
+  /* 藥袋插圖：拍照畫面與送出的照片共用，用 scale 縮放。 */
+  .bag {
+    width: 220px; height: 280px; background: #FBFBF7; border-radius: 6px; padding: 14px 14px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.35); font-size: 12px; color: #222; line-height: 1.6;
+    transform-origin: top left;
+  }
+  .bag .title { font-size: 20px; font-weight: 800; color: #1F5FAD; text-align: center; letter-spacing: 6px; margin-bottom: 6px; }
+  .bag .line { border-top: 1px dashed #999; margin: 6px 0; }
+  .bag .drug { font-weight: 700; font-size: 13px; }
+  .bag .clinicname { text-align: center; color: #1F5FAD; font-weight: 700; margin-top: 10px; }
+
+  .map { position: absolute; inset: 0; background-color: #EFEADF; overflow: hidden; }
+  .map .road { position: absolute; background: #fff; }
+  .map .park { position: absolute; background: #CFE6C2; border-radius: 6px; }
+  .map .pin { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -26px 0 0 -13px;
+    background: #E53935; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); }
+  .map .pin::after { content: ""; position: absolute; width: 10px; height: 10px; left: 8px; top: 8px; background: #fff; border-radius: 50%; }
+
+  #quick { flex: none; display: flex; gap: 8px; padding: 8px 10px; overflow: hidden; }
+  .chip {
+    flex: none; background: #fff; border: 1px solid #C8CDD3; border-radius: 18px; padding: 8px 14px;
+    font-size: 13.5px; font-weight: 600; color: #333; display: flex; align-items: center; gap: 6px;
+  }
+  .chip.pressed { background: #E6E9ED; }
+  .chip svg { width: 16px; height: 16px; }
+
+  #input {
+    flex: none; height: 50px; background: #fff; border-top: 1px solid #D9DDE3;
+    display: flex; align-items: center; gap: 10px; padding: 0 10px;
+  }
+  #input .icon { width: 24px; height: 24px; color: #555; flex: none; }
+  #field {
+    flex: 1; height: 34px; border-radius: 17px; background: #F1F2F4; padding: 0 12px;
+    display: flex; align-items: center; font-size: 14px; color: #999; white-space: nowrap; overflow: hidden;
+  }
+  #field.typing { color: var(--text); }
+  #field .caret { display: inline-block; width: 1.5px; height: 17px; background: #1E88E5; margin-left: 1px; }
+  #send { width: 30px; height: 30px; border-radius: 50%; background: #06C755; display: none; align-items: center; justify-content: center; flex: none; }
+  #send svg { width: 16px; height: 16px; }
+
+  /* 步驟說明佔固定高度、排在標題下面，不蓋住往上捲的對話。 */
+  #caption-bar {
+    flex: none; height: 64px; background: #1F2933; display: flex; align-items: center;
+    justify-content: center; padding: 0 14px;
+  }
+  #caption { color: #fff; font-size: 17px; font-weight: 700; line-height: 1.35; text-align: center; }
+
+  /* 相機與地圖從說明條下方開始，步驟說明在這兩個畫面上也看得到。 */
+  .overlay { position: absolute; left: 0; right: 0; top: 110px; bottom: 0; z-index: 10; display: none; }
+  #camera { background: #111; }
+  #camera .close { position: absolute; left: 16px; top: 6px; color: #fff; font-size: 24px; }
+  #camera .view { position: absolute; left: 0; right: 0; top: 40px; bottom: 100px; background: #3A3A3A; overflow: hidden; }
+  #camera .view .bag { position: absolute; left: 70px; top: 6px; transform: rotate(-3deg); }
+  #camera .shutter-wrap { position: absolute; left: 0; right: 0; bottom: 22px; display: flex; justify-content: center; }
+  #shutter { width: 64px; height: 64px; border-radius: 50%; background: #fff; border: 5px solid #9E9E9E; }
+  #shutter.pressed { background: #DDD; }
+  #flash { position: absolute; left: 0; right: 0; top: 110px; bottom: 0; background: #fff; z-index: 15; display: none; }
+  #maplayer { background: #fff; }
+  #maplayer .bar { height: 46px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; border-bottom: 1px solid #ddd; }
+  #maplayer .area { position: absolute; left: 0; right: 0; top: 46px; bottom: 96px; }
+  #maplayer .bottom { position: absolute; left: 0; right: 0; bottom: 0; height: 96px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  #maplayer .addr { font-size: 13px; color: var(--muted); }
+  #map-send { background: #06C755; color: #fff; text-align: center; font-weight: 700; font-size: 15px; border-radius: 10px; padding: 11px; }
+  #map-send.pressed { filter: brightness(0.85); }
+
+  #tap {
+    position: absolute; z-index: 30; border-radius: 50%; pointer-events: none; display: none;
+    background: rgba(255, 193, 7, 0.55); border: 3px solid rgba(255, 160, 0, 0.95);
+  }
+</style>
+</head>
+<body>
+<div id="phone">
+  <div id="header"><span class="back">‹</span><span class="name">CARE</span><span class="demo" id="demo-badge"></span></div>
+  <div id="caption-bar"><div id="caption"></div></div>
+  <div id="chat"></div>
+  <div id="quick"></div>
+  <div id="input">
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><circle cx="12" cy="13.5" r="3.5"/><path d="M8 7l2-3h4l2 3"/></svg>
+    <div id="field"><span id="field-text">Aa</span></div>
+    <div id="send"><svg viewBox="0 0 24 24" fill="#fff"><path d="M3 20l18-8L3 4v6l12 2-12 2z"/></svg></div>
+  </div>
+  <div class="overlay" id="camera">
+    <div class="close">×</div>
+    <div class="view" id="camera-view"></div>
+    <div class="shutter-wrap"><div id="shutter"></div></div>
+  </div>
+  <div class="overlay" id="maplayer">
+    <div class="bar" id="map-title"></div>
+    <div class="area"><div class="map" id="map-area"></div></div>
+    <div class="bottom"><div class="addr" id="map-addr"></div><div id="map-send"></div></div>
+  </div>
+  <div id="flash"></div>
+  <div id="tap"></div>
+</div>
+<script>
+const FADE = 0.25;
+
+function clamp01(x) { return Math.max(0, Math.min(1, x)); }
+function visibleAt(spec, t) { return t >= spec.in && (spec.out == null || t < spec.out); }
+
+function build() {
+  const s = window.SCENE;
+  document.documentElement.lang = s.html_lang;
+  document.getElementById("demo-badge").textContent = s.demo_badge;
+  document.getElementById("chat").innerHTML = s.items.map(i => i.html).join("");
+  document.getElementById("quick").innerHTML = (s.quick && s.quick.html) || "";
+  document.getElementById("camera-view").innerHTML = s.camera_html || "";
+  document.getElementById("map-title").textContent = s.map_title || "";
+  document.getElementById("map-addr").textContent = s.map_addr || "";
+  document.getElementById("map-send").textContent = s.map_send || "";
+  document.getElementById("map-area").innerHTML = s.map_html || "";
+}
+
+function render(t) {
+  const s = window.SCENE;
+
+  for (const item of s.items) {
+    const el = document.getElementById(item.id);
+    const on = visibleAt(item, t);
+    el.style.display = on ? "" : "none";
+    if (on) {
+      const p = clamp01((t - item.in) / FADE);
+      el.style.opacity = p;
+      el.style.transform = `translateY(${(1 - p) * 10}px)`;
+    }
+  }
+  document.querySelectorAll(".loading").forEach(el => {
+    el.querySelectorAll(".dot").forEach((d, i) => {
+      d.style.opacity = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin((t * 6) - i * 1.1));
+    });
+  });
+
+  const quick = document.getElementById("quick");
+  quick.style.display = s.quick && visibleAt(s.quick, t) ? "flex" : "none";
+
+  const caption = document.getElementById("caption");
+  const cap = (s.captions || []).find(c => visibleAt(c, t));
+  caption.style.visibility = cap ? "visible" : "hidden";
+  if (cap) {
+    caption.textContent = cap.text;
+    caption.style.opacity = clamp01((t - cap.in) / FADE) * clamp01(((cap.out ?? 1e9) - t) / FADE);
+  }
+
+  for (const o of s.overlays || []) {
+    const el = document.getElementById(o.id);
+    const on = visibleAt(o, t);
+    el.style.display = on ? "block" : "none";
+    if (on) el.style.opacity = clamp01((t - o.in) / 0.15) * clamp01(((o.out ?? 1e9) - t) / 0.15);
+  }
+
+  const field = document.getElementById("field");
+  const fieldText = document.getElementById("field-text");
+  const send = document.getElementById("send");
+  const ty = s.typing;
+  if (ty && t >= ty.start && t < ty.send_at + 0.1) {
+    const n = Math.round(ty.text.length * clamp01((t - ty.start) / (ty.end - ty.start)));
+    field.classList.add("typing");
+    fieldText.innerHTML = "";
+    fieldText.textContent = ty.text.slice(0, n);
+    const caret = document.createElement("span");
+    caret.className = "caret";
+    caret.style.opacity = (Math.floor(t * 2.5) % 2 === 0 || n < ty.text.length) ? 1 : 0;
+    fieldText.appendChild(caret);
+    send.style.display = n > 0 ? "flex" : "none";
+  } else {
+    field.classList.remove("typing");
+    fieldText.textContent = "Aa";
+    send.style.display = "none";
+  }
+
+  document.querySelectorAll(".pressed").forEach(el => el.classList.remove("pressed"));
+  const tap = document.getElementById("tap");
+  tap.style.display = "none";
+  for (const tp of s.taps || []) {
+    if (t < tp.at - 0.45 || t > tp.at + 0.5) continue;
+    const target = document.getElementById(tp.target);
+    if (!target || target.offsetParent === null && getComputedStyle(target).position !== "fixed") continue;
+    const r = target.getBoundingClientRect();
+    let size, alpha;
+    if (t < tp.at) {
+      const p = clamp01((t - (tp.at - 0.45)) / 0.45);
+      size = 64 - 26 * p; alpha = p;
+    } else {
+      const p = clamp01((t - tp.at) / 0.5);
+      size = 38 + 40 * p; alpha = 1 - p;
+      if (t < tp.at + 0.22) target.classList.add("pressed");
+    }
+    tap.style.display = "block";
+    tap.style.width = tap.style.height = size + "px";
+    tap.style.left = (r.left + r.width / 2 - size / 2) + "px";
+    tap.style.top = (r.top + r.height / 2 - size / 2) + "px";
+    tap.style.opacity = alpha;
+  }
+}
+</script>
+</body>
+</html>

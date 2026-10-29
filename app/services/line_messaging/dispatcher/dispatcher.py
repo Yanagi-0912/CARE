@@ -54,7 +54,13 @@ from app.services.line_messaging.flex.medication_report_flex import (
     UNDO_REPORT_ACTION,
     as_flex_message,
 )
-from app.services.line_messaging.flex.welcome_flex import build_welcome_flex
+from app.services.line_messaging.flex.feature_video_flex import build_feature_video_flex
+from app.services.line_messaging.flex.welcome_flex import (
+    FEATURE_VIDEO_ACTION,
+    build_welcome_flex,
+)
+from app.services.line_messaging import feature_videos
+from app.services.line_messaging.feature_guide_intent import is_feature_guide_intent
 from app.services.line_messaging.handler.message_handler import (
     LineMessageHandler,
     LineValidationError,
@@ -142,6 +148,7 @@ class LineEventDispatcher:
         appointment_service=None,
         line_language_service=None,
         liff_url: str = "",
+        public_base_url: str = "",
         set_following: Optional[SetFollowingFn] = None,
         clinic_recording_flow=None,
     ):
@@ -162,6 +169,9 @@ class LineEventDispatcher:
         # 語言；liff_url 為空時卡片省略填資料按鈕。
         self._line_language_service = line_language_service
         self._liff_url = liff_url
+        # 歡迎卡的示範影片要由 LINE 伺服器來抓，網址用這個組；空字串時卡片不放
+        # 「看操作示範」按鈕。
+        self._public_base_url = public_base_url
         self._set_following = set_following
         # 在聊天室錄看診的按鈕（開始、徵詢同意、取消）。未設定時只記 log。
         self._clinic_recording_flow = clinic_recording_flow
@@ -281,6 +291,9 @@ class LineEventDispatcher:
         message = event.message
 
         if isinstance(message, TextMessageContent):
+            if is_feature_guide_intent(message.text):
+                await self._reply_feature_guide(event, user_profile=user_profile)
+                return
             await self._message_handler.handle(event, user_profile=user_profile)
         elif isinstance(message, LocationMessageContent):
             await self._location_handler.handle(event)
@@ -360,6 +373,12 @@ class LineEventDispatcher:
 
         params = parse_qs(postback_data)
         action = params.get("action", [""])[0]
+
+        if action == FEATURE_VIDEO_ACTION:
+            await self._reply_feature_video(
+                reply_token, user_id, params.get("section", [""])[0], user_profile
+            )
+            return
 
         if action == "confirm_medication":
             log_id = params.get("log_id", [""])[0]
@@ -756,12 +775,57 @@ class LineEventDispatcher:
             await self._replier.reply_flex(
                 reply_token=event.reply_token,
                 flex_message=build_welcome_flex(
-                    self._liff_url, language=language, font_size=font_size
+                    self._liff_url,
+                    language=language,
+                    font_size=font_size,
+                    with_videos=bool(self._public_base_url),
                 ),
                 user_id=user_id,
             )
         except Exception:
             logger.exception("Failed to send welcome card")
+
+    async def _reply_feature_guide(
+        self, event: MessageEvent, *, user_profile: dict | None = None
+    ) -> None:
+        """傳「功能說明」時回同一張歡迎卡（理由見 feature_guide_intent）。
+
+        比照貼圖：不唸語音、不寫進對話紀錄，對話紀錄只帶最近五則進 agent。
+        """
+        user_id = getattr(event.source, "user_id", "")
+        language, font_size = await self._card_preferences(user_id, user_profile)
+        ok = await self._replier.reply_flex(
+            reply_token=event.reply_token,
+            flex_message=build_welcome_flex(
+                self._liff_url,
+                language=language,
+                font_size=font_size,
+                with_videos=bool(self._public_base_url),
+            ),
+            user_id=user_id,
+        )
+        log_stage(logger, "feature_guide", ok=ok)
+
+    async def _reply_feature_video(
+        self, reply_token: str, user_id: str, section: str, user_profile
+    ) -> None:
+        """歡迎卡某一頁的「看操作示範」：回那一頁的示範影片。"""
+        if not self._public_base_url or section not in feature_videos.SECTION_KEYS:
+            # 按鈕只在有 PUBLIC_BASE_URL 時才出現；走到這裡多半是舊卡片或被改過的 data。
+            logger.warning("feature_video postback 無法處理 section=%s", section)
+            return
+        language, font_size = await self._card_preferences(user_id, user_profile)
+        ok = await self._replier.reply_flex(
+            reply_token=reply_token,
+            flex_message=build_feature_video_flex(
+                section,
+                self._public_base_url,
+                language=language,
+                font_size=font_size,
+            ),
+            user_id=user_id,
+        )
+        log_stage(logger, "feature_video", section=section, ok=ok)
 
     async def _handle_UnfollowEvent(
         self, event: UnfollowEvent, *, user_profile: dict | None = None
@@ -790,6 +854,18 @@ class LineEventDispatcher:
                 "更新追蹤狀態失敗 user_id=%s following=%s", user_id[:10], following
             )
             return False
+
+    async def _card_preferences(self, user_id: str, user_profile) -> tuple[str, str]:
+        """歡迎卡與示範影片的語言、字級：有 profile 照設定，沒有就跟加好友時一樣問 LINE。
+
+        沒開過 LIFF 的新好友沒有 profile；只看 profile 會退回中文，跟他收到的
+        歡迎卡（照 LINE App 語言）對不上。
+        """
+        if user_profile is not None:
+            return self._language_from_profile(user_profile), self._font_size_from_profile(
+                user_profile
+            )
+        return await self._welcome_preferences(user_id)
 
     async def _welcome_preferences(self, user_id: str) -> tuple[str, str]:
         """歡迎卡的語言與字級。

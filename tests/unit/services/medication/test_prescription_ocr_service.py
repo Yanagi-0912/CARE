@@ -35,7 +35,9 @@ def _payload(**overrides):
             {
                 "name": "脈優錠5毫克",
                 "usage_raw": "TID PC",
+                "frequency_raw": "TID",
                 "frequency_code": "TID",
+                "total_quantity_raw": "共21錠",
                 "total_quantity": 21,
                 "indication": "高血壓",
             }
@@ -188,3 +190,120 @@ async def test_image_is_passed_through_to_the_model():
 
     assert gemini.calls[0]["image_bytes"] == b"raw-bytes"
     assert gemini.calls[0]["mime_type"] == "image/png"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("raw", "code", "expected"),
+    [
+        ("QD 每日一次", "OTHER", "QD"),
+        ("BID（每日二次）", None, "BID"),
+        ("TID PC", "OTHER", "TID"),
+        ("每日服用四次", "QID", "QID"),
+        ("每天兩次", "OTHER", "BID"),
+        ("需要時服用", "OTHER", "PRN"),
+        ("HS 睡前", "HS", "HS"),
+        ("ＱＤ　每日１次", "QD", "QD"),
+        (None, "QD", "OTHER"),
+        ("", "QD", "OTHER"),
+        ("每次1錠", "QD", "OTHER"),
+        ("每日一次", "BID", "OTHER"),
+        ("QD 每日二次", "QD", "OTHER"),
+        ("QD / BID", "OTHER", "OTHER"),
+        ("每8小時", "Q8H", "OTHER"),
+        ("每週一三五各一次", "QD", "OTHER"),
+        ("以前QD，改BID", "BID", "OTHER"),
+        ("非每日一次", "QD", "OTHER"),
+        ("QD?", "QD", "OTHER"),
+        ("每日三次", "Q8H", "OTHER"),
+    ],
+)
+async def test_frequency_requires_unambiguous_consistent_printed_evidence(raw, code, expected):
+    payload = _payload(drugs=[{
+        "name": "某藥", "frequency_raw": raw, "frequency_code": code,
+        "usage_raw": "每次1錠", "indication": "每日一次 早餐後",
+    }])
+
+    drug = (await _service(FakeGemini(payload)).recognize(b"image", "image/jpeg")).drugs[0]
+
+    assert drug.frequency_code == expected
+    assert drug.usage_raw == "每次1錠"
+
+
+@pytest.mark.asyncio
+async def test_no_evidence_does_not_invent_a_quantity_or_one_day_course():
+    payload = _payload(drugs=[{
+        "name": "某藥", "dose_per_time": "1錠", "frequency_code": "QD",
+        "frequency_raw": "QD 每日一次", "usage_raw": "每日一次，每次1錠",
+        "total_quantity": 1, "duration_days": 1,
+        "total_quantity_raw": None, "duration_days_raw": None,
+    }])
+
+    drug = (await _service(FakeGemini(payload)).recognize(b"image", "image/jpeg")).drugs[0]
+
+    assert drug.frequency_code == "QD"
+    assert drug.dose_per_time == "1錠"
+    assert drug.total_quantity is None
+    assert drug.duration_days is None
+
+
+@pytest.mark.asyncio
+async def test_frequency_transcription_remains_available_for_review_when_usage_is_missing():
+    payload = _payload(drugs=[{
+        "name": "某藥", "usage_raw": None, "frequency_raw": "BID 每日二次",
+        "frequency_code": "OTHER",
+    }])
+
+    drug = (await _service(FakeGemini(payload)).recognize(b"image", "image/jpeg")).drugs[0]
+
+    assert drug.frequency_code == "BID"
+    assert drug.usage_raw == "BID 每日二次"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("field", "value", "raw", "expected"),
+    [
+        ("total_quantity", 21, "共21錠", 21),
+        ("total_quantity", "３０", "總數量：３０ 顆", 30),
+        ("total_quantity", 30, "QTY: 30 tablets", 30),
+        ("total_quantity", 1, "每次1錠", None),
+        ("total_quantity", 1, "1錠", None),
+        ("total_quantity", 21, "共12錠", None),
+        ("duration_days", 5, "療程5天", 5),
+        ("duration_days", 7, "7日份", 7),
+        ("duration_days", "５", "給藥日數：５日", 5),
+        ("duration_days", 5.0, "5 days", 5),
+        ("duration_days", 1, "每日1次", None),
+        ("duration_days", 5, "療程3天", None),
+        ("duration_days", 0, "療程0天", None),
+        ("duration_days", -1, "療程1天", None),
+        ("duration_days", 5.9, "療程5天", None),
+        ("duration_days", True, "療程1天", None),
+        ("duration_days", float("inf"), "療程5天", None),
+        ("duration_days", "5.0", "療程5天", None),
+    ],
+)
+async def test_quantity_and_duration_need_matching_printed_context(field, value, raw, expected):
+    payload = _payload(drugs=[{
+        "name": "某藥", field: value, f"{field}_raw": raw,
+    }])
+
+    drug = (await _service(FakeGemini(payload)).recognize(b"image", "image/jpeg")).drugs[0]
+
+    assert getattr(drug, field) == expected
+
+
+@pytest.mark.asyncio
+async def test_does_not_calculate_course_from_quantity_and_frequency():
+    payload = _payload(drugs=[{
+        "name": "某藥", "dose_per_time": "1錠", "total_quantity": 21,
+        "total_quantity_raw": "共21錠", "frequency_code": "TID",
+        "frequency_raw": "TID", "duration_days": 7,
+    }])
+
+    drug = (await _service(FakeGemini(payload)).recognize(b"image", "image/jpeg")).drugs[0]
+
+    assert drug.total_quantity == 21
+    assert drug.frequency_code == "TID"
+    assert drug.duration_days is None

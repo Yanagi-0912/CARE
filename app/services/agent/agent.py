@@ -41,6 +41,7 @@ from app.tools.registry import get_all_tools
 logger = logging.getLogger(__name__)
 
 _RAG_TOOL_NAME = "get_rag_answer"
+_SYMPTOM_TOOL_NAME = "suggest_department_for_symptom"
 
 
 def _trailing_tool_messages(messages: list[AnyMessage]) -> list[ToolMessage]:
@@ -133,12 +134,16 @@ def _route_after_tools(state: State) -> str:
       只是問題的前提）就不直通，見 `_asked_more_than_the_list`。
     - `ask_about_my_medications` 與 `record_medication_taken` 回的同樣是成品
       （前者已經過 RAG 生成、時間那段是程式算的；後者是資料庫的確認結果）。
+    - 科別建議工具回的卡片或人物釐清文字也已完成，直接送出。2026-10-29
+      線上卡片產生後又問模型收尾，Gemini 504 重試讓使用者等了 67 秒後只收到錯誤。
     - 其餘工具（附近院所、查核卡）本來就有自己的直通路徑，不經過這裡。
 
     已知取捨：多輪追問（「那芒果呢」）時，模型那一步看得到完整對話歷史，
     直通看不到——送出的是 RAG 工具針對單一 query 寫的答案。
     """
     tool_messages = _trailing_tool_messages(state.get("messages") or [])
+    if _is_lone_success(tool_messages, _SYMPTOM_TOOL_NAME):
+        return "symptom_direct"
     if _is_lone_success(tool_messages, FAMILY_DIRECTORY_TOOL_NAME):
         return "family_directory_direct"
     # 查服藥狀況與聊天回報吃過藥都不隨 RAG 開關提供，所以排在 allow_rag 之前判斷。
@@ -298,6 +303,14 @@ def _family_directory_direct_reply_node(state: State) -> dict:
     tool_messages = _trailing_tool_messages(state.get("messages") or [])
     answer = content_to_text(tool_messages[-1].content).strip()
     log_stage(logger, "family_directory_direct_reply", chars=len(answer))
+    return {"messages": [AIMessage(content=answer)]}
+
+
+def _symptom_direct_reply_node(state: State) -> dict:
+    """科別卡與人物釐清文字已由工具組好，不再依賴模型收尾。"""
+    tool_messages = _trailing_tool_messages(state.get("messages") or [])
+    answer = content_to_text(tool_messages[-1].content).strip()
+    log_stage(logger, "symptom_direct_reply", chars=len(answer))
     return {"messages": [AIMessage(content=answer)]}
 
 
@@ -536,6 +549,7 @@ class Agent:
         builder.add_node("rag_fail_direct", _rag_fail_direct_reply_node)
         builder.add_node("medication_direct", _medication_direct_reply_node)
         builder.add_node("family_directory_direct", _family_directory_direct_reply_node)
+        builder.add_node("symptom_direct", _symptom_direct_reply_node)
         builder.add_node(
             "medication_question_direct", _medication_question_direct_reply_node
         )
@@ -564,6 +578,7 @@ class Agent:
                 "rag_fail_direct": "rag_fail_direct",
                 "medication_direct": "medication_direct",
                 "family_directory_direct": "family_directory_direct",
+                "symptom_direct": "symptom_direct",
                 "medication_question_direct": "medication_question_direct",
                 "medication_report_direct": "medication_report_direct",
                 "agent": "agent",
@@ -573,6 +588,7 @@ class Agent:
         builder.add_edge("rag_fail_direct", END)
         builder.add_edge("medication_direct", END)
         builder.add_edge("family_directory_direct", END)
+        builder.add_edge("symptom_direct", END)
         builder.add_edge("medication_question_direct", END)
         builder.add_edge("medication_report_direct", END)
 
@@ -645,7 +661,7 @@ class Agent:
             # 症狀科別建議卡。除了 Flex JSON 不能被改寫之外，這裡還有安全理由：
             # 紅旗卡刻意不含任何門診科別，讓模型重寫有可能把「請立即就醫」稀釋
             # 成「可以考慮掛某某科」，那正是本功能要避免的失效模式。
-            "suggest_department_for_symptom",
+            _SYMPTOM_TOOL_NAME,
             # 聊天回報服藥的「已記錄」卡（含「記錯了」按鈕）與「是哪一頓」卡。
             # 卡片組不出來時服務層回的是純文字，這條路照樣原樣送出，
             # `_try_parse_flex_message` 解析不成就走純文字分支。

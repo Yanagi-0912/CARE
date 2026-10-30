@@ -466,6 +466,8 @@ _rag_answer_service = RagAnswerService(
     link_checker=_link_checker,
     total_timeout_seconds=settings.RAG_ANSWER_TIMEOUT_SECONDS,
     decomposer=_rag_decomposer,
+    compound_web_followup_enabled=settings.RAG_COMPOUND_WEB_FOLLOWUP_ENABLED,
+    compound_web_followup_timeout_seconds=settings.RAG_COMPOUND_WEB_FOLLOWUP_TIMEOUT_SECONDS,
 )
 
 _chat_history_repository = build_chat_history_repository(

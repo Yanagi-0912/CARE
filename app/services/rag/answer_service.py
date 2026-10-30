@@ -89,6 +89,9 @@ DEFAULT_SPECULATIVE_GENERATE = True
 # 到點回 [RAG_ERR:TIMEOUT]，agent 依 prompt 規則 10 請使用者稍後再問。
 DEFAULT_RAG_ANSWER_TIMEOUT_SECONDS = 45.0
 
+# 補查只影響尚無證據的子題。每題的預算包含改寫、網搜與分級；逾時保留已可答部分。
+DEFAULT_COMPOUND_WEB_FOLLOWUP_TIMEOUT_SECONDS = 12.0
+
 _CITATION_RE = re.compile(r"\[(\d+)\]")
 
 # 複合問題拆題只處理繁中：拆題 prompt、規則閘（全形問號）與全部實驗都只涵蓋 zh-TW。
@@ -126,6 +129,8 @@ class RagAnswerService:
         speculative_generate: bool = DEFAULT_SPECULATIVE_GENERATE,
         total_timeout_seconds: float = DEFAULT_RAG_ANSWER_TIMEOUT_SECONDS,
         decomposer: QuestionDecomposer | None = None,
+        compound_web_followup_enabled: bool = False,
+        compound_web_followup_timeout_seconds: float = DEFAULT_COMPOUND_WEB_FOLLOWUP_TIMEOUT_SECONDS,
     ) -> None:
         self.gemini_service = gemini_service
         self.retriever = retriever
@@ -145,6 +150,10 @@ class RagAnswerService:
         self.total_timeout_seconds = total_timeout_seconds
         # None＝不拆複合問題（RAG_COMPOUND_DECOMPOSE_ENABLED=false），行為與導入前相同
         self.decomposer = decomposer
+        self.compound_web_followup_enabled = compound_web_followup_enabled
+        if compound_web_followup_timeout_seconds <= 0:
+            raise ValueError("compound_web_followup_timeout_seconds must be positive")
+        self.compound_web_followup_timeout_seconds = compound_web_followup_timeout_seconds
 
     async def answer(self, user_text: str, *, original_message: str | None = None) -> str:
         """*original_message* 是本輪使用者原文，只有 `get_rag_answer` 會傳。
@@ -309,7 +318,7 @@ class RagAnswerService:
         )
 
     async def _answer_compound(self, message: str, timing: dict[str, Any]) -> str | None:
-        """複合問題：逐子問題檢索、分級，只把通過的子問題交給生成。
+        """逐子題檢索、分級；可選擇對部分未通過的子題補查網頁證據。
 
         回傳 None＝放棄拆題，由呼叫端走現行流程（含 Web Fallback）。放棄的情況：
         不是複合問題、拆題或分級失敗、所有子問題都沒通過、生成只寫出拒答標記。
@@ -351,9 +360,43 @@ class RagAnswerService:
             logger.info("rag_compound fallback=none_supported subs=%d", len(subs))
             return None
 
+        web_supported = 0
+        web_indices: set[int] = set()
+        followup_attempted = False
+        if (
+            self.compound_web_followup_enabled
+            and self.web_fallback_enabled
+            and not all(supported)
+        ):
+            followup_attempted = True
+            missing = [i for i, ok in enumerate(supported) if not ok]
+            timing["kb_supported"] = sum(supported)
+            timing["web_followup_attempted"] = len(missing)
+            followups = await asyncio.gather(
+                *(self._web_evidence_for_sub_question(subs[i]) for i in missing)
+            )
+            for i, docs in zip(missing, followups):
+                if docs:
+                    ranked_by_sub[i] = docs
+                    supported[i] = True
+                    web_supported += 1
+                    web_indices.add(i)
+
         evidence = self._interleave_evidence(
             [docs for docs, ok in zip(ranked_by_sub, supported) if ok]
         )
+        if followup_attempted:
+            # top-n 小於子題數時，找到文件不代表文件有進生成上下文。
+            # 只把實際分到證據名額的子題列為可答，避免宣稱答了缺乏上下文的題目。
+            supported = [
+                ok and any(doc in evidence for doc in docs)
+                for docs, ok in zip(ranked_by_sub, supported)
+            ]
+            web_supported = sum(supported[i] for i in web_indices)
+            timing["web_supported"] = web_supported
+            timing["supported"] = sum(supported)
+            if web_supported:
+                timing["path"] = "kb_compound_web"
         answered = [sub.question for sub, ok in zip(subs, supported) if ok]
         raw = await self._generate_answer(_compound_generation_question(answered), evidence)
         if self._is_cannot_answer(raw):
@@ -366,9 +409,14 @@ class RagAnswerService:
 
         unanswered = [sub.question for sub, ok in zip(subs, supported) if not ok]
         body = raw.strip()
+        if web_supported:
+            body = f"{t('rag.web_answer_prefix')}\n\n{body}"
         if unanswered:
+            note_key = (
+                "rag.compound_unresolved" if followup_attempted else "rag.compound_unsupported"
+            )
             notes = "\n".join(
-                t("rag.compound_unsupported").format(question=q) for q in unanswered
+                t(note_key).format(question=q) for q in unanswered
             )
             body = f"{body}\n\n{notes}"
         logger.info(
@@ -379,6 +427,29 @@ class RagAnswerService:
         )
         dead = await self._dead_source_urls(body, evidence, timing)
         return self._append_sources(body, evidence, dead)
+
+    async def _web_evidence_for_sub_question(self, sub: SubQuestion) -> list[Document]:
+        """補查失敗只留該題未完成，不丟掉其他子題的答案。
+
+        網搜使用保留病況／用藥條件的 question；相關性仍以同一個 question 嚴格
+        分級。不能把 KB 的 ambiguous 文件與網搜結果混在一起冒充通過。
+        """
+        assert self.web_search is not None
+        with stage_timer(logger, "rag_compound_web_followup") as timing:
+            try:
+                async with asyncio.timeout(self.compound_web_followup_timeout_seconds):
+                    queries = await self._search_queries_for_web(sub.question, None)
+                    docs = await self.web_search.retrieve(sub.question, search_queries=queries)
+                    approved = await self._grade_sub_questions([sub], [docs])
+                    timing["supported"] = int(approved[0])
+                    timing["docs"] = len(docs)
+                    return docs if approved[0] else []
+            except TimeoutError:
+                timing["outcome"] = "timeout"
+            except Exception as exc:
+                timing["outcome"] = "error"
+                logger.warning("compound_web_followup_failed error=%s", type(exc).__name__)
+            return []
 
     async def _grade_sub_questions(
         self, subs: list[SubQuestion], ranked_by_sub: list[list[Document]]

@@ -288,6 +288,15 @@ class Settings:
         "RAG_COMPOUND_DECOMPOSE_ENABLED", "false"
     ).lower() in ("1", "true", "yes", "on")
 
+    # 只對「部分子題 KB 可答」時缺證據的子題補查白名單網頁，便於獨立對照實驗。
+    # 未通過 CRAG 或補查逾時仍保留未完成說明；預設關閉，需拆題與網搜同時啟用。
+    RAG_COMPOUND_WEB_FOLLOWUP_ENABLED: bool = os.getenv(
+        "RAG_COMPOUND_WEB_FOLLOWUP_ENABLED", "false"
+    ).lower() in ("1", "true", "yes", "on")
+    RAG_COMPOUND_WEB_FOLLOWUP_TIMEOUT_SECONDS: float = float(
+        os.getenv("RAG_COMPOUND_WEB_FOLLOWUP_TIMEOUT_SECONDS", "12")
+    )
+
     # 整條 RAG 管線的總逾時（秒）。0＝不設限。到點回 [RAG_ERR:TIMEOUT]，agent
     # 請使用者稍後再問。45 秒＝LINE loading 動畫上限 60 秒，扣掉 RAG 以外的段落；
     # 實測最慢一題 18.7 秒，正常題目不會被切。來由見

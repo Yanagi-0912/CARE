@@ -634,6 +634,14 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "th": "เว็บ",
         "ja": "ウェブ",
     },
+    "rag.compound_unresolved": {
+        "zh-TW": "關於「{question}」：目前仍未取得足夠資料，暫時無法回答。",
+        "en": "About \"{question}\": there is still insufficient information to answer.",
+        "id": "Tentang \"{question}\": informasi yang tersedia masih belum cukup untuk menjawab.",
+        "vi": "Về \"{question}\": hiện vẫn chưa có đủ thông tin để trả lời.",
+        "th": "เกี่ยวกับ \"{question}\": ขณะนี้ยังมีข้อมูลไม่เพียงพอที่จะตอบ",
+        "ja": "「{question}」について：回答するための情報がまだ十分ではありません。",
+    },
     "rag.web_answer_prefix": {
         "zh-TW": "以下參考網路公開資料",
         "en": "The following is based on publicly available web sources",

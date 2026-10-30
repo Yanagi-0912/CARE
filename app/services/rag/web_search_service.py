@@ -133,7 +133,7 @@ class WebSearchService:
         if typo_fix is not None:
             query = query.replace(*typo_fix)
         try:
-            web_docs = await self._fetch_web_docs(query, search_queries)
+            web_docs = await self.retrieve(query, search_queries=search_queries)
         except WebSearchUnavailable as exc:
             # 「沒搜成」與「搜了沒有」分開回：WEB_EMPTY 的文案叫使用者換個說法，
             # 對限流與逾時完全沒用（理由見 web_client.WebSearchUnavailable）。
@@ -184,6 +184,16 @@ class WebSearchService:
         # 兩次 Mongo，串在回答前面只是讓每一則網搜答案多等這幾百毫秒。
         self._schedule_knowledge_report(query, web_docs, dead)
         return result
+
+    async def retrieve(
+        self, query: str, *, search_queries: RewrittenQuery | None = None
+    ) -> list[Document]:
+        """取得白名單網頁證據，供複合問題合併生成；不生成答案或寫入知識回報。
+
+        沿用單題網搜的中英查詢、白名單、去重與重搜上限。呼叫端負責以帶條件的
+        子問題檢查證據是否足夠，並在最終回答統一編排來源。
+        """
+        return await self._fetch_web_docs(query, search_queries)
 
     def _schedule_knowledge_report(
         self, query: str, web_docs: list[Document], dead: frozenset[str]

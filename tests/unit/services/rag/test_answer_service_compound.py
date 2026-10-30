@@ -1,11 +1,19 @@
 """RagAnswerService 的複合問題拆題路徑（openspec: rag-compound-questions）。"""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage
 
 from app.core.user_language import reset_request_language, set_request_language
+from app.core.rag_sources import (
+    begin_request_rag_sources,
+    get_request_rag_sources,
+    reset_request_rag_sources,
+)
 from app.i18n.messages import t
 from app.services.rag import RagAnswerService
 from app.services.rag.cannot_answer import NO_ANSWER_SENTINEL
@@ -261,3 +269,205 @@ async def test_compound_path_is_reported_in_timing_logs(caplog):
     assert "rag_compound subs=2 supported=2" in text
     # 日誌不含使用者原文
     assert MESSAGE not in text
+
+
+WEB_DOCS = [_doc("https://www.fda.gov.tw/web", "網頁找到的併用注意事項")]
+
+
+class _FollowupGrader(_Grader):
+    async def grade(self, query: str, docs: list[Document]) -> Grade:
+        self.questions.append(query)
+        if query == SUB_A.question or docs == WEB_DOCS:
+            return Grade.CORRECT
+        return Grade.AMBIGUOUS
+
+
+def _followup_service(*, enabled=True, docs=None, grader=None, answer=None):
+    service, gemini, retriever = _service(
+        decomposer=_Decomposer(),
+        grader=grader or _FollowupGrader({}),
+        answer=answer or "關於差別：知識庫內容 [1]。\n關於併用：網頁內容 [2]。",
+    )
+    web = MagicMock()
+    web.retrieve = AsyncMock(return_value=WEB_DOCS if docs is None else docs)
+    service.web_search = web
+    service.web_fallback_enabled = True
+    service.compound_web_followup_enabled = enabled
+    return service, gemini, retriever, web
+
+
+async def test_followup_only_searches_missing_sub_and_merges_sources(caplog):
+    service, gemini, retriever, web = _followup_service()
+    token = begin_request_rag_sources()
+    try:
+        with caplog.at_level("INFO"):
+            out = await service.answer(AGENT_QUERY, original_message=MESSAGE)
+        refs = get_request_rag_sources()
+    finally:
+        reset_request_rag_sources(token)
+
+    web.retrieve.assert_awaited_once_with(SUB_B.question, search_queries=None)
+    web.answer.assert_not_called()
+    assert sorted(retriever.queries) == sorted([SUB_A.retrieval_query, SUB_B.retrieval_query])
+    prompt = _prompt_text(gemini)
+    assert SUB_A.question in prompt and SUB_B.question in prompt
+    assert "網頁找到的併用注意事項" in prompt
+    assert DOCS_B[0].page_content not in prompt
+    assert len(refs) == 2
+    assert [r.index for r in refs] == [1, 2]
+    assert [r.url for r in refs] == [DOCS_A[0].metadata["url"], WEB_DOCS[0].metadata["url"]]
+    assert out.count(t("agent.sources_heading")) == 1
+    assert out.startswith(t("rag.web_answer_prefix"))
+    assert "目前仍未取得足夠資料" not in out
+    assert "path=kb_compound_web" in caplog.text
+    assert "web_followup_attempted=1" in caplog.text
+    assert MESSAGE not in caplog.text and SUB_B.question not in caplog.text
+
+
+async def test_followup_disabled_keeps_legacy_partial_answer():
+    service, _, _, web = _followup_service(enabled=False)
+    out = await service.answer(AGENT_QUERY, original_message=MESSAGE)
+    web.retrieve.assert_not_awaited()
+    assert t("rag.compound_unsupported").format(question=SUB_B.question) in out
+
+
+async def test_followup_does_not_search_when_all_kb_subs_supported():
+    grader = _Grader({SUB_A.question: Grade.CORRECT, SUB_B.question: Grade.CORRECT})
+    service, _, _, web = _followup_service(grader=grader)
+    await service.answer(AGENT_QUERY, original_message=MESSAGE)
+    web.retrieve.assert_not_awaited()
+
+
+async def test_followup_respects_global_web_switch():
+    service, _, _, web = _followup_service()
+    service.web_fallback_enabled = False
+    out = await service.answer(AGENT_QUERY, original_message=MESSAGE)
+    web.retrieve.assert_not_awaited()
+    assert t("rag.compound_unsupported").format(question=SUB_B.question) in out
+
+
+@pytest.mark.parametrize("docs", [[], [_doc("https://www.fda.gov.tw/irrelevant", "不相關的網頁")]])
+async def test_empty_or_unapproved_web_evidence_does_not_enter_generation(docs):
+    service, gemini, _, _ = _followup_service(docs=docs, answer="魚油知識庫內容 [1]。")
+    out = await service.answer(AGENT_QUERY, original_message=MESSAGE)
+    prompt = _prompt_text(gemini)
+    assert SUB_B.question not in prompt
+    assert "不相關的網頁" not in prompt
+    assert t("rag.compound_unresolved").format(question=SUB_B.question) in out
+    assert "魚油知識庫內容" in out
+    assert not out.startswith(t("rag.web_answer_prefix"))
+
+
+async def test_followup_error_preserves_kb_answer():
+    service, _, _, web = _followup_service(answer="知識庫內容 [1]。")
+    web.retrieve.side_effect = RuntimeError("provider unavailable")
+    out = await service.answer(AGENT_QUERY, original_message=MESSAGE)
+    assert not is_rag_fail(out)
+    assert "知識庫內容" in out
+    assert t("rag.compound_unresolved").format(question=SUB_B.question) in out
+
+
+async def test_followup_grader_error_does_not_admit_web_documents():
+    class WebGraderDown(_FollowupGrader):
+        async def grade(self, query, docs):
+            if docs == WEB_DOCS:
+                raise RuntimeError("grader unavailable")
+            return await super().grade(query, docs)
+
+    service, gemini, _, _ = _followup_service(
+        grader=WebGraderDown({}), answer="知識庫內容 [1]。"
+    )
+    out = await service.answer(AGENT_QUERY, original_message=MESSAGE)
+    assert WEB_DOCS[0].page_content not in _prompt_text(gemini)
+    assert "知識庫內容" in out
+    assert t("rag.compound_unresolved").format(question=SUB_B.question) in out
+
+
+async def test_one_followup_failure_does_not_discard_another_followup():
+    third = SubQuestion("第三個獨立需求？", "第三需求的檢索")
+    service, gemini, _, web = _followup_service()
+    service.decomposer = _Decomposer(result=[SUB_A, SUB_B, third])
+
+    async def retrieve(query, **kwargs):
+        if query == SUB_B.question:
+            return WEB_DOCS
+        raise RuntimeError("one search failed")
+
+    web.retrieve.side_effect = retrieve
+    out = await service.answer(AGENT_QUERY, original_message=MESSAGE)
+    assert web.retrieve.await_count == 2
+    prompt = _prompt_text(gemini)
+    assert SUB_B.question in prompt
+    assert third.question not in prompt
+    assert t("rag.compound_unresolved").format(question=third.question) in out
+    assert t("rag.compound_unresolved").format(question=SUB_B.question) not in out
+
+
+async def test_followup_respects_shared_context_budget():
+    service, gemini, _, _ = _followup_service(answer="知識庫內容 [1]。")
+    service.rerank_top_n = 1
+    out = await service.answer(AGENT_QUERY, original_message=MESSAGE)
+    prompt = _prompt_text(gemini)
+    assert SUB_B.question not in prompt
+    assert WEB_DOCS[0].page_content not in prompt
+    assert t("rag.compound_unresolved").format(question=SUB_B.question) in out
+    assert not out.startswith(t("rag.web_answer_prefix"))
+
+
+async def test_followup_timeout_cancels_lookup_and_preserves_kb_answer():
+    cancelled = asyncio.Event()
+
+    async def slow(*args, **kwargs):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    service, _, _, web = _followup_service(answer="知識庫內容 [1]。")
+    service.compound_web_followup_timeout_seconds = 0.01
+    web.retrieve.side_effect = slow
+    out = await service.answer(AGENT_QUERY, original_message=MESSAGE)
+    assert cancelled.is_set()
+    assert not is_rag_fail(out)
+    assert "知識庫內容" in out
+
+
+async def test_request_cancellation_propagates_through_followup():
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def slow(*args, **kwargs):
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    service, _, _, web = _followup_service()
+    web.retrieve.side_effect = slow
+    task = asyncio.create_task(service.answer(AGENT_QUERY, original_message=MESSAGE))
+    await asyncio.wait_for(started.wait(), 1)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert cancelled.is_set()
+
+
+async def test_total_timeout_still_clears_sources_during_followup():
+    started = asyncio.Event()
+
+    async def slow(*args, **kwargs):
+        started.set()
+        await asyncio.Event().wait()
+
+    service, _, _, web = _followup_service()
+    service.total_timeout_seconds = 0.02
+    web.retrieve.side_effect = slow
+    token = begin_request_rag_sources()
+    try:
+        out = await service.answer(AGENT_QUERY, original_message=MESSAGE)
+        assert "[RAG_ERR:TIMEOUT]" in out
+        assert get_request_rag_sources() == ()
+    finally:
+        reset_request_rag_sources(token)
+    assert started.is_set()

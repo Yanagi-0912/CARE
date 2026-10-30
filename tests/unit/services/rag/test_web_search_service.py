@@ -107,6 +107,22 @@ def _make_service(
     )
 
 
+async def test_retrieve_exposes_whitelisted_evidence_without_answer_or_report():
+    web = FakeWebClient(hits=[
+        WebSearchHit(url="https://www.fda.gov.tw/allowed", title="食藥署", description="足夠長度的衛教內容，供呼叫端檢查後再生成回答。"),
+        WebSearchHit(url="https://untrusted.example/ad", title="廣告", description="不在白名單的內容"),
+    ])
+    callback = AsyncMock()
+    svc, gemini = _make_service(web_client=web, on_web_fallback_success=callback)
+
+    docs = await svc.retrieve("用藥注意事項")
+
+    assert [d.metadata["url"] for d in docs] == ["https://www.fda.gov.tw/allowed"]
+    gemini.chat_model.ainvoke.assert_not_awaited()
+    callback.assert_not_awaited()
+    assert not svc._background_tasks
+
+
 class FakeLinkChecker:
     """把指定網址判死，其餘判活。記錄被查過哪些網址。"""
 

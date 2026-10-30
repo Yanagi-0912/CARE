@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "case_id": "location_without_coordinates",
+  "started_at": "2026-10-15T16:14:33.897840+00:00",
+  "runtime": "local CARE Python process",
+  "source_commit": "864b6a00a228070e884474a9ff7f642de4333b94",
+  "working_tree_dirty": true,
+  "project": "CARE",
+  "run_id": "1f2206e8-9c36-4441-beee-9049c74a7e3d",
+  "trace_url": "https://apac.smith.langchain.com/o/b5e5674f-b8cc-4024-af08-dfc79cff3a33/projects/p/34724c4d-1670-449a-ade9-73bfecdcafc0/r/1f2206e8-9c36-4441-beee-9049c74a7e3d?poll=true",
+  "question": "我想找附近的醫院，但還沒提供位置。請先請我分享位置。",
+  "outputs": {
+    "response": "請點擊下方的『分享位置資訊』按鈕傳送您的位置，我馬上為您尋找附近的醫療院所！",
+    "call_request_location": true,
+    "emergency": false,
+    "answer_kind": null
+  },
+  "wall_seconds": 3.002,
+  "checks": {
+    "trace_complete": true,
+    "outputs_match": true,
+    "response_matches": true,
+    "required_runs_present": true,
+    "no_run_errors": true,
+    "persisted_outputs_match": true
+  },
+  "root_end_time": "2026-10-15 16:14:36.899917+00:00",
+  "runs": [
+    {
+      "id": "1f2206e8-9c36-4441-beee-9049c74a7e3d",
+      "parent_id": null,
+      "name": "CARE Local Agent Demo - location_without_coordinates",
+      "type": "chain",
+      "error": false,
+      "end_time": "2026-10-15 16:14:36.899917+00:00"
+    },
+    {
+      "id": "01a14058-0a06-7d22-8b32-d9e787674253",
+      "parent_id": "1f2206e8-9c36-4441-beee-9049c74a7e3d",
+      "name": "LangGraph",
+      "type": "chain",
+      "error": false,
+      "end_time": "2026-10-15 16:14:36.899258+00:00"
+    },
+    {
+      "id": "01a14058-0a09-7d33-a6f1-ddd7e74ca7f8",
+      "parent_id": "01a14058-0a06-7d22-8b32-d9e787674253",
+      "name": "guardrail",
+      "type": "chain",
+      "error": false,
+      "end_time": "2026-10-15 16:14:35.889951+00:00"
+    },
+    {
+      "id": "01a14058-0a38-7a30-8b1a-83705536e15d",
+      "parent_id": "01a14058-0a09-7d33-a6f1-ddd7e74ca7f8",
+      "name": "RunnableSequence",
+      "type": "chain",
+      "error": false,
+      "end_time": "2026-10-15 16:14:35.887712+00:00"
+    },
+    {
+      "id": "01a14058-0a73-7f62-844c-fcf1c9bb2b06",
+      "parent_id": "01a14058-0a09-7d33-a6f1-ddd7e74ca7f8",
+      "name": "ChatGoogleGenerativeAI",
+      "type": "llm",
+      "error": false,
+      "end_time": "2026-10-15 16:14:35.319183+00:00"
+    },
+    {
+      "id": "01a14058-0a77-77c3-8b91-e657d9c7adb3",
+      "parent_id": "01a14058-0a38-7a30-8b1a-83705536e15d",
+      "name": "ChatGoogleGenerativeAI",
+      "type": "llm",
+      "error": false,
+      "end_time": "2026-10-15 16:14:35.884570+00:00"
+    },
+    {
+      "id": "01a14058-116d-7821-b14e-cc35c9b6b891",
+      "parent_id": "01a14058-0a38-7a30-8b1a-83705536e15d",
+      "name": "JsonOutputParser",
+      "type": "parser",
+      "error": false,
+      "end_time": "2026-10-15 16:14:35.887211+00:00"
+    },
+    {
+      "id": "01a14058-1170-7392-b216-6b012d53dc57",
+      "parent_id": "01a14058-0a09-7d33-a6f1-ddd7e74ca7f8",
+      "name": "_urgency_condition",
+      "type": "chain",
+      "error": false,
+      "end_time": "2026-10-15 16:14:35.889576+00:00"
+    },
+    {
+      "id": "01a14058-1172-7fb1-b2e3-f41f1580ef5e",
+      "parent_id": "01a14058-0a06-7d22-8b32-d9e787674253",
+      "name": "agent",
+      "type": "chain",
+      "error": false,
+      "end_time": "2026-10-15 16:14:35.891894+00:00"
+    },
+    {
+      "id": "01a14058-1173-7651-a201-2e0d37fc2629",
+      "parent_id": "01a14058-1172-7fb1-b2e3-f41f1580ef5e",
+      "name": "tools_condition",
+      "type": "chain",
+      "error": false,
+      "end_time": "2026-10-15 16:14:35.891671+00:00"
+    },
+    {
+      "id": "01a14058-1174-7902-953e-89786b07190b",
+      "parent_id": "01a14058-0a06-7d22-8b32-d9e787674253",
+      "name": "tools",
+      "type": "chain",
+      "error": false,
+      "end_time": "2026-10-15 16:14:35.896061+00:00"
+    },
+    {
+      "id": "01a14058-1175-7d73-a343-e67513923ac3",
+      "parent_id": "01a14058-1174-7902-953e-89786b07190b",
+      "name": "request_location_quick_reply",
+      "type": "tool",
+      "error": false,
+      "end_time": "2026-10-15 16:14:35.894720+00:00"
+    },
+    {
+      "id": "01a14058-1177-7880-bc90-65818107a749",
+      "parent_id": "01a14058-1174-7902-953e-89786b07190b",
+      "name": "_route_after_tools",
+      "type": "chain",
+      "error": false,
+      "end_time": "2026-10-15 16:14:35.895879+00:00"
+    },
+    {
+      "id": "01a14058-1178-78d2-9e16-ac7e0511cb05",
+      "parent_id": "01a14058-0a06-7d22-8b32-d9e787674253",
+      "name": "agent",
+      "type": "chain",
+      "error": false,
+      "end_time": "2026-10-15 16:14:36.898551+00:00"
+    },
+    {
+      "id": "01a14058-1179-78f1-b343-554100cc1e35",
+      "parent_id": "01a14058-1178-78d2-9e16-ac7e0511cb05",
+      "name": "ChatGoogleGenerativeAI",
+      "type": "llm",
+      "error": false,
+      "end_time": "2026-10-15 16:14:36.896218+00:00"
+    },
+    {
+      "id": "01a14058-1561-7260-8929-cd1e02a4c35e",
+      "parent_id": "01a14058-1178-78d2-9e16-ac7e0511cb05",
+      "name": "tools_condition",
+      "type": "chain",
+      "error": false,
+      "end_time": "2026-10-15 16:14:36.898221+00:00"
+    }
+  ]
+}

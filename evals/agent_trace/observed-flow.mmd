@@ -1,0 +1,40 @@
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	guardrail(guardrail)
+	emergency(emergency)
+	agent(agent)
+	tools(tools)
+	rag_direct(rag_direct)
+	rag_fail_direct(rag_fail_direct)
+	medication_direct(medication_direct)
+	family_directory_direct(family_directory_direct)
+	medication_question_direct(medication_question_direct)
+	medication_report_direct(medication_report_direct)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> guardrail;
+	agent -.-> __end__;
+	agent -.-> tools;
+	guardrail -.-> agent;
+	guardrail -.-> emergency;
+	tools -.-> agent;
+	tools -.-> family_directory_direct;
+	tools -.-> medication_direct;
+	tools -.-> medication_question_direct;
+	tools -.-> medication_report_direct;
+	tools -.-> rag_direct;
+	tools -.-> rag_fail_direct;
+	emergency --> __end__;
+	family_directory_direct --> __end__;
+	medication_direct --> __end__;
+	medication_question_direct --> __end__;
+	medication_report_direct --> __end__;
+	rag_direct --> __end__;
+	rag_fail_direct --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc

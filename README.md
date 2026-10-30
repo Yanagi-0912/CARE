@@ -8,6 +8,10 @@
 
 暫無
 
+## Agent 流程追蹤實驗
+
+本地 CARE／LangSmith 的重跑程式、測試 JSON、歷史結果與交接說明，見 [實驗交接文件](evals/agent_trace/README.md)。
+
 ## 快速開始
 
 先安裝 [uv](https://docs.astral.sh/uv/)（相依與 Python 版本都由它管理）：

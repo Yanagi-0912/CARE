@@ -111,8 +111,13 @@ async def test_undo_postback_without_the_service_configured_does_nothing():
 
 
 @pytest.mark.asyncio
-async def test_slot_postback_confirms_the_chosen_log_at_the_stated_time():
+async def test_slot_postback_confirms_the_chosen_log_at_the_stated_time(monkeypatch):
     """使用者在反問之前就講了「12 點吃的」，按下按鈕的現在不是那個事實。"""
+    # 固定在中午之後，避免清晨執行時觸發「不能回報未來」的正常防護。
+    monkeypatch.setattr(
+        "app.services.line_messaging.dispatcher.dispatcher._report_moment",
+        lambda taken_time: _report_moment(taken_time, NOW),
+    )
     service = FakeReportService()
     dispatcher = _dispatcher(service)
 
@@ -122,7 +127,7 @@ async def test_slot_postback_confirms_the_chosen_log_at_the_stated_time():
 
     (asker, log_id, moment, language) = service.confirm_calls[0]
     assert (asker, log_id, language) == ("U1", "L1", "zh-TW")
-    assert (moment.hour, moment.minute) == (12, 0)
+    assert moment == NOW.replace(hour=12, minute=0)
 
 
 @pytest.mark.asyncio

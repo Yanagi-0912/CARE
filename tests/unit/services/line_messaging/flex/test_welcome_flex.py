@@ -140,8 +140,38 @@ def test_missing_liff_url_drops_only_the_profile_button():
     assert "CARE 提供衛教資訊，不能取代醫師診斷。緊急狀況請撥 119。" in _texts(msg)
 
 
-def test_actions_carry_no_label():
-    assert all("label" not in action for action in _actions(build_welcome_flex(LIFF)))
+@pytest.mark.parametrize("language", SUPPORTED_LANGUAGES)
+@pytest.mark.parametrize("with_videos", [False, True])
+def test_actions_have_labels_within_line_limit(language, with_videos):
+    msg = build_welcome_flex(LIFF, language=language, with_videos=with_videos)
+    buttons = [node for node in _walk(_carousel(msg)) if "action" in node]
+
+    assert buttons
+    for button in buttons:
+        label = button["action"]["label"]
+        visible_text = button["contents"][0]["text"]
+        assert label
+        assert len(label.encode("utf-16-le")) // 2 <= 40
+        assert visible_text.startswith(label)
+        if button["action"]["type"] == "message":
+            assert button["action"]["text"] == visible_text
+
+
+def test_label_limit_does_not_truncate_the_example_or_split_an_emoji(monkeypatch):
+    example = "a" + "😀" * 21
+
+    def translated(key, language=None):
+        return example if key == "welcome.example.health" else t(key, language)
+
+    monkeypatch.setattr(
+        "app.services.line_messaging.flex.welcome_flex.t", translated
+    )
+    msg = build_welcome_flex(LIFF, language="zh-TW")
+    action = next(a for a in _actions(msg) if a["type"] == "message")
+
+    assert action["label"] == "a" + "😀" * 19
+    assert action["text"] == example
+    assert example in _texts(msg)
 
 
 @pytest.mark.parametrize("language", SUPPORTED_LANGUAGES)

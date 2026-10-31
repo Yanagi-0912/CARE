@@ -13,10 +13,11 @@ SECTIONS），每項寫在 LINE 裡怎麼說才會觸發。加好友只會收到
 是 kb-004；紅豆那題是 verdict-003，預期判定「錯誤」，會出判定卡。沒命中查核資料的
 謠言只會得到「證據不足」，拿來示範反而讓人以為查核沒用。
 
-卡片內的 action 一律不帶 label：label 只在 button 元件上會顯示，這裡的按鈕是 box；
-SDK 的 MessageAction／URIAction 也把 label 標為選填。範例句譯成泰文、印尼文後都
-不短，不帶 label 就不必擔心長度驗證。快速回覆的相機按鈕是例外，LINE 規定快速
-回覆一定要有 label。相機與相簿只能放在快速回覆，Flex 裡沒有這兩種 action。
+box 的 action 雖然允許省略 label，這裡仍明確填入，與用藥卡片的格式一致：
+Mac LINE 9.6.1 能顯示用藥卡，卻將這組輪播攤成純文字。補 label 是待真機複測的
+相容性調整。label 最多 40 個 UTF-16 code units，截短的只是不顯示的動作標籤；
+按鈕文字和送出的範例句都保留全文。快速回覆的 label 上限則是 20。
+相機與相簿只能放在快速回覆，Flex 裡沒有這兩種 action。
 """
 
 from typing import Any, NamedTuple
@@ -123,10 +124,13 @@ def _intro_bubble(title: str, liff_url: str, language: str | None, ft: theme.Fle
         theme.divider(),
     ]
     if liff_url:
+        profile_label = t("welcome.profile_button", language)
         body += [
             ft.primary_button(
-                t("welcome.profile_button", language),
-                {"type": "uri", "uri": liff_uri(liff_url, PROFILE_PATH)},
+                profile_label,
+                _labeled_action(
+                    profile_label, type="uri", uri=liff_uri(liff_url, PROFILE_PATH)
+                ),
             ),
             _text(t("welcome.profile_hint", language), ft.caption, theme.TEXT_MUTED),
         ]
@@ -142,14 +146,16 @@ def _section_bubble(
 ) -> dict[str, Any]:
     body: list[dict[str, Any]] = []
     if with_videos:
+        video_label = t("welcome.video_button", language)
         body.append(
             ft.primary_button(
-                t("welcome.video_button", language),
-                {
-                    "type": "postback",
-                    "data": feature_video_postback(section.key),
-                    "displayText": t("welcome.video_display", language),
-                },
+                video_label,
+                _labeled_action(
+                    video_label,
+                    type="postback",
+                    data=feature_video_postback(section.key),
+                    displayText=t("welcome.video_display", language),
+                ),
             )
         )
     body += [
@@ -174,7 +180,7 @@ def _section_bubble(
             theme.divider(),
             _text(t("welcome.try_hint", language), ft.caption, theme.TEXT_MUTED),
             *(
-                ft.secondary_button(text, {"type": "message", "text": text})
+                ft.secondary_button(text, _labeled_action(text, type="message", text=text))
                 for text in (t(key, language) for key in section.examples)
             ),
         ]
@@ -213,3 +219,9 @@ def _bubble(title: str, body: list[dict[str, Any]], ft: theme.FlexTheme) -> dict
 
 def _text(text: str, size: str, color: str) -> dict[str, Any]:
     return {"type": "text", "text": text, "size": size, "color": color, "wrap": True}
+
+
+def _labeled_action(label: str, **properties: str) -> dict[str, str]:
+    # LINE 以 UTF-16 計數；截在 surrogate pair 中間時捨去最後半個字元。
+    short_label = label.encode("utf-16-le")[:80].decode("utf-16-le", errors="ignore")
+    return {**properties, "label": short_label}

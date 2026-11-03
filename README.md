@@ -402,13 +402,13 @@ git add resources/drug_appearance/
 
 ### 運作方式
 
-**華語用 Gemini，台語用 Taigi AI Labs 的台語 STT**（`app/services/speech/clinic_transcribe.py`）：
+**華語用 Gemini，台語用 Taigi AI Labs 外部 API**（`app/services/speech/clinic_transcribe.py`）。CARE 與 Taigi AI Labs 合作使用其台語 STT/TTS API：
 
 1. 系統把錄音切成每段 5 分鐘，平行送給 `gemini-3.5-transcribe`。
 2. 有聲音、但 Gemini 沒轉出文字的時段，系統改送台語 STT 補上。原因是這個 Gemini 模型碰到台語，幾乎轉不出字。
 
 - 系統不需要先判斷整份錄音是什麼語言。醫師講華語、長輩回台語時，兩種語言各自處理。
-- 台語 STT 跟聊天室的語音訊息共用同一把金鑰，上限是每分鐘 10 次。看診錄音每 10 秒送一段，把額度留給聊天室。
+- 台語 STT 跟聊天室的語音訊息共用 `TAIGI_API_KEY`，上限是每分鐘 10 次。看診錄音每 10 秒送一段，把額度留給聊天室。
 
 **系統不會標示哪一句是醫師講的。** 語者分離（判斷錄音裡哪裡換了說話的人）只用來決定在哪裡分段，段落不帶講者身分。摘要的提示詞也明確禁止寫「醫師說」。
 
